@@ -56,6 +56,16 @@ async def lifespan(app: FastAPI):
         app.state.graph_repo = None
         app.state.vector_repo = None
 
+    # Seed system prompt profiles
+    from app.db.seed import seed_profiles
+    from app.database import async_session_factory
+    try:
+        async with async_session_factory() as session:
+            await seed_profiles(session)
+        logger.info("System prompt profiles seeded")
+    except Exception as e:
+        logger.warning(f"Failed to seed profiles: {e}")
+
     yield
 
     # Cleanup
