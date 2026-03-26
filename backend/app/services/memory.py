@@ -110,6 +110,53 @@ class MemoryService:
             return []
         return await self.pipeline.find_duplicates(memory_id, threshold)
 
+    async def reason(self, question: str, limit: int = 10) -> dict:
+        if not self.pipeline:
+            return {"answer": "Reasoning not available (no LLM pipeline configured)", "sources": []}
+
+        # Step 1: Semantic search for relevant memories
+        semantic_results = await self.pipeline.semantic_search(question, limit=limit)
+        if not semantic_results:
+            return {"answer": "No relevant memories found to answer this question.", "sources": []}
+
+        # Step 2: Fetch full memory content
+        sources = []
+        context_parts = []
+        for i, result in enumerate(semantic_results):
+            memory = await self.memory_repo.get(result["memory_id"])
+            if memory and not memory.is_archived:
+                context_parts.append(f"[{i+1}] {memory.content}")
+                sources.append({
+                    "memory_id": str(memory.id),
+                    "content": memory.content[:200],
+                    "score": result["score"],
+                    "tags": [t.name for t in memory.tags],
+                })
+
+        if not context_parts:
+            return {"answer": "No relevant memories found.", "sources": []}
+
+        # Step 3: Ask LLM with context
+        context = "\n\n".join(context_parts)
+        prompt = f"""Based on the following stored memories, answer the question.
+If the memories don't contain enough information, say so.
+Reference the memory numbers [1], [2], etc. when citing sources.
+
+Memories:
+{context}
+
+Question: {question}"""
+
+        answer = await self.pipeline.llm.chat_completion(
+            "reasoning",
+            messages=[
+                {"role": "system", "content": "You are a knowledge retrieval assistant. Answer questions using only the provided memory context. Be concise and accurate."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        return {"answer": answer, "sources": sources}
+
     async def merge_memories(self, source_id: UUID, target_id: UUID, api_key_id: UUID | None) -> Memory | None:
         source = await self.memory_repo.get(source_id)
         target = await self.memory_repo.get(target_id)

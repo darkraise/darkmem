@@ -7,6 +7,7 @@ from app.api.deps import get_memory_service
 from app.models.api_key import ApiKey
 from app.models.memory import Memory
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate
+from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.services.memory import MemoryService
 
 router = APIRouter(prefix="/api/v1/memories", tags=["memories"])
@@ -37,6 +38,16 @@ async def create_memory(
 ):
     memory = await service.create_memory(body, api_key.id)
     return _to_response(memory)
+
+
+@router.post("/reason", response_model=ReasonResponse)
+async def reason(
+    body: ReasonRequest,
+    api_key: ApiKey = Depends(require_scope("read")),
+    service: MemoryService = Depends(get_memory_service),
+):
+    result = await service.reason(body.question, limit=body.limit)
+    return ReasonResponse(**result)
 
 
 @router.get("/{memory_id}", response_model=MemoryResponse)
