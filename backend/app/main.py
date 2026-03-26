@@ -1,10 +1,13 @@
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from neo4j import AsyncGraphDatabase
 from qdrant_client import AsyncQdrantClient
+from starlette.routing import Mount
 
+from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.routes import analytics, config, graph, keys, memories, tags
 from app.api.websocket import websocket_endpoint
 from app.config import settings
@@ -56,6 +59,9 @@ async def lifespan(app: FastAPI):
         app.state.graph_repo = None
         app.state.vector_repo = None
 
+    # Set pipeline reference for MCP tools
+    set_pipeline(pipeline)
+
     # Seed system prompt profiles
     from app.db.seed import seed_profiles
     from app.database import async_session_factory
@@ -66,7 +72,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed profiles: {e}")
 
-    yield
+    async with contextlib.AsyncExitStack() as stack:
+        await stack.enter_async_context(mcp_server.session_manager.run())
+        yield
 
     # Cleanup
     if llm:
@@ -88,6 +96,8 @@ app.include_router(config.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)
+
+app.mount("/mcp", mcp_server.streamable_http_app())
 
 
 @app.get("/health")
