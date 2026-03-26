@@ -103,6 +103,15 @@ export function useLlmConfig() {
   return useQuery({ queryKey: ["llmConfig"], queryFn: () => apiFetch("/config/llm") });
 }
 
+export function useUpdateLlmConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiFetch("/config/llm", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["llmConfig"] }),
+  });
+}
+
 export function useSystemPrompts() {
   return useQuery({ queryKey: ["systemPrompts"], queryFn: () => apiFetch<unknown[]>("/config/system-prompt/list") });
 }
