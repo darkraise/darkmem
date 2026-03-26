@@ -24,7 +24,7 @@ services:
   postgres:
     image: postgres:17-alpine
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -32,7 +32,7 @@ services:
       - POSTGRES_USER=darkmem
       - POSTGRES_PASSWORD=${DB_PASSWORD:-darkmem}
     healthcheck:
-      test: ["CMD-ONLY", "pg_isready", "-U", "darkmem"]
+      test: ["CMD", "pg_isready", "-U", "darkmem"]
       interval: 5s
       timeout: 3s
       retries: 5
