@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "darkmem"
+    neo4j_password: str = "darkmem123"
     api_key_prefix: str = "dm_"
 
 
