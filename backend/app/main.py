@@ -63,15 +63,16 @@ async def lifespan(app: FastAPI):
     # Set pipeline reference for MCP tools
     set_pipeline(pipeline)
 
-    # Seed system prompt profiles
-    from app.db.seed import seed_profiles
+    # Seed system prompt profiles and default API key
+    from app.db.seed import seed_default_api_key, seed_profiles
     from app.database import async_session_factory
     try:
         async with async_session_factory() as session:
             await seed_profiles(session)
-        logger.info("System prompt profiles seeded")
+            await seed_default_api_key(session)
+        logger.info("Seed data applied")
     except Exception as e:
-        logger.warning(f"Failed to seed profiles: {e}")
+        logger.warning(f"Failed to seed data: {e}")
 
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
