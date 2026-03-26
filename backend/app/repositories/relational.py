@@ -46,6 +46,7 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             elif hasattr(memory, key):
                 setattr(memory, key, value)
         await self.session.flush()
+        await self.session.refresh(memory)
         await self.session.refresh(memory, ["tags"])
         return memory
 
