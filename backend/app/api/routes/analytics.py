@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import require_scope
+from app.api.auth import require_auth
 from app.database import get_session
 from app.models.memory import Memory, Tag
 from app.schemas.config import StatsResponse
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(
-    _api_key=Depends(require_scope("read")),
+    _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     request: Request = None,
 ):

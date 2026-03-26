@@ -1,13 +1,10 @@
 import json
 import logging
-import os
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
 
-from app.api.auth import hash_api_key
 from app.database import async_session_factory
-from app.repositories.relational import PostgresApiKeyRepository
 from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
 
@@ -18,26 +15,10 @@ mcp = FastMCP("darkmem", json_response=True, stateless_http=True, streamable_htt
 # Module-level reference set during app lifespan
 _pipeline = None
 
-_mcp_api_key: str | None = os.environ.get("MCP_API_KEY")
-
 
 def set_pipeline(pipeline):
     global _pipeline
     _pipeline = pipeline
-
-
-async def _get_mcp_api_key_id() -> UUID | None:
-    """Get the API key ID for MCP operations, validating MCP_API_KEY if configured."""
-    if not _mcp_api_key:
-        return None
-    session = async_session_factory()
-    try:
-        key_hash = hash_api_key(_mcp_api_key)
-        repo = PostgresApiKeyRepository(session)
-        api_key = await repo.get_by_key_hash(key_hash)
-        return api_key.id if api_key else None
-    finally:
-        await session.close()
 
 
 async def _get_service():
@@ -60,11 +41,10 @@ def _memory_to_dict(memory) -> dict:
 
 @mcp.tool(description="Create a new memory")
 async def memory_add(content: str, tags: list[str] = [], source: str = "mcp", source_agent: str | None = None, memory_type: str | None = None) -> str:
-    api_key_id = await _get_mcp_api_key_id()
     service, session = await _get_service()
     try:
         data = MemoryCreate(content=content, tags=tags, source=source, source_agent=source_agent, memory_type=memory_type)
-        memory = await service.create_memory(data, api_key_id=api_key_id)
+        memory = await service.create_memory(data, api_key_id=None)
         await session.commit()
         return json.dumps(_memory_to_dict(memory))
     except Exception as e:
@@ -103,11 +83,10 @@ async def memory_get(memory_id: str) -> str:
 
 @mcp.tool(description="Update a memory")
 async def memory_update(memory_id: str, content: str | None = None, tags: list[str] | None = None, memory_type: str | None = None) -> str:
-    api_key_id = await _get_mcp_api_key_id()
     service, session = await _get_service()
     try:
         data = MemoryUpdate(content=content, tags=tags, memory_type=memory_type)
-        memory = await service.update_memory(UUID(memory_id), data, api_key_id=api_key_id)
+        memory = await service.update_memory(UUID(memory_id), data, api_key_id=None)
         if not memory:
             return json.dumps({"error": "Memory not found"})
         await session.commit()
@@ -121,10 +100,9 @@ async def memory_update(memory_id: str, content: str | None = None, tags: list[s
 
 @mcp.tool(description="Delete a memory")
 async def memory_delete(memory_id: str) -> str:
-    api_key_id = await _get_mcp_api_key_id()
     service, session = await _get_service()
     try:
-        result = await service.delete_memory(UUID(memory_id), api_key_id=api_key_id)
+        result = await service.delete_memory(UUID(memory_id), api_key_id=None)
         await session.commit()
         return json.dumps({"deleted": result})
     except Exception as e:
@@ -136,13 +114,12 @@ async def memory_delete(memory_id: str) -> str:
 
 @mcp.tool(description="Create multiple memories at once")
 async def memory_batch_add(entries: list[dict]) -> str:
-    api_key_id = await _get_mcp_api_key_id()
     service, session = await _get_service()
     try:
         results = []
         for entry in entries:
             data = MemoryCreate(**entry)
-            memory = await service.create_memory(data, api_key_id=api_key_id)
+            memory = await service.create_memory(data, api_key_id=None)
             results.append(_memory_to_dict(memory))
         await session.commit()
         return json.dumps(results)

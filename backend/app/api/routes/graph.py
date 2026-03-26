@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.api.auth import require_scope
+from app.api.auth import require_auth
 from app.repositories.graph import Neo4jGraphRepository
 from app.schemas.graph import EntityResponse, NeighborsResponse
 
@@ -19,7 +19,7 @@ async def list_entities(
     entity_type: str | None = Query(None),
     name: str | None = Query(None),
     limit: int = Query(50),
-    _api_key=Depends(require_scope("read")),
+    _user=Depends(require_auth),
     request: Request = None,
 ):
     repo = _get_graph_repo(request)
@@ -31,7 +31,7 @@ async def list_entities(
 async def get_neighbors(
     entity_id: str,
     depth: int = Query(1, ge=1, le=3),
-    _api_key=Depends(require_scope("read")),
+    _user=Depends(require_auth),
     request: Request = None,
 ):
     repo = _get_graph_repo(request)

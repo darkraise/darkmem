@@ -1,56 +1,42 @@
-import hashlib
-import hmac
-import os
-import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, Security, status
+import bcrypt
+import jwt
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_session
-from app.models.api_key import ApiKey
-from app.repositories.relational import PostgresApiKeyRepository
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
-_HMAC_SECRET = os.environ.get("API_KEY_HMAC_SECRET", "darkmem-default-secret-change-me")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 
-def generate_api_key(prefix: str | None = None) -> tuple[str, str]:
-    prefix = prefix or settings.api_key_prefix
-    raw = prefix + secrets.token_hex(24)
-    key_hash = hash_api_key(raw)
-    return raw, key_hash
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-def hash_api_key(raw_key: str) -> str:
-    return hmac.new(_HMAC_SECRET.encode(), raw_key.encode(), hashlib.sha256).hexdigest()
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
-async def get_current_api_key(
-    credentials: HTTPAuthorizationCredentials = Security(security),
-    session: AsyncSession = Depends(get_session),
-) -> ApiKey:
-    key_hash = hash_api_key(credentials.credentials)
-    repo = PostgresApiKeyRepository(session)
-    api_key = await repo.get_by_key_hash(key_hash)
-
-    if not api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-
-    if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
-
-    await repo.update_last_used(api_key.id)
-    return api_key
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
+    to_encode["exp"] = expire
+    return jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
 
 
-def require_scope(scope: str):
-    async def _checker(api_key: ApiKey = Depends(get_current_api_key)) -> ApiKey:
-        if scope not in api_key.scopes:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Scope '{scope}' required")
-        return api_key
-
-    return _checker
+async def require_auth(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict:
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    try:
+        payload = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

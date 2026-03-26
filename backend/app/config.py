@@ -20,8 +20,7 @@ class Settings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "darkmem123"
-    api_key_prefix: str = "dm_"
-    default_api_key: str = "dm_default_admin_key_change_me_in_production"
+    jwt_secret: str = "darkmem-jwt-secret-change-me"
 
     llm_embedding: LLMPurposeConfig = LLMPurposeConfig(
         provider="ollama", base_url="http://localhost:11434/v1",

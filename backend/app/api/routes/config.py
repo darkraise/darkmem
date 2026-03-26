@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import require_scope
+from app.api.auth import require_auth
 from app.config import LLMPurposeConfig, settings
 from app.database import get_session
 from app.models.config import Config, SystemPromptProfile
@@ -49,7 +49,7 @@ async def _get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
 
 @router.get("/llm", response_model=LLMConfigResponse)
 async def get_llm_config(
-    _api_key=Depends(require_scope("admin")),
+    _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
     config = await _get_llm_config(session)
@@ -59,7 +59,7 @@ async def get_llm_config(
 @router.post("/llm", response_model=LLMConfigResponse)
 async def update_llm_config(
     body: LLMConfigUpdate,
-    _api_key=Depends(require_scope("admin")),
+    _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
     # Read existing DB config
@@ -99,7 +99,7 @@ async def update_llm_config(
 @router.get("/system-prompt", response_model=SystemPromptResponse)
 async def get_system_prompt(
     profile: str = "default",
-    _api_key=Depends(require_scope("read")),
+    _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(
@@ -113,7 +113,7 @@ async def get_system_prompt(
 
 @router.get("/system-prompt/list", response_model=list[SystemPromptResponse])
 async def list_system_prompts(
-    _api_key=Depends(require_scope("read")),
+    _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(select(SystemPromptProfile).order_by(SystemPromptProfile.name))

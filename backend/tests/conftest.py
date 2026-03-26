@@ -1,21 +1,13 @@
-import secrets
-
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from app.api.auth import hash_api_key
+from app.api.auth import create_access_token, hash_password
 from app.config import settings
 from app.database import get_session
 from app.main import app
 from app.models import Base
-from app.models.api_key import ApiKey
-
-
-def _generate_test_api_key() -> tuple[str, str]:
-    raw = "dm_" + secrets.token_hex(24)
-    key_hash = hash_api_key(raw)
-    return raw, key_hash
+from app.models.config import Config
 
 test_engine = create_async_engine(settings.test_database_url)
 
@@ -55,14 +47,10 @@ async def client(session):
 
 
 @pytest_asyncio.fixture
-async def api_key_raw(session):
-    raw_key, key_hash = _generate_test_api_key()
-    key = ApiKey(name="test-key", key_hash=key_hash, scopes=["read", "write", "admin"])
-    session.add(key)
+async def auth_headers(session):
+    hashed = hash_password("test-admin-password")
+    session.add(Config(key="admin_password_hash", value={"hash": hashed}))
     await session.flush()
-    return raw_key
 
-
-@pytest_asyncio.fixture
-async def auth_headers(api_key_raw):
-    return {"Authorization": f"Bearer {api_key_raw}"}
+    token = create_access_token({"sub": "admin"})
+    return {"Authorization": f"Bearer {token}"}

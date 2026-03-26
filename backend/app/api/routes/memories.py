@@ -2,9 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.auth import require_scope
+from app.api.auth import require_auth
 from app.api.deps import get_memory_service
-from app.models.api_key import ApiKey
 from app.models.memory import Memory
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate
 from app.schemas.reason import ReasonRequest, ReasonResponse
@@ -33,17 +32,17 @@ def _to_response(memory: Memory) -> MemoryResponse:
 @router.post("", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_memory(
     body: MemoryCreate,
-    api_key: ApiKey = Depends(require_scope("write")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memory = await service.create_memory(body, api_key.id)
+    memory = await service.create_memory(body, api_key_id=None)
     return _to_response(memory)
 
 
 @router.post("/reason", response_model=ReasonResponse)
 async def reason(
     body: ReasonRequest,
-    api_key: ApiKey = Depends(require_scope("read")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     result = await service.reason(body.question, limit=body.limit)
@@ -53,7 +52,7 @@ async def reason(
 @router.get("/{memory_id}", response_model=MemoryResponse)
 async def get_memory(
     memory_id: UUID,
-    api_key: ApiKey = Depends(require_scope("read")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     memory = await service.get_memory(memory_id)
@@ -66,10 +65,10 @@ async def get_memory(
 async def update_memory(
     memory_id: UUID,
     body: MemoryUpdate,
-    api_key: ApiKey = Depends(require_scope("write")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memory = await service.update_memory(memory_id, body, api_key.id)
+    memory = await service.update_memory(memory_id, body, api_key_id=None)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
     return _to_response(memory)
@@ -78,17 +77,17 @@ async def update_memory(
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_memory(
     memory_id: UUID,
-    api_key: ApiKey = Depends(require_scope("write")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    if not await service.delete_memory(memory_id, api_key.id):
+    if not await service.delete_memory(memory_id, api_key_id=None):
         raise HTTPException(status_code=404, detail="Memory not found")
 
 
 @router.post("/search", response_model=list[MemoryResponse])
 async def search_memories(
     body: MemorySearchRequest,
-    api_key: ApiKey = Depends(require_scope("read")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     memories = await service.search_memories(body)
@@ -98,12 +97,12 @@ async def search_memories(
 @router.post("/batch", response_model=list[MemoryResponse], status_code=status.HTTP_201_CREATED)
 async def batch_create(
     body: MemoryBatchCreate,
-    api_key: ApiKey = Depends(require_scope("write")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     results = []
     for entry in body.entries:
-        memory = await service.create_memory(entry, api_key.id)
+        memory = await service.create_memory(entry, api_key_id=None)
         results.append(_to_response(memory))
     return results
 
@@ -112,10 +111,10 @@ async def batch_create(
 async def merge_memory(
     memory_id: UUID,
     body: MemoryMergeRequest,
-    api_key: ApiKey = Depends(require_scope("write")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memory = await service.merge_memories(memory_id, body.target_id, api_key.id)
+    memory = await service.merge_memories(memory_id, body.target_id, api_key_id=None)
     if not memory:
         raise HTTPException(status_code=404, detail="One or both memories not found")
     return _to_response(memory)
@@ -125,7 +124,7 @@ async def merge_memory(
 async def find_duplicates(
     memory_id: UUID,
     threshold: float = 0.9,
-    api_key: ApiKey = Depends(require_scope("read")),
+    _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     duplicates = await service.find_duplicates(memory_id, threshold)

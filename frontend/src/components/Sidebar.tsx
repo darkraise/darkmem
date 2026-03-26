@@ -8,12 +8,15 @@ const navItems = [
   { to: "/search", label: "Search", icon: "⊕" },
   null,
   { to: "/analytics", label: "Analytics", icon: "▤" },
-  { to: "/keys", label: "API Keys", icon: "⊡" },
   { to: "/llm", label: "LLM Config", icon: "⊙" },
   { to: "/settings", label: "Settings", icon: "⊛" },
 ] as const satisfies (null | { to: string; label: string; icon: string })[];
 
-export function Sidebar() {
+interface SidebarProps {
+  onLogout: () => void;
+}
+
+export function Sidebar({ onLogout }: SidebarProps) {
   return (
     <aside className="w-56 bg-card border-r border-border flex flex-col shrink-0">
       <div className="p-4 border-b border-border">
@@ -42,6 +45,15 @@ export function Sidebar() {
           )
         )}
       </nav>
+      <div className="border-t border-border p-2">
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
+        >
+          <span className="text-base">⊘</span>
+          Logout
+        </button>
+      </div>
     </aside>
   );
 }

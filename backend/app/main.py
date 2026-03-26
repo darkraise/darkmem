@@ -9,7 +9,7 @@ from qdrant_client import AsyncQdrantClient
 from starlette.routing import Mount
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, config, graph, keys, memories, tags
+from app.api.routes import analytics, auth, config, graph, memories, tags
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.repositories.graph import Neo4jGraphRepository
@@ -63,13 +63,12 @@ async def lifespan(app: FastAPI):
     # Set pipeline reference for MCP tools
     set_pipeline(pipeline)
 
-    # Seed system prompt profiles and default API key
-    from app.db.seed import seed_default_api_key, seed_profiles
+    # Seed system prompt profiles
+    from app.db.seed import seed_profiles
     from app.database import async_session_factory
     try:
         async with async_session_factory() as session:
             await seed_profiles(session)
-            await seed_default_api_key(session)
         logger.info("Seed data applied")
     except Exception as e:
         logger.warning(f"Failed to seed data: {e}")
@@ -97,9 +96,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(memories.router)
 app.include_router(tags.router)
-app.include_router(keys.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(config.router)

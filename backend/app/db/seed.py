@@ -3,7 +3,6 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.api_key import ApiKey
 from app.models.config import SystemPromptProfile
 
 logger = logging.getLogger(__name__)
@@ -160,25 +159,3 @@ async def seed_profiles(session: AsyncSession):
         logger.info(f"Seeded profile: {profile_data['name']}")
 
     await session.commit()
-
-
-async def seed_default_api_key(session: AsyncSession):
-    from app.api.auth import hash_api_key
-    from app.config import settings
-
-    raw_key = settings.default_api_key
-    key_hash = hash_api_key(raw_key)
-
-    existing = await session.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
-    if existing.scalar_one_or_none():
-        return
-
-    key = ApiKey(
-        name="default-admin",
-        key_hash=key_hash,
-        scopes=["read", "write", "admin"],
-        profile="default",
-    )
-    session.add(key)
-    await session.commit()
-    logger.info(f"Seeded default admin API key: {raw_key}")

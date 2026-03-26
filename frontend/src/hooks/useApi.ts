@@ -78,27 +78,6 @@ export function useStats() {
   return useQuery<Stats>({ queryKey: ["stats"], queryFn: () => apiFetch("/analytics/stats") });
 }
 
-export function useApiKeys() {
-  return useQuery({ queryKey: ["apiKeys"], queryFn: () => apiFetch<unknown[]>("/keys") });
-}
-
-export function useCreateApiKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: { name: string; scopes?: string[] }) =>
-      apiFetch("/keys", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["apiKeys"] }),
-  });
-}
-
-export function useDeleteApiKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiFetch(`/keys/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["apiKeys"] }),
-  });
-}
-
 export function useLlmConfig() {
   return useQuery({ queryKey: ["llmConfig"], queryFn: () => apiFetch("/config/llm") });
 }

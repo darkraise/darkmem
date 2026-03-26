@@ -84,21 +84,3 @@ async def test_batch_create(client, auth_headers):
     )
     assert response.status_code == 201
     assert len(response.json()) == 3
-
-
-async def test_scope_enforcement(client, session):
-    from app.api.auth import generate_api_key
-    from app.models.api_key import ApiKey
-
-    raw_key, key_hash = generate_api_key()
-    key = ApiKey(name="read-only", key_hash=key_hash, scopes=["read"])
-    session.add(key)
-    await session.flush()
-
-    headers = {"Authorization": f"Bearer {raw_key}"}
-
-    get_resp = await client.post("/api/v1/memories/search", json={}, headers=headers)
-    assert get_resp.status_code == 200
-
-    post_resp = await client.post("/api/v1/memories", json={"content": "Nope"}, headers=headers)
-    assert post_resp.status_code == 403
