@@ -1,4 +1,6 @@
 import hashlib
+import hmac
+import os
 import secrets
 from datetime import datetime, timezone
 
@@ -13,16 +15,18 @@ from app.repositories.relational import PostgresApiKeyRepository
 
 security = HTTPBearer()
 
+_HMAC_SECRET = os.environ.get("API_KEY_HMAC_SECRET", "darkmem-default-secret-change-me")
+
 
 def generate_api_key(prefix: str | None = None) -> tuple[str, str]:
     prefix = prefix or settings.api_key_prefix
     raw = prefix + secrets.token_hex(24)
-    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    key_hash = hash_api_key(raw)
     return raw, key_hash
 
 
 def hash_api_key(raw_key: str) -> str:
-    return hashlib.sha256(raw_key.encode()).hexdigest()
+    return hmac.new(_HMAC_SECRET.encode(), raw_key.encode(), hashlib.sha256).hexdigest()
 
 
 async def get_current_api_key(

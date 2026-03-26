@@ -1,10 +1,10 @@
-import hashlib
 import secrets
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.api.auth import hash_api_key
 from app.config import settings
 from app.database import get_session
 from app.main import app
@@ -14,7 +14,7 @@ from app.models.api_key import ApiKey
 
 def _generate_test_api_key() -> tuple[str, str]:
     raw = "dm_" + secrets.token_hex(24)
-    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    key_hash = hash_api_key(raw)
     return raw, key_hash
 
 test_engine = create_async_engine(settings.test_database_url)

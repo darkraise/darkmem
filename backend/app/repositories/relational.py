@@ -77,7 +77,8 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
 
         if query:
-            stmt = stmt.where(Memory.content.ilike(f"%{query}%"))
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            stmt = stmt.where(Memory.content.ilike(f"%{escaped}%"))
 
         if tags_any:
             stmt = stmt.where(Memory.tags.any(Tag.name.in_(tags_any)))
