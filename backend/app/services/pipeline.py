@@ -6,6 +6,7 @@ from app.repositories.graph import Neo4jGraphRepository
 from app.repositories.vector import QdrantVectorRepository
 from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
+from app.api.websocket import event_manager
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,11 @@ class ProcessingPipeline:
                     )
             else:
                 logger.error(f"Extraction failed for {memory_id}: {extraction}")
+
+            try:
+                await event_manager.broadcast("pipeline.completed", {"memory_id": str(memory_id)})
+            except Exception as broadcast_err:
+                logger.warning(f"WebSocket broadcast failed: {broadcast_err}")
         except Exception as e:
             logger.error(f"Pipeline failed for {memory_id}: {e}")
 
@@ -61,6 +67,10 @@ class ProcessingPipeline:
                 self.graph_repo.delete_by_memory_id(memory_id),
                 return_exceptions=True,
             )
+            try:
+                await event_manager.broadcast("memory.deleted", {"memory_id": str(memory_id)})
+            except Exception as broadcast_err:
+                logger.warning(f"WebSocket broadcast failed: {broadcast_err}")
         except Exception as e:
             logger.error(f"Cleanup failed for {memory_id}: {e}")
 

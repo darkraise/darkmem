@@ -6,6 +6,7 @@ from neo4j import AsyncGraphDatabase
 from qdrant_client import AsyncQdrantClient
 
 from app.api.routes import analytics, config, graph, keys, memories, tags
+from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.repositories.graph import Neo4jGraphRepository
 from app.repositories.vector import QdrantVectorRepository
@@ -74,6 +75,9 @@ app.include_router(keys.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(config.router)
+
+
+app.add_api_websocket_route("/ws", websocket_endpoint)
 
 
 @app.get("/health")
