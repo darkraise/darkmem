@@ -6,7 +6,7 @@ from app.api.auth import require_scope
 from app.api.deps import get_memory_service
 from app.models.api_key import ApiKey
 from app.models.memory import Memory
-from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryResponse, MemorySearchRequest, MemoryUpdate
+from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
 
 router = APIRouter(prefix="/api/v1/memories", tags=["memories"])
@@ -95,3 +95,27 @@ async def batch_create(
         memory = await service.create_memory(entry, api_key.id)
         results.append(_to_response(memory))
     return results
+
+
+@router.post("/{memory_id}/merge", response_model=MemoryResponse)
+async def merge_memory(
+    memory_id: UUID,
+    body: MemoryMergeRequest,
+    api_key: ApiKey = Depends(require_scope("write")),
+    service: MemoryService = Depends(get_memory_service),
+):
+    memory = await service.merge_memories(memory_id, body.target_id, api_key.id)
+    if not memory:
+        raise HTTPException(status_code=404, detail="One or both memories not found")
+    return _to_response(memory)
+
+
+@router.get("/{memory_id}/duplicates")
+async def find_duplicates(
+    memory_id: UUID,
+    threshold: float = 0.9,
+    api_key: ApiKey = Depends(require_scope("read")),
+    service: MemoryService = Depends(get_memory_service),
+):
+    duplicates = await service.find_duplicates(memory_id, threshold)
+    return duplicates
