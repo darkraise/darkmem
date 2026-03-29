@@ -32,3 +32,8 @@ class NeighborsResponse(BaseModel):
     entity: EntityResponse | None
     neighbors: list[EntityResponse]
     relations: list[RelationResponse]
+
+
+class FullGraphResponse(BaseModel):
+    entities: list[EntityResponse]
+    relations: list[RelationResponse]

@@ -1,65 +1,130 @@
-import { useGraphEntities } from "@/hooks/useApi";
+import { useFullGraph } from "@/hooks/useApi";
 // @ts-ignore
 import CytoscapeComponent from "react-cytoscapejs";
 import { useState, useMemo } from "react";
 
+const TYPE_COLORS: Record<string, string> = {
+  person: "#58a6ff",
+  service: "#3fb950",
+  project: "#d2a8ff",
+  technology: "#ffa657",
+  concept: "#8b949e",
+  organization: "#f778ba",
+};
+
 export default function KnowledgeGraph() {
-  const { data: entities, isLoading } = useGraphEntities();
-  const [selected, setSelected] = useState<{ label: string; type: string } | null>(null);
+  const { data: graph, isLoading } = useFullGraph();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [selected, setSelected] = useState<any>(null);
 
   const elements = useMemo(() => {
-    if (!entities || !Array.isArray(entities)) return [];
+    if (!graph) return [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nodes = (entities as any[]).map((e: any) => ({
-      data: { id: e.id || e.name, label: e.name, type: e.entity_type },
+    const entities = (graph.entities || []) as any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const relations = (graph.relations || []) as any[];
+
+    const nodes = entities.map((e) => ({
+      data: {
+        id: e.id || e.name,
+        label: e.name,
+        type: e.entity_type,
+        color: TYPE_COLORS[e.entity_type] || "#8b949e",
+      },
     }));
-    return nodes;
-  }, [entities]);
+
+    const nodeIds = new Set(nodes.map((n) => n.data.id));
+    const edges = relations
+      .filter((r) => r.source && r.target && nodeIds.has(r.source) && nodeIds.has(r.target))
+      .map((r, i) => ({
+        data: {
+          id: `edge-${i}`,
+          source: r.source,
+          target: r.target,
+          label: r.type || "",
+          weight: r.weight || 0.5,
+        },
+      }));
+
+    return [...nodes, ...edges];
+  }, [graph]);
 
   const stylesheet = [
     {
       selector: "node",
       style: {
         label: "data(label)",
-        "background-color": "#21262d",
+        "background-color": "data(color)",
         color: "#c9d1d9",
         "text-valign": "bottom" as const,
-        "text-margin-y": 5,
+        "text-margin-y": 6,
         "font-size": 10,
-        width: 30,
-        height: 30,
+        width: 28,
+        height: 28,
         "border-width": 2,
-        "border-color": "#58a6ff",
+        "border-color": "#30363d",
       },
     },
     {
       selector: "edge",
       style: {
-        width: 1,
+        width: 1.5,
         "line-color": "#30363d",
+        "target-arrow-color": "#30363d",
+        "target-arrow-shape": "triangle" as const,
         "curve-style": "bezier" as const,
+        label: "data(label)",
+        "font-size": 8,
+        color: "#484f58",
+        "text-rotation": "autorotate" as const,
+        "text-margin-y": -8,
+      },
+    },
+    {
+      selector: "node:selected",
+      style: {
+        "border-color": "#58a6ff",
+        "border-width": 3,
       },
     },
   ];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nodeCount = elements.filter((e: any) => !e.data.source).length;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const edgeCount = elements.filter((e: any) => e.data.source).length;
+
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Knowledge Graph</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">Knowledge Graph</h2>
+        {elements.length > 0 && (
+          <span className="text-sm text-muted-foreground">
+            {nodeCount} entities, {edgeCount} relationships
+          </span>
+        )}
+      </div>
       {isLoading && <p className="text-muted-foreground">Loading graph...</p>}
-      {!isLoading && elements.length === 0 && (
-        <p className="text-muted-foreground">No entities in the knowledge graph yet. Create memories with the pipeline running to populate it.</p>
+      {!isLoading && nodeCount === 0 && (
+        <p className="text-muted-foreground">
+          No entities in the knowledge graph yet. Create memories with the pipeline running to populate it.
+        </p>
       )}
-      {elements.length > 0 && (
+      {nodeCount > 0 && (
         <div className="bg-card border border-border rounded-lg overflow-hidden" style={{ height: "70vh" }}>
           <CytoscapeComponent
             elements={elements}
             stylesheet={stylesheet}
-            layout={{ name: "cose", animate: true }}
+            layout={{ name: "cose", animate: true, nodeRepulsion: () => 8000, idealEdgeLength: () => 100 }}
             style={{ width: "100%", height: "100%" }}
             cy={(cy: any) => {
               cy.on("tap", "node", (evt: any) => {
                 const data = evt.target.data();
-                setSelected(data);
+                setSelected({ ...data, kind: "node" });
+              });
+              cy.on("tap", "edge", (evt: any) => {
+                const data = evt.target.data();
+                setSelected({ ...data, kind: "edge" });
               });
             }}
           />
@@ -67,8 +132,30 @@ export default function KnowledgeGraph() {
       )}
       {selected && (
         <div className="mt-4 bg-card border border-border rounded-lg p-4">
-          <h3 className="font-medium">{selected.label}</h3>
-          <p className="text-sm text-muted-foreground">{selected.type}</p>
+          {selected.kind === "node" ? (
+            <>
+              <h3 className="font-medium">{selected.label}</h3>
+              <p className="text-sm text-muted-foreground">Type: {selected.type}</p>
+            </>
+          ) : (
+            <>
+              <h3 className="font-medium">{selected.label || "relationship"}</h3>
+              <p className="text-sm text-muted-foreground">
+                {selected.source} → {selected.target}
+                {selected.weight && <span className="ml-2">weight: {selected.weight}</span>}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+      {nodeCount > 0 && (
+        <div className="mt-4 flex gap-3 flex-wrap">
+          {Object.entries(TYPE_COLORS).map(([type, color]) => (
+            <div key={type} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+              {type}
+            </div>
+          ))}
         </div>
       )}
     </div>

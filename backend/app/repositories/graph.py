@@ -108,6 +108,23 @@ class Neo4jGraphRepository:
                 "relations": record["relations"],
             }
 
+    async def get_full_graph(self, limit: int = 200) -> dict:
+        async with self.driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (e:Entity)
+                WITH e LIMIT $limit
+                OPTIONAL MATCH (e)-[r:RELATES_TO]->(t:Entity)
+                RETURN collect(distinct e{.id, .name, .entity_type, .properties, .memory_ids}) as entities,
+                       collect(distinct {source: startNode(r).id, target: endNode(r).id, type: r.rel_type, weight: r.weight}) as relations
+                """,
+                limit=limit,
+            )
+            record = await result.single()
+            entities = record["entities"] if record else []
+            relations = [r for r in (record["relations"] if record else []) if r.get("source") and r.get("target")]
+            return {"entities": entities, "relations": relations}
+
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)
         async with self.driver.session() as session:

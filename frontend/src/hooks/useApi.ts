@@ -102,6 +102,13 @@ export function useGraphEntities(type?: string) {
   });
 }
 
+export function useFullGraph() {
+  return useQuery({
+    queryKey: ["fullGraph"],
+    queryFn: () => apiFetch<{ entities: unknown[]; relations: unknown[] }>("/graph/full"),
+  });
+}
+
 export function useReason() {
   return useMutation({
     mutationFn: (data: { question: string; limit?: number }) =>

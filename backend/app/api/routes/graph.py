@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api.auth import require_auth
 from app.repositories.graph import Neo4jGraphRepository
-from app.schemas.graph import EntityResponse, NeighborsResponse
+from app.schemas.graph import EntityResponse, FullGraphResponse, NeighborsResponse, RelationResponse
 
 router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
 
@@ -12,6 +12,20 @@ def _get_graph_repo(request: Request) -> Neo4jGraphRepository:
     if not repo:
         raise HTTPException(status_code=503, detail="Graph service not available")
     return repo
+
+
+@router.get("/full", response_model=FullGraphResponse)
+async def get_full_graph(
+    limit: int = Query(200),
+    _user=Depends(require_auth),
+    request: Request = None,
+):
+    repo = _get_graph_repo(request)
+    result = await repo.get_full_graph(limit=limit)
+    return FullGraphResponse(
+        entities=[EntityResponse(**e) for e in result["entities"]],
+        relations=[RelationResponse(**r) for r in result["relations"]],
+    )
 
 
 @router.get("/entities", response_model=list[EntityResponse])
