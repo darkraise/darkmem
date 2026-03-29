@@ -42,6 +42,22 @@ class QdrantVectorRepository:
             points_selector=[str(memory_id)],
         )
 
+    async def get_all_vectors(self, limit: int = 500) -> list[dict]:
+        points, _offset = await self.client.scroll(
+            collection_name=self.collection_name,
+            limit=limit,
+            with_vectors=True,
+            with_payload=True,
+        )
+        return [
+            {
+                "memory_id": p.id,
+                "vector": list(p.vector),
+                "payload": p.payload,
+            }
+            for p in points
+        ]
+
     async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
         points = await self.client.retrieve(
             collection_name=self.collection_name, ids=[str(memory_id)], with_vectors=True,

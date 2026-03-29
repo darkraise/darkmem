@@ -9,7 +9,7 @@ from qdrant_client import AsyncQdrantClient
 from starlette.routing import Mount
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, config, graph, memories, tags
+from app.api.routes import analytics, auth, config, graph, memories, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.repositories.graph import Neo4jGraphRepository
@@ -101,6 +101,7 @@ app.include_router(tags.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(config.router)
+app.include_router(vectors.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)
