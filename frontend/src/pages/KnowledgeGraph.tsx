@@ -1,7 +1,7 @@
 import { useFullGraph } from "@/hooks/useApi";
 // @ts-ignore
 import CytoscapeComponent from "react-cytoscapejs";
-import { useState, useMemo } from "react";
+import { useRef, useMemo, useCallback, useReducer } from "react";
 
 const TYPE_COLORS: Record<string, string> = {
   person: "#58a6ff",
@@ -12,10 +12,57 @@ const TYPE_COLORS: Record<string, string> = {
   organization: "#f778ba",
 };
 
+const stylesheet = [
+  {
+    selector: "node",
+    style: {
+      label: "data(label)",
+      "background-color": "data(color)",
+      color: "#c9d1d9",
+      "text-valign": "bottom" as const,
+      "text-margin-y": 6,
+      "font-size": 10,
+      width: 28,
+      height: 28,
+      "border-width": 2,
+      "border-color": "#30363d",
+    },
+  },
+  {
+    selector: "edge",
+    style: {
+      width: 1.5,
+      "line-color": "#30363d",
+      "target-arrow-color": "#30363d",
+      "target-arrow-shape": "triangle" as const,
+      "curve-style": "bezier" as const,
+      label: "data(label)",
+      "font-size": 8,
+      color: "#484f58",
+      "text-rotation": "autorotate" as const,
+      "text-margin-y": -8,
+    },
+  },
+  {
+    selector: "node:selected",
+    style: {
+      "border-color": "#58a6ff",
+      "border-width": 3,
+    },
+  },
+];
+
+const layout = { name: "cose", animate: true, nodeRepulsion: () => 8000, idealEdgeLength: () => 100 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Selected = { kind: "node" | "edge"; [key: string]: any } | null;
+
 export default function KnowledgeGraph() {
   const { data: graph, isLoading } = useFullGraph();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [selected, setSelected] = useState<any>(null);
+  const cyRef = useRef<any>(null);
+  const listenersAttached = useRef(false);
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+  const selectedRef = useRef<Selected>(null);
 
   const elements = useMemo(() => {
     if (!graph) return [];
@@ -49,50 +96,32 @@ export default function KnowledgeGraph() {
     return [...nodes, ...edges];
   }, [graph]);
 
-  const stylesheet = [
-    {
-      selector: "node",
-      style: {
-        label: "data(label)",
-        "background-color": "data(color)",
-        color: "#c9d1d9",
-        "text-valign": "bottom" as const,
-        "text-margin-y": 6,
-        "font-size": 10,
-        width: 28,
-        height: 28,
-        "border-width": 2,
-        "border-color": "#30363d",
-      },
-    },
-    {
-      selector: "edge",
-      style: {
-        width: 1.5,
-        "line-color": "#30363d",
-        "target-arrow-color": "#30363d",
-        "target-arrow-shape": "triangle" as const,
-        "curve-style": "bezier" as const,
-        label: "data(label)",
-        "font-size": 8,
-        color: "#484f58",
-        "text-rotation": "autorotate" as const,
-        "text-margin-y": -8,
-      },
-    },
-    {
-      selector: "node:selected",
-      style: {
-        "border-color": "#58a6ff",
-        "border-width": 3,
-      },
-    },
-  ];
+  const handleCy = useCallback((cy: any) => {
+    cyRef.current = cy;
+    if (listenersAttached.current) return;
+    listenersAttached.current = true;
+
+    cy.on("tap", "node", (evt: any) => {
+      selectedRef.current = { ...evt.target.data(), kind: "node" };
+      forceUpdate();
+    });
+    cy.on("tap", "edge", (evt: any) => {
+      selectedRef.current = { ...evt.target.data(), kind: "edge" };
+      forceUpdate();
+    });
+    cy.on("tap", (evt: any) => {
+      if (evt.target === cy) {
+        selectedRef.current = null;
+        forceUpdate();
+      }
+    });
+  }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodeCount = elements.filter((e: any) => !e.data.source).length;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const edgeCount = elements.filter((e: any) => e.data.source).length;
+  const selected = selectedRef.current;
 
   return (
     <div>
@@ -115,18 +144,9 @@ export default function KnowledgeGraph() {
           <CytoscapeComponent
             elements={elements}
             stylesheet={stylesheet}
-            layout={{ name: "cose", animate: true, nodeRepulsion: () => 8000, idealEdgeLength: () => 100 }}
+            layout={layout}
             style={{ width: "100%", height: "100%" }}
-            cy={(cy: any) => {
-              cy.on("tap", "node", (evt: any) => {
-                const data = evt.target.data();
-                setSelected({ ...data, kind: "node" });
-              });
-              cy.on("tap", "edge", (evt: any) => {
-                const data = evt.target.data();
-                setSelected({ ...data, kind: "edge" });
-              });
-            }}
+            cy={handleCy}
           />
         </div>
       )}
