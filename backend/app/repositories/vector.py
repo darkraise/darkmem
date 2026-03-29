@@ -58,6 +58,35 @@ class QdrantVectorRepository:
             for p in points
         ]
 
+    async def get_similarity_graph(self, threshold: float = 0.3, limit: int = 200) -> dict:
+        """Build a memory similarity graph: nodes = memories, edges = similarity pairs."""
+        points = await self.get_all_vectors(limit=limit)
+        if len(points) < 2:
+            return {"nodes": [{"memory_id": p["memory_id"], "payload": p["payload"]} for p in points], "edges": []}
+
+        import numpy as np
+        vectors = np.array([p["vector"] for p in points], dtype=np.float32)
+        # Normalize for cosine similarity
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        normalized = vectors / norms
+        # Pairwise cosine similarity
+        sim_matrix = normalized @ normalized.T
+
+        nodes = [{"memory_id": p["memory_id"], "payload": p["payload"]} for p in points]
+        edges = []
+        for i in range(len(points)):
+            for j in range(i + 1, len(points)):
+                score = float(sim_matrix[i][j])
+                if score >= threshold:
+                    edges.append({
+                        "source": points[i]["memory_id"],
+                        "target": points[j]["memory_id"],
+                        "score": round(score, 3),
+                    })
+
+        return {"nodes": nodes, "edges": edges}
+
     async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
         points = await self.client.retrieve(
             collection_name=self.collection_name, ids=[str(memory_id)], with_vectors=True,

@@ -109,6 +109,16 @@ export function useFullGraph() {
   });
 }
 
+export function useMemoryGraph(threshold = 0.3) {
+  return useQuery({
+    queryKey: ["memoryGraph", threshold],
+    queryFn: () => apiFetch<{
+      nodes: { id: string; content: string; source: string; tags: string[]; memory_type: string | null }[];
+      edges: { source: string; target: string; score: number }[];
+    }>(`/vectors/graph?threshold=${threshold}`),
+  });
+}
+
 export function useVectorProjection() {
   return useQuery({
     queryKey: ["vectorProjection"],

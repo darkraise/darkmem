@@ -29,6 +29,28 @@ def _pca_2d(vectors: list[list[float]]) -> list[list[float]]:
     return projection.tolist()
 
 
+@router.get("/graph")
+async def get_memory_graph(
+    threshold: float = Query(0.3, ge=0.0, le=1.0),
+    limit: int = Query(200),
+    _user=Depends(require_auth),
+    request: Request = None,
+):
+    repo = _get_vector_repo(request)
+    graph = await repo.get_similarity_graph(threshold=threshold, limit=limit)
+    nodes = []
+    for n in graph["nodes"]:
+        payload = n.get("payload", {})
+        nodes.append({
+            "id": n["memory_id"],
+            "content": (payload.get("content", "") or "")[:120],
+            "source": payload.get("source", ""),
+            "tags": payload.get("tags", []),
+            "memory_type": payload.get("memory_type"),
+        })
+    return {"nodes": nodes, "edges": graph["edges"]}
+
+
 @router.get("/projection")
 async def get_vector_projection(
     limit: int = Query(500),

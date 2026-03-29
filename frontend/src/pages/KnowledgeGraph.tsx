@@ -1,100 +1,80 @@
-import { useFullGraph } from "@/hooks/useApi";
-// @ts-ignore
-import CytoscapeComponent from "react-cytoscapejs";
-import { useRef, useMemo, useCallback, useReducer } from "react";
+import { useMemoryGraph } from "@/hooks/useApi";
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any
+import CytoscapeComp from "react-cytoscapejs";
+const CytoscapeComponent = CytoscapeComp as any;
+import { useRef, useMemo, useCallback, useReducer, useState } from "react";
 
-const TYPE_COLORS: Record<string, string> = {
-  person: "#58a6ff",
-  service: "#3fb950",
-  project: "#d2a8ff",
-  technology: "#ffa657",
-  concept: "#8b949e",
-  organization: "#f778ba",
+const SOURCE_COLORS: Record<string, string> = {
+  "claude-code": "#58a6ff",
+  "mcp-test": "#3fb950",
+  api: "#d2a8ff",
+  "rest-test": "#ffa657",
+  dashboard: "#f778ba",
 };
 
-const stylesheet = [
-  {
-    selector: "node",
-    style: {
-      label: "data(label)",
-      "background-color": "data(color)",
-      color: "#c9d1d9",
-      "text-valign": "bottom" as const,
-      "text-margin-y": 6,
-      "font-size": 10,
-      width: 28,
-      height: 28,
-      "border-width": 2,
-      "border-color": "#30363d",
-    },
-  },
-  {
-    selector: "edge",
-    style: {
-      width: 1.5,
-      "line-color": "#30363d",
-      "target-arrow-color": "#30363d",
-      "target-arrow-shape": "triangle" as const,
-      "curve-style": "bezier" as const,
-      label: "data(label)",
-      "font-size": 8,
-      color: "#484f58",
-      "text-rotation": "autorotate" as const,
-      "text-margin-y": -8,
-    },
-  },
-  {
-    selector: "node:selected",
-    style: {
-      "border-color": "#58a6ff",
-      "border-width": 3,
-    },
-  },
+const TAG_COLORS = [
+  "#a855f7", "#c084fc", "#d8b4fe", "#9333ea",
+  "#7c3aed", "#8b5cf6", "#a78bfa", "#c4b5fd",
 ];
 
-const layout = { name: "cose", animate: true, nodeRepulsion: () => 8000, idealEdgeLength: () => 100 };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Selected = { kind: "node" | "edge"; [key: string]: any } | null;
+function getNodeColor(tags: string[], source: string): string {
+  if (tags.length > 0) {
+    const primary = tags[0];
+    let hash = 0;
+    for (let i = 0; i < primary.length; i++) hash = ((hash << 5) - hash + primary.charCodeAt(i)) | 0;
+    return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+  }
+  return SOURCE_COLORS[source] || "#8b949e";
+}
 
 export default function KnowledgeGraph() {
-  const { data: graph, isLoading } = useFullGraph();
+  const [threshold, setThreshold] = useState(0.3);
+  const { data: graph, isLoading } = useMemoryGraph(threshold);
   const cyRef = useRef<any>(null);
   const listenersAttached = useRef(false);
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
-  const selectedRef = useRef<Selected>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const selectedRef = useRef<any>(null);
 
   const elements = useMemo(() => {
     if (!graph) return [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const entities = (graph.entities || []) as any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const relations = (graph.relations || []) as any[];
 
-    const nodes = entities.map((e) => ({
+    const edgeCounts: Record<string, number> = {};
+    for (const e of graph.edges) {
+      edgeCounts[e.source] = (edgeCounts[e.source] || 0) + 1;
+      edgeCounts[e.target] = (edgeCounts[e.target] || 0) + 1;
+    }
+
+    const nodes = graph.nodes.map((n) => {
+      const connections = edgeCounts[n.id] || 0;
+      const size = Math.max(20, Math.min(50, 20 + Math.log2(connections + 1) * 10));
+      return {
+        data: {
+          id: n.id,
+          label: n.content.length > 40 ? n.content.slice(0, 40) + "..." : n.content,
+          fullContent: n.content,
+          source: n.source,
+          tags: n.tags,
+          memory_type: n.memory_type,
+          color: getNodeColor(n.tags, n.source),
+          size,
+        },
+      };
+    });
+
+    const edges = graph.edges.map((e, i) => ({
       data: {
-        id: e.id || e.name,
-        label: e.name,
-        type: e.entity_type,
-        color: TYPE_COLORS[e.entity_type] || "#8b949e",
+        id: `e-${i}`,
+        source: e.source,
+        target: e.target,
+        score: e.score,
+        width: Math.max(0.5, (e.score - threshold) / (1 - threshold) * 3),
+        opacity: Math.max(0.2, e.score),
       },
     }));
 
-    const nodeIds = new Set(nodes.map((n) => n.data.id));
-    const edges = relations
-      .filter((r) => r.source && r.target && nodeIds.has(r.source) && nodeIds.has(r.target))
-      .map((r, i) => ({
-        data: {
-          id: `edge-${i}`,
-          source: r.source,
-          target: r.target,
-          label: r.type || "",
-          weight: r.weight || 0.5,
-        },
-      }));
-
     return [...nodes, ...edges];
-  }, [graph]);
+  }, [graph, threshold]);
 
   const handleCy = useCallback((cy: any) => {
     cyRef.current = cy;
@@ -102,11 +82,20 @@ export default function KnowledgeGraph() {
     listenersAttached.current = true;
 
     cy.on("tap", "node", (evt: any) => {
-      selectedRef.current = { ...evt.target.data(), kind: "node" };
+      const data = evt.target.data();
+      selectedRef.current = { ...data, kind: "node" };
       forceUpdate();
     });
     cy.on("tap", "edge", (evt: any) => {
-      selectedRef.current = { ...evt.target.data(), kind: "edge" };
+      const data = evt.target.data();
+      const sourceNode = cy.getElementById(data.source).data();
+      const targetNode = cy.getElementById(data.target).data();
+      selectedRef.current = {
+        ...data,
+        kind: "edge",
+        sourceContent: sourceNode?.fullContent,
+        targetContent: targetNode?.fullContent,
+      };
       forceUpdate();
     });
     cy.on("tap", (evt: any) => {
@@ -117,26 +106,83 @@ export default function KnowledgeGraph() {
     });
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nodeCount = elements.filter((e: any) => !e.data.source).length;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const edgeCount = elements.filter((e: any) => e.data.source).length;
+  const stylesheet = useMemo(() => [
+    {
+      selector: "node",
+      style: {
+        label: "data(label)",
+        "background-color": "data(color)",
+        color: "#c9d1d9",
+        "text-valign": "bottom" as const,
+        "text-halign": "center" as const,
+        "text-margin-y": 6,
+        "font-size": 8,
+        width: "data(size)",
+        height: "data(size)",
+        "border-width": 1,
+        "border-color": "#30363d",
+        "text-max-width": 100,
+        "text-wrap": "ellipsis" as const,
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        width: "data(width)",
+        "line-color": "#30363d",
+        "line-opacity": "data(opacity)",
+        "curve-style": "bezier" as const,
+      },
+    },
+    {
+      selector: "node:selected",
+      style: {
+        "border-color": "#58a6ff",
+        "border-width": 3,
+      },
+    },
+  ], []);
+
+  const layout = useMemo(() => ({
+    name: "cose",
+    animate: true,
+    animationDuration: 1000,
+    nodeRepulsion: () => 12000,
+    idealEdgeLength: () => 120,
+    gravity: 0.3,
+    numIter: 500,
+  }), []);
+
+  const nodeCount = graph?.nodes.length || 0;
+  const edgeCount = graph?.edges.length || 0;
   const selected = selectedRef.current;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Knowledge Graph</h2>
-        {elements.length > 0 && (
-          <span className="text-sm text-muted-foreground">
-            {nodeCount} entities, {edgeCount} relationships
-          </span>
-        )}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label>Similarity</label>
+            <input
+              type="range" min="0.1" max="0.9" step="0.05"
+              value={threshold}
+              onChange={(e) => { setThreshold(parseFloat(e.target.value)); listenersAttached.current = false; }}
+              className="w-24"
+            />
+            <span className="font-mono text-xs w-8">{threshold}</span>
+          </div>
+          {nodeCount > 0 && (
+            <span className="text-sm text-muted-foreground">
+              {nodeCount} memories, {edgeCount} connections
+            </span>
+          )}
+        </div>
       </div>
       {isLoading && <p className="text-muted-foreground">Loading graph...</p>}
       {!isLoading && nodeCount === 0 && (
         <p className="text-muted-foreground">
-          No entities in the knowledge graph yet. Create memories with the pipeline running to populate it.
+          No vectors yet. Create memories with the pipeline running to generate embeddings.
         </p>
       )}
       {nodeCount > 0 && (
@@ -154,28 +200,25 @@ export default function KnowledgeGraph() {
         <div className="mt-4 bg-card border border-border rounded-lg p-4">
           {selected.kind === "node" ? (
             <>
-              <h3 className="font-medium">{selected.label}</h3>
-              <p className="text-sm text-muted-foreground">Type: {selected.type}</p>
-            </>
-          ) : (
-            <>
-              <h3 className="font-medium">{selected.label || "relationship"}</h3>
-              <p className="text-sm text-muted-foreground">
-                {selected.source} → {selected.target}
-                {selected.weight && <span className="ml-2">weight: {selected.weight}</span>}
+              <p className="text-sm text-foreground">{selected.fullContent}</p>
+              <div className="flex gap-1 mt-2 flex-wrap">
+                {selected.tags?.map((t: string) => (
+                  <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-accent text-primary">{t}</span>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {selected.source} {selected.memory_type && `| ${selected.memory_type}`}
               </p>
             </>
-          )}
-        </div>
-      )}
-      {nodeCount > 0 && (
-        <div className="mt-4 flex gap-3 flex-wrap">
-          {Object.entries(TYPE_COLORS).map(([type, color]) => (
-            <div key={type} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-              {type}
+          ) : (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">Similarity: {(selected.score * 100).toFixed(0)}%</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-sm text-foreground bg-background rounded p-2">{selected.sourceContent}</div>
+                <div className="text-sm text-foreground bg-background rounded p-2">{selected.targetContent}</div>
+              </div>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
