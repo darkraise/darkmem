@@ -37,15 +37,15 @@ async def lifespan(app: FastAPI):
         )
         await neo4j_driver.verify_connectivity()
 
-        llm_config = {
-            "embedding": settings.llm_embedding,
-            "extraction": settings.llm_extraction,
-            "reasoning": settings.llm_reasoning,
-            "summarization": settings.llm_summarization,
-        }
+        # Read LLM config from DB (falls back to env vars)
+        from app.api.routes.config import _get_llm_config
+        from app.database import async_session_factory
+        async with async_session_factory() as session:
+            llm_config = await _get_llm_config(session)
         llm = LLMOrchestrator(llm_config)
 
-        vector_repo = QdrantVectorRepository(qdrant_client, dimensions=settings.llm_embedding.dimensions or 768)
+        embedding_dims = llm_config["embedding"].dimensions or 768
+        vector_repo = QdrantVectorRepository(qdrant_client, dimensions=embedding_dims)
         await vector_repo.ensure_collection()
         graph_repo = Neo4jGraphRepository(neo4j_driver)
 
@@ -65,7 +65,6 @@ async def lifespan(app: FastAPI):
 
     # Seed system prompt profiles
     from app.db.seed import seed_profiles
-    from app.database import async_session_factory
     try:
         async with async_session_factory() as session:
             await seed_profiles(session)
