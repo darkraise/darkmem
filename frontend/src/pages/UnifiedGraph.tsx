@@ -207,6 +207,19 @@ export default function UnifiedGraph() {
       }
     );
 
+    // Stop physics after stabilization
+    network.on("stabilizationIterationsDone", () => {
+      network.setOptions({ physics: { enabled: false } });
+    });
+
+    // Re-enable physics temporarily when dragging
+    network.on("dragStart", () => {
+      network.setOptions({ physics: { enabled: true } });
+    });
+    network.on("dragEnd", () => {
+      setTimeout(() => network.setOptions({ physics: { enabled: false } }), 500);
+    });
+
     // Convex hull helper
     function convexHull(pts: { x: number; y: number }[]): { x: number; y: number }[] {
       if (pts.length < 3) return pts;
