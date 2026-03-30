@@ -162,6 +162,30 @@ export default function UnifiedGraph() {
       }
     }
 
+    // Seed cluster positions — place cluster members near each other before physics
+    const clusterIds = Object.keys(data.clusters);
+    const nClusters = clusterIds.length;
+    const clusterRadius = 250 + nClusters * 40;
+    const clusterCenters: Record<string, { x: number; y: number }> = {};
+    clusterIds.forEach((cid, i) => {
+      const angle = (2 * Math.PI * i) / nClusters;
+      clusterCenters[cid] = { x: Math.cos(angle) * clusterRadius, y: Math.sin(angle) * clusterRadius };
+    });
+    const nodeToCluster: Record<string, string> = {};
+    for (const [cid, members] of Object.entries(data.clusters)) {
+      for (const mid of members as string[]) nodeToCluster[mid] = cid;
+    }
+    const spread = 80 + Math.sqrt(nodes.length) * 8;
+    for (const node of nodes) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const n = node as any;
+      const cid = nodeToCluster[n.id];
+      if (cid && clusterCenters[cid]) {
+        n.x = clusterCenters[cid].x + (Math.random() - 0.5) * spread;
+        n.y = clusterCenters[cid].y + (Math.random() - 0.5) * spread;
+      }
+    }
+
     const nodesDataSet = new DataSet(nodes);
     const edgesDataSet = new DataSet(edges);
 
@@ -170,19 +194,16 @@ export default function UnifiedGraph() {
       { nodes: nodesDataSet, edges: edgesDataSet },
       {
         physics: {
-          enabled: true,
-          solver: "forceAtlas2Based",
-          forceAtlas2Based: {
-            gravitationalConstant: -80,
-            centralGravity: 0.008,
-            springLength: 120,
-            springConstant: 0.06,
-            damping: 0.4,
-            avoidOverlap: 0.5,
+          barnesHut: {
+            gravitationalConstant: -2000,
+            springLength: 95,
+            springConstant: 0.04,
+            damping: 0.3,
+            avoidOverlap: 0.3,
           },
           stabilization: {
             enabled: true,
-            iterations: 300,
+            iterations: 400,
             fit: true,
           },
           maxVelocity: 30,
@@ -190,12 +211,9 @@ export default function UnifiedGraph() {
         },
         interaction: {
           hover: true,
-          tooltipDelay: 200,
+          tooltipDelay: 99999,
           zoomView: true,
           dragView: true,
-        },
-        layout: {
-          improvedLayout: true,
         },
         edges: {
           smooth: {
@@ -253,21 +271,23 @@ export default function UnifiedGraph() {
       });
     }
 
-    // Draw smooth closed curve through points using cubic bezier
-    function drawSmoothBlob(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
-      if (pts.length < 3) return;
+    // Catmull-Rom spline through hull points (same as memora)
+    function drawSmoothClosed(ctx: CanvasRenderingContext2D, hull: { x: number; y: number }[]) {
+      const n = hull.length;
+      if (n < 3) return;
       ctx.beginPath();
-      const n = pts.length;
-      ctx.moveTo(
-        (pts[n - 1].x + pts[0].x) / 2,
-        (pts[n - 1].y + pts[0].y) / 2
-      );
       for (let i = 0; i < n; i++) {
-        const curr = pts[i];
-        const next = pts[(i + 1) % n];
-        const midX = (curr.x + next.x) / 2;
-        const midY = (curr.y + next.y) / 2;
-        ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
+        const p0 = hull[(i - 1 + n) % n];
+        const p1 = hull[i];
+        const p2 = hull[(i + 1) % n];
+        const p3 = hull[(i + 2) % n];
+        const tension = 6;
+        const cp1x = p1.x + (p2.x - p0.x) / tension;
+        const cp1y = p1.y + (p2.y - p0.y) / tension;
+        const cp2x = p2.x - (p3.x - p1.x) / tension;
+        const cp2y = p2.y - (p3.y - p1.y) / tension;
+        if (i === 0) ctx.moveTo(p1.x, p1.y);
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
       }
       ctx.closePath();
     }
@@ -311,13 +331,13 @@ export default function UnifiedGraph() {
           continue;
         }
 
-        // Draw smooth blob
+        // Draw smooth blob (matching memora opacity)
         ctx.save();
-        drawSmoothBlob(ctx, hull);
-        ctx.fillStyle = clusterBg(cid);
+        drawSmoothClosed(ctx, hull);
+        ctx.fillStyle = clusterColor(cid) + "14";
         ctx.fill();
-        ctx.strokeStyle = clusterColor(cid) + "20";
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = clusterColor(cid) + "55";
+        ctx.lineWidth = 2;
         ctx.stroke();
 
         // Cluster label at top of hull
