@@ -651,28 +651,32 @@ export default function UnifiedGraph() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sizeMode]);
 
-  // Spacing change: apply debounced physics with visible animation
+  // Spacing change: scale node positions from center with smooth animation
+  const prevSpacingRef = useRef(spacing);
   useEffect(() => {
-    if (!networkRef.current) return;
+    if (!networkRef.current || !data) return;
     const net = networkRef.current;
-    net.setOptions({
-      physics: {
-        enabled: true,
-        barnesHut: {
-          gravitationalConstant: -1500 - debouncedSpacing * 60,
-          springLength: 60 + debouncedSpacing * 2.5,
-          springConstant: 0.04 - debouncedSpacing * 0.0002,
-          damping: 0.85,
-          avoidOverlap: 1.0,
-        },
-        maxVelocity: 8,
-        minVelocity: 0.3,
-      },
-    });
-    const timer = setTimeout(() => {
-      if (networkRef.current) net.setOptions({ physics: { enabled: false } });
-    }, 800);
-    return () => clearTimeout(timer);
+    const prev = prevSpacingRef.current;
+    prevSpacingRef.current = debouncedSpacing;
+    if (prev === debouncedSpacing) return;
+
+    const scale = (60 + debouncedSpacing * 2.5) / (60 + prev * 2.5);
+    const positions = net.getPositions();
+    const ids = Object.keys(positions);
+    if (ids.length === 0) return;
+
+    // Find center
+    let cx = 0, cy = 0;
+    for (const id of ids) { cx += positions[id].x; cy += positions[id].y; }
+    cx /= ids.length; cy /= ids.length;
+
+    // Move nodes scaled from center
+    for (const id of ids) {
+      const dx = positions[id].x - cx;
+      const dy = positions[id].y - cy;
+      net.moveNode(id, cx + dx * scale, cy + dy * scale);
+    }
+    net.redraw();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSpacing]);
 
