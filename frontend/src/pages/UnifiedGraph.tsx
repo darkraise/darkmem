@@ -651,7 +651,7 @@ export default function UnifiedGraph() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sizeMode]);
 
-  // Spacing change: apply debounced physics with stabilization
+  // Spacing change: apply debounced physics with visible animation
   useEffect(() => {
     if (!networkRef.current) return;
     const net = networkRef.current;
@@ -669,7 +669,10 @@ export default function UnifiedGraph() {
         minVelocity: 0.3,
       },
     });
-    net.stabilize(150);
+    const timer = setTimeout(() => {
+      if (networkRef.current) net.setOptions({ physics: { enabled: false } });
+    }, 800);
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSpacing]);
 
