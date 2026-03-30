@@ -616,7 +616,7 @@ export default function UnifiedGraph() {
     networkRef.current = network;
   // showTagOverlay intentionally excluded — tag overlay is drawn live in afterDrawing
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, debouncedSpacing, sizeMode]);
 
   // Rebuild when data changes
   useEffect(() => {
@@ -636,76 +636,6 @@ export default function UnifiedGraph() {
     }
   }, [showTagOverlay]);
 
-  // Size mode change: update nodes in-place without full rebuild
-  useEffect(() => {
-    if (!nodesDataSetRef.current || !data) return;
-    const connMap = connectionsMapRef.current;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updates: any[] = data.memories.map((m) => {
-      const conns = connMap.get(m.id) ?? 0;
-      return { id: m.id, size: computeSize(sizeMode, conns, m.importance) };
-    });
-    nodesDataSetRef.current.update(updates);
-    if (networkRef.current) networkRef.current.redraw();
-  // buildGraph triggers on data change so we only re-run when sizeMode changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sizeMode]);
-
-  // Spacing change: animate node positions from center
-  const prevSpacingRef = useRef(spacing);
-  const animFrameRef = useRef(0);
-  useEffect(() => {
-    if (!networkRef.current || !data) return;
-    const net = networkRef.current;
-    const prev = prevSpacingRef.current;
-    prevSpacingRef.current = debouncedSpacing;
-    if (prev === debouncedSpacing) return;
-
-    cancelAnimationFrame(animFrameRef.current);
-
-    const scale = (60 + debouncedSpacing * 2.5) / (60 + prev * 2.5);
-    const positions = net.getPositions();
-    const ids = Object.keys(positions);
-    if (ids.length === 0) return;
-
-    let cx = 0, cy = 0;
-    for (const id of ids) { cx += positions[id].x; cy += positions[id].y; }
-    cx /= ids.length; cy /= ids.length;
-
-    // Calculate start and target positions
-    const startPos: Record<string, { x: number; y: number }> = {};
-    const targetPos: Record<string, { x: number; y: number }> = {};
-    for (const id of ids) {
-      startPos[id] = { x: positions[id].x, y: positions[id].y };
-      const dx = positions[id].x - cx;
-      const dy = positions[id].y - cy;
-      targetPos[id] = { x: cx + dx * scale, y: cy + dy * scale };
-    }
-
-    const duration = 400;
-    const startTime = performance.now();
-
-    function animate(now: number) {
-      const elapsed = now - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      // Ease out cubic
-      const ease = 1 - Math.pow(1 - t, 3);
-
-      for (const id of ids) {
-        const sx = startPos[id].x, sy = startPos[id].y;
-        const tx = targetPos[id].x, ty = targetPos[id].y;
-        net.moveNode(id, sx + (tx - sx) * ease, sy + (ty - sy) * ease);
-      }
-
-      if (t < 1) {
-        animFrameRef.current = requestAnimationFrame(animate);
-      }
-    }
-    animFrameRef.current = requestAnimationFrame(animate);
-
-    return () => cancelAnimationFrame(animFrameRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSpacing]);
 
   // Navigate from mini-graph neighbor click
   const handleNavigate = useCallback((id: string) => {
