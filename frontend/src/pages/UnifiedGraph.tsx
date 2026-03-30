@@ -651,8 +651,9 @@ export default function UnifiedGraph() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sizeMode]);
 
-  // Spacing change: scale node positions from center with smooth animation
+  // Spacing change: animate node positions from center
   const prevSpacingRef = useRef(spacing);
+  const animFrameRef = useRef(0);
   useEffect(() => {
     if (!networkRef.current || !data) return;
     const net = networkRef.current;
@@ -660,23 +661,49 @@ export default function UnifiedGraph() {
     prevSpacingRef.current = debouncedSpacing;
     if (prev === debouncedSpacing) return;
 
+    cancelAnimationFrame(animFrameRef.current);
+
     const scale = (60 + debouncedSpacing * 2.5) / (60 + prev * 2.5);
     const positions = net.getPositions();
     const ids = Object.keys(positions);
     if (ids.length === 0) return;
 
-    // Find center
     let cx = 0, cy = 0;
     for (const id of ids) { cx += positions[id].x; cy += positions[id].y; }
     cx /= ids.length; cy /= ids.length;
 
-    // Move nodes scaled from center
+    // Calculate start and target positions
+    const startPos: Record<string, { x: number; y: number }> = {};
+    const targetPos: Record<string, { x: number; y: number }> = {};
     for (const id of ids) {
+      startPos[id] = { x: positions[id].x, y: positions[id].y };
       const dx = positions[id].x - cx;
       const dy = positions[id].y - cy;
-      net.moveNode(id, cx + dx * scale, cy + dy * scale);
+      targetPos[id] = { x: cx + dx * scale, y: cy + dy * scale };
     }
-    net.redraw();
+
+    const duration = 400;
+    const startTime = performance.now();
+
+    function animate(now: number) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const ease = 1 - Math.pow(1 - t, 3);
+
+      for (const id of ids) {
+        const sx = startPos[id].x, sy = startPos[id].y;
+        const tx = targetPos[id].x, ty = targetPos[id].y;
+        net.moveNode(id, sx + (tx - sx) * ease, sy + (ty - sy) * ease);
+      }
+
+      if (t < 1) {
+        animFrameRef.current = requestAnimationFrame(animate);
+      }
+    }
+    animFrameRef.current = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animFrameRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSpacing]);
 
