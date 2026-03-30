@@ -29,6 +29,13 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+function darkenHex(hex: string, amount = 0.3): string {
+  const r = Math.max(0, Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount)));
+  const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)));
+  const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
 
 function convexHull(pts: { x: number; y: number }[]): { x: number; y: number }[] {
@@ -380,6 +387,7 @@ export default function UnifiedGraph() {
       const conns = connMap.get(m.id) ?? 0;
       const size = computeSize(sizeMode, conns, m.importance);
 
+      const borderCol = darkenHex(color, 0.35);
       nodes.push({
         id: m.id,
         label: m.content.slice(0, 25) + (m.content.length > 25 ? "…" : ""),
@@ -387,7 +395,7 @@ export default function UnifiedGraph() {
         size,
         color: {
           background: color,
-          border: color,
+          border: borderCol,
           highlight: { background: color, border: "#58a6ff" },
         },
         font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
@@ -542,7 +550,7 @@ export default function UnifiedGraph() {
         if (m.id === nodeId) {
           return { id: m.id, opacity: 1, borderWidth: 3, color: { background: color, border: "#58a6ff", highlight: { background: color, border: "#58a6ff" } } };
         } else if (connectedIds.has(m.id)) {
-          return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } } };
+          return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: darkenHex(color, 0.35), highlight: { background: color, border: "#58a6ff" } } };
         } else {
           return { id: m.id, opacity: 0.15, borderWidth: 0.5, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
         }
@@ -553,7 +561,7 @@ export default function UnifiedGraph() {
     function exitFocusMode() {
       const updates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
-        return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
+        return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: darkenHex(color, 0.35), highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
       });
       nodesDataSet.update(updates);
     }
