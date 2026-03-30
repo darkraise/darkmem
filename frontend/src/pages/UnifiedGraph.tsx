@@ -348,6 +348,7 @@ export default function UnifiedGraph() {
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [sizeMode, setSizeMode] = useState<SizeMode>("connections");
   const [showTagOverlay, setShowTagOverlay] = useState(false);
+  const [spacing, setSpacing] = useState(50); // 0=tight, 100=sparse
 
   // Derive selected memory object
   const selectedMemory = data?.memories.find((m) => m.id === selectedMemoryId) ?? null;
@@ -475,9 +476,9 @@ export default function UnifiedGraph() {
       {
         physics: {
           barnesHut: {
-            gravitationalConstant: -4000,
-            springLength: 150,
-            springConstant: 0.02,
+            gravitationalConstant: -1500 - spacing * 60,
+            springLength: 60 + spacing * 2.5,
+            springConstant: 0.04 - spacing * 0.0002,
             damping: 0.4,
             avoidOverlap: 1.0,
           },
@@ -669,6 +670,38 @@ export default function UnifiedGraph() {
             <option value="importance">Size: Importance</option>
             <option value="uniform">Size: Uniform</option>
           </select>
+
+          {/* Spacing / density */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label>Spacing</label>
+            <input
+              type="range" min="0" max="100" step="5"
+              value={spacing}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                setSpacing(val);
+                if (networkRef.current) {
+                  networkRef.current.setOptions({
+                    physics: {
+                      enabled: true,
+                      barnesHut: {
+                        gravitationalConstant: -1500 - val * 60,
+                        springLength: 60 + val * 2.5,
+                        springConstant: 0.04 - val * 0.0002,
+                        damping: 0.4,
+                        avoidOverlap: 1.0,
+                      },
+                    },
+                  });
+                  setTimeout(() => {
+                    if (networkRef.current) networkRef.current.setOptions({ physics: { enabled: false } });
+                  }, 1500);
+                }
+              }}
+              className="w-20"
+            />
+            <span className="font-mono text-xs w-6">{spacing}</span>
+          </div>
 
           {/* Similarity threshold */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
