@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from uuid import UUID
 
@@ -31,13 +30,13 @@ class MemoryService:
 
         await self.audit_repo.log("create", memory.id, api_key_id, {"source": data.source})
 
-        # Trigger async processing (non-blocking)
+        # Process through pipeline (embedding + extraction)
         if self.pipeline:
-            asyncio.create_task(self.pipeline.process_memory(
+            await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
-            ))
+            )
 
         return memory
 
@@ -58,11 +57,11 @@ class MemoryService:
 
         # Re-process if content changed
         if self.pipeline and "content" in update_fields:
-            asyncio.create_task(self.pipeline.process_memory(
+            await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
-            ))
+            )
 
         return memory
 
@@ -71,7 +70,7 @@ class MemoryService:
         if result:
             await self.audit_repo.log("delete", memory_id, api_key_id, {})
             if self.pipeline:
-                asyncio.create_task(self.pipeline.delete_memory(memory_id))
+                await self.pipeline.delete_memory(memory_id)
         return result
 
     async def search_memories(self, params: MemorySearchRequest) -> list[Memory]:
@@ -171,12 +170,12 @@ Question: {question}"""
         await self.memory_repo.delete(source_id)
 
         if self.pipeline:
-            asyncio.create_task(self.pipeline.delete_memory(source_id))
-            asyncio.create_task(self.pipeline.process_memory(
+            await self.pipeline.delete_memory(source_id)
+            await self.pipeline.process_memory(
                 memory_id=target_id, content=merged_content, source=target.source,
                 tags=merged_tags, memory_type=target.memory_type,
                 created_at=target.created_at.isoformat(),
-            ))
+            )
 
         await self.audit_repo.log("merge", target_id, api_key_id, {"source_id": str(source_id)})
         await self.session.refresh(target, ["tags"])
