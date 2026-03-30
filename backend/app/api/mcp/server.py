@@ -28,10 +28,16 @@ async def _mcp_session():
         yield MemoryService(session, pipeline=_pipeline)
         await session.commit()
     except Exception:
-        await session.rollback()
+        try:
+            await session.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        await session.close()
+        try:
+            await session.close()
+        except Exception:
+            pass
 
 
 def _memory_to_dict(memory) -> dict:
