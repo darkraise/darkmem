@@ -1,6 +1,7 @@
 import { useUnifiedGraph } from "@/hooks/useApi";
-// @ts-ignore
-import CytoscapeComponent from "react-cytoscapejs";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import CytoscapeComp from "react-cytoscapejs";
+const CytoscapeComponent = CytoscapeComp as any;
 import { useRef, useMemo, useCallback, useReducer } from "react";
 
 // ── Colour palettes ──────────────────────────────────────────────────────────
