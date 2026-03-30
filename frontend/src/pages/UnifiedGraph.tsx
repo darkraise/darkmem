@@ -6,8 +6,9 @@ import { Network, DataSet } from "vis-network/standalone";
 // ─── Palettes ────────────────────────────────────────────────────────────────
 
 const CLUSTER_PALETTE = [
-  "#a855f7", "#c084fc", "#d8b4fe", "#9333ea",
-  "#7c3aed", "#8b5cf6", "#a78bfa", "#c4b5fd",
+  "#a855f7", "#3fb950", "#f97316", "#06b6d4",
+  "#ec4899", "#eab308", "#6366f1", "#14b8a6",
+  "#f43f5e", "#84cc16", "#8b5cf6", "#0ea5e9",
 ];
 
 const TAG_PALETTE = [
@@ -29,7 +30,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function darkenHex(hex: string, amount = 0.3): string {
+function darkenHex(hex: string, amount = 0.45): string {
   const r = Math.max(0, Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount)));
   const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)));
   const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)));
@@ -388,7 +389,7 @@ export default function UnifiedGraph() {
       const conns = connMap.get(m.id) ?? 0;
       const size = computeSize(sizeMode, conns, m.importance);
 
-      const borderCol = darkenHex(color, 0.35);
+      const borderCol = darkenHex(color);
       nodes.push({
         id: m.id,
         label: m.content.slice(0, 25) + (m.content.length > 25 ? "…" : ""),
@@ -400,7 +401,7 @@ export default function UnifiedGraph() {
           highlight: { background: color, border: "#58a6ff" },
         },
         font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
-        borderWidth: 1.5,
+        borderWidth: 2,
         shadow: { enabled: true, color: color + "30", size: 8, x: 0, y: 1 },
         mass: m.clusters.length > 0 ? 1.5 : 0.8,
         _memory: m,
@@ -414,9 +415,9 @@ export default function UnifiedGraph() {
         id: `sim-${i}`,
         from: e.source,
         to: e.target,
-        color: { color: "#30363d", highlight: "#8b5cf6", opacity: 0.5 },
+        color: { color: "#21262d", highlight: "#8b5cf6", opacity: 0.3 },
         smooth: { type: "continuous", roundness: 0.2 },
-        width: Math.max(0.5, e.score * 2),
+        width: Math.max(0.3, e.score * 0.8),
       });
     }
 
@@ -556,9 +557,9 @@ export default function UnifiedGraph() {
         if (m.id === nodeId) {
           return { id: m.id, opacity: 1, borderWidth: 3, color: { background: color, border: "#58a6ff", highlight: { background: color, border: "#58a6ff" } } };
         } else if (connectedIds.has(m.id)) {
-          return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: darkenHex(color, 0.35), highlight: { background: color, border: "#58a6ff" } } };
+          return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: "#58a6ff" } } };
         } else {
-          return { id: m.id, opacity: 0.15, borderWidth: 0.5, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
+          return { id: m.id, opacity: 0.15, borderWidth: 1, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
         }
       });
       nodesDataSet.update(updates);
@@ -567,7 +568,7 @@ export default function UnifiedGraph() {
     function exitFocusMode() {
       const updates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
-        return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: darkenHex(color, 0.35), highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
+        return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
       });
       nodesDataSet.update(updates);
     }
