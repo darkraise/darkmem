@@ -207,7 +207,59 @@ export default function UnifiedGraph() {
       }
     );
 
-    // Custom cluster background drawing
+    // Convex hull helper
+    function convexHull(pts: { x: number; y: number }[]): { x: number; y: number }[] {
+      if (pts.length < 3) return pts;
+      const sorted = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+      const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+        (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      const lower: { x: number; y: number }[] = [];
+      for (const p of sorted) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        lower.push(p);
+      }
+      const upper: { x: number; y: number }[] = [];
+      for (const p of sorted.reverse()) {
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+        upper.push(p);
+      }
+      upper.pop();
+      lower.pop();
+      return lower.concat(upper);
+    }
+
+    // Expand hull points outward from centroid
+    function expandHull(hull: { x: number; y: number }[], padding: number): { x: number; y: number }[] {
+      const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
+      const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
+      return hull.map((p) => {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        return { x: p.x + (dx / dist) * padding, y: p.y + (dy / dist) * padding };
+      });
+    }
+
+    // Draw smooth closed curve through points using cubic bezier
+    function drawSmoothBlob(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+      if (pts.length < 3) return;
+      ctx.beginPath();
+      const n = pts.length;
+      ctx.moveTo(
+        (pts[n - 1].x + pts[0].x) / 2,
+        (pts[n - 1].y + pts[0].y) / 2
+      );
+      for (let i = 0; i < n; i++) {
+        const curr = pts[i];
+        const next = pts[(i + 1) % n];
+        const midX = (curr.x + next.x) / 2;
+        const midY = (curr.y + next.y) / 2;
+        ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
+      }
+      ctx.closePath();
+    }
+
+    // Custom cluster background drawing — organic blob shapes
     network.on("afterDrawing", (ctx: CanvasRenderingContext2D) => {
       for (const [clusterId, memberIds] of Object.entries(data.clusters)) {
         const cid = parseInt(clusterId);
@@ -222,29 +274,45 @@ export default function UnifiedGraph() {
         }
         if (positions.length < 2) continue;
 
-        // Compute bounding circle with padding
-        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
-        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
-        const maxDist = Math.max(
-          ...positions.map((p) => Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2))
-        );
-        const radius = maxDist + 60;
+        // Build convex hull and expand with padding
+        const hull = positions.length >= 3
+          ? expandHull(convexHull(positions), 45)
+          : expandHull(positions, 45);
 
-        // Draw soft blob
+        // For 2 points, create an ellipse-like shape
+        if (hull.length < 3) {
+          const cx = (positions[0].x + positions[1].x) / 2;
+          const cy = (positions[0].y + positions[1].y) / 2;
+          const dx = positions[1].x - positions[0].x;
+          const dy = positions[1].y - positions[0].y;
+          const dist = Math.sqrt(dx * dx + dy * dy) / 2 + 50;
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, dist, dist * 0.6, Math.atan2(dy, dx), 0, Math.PI * 2);
+          ctx.fillStyle = clusterBg(cid);
+          ctx.fill();
+          ctx.strokeStyle = clusterColor(cid) + "20";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
+
+        // Draw smooth blob
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        drawSmoothBlob(ctx, hull);
         ctx.fillStyle = clusterBg(cid);
         ctx.fill();
-        ctx.strokeStyle = clusterColor(cid) + "25";
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = clusterColor(cid) + "20";
+        ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Cluster label
-        ctx.fillStyle = clusterColor(cid) + "60";
+        // Cluster label at top of hull
+        const topPt = hull.reduce((min, p) => (p.y < min.y ? p : min), hull[0]);
+        ctx.fillStyle = clusterColor(cid) + "50";
         ctx.font = "10px Inter, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(`Cluster ${clusterId}`, cx, cy - radius + 14);
+        ctx.fillText(`Cluster ${clusterId}`, topPt.x, topPt.y - 8);
         ctx.restore();
       }
     });
