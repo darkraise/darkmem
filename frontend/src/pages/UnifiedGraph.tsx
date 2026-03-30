@@ -249,7 +249,7 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
           to: tgt,
           label: r.type,
           arrows: { to: { enabled: true, scaleFactor: 0.4 } },
-          color: { color: "#444c56", highlight: "#58a6ff", opacity: 0.8 },
+          color: { color: "#444c56", highlight: "#4CC9F0", opacity: 0.8 },
           font: { color: "#6e7681", size: 8, strokeWidth: 0 },
           smooth: { type: "continuous", roundness: 0.3 },
           width: 1,
@@ -398,7 +398,7 @@ export default function UnifiedGraph() {
         color: {
           background: color,
           border: borderCol,
-          highlight: { background: color, border: "#58a6ff" },
+          highlight: { background: color, border: darkenHex(color) },
         },
         font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
         borderWidth: 2,
@@ -415,7 +415,7 @@ export default function UnifiedGraph() {
         id: `sim-${i}`,
         from: e.source,
         to: e.target,
-        color: { color: "#21262d", highlight: "#8b5cf6", opacity: 0.3 },
+        color: { color: "#21262d", highlight: "#4CC9F0", opacity: 0.3 },
         smooth: { type: "continuous", roundness: 0.2 },
         width: Math.max(0.3, e.score * 0.8),
       });
@@ -555,11 +555,11 @@ export default function UnifiedGraph() {
       const updates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
         if (m.id === nodeId) {
-          return { id: m.id, opacity: 1, borderWidth: 3, color: { background: color, border: "#58a6ff", highlight: { background: color, border: "#58a6ff" } } };
+          return { id: m.id, opacity: 1, borderWidth: 5, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
         } else if (connectedIds.has(m.id)) {
-          return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: "#58a6ff" } } };
+          return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
         } else {
-          return { id: m.id, opacity: 0.15, borderWidth: 1, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
+          return { id: m.id, opacity: 0.15, borderWidth: 1, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: darkenHex(color) } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
         }
       });
       nodesDataSet.update(updates);
@@ -568,7 +568,7 @@ export default function UnifiedGraph() {
     function exitFocusMode() {
       const updates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
-        return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
+        return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } }, font: { color: "#8b949e", size: 9 } };
       });
       nodesDataSet.update(updates);
     }
