@@ -492,11 +492,16 @@ export default function UnifiedGraph() {
     network.on("stabilizationIterationsDone", () => {
       network.setOptions({ physics: { enabled: false } });
     });
-    network.on("dragStart", () => {
-      network.setOptions({ physics: { enabled: true } });
+    // Only re-enable physics when dragging a NODE, not when panning the canvas
+    network.on("dragStart", (params) => {
+      if (params.nodes.length > 0) {
+        network.setOptions({ physics: { enabled: true } });
+      }
     });
-    network.on("dragEnd", () => {
-      setTimeout(() => network.setOptions({ physics: { enabled: false } }), 500);
+    network.on("dragEnd", (params) => {
+      if (params.nodes.length > 0) {
+        setTimeout(() => network.setOptions({ physics: { enabled: false } }), 300);
+      }
     });
 
     // afterDrawing: fuzzy cluster hulls + optional tag overlay
