@@ -109,18 +109,41 @@ export function useFullGraph() {
   });
 }
 
+export interface UnifiedMemory {
+  id: string;
+  content: string;
+  source: string;
+  tags: string[];
+  memory_type: string | null;
+  importance: number;
+  clusters: number[];
+  memberships: Record<string, number>;
+}
+
 export interface UnifiedGraphData {
-  entities: { id: string; name: string; entity_type: string; node_type: string }[];
-  memories: { id: string; content: string; source: string; tags: string[]; memory_type: string | null; cluster: number }[];
-  relations: { source: string; target: string; type: string; weight?: number }[];
-  mentions: { source: string; target: string }[];
+  memories: UnifiedMemory[];
   clusters: Record<string, string[]>;
+  similarity_edges: { source: string; target: string; score: number }[];
 }
 
 export function useUnifiedGraph() {
   return useQuery<UnifiedGraphData>({
     queryKey: ["unifiedGraph"],
     queryFn: () => apiFetch("/graph/unified"),
+  });
+}
+
+export interface MemoryContextData {
+  entities: { id: string; name: string; entity_type: string; properties: string; memory_ids: string[] }[];
+  relations: { source: string; target: string; type: string; weight: number }[];
+  neighbors: { id: string; content: string; source: string; memory_type: string | null }[];
+}
+
+export function useMemoryContext(memoryId: string | null) {
+  return useQuery<MemoryContextData>({
+    queryKey: ["memoryContext", memoryId],
+    queryFn: () => apiFetch<MemoryContextData>(`/graph/memory-context/${memoryId}`),
+    enabled: !!memoryId,
   });
 }
 
