@@ -492,12 +492,12 @@ export default function UnifiedGraph() {
             gravitationalConstant: -1500 - spacing * 60,
             springLength: 60 + spacing * 2.5,
             springConstant: 0.04 - spacing * 0.0002,
-            damping: 0.4,
+            damping: 0.85,
             avoidOverlap: 1.0,
           },
           stabilization: { enabled: true, iterations: 400, fit: true },
-          maxVelocity: 30,
-          minVelocity: 0.5,
+          maxVelocity: 10,
+          minVelocity: 0.3,
         },
         interaction: { hover: true, tooltipDelay: 99999, zoomView: true, dragView: true },
         edges: { smooth: { enabled: true, type: "continuous", roundness: 0.2 } },
@@ -651,25 +651,25 @@ export default function UnifiedGraph() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sizeMode]);
 
-  // Spacing change: apply debounced physics update
+  // Spacing change: apply debounced physics with stabilization
   useEffect(() => {
     if (!networkRef.current) return;
-    networkRef.current.setOptions({
+    const net = networkRef.current;
+    net.setOptions({
       physics: {
         enabled: true,
         barnesHut: {
           gravitationalConstant: -1500 - debouncedSpacing * 60,
           springLength: 60 + debouncedSpacing * 2.5,
           springConstant: 0.04 - debouncedSpacing * 0.0002,
-          damping: 0.4,
+          damping: 0.85,
           avoidOverlap: 1.0,
         },
+        maxVelocity: 8,
+        minVelocity: 0.3,
       },
     });
-    const timer = setTimeout(() => {
-      if (networkRef.current) networkRef.current.setOptions({ physics: { enabled: false } });
-    }, 1500);
-    return () => clearTimeout(timer);
+    net.stabilize(150);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSpacing]);
 
