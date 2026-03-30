@@ -90,7 +90,7 @@ function drawHullForGroup(
   color: string,
   fillAlpha: number,
   strokeAlpha: number,
-  label: string,
+  _label?: string,
 ) {
   const positions: { x: number; y: number }[] = [];
   for (const id of memberIds) {
@@ -130,11 +130,6 @@ function drawHullForGroup(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  const topPt = hull.reduce((min, p) => (p.y < min.y ? p : min), hull[0]);
-  ctx.fillStyle = hexToRgba(color, 0.45);
-  ctx.font = "10px Inter, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(label, topPt.x, topPt.y - 8);
   ctx.restore();
 }
 
@@ -396,7 +391,7 @@ export default function UnifiedGraph() {
           highlight: { background: color, border: "#58a6ff" },
         },
         font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
-        borderWidth: 0,
+        borderWidth: 1.5,
         shadow: { enabled: true, color: color + "30", size: 8, x: 0, y: 1 },
         mass: m.clusters.length > 0 ? 1.5 : 0.8,
         _memory: m,
@@ -470,10 +465,10 @@ export default function UnifiedGraph() {
       {
         physics: {
           barnesHut: {
-            gravitationalConstant: -2000,
-            springLength: 95,
-            springConstant: 0.04,
-            damping: 0.3,
+            gravitationalConstant: -4000,
+            springLength: 150,
+            springConstant: 0.02,
+            damping: 0.4,
             avoidOverlap: 1.0,
           },
           stabilization: { enabled: true, iterations: 400, fit: true },
@@ -547,9 +542,9 @@ export default function UnifiedGraph() {
         if (m.id === nodeId) {
           return { id: m.id, opacity: 1, borderWidth: 3, color: { background: color, border: "#58a6ff", highlight: { background: color, border: "#58a6ff" } } };
         } else if (connectedIds.has(m.id)) {
-          return { id: m.id, opacity: 1, borderWidth: 0, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } } };
+          return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } } };
         } else {
-          return { id: m.id, opacity: 0.15, borderWidth: 0, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.15), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
+          return { id: m.id, opacity: 0.15, borderWidth: 0.5, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
         }
       });
       nodesDataSet.update(updates);
@@ -558,7 +553,7 @@ export default function UnifiedGraph() {
     function exitFocusMode() {
       const updates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
-        return { id: m.id, opacity: 1, borderWidth: 0, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
+        return { id: m.id, opacity: 1, borderWidth: 1.5, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
       });
       nodesDataSet.update(updates);
     }
