@@ -8,6 +8,7 @@ import Overview from "@/pages/Overview";
 import Memories from "@/pages/Memories";
 import KnowledgeGraph from "@/pages/KnowledgeGraph";
 import VectorSpace from "@/pages/VectorSpace";
+import UnifiedGraph from "@/pages/UnifiedGraph";
 import Search from "@/pages/Search";
 import Analytics from "@/pages/Analytics";
 import LlmConfig from "@/pages/LlmConfig";
@@ -31,6 +32,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
           <Route path="/" element={<Overview />} />
           <Route path="/memories" element={<Memories />} />
           <Route path="/graph" element={<KnowledgeGraph />} />
+          <Route path="/unified-graph" element={<UnifiedGraph />} />
           <Route path="/vectors" element={<VectorSpace />} />
           <Route path="/search" element={<Search />} />
           <Route path="/analytics" element={<Analytics />} />

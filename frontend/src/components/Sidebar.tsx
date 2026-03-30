@@ -4,6 +4,7 @@ const navItems = [
   { to: "/", label: "Overview", icon: "⊞" },
   { to: "/memories", label: "Memories", icon: "◉" },
   { to: "/graph", label: "Knowledge Graph", icon: "◎" },
+  { to: "/unified-graph", label: "Unified Graph", icon: "⬡" },
   { to: "/vectors", label: "Vector Space", icon: "◈" },
   { to: "/search", label: "Search", icon: "⊕" },
   null,

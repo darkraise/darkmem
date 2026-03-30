@@ -58,6 +58,57 @@ class QdrantVectorRepository:
             for p in points
         ]
 
+    async def get_clustered_vectors(self, eps: float = 0.3, min_samples: int = 2, limit: int = 300) -> list[dict]:
+        """Get all vectors with DBSCAN cluster assignments."""
+        points = await self.get_all_vectors(limit=limit)
+        if len(points) < 2:
+            for p in points:
+                p["cluster"] = 0
+            return points
+
+        import numpy as np
+        vectors = np.array([p["vector"] for p in points], dtype=np.float32)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        normalized = vectors / norms
+        similarity = normalized @ normalized.T
+        distance_matrix = 1 - similarity
+
+        n = len(points)
+        labels = [-1] * n
+        cluster_id = 0
+        visited = [False] * n
+
+        def region_query(idx):
+            return [j for j in range(n) if distance_matrix[idx][j] <= eps]
+
+        for i in range(n):
+            if visited[i]:
+                continue
+            visited[i] = True
+            neighbors = region_query(i)
+            if len(neighbors) < min_samples:
+                continue
+            labels[i] = cluster_id
+            seed_set = list(neighbors)
+            j = 0
+            while j < len(seed_set):
+                q = seed_set[j]
+                if not visited[q]:
+                    visited[q] = True
+                    q_neighbors = region_query(q)
+                    if len(q_neighbors) >= min_samples:
+                        seed_set.extend([x for x in q_neighbors if x not in seed_set])
+                if labels[q] == -1:
+                    labels[q] = cluster_id
+                j += 1
+            cluster_id += 1
+
+        for i, p in enumerate(points):
+            p["cluster"] = labels[i]
+
+        return points
+
     async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
         points = await self.client.retrieve(
             collection_name=self.collection_name, ids=[str(memory_id)], with_vectors=True,

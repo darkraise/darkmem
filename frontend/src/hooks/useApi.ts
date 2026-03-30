@@ -109,6 +109,21 @@ export function useFullGraph() {
   });
 }
 
+export interface UnifiedGraphData {
+  entities: { id: string; name: string; entity_type: string; node_type: string }[];
+  memories: { id: string; content: string; source: string; tags: string[]; memory_type: string | null; cluster: number }[];
+  relations: { source: string; target: string; type: string; weight?: number }[];
+  mentions: { source: string; target: string }[];
+  clusters: Record<string, string[]>;
+}
+
+export function useUnifiedGraph() {
+  return useQuery<UnifiedGraphData>({
+    queryKey: ["unifiedGraph"],
+    queryFn: () => apiFetch("/graph/unified"),
+  });
+}
+
 export function useVectorProjection() {
   return useQuery({
     queryKey: ["vectorProjection"],
