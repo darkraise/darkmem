@@ -78,7 +78,7 @@ async def get_unified_graph(
                 mid = str(p["memory_id"])
                 memory_nodes.append({
                     "id": mid,
-                    "content": (payload.get("content", "") or "")[:120],
+                    "content": payload.get("content", "") or "",
                     "source": payload.get("source", ""),
                     "tags": payload.get("tags", []),
                     "memory_type": payload.get("memory_type"),
