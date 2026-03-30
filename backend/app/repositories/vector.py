@@ -119,6 +119,76 @@ class QdrantVectorRepository:
 
         return points
 
+    async def get_fuzzy_clustered_vectors(self, n_clusters: int = 5, membership_threshold: float = 0.2, limit: int = 500) -> list[dict]:
+        """Get all vectors with fuzzy cluster memberships (memories can belong to multiple clusters)."""
+        points = await self.get_all_vectors(limit=limit)
+        if len(points) < 3:
+            for p in points:
+                p["clusters"] = [0]
+                p["memberships"] = {0: 1.0}
+            return points
+
+        import numpy as np
+        vectors = np.array([p["vector"] for p in points], dtype=np.float32)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        normalized = vectors / norms
+
+        # Auto-determine n_clusters if too many requested
+        actual_clusters = min(n_clusters, max(2, len(points) // 3))
+
+        # Fuzzy c-means
+        n = len(points)
+        m = 2.0  # fuzziness coefficient
+
+        # Random init membership matrix
+        rng = np.random.default_rng(42)
+        U = rng.random((n, actual_clusters)).astype(np.float32)
+        U = U / U.sum(axis=1, keepdims=True)  # normalize rows
+
+        for _ in range(100):  # max iterations
+            # Update centers
+            Um = U ** m
+            centers = (Um.T @ normalized) / Um.sum(axis=0)[:, np.newaxis]
+            # Normalize centers
+            center_norms = np.linalg.norm(centers, axis=1, keepdims=True)
+            center_norms[center_norms == 0] = 1
+            centers = centers / center_norms
+
+            # Update membership matrix
+            # Distance from each point to each center (cosine distance)
+            dist = 1 - normalized @ centers.T  # (n, k)
+            dist = np.maximum(dist, 1e-10)
+
+            new_U = np.zeros_like(U)
+            for j in range(actual_clusters):
+                denom = np.zeros(n, dtype=np.float32)
+                for k in range(actual_clusters):
+                    denom += (dist[:, j] / dist[:, k]) ** (2 / (m - 1))
+                new_U[:, j] = 1.0 / denom
+
+            if np.allclose(U, new_U, atol=1e-4):
+                break
+            U = new_U
+
+        # Assign clusters based on threshold
+        for i, p in enumerate(points):
+            memberships = {}
+            clusters = []
+            for j in range(actual_clusters):
+                if U[i, j] >= membership_threshold:
+                    memberships[j] = round(float(U[i, j]), 3)
+                    clusters.append(j)
+            if not clusters:
+                # Assign to highest membership cluster
+                best = int(np.argmax(U[i]))
+                clusters = [best]
+                memberships = {best: round(float(U[i, best]), 3)}
+            p["clusters"] = clusters
+            p["memberships"] = memberships
+
+        return points
+
     async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
         points = await self.client.retrieve(
             collection_name=self.collection_name, ids=[str(memory_id)], with_vectors=True,

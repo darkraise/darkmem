@@ -50,62 +50,123 @@ async def get_unified_graph(
     _user=Depends(require_auth),
     request: Request = None,
 ):
-    graph_repo = getattr(request.app.state, "graph_repo", None)
+    from app.database import async_session_factory
+    from app.models.memory import Memory
+    from sqlalchemy import select
+
     vector_repo = getattr(request.app.state, "vector_repo", None)
 
-    entities = []
-    relations = []
-    if graph_repo:
-        try:
-            full = await graph_repo.get_full_graph(limit=limit)
-            entities = full["entities"]
-            relations = full["relations"]
-        except Exception:
-            logger.exception("Failed to fetch graph data")
+    # Fetch importance map from Postgres
+    importance_map: dict[str, float] = {}
+    try:
+        async with async_session_factory() as session:
+            result = await session.execute(select(Memory.id, Memory.importance))
+            importance_map = {str(row[0]): row[1] for row in result.all()}
+    except Exception:
+        logger.exception("Failed to fetch importance data")
 
     memory_nodes = []
     clusters: dict = {}
+    similarity_edges: list[dict] = []
+
     if vector_repo:
         try:
-            clustered = await vector_repo.get_clustered_vectors(limit=limit)
+            import numpy as np
+            clustered = await vector_repo.get_fuzzy_clustered_vectors(limit=limit)
             for p in clustered:
                 payload = p.get("payload", {})
+                mid = str(p["memory_id"])
                 memory_nodes.append({
-                    "id": str(p["memory_id"]),
+                    "id": mid,
                     "content": (payload.get("content", "") or "")[:120],
                     "source": payload.get("source", ""),
                     "tags": payload.get("tags", []),
                     "memory_type": payload.get("memory_type"),
-                    "cluster": p["cluster"],
+                    "importance": importance_map.get(mid, 0.5),
+                    "clusters": p["clusters"],
+                    "memberships": {str(k): v for k, v in p["memberships"].items()},
                 })
-                c = p["cluster"]
-                if c >= 0:
-                    clusters.setdefault(c, []).append(str(p["memory_id"]))
+                for c in p["clusters"]:
+                    clusters.setdefault(c, []).append(mid)
+
+            # Compute pairwise cosine similarity edges (threshold 0.5)
+            if len(clustered) >= 2:
+                vectors = np.array([p["vector"] for p in clustered], dtype=np.float32)
+                norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+                norms[norms == 0] = 1
+                normalized = vectors / norms
+                sim_matrix = normalized @ normalized.T
+                ids = [str(p["memory_id"]) for p in clustered]
+                n = len(ids)
+                for i in range(n):
+                    for j in range(i + 1, n):
+                        score = float(sim_matrix[i, j])
+                        if score >= 0.5:
+                            similarity_edges.append({
+                                "source": ids[i],
+                                "target": ids[j],
+                                "score": round(score, 3),
+                            })
         except Exception:
             logger.exception("Failed to fetch vector data")
 
-    memory_id_set = {m["id"] for m in memory_nodes}
-    mentions = []
+    return {
+        "memories": memory_nodes,
+        "clusters": {str(k): v for k, v in clusters.items()},
+        "similarity_edges": similarity_edges,
+    }
+
+
+@router.get("/memory-context/{memory_id}")
+async def get_memory_context(
+    memory_id: str,
+    _user=Depends(require_auth),
+    request: Request = None,
+):
+    from app.database import async_session_factory
+    from app.models.memory import Memory
+    from sqlalchemy import select
+    from uuid import UUID
+
+    graph_repo = getattr(request.app.state, "graph_repo", None)
+    if not graph_repo:
+        return {"entities": [], "relations": [], "neighbors": []}
+
+    # Find entities that reference this memory_id
+    entities = await graph_repo.get_entities_by_memory_id(memory_id)
+
+    # Find relations between those entities
+    entity_names = [e["name"] for e in entities]
+    relations = await graph_repo.get_relations_between(entity_names)
+
+    # Find neighboring memories that share the same entities
+    neighbor_memory_ids = set()
     for entity in entities:
-        entity_id = entity.get("id") or entity.get("name")
-        for mid in (entity.get("memory_ids") or []):
-            if str(mid) in memory_id_set:
-                mentions.append({"source": str(mid), "target": entity_id})
+        for mid in entity.get("memory_ids", []):
+            if mid != memory_id:
+                neighbor_memory_ids.add(mid)
+
+    # Get neighbor memory content from Postgres
+    neighbors = []
+    async with async_session_factory() as session:
+        for mid in list(neighbor_memory_ids)[:20]:
+            try:
+                result = await session.execute(select(Memory).where(Memory.id == UUID(mid)))
+                mem = result.scalar_one_or_none()
+                if mem:
+                    neighbors.append({
+                        "id": str(mem.id),
+                        "content": mem.content[:100],
+                        "source": mem.source,
+                        "memory_type": mem.memory_type,
+                    })
+            except Exception:
+                pass
 
     return {
-        "entities": [
-            {
-                "id": e.get("id") or e.get("name"),
-                "name": e.get("name", ""),
-                "entity_type": e.get("entity_type", "concept"),
-                "node_type": "entity",
-            }
-            for e in entities
-        ],
-        "memories": memory_nodes,
+        "entities": entities,
         "relations": relations,
-        "mentions": mentions,
-        "clusters": {str(k): v for k, v in clusters.items()},
+        "neighbors": neighbors,
     }
 
 

@@ -148,6 +148,33 @@ class Neo4jGraphRepository:
             )
             await session.run("MATCH ()-[r:RELATES_TO]-() WHERE size(r.memory_ids) = 0 DELETE r")
 
+    async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
+        async with self.driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (e:Entity) WHERE $mid IN e.memory_ids
+                RETURN e{.id, .name, .entity_type, .properties, .memory_ids} as entity
+                """,
+                mid=memory_id,
+            )
+            records = await result.data()
+            return [r["entity"] for r in records]
+
+    async def get_relations_between(self, entity_names: list[str]) -> list[dict]:
+        if not entity_names:
+            return []
+        async with self.driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity)
+                WHERE a.name IN $names AND b.name IN $names
+                RETURN {source: a.name, target: b.name, type: r.rel_type, weight: r.weight} as relation
+                """,
+                names=entity_names,
+            )
+            records = await result.data()
+            return [r["relation"] for r in records]
+
     async def get_stats(self) -> dict:
         async with self.driver.session() as session:
             entity_result = await session.run("MATCH (e:Entity) RETURN count(e) as count")
