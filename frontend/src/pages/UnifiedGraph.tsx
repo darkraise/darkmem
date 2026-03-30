@@ -537,26 +537,20 @@ export default function UnifiedGraph() {
     // Focus/dim helpers (data guaranteed non-null here since we checked above)
     const graphData = data!;
     function focusOnNode(nodeId: string) {
-      // Find directly connected nodes via similarity edges
-      const connectedIds = new Set<string>();
-      connectedIds.add(nodeId);
-      for (const e of graphData.similarity_edges) {
-        if (e.source === nodeId) connectedIds.add(e.target);
-        if (e.target === nodeId) connectedIds.add(e.source);
-      }
-      // Also check hidden cluster edges
-      for (const [, memberIds] of Object.entries(graphData.clusters)) {
-        if ((memberIds as string[]).includes(nodeId)) {
-          for (const mid of memberIds as string[]) connectedIds.add(mid);
-        }
-      }
+      // Only nodes directly connected via similarity edges
+      const directNeighbors = new Set<string>();
+      const directEdgeIndices = new Set<number>();
+      graphData.similarity_edges.forEach((e, i) => {
+        if (e.source === nodeId) { directNeighbors.add(e.target); directEdgeIndices.add(i); }
+        if (e.target === nodeId) { directNeighbors.add(e.source); directEdgeIndices.add(i); }
+      });
 
-      // Update all nodes: dim non-connected, highlight selected
+      // Update nodes: selected + direct neighbors bright, everything else dimmed
       const nodeUpdates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
         if (m.id === nodeId) {
           return { id: m.id, opacity: 1, borderWidth: 5, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
-        } else if (connectedIds.has(m.id)) {
+        } else if (directNeighbors.has(m.id)) {
           return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
         } else {
           return { id: m.id, opacity: 0.15, borderWidth: 1, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: darkenHex(color) } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
@@ -564,14 +558,12 @@ export default function UnifiedGraph() {
       });
       nodesDataSet.update(nodeUpdates);
 
-      // Update edges: connected edges bright, others dimmed
-      const edgeUpdates = graphData.similarity_edges.map((e, i) => {
-        const connected = e.source === nodeId || e.target === nodeId ||
-          (connectedIds.has(e.source) && connectedIds.has(e.target));
-        if (connected) {
+      // Update edges: only edges touching the selected node are highlighted
+      const edgeUpdates = graphData.similarity_edges.map((_, i) => {
+        if (directEdgeIndices.has(i)) {
           return { id: `sim-${i}`, color: { color: "#4CC9F0", opacity: 1 }, width: 1.5 };
         }
-        return { id: `sim-${i}`, color: { color: "#21262d", opacity: 0.08 }, width: 0.3 };
+        return { id: `sim-${i}`, color: { color: "#21262d", opacity: 0.05 }, width: 0.2 };
       });
       edgesDataSet.update(edgeUpdates);
     }
