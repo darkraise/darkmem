@@ -149,18 +149,34 @@ function computeSize(mode: SizeMode, connections: number, importance: number): n
   return 8 + Math.min(18, Math.log2(connections + 1) * 6);
 }
 
-// ─── Primary cluster color for a memory ──────────────────────────────────────
+// ─── Memory type colors (pre-assigned + dynamic) ───────────────────────────
 
-function primaryClusterColor(mem: UnifiedMemory): string {
-  if (mem.clusters.length === 0) return "#484f58";
-  // pick cluster with highest membership score
-  let best = mem.clusters[0];
-  let bestScore = mem.memberships[String(best)] ?? 0;
-  for (const c of mem.clusters) {
-    const s = mem.memberships[String(c)] ?? 0;
-    if (s > bestScore) { best = c; bestScore = s; }
+const TYPE_COLOR_PREASSIGNED: Record<string, string> = {
+  fact: "#58a6ff",
+  decision: "#d2a8ff",
+  debug: "#f85149",
+  architecture: "#3fb950",
+  preference: "#ffa657",
+  session: "#79c0ff",
+  workflow: "#56d364",
+};
+
+const TYPE_COLOR_DYNAMIC = [
+  "#f778ba", "#bb86fc", "#4fc3f7", "#aed581",
+  "#ffb74d", "#ff6b6b", "#22d3ee", "#e879f9",
+];
+
+const typeColorAssignments = new Map<string, string>();
+let nextDynamicIdx = 0;
+
+function getTypeColor(memoryType: string | null): string {
+  if (!memoryType) return "#8b949e";
+  if (TYPE_COLOR_PREASSIGNED[memoryType]) return TYPE_COLOR_PREASSIGNED[memoryType];
+  if (!typeColorAssignments.has(memoryType)) {
+    typeColorAssignments.set(memoryType, TYPE_COLOR_DYNAMIC[nextDynamicIdx % TYPE_COLOR_DYNAMIC.length]);
+    nextDynamicIdx++;
   }
-  return clusterColor(best);
+  return typeColorAssignments.get(memoryType)!;
 }
 
 // ─── Mini sub-graph component ─────────────────────────────────────────────────
@@ -365,14 +381,9 @@ export default function UnifiedGraph() {
     const edges: any[] = [];
 
     for (const m of data.memories) {
-      const color = primaryClusterColor(m);
+      const color = getTypeColor(m.memory_type);
       const conns = connMap.get(m.id) ?? 0;
       const size = computeSize(sizeMode, conns, m.importance);
-
-      // Multi-cluster indicator: if memory belongs to >1 cluster, use a brighter border
-      const isMultiCluster = m.clusters.length > 1;
-      const borderColor = isMultiCluster ? "#ffffff" : color;
-      const borderWidth = isMultiCluster ? 2.5 : 1.5;
 
       nodes.push({
         id: m.id,
@@ -381,11 +392,11 @@ export default function UnifiedGraph() {
         size,
         color: {
           background: color,
-          border: borderColor,
-          highlight: { background: color, border: "#ffffff" },
+          border: color,
+          highlight: { background: color, border: "#58a6ff" },
         },
         font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
-        borderWidth,
+        borderWidth: 0,
         shadow: { enabled: true, color: color + "30", size: 8, x: 0, y: 1 },
         mass: m.clusters.length > 0 ? 1.5 : 0.8,
         _memory: m,
@@ -460,10 +471,10 @@ export default function UnifiedGraph() {
         physics: {
           barnesHut: {
             gravitationalConstant: -2000,
-            springLength: 80,
+            springLength: 95,
             springConstant: 0.04,
             damping: 0.3,
-            avoidOverlap: 0.8,
+            avoidOverlap: 1.0,
           },
           stabilization: { enabled: true, iterations: 400, fit: true },
           maxVelocity: 30,
@@ -513,6 +524,45 @@ export default function UnifiedGraph() {
       }
     });
 
+    // Focus/dim helpers (data guaranteed non-null here since we checked above)
+    const graphData = data!;
+    function focusOnNode(nodeId: string) {
+      // Find directly connected nodes via similarity edges
+      const connectedIds = new Set<string>();
+      connectedIds.add(nodeId);
+      for (const e of graphData.similarity_edges) {
+        if (e.source === nodeId) connectedIds.add(e.target);
+        if (e.target === nodeId) connectedIds.add(e.source);
+      }
+      // Also check hidden cluster edges
+      for (const [, memberIds] of Object.entries(graphData.clusters)) {
+        if ((memberIds as string[]).includes(nodeId)) {
+          for (const mid of memberIds as string[]) connectedIds.add(mid);
+        }
+      }
+
+      // Update all nodes: dim non-connected, highlight selected
+      const updates = graphData.memories.map((m) => {
+        const color = getTypeColor(m.memory_type);
+        if (m.id === nodeId) {
+          return { id: m.id, opacity: 1, borderWidth: 3, color: { background: color, border: "#58a6ff", highlight: { background: color, border: "#58a6ff" } } };
+        } else if (connectedIds.has(m.id)) {
+          return { id: m.id, opacity: 1, borderWidth: 0, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } } };
+        } else {
+          return { id: m.id, opacity: 0.15, borderWidth: 0, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.15), highlight: { background: color, border: "#58a6ff" } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
+        }
+      });
+      nodesDataSet.update(updates);
+    }
+
+    function exitFocusMode() {
+      const updates = graphData.memories.map((m) => {
+        const color = getTypeColor(m.memory_type);
+        return { id: m.id, opacity: 1, borderWidth: 0, color: { background: color, border: color, highlight: { background: color, border: "#58a6ff" } }, font: { color: "#8b949e", size: 9 } };
+      });
+      nodesDataSet.update(updates);
+    }
+
     // Click handling
     network.on("click", (params) => {
       if (params.nodes.length > 0) {
@@ -520,9 +570,11 @@ export default function UnifiedGraph() {
         const node = nodes.find((n: { id: string }) => n.id === nodeId);
         if (node?._memory) {
           setSelectedMemoryId(nodeId);
+          focusOnNode(nodeId);
         }
       } else if (params.nodes.length === 0 && params.edges.length === 0) {
         setSelectedMemoryId(null);
+        exitFocusMode();
       }
     });
 
@@ -570,6 +622,8 @@ export default function UnifiedGraph() {
     if (networkRef.current) {
       networkRef.current.selectNodes([id]);
       networkRef.current.focus(id, { animation: { duration: 600, easingFunction: "easeInOutQuad" }, scale: 1.2 });
+      // Trigger focus/dim by simulating click
+      (networkRef.current as any).body.emitter.emit("click", { nodes: [id], edges: [], event: {}, pointer: { DOM: { x: 0, y: 0 }, canvas: { x: 0, y: 0 } } });
     }
   }, []);
 
@@ -630,21 +684,30 @@ export default function UnifiedGraph() {
             />
 
             {/* Legend */}
-            <div className="mt-3 flex gap-4 flex-wrap items-center text-xs text-muted-foreground">
-              <span className="font-medium uppercase tracking-wide">Clusters</span>
-              {Array.from({ length: Math.min(clusterCount, CLUSTER_PALETTE.length) }, (_, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: clusterColor(i) }} />
-                  <span>{i}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#484f58]" />
-                <span>unclustered</span>
+            <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
+              <div className="flex gap-4 flex-wrap items-center">
+                <span className="font-medium uppercase tracking-wide">Type</span>
+                {Object.entries(TYPE_COLOR_PREASSIGNED).map(([type, color]) => (
+                  <div key={type} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                    <span>{type}</span>
+                  </div>
+                ))}
+                {Array.from(typeColorAssignments.entries()).map(([type, color]) => (
+                  <div key={type} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                    <span>{type}</span>
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center gap-1.5 ml-4">
-                <div className="w-2.5 h-2.5 rounded-full border border-white bg-transparent" />
-                <span>multi-cluster</span>
+              <div className="flex gap-4 flex-wrap items-center">
+                <span className="font-medium uppercase tracking-wide">Clusters</span>
+                {Array.from({ length: Math.min(clusterCount, CLUSTER_PALETTE.length) }, (_, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: clusterColor(i), opacity: 0.5 }} />
+                    <span>{i}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </>
