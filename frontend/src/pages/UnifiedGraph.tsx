@@ -552,7 +552,7 @@ export default function UnifiedGraph() {
       }
 
       // Update all nodes: dim non-connected, highlight selected
-      const updates = graphData.memories.map((m) => {
+      const nodeUpdates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
         if (m.id === nodeId) {
           return { id: m.id, opacity: 1, borderWidth: 5, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
@@ -562,15 +562,34 @@ export default function UnifiedGraph() {
           return { id: m.id, opacity: 0.15, borderWidth: 1, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: darkenHex(color) } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
         }
       });
-      nodesDataSet.update(updates);
+      nodesDataSet.update(nodeUpdates);
+
+      // Update edges: connected edges bright, others dimmed
+      const edgeUpdates = graphData.similarity_edges.map((e, i) => {
+        const connected = e.source === nodeId || e.target === nodeId ||
+          (connectedIds.has(e.source) && connectedIds.has(e.target));
+        if (connected) {
+          return { id: `sim-${i}`, color: { color: "#4CC9F0", opacity: 1 }, width: 1.5 };
+        }
+        return { id: `sim-${i}`, color: { color: "#21262d", opacity: 0.08 }, width: 0.3 };
+      });
+      edgesDataSet.update(edgeUpdates);
     }
 
     function exitFocusMode() {
-      const updates = graphData.memories.map((m) => {
+      const nodeUpdates = graphData.memories.map((m) => {
         const color = getTypeColor(m.memory_type);
         return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } }, font: { color: "#8b949e", size: 9 } };
       });
-      nodesDataSet.update(updates);
+      nodesDataSet.update(nodeUpdates);
+
+      // Restore edges to normal
+      const edgeResets = graphData.similarity_edges.map((e, i) => ({
+        id: `sim-${i}`,
+        color: { color: "#21262d", highlight: "#4CC9F0", opacity: 0.3 },
+        width: Math.max(0.3, e.score * 0.8),
+      }));
+      edgesDataSet.update(edgeResets);
     }
 
     // Click handling
