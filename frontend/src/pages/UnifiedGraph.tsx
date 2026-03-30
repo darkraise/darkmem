@@ -415,7 +415,7 @@ export default function UnifiedGraph() {
         id: `sim-${i}`,
         from: e.source,
         to: e.target,
-        color: hexToRgba("#21262d", 0.3),
+        color: hexToRgba("#8b949e", 0.25),
         smooth: { type: "continuous", roundness: 0.2 },
         width: Math.max(0.3, e.score * 0.8),
       });
@@ -578,7 +578,7 @@ export default function UnifiedGraph() {
       // Restore edges to normal
       const edgeResets = graphData.similarity_edges.map((e, i) => ({
         id: `sim-${i}`,
-        color: hexToRgba("#21262d", 0.3),
+        color: hexToRgba("#8b949e", 0.25),
         width: Math.max(0.3, e.score * 0.8),
       }));
       edgesDataSet.update(edgeResets);
