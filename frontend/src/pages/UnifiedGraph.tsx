@@ -415,7 +415,7 @@ export default function UnifiedGraph() {
         id: `sim-${i}`,
         from: e.source,
         to: e.target,
-        color: { color: "#21262d", highlight: "#4CC9F0", opacity: 0.3 },
+        color: hexToRgba("#21262d", 0.3),
         smooth: { type: "continuous", roundness: 0.2 },
         width: Math.max(0.3, e.score * 0.8),
       });
@@ -561,9 +561,9 @@ export default function UnifiedGraph() {
       // Update edges: only edges touching the selected node are highlighted
       const edgeUpdates = graphData.similarity_edges.map((_, i) => {
         if (directEdgeIndices.has(i)) {
-          return { id: `sim-${i}`, color: { color: "#4CC9F0", opacity: 1 }, width: 1.5 };
+          return { id: `sim-${i}`, color: "#4CC9F0", width: 1.5 };
         }
-        return { id: `sim-${i}`, color: { color: "#21262d", opacity: 0.05 }, width: 0.2 };
+        return { id: `sim-${i}`, color: hexToRgba("#21262d", 0.05), width: 0.2 };
       });
       edgesDataSet.update(edgeUpdates);
     }
@@ -578,7 +578,7 @@ export default function UnifiedGraph() {
       // Restore edges to normal
       const edgeResets = graphData.similarity_edges.map((e, i) => ({
         id: `sim-${i}`,
-        color: { color: "#21262d", highlight: "#4CC9F0", opacity: 0.3 },
+        color: hexToRgba("#21262d", 0.3),
         width: Math.max(0.3, e.score * 0.8),
       }));
       edgesDataSet.update(edgeResets);
