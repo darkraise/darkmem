@@ -3,6 +3,17 @@ import type { UnifiedMemory } from "@/hooks/useApi";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { Network, DataSet } from "vis-network/standalone";
 
+// ─── Debounce hook ──────────────────────────────────────────────────────────
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 // ─── Palettes ────────────────────────────────────────────────────────────────
 
 const CLUSTER_PALETTE = [
@@ -338,7 +349,8 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
 
 export default function UnifiedGraph() {
   const [similarityThreshold, setSimilarityThreshold] = useState(0.75);
-  const { data, isLoading } = useUnifiedGraph(similarityThreshold);
+  const debouncedSimilarity = useDebouncedValue(similarityThreshold, 500);
+  const { data, isLoading } = useUnifiedGraph(debouncedSimilarity);
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -349,6 +361,7 @@ export default function UnifiedGraph() {
   const [sizeMode, setSizeMode] = useState<SizeMode>("connections");
   const [showTagOverlay, setShowTagOverlay] = useState(false);
   const [spacing, setSpacing] = useState(50); // 0=tight, 100=sparse
+  const debouncedSpacing = useDebouncedValue(spacing, 500);
 
   // Derive selected memory object
   const selectedMemory = data?.memories.find((m) => m.id === selectedMemoryId) ?? null;
@@ -638,6 +651,28 @@ export default function UnifiedGraph() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sizeMode]);
 
+  // Spacing change: apply debounced physics update
+  useEffect(() => {
+    if (!networkRef.current) return;
+    networkRef.current.setOptions({
+      physics: {
+        enabled: true,
+        barnesHut: {
+          gravitationalConstant: -1500 - debouncedSpacing * 60,
+          springLength: 60 + debouncedSpacing * 2.5,
+          springConstant: 0.04 - debouncedSpacing * 0.0002,
+          damping: 0.4,
+          avoidOverlap: 1.0,
+        },
+      },
+    });
+    const timer = setTimeout(() => {
+      if (networkRef.current) networkRef.current.setOptions({ physics: { enabled: false } });
+    }, 1500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSpacing]);
+
   // Navigate from mini-graph neighbor click
   const handleNavigate = useCallback((id: string) => {
     setSelectedMemoryId(id);
@@ -677,27 +712,7 @@ export default function UnifiedGraph() {
             <input
               type="range" min="0" max="100" step="5"
               value={spacing}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                setSpacing(val);
-                if (networkRef.current) {
-                  networkRef.current.setOptions({
-                    physics: {
-                      enabled: true,
-                      barnesHut: {
-                        gravitationalConstant: -1500 - val * 60,
-                        springLength: 60 + val * 2.5,
-                        springConstant: 0.04 - val * 0.0002,
-                        damping: 0.4,
-                        avoidOverlap: 1.0,
-                      },
-                    },
-                  });
-                  setTimeout(() => {
-                    if (networkRef.current) networkRef.current.setOptions({ physics: { enabled: false } });
-                  }, 1500);
-                }
-              }}
+              onChange={(e) => setSpacing(parseInt(e.target.value))}
               className="w-20"
             />
             <span className="font-mono text-xs w-6">{spacing}</span>
