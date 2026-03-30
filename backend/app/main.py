@@ -44,7 +44,14 @@ async def lifespan(app: FastAPI):
             llm_config = await _get_llm_config(session)
         llm = LLMOrchestrator(llm_config)
 
+        # Auto-detect embedding dimensions
         embedding_dims = llm_config["embedding"].dimensions or 768
+        try:
+            test_vec = await llm.embed("dimension probe")
+            embedding_dims = len(test_vec)
+            logger.info(f"Detected embedding dimensions: {embedding_dims}")
+        except Exception as e:
+            logger.warning(f"Could not auto-detect embedding dimensions: {e}")
         vector_repo = QdrantVectorRepository(qdrant_client, dimensions=embedding_dims)
         await vector_repo.ensure_collection()
         graph_repo = Neo4jGraphRepository(neo4j_driver)

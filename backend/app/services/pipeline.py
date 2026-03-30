@@ -19,12 +19,14 @@ class ProcessingPipeline:
         self.graph_repo = graph_repo
 
     async def process_memory(self, memory_id: UUID, content: str, source: str, tags: list[str], memory_type: str | None, created_at: str):
-        try:
-            embed_task = self.llm.embed(content)
-            extract_task = self.extraction.extract(content)
-            results = await asyncio.gather(embed_task, extract_task, return_exceptions=True)
-            vector, extraction = results[0], results[1]
+        # Run embedding and extraction in parallel
+        embed_task = self.llm.embed(content)
+        extract_task = self.extraction.extract(content)
+        results = await asyncio.gather(embed_task, extract_task, return_exceptions=True)
+        vector, extraction = results[0], results[1]
 
+        # Store embedding in Qdrant (independent of Neo4j)
+        try:
             if not isinstance(vector, Exception):
                 await self.vector_repo.upsert(
                     memory_id=memory_id, vector=vector,
@@ -37,7 +39,11 @@ class ProcessingPipeline:
                 )
             else:
                 logger.error(f"Embedding failed for {memory_id}: {vector}")
+        except Exception as e:
+            logger.error(f"Qdrant upsert failed for {memory_id}: {e}")
 
+        # Store entities and relationships in Neo4j (independent of Qdrant)
+        try:
             if isinstance(extraction, dict):
                 for entity in extraction.get("entities", []):
                     await self.graph_repo.create_entity(
@@ -52,13 +58,13 @@ class ProcessingPipeline:
                     )
             else:
                 logger.error(f"Extraction failed for {memory_id}: {extraction}")
-
-            try:
-                await event_manager.broadcast("pipeline.completed", {"memory_id": str(memory_id)})
-            except Exception as broadcast_err:
-                logger.warning(f"WebSocket broadcast failed: {broadcast_err}")
         except Exception as e:
-            logger.error(f"Pipeline failed for {memory_id}: {e}")
+            logger.error(f"Neo4j write failed for {memory_id}: {e}")
+
+        try:
+            await event_manager.broadcast("pipeline.completed", {"memory_id": str(memory_id)})
+        except Exception:
+            pass
 
     async def delete_memory(self, memory_id: UUID):
         try:

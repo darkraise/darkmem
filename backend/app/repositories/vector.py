@@ -11,13 +11,23 @@ class QdrantVectorRepository:
         self.collection_name = collection_name
 
     async def ensure_collection(self):
+        import logging
+        log = logging.getLogger(__name__)
         collections = await self.client.get_collections()
         names = [c.name for c in collections.collections]
+        if self.collection_name in names:
+            info = await self.client.get_collection(self.collection_name)
+            current_dim = info.config.params.vectors.size
+            if current_dim != self.dimensions:
+                log.warning(f"Collection dimension mismatch: {current_dim} vs {self.dimensions}. Recreating.")
+                await self.client.delete_collection(self.collection_name)
+                names.remove(self.collection_name)
         if self.collection_name not in names:
             await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=self.dimensions, distance=Distance.COSINE),
             )
+            log.info(f"Created Qdrant collection '{self.collection_name}' with {self.dimensions} dimensions")
 
     async def upsert(self, memory_id: UUID, vector: list[float], payload: dict):
         await self.client.upsert(
@@ -58,7 +68,7 @@ class QdrantVectorRepository:
             for p in points
         ]
 
-    async def get_clustered_vectors(self, eps: float = 0.3, min_samples: int = 2, limit: int = 300) -> list[dict]:
+    async def get_clustered_vectors(self, eps: float = 0.5, min_samples: int = 2, limit: int = 300) -> list[dict]:
         """Get all vectors with DBSCAN cluster assignments."""
         points = await self.get_all_vectors(limit=limit)
         if len(points) < 2:
