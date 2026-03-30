@@ -47,6 +47,7 @@ async def list_entities(
 @router.get("/unified")
 async def get_unified_graph(
     limit: int = Query(200),
+    similarity_threshold: float = Query(0.75, ge=0.0, le=1.0),
     _user=Depends(require_auth),
     request: Request = None,
 ):
@@ -89,7 +90,7 @@ async def get_unified_graph(
                 for c in p["clusters"]:
                     clusters.setdefault(c, []).append(mid)
 
-            # Compute pairwise cosine similarity edges (threshold 0.5)
+            # Compute pairwise cosine similarity edges
             if len(clustered) >= 2:
                 vectors = np.array([p["vector"] for p in clustered], dtype=np.float32)
                 norms = np.linalg.norm(vectors, axis=1, keepdims=True)
@@ -101,7 +102,7 @@ async def get_unified_graph(
                 for i in range(n):
                     for j in range(i + 1, n):
                         score = float(sim_matrix[i, j])
-                        if score >= 0.5:
+                        if score >= similarity_threshold:
                             similarity_edges.append({
                                 "source": ids[i],
                                 "target": ids[j],

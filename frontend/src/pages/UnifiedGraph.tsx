@@ -336,7 +336,8 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function UnifiedGraph() {
-  const { data, isLoading } = useUnifiedGraph();
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.75);
+  const { data, isLoading } = useUnifiedGraph(similarityThreshold);
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -651,6 +652,18 @@ export default function UnifiedGraph() {
             <option value="importance">Size: Importance</option>
             <option value="uniform">Size: Uniform</option>
           </select>
+
+          {/* Similarity threshold */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label>Similarity</label>
+            <input
+              type="range" min="0.5" max="0.95" step="0.05"
+              value={similarityThreshold}
+              onChange={(e) => setSimilarityThreshold(parseFloat(e.target.value))}
+              className="w-20"
+            />
+            <span className="font-mono text-xs w-8">{similarityThreshold}</span>
+          </div>
 
           {/* Tag overlay toggle */}
           <button

@@ -126,10 +126,10 @@ export interface UnifiedGraphData {
   similarity_edges: { source: string; target: string; score: number }[];
 }
 
-export function useUnifiedGraph() {
+export function useUnifiedGraph(similarityThreshold = 0.75) {
   return useQuery<UnifiedGraphData>({
-    queryKey: ["unifiedGraph"],
-    queryFn: () => apiFetch("/graph/unified"),
+    queryKey: ["unifiedGraph", similarityThreshold],
+    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}`),
   });
 }
 
