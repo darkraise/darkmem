@@ -1,9 +1,16 @@
 import { useUnifiedGraph, useMemoryContext } from "@/hooks/useApi";
 import type { UnifiedMemory } from "@/hooks/useApi";
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { X, Filter, PanelRightClose } from "lucide-react";
 import { Network, DataSet } from "vis-network/standalone";
-
-// ─── Debounce hook ──────────────────────────────────────────────────────────
 
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -17,17 +24,34 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 // ─── Palettes ────────────────────────────────────────────────────────────────
 
 const CLUSTER_PALETTE = [
-  "#a855f7", "#3fb950", "#f97316", "#06b6d4",
-  "#ec4899", "#eab308", "#6366f1", "#14b8a6",
-  "#f43f5e", "#84cc16", "#8b5cf6", "#0ea5e9",
+  "#a855f7",
+  "#3fb950",
+  "#f97316",
+  "#06b6d4",
+  "#ec4899",
+  "#eab308",
+  "#6366f1",
+  "#14b8a6",
+  "#f43f5e",
+  "#84cc16",
+  "#8b5cf6",
+  "#0ea5e9",
 ];
 
 const TAG_PALETTE = [
-  "#22d3ee", "#2dd4bf", "#4ade80", "#a3e635", "#facc15", "#fb923c",
+  "#22d3ee",
+  "#2dd4bf",
+  "#4ade80",
+  "#a3e635",
+  "#facc15",
+  "#fb923c",
 ];
 
 function clusterColor(id: number): string {
-  return CLUSTER_PALETTE[((id % CLUSTER_PALETTE.length) + CLUSTER_PALETTE.length) % CLUSTER_PALETTE.length];
+  return CLUSTER_PALETTE[
+    ((id % CLUSTER_PALETTE.length) + CLUSTER_PALETTE.length) %
+      CLUSTER_PALETTE.length
+  ];
 }
 
 function tagColor(idx: number): string {
@@ -41,28 +65,57 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+function lightenHex(hex: string, amount = 0.35): string {
+  const r = Math.min(255, Math.round(parseInt(hex.slice(1, 3), 16) + (255 - parseInt(hex.slice(1, 3), 16)) * amount));
+  const g = Math.min(255, Math.round(parseInt(hex.slice(3, 5), 16) + (255 - parseInt(hex.slice(3, 5), 16)) * amount));
+  const b = Math.min(255, Math.round(parseInt(hex.slice(5, 7), 16) + (255 - parseInt(hex.slice(5, 7), 16)) * amount));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 function darkenHex(hex: string, amount = 0.45): string {
-  const r = Math.max(0, Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount)));
-  const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)));
-  const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)));
+  const r = Math.max(
+    0,
+    Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount)),
+  );
+  const g = Math.max(
+    0,
+    Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)),
+  );
+  const b = Math.max(
+    0,
+    Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)),
+  );
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
 
-function convexHull(pts: { x: number; y: number }[]): { x: number; y: number }[] {
+function convexHull(
+  pts: { x: number; y: number }[],
+): { x: number; y: number }[] {
   if (pts.length < 3) return pts;
   const sorted = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const cross = (
+    o: { x: number; y: number },
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
   const lower: { x: number; y: number }[] = [];
   for (const p of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+    )
+      lower.pop();
     lower.push(p);
   }
   const upper: { x: number; y: number }[] = [];
   for (const p of [...sorted].reverse()) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+    )
+      upper.pop();
     upper.push(p);
   }
   upper.pop();
@@ -70,7 +123,10 @@ function convexHull(pts: { x: number; y: number }[]): { x: number; y: number }[]
   return lower.concat(upper);
 }
 
-function expandHull(hull: { x: number; y: number }[], padding: number): { x: number; y: number }[] {
+function expandHull(
+  hull: { x: number; y: number }[],
+  padding: number,
+): { x: number; y: number }[] {
   if (hull.length === 0) return hull;
   const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
   const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
@@ -82,7 +138,10 @@ function expandHull(hull: { x: number; y: number }[], padding: number): { x: num
   });
 }
 
-function drawSmoothClosed(ctx: CanvasRenderingContext2D, hull: { x: number; y: number }[]) {
+function drawSmoothClosed(
+  ctx: CanvasRenderingContext2D,
+  hull: { x: number; y: number }[],
+) {
   const n = hull.length;
   if (n < 3) return;
   ctx.beginPath();
@@ -156,11 +215,14 @@ function drawHullForGroup(
 
 type SizeMode = "connections" | "importance" | "uniform";
 
-function computeSize(mode: SizeMode, connections: number, importance: number): number {
-  if (mode === "uniform") return 14;
-  if (mode === "importance") return 8 + importance * 18;
-  // connections (default)
-  return 8 + Math.min(18, Math.log2(connections + 1) * 6);
+function computeSize(
+  mode: SizeMode,
+  connections: number,
+  importance: number,
+): number {
+  if (mode === "uniform") return 18;
+  if (mode === "importance") return 12 + importance * 28;
+  return 12 + Math.min(28, Math.log1p(connections) * 8);
 }
 
 // ─── Memory type colors (pre-assigned + dynamic) ───────────────────────────
@@ -176,8 +238,14 @@ const TYPE_COLOR_PREASSIGNED: Record<string, string> = {
 };
 
 const TYPE_COLOR_DYNAMIC = [
-  "#f778ba", "#bb86fc", "#4fc3f7", "#aed581",
-  "#ffb74d", "#ff6b6b", "#22d3ee", "#e879f9",
+  "#f778ba",
+  "#bb86fc",
+  "#4fc3f7",
+  "#aed581",
+  "#ffb74d",
+  "#ff6b6b",
+  "#22d3ee",
+  "#e879f9",
 ];
 
 const typeColorAssignments = new Map<string, string>();
@@ -185,9 +253,13 @@ let nextDynamicIdx = 0;
 
 function getTypeColor(memoryType: string | null): string {
   if (!memoryType) return "#8b949e";
-  if (TYPE_COLOR_PREASSIGNED[memoryType]) return TYPE_COLOR_PREASSIGNED[memoryType];
+  if (TYPE_COLOR_PREASSIGNED[memoryType])
+    return TYPE_COLOR_PREASSIGNED[memoryType];
   if (!typeColorAssignments.has(memoryType)) {
-    typeColorAssignments.set(memoryType, TYPE_COLOR_DYNAMIC[nextDynamicIdx % TYPE_COLOR_DYNAMIC.length]);
+    typeColorAssignments.set(
+      memoryType,
+      TYPE_COLOR_DYNAMIC[nextDynamicIdx % TYPE_COLOR_DYNAMIC.length],
+    );
     nextDynamicIdx++;
   }
   return typeColorAssignments.get(memoryType)!;
@@ -218,68 +290,89 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
     const edges: any[] = [];
     const neighborIds = new Set<string>();
 
-    // Entity nodes — diamond
+    // Entity nodes — diamond (deduplicate by name+type)
+    const seenEntities = new Set<string>();
     for (const e of data.entities) {
+      const entityKey = `${e.name}::${e.entity_type}`;
+      if (seenEntities.has(entityKey)) continue;
+      seenEntities.add(entityKey);
       nodes.push({
-        id: `entity-${e.name}`,
+        id: `entity-${e.name}-${e.entity_type}`,
         label: e.name,
         shape: "diamond",
-        size: 14,
-        color: { background: "#ffa657", border: "#ffa657", highlight: { background: "#ffa657", border: "#fff" } },
-        font: { color: "#c9d1d9", size: 10, face: "Inter, sans-serif" },
-        borderWidth: 1.5,
+        size: 16,
+        color: {
+          background: "#ffa657",
+          border: "#ffa657",
+          highlight: { background: "#ffa657", border: "#fff" },
+        },
+        font: { color: "#c9d1d9", size: 11, face: "Inter, sans-serif" },
+        borderWidth: 2,
       });
     }
 
-    // Neighbor memory nodes — dot
+    // Neighbor memory nodes — dot (deduplicate by id)
     for (const n of data.neighbors) {
+      if (neighborIds.has(n.id)) continue;
       neighborIds.add(n.id);
       nodes.push({
         id: n.id,
-        label: n.content.slice(0, 20) + (n.content.length > 20 ? "…" : ""),
+        label: n.content.slice(0, 18) + (n.content.length > 18 ? "…" : ""),
         shape: "dot",
-        size: 10,
-        color: { background: "#8b5cf6", border: "#a855f7", highlight: { background: "#a855f7", border: "#fff" } },
-        font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
+        size: 12,
+        color: {
+          background: "#8b5cf6",
+          border: "#a855f7",
+          highlight: { background: "#a855f7", border: "#fff" },
+        },
+        font: { color: "#8b949e", size: 10, face: "Inter, sans-serif" },
         borderWidth: 1,
         _isNeighbor: true,
         _neighborId: n.id,
       });
     }
 
-    // Relation edges
-    const entityNodeIds = new Set(data.entities.map((e) => `entity-${e.name}`));
+    // Relation edges — map entity names to node IDs
+    const entityNameToId = new Map<string, string>();
+    for (const e of data.entities) {
+      if (!entityNameToId.has(e.name)) {
+        entityNameToId.set(e.name, `entity-${e.name}-${e.entity_type}`);
+      }
+    }
+    const entityNodeIds = new Set(entityNameToId.values());
     for (let i = 0; i < data.relations.length; i++) {
       const r = data.relations[i];
-      const src = `entity-${r.source}`;
-      const tgt = `entity-${r.target}`;
-      if (entityNodeIds.has(src) && entityNodeIds.has(tgt)) {
+      const src = entityNameToId.get(r.source);
+      const tgt = entityNameToId.get(r.target);
+      if (src && tgt && entityNodeIds.has(src) && entityNodeIds.has(tgt)) {
         edges.push({
           id: `rel-${i}`,
-          from: src,
-          to: tgt,
+          from: src!,
+          to: tgt!,
           label: r.type,
-          arrows: { to: { enabled: true, scaleFactor: 0.4 } },
-          color: { color: "#444c56", highlight: "#4CC9F0", opacity: 0.8 },
-          font: { color: "#6e7681", size: 8, strokeWidth: 0 },
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+          color: { color: "#7a8490", highlight: "#4CC9F0", opacity: 0.9 },
+          font: { color: "#8b949e", size: 9, strokeWidth: 0 },
           smooth: { type: "continuous", roundness: 0.3 },
-          width: 1,
+          width: 1.5,
         });
       }
     }
 
     // Entity→memory edges (entity appears in neighbor)
     for (const e of data.entities) {
+      const entityId = entityNameToId.get(e.name);
+      if (!entityId) continue;
       for (const mid of e.memory_ids) {
         if (neighborIds.has(mid)) {
           edges.push({
-            id: `em-${e.name}-${mid}`,
-            from: `entity-${e.name}`,
+            id: `em-${e.name}-${e.entity_type}-${mid}`,
+            from: entityId,
             to: mid,
             arrows: {},
-            color: { color: "#21262d", opacity: 0.5 },
+            color: { color: "#586069", opacity: 0.7 },
             smooth: { type: "curvedCW", roundness: 0.2 },
-            width: 0.5,
+            width: 1,
             dashes: [3, 3],
           });
         }
@@ -295,21 +388,37 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
       {
         physics: {
           barnesHut: {
-            gravitationalConstant: -1500,
-            springLength: 70,
-            springConstant: 0.05,
-            damping: 0.4,
-            avoidOverlap: 0.8,
+            gravitationalConstant: -600,
+            springLength: 60,
+            springConstant: 0.08,
+            damping: 0.5,
+            avoidOverlap: 0.4,
           },
-          stabilization: { enabled: true, iterations: 200, fit: true },
+          stabilization: { enabled: true, iterations: 150, fit: true },
         },
-        interaction: { hover: true, tooltipDelay: 99999, zoomView: true, dragView: true },
-        edges: { smooth: { enabled: true, type: "continuous", roundness: 0.2 } },
-      }
+        interaction: {
+          hover: true,
+          tooltipDelay: 99999,
+          zoomView: true,
+          dragView: true,
+        },
+        edges: {
+          color: { color: "#6e7681", opacity: 0.8 },
+          smooth: { enabled: true, type: "continuous", roundness: 0.2 },
+          length: 60,
+        },
+        nodes: {
+          shape: "dot",
+          size: 14,
+          font: { color: "#c9d1d9", size: 11 },
+          borderWidth: 2,
+        },
+      },
     );
 
     network.on("stabilizationIterationsDone", () => {
       network.setOptions({ physics: { enabled: false } });
+      network.fit({ animation: { duration: 200, easingFunction: "easeInOutQuad" } });
     });
 
     // Navigate to neighbor on click
@@ -331,9 +440,16 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
     };
   }, [data, onNavigate]);
 
-  if (isLoading) return <p className="text-xs text-muted-foreground p-2">Loading context…</p>;
+  if (isLoading)
+    return (
+      <p className="text-xs text-muted-foreground p-2">Loading context…</p>
+    );
   if (!data || (data.entities.length === 0 && data.neighbors.length === 0)) {
-    return <p className="text-xs text-muted-foreground p-2">No entity context available.</p>;
+    return (
+      <p className="text-xs text-muted-foreground p-2">
+        No entities extracted yet. Run the pipeline with entity extraction enabled to populate this graph.
+      </p>
+    );
   }
 
   return (
@@ -345,26 +461,392 @@ function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
   );
 }
 
+// ─── Filter Panel ────────────────────────────────────────────────────────────
+
+interface FilterPanelProps {
+  tagGroups: [string, [string, number][]][];
+  allTypes: [string, number][];
+  allSources: [string, number][];
+  allClusters: [number, number][];
+  clusterNames: Record<string, string>;
+  selectedTags: Set<string>;
+  selectedTypes: Set<string>;
+  selectedSources: Set<string>;
+  selectedClusters: Set<number>;
+  searchText: string;
+  onSearchChange: (v: string) => void;
+  onTagToggle: (tag: string) => void;
+  onTypeToggle: (type: string) => void;
+  onSourceToggle: (src: string) => void;
+  onClusterToggle: (cid: number) => void;
+  onShowAll: () => void;
+}
+
+function FilterPanel({
+  tagGroups,
+  allTypes,
+  allSources,
+  allClusters,
+  clusterNames,
+  selectedTags,
+  selectedTypes,
+  selectedSources,
+  selectedClusters,
+  searchText,
+  onSearchChange,
+  onTagToggle,
+  onTypeToggle,
+  onSourceToggle,
+  onClusterToggle,
+  onShowAll,
+}: FilterPanelProps) {
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
+
+  function toggleGroup(group: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      next.has(group) ? next.delete(group) : next.add(group);
+      return next;
+    });
+  }
+
+  const hasFilters =
+    searchText.trim() !== "" ||
+    selectedTags.size > 0 ||
+    selectedTypes.size > 0 ||
+    selectedSources.size > 0 ||
+    selectedClusters.size > 0;
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0" style={{ width: 280 }}>
+      {/* Fixed search header */}
+      <div className="p-3 pb-2 border-b border-border shrink-0">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+          Search
+        </p>
+        <input
+          type="text"
+          placeholder="Filter by content…"
+          value={searchText}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="w-full text-sm bg-background border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+        />
+      </div>
+
+      {/* Scrollable filter sections */}
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        <div className="p-3 space-y-4">
+          {/* Tags */}
+          {tagGroups.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Tags
+              </p>
+              <div className="space-y-2">
+                {tagGroups.map(([category, tags]) => (
+                  <div key={category}>
+                    <button
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground w-full text-left mb-1"
+                      onClick={() => toggleGroup(category)}
+                    >
+                      <span className="font-medium capitalize">{category}</span>
+                      <span className="ml-auto opacity-60">
+                        {collapsedGroups.has(category) ? "▶" : "▼"}
+                      </span>
+                    </button>
+                    {!collapsedGroups.has(category) && (
+                      <div className="space-y-0.5 pl-1">
+                        {tags.map(([tag, count]) => (
+                          <label
+                            key={tag}
+                            className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedTags.has(tag)}
+                              onChange={() => onTagToggle(tag)}
+                              className="accent-primary w-3.5 h-3.5"
+                            />
+                            <span
+                              className={`flex-1 truncate ${
+                                selectedTags.has(tag)
+                                  ? "text-foreground"
+                                  : "text-muted-foreground group-hover:text-foreground"
+                              }`}
+                              title={tag}
+                            >
+                              {tag.includes("/")
+                                ? tag.split("/").slice(1).join("/")
+                                : tag}
+                            </span>
+                            <span className="opacity-40 text-xs">{count}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Types */}
+          {allTypes.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Types
+              </p>
+              <div className="space-y-0.5">
+                {allTypes.map(([type, count]) => {
+                  const realType = type === "(none)" ? null : type;
+                  const color = getTypeColor(realType);
+                  return (
+                    <label
+                      key={type}
+                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedTypes.has(type)}
+                        onChange={() => onTypeToggle(type)}
+                        className="accent-primary w-3.5 h-3.5"
+                      />
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span
+                        className={`flex-1 truncate ${
+                          selectedTypes.has(type)
+                            ? "text-foreground"
+                            : "text-muted-foreground group-hover:text-foreground"
+                        }`}
+                      >
+                        {type}
+                      </span>
+                      <span className="opacity-40 text-xs">{count}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Sources */}
+          {allSources.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Sources
+              </p>
+              <div className="space-y-0.5">
+                {allSources.map(([src, count]) => (
+                  <label
+                    key={src}
+                    className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSources.has(src)}
+                      onChange={() => onSourceToggle(src)}
+                      className="accent-primary w-3.5 h-3.5"
+                    />
+                    <span
+                      className={`flex-1 truncate ${
+                        selectedSources.has(src)
+                          ? "text-foreground"
+                          : "text-muted-foreground group-hover:text-foreground"
+                      }`}
+                      title={src}
+                    >
+                      {src}
+                    </span>
+                    <span className="opacity-40 text-xs">{count}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Clusters */}
+          {allClusters.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Clusters
+              </p>
+              <div className="space-y-0.5">
+                {allClusters.map(([cid, count]) => {
+                  const color = clusterColor(cid);
+                  return (
+                    <label
+                      key={cid}
+                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedClusters.has(cid)}
+                        onChange={() => onClusterToggle(cid)}
+                        className="accent-primary w-3.5 h-3.5"
+                      />
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0 opacity-70"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span
+                        className={`flex-1 ${
+                          selectedClusters.has(cid)
+                            ? "text-foreground"
+                            : "text-muted-foreground group-hover:text-foreground"
+                        }`}
+                      >
+                        {clusterNames[String(cid)] || `Cluster ${cid}`}
+                      </span>
+                      <span className="opacity-40 text-xs">{count}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Fixed Show All button */}
+      <div className="p-3 border-t border-border shrink-0">
+        <button
+          className={`w-full text-sm py-1.5 rounded border transition-colors ${
+            hasFilters
+              ? "border-primary text-primary hover:bg-primary/10"
+              : "border-border text-muted-foreground cursor-default opacity-50"
+          }`}
+          onClick={onShowAll}
+          disabled={!hasFilters}
+        >
+          Show All
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function UnifiedGraph() {
-  const [similarityThreshold, setSimilarityThreshold] = useState(0.75);
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.5);
+  const [clusterMinScore, setClusterMinScore] = useState(0.2);
+  const [minClusterSize, setMinClusterSize] = useState(3);
   const debouncedSimilarity = useDebouncedValue(similarityThreshold, 500);
-  const { data, isLoading } = useUnifiedGraph(debouncedSimilarity);
+  const debouncedClusterScore = useDebouncedValue(clusterMinScore, 500);
+  const debouncedMinSize = useDebouncedValue(minClusterSize, 500);
+  const { data, isLoading } = useUnifiedGraph(
+    debouncedSimilarity,
+    debouncedClusterScore,
+    debouncedMinSize,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodesDataSetRef = useRef<DataSet<any> | null>(null);
   const connectionsMapRef = useRef<Map<string, number>>(new Map());
+  const exitFocusModeRef = useRef<(() => void) | null>(null);
+  const focusOnNodeRef = useRef<((id: string) => void) | null>(null);
 
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [sizeMode, setSizeMode] = useState<SizeMode>("connections");
   const [showTagOverlay, setShowTagOverlay] = useState(false);
-  const [spacing, setSpacing] = useState(50); // 0=tight, 100=sparse
-  const debouncedSpacing = useDebouncedValue(spacing, 500);
+  const [clusterTightness, setClusterTightness] = useState(300);
+  const [nodeSpacing, setNodeSpacing] = useState(100);
+  const debouncedTightness = useDebouncedValue(clusterTightness, 500);
+  const debouncedSpacing = useDebouncedValue(nodeSpacing, 500);
+
+  const [showPanel, setShowPanel] = useState(true);
+
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const debouncedSearchText = useDebouncedValue(searchText, 1000);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(
+    new Set(),
+  );
+  const [selectedClusters, setSelectedClusters] = useState<Set<number>>(
+    new Set(),
+  );
+
+  function clearFilters() {
+    setSearchText("");
+    setSelectedTags(new Set());
+    setSelectedTypes(new Set());
+    setSelectedSources(new Set());
+    setSelectedClusters(new Set());
+  }
+
+  // Filtered memories
+  const filteredMemories = useMemo(() => {
+    if (!data) return [];
+    const hasFilter =
+      debouncedSearchText.trim() !== "" ||
+      selectedTags.size > 0 ||
+      selectedTypes.size > 0 ||
+      selectedSources.size > 0 ||
+      selectedClusters.size > 0;
+    if (!hasFilter) return data.memories;
+    return data.memories.filter((m) => {
+      if (selectedTags.size > 0 && !m.tags.some((t) => selectedTags.has(t)))
+        return false;
+      if (
+        selectedTypes.size > 0 &&
+        (!m.memory_type || !selectedTypes.has(m.memory_type))
+      )
+        return false;
+      if (selectedSources.size > 0 && !selectedSources.has(m.source))
+        return false;
+      if (selectedClusters.size > 0 && !selectedClusters.has(m.cluster))
+        return false;
+      if (
+        debouncedSearchText.trim() &&
+        !m.content
+          .toLowerCase()
+          .includes(debouncedSearchText.trim().toLowerCase())
+      )
+        return false;
+      return true;
+    });
+  }, [
+    data,
+    debouncedSearchText,
+    selectedTags,
+    selectedTypes,
+    selectedSources,
+    selectedClusters,
+  ]);
+
+  // Filtered clusters (only include clusters that still have members after filtering)
+  const filteredClusters = useMemo(() => {
+    if (!data) return {} as Record<string, string[]>;
+    const filteredIds = new Set(filteredMemories.map((m) => m.id));
+    const result: Record<string, string[]> = {};
+    for (const [cid, members] of Object.entries(data.clusters)) {
+      const kept = (members as string[]).filter((id) => filteredIds.has(id));
+      if (kept.length > 0) result[cid] = kept;
+    }
+    return result;
+  }, [data, filteredMemories]);
+
+  // Filtered similarity edges (both endpoints must be in filtered set)
+  const filteredEdges = useMemo(() => {
+    if (!data) return [];
+    const filteredIds = new Set(filteredMemories.map((m) => m.id));
+    return data.similarity_edges.filter(
+      (e) => filteredIds.has(e.source) && filteredIds.has(e.target),
+    );
+  }, [data, filteredMemories]);
 
   // Derive selected memory object
-  const selectedMemory = data?.memories.find((m) => m.id === selectedMemoryId) ?? null;
+  const selectedMemory =
+    data?.memories.find((m) => m.id === selectedMemoryId) ?? null;
 
   // Build a stable tag→color map
   const tagColorMap = useRef<Map<string, string>>(new Map());
@@ -379,7 +861,7 @@ export default function UnifiedGraph() {
 
     // Build connections count
     const connMap = new Map<string, number>();
-    for (const e of data.similarity_edges) {
+    for (const e of filteredEdges) {
       connMap.set(e.source, (connMap.get(e.source) ?? 0) + 1);
       connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1);
     }
@@ -398,7 +880,7 @@ export default function UnifiedGraph() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const edges: any[] = [];
 
-    for (const m of data.memories) {
+    for (const m of filteredMemories) {
       const color = getTypeColor(m.memory_type);
       const conns = connMap.get(m.id) ?? 0;
       const size = computeSize(sizeMode, conns, m.importance);
@@ -412,33 +894,42 @@ export default function UnifiedGraph() {
         color: {
           background: color,
           border: borderCol,
+          hover: { background: lightenHex(color), border: color },
           highlight: { background: color, border: darkenHex(color) },
         },
-        font: { color: "#8b949e", size: 9, face: "Inter, sans-serif" },
+        font: { color: "#c9d1d9", size: 13, face: "Inter, sans-serif" },
         borderWidth: 2,
         shadow: { enabled: true, color: color + "30", size: 8, x: 0, y: 1 },
-        mass: m.clusters.length > 0 ? 1.5 : 0.8,
+        mass: 0.5 + Math.min(2.5, Math.log1p(conns) * 0.8),
         _memory: m,
       });
     }
 
     // Similarity edges
-    for (let i = 0; i < data.similarity_edges.length; i++) {
-      const e = data.similarity_edges[i];
+    for (let i = 0; i < filteredEdges.length; i++) {
+      const e = filteredEdges[i];
       edges.push({
         id: `sim-${i}`,
         from: e.source,
         to: e.target,
-        color: hexToRgba("#8b949e", 0.25),
+        color: {
+          color: "#30363d",
+          hover: "#78a6e0b4",
+          highlight: "#4CC9F0",
+          inherit: false,
+        },
+        hoverWidth: 1.5,
         smooth: { type: "continuous", roundness: 0.2 },
-        width: Math.max(0.3, e.score * 0.8),
+        width: 1,
       });
     }
 
     // Hidden cluster attraction edges
     const allNodeIds = new Set(nodes.map((n: { id: string }) => n.id));
-    for (const [clusterId, memberIds] of Object.entries(data.clusters)) {
-      const members = (memberIds as string[]).filter((id) => allNodeIds.has(id));
+    for (const [clusterId, memberIds] of Object.entries(filteredClusters)) {
+      const members = (memberIds as string[]).filter((id) =>
+        allNodeIds.has(id),
+      );
       for (let i = 0; i < members.length; i++) {
         for (let j = i + 1; j < members.length; j++) {
           edges.push({
@@ -448,30 +939,29 @@ export default function UnifiedGraph() {
             hidden: true,
             physics: true,
             width: 0,
-            length: 50,
+            length: debouncedTightness,
           });
         }
       }
     }
 
-    // Seed positions in cluster circles
-    const clusterIds = Object.keys(data.clusters);
+    // Seed positions — clusters close together so hulls can overlap naturally
+    const clusterIds = Object.keys(filteredClusters);
     const nClusters = clusterIds.length;
-    const clusterRadius = 250 + nClusters * 40;
+    const clusterRadius = 80 + nClusters * 15;
     const clusterCenters: Record<string, { x: number; y: number }> = {};
     clusterIds.forEach((cid, i) => {
       const angle = (2 * Math.PI * i) / nClusters;
-      clusterCenters[cid] = { x: Math.cos(angle) * clusterRadius, y: Math.sin(angle) * clusterRadius };
+      clusterCenters[cid] = {
+        x: Math.cos(angle) * clusterRadius,
+        y: Math.sin(angle) * clusterRadius,
+      };
     });
-    // Use strongest cluster for seeding
-    const spread = 80 + Math.sqrt(nodes.length) * 8;
+    const spread = 60 + Math.sqrt(nodes.length) * 5;
     for (const node of nodes) {
       const m: UnifiedMemory = node._memory;
-      if (m.clusters.length > 0) {
-        const primaryCluster = m.clusters.reduce((best, c) => {
-          return (m.memberships[String(c)] ?? 0) > (m.memberships[String(best)] ?? 0) ? c : best;
-        }, m.clusters[0]);
-        const cid = String(primaryCluster);
+      if (m.cluster >= 0) {
+        const cid = String(m.cluster);
         if (clusterCenters[cid]) {
           node.x = clusterCenters[cid].x + (Math.random() - 0.5) * spread;
           node.y = clusterCenters[cid].y + (Math.random() - 0.5) * spread;
@@ -489,24 +979,38 @@ export default function UnifiedGraph() {
       {
         physics: {
           barnesHut: {
-            gravitationalConstant: -1500 - spacing * 60,
-            springLength: 60 + spacing * 2.5,
-            springConstant: 0.04 - spacing * 0.0002,
-            damping: 0.85,
-            avoidOverlap: 1.0,
+            gravitationalConstant: -3000,
+            springLength: debouncedSpacing,
+            springConstant: 0.02,
+            damping: 0.3,
+            avoidOverlap: 0.5,
           },
-          stabilization: { enabled: true, iterations: 400, fit: true },
-          maxVelocity: 10,
-          minVelocity: 0.3,
+          stabilization: { enabled: false },
         },
-        interaction: { hover: true, tooltipDelay: 99999, zoomView: true, dragView: true },
-        edges: { smooth: { enabled: true, type: "continuous", roundness: 0.2 } },
-      }
+        interaction: {
+          hover: true,
+          hoverConnectedEdges: true,
+          tooltipDelay: 99999,
+          zoomView: true,
+          dragView: true,
+        },
+        edges: {
+          smooth: { enabled: true, type: "continuous", roundness: 0.2 },
+          hoverWidth: 1.5,
+          color: { hover: "#78a6e0b4" },
+        },
+      },
     );
 
-    network.on("stabilizationIterationsDone", () => {
-      network.setOptions({ physics: { enabled: false } });
-    });
+    // Let physics run visibly, then stop after 1.5s and fit view
+    setTimeout(() => {
+      if (networkRef.current) {
+        networkRef.current.setOptions({ physics: { enabled: false } });
+        networkRef.current.fit({
+          animation: { duration: 300, easingFunction: "easeInOutQuad" },
+        });
+      }
+    }, 1500);
     // Only re-enable physics when dragging a NODE, not when panning the canvas
     network.on("dragStart", (params) => {
       if (params.nodes.length > 0) {
@@ -515,23 +1019,34 @@ export default function UnifiedGraph() {
     });
     network.on("dragEnd", (params) => {
       if (params.nodes.length > 0) {
-        setTimeout(() => network.setOptions({ physics: { enabled: false } }), 300);
+        setTimeout(
+          () => network.setOptions({ physics: { enabled: false } }),
+          300,
+        );
       }
     });
 
     // afterDrawing: fuzzy cluster hulls + optional tag overlay
     network.on("afterDrawing", (ctx: CanvasRenderingContext2D) => {
       // Cluster hulls (drawn first, lower z)
-      for (const [clusterId, memberIds] of Object.entries(data.clusters)) {
+      for (const [clusterId, memberIds] of Object.entries(filteredClusters)) {
         const cid = parseInt(clusterId);
         const color = clusterColor(cid);
-        drawHullForGroup(ctx, network, memberIds as string[], color, 0.07, 0.3, `Cluster ${clusterId}`);
+        drawHullForGroup(
+          ctx,
+          network,
+          memberIds as string[],
+          color,
+          0.07,
+          0.3,
+          `Cluster ${clusterId}`,
+        );
       }
 
       // Tag overlay hulls (drawn on top if enabled)
       if (showTagOverlay) {
         const tagGroups = new Map<string, string[]>();
-        for (const m of data.memories) {
+        for (const m of filteredMemories) {
           for (const tag of m.tags) {
             const arr = tagGroups.get(tag) ?? [];
             arr.push(m.id);
@@ -540,63 +1055,143 @@ export default function UnifiedGraph() {
         }
         let tagIdx = 0;
         for (const [tag, memberIds] of tagGroups.entries()) {
-          if (memberIds.length < 2) { tagIdx++; continue; }
+          if (memberIds.length < 2) {
+            tagIdx++;
+            continue;
+          }
           const color = tagColorMap.current.get(tag) ?? tagColor(tagIdx);
-          drawHullForGroup(ctx, network, memberIds, color, 0.05, 0.25, `#${tag}`);
+          drawHullForGroup(
+            ctx,
+            network,
+            memberIds,
+            color,
+            0.05,
+            0.25,
+            `#${tag}`,
+          );
           tagIdx++;
         }
       }
     });
 
-    // Focus/dim helpers (data guaranteed non-null here since we checked above)
-    const graphData = data!;
+    // Focus/dim helpers
     function focusOnNode(nodeId: string) {
       // Only nodes directly connected via similarity edges
       const directNeighbors = new Set<string>();
       const directEdgeIndices = new Set<number>();
-      graphData.similarity_edges.forEach((e, i) => {
-        if (e.source === nodeId) { directNeighbors.add(e.target); directEdgeIndices.add(i); }
-        if (e.target === nodeId) { directNeighbors.add(e.source); directEdgeIndices.add(i); }
+      filteredEdges.forEach((e, i) => {
+        if (e.source === nodeId) {
+          directNeighbors.add(e.target);
+          directEdgeIndices.add(i);
+        }
+        if (e.target === nodeId) {
+          directNeighbors.add(e.source);
+          directEdgeIndices.add(i);
+        }
       });
 
       // Update nodes: selected + direct neighbors bright, everything else dimmed
-      const nodeUpdates = graphData.memories.map((m) => {
+      const nodeUpdates = filteredMemories.map((m) => {
         const color = getTypeColor(m.memory_type);
         if (m.id === nodeId) {
-          return { id: m.id, opacity: 1, borderWidth: 5, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
+          return {
+            id: m.id,
+            opacity: 1,
+            borderWidth: 5,
+            color: {
+              background: color,
+              border: darkenHex(color),
+              highlight: { background: color, border: darkenHex(color) },
+            },
+          };
         } else if (directNeighbors.has(m.id)) {
-          return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } } };
+          return {
+            id: m.id,
+            opacity: 1,
+            borderWidth: 2,
+            color: {
+              background: color,
+              border: darkenHex(color),
+              highlight: { background: color, border: darkenHex(color) },
+            },
+          };
         } else {
-          return { id: m.id, opacity: 0.15, borderWidth: 1, color: { background: hexToRgba(color, 0.15), border: hexToRgba(color, 0.1), highlight: { background: color, border: darkenHex(color) } }, font: { color: hexToRgba("#8b949e", 0.15), size: 9 } };
+          return {
+            id: m.id,
+            opacity: 0.15,
+            borderWidth: 1,
+            color: {
+              background: hexToRgba(color, 0.15),
+              border: hexToRgba(color, 0.1),
+              highlight: { background: color, border: darkenHex(color) },
+            },
+            font: { color: hexToRgba("#c9d1d9", 0.15), size: 13 },
+          };
         }
       });
       nodesDataSet.update(nodeUpdates);
 
       // Update edges: only edges touching the selected node are highlighted
-      const edgeUpdates = graphData.similarity_edges.map((_, i) => {
+      const edgeUpdates = filteredEdges.map((_, i) => {
         if (directEdgeIndices.has(i)) {
-          return { id: `sim-${i}`, color: "#4CC9F0", width: 1.5 };
+          return {
+            id: `sim-${i}`,
+            color: {
+              color: "#4CC9F0",
+              hover: "#4CC9F0",
+              highlight: "#4CC9F0",
+              inherit: false,
+            },
+            width: 2.5,
+          };
         }
-        return { id: `sim-${i}`, color: hexToRgba("#21262d", 0.05), width: 0.2 };
+        return {
+          id: `sim-${i}`,
+          color: {
+            color: hexToRgba("#21262d", 0.05),
+            hover: hexToRgba("#21262d", 0.05),
+            highlight: hexToRgba("#21262d", 0.05),
+            inherit: false,
+          },
+          width: 0.2,
+        };
       });
       edgesDataSet.update(edgeUpdates);
     }
 
     function exitFocusMode() {
-      const nodeUpdates = graphData.memories.map((m) => {
+      const nodeUpdates = filteredMemories.map((m) => {
         const color = getTypeColor(m.memory_type);
-        return { id: m.id, opacity: 1, borderWidth: 2, color: { background: color, border: darkenHex(color), highlight: { background: color, border: darkenHex(color) } }, font: { color: "#8b949e", size: 9 } };
+        return {
+          id: m.id,
+          opacity: 1,
+          borderWidth: 2,
+          color: {
+            background: color,
+            border: darkenHex(color),
+            highlight: { background: color, border: darkenHex(color) },
+          },
+          font: { color: "#c9d1d9", size: 13 },
+        };
       });
       nodesDataSet.update(nodeUpdates);
 
       // Restore edges to normal
-      const edgeResets = graphData.similarity_edges.map((e, i) => ({
+      const edgeResets = filteredEdges.map((_, i) => ({
         id: `sim-${i}`,
-        color: hexToRgba("#8b949e", 0.25),
-        width: Math.max(0.3, e.score * 0.8),
+        color: {
+          color: "#30363d",
+          hover: "#78a6e0b4",
+          highlight: "#4CC9F0",
+          inherit: false,
+        },
+        width: 1,
       }));
       edgesDataSet.update(edgeResets);
     }
+
+    exitFocusModeRef.current = exitFocusMode;
+    focusOnNodeRef.current = focusOnNode;
 
     // Click handling
     network.on("click", (params) => {
@@ -605,7 +1200,12 @@ export default function UnifiedGraph() {
         const node = nodes.find((n: { id: string }) => n.id === nodeId);
         if (node?._memory) {
           setSelectedMemoryId(nodeId);
+          setShowPanel(true);
           focusOnNode(nodeId);
+          network.focus(nodeId, {
+            scale: network.getScale(),
+            animation: { duration: 400, easingFunction: "easeInOutQuad" },
+          });
         }
       } else if (params.nodes.length === 0 && params.edges.length === 0) {
         setSelectedMemoryId(null);
@@ -614,14 +1214,25 @@ export default function UnifiedGraph() {
     });
 
     networkRef.current = network;
-  // showTagOverlay intentionally excluded — tag overlay is drawn live in afterDrawing
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, debouncedSpacing, sizeMode]);
+    // showTagOverlay intentionally excluded — tag overlay is drawn live in afterDrawing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    data,
+    sizeMode,
+    debouncedTightness,
+    debouncedSpacing,
+    filteredMemories,
+    filteredEdges,
+    filteredClusters,
+  ]);
 
-  // Rebuild when data changes
+  // Rebuild when data changes (rAF prevents StrictMode double-build)
   useEffect(() => {
-    buildGraph();
+    const frame = requestAnimationFrame(() => {
+      buildGraph();
+    });
     return () => {
+      cancelAnimationFrame(frame);
       if (networkRef.current) {
         networkRef.current.destroy();
         networkRef.current = null;
@@ -636,200 +1247,501 @@ export default function UnifiedGraph() {
     }
   }, [showTagOverlay]);
 
-
   // Navigate from mini-graph neighbor click
   const handleNavigate = useCallback((id: string) => {
     setSelectedMemoryId(id);
+    setShowPanel(true);
+    focusOnNodeRef.current?.(id);
     if (networkRef.current) {
-      networkRef.current.selectNodes([id]);
-      networkRef.current.focus(id, { animation: { duration: 600, easingFunction: "easeInOutQuad" }, scale: 1.2 });
-      // Trigger focus/dim by simulating click
-      (networkRef.current as any).body.emitter.emit("click", { nodes: [id], edges: [], event: {}, pointer: { DOM: { x: 0, y: 0 }, canvas: { x: 0, y: 0 } } });
+      networkRef.current.focus(id, {
+        animation: { duration: 600, easingFunction: "easeInOutQuad" },
+        scale: networkRef.current.getScale(),
+      });
     }
   }, []);
 
   const memoryCount = data?.memories.length ?? 0;
+  const filteredCount = filteredMemories.length;
   const clusterCount = Object.keys(data?.clusters ?? {}).length;
+
+  // Derived totals for filter panel counts (always from full data, not filtered)
+  const allTags = useMemo((): [string, number][] => {
+    if (!data) return [];
+    const counts = new Map<string, number>();
+    for (const m of data.memories) {
+      for (const t of m.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    );
+  }, [data]);
+
+  const allTypes = useMemo(() => {
+    if (!data) return [] as [string, number][];
+    const counts = new Map<string, number>();
+    for (const m of data.memories) {
+      const t = m.memory_type ?? "(none)";
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [data]);
+
+  const allSources = useMemo(() => {
+    if (!data) return [] as [string, number][];
+    const counts = new Map<string, number>();
+    for (const m of data.memories)
+      counts.set(m.source, (counts.get(m.source) ?? 0) + 1);
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [data]);
+
+  const allClusters = useMemo(() => {
+    if (!data) return [] as [number, number][];
+    const counts = new Map<number, number>();
+    for (const m of data.memories) {
+      if (m.cluster >= 0)
+        counts.set(m.cluster, (counts.get(m.cluster) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => a[0] - b[0]);
+  }, [data]);
+
+  // Tag groups: group by category prefix (part before first "/")
+  const tagGroups = useMemo(() => {
+    const groups = new Map<string, [string, number][]>();
+    for (const [tag, count] of allTags) {
+      const slash = tag.indexOf("/");
+      const category = slash >= 0 ? tag.slice(0, slash) : "other";
+      const arr = groups.get(category) ?? [];
+      arr.push([tag, count]);
+      groups.set(category, arr);
+    }
+    return Array.from(groups.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    );
+  }, [allTags]);
 
   return (
     <div className="flex h-full" style={{ minHeight: 0 }}>
       {/* Main graph area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-3 flex-wrap">
-          <h2 className="text-xl font-semibold">Unified Graph</h2>
-
-          {/* Node size dropdown */}
-          <select
-            className="text-sm bg-card border border-border rounded px-2 py-1 text-foreground"
-            value={sizeMode}
-            onChange={(e) => setSizeMode(e.target.value as SizeMode)}
-          >
-            <option value="connections">Size: Connections</option>
-            <option value="importance">Size: Importance</option>
-            <option value="uniform">Size: Uniform</option>
-          </select>
-
-          {/* Spacing / density */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <label>Spacing</label>
-            <input
-              type="range" min="0" max="100" step="5"
-              value={spacing}
-              onChange={(e) => setSpacing(parseInt(e.target.value))}
-              className="w-20"
-            />
-            <span className="font-mono text-xs w-6">{spacing}</span>
-          </div>
-
-          {/* Similarity threshold */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <label>Similarity</label>
-            <input
-              type="range" min="0.5" max="0.95" step="0.05"
-              value={similarityThreshold}
-              onChange={(e) => setSimilarityThreshold(parseFloat(e.target.value))}
-              className="w-20"
-            />
-            <span className="font-mono text-xs w-8">{similarityThreshold}</span>
-          </div>
-
-          {/* Tag overlay toggle */}
-          <button
-            className={`text-sm px-3 py-1 rounded border transition-colors ${
-              showTagOverlay
-                ? "bg-cyan-500/20 border-cyan-500 text-cyan-400"
-                : "bg-card border-border text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setShowTagOverlay((v) => !v)}
-          >
-            Tag Overlay
-          </button>
-
-          {memoryCount > 0 && (
-            <span className="text-sm text-muted-foreground ml-auto">
-              {memoryCount} memories · {clusterCount} clusters
-            </span>
-          )}
-        </div>
-
-        {isLoading && <p className="text-muted-foreground">Loading…</p>}
+        {isLoading && <p className="text-muted-foreground p-3">Loading…</p>}
         {!isLoading && memoryCount === 0 && (
-          <p className="text-muted-foreground">
-            No data yet. Create memories with the pipeline running to populate the graph.
+          <p className="text-muted-foreground p-3">
+            No data yet. Create memories with the pipeline running to populate
+            the graph.
           </p>
         )}
 
         {memoryCount > 0 && (
-          <>
-            <div
-              ref={containerRef}
-              className="bg-[#0d1117] border border-border rounded-lg flex-1"
-              style={{ height: "calc(70vh - 50px)", minHeight: 300 }}
-            />
+          <div className="relative flex-1 min-h-0">
+            <div ref={containerRef} className="bg-[#0d1117] absolute inset-0" />
 
-            {/* Legend */}
-            <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-              <div className="flex gap-4 flex-wrap items-center">
-                <span className="font-medium uppercase tracking-wide">Type</span>
-                {Object.entries(TYPE_COLOR_PREASSIGNED).map(([type, color]) => (
-                  <div key={type} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    <span>{type}</span>
-                  </div>
-                ))}
-                {Array.from(typeColorAssignments.entries()).map(([type, color]) => (
-                  <div key={type} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    <span>{type}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-4 flex-wrap items-center">
-                <span className="font-medium uppercase tracking-wide">Clusters</span>
-                {Array.from({ length: Math.min(clusterCount, CLUSTER_PALETTE.length) }, (_, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: clusterColor(i), opacity: 0.5 }} />
-                    <span>{i}</span>
-                  </div>
-                ))}
+            {/* Floating toolbar */}
+            {/* Filter button — top left */}
+            <div className="absolute top-3 left-3 z-20">
+              <Button
+                variant="outline"
+                size="sm"
+                className={`shadow-lg ${showFilters ? "bg-primary/20 border-primary text-primary hover:bg-primary/30 hover:text-primary" : "bg-card/80 backdrop-blur-sm"}`}
+                onClick={() => setShowFilters((v) => !v)}
+              >
+                <Filter className="w-4 h-4 mr-1.5" />
+                Filters
+              </Button>
+            </div>
+
+            {/* Centered toolbar */}
+            <div className="absolute top-3 left-0 right-0 z-10 flex justify-center pointer-events-none">
+              {/* Controls */}
+              <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-md border border-border shadow-lg px-3 py-1.5 pointer-events-auto flex-wrap">
+                <Select
+                  value={sizeMode}
+                  onValueChange={(v) => setSizeMode(v as SizeMode)}
+                >
+                  <SelectTrigger className="w-36 h-7 text-xs border-0 bg-transparent p-0 pr-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="connections">
+                      Size: Connections
+                    </SelectItem>
+                    <SelectItem value="importance">Size: Importance</SelectItem>
+                    <SelectItem value="uniform">Size: Uniform</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label>Edges</label>
+                  <input
+                    type="range"
+                    min="0.3"
+                    max="0.95"
+                    step="0.05"
+                    value={similarityThreshold}
+                    onChange={(e) =>
+                      setSimilarityThreshold(parseFloat(e.target.value))
+                    }
+                    className="w-14"
+                  />
+                  <span className="font-mono w-5">{similarityThreshold}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label>Cluster</label>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="0.8"
+                    step="0.05"
+                    value={clusterMinScore}
+                    onChange={(e) =>
+                      setClusterMinScore(parseFloat(e.target.value))
+                    }
+                    className="w-14"
+                  />
+                  <span className="font-mono w-5">{clusterMinScore}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label>Min</label>
+                  <input
+                    type="range"
+                    min="2"
+                    max="10"
+                    step="1"
+                    value={minClusterSize}
+                    onChange={(e) =>
+                      setMinClusterSize(parseInt(e.target.value))
+                    }
+                    className="w-10"
+                  />
+                  <span className="font-mono w-3">{minClusterSize}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label>Tight</label>
+                  <input
+                    type="range"
+                    min="30"
+                    max="300"
+                    step="10"
+                    value={clusterTightness}
+                    onChange={(e) =>
+                      setClusterTightness(parseInt(e.target.value))
+                    }
+                    className="w-14"
+                  />
+                  <span className="font-mono w-5">{clusterTightness}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label>Space</label>
+                  <input
+                    type="range"
+                    min="100"
+                    max="500"
+                    step="25"
+                    value={nodeSpacing}
+                    onChange={(e) => setNodeSpacing(parseInt(e.target.value))}
+                    className="w-14"
+                  />
+                  <span className="font-mono w-5">{nodeSpacing}</span>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 text-xs ${showTagOverlay ? "text-cyan-400" : "text-muted-foreground"}`}
+                  onClick={() => setShowTagOverlay((v) => !v)}
+                >
+                  Tags
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => {
+                    setSimilarityThreshold(0.5);
+                    setClusterMinScore(0.2);
+                    setMinClusterSize(3);
+                    setClusterTightness(300);
+                    setNodeSpacing(100);
+                    setSizeMode("connections");
+                    setShowTagOverlay(false);
+                    clearFilters();
+                  }}
+                >
+                  Reset
+                </Button>
               </div>
             </div>
-          </>
-        )}
-      </div>
 
-      {/* Right sidebar */}
-      {selectedMemory && (
-        <div
-          className="w-[350px] border-l border-border overflow-auto flex-shrink-0 bg-card"
-          style={{ maxHeight: "calc(70vh + 50px)" }}
-        >
-          {/* Close button */}
-          <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border">
-            <span className="text-sm font-medium">Memory Detail</span>
-            <button
-              className="text-muted-foreground hover:text-foreground text-lg leading-none"
-              onClick={() => setSelectedMemoryId(null)}
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="p-4 space-y-3">
-            {/* Full content */}
-            <p className="text-sm text-foreground leading-relaxed">{selectedMemory.content}</p>
-
-            {/* Tags */}
-            {selectedMemory.tags.length > 0 && (
-              <div className="flex gap-1 flex-wrap">
-                {selectedMemory.tags.map((t) => (
-                  <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-accent text-primary">
-                    {t}
-                  </span>
-                ))}
+            {/* Panel toggle — top right */}
+            {!showPanel && (
+              <div className="absolute top-3 right-3 z-10">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shadow-lg bg-card/80 backdrop-blur-sm"
+                  onClick={() => setShowPanel(true)}
+                >
+                  <PanelRightClose className="w-4 h-4" />
+                </Button>
               </div>
             )}
 
-            {/* Meta */}
-            <div className="text-xs text-muted-foreground space-y-0.5">
-              <div>Source: <span className="text-foreground">{selectedMemory.source}</span></div>
-              {selectedMemory.memory_type && (
-                <div>Type: <span className="text-foreground">{selectedMemory.memory_type}</span></div>
-              )}
-              <div>
-                Importance: <span className="text-foreground">{selectedMemory.importance.toFixed(2)}</span>
-              </div>
-              {selectedMemory.clusters.length > 0 && (
-                <div className="flex items-center gap-1">
-                  Clusters:{" "}
-                  {selectedMemory.clusters.map((c) => (
+            {/* Floating filter panel */}
+            <div
+              className={`absolute top-14 left-3 z-20 rounded-lg border border-border shadow-xl bg-card overflow-clip flex flex-col transition-all duration-200 ease-out origin-top ${showFilters ? "opacity-100 scale-y-100" : "opacity-0 scale-y-0 pointer-events-none"}`}
+              style={{ maxHeight: "calc(100% - 68px)" }}
+            >
+              <FilterPanel
+                tagGroups={tagGroups}
+                allTypes={allTypes}
+                allSources={allSources}
+                allClusters={allClusters}
+                clusterNames={data?.cluster_names ?? {}}
+                selectedTags={selectedTags}
+                selectedTypes={selectedTypes}
+                selectedSources={selectedSources}
+                selectedClusters={selectedClusters}
+                searchText={searchText}
+                onSearchChange={setSearchText}
+                onTagToggle={(tag) =>
+                  setSelectedTags((prev) => {
+                    const next = new Set(prev);
+                    next.has(tag) ? next.delete(tag) : next.add(tag);
+                    return next;
+                  })
+                }
+                onTypeToggle={(type) =>
+                  setSelectedTypes((prev) => {
+                    const next = new Set(prev);
+                    next.has(type) ? next.delete(type) : next.add(type);
+                    return next;
+                  })
+                }
+                onSourceToggle={(src) =>
+                  setSelectedSources((prev) => {
+                    const next = new Set(prev);
+                    next.has(src) ? next.delete(src) : next.add(src);
+                    return next;
+                  })
+                }
+                onClusterToggle={(cid) =>
+                  setSelectedClusters((prev) => {
+                    const next = new Set(prev);
+                    next.has(cid) ? next.delete(cid) : next.add(cid);
+                    return next;
+                  })
+                }
+                onShowAll={clearFilters}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right panel */}
+      {showPanel && memoryCount > 0 && (
+        <div className="w-[320px] shrink-0 border-l border-border bg-card overflow-auto">
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border">
+            <span className="text-sm font-medium">
+              {selectedMemory ? "Memory Detail" : "Graph Summary"}
+            </span>
+            <button
+              className="text-muted-foreground hover:text-foreground rounded-sm p-1"
+              onClick={() => {
+                setShowPanel(false);
+                if (selectedMemory) {
+                  setSelectedMemoryId(null);
+                  exitFocusModeRef.current?.();
+                  networkRef.current?.unselectAll();
+                  networkRef.current?.redraw();
+                }
+              }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Memory detail */}
+          {selectedMemory ? (
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-foreground leading-relaxed">
+                {selectedMemory.content}
+              </p>
+
+              {selectedMemory.tags.length > 0 && (
+                <div className="flex gap-1 flex-wrap">
+                  {selectedMemory.tags.map((t) => (
                     <span
-                      key={c}
-                      className="inline-flex items-center gap-1 text-foreground"
+                      key={t}
+                      className="text-xs px-1.5 py-0.5 rounded bg-accent text-primary"
                     >
-                      <span
-                        className="inline-block w-2 h-2 rounded-full"
-                        style={{ backgroundColor: clusterColor(c) }}
-                      />
-                      {c} ({((selectedMemory.memberships[String(c)] ?? 0) * 100).toFixed(0)}%)
+                      {t}
                     </span>
                   ))}
                 </div>
               )}
-            </div>
 
-            {/* Mini sub-graph */}
-            <div className="pt-2 border-t border-border">
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-                Entity Context
-              </p>
-              <MiniGraph memoryId={selectedMemory.id} onNavigate={handleNavigate} />
-              <p className="text-xs text-muted-foreground mt-1">
-                Click a neighbor node to navigate.
-              </p>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>
+                  Source:{" "}
+                  <span className="text-foreground">
+                    {selectedMemory.source}
+                  </span>
+                </div>
+                {selectedMemory.memory_type && (
+                  <div>
+                    Type:{" "}
+                    <span className="text-foreground">
+                      {selectedMemory.memory_type}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  Importance:{" "}
+                  <span className="text-foreground">
+                    {selectedMemory.importance.toFixed(2)}
+                  </span>
+                </div>
+                {selectedMemory.cluster >= 0 && (
+                  <div className="flex items-center gap-1">
+                    Cluster:{" "}
+                    <span className="inline-flex items-center gap-1 text-foreground">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full"
+                        style={{
+                          backgroundColor: clusterColor(selectedMemory.cluster),
+                        }}
+                      />
+                      {data?.cluster_names?.[String(selectedMemory.cluster)] ||
+                        `Cluster ${selectedMemory.cluster}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-border">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                  Entity Context
+                </p>
+                <MiniGraph
+                  memoryId={selectedMemory.id}
+                  onNavigate={handleNavigate}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Click a neighbor node to navigate.
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Graph summary */
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-background rounded-lg p-3">
+                  <p className="text-2xl font-bold">{filteredCount}</p>
+                  <p className="text-xs text-muted-foreground">Memories</p>
+                </div>
+                <div className="bg-background rounded-lg p-3">
+                  <p className="text-2xl font-bold">{clusterCount}</p>
+                  <p className="text-xs text-muted-foreground">Clusters</p>
+                </div>
+                <div className="bg-background rounded-lg p-3">
+                  <p className="text-2xl font-bold">{filteredEdges.length}</p>
+                  <p className="text-xs text-muted-foreground">Edges</p>
+                </div>
+                <div className="bg-background rounded-lg p-3">
+                  <p className="text-2xl font-bold">{allTypes.length}</p>
+                  <p className="text-xs text-muted-foreground">Types</p>
+                </div>
+              </div>
+
+              {/* Clusters list */}
+              {allClusters.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                    Clusters
+                  </p>
+                  <div className="space-y-1.5">
+                    {allClusters.map(([cid, count]) => (
+                      <div
+                        key={cid}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: clusterColor(cid) }}
+                        />
+                        <span className="flex-1 truncate text-foreground">
+                          {data?.cluster_names?.[String(cid)] ||
+                            `Cluster ${cid}`}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Types breakdown */}
+              {allTypes.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                    Types
+                  </p>
+                  <div className="space-y-1.5">
+                    {allTypes.map(([type, count]) => {
+                      const color = getTypeColor(
+                        type === "(none)" ? null : type,
+                      );
+                      return (
+                        <div
+                          key={type}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="flex-1 text-foreground">{type}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Sources breakdown */}
+              {allSources.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                    Sources
+                  </p>
+                  <div className="space-y-1.5">
+                    {allSources.map(([src, count]) => (
+                      <div
+                        key={src}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <span className="flex-1 text-foreground">{src}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
