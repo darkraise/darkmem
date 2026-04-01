@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Node3D, GraphData3D } from "@/lib/graph-utils";
-import { clusterColor, typeColor } from "@/lib/graph-utils";
+import { clusterColor, typeColor } from "@/lib/graph-colors";
 
 interface Graph3DDetailPanelProps {
   selectedNode: Node3D | null;

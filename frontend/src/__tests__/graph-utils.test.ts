@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  transformToGraphData,
-  clusterColor,
-  computeNodeVal,
-  CLUSTER_PALETTE,
-  UNCLUSTERED_COLOR,
-} from "@/lib/graph-utils";
+import { transformToGraphData, computeNodeVal } from "@/lib/graph-utils";
+import { clusterColor, CLUSTER_PALETTE, UNCLUSTERED_COLOR } from "@/lib/graph-colors";
 import type { UnifiedGraphData } from "@/hooks/useApi";
 import type { FilterState } from "@/lib/graph-utils";
 

@@ -2,8 +2,8 @@ import { useRef, useCallback, useEffect, useMemo } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
-import type { Node3D, Link3D, GraphData3D } from "@/lib/graph-utils";
-import { clusterColor } from "@/lib/graph-utils";
+import type { Node3D, GraphData3D } from "@/lib/graph-utils";
+import { clusterColor } from "@/lib/graph-colors";
 
 interface ForceGraph3DWrapperProps {
   graphData: GraphData3D;
