@@ -135,7 +135,11 @@ export function transformToGraphData(
     for (let j = i + 1; j < clusterIdList.length; j++) {
       const rep1 = clusterMembers.get(clusterIdList[i])![0];
       const rep2 = clusterMembers.get(clusterIdList[j])![0];
-      links.push({ source: rep1, target: rep2, score: 0, hidden: true });
+      const key1 = `${rep1}-${rep2}`;
+      const key2 = `${rep2}-${rep1}`;
+      if (!existingEdges.has(key1) && !existingEdges.has(key2)) {
+        links.push({ source: rep1, target: rep2, score: 0, hidden: true });
+      }
     }
   }
 
