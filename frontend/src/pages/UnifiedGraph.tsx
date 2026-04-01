@@ -13,11 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, Filter, PanelRightClose } from "lucide-react";
+import { Filter, PanelRightClose } from "lucide-react";
 import { Network, DataSet } from "vis-network/standalone";
 import { GraphSkeleton } from "@/components/graph/GraphSkeleton";
 import { MiniGraph } from "@/components/graph/MiniGraph";
 import { GraphFilterPanel } from "@/components/graph/GraphFilterPanel";
+import { GraphDetailPanel } from "@/components/graph/GraphDetailPanel";
 
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -574,8 +575,6 @@ export default function UnifiedGraph() {
   }, []);
 
   const memoryCount = data?.memories.length ?? 0;
-  const filteredCount = filteredMemories.length;
-  const clusterCount = Object.keys(data?.clusters ?? {}).length;
 
   // Derived totals for filter panel counts (always from full data, not filtered)
   const allTags = useMemo((): [string, number][] => {
@@ -858,203 +857,29 @@ export default function UnifiedGraph() {
       {/* Right panel */}
       {showPanel && memoryCount > 0 && (
         <div className="w-[320px] shrink-0 border-l border-border bg-card overflow-auto">
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border">
-            <span className="text-sm font-medium">
-              {selectedMemory ? "Memory Detail" : "Graph Summary"}
-            </span>
-            <button
-              className="text-muted-foreground hover:text-foreground rounded-sm p-1"
-              onClick={() => {
-                setShowPanel(false);
-                if (selectedMemory) {
-                  setSelectedMemoryId(null);
-                  exitFocusModeRef.current?.();
-                  networkRef.current?.unselectAll();
-                  networkRef.current?.redraw();
-                }
-              }}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Memory detail */}
-          {selectedMemory ? (
-            <div className="p-4 space-y-3">
-              <p className="text-sm text-foreground leading-relaxed">
-                {selectedMemory.content}
-              </p>
-
-              {selectedMemory.tags.length > 0 && (
-                <div className="flex gap-1 flex-wrap">
-                  {selectedMemory.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="text-xs px-1.5 py-0.5 rounded bg-accent text-primary"
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="text-xs text-muted-foreground space-y-0.5">
-                <div>
-                  Source:{" "}
-                  <span className="text-foreground">
-                    {selectedMemory.source}
-                  </span>
-                </div>
-                {selectedMemory.memory_type && (
-                  <div>
-                    Type:{" "}
-                    <span className="text-foreground">
-                      {selectedMemory.memory_type}
-                    </span>
-                  </div>
-                )}
-                <div>
-                  Importance:{" "}
-                  <span className="text-foreground">
-                    {selectedMemory.importance.toFixed(2)}
-                  </span>
-                </div>
-                {selectedMemory.cluster >= 0 && (
-                  <div className="flex items-center gap-1">
-                    Cluster:{" "}
-                    <span className="inline-flex items-center gap-1 text-foreground">
-                      <span
-                        className="inline-block w-2 h-2 rounded-full"
-                        style={{
-                          backgroundColor: clusterColor(selectedMemory.cluster),
-                        }}
-                      />
-                      {data?.cluster_names?.[String(selectedMemory.cluster)] ||
-                        `Cluster ${selectedMemory.cluster}`}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-2 border-t border-border">
-                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-                  Entity Context
-                </p>
-                <MiniGraph
-                  memoryId={selectedMemory.id}
-                  onNavigate={handleNavigate}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Click a neighbor node to navigate.
-                </p>
-              </div>
-            </div>
-          ) : (
-            /* Graph summary */
-            <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-background rounded-lg p-3">
-                  <p className="text-2xl font-bold">{filteredCount}</p>
-                  <p className="text-xs text-muted-foreground">Memories</p>
-                </div>
-                <div className="bg-background rounded-lg p-3">
-                  <p className="text-2xl font-bold">{clusterCount}</p>
-                  <p className="text-xs text-muted-foreground">Clusters</p>
-                </div>
-                <div className="bg-background rounded-lg p-3">
-                  <p className="text-2xl font-bold">{filteredEdges.length}</p>
-                  <p className="text-xs text-muted-foreground">Edges</p>
-                </div>
-                <div className="bg-background rounded-lg p-3">
-                  <p className="text-2xl font-bold">{allTypes.length}</p>
-                  <p className="text-xs text-muted-foreground">Types</p>
-                </div>
-              </div>
-
-              {/* Clusters list */}
-              {allClusters.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-                    Clusters
-                  </p>
-                  <div className="space-y-1.5">
-                    {allClusters.map(([cid, count]) => (
-                      <div
-                        key={cid}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: clusterColor(cid) }}
-                        />
-                        <span className="flex-1 truncate text-foreground">
-                          {data?.cluster_names?.[String(cid)] ||
-                            `Cluster ${cid}`}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {count}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Types breakdown */}
-              {allTypes.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-                    Types
-                  </p>
-                  <div className="space-y-1.5">
-                    {allTypes.map(([type, count]) => {
-                      const color = typeColor(
-                        type === "(none)" ? null : type,
-                      );
-                      return (
-                        <div
-                          key={type}
-                          className="flex items-center gap-2 text-sm"
-                        >
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className="flex-1 text-foreground">{type}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {count}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Sources breakdown */}
-              {allSources.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-                    Sources
-                  </p>
-                  <div className="space-y-1.5">
-                    {allSources.map(([src, count]) => (
-                      <div
-                        key={src}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <span className="flex-1 text-foreground">{src}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {count}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <GraphDetailPanel
+            selectedMemory={selectedMemory}
+            clusterName={data?.cluster_names?.[String(selectedMemory?.cluster)] ?? ""}
+            memories={filteredMemories}
+            clusterNames={data?.cluster_names ?? {}}
+            visibleEdgeCount={filteredEdges.length}
+            onClose={() => {
+              setShowPanel(false);
+              if (selectedMemory) {
+                setSelectedMemoryId(null);
+                exitFocusModeRef.current?.();
+                networkRef.current?.unselectAll();
+                networkRef.current?.redraw();
+              }
+            }}
+          >
+            {selectedMemory && (
+              <MiniGraph
+                memoryId={selectedMemory.id}
+                onNavigate={handleNavigate}
+              />
+            )}
+          </GraphDetailPanel>
         </div>
       )}
     </div>
