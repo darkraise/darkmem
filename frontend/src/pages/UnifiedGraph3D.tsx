@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { PanelRightClose, Hexagon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUnifiedGraph } from "@/hooks/useApi";
-import { ForceGraph3DWrapper } from "@/components/graph3d/ForceGraph3DWrapper";
+import { Graph3DRenderer } from "@/components/graph/Graph3DRenderer";
 import { Graph3DDetailPanel } from "@/components/graph3d/Graph3DDetailPanel";
 import { Graph3DToolbar } from "@/components/graph3d/Graph3DToolbar";
 import {
@@ -43,10 +43,11 @@ export default function UnifiedGraph3D() {
     return transformToGraphData(data, sizeMode, filters);
   }, [data, sizeMode, filters]);
 
-  const handleNodeSelect = useCallback((node: Node3D | null) => {
+  const handleNodeSelect = useCallback((nodeId: string | null) => {
+    const node = nodeId ? graphData.nodes.find(n => n.id === nodeId) ?? null : null;
     setSelectedNode(node);
     if (node) setShowPanel(true);
-  }, []);
+  }, [graphData.nodes]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -66,7 +67,7 @@ export default function UnifiedGraph3D() {
         className="relative flex-1 min-w-0 overflow-hidden"
       >
         {dimensions && (
-          <ForceGraph3DWrapper
+          <Graph3DRenderer
             graphData={graphData}
             width={dimensions.width}
             height={dimensions.height}
