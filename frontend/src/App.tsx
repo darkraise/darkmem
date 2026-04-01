@@ -11,7 +11,6 @@ import Memories from "@/pages/Memories";
 import KnowledgeGraph from "@/pages/KnowledgeGraph";
 import VectorSpace from "@/pages/VectorSpace";
 import UnifiedGraph from "@/pages/UnifiedGraph";
-import UnifiedGraph3D from "@/pages/UnifiedGraph3D";
 import Search from "@/pages/Search";
 import Analytics from "@/pages/Analytics";
 import LlmConfig from "@/pages/LlmConfig";
@@ -38,7 +37,6 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             <Route path="/memories" element={<Memories />} />
             <Route path="/graph" element={<KnowledgeGraph />} />
             <Route path="/unified-graph" element={<UnifiedGraph />} />
-            <Route path="/unified-graph-3d" element={<UnifiedGraph3D />} />
             <Route path="/vectors" element={<VectorSpace />} />
             <Route path="/search" element={<Search />} />
             <Route path="/analytics" element={<Analytics />} />
