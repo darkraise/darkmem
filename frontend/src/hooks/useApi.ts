@@ -31,6 +31,29 @@ export interface Stats {
   sources: string[];
 }
 
+export interface LlmPurposeConfig {
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key: string | null;
+  dimensions: number | null;
+  params: Record<string, unknown>;
+}
+
+export interface LlmConfigResponse {
+  embedding?: LlmPurposeConfig;
+  extraction?: LlmPurposeConfig;
+  reasoning?: LlmPurposeConfig;
+  summarization?: LlmPurposeConfig;
+}
+
+export interface SystemPromptProfile {
+  name: string;
+  display_name: string;
+  is_default: boolean;
+  extraction_depth: string;
+}
+
 export function useMemories() {
   return useQuery<Memory[]>({
     queryKey: ["memories"],
@@ -78,8 +101,64 @@ export function useStats() {
   return useQuery<Stats>({ queryKey: ["stats"], queryFn: () => apiFetch("/analytics/stats") });
 }
 
+export interface HealthStatus {
+  status: string;
+  pipeline: boolean;
+  services: { qdrant: boolean; neo4j: boolean; llm: boolean };
+}
+
+export interface PipelineLog {
+  id: number;
+  memory_id: string | null;
+  details: Record<string, unknown>;
+  timestamp: string;
+}
+
+export function useHealth() {
+  return useQuery<HealthStatus>({
+    queryKey: ["health"],
+    queryFn: async () => {
+      const res = await fetch("/health");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+}
+
+export function usePipelineLogs(limit = 10) {
+  return useQuery<PipelineLog[]>({
+    queryKey: ["pipelineLogs", limit],
+    queryFn: () => apiFetch(`/analytics/pipeline-logs?limit=${limit}`),
+  });
+}
+
+export function useReprocessAll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<{ processed: number; errors: number; total: number }>("/analytics/reprocess", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipelineLogs"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+}
+
+export function useReprocessFailed() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<{ processed: number; errors: number; total: number }>("/analytics/reprocess-failed", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipelineLogs"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+}
+
 export function useLlmConfig() {
-  return useQuery({ queryKey: ["llmConfig"], queryFn: () => apiFetch("/config/llm") });
+  return useQuery<LlmConfigResponse>({
+    queryKey: ["llmConfig"],
+    queryFn: () => apiFetch<LlmConfigResponse>("/config/llm"),
+  });
 }
 
 export function useUpdateLlmConfig() {
@@ -92,7 +171,10 @@ export function useUpdateLlmConfig() {
 }
 
 export function useSystemPrompts() {
-  return useQuery({ queryKey: ["systemPrompts"], queryFn: () => apiFetch<unknown[]>("/config/system-prompt/list") });
+  return useQuery<SystemPromptProfile[]>({
+    queryKey: ["systemPrompts"],
+    queryFn: () => apiFetch<SystemPromptProfile[]>("/config/system-prompt/list"),
+  });
 }
 
 export function useGraphEntities(type?: string) {
@@ -116,20 +198,20 @@ export interface UnifiedMemory {
   tags: string[];
   memory_type: string | null;
   importance: number;
-  clusters: number[];
-  memberships: Record<string, number>;
+  cluster: number;
 }
 
 export interface UnifiedGraphData {
   memories: UnifiedMemory[];
   clusters: Record<string, string[]>;
+  cluster_names: Record<string, string>;
   similarity_edges: { source: string; target: string; score: number }[];
 }
 
-export function useUnifiedGraph(similarityThreshold = 0.75) {
+export function useUnifiedGraph(similarityThreshold = 0.75, clusterMinScore = 0.5, minClusterSize = 3) {
   return useQuery<UnifiedGraphData>({
-    queryKey: ["unifiedGraph", similarityThreshold],
-    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}`),
+    queryKey: ["unifiedGraph", similarityThreshold, clusterMinScore, minClusterSize],
+    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}&cluster_min_score=${clusterMinScore}&min_cluster_size=${minClusterSize}`),
   });
 }
 

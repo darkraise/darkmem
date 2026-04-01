@@ -1,24 +1,36 @@
 import type { Memory } from "@/hooks/useApi";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export function MemoryCard({ memory, onDelete }: { memory: Memory; onDelete?: (id: string) => void }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <p className="text-sm text-foreground">{memory.content}</p>
-      <div className="flex items-center gap-2 mt-3 flex-wrap">
-        {memory.tags.map((tag) => (
-          <span key={tag} className="text-xs px-2 py-0.5 rounded bg-accent text-primary">{tag}</span>
-        ))}
-      </div>
-      <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-        <div className="flex items-center gap-3">
-          <span>{memory.source}</span>
-          {memory.memory_type && <span>{memory.memory_type}</span>}
-          <span>{new Date(memory.created_at).toLocaleString()}</span>
+    <Card>
+      <CardContent className="pt-4">
+        <p className="text-sm text-foreground">{memory.content}</p>
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          {memory.tags.map((tag) => (
+            <Badge key={tag} variant="secondary">{tag}</Badge>
+          ))}
         </div>
-        {onDelete && (
-          <button onClick={() => onDelete(memory.id)} className="text-destructive hover:underline">delete</button>
-        )}
-      </div>
-    </div>
+        <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <span>{memory.source}</span>
+            {memory.memory_type && <span>{memory.memory_type}</span>}
+            <span>{new Date(memory.created_at).toLocaleString()}</span>
+          </div>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive h-6 px-2 text-xs"
+              onClick={() => { if (window.confirm("Delete this memory?")) onDelete(memory.id); }}
+            >
+              delete
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

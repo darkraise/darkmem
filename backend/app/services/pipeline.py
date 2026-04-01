@@ -18,16 +18,48 @@ class ProcessingPipeline:
         self.vector_repo = vector_repo
         self.graph_repo = graph_repo
 
-    async def process_memory(self, memory_id: UUID, content: str, source: str, tags: list[str], memory_type: str | None, created_at: str):
+    async def process_memory(self, memory_id: UUID, content: str, source: str, tags: list[str], memory_type: str | None, created_at: str) -> dict:
+        status = {
+            "memory_id": str(memory_id),
+            "embed": "pending",
+            "extract": "pending",
+            "qdrant": "pending",
+            "neo4j": "pending",
+            "entities_count": 0,
+            "relations_count": 0,
+            "error": None,
+        }
+
         # Run embedding and extraction in parallel
         embed_task = self.llm.embed(content)
         extract_task = self.extraction.extract(content)
         results = await asyncio.gather(embed_task, extract_task, return_exceptions=True)
         vector, extraction = results[0], results[1]
 
-        # Store embedding in Qdrant (independent of Neo4j)
-        try:
-            if not isinstance(vector, Exception):
+        # Track embed result
+        if isinstance(vector, Exception):
+            status["embed"] = "error"
+            status["error"] = f"Embedding failed: {vector}"
+            logger.error(f"Embedding failed for {memory_id}: {vector}")
+        else:
+            status["embed"] = "ok"
+
+        # Track extraction result
+        if isinstance(extraction, Exception):
+            status["extract"] = "error"
+            status["error"] = status["error"] or f"Extraction failed: {extraction}"
+            logger.error(f"Extraction failed for {memory_id}: {extraction}")
+        elif isinstance(extraction, dict):
+            status["extract"] = "ok"
+            status["entities_count"] = len(extraction.get("entities", []))
+            status["relations_count"] = len(extraction.get("relationships", []))
+        else:
+            status["extract"] = "error"
+            status["error"] = status["error"] or "Extraction returned invalid data"
+
+        # Store embedding in Qdrant
+        if status["embed"] == "ok":
+            try:
                 await self.vector_repo.upsert(
                     memory_id=memory_id, vector=vector,
                     payload={
@@ -37,14 +69,17 @@ class ProcessingPipeline:
                         "created_at": created_at,
                     },
                 )
-            else:
-                logger.error(f"Embedding failed for {memory_id}: {vector}")
-        except Exception as e:
-            logger.error(f"Qdrant upsert failed for {memory_id}: {e}")
+                status["qdrant"] = "ok"
+            except Exception as e:
+                status["qdrant"] = "error"
+                status["error"] = status["error"] or f"Qdrant upsert failed: {e}"
+                logger.error(f"Qdrant upsert failed for {memory_id}: {e}")
+        else:
+            status["qdrant"] = "skipped"
 
-        # Store entities and relationships in Neo4j (independent of Qdrant)
-        try:
-            if isinstance(extraction, dict):
+        # Store entities and relationships in Neo4j
+        if status["extract"] == "ok" and isinstance(extraction, dict):
+            try:
                 for entity in extraction.get("entities", []):
                     await self.graph_repo.create_entity(
                         name=entity["name"], entity_type=entity["type"],
@@ -56,15 +91,30 @@ class ProcessingPipeline:
                         rel_type=rel["type"], properties=rel.get("properties", {}),
                         weight=rel.get("weight", 0.5), memory_id=memory_id,
                     )
-            else:
-                logger.error(f"Extraction failed for {memory_id}: {extraction}")
-        except Exception as e:
-            logger.error(f"Neo4j write failed for {memory_id}: {e}")
+                status["neo4j"] = "ok"
+            except Exception as e:
+                status["neo4j"] = "error"
+                status["error"] = status["error"] or f"Neo4j write failed: {e}"
+                logger.error(f"Neo4j write failed for {memory_id}: {e}")
+        else:
+            status["neo4j"] = "skipped"
+
+        # Determine event type
+        steps = [status["embed"], status["extract"], status["qdrant"], status["neo4j"]]
+        active_steps = [s for s in steps if s != "skipped" and s != "pending"]
+        if all(s == "ok" for s in active_steps):
+            event_type = "pipeline.completed"
+        elif any(s == "ok" for s in active_steps):
+            event_type = "pipeline.partial"
+        else:
+            event_type = "pipeline.failed"
 
         try:
-            await event_manager.broadcast("pipeline.completed", {"memory_id": str(memory_id)})
+            await event_manager.broadcast(event_type, status)
         except Exception:
             pass
+
+        return status
 
     async def delete_memory(self, memory_id: UUID):
         try:

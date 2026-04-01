@@ -1,17 +1,40 @@
 import { NavLink } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  LayoutDashboard,
+  Brain,
+  Network,
+  Hexagon,
+  Atom,
+  Search,
+  BarChart3,
+  Cpu,
+  Activity,
+  Settings,
+  LogOut,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const navItems = [
-  { to: "/", label: "Overview", icon: "⊞" },
-  { to: "/memories", label: "Memories", icon: "◉" },
-  { to: "/graph", label: "Knowledge Graph", icon: "◎" },
-  { to: "/unified-graph", label: "Unified Graph", icon: "⬡" },
-  { to: "/vectors", label: "Vector Space", icon: "◈" },
-  { to: "/search", label: "Search", icon: "⊕" },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const navItems: (NavItem | null)[] = [
+  { to: "/", label: "Overview", icon: LayoutDashboard },
+  { to: "/memories", label: "Memories", icon: Brain },
+  { to: "/graph", label: "Knowledge Graph", icon: Network },
+  { to: "/unified-graph", label: "Unified Graph", icon: Hexagon },
+  { to: "/vectors", label: "Vector Space", icon: Atom },
+  { to: "/search", label: "Search", icon: Search },
   null,
-  { to: "/analytics", label: "Analytics", icon: "▤" },
-  { to: "/llm", label: "LLM Config", icon: "⊙" },
-  { to: "/settings", label: "Settings", icon: "⊛" },
-] as const satisfies (null | { to: string; label: string; icon: string })[];
+  { to: "/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/llm", label: "LLM Config", icon: Cpu },
+  { to: "/pipeline", label: "Pipeline", icon: Activity },
+  { to: "/settings", label: "Settings", icon: Settings },
+];
 
 interface SidebarProps {
   onLogout: () => void;
@@ -19,14 +42,14 @@ interface SidebarProps {
 
 export function Sidebar({ onLogout }: SidebarProps) {
   return (
-    <aside className="w-56 bg-card border-r border-border flex flex-col shrink-0">
+    <aside className="w-56 shrink-0 bg-card border-r border-border flex flex-col">
       <div className="p-4 border-b border-border">
         <span className="text-lg font-bold font-mono text-foreground">darkmem</span>
       </div>
       <nav className="flex-1 py-2">
         {navItems.map((item, i) =>
           item === null ? (
-            <div key={i} className="border-t border-border my-2" />
+            <Separator key={i} className="my-2" />
           ) : (
             <NavLink
               key={item.to}
@@ -40,20 +63,21 @@ export function Sidebar({ onLogout }: SidebarProps) {
                 }`
               }
             >
-              <span className="text-base">{item.icon}</span>
+              <item.icon className="w-4 h-4" />
               {item.label}
             </NavLink>
           )
         )}
       </nav>
       <div className="border-t border-border p-2">
-        <button
+        <Button
+          variant="ghost"
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
+          className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
         >
-          <span className="text-base">⊘</span>
+          <LogOut className="w-4 h-4" />
           Logout
-        </button>
+        </Button>
       </div>
     </aside>
   );

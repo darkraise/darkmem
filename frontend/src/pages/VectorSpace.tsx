@@ -103,7 +103,7 @@ export default function VectorSpace() {
   }, [points]);
 
   return (
-    <div>
+    <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Vector Space</h2>
         {points.length > 0 && (

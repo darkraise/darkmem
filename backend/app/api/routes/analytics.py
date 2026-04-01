@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.auth import require_auth
 from app.database import get_session
+from app.models.audit import AuditLog
 from app.models.memory import Memory, Tag
 from app.schemas.config import StatsResponse
 from app.services.pipeline import ProcessingPipeline
@@ -58,11 +59,14 @@ async def reprocess_all_memories(
     result = await session.execute(stmt)
     memories = result.scalars().all()
 
+    from app.repositories.relational import PostgresAuditRepository
+    audit = PostgresAuditRepository(session)
+
     processed = 0
     errors = 0
     for memory in memories:
         try:
-            await pipeline.process_memory(
+            status = await pipeline.process_memory(
                 memory_id=memory.id,
                 content=memory.content,
                 source=memory.source,
@@ -70,10 +74,91 @@ async def reprocess_all_memories(
                 memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
-            processed += 1
+            await audit.log("pipeline", memory.id, None, status)
+            if status.get("error"):
+                errors += 1
+            else:
+                processed += 1
             logger.info(f"Reprocessed {memory.id}")
         except Exception as e:
             errors += 1
             logger.error(f"Reprocess failed for {memory.id}: {e}")
 
+    await session.commit()
     return {"processed": processed, "errors": errors, "total": len(memories)}
+
+
+@router.post("/reprocess-failed")
+async def reprocess_failed_memories(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    request: Request = None,
+):
+    pipeline: ProcessingPipeline | None = getattr(request.app.state, "pipeline", None)
+    if not pipeline:
+        return {"error": "Pipeline not available", "processed": 0}
+
+    # Find memory_ids with errors in pipeline logs
+    stmt = (
+        select(AuditLog.memory_id)
+        .where(AuditLog.action == "pipeline")
+        .where(AuditLog.details["error"].as_string() != "null")
+        .where(AuditLog.memory_id.isnot(None))
+        .distinct()
+    )
+    result = await session.execute(stmt)
+    failed_ids = [r[0] for r in result.all()]
+
+    if not failed_ids:
+        return {"processed": 0, "errors": 0, "total": 0}
+
+    processed = 0
+    errors = 0
+    for mid in failed_ids:
+        mem_result = await session.execute(
+            select(Memory).options(selectinload(Memory.tags)).where(Memory.id == mid)
+        )
+        memory = mem_result.scalar_one_or_none()
+        if not memory or memory.is_archived:
+            continue
+        try:
+            status = await pipeline.process_memory(
+                memory_id=memory.id, content=memory.content, source=memory.source,
+                tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
+                created_at=memory.created_at.isoformat(),
+            )
+            from app.repositories.relational import PostgresAuditRepository
+            audit = PostgresAuditRepository(session)
+            await audit.log("pipeline", memory.id, None, status)
+            processed += 1
+        except Exception as e:
+            errors += 1
+            logger.error(f"Retry failed for {memory.id}: {e}")
+
+    await session.commit()
+    return {"processed": processed, "errors": errors, "total": len(failed_ids)}
+
+
+@router.get("/pipeline-logs")
+async def get_pipeline_logs(
+    limit: int = 20,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    stmt = (
+        select(AuditLog)
+        .where(AuditLog.action == "pipeline")
+        .order_by(AuditLog.timestamp.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    logs = result.scalars().all()
+    return [
+        {
+            "id": log.id,
+            "memory_id": str(log.memory_id) if log.memory_id else None,
+            "details": log.details,
+            "timestamp": log.timestamp.isoformat(),
+        }
+        for log in logs
+    ]

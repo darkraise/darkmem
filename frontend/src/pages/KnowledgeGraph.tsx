@@ -1,5 +1,4 @@
 import { useFullGraph } from "@/hooks/useApi";
-// @ts-ignore
 import CytoscapeComponent from "react-cytoscapejs";
 import { useRef, useMemo, useCallback, useReducer } from "react";
 
@@ -124,7 +123,7 @@ export default function KnowledgeGraph() {
   const selected = selectedRef.current;
 
   return (
-    <div>
+    <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Knowledge Graph</h2>
         {elements.length > 0 && (

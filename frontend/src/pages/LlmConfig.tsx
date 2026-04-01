@@ -1,14 +1,10 @@
 import { useState, useEffect } from "react";
-import { useLlmConfig, useUpdateLlmConfig } from "@/hooks/useApi";
-
-interface PurposeConfig {
-  provider: string;
-  base_url: string;
-  model: string;
-  api_key: string | null;
-  dimensions: number | null;
-  params: Record<string, unknown>;
-}
+import { useLlmConfig, useUpdateLlmConfig, type LlmPurposeConfig } from "@/hooks/useApi";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function PurposeCard({
   title,
@@ -17,8 +13,8 @@ function PurposeCard({
   saving,
 }: {
   title: string;
-  config: PurposeConfig | undefined;
-  onSave: (purpose: string, data: Partial<PurposeConfig>) => void;
+  config: LlmPurposeConfig | undefined;
+  onSave: (purpose: string, data: Partial<LlmPurposeConfig>) => void;
   saving: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -74,118 +70,129 @@ function PurposeCard({
 
   if (!editing) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium capitalize">{title}</h3>
-          <button
-            onClick={() => setEditing(true)}
-            className="text-xs text-primary hover:underline"
-          >
-            Edit
-          </button>
-        </div>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Provider</span>
-            <span>{config.provider}</span>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm capitalize">{title}</CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Model</span>
-            <span className="font-mono">{config.model}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Base URL</span>
-            <span className="font-mono text-xs">{config.base_url}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">API Key</span>
-            <span>{config.api_key ?? "none"}</span>
-          </div>
-          {config.dimensions && (
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Dimensions</span>
-              <span>{config.dimensions}</span>
+              <span className="text-muted-foreground">Provider</span>
+              <span>{config.provider}</span>
             </div>
-          )}
-          {Object.keys(config.params || {}).length > 0 && (
-            <div>
-              <span className="text-muted-foreground">Params</span>
-              <pre className="mt-1 text-xs bg-background p-2 rounded">
-                {JSON.stringify(config.params, null, 2)}
-              </pre>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Model</span>
+              <span className="font-mono">{config.model}</span>
             </div>
-          )}
-        </div>
-      </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Base URL</span>
+              <span className="font-mono text-xs">{config.base_url}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">API Key</span>
+              <span>{config.api_key ?? "none"}</span>
+            </div>
+            {config.dimensions && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Dimensions</span>
+                <span>{config.dimensions}</span>
+              </div>
+            )}
+            {Object.keys(config.params || {}).length > 0 && (
+              <div>
+                <span className="text-muted-foreground">Params</span>
+                <pre className="mt-1 text-xs bg-background p-2 rounded">
+                  {JSON.stringify(config.params, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-card border-2 border-primary rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium capitalize">{title}</h3>
-        <div className="flex gap-2">
-          <button onClick={() => setEditing(false)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="text-xs text-primary hover:underline">
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-      <div className="space-y-3 text-sm">
-        <div>
-          <label className="text-xs text-muted-foreground">Provider</label>
-          <input value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })}
-            className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm mt-1" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Base URL</label>
-          <input value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-            className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm font-mono mt-1" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Model</label>
-          <input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })}
-            className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm font-mono mt-1" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">API Key</label>
-          <input value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-            type="password"
-            className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm font-mono mt-1"
-            placeholder="Leave as *** to keep existing" />
-        </div>
-        {title.toLowerCase() === "embedding" && (
-          <div>
-            <label className="text-xs text-muted-foreground">Dimensions</label>
-            <input value={form.dimensions} onChange={(e) => setForm({ ...form, dimensions: e.target.value })}
-              type="number"
-              className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm mt-1" />
+    <Card className="border-2 border-primary">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm capitalize">{title}</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button variant="ghost" size="sm" className="text-xs h-6 px-2 text-primary" onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
           </div>
-        )}
-        <div>
-          <label className="text-xs text-muted-foreground">Params (JSON)</label>
-          <textarea value={form.params} onChange={(e) => setForm({ ...form, params: e.target.value })}
-            rows={3}
-            className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm font-mono mt-1 resize-none"
-            placeholder='{"temperature": 0.2}' />
         </div>
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3 text-sm">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Provider</Label>
+            <Input value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Base URL</Label>
+            <Input value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} className="h-8 text-sm font-mono" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Model</Label>
+            <Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="h-8 text-sm font-mono" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">API Key</Label>
+            <Input
+              value={form.api_key}
+              onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+              type="password"
+              className="h-8 text-sm font-mono"
+              placeholder="Leave as *** to keep existing"
+            />
+          </div>
+          {title.toLowerCase() === "embedding" && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Dimensions</Label>
+              <Input
+                value={form.dimensions}
+                onChange={(e) => setForm({ ...form, dimensions: e.target.value })}
+                type="number"
+                className="h-8 text-sm"
+              />
+            </div>
+          )}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Params (JSON)</Label>
+            <Textarea
+              value={form.params}
+              onChange={(e) => setForm({ ...form, params: e.target.value })}
+              rows={3}
+              className="text-sm font-mono resize-none"
+              placeholder='{"temperature": 0.2}'
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 export default function LlmConfig() {
   const { data, isLoading, error } = useLlmConfig();
   const updateConfig = useUpdateLlmConfig();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cfg = data as any;
 
-  const handleSave = (purpose: string, purposeData: Partial<PurposeConfig>) => {
+  const handleSave = (purpose: string, purposeData: Partial<LlmPurposeConfig>) => {
     updateConfig.mutate({ [purpose]: purposeData });
   };
 
   return (
-    <div>
+    <div className="p-6">
       <h2 className="text-xl font-semibold mb-4">LLM Configuration</h2>
       {isLoading && <p className="text-muted-foreground">Loading...</p>}
       {error && (
@@ -197,11 +204,11 @@ export default function LlmConfig() {
       <p className="text-sm text-muted-foreground mb-4">
         Configure LLM providers for each purpose. Changes are saved to the database and take effect on next memory operation.
       </p>
-      <div className="grid grid-cols-2 gap-4">
-        <PurposeCard title="Embedding" config={cfg?.embedding} onSave={handleSave} saving={updateConfig.isPending} />
-        <PurposeCard title="Extraction" config={cfg?.extraction} onSave={handleSave} saving={updateConfig.isPending} />
-        <PurposeCard title="Reasoning" config={cfg?.reasoning} onSave={handleSave} saving={updateConfig.isPending} />
-        <PurposeCard title="Summarization" config={cfg?.summarization} onSave={handleSave} saving={updateConfig.isPending} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <PurposeCard title="Embedding" config={data?.embedding} onSave={handleSave} saving={updateConfig.isPending} />
+        <PurposeCard title="Extraction" config={data?.extraction} onSave={handleSave} saving={updateConfig.isPending} />
+        <PurposeCard title="Reasoning" config={data?.reasoning} onSave={handleSave} saving={updateConfig.isPending} />
+        <PurposeCard title="Summarization" config={data?.summarization} onSave={handleSave} saving={updateConfig.isPending} />
       </div>
     </div>
   );

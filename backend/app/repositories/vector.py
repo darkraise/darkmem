@@ -119,13 +119,17 @@ class QdrantVectorRepository:
 
         return points
 
-    async def get_fuzzy_clustered_vectors(self, n_clusters: int = 5, membership_threshold: float = 0.2, limit: int = 500) -> list[dict]:
-        """Get all vectors with fuzzy cluster memberships (memories can belong to multiple clusters)."""
+    async def get_louvain_clustered_vectors(self, min_score: float = 0.5, min_cluster_size: int = 3, limit: int = 500) -> list[dict]:
+        """Get all vectors with Louvain community detection clusters.
+
+        Builds a similarity graph from cosine similarity, then runs Louvain
+        to find natural communities. Each memory belongs to exactly one cluster.
+        Number of clusters is auto-detected from data structure.
+        """
         points = await self.get_all_vectors(limit=limit)
-        if len(points) < 3:
+        if len(points) < 2:
             for p in points:
-                p["clusters"] = [0]
-                p["memberships"] = {0: 1.0}
+                p["cluster"] = 0
             return points
 
         import numpy as np
@@ -133,61 +137,134 @@ class QdrantVectorRepository:
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
         norms[norms == 0] = 1
         normalized = vectors / norms
+        sim_matrix = normalized @ normalized.T
 
-        # Auto-determine n_clusters if too many requested
-        actual_clusters = min(n_clusters, max(2, len(points) // 3))
-
-        # Fuzzy c-means
         n = len(points)
-        m = 2.0  # fuzziness coefficient
 
-        # Random init membership matrix
-        rng = np.random.default_rng(42)
-        U = rng.random((n, actual_clusters)).astype(np.float32)
-        U = U / U.sum(axis=1, keepdims=True)  # normalize rows
+        # Build weighted adjacency list (edges where similarity >= min_score)
+        adj: dict[int, dict[int, float]] = {i: {} for i in range(n)}
+        for i in range(n):
+            for j in range(i + 1, n):
+                score = float(sim_matrix[i][j])
+                if score >= min_score:
+                    adj[i][j] = score
+                    adj[j][i] = score
 
-        for _ in range(100):  # max iterations
-            # Update centers
-            Um = U ** m
-            centers = (Um.T @ normalized) / Um.sum(axis=0)[:, np.newaxis]
-            # Normalize centers
-            center_norms = np.linalg.norm(centers, axis=1, keepdims=True)
-            center_norms[center_norms == 0] = 1
-            centers = centers / center_norms
+        # Louvain community detection
+        node2comm = self._louvain(adj)
 
-            # Update membership matrix
-            # Distance from each point to each center (cosine distance)
-            dist = 1 - normalized @ centers.T  # (n, k)
-            dist = np.maximum(dist, 1e-10)
+        # Group by community, filter small clusters
+        comm_members: dict[int, list[int]] = {}
+        for node_id, comm_id in node2comm.items():
+            comm_members.setdefault(comm_id, []).append(node_id)
 
-            new_U = np.zeros_like(U)
-            for j in range(actual_clusters):
-                denom = np.zeros(n, dtype=np.float32)
-                for k in range(actual_clusters):
-                    denom += (dist[:, j] / dist[:, k]) ** (2 / (m - 1))
-                new_U[:, j] = 1.0 / denom
+        # Renumber valid clusters (>= min_cluster_size) starting from 0
+        valid_clusters: dict[int, int] = {}
+        next_id = 0
+        for comm_id, members in sorted(comm_members.items()):
+            if len(members) >= min_cluster_size:
+                valid_clusters[comm_id] = next_id
+                next_id += 1
 
-            if np.allclose(U, new_U, atol=1e-4):
-                break
-            U = new_U
-
-        # Assign clusters based on threshold
+        # Assign cluster to each point (-1 for noise/small clusters)
         for i, p in enumerate(points):
-            memberships = {}
-            clusters = []
-            for j in range(actual_clusters):
-                if U[i, j] >= membership_threshold:
-                    memberships[j] = round(float(U[i, j]), 3)
-                    clusters.append(j)
-            if not clusters:
-                # Assign to highest membership cluster
-                best = int(np.argmax(U[i]))
-                clusters = [best]
-                memberships = {best: round(float(U[i, best]), 3)}
-            p["clusters"] = clusters
-            p["memberships"] = memberships
+            orig_comm = node2comm.get(i, -1)
+            p["cluster"] = valid_clusters.get(orig_comm, -1)
 
         return points
+
+    @staticmethod
+    def _louvain(adj: dict[int, dict[int, float]]) -> dict[int, int]:
+        """Louvain community detection on a weighted graph."""
+        if not adj:
+            return {}
+
+        nodes = list(adj.keys())
+        node2comm = {n: n for n in nodes}
+
+        # Total weight of all edges
+        m2 = sum(w for n in nodes for w in adj[n].values())
+        if m2 == 0.0:
+            return node2comm
+
+        k = {n: sum(adj[n].values()) for n in nodes}
+
+        def _one_level(adj_, node2comm_, k_, m2_):
+            sigma_tot: dict[int, float] = {}
+            for n in adj_:
+                c = node2comm_[n]
+                sigma_tot[c] = sigma_tot.get(c, 0.0) + k_[n]
+
+            improved = True
+            changed = False
+            while improved:
+                improved = False
+                for n in adj_:
+                    c_old = node2comm_[n]
+                    k_n = k_[n]
+
+                    comm_weights: dict[int, float] = {}
+                    for nb, w in adj_[n].items():
+                        c_nb = node2comm_[nb]
+                        comm_weights[c_nb] = comm_weights.get(c_nb, 0.0) + w
+
+                    k_in_old = comm_weights.get(c_old, 0.0)
+                    sigma_tot[c_old] -= k_n
+
+                    best_comm = c_old
+                    best_gain = 0.0
+
+                    for c_target, k_in_target in comm_weights.items():
+                        gain = (k_in_target - k_in_old) / m2_ - \
+                               k_n * (sigma_tot.get(c_target, 0.0) - sigma_tot.get(c_old, 0.0)) / (m2_ * m2_)
+                        if gain > best_gain:
+                            best_gain = gain
+                            best_comm = c_target
+
+                    node2comm_[n] = best_comm
+                    sigma_tot[best_comm] = sigma_tot.get(best_comm, 0.0) + k_n
+
+                    if best_comm != c_old:
+                        improved = True
+                        changed = True
+            return changed
+
+        _one_level(adj, node2comm, k, m2)
+
+        for _ in range(20):
+            comm_set = set(node2comm.values())
+            if len(comm_set) == len(adj):
+                break
+
+            super_adj: dict[int, dict[int, float]] = {c: {} for c in comm_set}
+            for n in adj:
+                c_n = node2comm[n]
+                for nb, w in adj[n].items():
+                    c_nb = node2comm[nb]
+                    if c_n != c_nb:
+                        super_adj[c_n][c_nb] = super_adj[c_n].get(c_nb, 0.0) + w
+
+            super_k: dict[int, float] = {}
+            for c in comm_set:
+                super_k[c] = sum(super_adj[c].values())
+                for n in adj:
+                    if node2comm[n] == c:
+                        for nb, w in adj[n].items():
+                            if node2comm[nb] == c:
+                                super_k[c] += w
+
+            super_node2comm = {c: c for c in comm_set}
+            changed = _one_level(super_adj, super_node2comm, super_k, m2)
+
+            if not changed:
+                break
+
+            for n in list(node2comm.keys()):
+                node2comm[n] = super_node2comm.get(node2comm[n], node2comm[n])
+
+        comm_ids = sorted(set(node2comm.values()))
+        remap = {c: i for i, c in enumerate(comm_ids)}
+        return {n: remap[c] for n, c in node2comm.items()}
 
     async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
         points = await self.client.retrieve(

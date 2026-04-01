@@ -11,9 +11,12 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 3636,
+    allowedHosts: ['host.docker.internal'],
     proxy: {
       "/api": "http://localhost:8000",
+      "/health": "http://localhost:8000",
       "/ws": { target: "ws://localhost:8000", ws: true },
     },
   },

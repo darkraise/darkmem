@@ -48,6 +48,8 @@ async def list_entities(
 async def get_unified_graph(
     limit: int = Query(200),
     similarity_threshold: float = Query(0.75, ge=0.0, le=1.0),
+    cluster_min_score: float = Query(0.5, ge=0.1, le=0.95),
+    min_cluster_size: int = Query(3, ge=2, le=10),
     _user=Depends(require_auth),
     request: Request = None,
 ):
@@ -73,10 +75,11 @@ async def get_unified_graph(
     if vector_repo:
         try:
             import numpy as np
-            clustered = await vector_repo.get_fuzzy_clustered_vectors(limit=limit)
+            clustered = await vector_repo.get_louvain_clustered_vectors(min_score=cluster_min_score, min_cluster_size=min_cluster_size, limit=limit)
             for p in clustered:
                 payload = p.get("payload", {})
                 mid = str(p["memory_id"])
+                cluster_id = p.get("cluster", -1)
                 memory_nodes.append({
                     "id": mid,
                     "content": payload.get("content", "") or "",
@@ -84,11 +87,10 @@ async def get_unified_graph(
                     "tags": payload.get("tags", []),
                     "memory_type": payload.get("memory_type"),
                     "importance": importance_map.get(mid, 0.5),
-                    "clusters": p["clusters"],
-                    "memberships": {str(k): v for k, v in p["memberships"].items()},
+                    "cluster": cluster_id,
                 })
-                for c in p["clusters"]:
-                    clusters.setdefault(c, []).append(mid)
+                if cluster_id >= 0:
+                    clusters.setdefault(cluster_id, []).append(mid)
 
             # Compute pairwise cosine similarity edges
             if len(clustered) >= 2:
@@ -111,9 +113,37 @@ async def get_unified_graph(
         except Exception:
             logger.exception("Failed to fetch vector data")
 
+    # Generate cluster names via LLM
+    cluster_names: dict[str, str] = {}
+    pipeline = getattr(request.app.state, "pipeline", None) if request else None
+    if pipeline and clusters:
+        content_by_cluster: dict[int, list[str]] = {}
+        for m in memory_nodes:
+            cid = m.get("cluster", -1)
+            if cid >= 0:
+                content_by_cluster.setdefault(cid, []).append(m["content"][:100])
+
+        for cid, contents in content_by_cluster.items():
+            try:
+                sample = "\n".join(contents[:8])
+                name = await pipeline.llm.chat_completion(
+                    "extraction",
+                    messages=[
+                        {"role": "system", "content": "You are a naming assistant. Given a group of related memory snippets, generate a short descriptive name (2-4 words, no quotes). Just output the name, nothing else."},
+                        {"role": "user", "content": sample},
+                    ],
+                )
+                cluster_names[str(cid)] = name.strip().strip('"').strip("'")[:40]
+            except Exception:
+                cluster_names[str(cid)] = f"Cluster {cid}"
+    else:
+        for cid in clusters:
+            cluster_names[str(cid)] = f"Cluster {cid}"
+
     return {
         "memories": memory_nodes,
         "clusters": {str(k): v for k, v in clusters.items()},
+        "cluster_names": cluster_names,
         "similarity_edges": similarity_edges,
     }
 

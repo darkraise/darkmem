@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
         app.state.pipeline = pipeline
         app.state.graph_repo = graph_repo
         app.state.vector_repo = vector_repo
+        app.state.llm = llm
         logger.info("Pipeline initialized: Qdrant + Neo4j + LLM connected")
     except Exception as e:
         logger.warning(f"Pipeline not available (Postgres-only mode): {e}")
@@ -118,7 +119,50 @@ app.mount("/mcp", mcp_server.streamable_http_app())
 
 @app.get("/health")
 async def health():
+    import asyncio
+
+    pipeline = getattr(app.state, "pipeline", None)
+    vector_repo = getattr(app.state, "vector_repo", None)
+    graph_repo = getattr(app.state, "graph_repo", None)
+    llm = getattr(app.state, "llm", None)
+
+    async def check_qdrant():
+        if not vector_repo:
+            return False
+        try:
+            await vector_repo.client.get_collections()
+            return True
+        except Exception:
+            return False
+
+    async def check_neo4j():
+        if not graph_repo:
+            return False
+        try:
+            await graph_repo.driver.verify_connectivity()
+            return True
+        except Exception:
+            return False
+
+    async def check_llm():
+        if not llm:
+            return False
+        try:
+            await llm.embed("health check")
+            return True
+        except Exception:
+            return False
+
+    qdrant_ok, neo4j_ok, llm_ok = await asyncio.gather(
+        check_qdrant(), check_neo4j(), check_llm()
+    )
+
     return {
         "status": "ok",
-        "pipeline": hasattr(app.state, "pipeline") and app.state.pipeline is not None,
+        "pipeline": pipeline is not None and qdrant_ok and neo4j_ok and llm_ok,
+        "services": {
+            "qdrant": qdrant_ok,
+            "neo4j": neo4j_ok,
+            "llm": llm_ok,
+        },
     }

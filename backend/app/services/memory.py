@@ -32,11 +32,12 @@ class MemoryService:
 
         # Process through pipeline (embedding + extraction)
         if self.pipeline:
-            await self.pipeline.process_memory(
+            status = await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
+            await self.audit_repo.log("pipeline", memory.id, api_key_id, status)
 
         return memory
 
@@ -57,11 +58,12 @@ class MemoryService:
 
         # Re-process if content changed
         if self.pipeline and "content" in update_fields:
-            await self.pipeline.process_memory(
+            status = await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
+            await self.audit_repo.log("pipeline", memory.id, api_key_id, status)
 
         return memory
 
