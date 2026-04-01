@@ -73,12 +73,12 @@ describe("transformToGraphData", () => {
     expect(result.links).toHaveLength(3);
   });
 
-  it("assigns cluster color to nodes", () => {
+  it("assigns type color to nodes", () => {
     const result = transformToGraphData(sampleData, "connections", emptyFilters);
     const nodeA = result.nodes.find((n) => n.id === "a")!;
-    expect(nodeA.color).toBe(CLUSTER_PALETTE[0]);
+    expect(nodeA.color).toBe("#58a6ff"); // fact = blue
     const nodeD = result.nodes.find((n) => n.id === "d")!;
-    expect(nodeD.color).toBe(UNCLUSTERED_COLOR);
+    expect(nodeD.color).toBe(UNCLUSTERED_COLOR); // null type = gray
   });
 
   it("resolves cluster names", () => {

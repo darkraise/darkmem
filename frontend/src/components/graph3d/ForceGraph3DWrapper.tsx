@@ -1,8 +1,9 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import type { Node3D, Link3D, GraphData3D } from "@/lib/graph-utils";
+import { clusterColor } from "@/lib/graph-utils";
 
 interface ForceGraph3DWrapperProps {
   graphData: GraphData3D;
@@ -11,6 +12,7 @@ interface ForceGraph3DWrapperProps {
   spacing: number;
   selectedNodeId: string | null;
   onNodeSelect: (node: Node3D | null) => void;
+  onReady?: () => void;
 }
 
 export function ForceGraph3DWrapper({
@@ -20,39 +22,106 @@ export function ForceGraph3DWrapper({
   spacing,
   selectedNodeId,
   onNodeSelect,
+  onReady,
 }: ForceGraph3DWrapperProps) {
   const fgRef = useRef<any>(null);
-  const hoveredRef = useRef<Node3D | null>(null);
-  const selectedRef = useRef<Node3D | null>(null);
+  const hoveredRef = useRef<any>(null);
+  const ringRef = useRef<THREE.Mesh | null>(null);
   const hullMeshesRef = useRef<THREE.Mesh[]>([]);
-  const clickTimerRef = useRef<number | null>(null);
+
+  const neighborSet = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const ids = new Set<string>();
+    ids.add(selectedNodeId);
+    for (const link of graphData.links) {
+      if (link.hidden) continue;
+      const src =
+        typeof link.source === "object" ? (link.source as any).id : link.source;
+      const tgt =
+        typeof link.target === "object" ? (link.target as any).id : link.target;
+      if (src === selectedNodeId) ids.add(tgt);
+      if (tgt === selectedNodeId) ids.add(src);
+    }
+    return ids;
+  }, [selectedNodeId, graphData.links]);
+
+  const handleNodeHover = useCallback((node: any) => {
+    if (hoveredRef.current?.__threeObj) {
+      const mat = hoveredRef.current.__threeObj
+        .material as THREE.MeshPhongMaterial;
+      mat.emissiveIntensity = 0.1;
+      mat.opacity = 0.9;
+    }
+    if (node?.__threeObj) {
+      const mat = node.__threeObj.material as THREE.MeshPhongMaterial;
+      mat.emissiveIntensity = 0.5;
+      mat.opacity = 1.0;
+    }
+    hoveredRef.current = node;
+    document.body.style.cursor = node ? "pointer" : "default";
+  }, []);
 
   useEffect(() => {
     if (!fgRef.current) return;
-    fgRef.current.d3Force("charge")?.strength(-120);
-    fgRef.current.d3Force("link")?.distance(spacing);
+    fgRef.current.d3Force("charge")?.strength(-50);
+    fgRef.current.d3Force("link")?.distance(spacing)?.strength(0.7);
+    fgRef.current.d3Force("center")?.strength(1.5);
   }, [graphData, spacing]);
 
   useEffect(() => {
-    if (!fgRef.current) return;
-    fgRef.current.d3Force("link")?.distance(spacing);
-    fgRef.current.d3ReheatSimulation();
-  }, [spacing]);
+    const scene = fgRef.current?.scene();
+    if (ringRef.current && scene) {
+      scene.remove(ringRef.current);
+      ringRef.current.geometry.dispose();
+      (ringRef.current.material as THREE.Material).dispose();
+      ringRef.current = null;
+    }
 
-  useEffect(() => {
-    if ((selectedRef.current as any)?.__threeObj) {
-      const mat = (selectedRef.current as any).__threeObj
-        .material as THREE.MeshPhongMaterial;
-      mat.emissiveIntensity = 0.1;
+    for (const node of graphData.nodes) {
+      const obj = (node as any).__threeObj;
+      if (!obj) continue;
+      const mat = obj.material as THREE.MeshPhongMaterial;
+      if (!neighborSet) {
+        mat.color.set(node.color);
+        mat.emissive.set(node.color);
+        mat.emissiveIntensity = 0.1;
+        mat.opacity = 0.9;
+        obj.scale.set(1, 1, 1);
+      } else if (node.id === selectedNodeId) {
+        mat.color.set("#ffffff");
+        mat.emissive.set("#ffffff");
+        mat.emissiveIntensity = 0.6;
+        mat.opacity = 1.0;
+        obj.scale.set(1.5, 1.5, 1.5);
+
+        if (scene && node.x != null) {
+          const radius = (1 + node.val * 1.5) * 2.2;
+          const ringGeo = new THREE.TorusGeometry(radius, 0.3, 8, 48);
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: node.color,
+            transparent: true,
+            opacity: 0.8,
+          });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.position.set(node.x!, node.y!, node.z!);
+          scene.add(ring);
+          ringRef.current = ring;
+        }
+      } else if (neighborSet.has(node.id)) {
+        mat.color.set(node.color);
+        mat.emissive.set(node.color);
+        mat.emissiveIntensity = 0.3;
+        mat.opacity = 0.9;
+        obj.scale.set(1, 1, 1);
+      } else {
+        mat.color.set(node.color);
+        mat.emissive.set(node.color);
+        mat.emissiveIntensity = 0.0;
+        mat.opacity = 0.15;
+        obj.scale.set(1, 1, 1);
+      }
     }
-    const newSel = graphData.nodes.find((n) => n.id === selectedNodeId);
-    if ((newSel as any)?.__threeObj) {
-      const mat = (newSel as any).__threeObj
-        .material as THREE.MeshPhongMaterial;
-      mat.emissiveIntensity = 0.6;
-    }
-    selectedRef.current = newSel ?? null;
-  }, [selectedNodeId, graphData.nodes]);
+  }, [neighborSet, selectedNodeId, graphData.nodes]);
 
   const buildClusterHulls = useCallback(() => {
     const scene = fgRef.current?.scene();
@@ -74,19 +143,53 @@ export function ForceGraph3DWrapper({
       }
     }
 
+    const sampleDirs: THREE.Vector3[] = [];
+    const numSamples = 80;
+    const goldenRatio = (1 + Math.sqrt(5)) / 2;
+    for (let i = 0; i < numSamples; i++) {
+      const theta = Math.acos(1 - (2 * (i + 0.5)) / numSamples);
+      const phi = (2 * Math.PI * i) / goldenRatio;
+      sampleDirs.push(
+        new THREE.Vector3(
+          Math.sin(theta) * Math.cos(phi),
+          Math.sin(theta) * Math.sin(phi),
+          Math.cos(theta),
+        ),
+      );
+    }
+
     clusterNodes.forEach((nodes) => {
       if (nodes.length < 4) return;
-      const points = nodes.map(
-        (n) => new THREE.Vector3(n.x!, n.y!, n.z!),
-      );
+
+      const centroid = new THREE.Vector3();
+      const positions = nodes.map((n) => new THREE.Vector3(n.x!, n.y!, n.z!));
+      positions.forEach((p) => centroid.add(p));
+      centroid.divideScalar(positions.length);
+
+      const padding = 15;
+      const points: THREE.Vector3[] = [];
+
+      for (const dir of sampleDirs) {
+        let maxProj = 0;
+        for (const p of positions) {
+          const proj = p.clone().sub(centroid).dot(dir);
+          if (proj > maxProj) maxProj = proj;
+        }
+        points.push(
+          centroid.clone().add(dir.clone().multiplyScalar(maxProj + padding)),
+        );
+      }
+
       try {
         const geometry = new ConvexGeometry(points);
+        geometry.computeVertexNormals();
         const material = new THREE.MeshPhongMaterial({
-          color: nodes[0].color,
+          color: clusterColor(nodes[0].cluster),
           transparent: true,
-          opacity: 0.08,
+          opacity: 0.06,
           side: THREE.DoubleSide,
           depthWrite: false,
+          flatShading: false,
         });
         const mesh = new THREE.Mesh(geometry, material);
         scene.add(mesh);
@@ -97,48 +200,9 @@ export function ForceGraph3DWrapper({
     });
   }, [graphData]);
 
-  const handleNodeClick = useCallback(
-    (node: Node3D) => {
-      if (clickTimerRef.current) {
-        clearTimeout(clickTimerRef.current);
-        clickTimerRef.current = null;
-        const distance = 80;
-        const distRatio =
-          1 + distance / Math.hypot(node.x!, node.y!, node.z!);
-        fgRef.current?.cameraPosition(
-          {
-            x: node.x! * distRatio,
-            y: node.y! * distRatio,
-            z: node.z! * distRatio,
-          },
-          node,
-          2000,
-        );
-      } else {
-        clickTimerRef.current = window.setTimeout(() => {
-          clickTimerRef.current = null;
-          onNodeSelect(node);
-        }, 300);
-      }
-    },
-    [onNodeSelect],
-  );
-
-  const handleNodeHover = useCallback((node: Node3D | null) => {
-    const prev = hoveredRef.current;
-    if ((prev as any)?.__threeObj) {
-      const mat = (prev as any).__threeObj.material as THREE.MeshPhongMaterial;
-      mat.emissiveIntensity = 0.1;
-    }
-    if ((node as any)?.__threeObj) {
-      const mat = (node as any).__threeObj.material as THREE.MeshPhongMaterial;
-      mat.emissiveIntensity = 0.4;
-    }
-    hoveredRef.current = node;
-  }, []);
-
   const nodeThreeObject = useCallback((node: Node3D) => {
-    const geometry = new THREE.SphereGeometry(node.val, 16, 12);
+    const radius = 1 + node.val * 1.5;
+    const geometry = new THREE.SphereGeometry(radius, 16, 12);
     const material = new THREE.MeshPhongMaterial({
       color: node.color,
       emissive: node.color,
@@ -149,18 +213,6 @@ export function ForceGraph3DWrapper({
     return new THREE.Mesh(geometry, material);
   }, []);
 
-  const linkColor = useCallback(
-    (link: Link3D) =>
-      `rgba(76, 201, 240, ${(0.15 + link.score * 0.6).toFixed(2)})`,
-    [],
-  );
-
-  const nodeLabel = useCallback(
-    (node: Node3D) =>
-      `<div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 12px;max-width:300px;color:#c9d1d9;font-size:12px;">${node.content.slice(0, 150)}${node.content.length > 150 ? "…" : ""}</div>`,
-    [],
-  );
-
   return (
     <ForceGraph3D
       ref={fgRef}
@@ -169,24 +221,49 @@ export function ForceGraph3DWrapper({
       height={height}
       backgroundColor="#0d1117"
       nodeThreeObject={nodeThreeObject}
-      nodeThreeObjectExtend={false}
-      nodeLabel={nodeLabel}
-      linkColor={linkColor}
-      linkWidth={0.3}
-      linkOpacity={0.6}
-      onNodeClick={handleNodeClick}
-      onNodeHover={handleNodeHover}
-      onNodeDragEnd={(node: Node3D) => {
-        node.fx = node.x;
-        node.fy = node.y;
-        node.fz = node.z;
+      nodeLabel={(node: Node3D) => node.content?.slice(0, 100) || ""}
+      linkVisibility={(link: any) => !link.hidden}
+      linkWidth={(link: any) => {
+        if (!neighborSet) return 0.8;
+        const src =
+          typeof link.source === "object" ? link.source.id : link.source;
+        const tgt =
+          typeof link.target === "object" ? link.target.id : link.target;
+        if (neighborSet.has(src) && neighborSet.has(tgt)) return 2;
+        return 0.5;
       }}
-      onEngineStop={buildClusterHulls}
-      d3AlphaDecay={0.02}
-      d3VelocityDecay={0.3}
-      warmupTicks={100}
-      cooldownTicks={200}
-      controlType="orbit"
+      linkColor={(link: any) => {
+        if (!neighborSet) return "rgba(76, 201, 240, 0.6)";
+        const src =
+          typeof link.source === "object" ? link.source.id : link.source;
+        const tgt =
+          typeof link.target === "object" ? link.target.id : link.target;
+        if (neighborSet.has(src) && neighborSet.has(tgt)) return "#4CC9F0";
+        return "rgba(76, 201, 240, 0.25)";
+      }}
+      onNodeClick={(node: Node3D) => {
+        onNodeSelect(node);
+        const distance = 150;
+        const h = Math.hypot(node.x!, node.y!, node.z!) || 1;
+        const distRatio = 1 + distance / h;
+        fgRef.current?.cameraPosition(
+          {
+            x: node.x! * distRatio,
+            y: node.y! * distRatio + distance * 0.4,
+            z: node.z! * distRatio,
+          },
+          { x: node.x, y: node.y, z: node.z },
+          1500,
+        );
+      }}
+      onNodeHover={handleNodeHover}
+      onBackgroundClick={() => onNodeSelect(null)}
+      warmupTicks={80}
+      cooldownTicks={150}
+      onEngineStop={() => {
+        buildClusterHulls();
+        onReady?.();
+      }}
     />
   );
 }

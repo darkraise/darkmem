@@ -25,6 +25,7 @@ export interface Link3D {
   source: string;
   target: string;
   score: number;
+  hidden?: boolean;
 }
 
 export interface GraphData3D {
@@ -47,6 +48,34 @@ export const CLUSTER_PALETTE = [
 ];
 
 export const UNCLUSTERED_COLOR = "#8b949e";
+
+const TYPE_COLOR_PREASSIGNED: Record<string, string> = {
+  fact: "#58a6ff",
+  decision: "#d2a8ff",
+  debug: "#f85149",
+  architecture: "#3fb950",
+  preference: "#ffa657",
+  session: "#79c0ff",
+  workflow: "#56d364",
+};
+
+const TYPE_COLOR_DYNAMIC = [
+  "#f778ba", "#bb86fc", "#4fc3f7", "#aed581",
+  "#ffb74d", "#ff6b6b", "#22d3ee", "#e879f9",
+];
+
+const typeColorAssignments = new Map<string, string>();
+let nextDynamicIdx = 0;
+
+export function typeColor(memoryType: string | null): string {
+  if (!memoryType) return UNCLUSTERED_COLOR;
+  if (TYPE_COLOR_PREASSIGNED[memoryType]) return TYPE_COLOR_PREASSIGNED[memoryType];
+  if (!typeColorAssignments.has(memoryType)) {
+    typeColorAssignments.set(memoryType, TYPE_COLOR_DYNAMIC[nextDynamicIdx % TYPE_COLOR_DYNAMIC.length]);
+    nextDynamicIdx++;
+  }
+  return typeColorAssignments.get(memoryType)!;
+}
 
 export function clusterColor(clusterId: number): string {
   if (clusterId < 0) return UNCLUSTERED_COLOR;
@@ -109,13 +138,65 @@ export function transformToGraphData(
     importance: m.importance,
     cluster: m.cluster,
     clusterName: data.cluster_names[String(m.cluster)] ?? "",
-    color: clusterColor(m.cluster),
+    color: typeColor(m.memory_type),
     val: computeNodeVal(sizeMode, edgeCountMap.get(m.id) ?? 0, m.importance),
   }));
 
   const links: Link3D[] = data.similarity_edges
     .filter((e) => filteredIds.has(e.source) && filteredIds.has(e.target))
     .map((e) => ({ source: e.source, target: e.target, score: e.score }));
+
+  const clusterMembers = new Map<number, string[]>();
+  for (const node of nodes) {
+    if (node.cluster >= 0) {
+      const members = clusterMembers.get(node.cluster) ?? [];
+      members.push(node.id);
+      clusterMembers.set(node.cluster, members);
+    }
+  }
+
+  const existingEdges = new Set(links.map((l) => `${l.source}-${l.target}`));
+  for (const [, members] of clusterMembers) {
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        const key1 = `${members[i]}-${members[j]}`;
+        const key2 = `${members[j]}-${members[i]}`;
+        if (!existingEdges.has(key1) && !existingEdges.has(key2)) {
+          links.push({ source: members[i], target: members[j], score: 0, hidden: true });
+        }
+      }
+    }
+  }
+
+  const clusterIdList = [...clusterMembers.keys()];
+  for (let i = 0; i < clusterIdList.length; i++) {
+    for (let j = i + 1; j < clusterIdList.length; j++) {
+      const rep1 = clusterMembers.get(clusterIdList[i])![0];
+      const rep2 = clusterMembers.get(clusterIdList[j])![0];
+      links.push({ source: rep1, target: rep2, score: 0, hidden: true });
+    }
+  }
+
+  const clusterIds = clusterIdList;
+  const nClusters = clusterIds.length;
+  const clusterRadius = 60 + nClusters * 12;
+  for (let ci = 0; ci < clusterIds.length; ci++) {
+    const theta = (2 * Math.PI * ci) / nClusters;
+    const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+    const cx = Math.sin(phi) * Math.cos(theta) * clusterRadius;
+    const cy = Math.sin(phi) * Math.sin(theta) * clusterRadius;
+    const cz = Math.cos(phi) * clusterRadius * 0.3;
+    const spread = 30 + Math.sqrt(nodes.length) * 3;
+    const members = clusterMembers.get(clusterIds[ci])!;
+    for (const id of members) {
+      const node = nodes.find((n) => n.id === id);
+      if (node) {
+        node.x = cx + (Math.random() - 0.5) * spread;
+        node.y = cy + (Math.random() - 0.5) * spread;
+        node.z = cz + (Math.random() - 0.5) * spread;
+      }
+    }
+  }
 
   return { nodes, links };
 }

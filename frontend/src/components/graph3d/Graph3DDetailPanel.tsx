@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Node3D, GraphData3D } from "@/lib/graph-utils";
-import { clusterColor } from "@/lib/graph-utils";
+import { clusterColor, typeColor } from "@/lib/graph-utils";
 
 interface Graph3DDetailPanelProps {
   selectedNode: Node3D | null;
@@ -82,50 +82,104 @@ export function Graph3DDetailPanel({
 
 function GraphSummary({ graphData }: { graphData: GraphData3D }) {
   const clusterCounts = new Map<number, number>();
+  const typeCounts = new Map<string, number>();
+  const sourceCounts = new Map<string, number>();
+  const visibleEdges = graphData.links.filter((l) => !l.hidden);
+
   for (const node of graphData.nodes) {
     if (node.cluster >= 0) {
       clusterCounts.set(node.cluster, (clusterCounts.get(node.cluster) ?? 0) + 1);
     }
+    const t = node.memoryType || "(none)";
+    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
+    sourceCounts.set(node.source, (sourceCounts.get(node.source) ?? 0) + 1);
   }
+
+  const sortedClusters = [...clusterCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const sortedTypes = [...typeCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <h3 className="text-sm font-semibold text-foreground">Graph Summary</h3>
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <div className="rounded-md bg-accent p-2">
-          <span className="text-muted-foreground">Nodes</span>
-          <p className="text-lg font-bold text-foreground">{graphData.nodes.length}</p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-background p-3">
+          <p className="text-2xl font-bold text-foreground">{graphData.nodes.length}</p>
+          <p className="text-xs text-muted-foreground">Memories</p>
         </div>
-        <div className="rounded-md bg-accent p-2">
-          <span className="text-muted-foreground">Edges</span>
-          <p className="text-lg font-bold text-foreground">{graphData.links.length}</p>
+        <div className="rounded-lg bg-background p-3">
+          <p className="text-2xl font-bold text-foreground">{clusterCounts.size}</p>
+          <p className="text-xs text-muted-foreground">Clusters</p>
         </div>
-        <div className="rounded-md bg-accent p-2">
-          <span className="text-muted-foreground">Clusters</span>
-          <p className="text-lg font-bold text-foreground">{clusterCounts.size}</p>
+        <div className="rounded-lg bg-background p-3">
+          <p className="text-2xl font-bold text-foreground">{visibleEdges.length}</p>
+          <p className="text-xs text-muted-foreground">Edges</p>
+        </div>
+        <div className="rounded-lg bg-background p-3">
+          <p className="text-2xl font-bold text-foreground">{typeCounts.size}</p>
+          <p className="text-xs text-muted-foreground">Types</p>
         </div>
       </div>
 
-      {clusterCounts.size > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">Clusters</span>
-          {[...clusterCounts.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .map(([id, count]) => {
+      {sortedClusters.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+            Clusters
+          </p>
+          <div className="space-y-1.5">
+            {sortedClusters.map(([id, count]) => {
               const node = graphData.nodes.find((n) => n.cluster === id);
               return (
-                <div key={id} className="flex items-center gap-2 text-xs">
+                <div key={id} className="flex items-center gap-2 text-sm">
                   <span
-                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: clusterColor(id) }}
                   />
-                  <span className="text-foreground">
+                  <span className="flex-1 truncate text-foreground">
                     {node?.clusterName || `Cluster ${id}`}
                   </span>
-                  <span className="text-muted-foreground ml-auto">{count}</span>
+                  <span className="text-xs text-muted-foreground">{count}</span>
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {sortedTypes.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+            Types
+          </p>
+          <div className="space-y-1.5">
+            {sortedTypes.map(([type, count]) => (
+              <div key={type} className="flex items-center gap-2 text-sm">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: typeColor(type === "(none)" ? null : type) }}
+                />
+                <span className="flex-1 text-foreground">{type}</span>
+                <span className="text-xs text-muted-foreground">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sortedSources.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+            Sources
+          </p>
+          <div className="space-y-1.5">
+            {sortedSources.map(([src, count]) => (
+              <div key={src} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 text-foreground">{src}</span>
+                <span className="text-xs text-muted-foreground">{count}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
