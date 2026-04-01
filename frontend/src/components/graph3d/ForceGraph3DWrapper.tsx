@@ -40,13 +40,13 @@ export function ForceGraph3DWrapper({
   }, [spacing]);
 
   useEffect(() => {
-    if (selectedRef.current?.__threeObj) {
+    if ((selectedRef.current as any)?.__threeObj) {
       const mat = (selectedRef.current as any).__threeObj
         .material as THREE.MeshPhongMaterial;
       mat.emissiveIntensity = 0.1;
     }
     const newSel = graphData.nodes.find((n) => n.id === selectedNodeId);
-    if (newSel?.__threeObj) {
+    if ((newSel as any)?.__threeObj) {
       const mat = (newSel as any).__threeObj
         .material as THREE.MeshPhongMaterial;
       mat.emissiveIntensity = 0.6;
@@ -126,11 +126,11 @@ export function ForceGraph3DWrapper({
 
   const handleNodeHover = useCallback((node: Node3D | null) => {
     const prev = hoveredRef.current;
-    if (prev?.__threeObj) {
+    if ((prev as any)?.__threeObj) {
       const mat = (prev as any).__threeObj.material as THREE.MeshPhongMaterial;
       mat.emissiveIntensity = 0.1;
     }
-    if (node?.__threeObj) {
+    if ((node as any)?.__threeObj) {
       const mat = (node as any).__threeObj.material as THREE.MeshPhongMaterial;
       mat.emissiveIntensity = 0.4;
     }

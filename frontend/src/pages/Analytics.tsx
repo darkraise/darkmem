@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const COLORS = ["#58a6ff", "#3fb950", "#d2a8ff", "#ffa657", "#f778ba", "#8b949e"];
 
 export default function Analytics() {
-  const { data: stats } = useStats();
+  useStats();
   const { data: tags } = useTags();
   const { data: memories } = useMemories();
 
