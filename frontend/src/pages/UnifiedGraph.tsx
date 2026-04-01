@@ -1,20 +1,21 @@
 import { useUnifiedGraph } from "@/hooks/useApi";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Filter, PanelRightClose } from "lucide-react";
 import { GraphSkeleton } from "@/components/graph/GraphSkeleton";
 import { MiniGraph } from "@/components/graph/MiniGraph";
 import { GraphFilterPanel } from "@/components/graph/GraphFilterPanel";
 import { GraphDetailPanel } from "@/components/graph/GraphDetailPanel";
 import { Graph2DRenderer } from "@/components/graph/Graph2DRenderer";
-import type { SizeMode } from "@/lib/graph-utils";
+import { Graph3DRenderer } from "@/components/graph/Graph3DRenderer";
+import { GraphToolbar } from "@/components/graph/GraphToolbar";
+import {
+  transformToGraphData,
+  type SizeMode,
+  type FilterState,
+} from "@/lib/graph-utils";
+
+type ViewMode = "2d" | "3d";
 
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -27,40 +28,67 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 }
 
 export default function UnifiedGraph() {
+  // View
+  const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  const [graphReady, setGraphReady] = useState(false);
+
+  // API params (shared, debounced)
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5);
   const [clusterMinScore, setClusterMinScore] = useState(0.2);
   const [minClusterSize, setMinClusterSize] = useState(3);
   const debouncedSimilarity = useDebouncedValue(similarityThreshold, 500);
   const debouncedClusterScore = useDebouncedValue(clusterMinScore, 500);
   const debouncedMinSize = useDebouncedValue(minClusterSize, 500);
+
   const { data, isLoading } = useUnifiedGraph(
     debouncedSimilarity,
     debouncedClusterScore,
     debouncedMinSize,
   );
 
-  const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
+  // Layout (shared)
   const [sizeMode, setSizeMode] = useState<SizeMode>("connections");
-  const [showTagOverlay, setShowTagOverlay] = useState(false);
-  const [clusterTightness, setClusterTightness] = useState(300);
+
+  // Layout (view-specific)
   const [nodeSpacing, setNodeSpacing] = useState(100);
+  const [clusterTightness, setClusterTightness] = useState(300);
+  const [showTagOverlay, setShowTagOverlay] = useState(false);
+  const [spacing3D, setSpacing3D] = useState(50);
   const debouncedTightness = useDebouncedValue(clusterTightness, 500);
-  const debouncedSpacing = useDebouncedValue(nodeSpacing, 500);
+  const debouncedSpacing2D = useDebouncedValue(nodeSpacing, 500);
 
+  // Selection & UI
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
-
-  // Filter state
   const [showFilters, setShowFilters] = useState(false);
+
+  // Filters
   const [searchText, setSearchText] = useState("");
   const debouncedSearchText = useDebouncedValue(searchText, 1000);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(
-    new Set(),
-  );
-  const [selectedClusters, setSelectedClusters] = useState<Set<number>>(
-    new Set(),
-  );
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
+  const [selectedClusters, setSelectedClusters] = useState<Set<number>>(new Set());
+
+  // Container dimensions (for 3D renderer)
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) setDimensions({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Reset ready state on view switch so loading overlay re-appears
+  useEffect(() => {
+    setGraphReady(false);
+  }, [viewMode]);
 
   function clearFilters() {
     setSearchText("");
@@ -69,6 +97,28 @@ export default function UnifiedGraph() {
     setSelectedSources(new Set());
     setSelectedClusters(new Set());
   }
+
+  function handleReset() {
+    setSimilarityThreshold(0.5);
+    setClusterMinScore(0.2);
+    setMinClusterSize(3);
+    setClusterTightness(300);
+    setNodeSpacing(100);
+    setSpacing3D(50);
+    setSizeMode("connections");
+    setShowTagOverlay(false);
+    clearFilters();
+  }
+
+  const handleNodeSelect = useCallback((id: string | null) => {
+    setSelectedNodeId(id);
+    if (id) setShowPanel(true);
+  }, []);
+
+  const handleNavigate = useCallback((id: string) => {
+    setSelectedNodeId(id);
+    setShowPanel(true);
+  }, []);
 
   // Filtered memories
   const filteredMemories = useMemo(() => {
@@ -83,10 +133,7 @@ export default function UnifiedGraph() {
     return data.memories.filter((m) => {
       if (selectedTags.size > 0 && !m.tags.some((t) => selectedTags.has(t)))
         return false;
-      if (
-        selectedTypes.size > 0 &&
-        (!m.memory_type || !selectedTypes.has(m.memory_type))
-      )
+      if (selectedTypes.size > 0 && (!m.memory_type || !selectedTypes.has(m.memory_type)))
         return false;
       if (selectedSources.size > 0 && !selectedSources.has(m.source))
         return false;
@@ -94,9 +141,7 @@ export default function UnifiedGraph() {
         return false;
       if (
         debouncedSearchText.trim() &&
-        !m.content
-          .toLowerCase()
-          .includes(debouncedSearchText.trim().toLowerCase())
+        !m.content.toLowerCase().includes(debouncedSearchText.trim().toLowerCase())
       )
         return false;
       return true;
@@ -131,16 +176,18 @@ export default function UnifiedGraph() {
     );
   }, [data, filteredMemories]);
 
-  // Derive selected memory object
-  const selectedMemory =
-    data?.memories.find((m) => m.id === selectedMemoryId) ?? null;
-
-  const handleNavigate = useCallback((id: string) => {
-    setSelectedMemoryId(id);
-    setShowPanel(true);
-  }, []);
-
-  const memoryCount = data?.memories.length ?? 0;
+  // 3D graph data (includes filter logic internally via transformToGraphData)
+  const graphData3D = useMemo(() => {
+    if (!data) return { nodes: [], links: [] };
+    const filters: FilterState = {
+      searchText: debouncedSearchText,
+      selectedTags,
+      selectedTypes,
+      selectedSources,
+      selectedClusters,
+    };
+    return transformToGraphData(data, sizeMode, filters);
+  }, [data, sizeMode, debouncedSearchText, selectedTags, selectedTypes, selectedSources, selectedClusters]);
 
   // Derived totals for filter panel counts (always from full data, not filtered)
   const allTags = useMemo((): [string, number][] => {
@@ -149,9 +196,7 @@ export default function UnifiedGraph() {
     for (const m of data.memories) {
       for (const t of m.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
     }
-    return Array.from(counts.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0]),
-    );
+    return Array.from(counts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [data]);
 
   const allTypes = useMemo(() => {
@@ -182,7 +227,6 @@ export default function UnifiedGraph() {
     return Array.from(counts.entries()).sort((a, b) => a[0] - b[0]);
   }, [data]);
 
-  // Tag groups: group by category prefix (part before first "/")
   const tagGroups = useMemo(() => {
     const groups = new Map<string, [string, number][]>();
     for (const [tag, count] of allTags) {
@@ -192,10 +236,11 @@ export default function UnifiedGraph() {
       arr.push([tag, count]);
       groups.set(category, arr);
     }
-    return Array.from(groups.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0]),
-    );
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [allTags]);
+
+  const selectedMemory = data?.memories.find((m) => m.id === selectedNodeId) ?? null;
+  const memoryCount = data?.memories.length ?? 0;
 
   return (
     <div className="flex h-full" style={{ minHeight: 0 }}>
@@ -204,33 +249,48 @@ export default function UnifiedGraph() {
         {isLoading && <GraphSkeleton />}
         {!isLoading && memoryCount === 0 && (
           <p className="text-muted-foreground p-3">
-            No data yet. Create memories with the pipeline running to populate
-            the graph.
+            No data yet. Create memories with the pipeline running to populate the graph.
           </p>
         )}
 
         {memoryCount > 0 && (
-          <div className="relative flex-1 min-h-0">
+          <div ref={containerRef} className="relative flex-1 min-h-0">
             <div className="bg-[#0d1117] absolute inset-0">
-              <Graph2DRenderer
-                data={data!}
-                filteredMemories={filteredMemories}
-                filteredClusters={filteredClusters}
-                filteredEdges={filteredEdges}
-                selectedNodeId={selectedMemoryId}
-                onNodeSelect={(id) => {
-                  setSelectedMemoryId(id);
-                  if (id) setShowPanel(true);
-                }}
-                onReady={() => {}}
-                sizeMode={sizeMode}
-                spacing={debouncedSpacing}
-                clusterTightness={debouncedTightness}
-                showTagOverlay={showTagOverlay}
-              />
+              {dimensions && viewMode === "2d" && data && (
+                <Graph2DRenderer
+                  data={data}
+                  filteredMemories={filteredMemories}
+                  filteredClusters={filteredClusters}
+                  filteredEdges={filteredEdges}
+                  selectedNodeId={selectedNodeId}
+                  onNodeSelect={handleNodeSelect}
+                  onReady={() => setGraphReady(true)}
+                  sizeMode={sizeMode}
+                  spacing={debouncedSpacing2D}
+                  clusterTightness={debouncedTightness}
+                  showTagOverlay={showTagOverlay}
+                />
+              )}
+              {dimensions && viewMode === "3d" && (
+                <Graph3DRenderer
+                  graphData={graphData3D}
+                  width={dimensions.width}
+                  height={dimensions.height}
+                  selectedNodeId={selectedNodeId}
+                  onNodeSelect={handleNodeSelect}
+                  onReady={() => setGraphReady(true)}
+                  spacing={spacing3D}
+                />
+              )}
             </div>
 
-            {/* Floating toolbar */}
+            {/* Loading overlay */}
+            {!graphReady && (
+              <div className="absolute inset-0 z-30 bg-[#0d1117]">
+                <GraphSkeleton label={isLoading ? "Loading graph data..." : "Rendering graph..."} />
+              </div>
+            )}
+
             {/* Filter button — top left */}
             <div className="absolute top-3 left-3 z-20">
               <Button
@@ -245,131 +305,25 @@ export default function UnifiedGraph() {
             </div>
 
             {/* Centered toolbar */}
-            <div className="absolute top-3 left-0 right-0 z-10 flex justify-center pointer-events-none">
-              {/* Controls */}
-              <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-md border border-border shadow-lg px-3 py-1.5 pointer-events-auto flex-wrap">
-                <Select
-                  value={sizeMode}
-                  onValueChange={(v) => setSizeMode(v as SizeMode)}
-                >
-                  <SelectTrigger className="w-36 h-7 text-xs border-0 bg-transparent p-0 pr-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="connections">
-                      Size: Connections
-                    </SelectItem>
-                    <SelectItem value="importance">Size: Importance</SelectItem>
-                    <SelectItem value="uniform">Size: Uniform</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <label>Edges</label>
-                  <input
-                    type="range"
-                    min="0.3"
-                    max="0.95"
-                    step="0.05"
-                    value={similarityThreshold}
-                    onChange={(e) =>
-                      setSimilarityThreshold(parseFloat(e.target.value))
-                    }
-                    className="w-14"
-                  />
-                  <span className="font-mono w-5">{similarityThreshold}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <label>Cluster</label>
-                  <input
-                    type="range"
-                    min="0.2"
-                    max="0.8"
-                    step="0.05"
-                    value={clusterMinScore}
-                    onChange={(e) =>
-                      setClusterMinScore(parseFloat(e.target.value))
-                    }
-                    className="w-14"
-                  />
-                  <span className="font-mono w-5">{clusterMinScore}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <label>Min</label>
-                  <input
-                    type="range"
-                    min="2"
-                    max="10"
-                    step="1"
-                    value={minClusterSize}
-                    onChange={(e) =>
-                      setMinClusterSize(parseInt(e.target.value))
-                    }
-                    className="w-10"
-                  />
-                  <span className="font-mono w-3">{minClusterSize}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <label>Tight</label>
-                  <input
-                    type="range"
-                    min="30"
-                    max="300"
-                    step="10"
-                    value={clusterTightness}
-                    onChange={(e) =>
-                      setClusterTightness(parseInt(e.target.value))
-                    }
-                    className="w-14"
-                  />
-                  <span className="font-mono w-5">{clusterTightness}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <label>Space</label>
-                  <input
-                    type="range"
-                    min="100"
-                    max="500"
-                    step="25"
-                    value={nodeSpacing}
-                    onChange={(e) => setNodeSpacing(parseInt(e.target.value))}
-                    className="w-14"
-                  />
-                  <span className="font-mono w-5">{nodeSpacing}</span>
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-7 text-xs ${showTagOverlay ? "text-cyan-400" : "text-muted-foreground"}`}
-                  onClick={() => setShowTagOverlay((v) => !v)}
-                >
-                  Tags
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-muted-foreground"
-                  onClick={() => {
-                    setSimilarityThreshold(0.5);
-                    setClusterMinScore(0.2);
-                    setMinClusterSize(3);
-                    setClusterTightness(300);
-                    setNodeSpacing(100);
-                    setSizeMode("connections");
-                    setShowTagOverlay(false);
-                    clearFilters();
-                  }}
-                >
-                  Reset
-                </Button>
-              </div>
-            </div>
+            <GraphToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              sizeMode={sizeMode}
+              onSizeModeChange={setSizeMode}
+              similarityThreshold={similarityThreshold}
+              onSimilarityChange={setSimilarityThreshold}
+              clusterMinScore={clusterMinScore}
+              onClusterMinScoreChange={setClusterMinScore}
+              minClusterSize={minClusterSize}
+              onMinClusterSizeChange={setMinClusterSize}
+              spacing={viewMode === "2d" ? nodeSpacing : spacing3D}
+              onSpacingChange={viewMode === "2d" ? setNodeSpacing : setSpacing3D}
+              clusterTightness={clusterTightness}
+              onClusterTightnessChange={setClusterTightness}
+              showTagOverlay={showTagOverlay}
+              onShowTagOverlayChange={setShowTagOverlay}
+              onReset={handleReset}
+            />
 
             {/* Panel toggle — top right */}
             {!showPanel && (
@@ -448,12 +402,10 @@ export default function UnifiedGraph() {
             visibleEdgeCount={filteredEdges.length}
             onClose={() => {
               setShowPanel(false);
-              if (selectedMemory) {
-                setSelectedMemoryId(null);
-              }
+              setSelectedNodeId(null);
             }}
           >
-            {selectedMemory && (
+            {selectedMemory && viewMode === "2d" && (
               <MiniGraph
                 memoryId={selectedMemory.id}
                 onNavigate={handleNavigate}
