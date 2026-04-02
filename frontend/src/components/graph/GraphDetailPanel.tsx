@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import type { UnifiedMemory } from "@/hooks/useApi";
-import { clusterColor, typeColor } from "@/lib/graph-colors";
+import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/useApi";
+import { clusterColor, typeColor, entityTypeColor } from "@/lib/graph-colors";
 
 interface GraphDetailPanelProps {
   selectedMemory: UnifiedMemory | null;
@@ -10,6 +10,10 @@ interface GraphDetailPanelProps {
   visibleEdgeCount: number;
   onClose: () => void;
   children?: React.ReactNode;
+  selectedEntity?: GraphEntity | null;
+  entityRelations?: EntityRelation[];
+  allEntities?: GraphEntity[];
+  onNavigateToMemory?: (memoryId: string) => void;
 }
 
 export function GraphDetailPanel({
@@ -20,13 +24,21 @@ export function GraphDetailPanel({
   visibleEdgeCount,
   onClose,
   children,
+  selectedEntity,
+  entityRelations,
+  allEntities,
+  onNavigateToMemory,
 }: GraphDetailPanelProps) {
+  const panelTitle = selectedEntity
+    ? "Entity Detail"
+    : selectedMemory
+      ? "Memory Detail"
+      : "Graph Summary";
+
   return (
     <>
       <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border">
-        <span className="text-sm font-medium">
-          {selectedMemory ? "Memory Detail" : "Graph Summary"}
-        </span>
+        <span className="text-sm font-medium">{panelTitle}</span>
         <button
           className="text-muted-foreground hover:text-foreground rounded-sm p-1"
           onClick={onClose}
@@ -35,7 +47,15 @@ export function GraphDetailPanel({
         </button>
       </div>
 
-      {selectedMemory ? (
+      {selectedEntity ? (
+        <EntityDetail
+          entity={selectedEntity}
+          memories={memories}
+          entityRelations={entityRelations}
+          allEntities={allEntities}
+          onNavigateToMemory={onNavigateToMemory}
+        />
+      ) : selectedMemory ? (
         <MemoryDetail
           memory={selectedMemory}
           clusterName={clusterName}
@@ -50,6 +70,93 @@ export function GraphDetailPanel({
         />
       )}
     </>
+  );
+}
+
+interface EntityDetailProps {
+  entity: GraphEntity;
+  memories: UnifiedMemory[];
+  entityRelations?: EntityRelation[];
+  allEntities?: GraphEntity[];
+  onNavigateToMemory?: (memoryId: string) => void;
+}
+
+function EntityDetail({ entity, memories, entityRelations, allEntities, onNavigateToMemory }: EntityDetailProps) {
+  const color = entityTypeColor(entity.entity_type);
+  const related = entityRelations?.filter(
+    (r) => r.source === entity.id || r.target === entity.id,
+  ) ?? [];
+
+  return (
+    <div className="p-4 space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-foreground">{entity.name}</h3>
+        <span
+          className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full capitalize"
+          style={{ backgroundColor: color + "20", color }}
+        >
+          {entity.entity_type}
+        </span>
+      </div>
+
+      {Object.keys(entity.properties).length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Properties</p>
+          <div className="space-y-1">
+            {Object.entries(entity.properties).map(([key, value]) => (
+              <div key={key} className="flex gap-2 text-xs">
+                <span className="text-muted-foreground">{key}:</span>
+                <span className="text-foreground">{String(value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+          Linked Memories ({entity.memory_ids.length})
+        </p>
+        <div className="space-y-1">
+          {entity.memory_ids.slice(0, 20).map((mid) => {
+            const mem = memories.find((m) => m.id === mid);
+            return (
+              <button
+                key={mid}
+                className="w-full text-left text-xs text-muted-foreground hover:text-foreground truncate block py-0.5"
+                onClick={() => onNavigateToMemory?.(mid)}
+                title={mem?.content}
+              >
+                {mem ? mem.content.slice(0, 80) : mid.slice(0, 8) + "…"}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {related.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            Related Entities ({related.length})
+          </p>
+          <div className="space-y-1">
+            {related.map((r, i) => {
+              const otherId = r.source === entity.id ? r.target : r.source;
+              const otherEntity = allEntities?.find((e) => e.id === otherId);
+              const isSource = r.source === entity.id;
+              return (
+                <div key={i} className="flex items-center gap-1.5 text-xs">
+                  <span className="text-muted-foreground">{isSource ? "→" : "←"}</span>
+                  <span className="text-foreground">{r.type}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="text-foreground truncate">{otherEntity?.name ?? otherId.slice(0, 8)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

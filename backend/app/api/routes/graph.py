@@ -50,6 +50,7 @@ async def get_unified_graph(
     similarity_threshold: float = Query(0.75, ge=0.0, le=1.0),
     cluster_min_score: float = Query(0.5, ge=0.1, le=0.95),
     min_cluster_size: int = Query(3, ge=2, le=10),
+    include_entities: bool = Query(False),
     _user=Depends(require_auth),
     request: Request = None,
 ):
@@ -140,12 +141,39 @@ async def get_unified_graph(
         for cid in clusters:
             cluster_names[str(cid)] = f"Cluster {cid}"
 
-    return {
+    result = {
         "memories": memory_nodes,
         "clusters": {str(k): v for k, v in clusters.items()},
         "cluster_names": cluster_names,
         "similarity_edges": similarity_edges,
     }
+
+    if include_entities:
+        graph_repo = getattr(request.app.state, "graph_repo", None)
+        if graph_repo:
+            try:
+                memory_id_set = {m["id"] for m in memory_nodes}
+                full_graph = await graph_repo.get_full_graph(limit=500)
+                entities = [
+                    e for e in full_graph["entities"]
+                    if any(mid in memory_id_set for mid in e.get("memory_ids", []))
+                ]
+                entity_id_set = {e["id"] for e in entities}
+                relations = [
+                    r for r in full_graph["relations"]
+                    if r.get("source") in entity_id_set and r.get("target") in entity_id_set
+                ]
+                result["entities"] = entities
+                result["entity_relations"] = relations
+            except Exception:
+                logger.exception("Failed to fetch entity data")
+                result["entities"] = []
+                result["entity_relations"] = []
+        else:
+            result["entities"] = []
+            result["entity_relations"] = []
+
+    return result
 
 
 @router.get("/memory-context/{memory_id}")

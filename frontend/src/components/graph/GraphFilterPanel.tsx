@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { clusterColor, typeColor } from "@/lib/graph-colors";
+import { clusterColor, typeColor, entityTypeColor } from "@/lib/graph-colors";
 
 export interface GraphFilterPanelProps {
   tagGroups: [string, [string, number][]][];
@@ -18,6 +18,10 @@ export interface GraphFilterPanelProps {
   onSourceToggle: (src: string) => void;
   onClusterToggle: (cid: number) => void;
   onShowAll: () => void;
+  entityLayerEnabled?: boolean;
+  allEntityTypes?: [string, number][];
+  selectedEntityTypes?: Set<string>;
+  onEntityTypeToggle?: (type: string) => void;
 }
 
 export function GraphFilterPanel({
@@ -37,6 +41,10 @@ export function GraphFilterPanel({
   onSourceToggle,
   onClusterToggle,
   onShowAll,
+  entityLayerEnabled,
+  allEntityTypes,
+  selectedEntityTypes,
+  onEntityTypeToggle,
 }: GraphFilterPanelProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
@@ -239,6 +247,47 @@ export function GraphFilterPanel({
                         }`}
                       >
                         {clusterNames[String(cid)] || `Cluster ${cid}`}
+                      </span>
+                      <span className="opacity-40 text-xs">{count}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Entity Types */}
+          {entityLayerEnabled && allEntityTypes && allEntityTypes.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Entity Types
+              </p>
+              <div className="space-y-0.5">
+                {allEntityTypes.map(([etype, count]) => {
+                  const color = entityTypeColor(etype);
+                  return (
+                    <label
+                      key={etype}
+                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedEntityTypes?.has(etype) ?? false}
+                        onChange={() => onEntityTypeToggle?.(etype)}
+                        className="accent-primary w-3.5 h-3.5"
+                      />
+                      <span
+                        className="w-2 h-2 flex-shrink-0"
+                        style={{ backgroundColor: color, clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
+                      />
+                      <span
+                        className={`flex-1 truncate capitalize ${
+                          selectedEntityTypes?.has(etype)
+                            ? "text-foreground"
+                            : "text-muted-foreground group-hover:text-foreground"
+                        }`}
+                      >
+                        {etype}
                       </span>
                       <span className="opacity-40 text-xs">{count}</span>
                     </label>

@@ -27,6 +27,8 @@ interface GraphToolbarProps {
   onClusterTightnessChange: (v: number) => void;
   hullMode: "clusters" | "tags";
   onHullModeChange: (v: "clusters" | "tags") => void;
+  entityLayer: boolean;
+  onEntityLayerChange: (v: boolean) => void;
   onReset: () => void;
 }
 
@@ -89,6 +91,8 @@ export function GraphToolbar({
   onClusterTightnessChange,
   hullMode,
   onHullModeChange,
+  entityLayer,
+  onEntityLayerChange,
   onReset,
 }: GraphToolbarProps) {
   return (
@@ -206,6 +210,16 @@ export function GraphToolbar({
             onChange={onSpacingChange}
           />
         )}
+
+        {/* Entity layer toggle */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`h-7 text-xs ${entityLayer ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
+          onClick={() => onEntityLayerChange(!entityLayer)}
+        >
+          Entities
+        </Button>
 
         {/* Reset */}
         <Button

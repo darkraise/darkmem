@@ -70,6 +70,19 @@ export function typeColor(memoryType: string | null): string {
   return typeColorAssignments.get(memoryType)!;
 }
 
+export const ENTITY_TYPE_COLORS: Record<string, string> = {
+  person: "#58a6ff",
+  service: "#3fb950",
+  project: "#d2a8ff",
+  technology: "#ffa657",
+  concept: "#8b949e",
+  organization: "#f778ba",
+};
+
+export function entityTypeColor(entityType: string): string {
+  return ENTITY_TYPE_COLORS[entityType] ?? "#8b949e";
+}
+
 export function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -81,6 +94,13 @@ export function lightenHex(hex: string, amount = 0.35): string {
   const r = Math.min(255, Math.round(parseInt(hex.slice(1, 3), 16) + (255 - parseInt(hex.slice(1, 3), 16)) * amount));
   const g = Math.min(255, Math.round(parseInt(hex.slice(3, 5), 16) + (255 - parseInt(hex.slice(3, 5), 16)) * amount));
   const b = Math.min(255, Math.round(parseInt(hex.slice(5, 7), 16) + (255 - parseInt(hex.slice(5, 7), 16)) * amount));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+export function blendHex(hex1: string, hex2: string, ratio = 0.5): string {
+  const r = Math.round(parseInt(hex1.slice(1, 3), 16) * (1 - ratio) + parseInt(hex2.slice(1, 3), 16) * ratio);
+  const g = Math.round(parseInt(hex1.slice(3, 5), 16) * (1 - ratio) + parseInt(hex2.slice(3, 5), 16) * ratio);
+  const b = Math.round(parseInt(hex1.slice(5, 7), 16) * (1 - ratio) + parseInt(hex2.slice(5, 7), 16) * ratio);
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 

@@ -207,7 +207,10 @@ export function Graph3DRenderer({
 
   const nodeThreeObject = useCallback((node: Node3D) => {
     const radius = 1 + node.val * 1.5;
-    const geometry = new THREE.SphereGeometry(radius, 16, 12);
+    const geometry =
+      node.nodeKind === "entity"
+        ? new THREE.OctahedronGeometry(radius * 0.6)
+        : new THREE.SphereGeometry(radius, 16, 12);
     const material = new THREE.MeshPhongMaterial({
       color: node.color,
       emissive: node.color,
@@ -226,26 +229,47 @@ export function Graph3DRenderer({
       height={height}
       backgroundColor="#0d1117"
       nodeThreeObject={nodeThreeObject}
-      nodeLabel={(node: Node3D) => node.content?.slice(0, 100) || ""}
-      linkVisibility={(link: any) => !link.hidden}
+      nodeLabel={(node: Node3D) =>
+        node.nodeKind === "entity"
+          ? (node.entityName ?? "")
+          : (node.content?.slice(0, 100) || "")
+      }
+      linkVisibility={(link: any) =>
+        !link.hidden && link.linkKind !== "membership"
+      }
       linkWidth={(link: any) => {
-        if (!neighborSet) return 0.8;
+        if (!neighborSet) {
+          if (link.linkKind === "relation") return 1.5;
+          return 0.8;
+        }
         const src =
           typeof link.source === "object" ? link.source.id : link.source;
         const tgt =
           typeof link.target === "object" ? link.target.id : link.target;
         if (neighborSet.has(src) && neighborSet.has(tgt)) return 2;
+        if (link.linkKind === "relation") return 1.5;
         return 0.5;
       }}
       linkColor={(link: any) => {
-        if (!neighborSet) return "rgba(76, 201, 240, 0.6)";
+        if (!neighborSet) {
+          if (link.linkKind === "relation") return "#ffa65790";
+          return "rgba(76, 201, 240, 0.6)";
+        }
         const src =
           typeof link.source === "object" ? link.source.id : link.source;
         const tgt =
           typeof link.target === "object" ? link.target.id : link.target;
-        if (neighborSet.has(src) && neighborSet.has(tgt)) return "#4CC9F0";
+        if (neighborSet.has(src) && neighborSet.has(tgt)) {
+          if (link.linkKind === "relation") return "#ffa657";
+          return "#4CC9F0";
+        }
+        if (link.linkKind === "relation") return "#ffa65740";
         return "rgba(76, 201, 240, 0.25)";
       }}
+      linkDirectionalArrowLength={(link: any) =>
+        link.linkKind === "relation" ? 4 : 0
+      }
+      linkDirectionalArrowRelPos={1}
       onNodeClick={(node: Node3D) => {
         onNodeSelect(node.id);
         const distance = 150;

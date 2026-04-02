@@ -1,12 +1,13 @@
-import type { UnifiedMemory, UnifiedGraphData } from "@/hooks/useApi";
-import { clusterColor, typeColor } from "@/lib/graph-colors";
-export { clusterColor, typeColor };
-export { CLUSTER_PALETTE, UNCLUSTERED_COLOR } from "@/lib/graph-colors";
+import type { UnifiedMemory, UnifiedGraphData, GraphEntity, EntityRelation } from "@/hooks/useApi";
+import { clusterColor, typeColor, entityTypeColor } from "@/lib/graph-colors";
+export { clusterColor, typeColor, entityTypeColor };
+export { CLUSTER_PALETTE, UNCLUSTERED_COLOR, ENTITY_TYPE_COLORS } from "@/lib/graph-colors";
 
 export type SizeMode = "connections" | "importance" | "uniform";
 
 export interface Node3D {
   id: string;
+  nodeKind: "memory" | "entity";
   content: string;
   source: string;
   tags: string[];
@@ -16,6 +17,9 @@ export interface Node3D {
   clusterName: string;
   color: string;
   val: number;
+  entityName?: string;
+  entityType?: string;
+  entityMemoryIds?: string[];
   x?: number;
   y?: number;
   z?: number;
@@ -29,6 +33,8 @@ export interface Link3D {
   target: string;
   score: number;
   hidden?: boolean;
+  linkKind?: "similarity" | "relation" | "membership";
+  relationType?: string;
 }
 
 export interface GraphData3D {
@@ -42,6 +48,7 @@ export interface FilterState {
   selectedTypes: Set<string>;
   selectedSources: Set<string>;
   selectedClusters: Set<number>;
+  selectedEntityTypes?: Set<string>;
 }
 
 export function computeNodeVal(
@@ -89,6 +96,9 @@ export function transformToGraphData(
   data: UnifiedGraphData,
   sizeMode: SizeMode,
   filters: FilterState,
+  entityLayerEnabled = false,
+  entities: GraphEntity[] = [],
+  entityRelations: EntityRelation[] = [],
 ): GraphData3D {
   const edgeCountMap = new Map<string, number>();
   for (const edge of data.similarity_edges) {
@@ -103,6 +113,7 @@ export function transformToGraphData(
 
   const nodes: Node3D[] = filteredMemories.map((m) => ({
     id: m.id,
+    nodeKind: "memory" as const,
     content: m.content,
     source: m.source,
     tags: m.tags,
@@ -170,6 +181,61 @@ export function transformToGraphData(
         node.x = cx + (Math.random() - 0.5) * spread;
         node.y = cy + (Math.random() - 0.5) * spread;
         node.z = cz + (Math.random() - 0.5) * spread;
+      }
+    }
+  }
+
+  if (entityLayerEnabled && entities.length > 0) {
+    const entityTypeFilter = filters.selectedEntityTypes;
+    const visibleEntities = entities.filter((e) => {
+      if (entityTypeFilter && entityTypeFilter.size > 0 && !entityTypeFilter.has(e.entity_type)) return false;
+      return e.memory_ids.some((mid) => filteredIds.has(mid));
+    });
+
+    const entityIdSet = new Set(visibleEntities.map((e) => e.id));
+
+    for (const e of visibleEntities) {
+      nodes.push({
+        id: `entity:${e.id}`,
+        nodeKind: "entity",
+        content: e.name,
+        source: "",
+        tags: [],
+        memoryType: null,
+        importance: 0,
+        cluster: -1,
+        clusterName: "",
+        color: entityTypeColor(e.entity_type),
+        val: 1,
+        entityName: e.name,
+        entityType: e.entity_type,
+        entityMemoryIds: e.memory_ids,
+      });
+    }
+
+    for (const r of entityRelations) {
+      if (entityIdSet.has(r.source) && entityIdSet.has(r.target)) {
+        links.push({
+          source: `entity:${r.source}`,
+          target: `entity:${r.target}`,
+          score: r.weight ?? 0,
+          linkKind: "relation",
+          relationType: r.type,
+        });
+      }
+    }
+
+    for (const e of visibleEntities) {
+      for (const mid of e.memory_ids) {
+        if (filteredIds.has(mid)) {
+          links.push({
+            source: `entity:${e.id}`,
+            target: mid,
+            score: 0,
+            hidden: true,
+            linkKind: "membership",
+          });
+        }
       }
     }
   }

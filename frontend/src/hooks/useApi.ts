@@ -201,17 +201,34 @@ export interface UnifiedMemory {
   cluster: number;
 }
 
+export interface GraphEntity {
+  id: string;
+  name: string;
+  entity_type: string;
+  properties: Record<string, unknown>;
+  memory_ids: string[];
+}
+
+export interface EntityRelation {
+  source: string;
+  target: string;
+  type: string;
+  weight: number;
+}
+
 export interface UnifiedGraphData {
   memories: UnifiedMemory[];
   clusters: Record<string, string[]>;
   cluster_names: Record<string, string>;
   similarity_edges: { source: string; target: string; score: number }[];
+  entities?: GraphEntity[];
+  entity_relations?: EntityRelation[];
 }
 
-export function useUnifiedGraph(similarityThreshold = 0.75, clusterMinScore = 0.5, minClusterSize = 3) {
+export function useUnifiedGraph(similarityThreshold = 0.75, clusterMinScore = 0.5, minClusterSize = 3, includeEntities = false) {
   return useQuery<UnifiedGraphData>({
-    queryKey: ["unifiedGraph", similarityThreshold, clusterMinScore, minClusterSize],
-    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}&cluster_min_score=${clusterMinScore}&min_cluster_size=${minClusterSize}`),
+    queryKey: ["unifiedGraph", similarityThreshold, clusterMinScore, minClusterSize, includeEntities],
+    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}&cluster_min_score=${clusterMinScore}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}`),
   });
 }
 

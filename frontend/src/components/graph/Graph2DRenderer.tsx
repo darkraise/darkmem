@@ -1,17 +1,24 @@
 import { useRef, useEffect, useCallback } from "react";
-import { Network, DataSet } from "vis-network/standalone";
+import Graph from "graphology";
+import Sigma from "sigma";
+import EdgeCurveProgram from "@sigma/edge-curve";
+import FA2Layout from "graphology-layout-forceatlas2/worker";
+import { inferSettings } from "graphology-layout-forceatlas2";
 import { computeSize } from "@/lib/graph-utils";
 import type { SizeMode } from "@/lib/graph-utils";
 import {
   clusterColor,
-  tagColor,
-  typeColor,
-  hexToRgba,
+  entityTypeColor,
   lightenHex,
   darkenHex,
+  blendHex,
 } from "@/lib/graph-colors";
-import { drawHullForGroup } from "@/lib/graph-geometry";
-import type { UnifiedMemory, UnifiedGraphData } from "@/hooks/useApi";
+import type {
+  UnifiedMemory,
+  UnifiedGraphData,
+  GraphEntity,
+  EntityRelation,
+} from "@/hooks/useApi";
 
 interface Graph2DRendererProps {
   data: UnifiedGraphData;
@@ -25,57 +32,46 @@ interface Graph2DRendererProps {
   spacing: number;
   clusterTightness: number;
   hullMode: "clusters" | "tags";
+  entityLayerEnabled: boolean;
+  entities: GraphEntity[];
+  entityRelations: EntityRelation[];
+  onEntitySelect?: (entityId: string | null) => void;
 }
 
 export function Graph2DRenderer({
-  data,
   filteredMemories,
-  filteredClusters,
   filteredEdges,
   selectedNodeId,
   onNodeSelect,
   onReady,
   sizeMode,
-  spacing,
-  clusterTightness,
-  hullMode,
+  entityLayerEnabled,
+  entities,
+  entityRelations,
+  onEntitySelect,
 }: Graph2DRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const networkRef = useRef<Network | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nodesDataSetRef = useRef<DataSet<any> | null>(null);
-  const tagColorMap = useRef<Map<string, string>>(new Map());
-
-  // Keep latest hullMode accessible in afterDrawing without rebuilding
-  const hullModeRef = useRef(hullMode);
-  useEffect(() => {
-    hullModeRef.current = hullMode;
-    if (networkRef.current) {
-      networkRef.current.redraw();
-    }
-  }, [hullMode]);
-
-  // Keep latest filtered state accessible in focusOnNode/exitFocusMode closures
-  const filteredMemoriesRef = useRef(filteredMemories);
-  const filteredEdgesRef = useRef(filteredEdges);
-  useEffect(() => {
-    filteredMemoriesRef.current = filteredMemories;
-  }, [filteredMemories]);
-  useEffect(() => {
-    filteredEdgesRef.current = filteredEdges;
-  }, [filteredEdges]);
-
-  // Exposed focus handles so selectedNodeId effect can trigger them
-  const focusOnNodeRef = useRef<((id: string) => void) | null>(null);
-  const exitFocusModeRef = useRef<(() => void) | null>(null);
+  const sigmaRef = useRef<Sigma | null>(null);
+  const graphRef = useRef<Graph | null>(null);
+  const fa2Ref = useRef<FA2Layout | null>(null);
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  const hoveredNodeRef = useRef<string | null>(null);
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return;
 
-    if (networkRef.current) {
-      networkRef.current.destroy();
-      networkRef.current = null;
+    if (fa2Ref.current) {
+      fa2Ref.current.kill();
+      fa2Ref.current = null;
     }
+    if (sigmaRef.current) {
+      sigmaRef.current.kill();
+      sigmaRef.current = null;
+      graphRef.current = null;
+    }
+
+    const graph = new Graph();
+    graphRef.current = graph;
 
     const connMap = new Map<string, number>();
     for (const e of filteredEdges) {
@@ -83,402 +79,236 @@ export function Graph2DRenderer({
       connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1);
     }
 
-    const allTags = Array.from(new Set(data.memories.flatMap((m) => m.tags)));
-    allTags.forEach((tag, i) => {
-      if (!tagColorMap.current.has(tag)) {
-        tagColorMap.current.set(tag, tagColor(i));
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nodes: any[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const edges: any[] = [];
-
+    const allNodeIds = new Set<string>();
     for (const m of filteredMemories) {
-      const color = typeColor(m.memory_type);
+      const color = clusterColor(m.cluster);
       const conns = connMap.get(m.id) ?? 0;
       const size = computeSize(sizeMode, conns, m.importance);
-      const borderCol = darkenHex(color);
-      nodes.push({
-        id: m.id,
-        label: m.content.slice(0, 25) + (m.content.length > 25 ? "…" : ""),
-        shape: "dot",
-        size,
-        color: {
-          background: color,
-          border: borderCol,
-          hover: { background: lightenHex(color), border: color },
-          highlight: { background: color, border: darkenHex(color) },
-        },
-        font: { color: "#c9d1d9", size: 13, face: "Inter, sans-serif" },
-        borderWidth: 2,
-        shadow: { enabled: true, color: color + "30", size: 8, x: 0, y: 1 },
-        mass: 0.5 + Math.min(2.5, Math.log1p(conns) * 0.8),
-        _memory: m,
+      allNodeIds.add(m.id);
+      graph.addNode(m.id, {
+        x: (Math.random() - 0.5) * 10,
+        y: (Math.random() - 0.5) * 10,
+        label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
+        size: size * 0.5,
+        color,
+        borderColor: darkenHex(color),
+        _kind: "memory",
       });
     }
 
-    for (let i = 0; i < filteredEdges.length; i++) {
-      const e = filteredEdges[i];
-      edges.push({
-        id: `sim-${i}`,
-        from: e.source,
-        to: e.target,
-        color: {
-          color: "#30363d",
-          hover: "#78a6e0b4",
-          highlight: "#4CC9F0",
-          inherit: false,
-        },
-        hoverWidth: 1.5,
-        smooth: { type: "continuous", roundness: 0.2 },
-        width: 1,
-      });
-    }
-
-    const allNodeIds = new Set(nodes.map((n: { id: string }) => n.id));
-
-    // Build grouping based on hull mode
-    const groups: Record<string, string[]> =
-      hullModeRef.current === "tags"
-        ? (() => {
-            const tagGroups: Record<string, string[]> = {};
-            for (const m of filteredMemories) {
-              for (const tag of m.tags) {
-                const arr = tagGroups[tag] ?? [];
-                arr.push(m.id);
-                tagGroups[tag] = arr;
-              }
-            }
-            // Only keep tags with 2+ visible members
-            for (const key of Object.keys(tagGroups)) {
-              const kept = tagGroups[key].filter((id) => allNodeIds.has(id));
-              if (kept.length < 2) delete tagGroups[key];
-              else tagGroups[key] = kept;
-            }
-            return tagGroups;
-          })()
-        : Object.fromEntries(
-            Object.entries(filteredClusters).map(([cid, members]) => [
-              cid,
-              (members as string[]).filter((id) => allNodeIds.has(id)),
-            ]),
-          );
-
-    // Hidden edges pull group members together
-    for (const [groupId, members] of Object.entries(groups)) {
-      for (let i = 0; i < members.length; i++) {
-        for (let j = i + 1; j < members.length; j++) {
-          edges.push({
-            id: `group-${groupId}-${i}-${j}`,
-            from: members[i],
-            to: members[j],
-            hidden: true,
-            physics: true,
-            width: 0,
-            length: clusterTightness,
+    for (const e of filteredEdges) {
+      if (graph.hasNode(e.source) && graph.hasNode(e.target)) {
+        try {
+          const srcColor =
+            graph.getNodeAttribute(e.source, "color") || "#8b949e";
+          const tgtColor =
+            graph.getNodeAttribute(e.target, "color") || "#8b949e";
+          const edgeColor = darkenHex(blendHex(srcColor, tgtColor), 0.6);
+          graph.addEdge(e.source, e.target, {
+            color: edgeColor,
+            size: 2.5,
           });
+        } catch {
+          /* duplicate */
         }
       }
     }
 
-    // Initial positions arranged around a circle by group
-    const groupIds = Object.keys(groups);
-    const nGroups = groupIds.length;
-    const groupRadius = 80 + nGroups * 15;
-    const groupCenters: Record<string, { x: number; y: number }> = {};
-    groupIds.forEach((gid, i) => {
-      const angle = (2 * Math.PI * i) / nGroups;
-      groupCenters[gid] = {
-        x: Math.cos(angle) * groupRadius,
-        y: Math.sin(angle) * groupRadius,
-      };
-    });
-    const spread = 60 + Math.sqrt(nodes.length) * 5;
-    const nodeAssigned = new Set<string>();
-    for (const [groupId, members] of Object.entries(groups)) {
-      const center = groupCenters[groupId];
-      for (const mid of members) {
-        if (nodeAssigned.has(mid)) continue;
-        nodeAssigned.add(mid);
-        const node = nodes.find((n: { id: string }) => n.id === mid);
-        if (node && center) {
-          node.x = center.x + (Math.random() - 0.5) * spread;
-          node.y = center.y + (Math.random() - 0.5) * spread;
-        }
-      }
-    }
+    if (entityLayerEnabled) {
+      const visibleEntities = entities.filter((ent) =>
+        ent.memory_ids.some((mid) => allNodeIds.has(mid)),
+      );
+      const entityIdSet = new Set(visibleEntities.map((ent) => ent.id));
 
-    const nodesDataSet = new DataSet(nodes);
-    const edgesDataSet = new DataSet(edges);
-    nodesDataSetRef.current = nodesDataSet;
-
-    const network = new Network(
-      containerRef.current!,
-      { nodes: nodesDataSet, edges: edgesDataSet },
-      {
-        physics: {
-          barnesHut: {
-            gravitationalConstant: -3000,
-            springLength: spacing,
-            springConstant: 0.02,
-            damping: 0.3,
-            avoidOverlap: 0.5,
-          },
-          stabilization: { enabled: false },
-        },
-        interaction: {
-          hover: true,
-          hoverConnectedEdges: true,
-          tooltipDelay: 99999,
-          zoomView: true,
-          dragView: true,
-        },
-        edges: {
-          smooth: { enabled: true, type: "continuous", roundness: 0.2 },
-          hoverWidth: 1.5,
-          color: { hover: "#78a6e0b4" },
-        },
-      },
-    );
-
-    setTimeout(() => {
-      if (networkRef.current) {
-        networkRef.current.setOptions({ physics: { enabled: false } });
-        networkRef.current.fit({
-          animation: { duration: 300, easingFunction: "easeInOutQuad" },
+      for (const ent of visibleEntities) {
+        const bg = entityTypeColor(ent.entity_type);
+        graph.addNode(`entity:${ent.id}`, {
+          x: (Math.random() - 0.5) * 10,
+          y: (Math.random() - 0.5) * 10,
+          label: ent.name,
+          size: 3,
+          color: bg,
+          borderColor: darkenHex(bg),
+          _kind: "entity",
+          _entityData: ent,
         });
-        onReady();
       }
-    }, 1500);
 
-    network.on("dragStart", (params) => {
-      if (params.nodes.length > 0) {
-        network.setOptions({ physics: { enabled: true } });
-      }
-    });
-    network.on("dragEnd", (params) => {
-      if (params.nodes.length > 0) {
-        setTimeout(
-          () => network.setOptions({ physics: { enabled: false } }),
-          300,
-        );
-      }
-    });
-
-    network.on("afterDrawing", (ctx: CanvasRenderingContext2D) => {
-      if (hullModeRef.current === "clusters") {
-        for (const [clusterId, memberIds] of Object.entries(filteredClusters)) {
-          const cid = parseInt(clusterId);
-          const color = clusterColor(cid);
-          drawHullForGroup(
-            ctx,
-            network,
-            memberIds as string[],
-            color,
-            0.07,
-            0.3,
-            `Cluster ${clusterId}`,
-          );
+      for (const r of entityRelations) {
+        if (entityIdSet.has(r.source) && entityIdSet.has(r.target)) {
+          try {
+            graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
+              color: "#ffa65770",
+              size: 0.8,
+              label: r.type,
+            });
+          } catch {
+            /* duplicate */
+          }
         }
+      }
+
+      for (const ent of visibleEntities) {
+        for (const mid of ent.memory_ids) {
+          if (allNodeIds.has(mid)) {
+            try {
+              graph.addEdge(`entity:${ent.id}`, mid, {
+                color: "#58606920",
+                size: 0.3,
+              });
+            } catch {
+              /* duplicate */
+            }
+          }
+        }
+      }
+    }
+
+    const sigma = new Sigma(graph, containerRef.current, {
+      antiAliasingFeather: 2,
+      renderLabels: true,
+      renderEdgeLabels: false,
+      labelSize: 12,
+      labelColor: { color: "#c9d1d9" },
+      labelFont: "Inter, sans-serif",
+      defaultEdgeType: "curve",
+      edgeProgramClasses: { curve: EdgeCurveProgram },
+      stagePadding: 40,
+      labelRenderedSizeThreshold: 6,
+      defaultNodeColor: "#8b949e",
+      nodeReducer(node, data) {
+        const res = { ...data };
+        const hov = hoveredNodeRef.current;
+        const sel = selectedNodeIdRef.current;
+        if (hov === node) {
+          res.color = lightenHex(data.color || "#8b949e", 0.4);
+          res.size = (data.size || 5) * 1.4;
+          res.highlighted = true;
+        } else if (sel === node) {
+          res.color = lightenHex(data.color || "#8b949e", 0.4);
+          res.size = (data.size || 5) * 1.4;
+          res.highlighted = true;
+          res.borderColor = "#ffffff";
+          res.borderSize = 3;
+        } else if (sel && sel !== node) {
+          const isNeighbor =
+            graph.hasEdge(sel, node) || graph.hasEdge(node, sel);
+          if (!isNeighbor) {
+            res.color = "#444444";
+            res.label = "";
+          }
+        }
+        return res;
+      },
+      edgeReducer(edge, data) {
+        const res = { ...data };
+        const hov = hoveredNodeRef.current;
+        const sel = selectedNodeIdRef.current;
+        const src = graph.source(edge);
+        const tgt = graph.target(edge);
+
+        // Selection dimming applies first as the base state
+        if (sel) {
+          if (src === sel || tgt === sel) {
+            res.size = (data.size || 2.5) * 2;
+            const neighborColor = graph.getNodeAttribute(
+              src === sel ? tgt : src, "color",
+            ) || "#8b949e";
+            res.color = lightenHex(neighborColor, 0.3);
+          } else {
+            res.color = "#444444";
+            res.size = (data.size || 2.5) * 0.5;
+          }
+        }
+
+        // Hover highlight overrides for hovered node's edges only
+        if (hov && (src === hov || tgt === hov)) {
+          res.size = (data.size || 2.5) * 2;
+          const neighborColor = graph.getNodeAttribute(
+            src === hov ? tgt : src, "color",
+          ) || "#8b949e";
+          res.color = lightenHex(neighborColor, 0.3);
+        }
+
+        return res;
+      },
+    });
+
+    sigma.on("enterNode", ({ node }) => {
+      hoveredNodeRef.current = node;
+      containerRef.current!.style.cursor = "pointer";
+      sigma.refresh();
+    });
+    sigma.on("leaveNode", () => {
+      hoveredNodeRef.current = null;
+      containerRef.current!.style.cursor = "default";
+      sigma.refresh();
+    });
+
+    sigma.on("clickNode", ({ node }) => {
+      const attrs = graph.getNodeAttributes(node);
+      if (attrs._kind === "entity") {
+        onEntitySelect?.(attrs._entityData?.id ?? null);
       } else {
-        const tagGroups = new Map<string, string[]>();
-        for (const m of filteredMemoriesRef.current) {
-          for (const tag of m.tags) {
-            const arr = tagGroups.get(tag) ?? [];
-            arr.push(m.id);
-            tagGroups.set(tag, arr);
-          }
-        }
-        let tagIdx = 0;
-        for (const [tag, memberIds] of tagGroups.entries()) {
-          if (memberIds.length < 2) {
-            tagIdx++;
-            continue;
-          }
-          const color = tagColorMap.current.get(tag) ?? tagColor(tagIdx);
-          drawHullForGroup(
-            ctx,
-            network,
-            memberIds,
-            color,
-            0.05,
-            0.25,
-            `#${tag}`,
-          );
-          tagIdx++;
-        }
+        onNodeSelect(node);
       }
     });
-
-    function focusOnNode(nodeId: string) {
-      const directNeighbors = new Set<string>();
-      const directEdgeIndices = new Set<number>();
-      filteredEdgesRef.current.forEach((e, i) => {
-        if (e.source === nodeId) {
-          directNeighbors.add(e.target);
-          directEdgeIndices.add(i);
-        }
-        if (e.target === nodeId) {
-          directNeighbors.add(e.source);
-          directEdgeIndices.add(i);
-        }
-      });
-
-      const nodeUpdates = filteredMemoriesRef.current.map((m) => {
-        const color = typeColor(m.memory_type);
-        if (m.id === nodeId) {
-          return {
-            id: m.id,
-            opacity: 1,
-            borderWidth: 5,
-            color: {
-              background: color,
-              border: darkenHex(color),
-              highlight: { background: color, border: darkenHex(color) },
-            },
-          };
-        } else if (directNeighbors.has(m.id)) {
-          return {
-            id: m.id,
-            opacity: 1,
-            borderWidth: 2,
-            color: {
-              background: color,
-              border: darkenHex(color),
-              highlight: { background: color, border: darkenHex(color) },
-            },
-          };
-        } else {
-          return {
-            id: m.id,
-            opacity: 0.15,
-            borderWidth: 1,
-            color: {
-              background: hexToRgba(color, 0.15),
-              border: hexToRgba(color, 0.1),
-              highlight: { background: color, border: darkenHex(color) },
-            },
-            font: { color: hexToRgba("#c9d1d9", 0.15), size: 13 },
-          };
-        }
-      });
-      nodesDataSet.update(nodeUpdates);
-
-      const edgeUpdates = filteredEdgesRef.current.map((_, i) => {
-        if (directEdgeIndices.has(i)) {
-          return {
-            id: `sim-${i}`,
-            color: {
-              color: "#4CC9F0",
-              hover: "#4CC9F0",
-              highlight: "#4CC9F0",
-              inherit: false,
-            },
-            width: 2.5,
-          };
-        }
-        return {
-          id: `sim-${i}`,
-          color: {
-            color: hexToRgba("#21262d", 0.05),
-            hover: hexToRgba("#21262d", 0.05),
-            highlight: hexToRgba("#21262d", 0.05),
-            inherit: false,
-          },
-          width: 0.2,
-        };
-      });
-      edgesDataSet.update(edgeUpdates);
-    }
-
-    function exitFocusMode() {
-      const nodeUpdates = filteredMemoriesRef.current.map((m) => {
-        const color = typeColor(m.memory_type);
-        return {
-          id: m.id,
-          opacity: 1,
-          borderWidth: 2,
-          color: {
-            background: color,
-            border: darkenHex(color),
-            highlight: { background: color, border: darkenHex(color) },
-          },
-          font: { color: "#c9d1d9", size: 13 },
-        };
-      });
-      nodesDataSet.update(nodeUpdates);
-
-      const edgeResets = filteredEdgesRef.current.map((_, i) => ({
-        id: `sim-${i}`,
-        color: {
-          color: "#30363d",
-          hover: "#78a6e0b4",
-          highlight: "#4CC9F0",
-          inherit: false,
-        },
-        width: 1,
-      }));
-      edgesDataSet.update(edgeResets);
-    }
-
-    focusOnNodeRef.current = focusOnNode;
-    exitFocusModeRef.current = exitFocusMode;
-
-    network.on("click", (params) => {
-      if (params.nodes.length > 0) {
-        const nodeId = params.nodes[0] as string;
-        const node = nodes.find((n: { id: string }) => n.id === nodeId);
-        if (node?._memory) {
-          onNodeSelect(nodeId);
-        }
-      } else if (params.nodes.length === 0 && params.edges.length === 0) {
-        onNodeSelect(null);
-      }
+    sigma.on("clickStage", () => {
+      onNodeSelect(null);
+      onEntitySelect?.(null);
     });
 
-    networkRef.current = network;
+    sigmaRef.current = sigma;
+
+    // Let the library infer optimal FA2 settings from the graph structure
+    const fa2 = new FA2Layout(graph, {
+      settings: {
+        ...inferSettings(graph),
+        linLogMode: true,
+        outboundAttractionDistribution: false,
+        strongGravityMode: true,
+        gravity: 1,
+        slowDown: 12,
+      },
+    });
+    fa2Ref.current = fa2;
+    fa2.start();
+    setTimeout(() => {
+      if (fa2Ref.current) fa2Ref.current.stop();
+    }, 8000);
+
+    onReady();
   }, [
-    data,
-    sizeMode,
-    clusterTightness,
-    spacing,
     filteredMemories,
     filteredEdges,
-    filteredClusters,
+    sizeMode,
+    entityLayerEnabled,
+    entities,
+    entityRelations,
     onNodeSelect,
+    onEntitySelect,
     onReady,
-    hullMode,
   ]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      buildGraph();
-    });
+    const frame = requestAnimationFrame(() => buildGraph());
     return () => {
       cancelAnimationFrame(frame);
-      if (networkRef.current) {
-        networkRef.current.destroy();
-        networkRef.current = null;
+      if (fa2Ref.current) {
+        fa2Ref.current.kill();
+        fa2Ref.current = null;
+      }
+      if (sigmaRef.current) {
+        sigmaRef.current.kill();
+        sigmaRef.current = null;
+        graphRef.current = null;
       }
     };
   }, [buildGraph]);
 
   useEffect(() => {
-    if (selectedNodeId) {
-      focusOnNodeRef.current?.(selectedNodeId);
-      if (networkRef.current) {
-        networkRef.current.focus(selectedNodeId, {
-          scale: networkRef.current.getScale(),
-          animation: { duration: 400, easingFunction: "easeInOutQuad" },
-        });
-      }
-    } else {
-      exitFocusModeRef.current?.();
-      networkRef.current?.unselectAll();
-      networkRef.current?.redraw();
-    }
+    selectedNodeIdRef.current = selectedNodeId;
+    sigmaRef.current?.refresh();
   }, [selectedNodeId]);
 
   return <div ref={containerRef} className="absolute inset-0" />;

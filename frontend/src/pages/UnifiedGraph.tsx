@@ -40,10 +40,16 @@ export default function UnifiedGraph() {
   const debouncedClusterScore = useDebouncedValue(clusterMinScore, 500);
   const debouncedMinSize = useDebouncedValue(minClusterSize, 500);
 
+  // Entity layer
+  const [entityLayerEnabled, setEntityLayerEnabled] = useState(false);
+  const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<string>>(new Set());
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+
   const { data, isLoading } = useUnifiedGraph(
     debouncedSimilarity,
     debouncedClusterScore,
     debouncedMinSize,
+    entityLayerEnabled,
   );
 
   // Layout (shared)
@@ -116,17 +122,28 @@ export default function UnifiedGraph() {
     setSpacing3D(50);
     setSizeMode("connections");
     setHullMode("clusters");
+    setEntityLayerEnabled(false);
+    setSelectedEntityTypes(new Set());
+    setSelectedEntityId(null);
     clearFilters();
   }
 
   const handleNodeSelect = useCallback((id: string | null) => {
     setSelectedNodeId(id);
+    setSelectedEntityId(null);
     if (id) setShowPanel(true);
   }, []);
 
   const handleNavigate = useCallback((id: string) => {
     setSelectedNodeId(id);
+    setSelectedEntityId(null);
     setShowPanel(true);
+  }, []);
+
+  const handleEntitySelect = useCallback((entityId: string | null) => {
+    setSelectedEntityId(entityId);
+    setSelectedNodeId(null);
+    if (entityId) setShowPanel(true);
   }, []);
 
   // Filtered memories
@@ -185,6 +202,34 @@ export default function UnifiedGraph() {
     );
   }, [data, filteredMemories]);
 
+  // Filtered entities (only those linked to visible memories)
+  const filteredEntities = useMemo(() => {
+    if (!data?.entities || !entityLayerEnabled) return [];
+    const memoryIdSet = new Set(filteredMemories.map((m) => m.id));
+    return data.entities.filter((e) => {
+      if (selectedEntityTypes.size > 0 && !selectedEntityTypes.has(e.entity_type)) return false;
+      return e.memory_ids.some((mid) => memoryIdSet.has(mid));
+    });
+  }, [data, entityLayerEnabled, filteredMemories, selectedEntityTypes]);
+
+  const filteredEntityRelations = useMemo(() => {
+    if (!data?.entity_relations || !entityLayerEnabled) return [];
+    const entityIdSet = new Set(filteredEntities.map((e) => e.id));
+    return data.entity_relations.filter(
+      (r) => entityIdSet.has(r.source) && entityIdSet.has(r.target),
+    );
+  }, [data, entityLayerEnabled, filteredEntities]);
+
+  // All entity types for filter panel counts
+  const allEntityTypes = useMemo((): [string, number][] => {
+    if (!data?.entities) return [];
+    const counts = new Map<string, number>();
+    for (const e of data.entities) {
+      counts.set(e.entity_type, (counts.get(e.entity_type) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [data]);
+
   // 3D graph data (includes filter logic internally via transformToGraphData)
   const graphData3D = useMemo(() => {
     if (!data) return { nodes: [], links: [] };
@@ -194,9 +239,13 @@ export default function UnifiedGraph() {
       selectedTypes,
       selectedSources,
       selectedClusters,
+      selectedEntityTypes,
     };
-    return transformToGraphData(data, sizeMode, filters);
-  }, [data, sizeMode, debouncedSearchText, selectedTags, selectedTypes, selectedSources, selectedClusters]);
+    return transformToGraphData(
+      data, sizeMode, filters,
+      entityLayerEnabled, filteredEntities, filteredEntityRelations,
+    );
+  }, [data, sizeMode, debouncedSearchText, selectedTags, selectedTypes, selectedSources, selectedClusters, selectedEntityTypes, entityLayerEnabled, filteredEntities, filteredEntityRelations]);
 
   // Derived totals for filter panel counts (always from full data, not filtered)
   const allTags = useMemo((): [string, number][] => {
@@ -249,6 +298,7 @@ export default function UnifiedGraph() {
   }, [allTags]);
 
   const selectedMemory = data?.memories.find((m) => m.id === selectedNodeId) ?? null;
+  const selectedEntity = data?.entities?.find((e) => e.id === selectedEntityId) ?? null;
   const memoryCount = data?.memories.length ?? 0;
 
   return (
@@ -278,6 +328,10 @@ export default function UnifiedGraph() {
                   spacing={debouncedSpacing2D}
                   clusterTightness={debouncedTightness}
                   hullMode={hullMode}
+                  entityLayerEnabled={entityLayerEnabled}
+                  entities={filteredEntities}
+                  entityRelations={filteredEntityRelations}
+                  onEntitySelect={handleEntitySelect}
                 />
               )}
               {dimensions && viewMode === "3d" && (
@@ -293,10 +347,10 @@ export default function UnifiedGraph() {
               )}
             </div>
 
-            {/* Loading overlay */}
-            {!graphReady && (
+            {/* Loading overlay — only during API fetch */}
+            {isLoading && (
               <div className="absolute inset-0 z-30 bg-[#0d1117]">
-                <GraphSkeleton label={isLoading ? "Loading graph data..." : "Rendering graph..."} />
+                <GraphSkeleton label="Loading graph data..." />
               </div>
             )}
 
@@ -331,6 +385,8 @@ export default function UnifiedGraph() {
               onClusterTightnessChange={setClusterTightness}
               hullMode={hullMode}
               onHullModeChange={setHullMode}
+              entityLayer={entityLayerEnabled}
+              onEntityLayerChange={setEntityLayerEnabled}
               onReset={handleReset}
             />
 
@@ -394,6 +450,16 @@ export default function UnifiedGraph() {
                   })
                 }
                 onShowAll={clearFilters}
+                entityLayerEnabled={entityLayerEnabled}
+                allEntityTypes={allEntityTypes}
+                selectedEntityTypes={selectedEntityTypes}
+                onEntityTypeToggle={(etype) =>
+                  setSelectedEntityTypes((prev) => {
+                    const next = new Set(prev);
+                    next.has(etype) ? next.delete(etype) : next.add(etype);
+                    return next;
+                  })
+                }
               />
             </div>
           </div>
@@ -412,7 +478,12 @@ export default function UnifiedGraph() {
             onClose={() => {
               setShowPanel(false);
               setSelectedNodeId(null);
+              setSelectedEntityId(null);
             }}
+            selectedEntity={selectedEntity}
+            entityRelations={filteredEntityRelations}
+            allEntities={data?.entities}
+            onNavigateToMemory={handleNavigate}
           >
             {selectedMemory && viewMode === "2d" && (
               <MiniGraph
