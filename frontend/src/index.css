@@ -96,6 +96,21 @@
   html {
     @apply font-sans;
   }
+  button,
+  a,
+  select,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"],
+  [role="button"],
+  [role="tab"],
+  [role="option"],
+  [role="combobox"],
+  [role="slider"],
+  [role="switch"] {
+    cursor: pointer;
+  }
 }
 
 /* Themed scrollbar */

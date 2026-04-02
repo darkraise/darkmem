@@ -24,7 +24,7 @@ interface Graph2DRendererProps {
   sizeMode: SizeMode;
   spacing: number;
   clusterTightness: number;
-  showTagOverlay: boolean;
+  hullMode: "clusters" | "tags";
 }
 
 export function Graph2DRenderer({
@@ -38,7 +38,7 @@ export function Graph2DRenderer({
   sizeMode,
   spacing,
   clusterTightness,
-  showTagOverlay,
+  hullMode,
 }: Graph2DRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -46,14 +46,14 @@ export function Graph2DRenderer({
   const nodesDataSetRef = useRef<DataSet<any> | null>(null);
   const tagColorMap = useRef<Map<string, string>>(new Map());
 
-  // Keep latest showTagOverlay accessible in afterDrawing without rebuilding
-  const showTagOverlayRef = useRef(showTagOverlay);
+  // Keep latest hullMode accessible in afterDrawing without rebuilding
+  const hullModeRef = useRef(hullMode);
   useEffect(() => {
-    showTagOverlayRef.current = showTagOverlay;
+    hullModeRef.current = hullMode;
     if (networkRef.current) {
       networkRef.current.redraw();
     }
-  }, [showTagOverlay]);
+  }, [hullMode]);
 
   // Keep latest filtered state accessible in focusOnNode/exitFocusMode closures
   const filteredMemoriesRef = useRef(filteredMemories);
@@ -138,14 +138,40 @@ export function Graph2DRenderer({
     }
 
     const allNodeIds = new Set(nodes.map((n: { id: string }) => n.id));
-    for (const [clusterId, memberIds] of Object.entries(filteredClusters)) {
-      const members = (memberIds as string[]).filter((id) =>
-        allNodeIds.has(id),
-      );
+
+    // Build grouping based on hull mode
+    const groups: Record<string, string[]> =
+      hullModeRef.current === "tags"
+        ? (() => {
+            const tagGroups: Record<string, string[]> = {};
+            for (const m of filteredMemories) {
+              for (const tag of m.tags) {
+                const arr = tagGroups[tag] ?? [];
+                arr.push(m.id);
+                tagGroups[tag] = arr;
+              }
+            }
+            // Only keep tags with 2+ visible members
+            for (const key of Object.keys(tagGroups)) {
+              const kept = tagGroups[key].filter((id) => allNodeIds.has(id));
+              if (kept.length < 2) delete tagGroups[key];
+              else tagGroups[key] = kept;
+            }
+            return tagGroups;
+          })()
+        : Object.fromEntries(
+            Object.entries(filteredClusters).map(([cid, members]) => [
+              cid,
+              (members as string[]).filter((id) => allNodeIds.has(id)),
+            ]),
+          );
+
+    // Hidden edges pull group members together
+    for (const [groupId, members] of Object.entries(groups)) {
       for (let i = 0; i < members.length; i++) {
         for (let j = i + 1; j < members.length; j++) {
           edges.push({
-            id: `cluster-${clusterId}-${i}-${j}`,
+            id: `group-${groupId}-${i}-${j}`,
             from: members[i],
             to: members[j],
             hidden: true,
@@ -157,25 +183,29 @@ export function Graph2DRenderer({
       }
     }
 
-    const clusterIds = Object.keys(filteredClusters);
-    const nClusters = clusterIds.length;
-    const clusterRadius = 80 + nClusters * 15;
-    const clusterCenters: Record<string, { x: number; y: number }> = {};
-    clusterIds.forEach((cid, i) => {
-      const angle = (2 * Math.PI * i) / nClusters;
-      clusterCenters[cid] = {
-        x: Math.cos(angle) * clusterRadius,
-        y: Math.sin(angle) * clusterRadius,
+    // Initial positions arranged around a circle by group
+    const groupIds = Object.keys(groups);
+    const nGroups = groupIds.length;
+    const groupRadius = 80 + nGroups * 15;
+    const groupCenters: Record<string, { x: number; y: number }> = {};
+    groupIds.forEach((gid, i) => {
+      const angle = (2 * Math.PI * i) / nGroups;
+      groupCenters[gid] = {
+        x: Math.cos(angle) * groupRadius,
+        y: Math.sin(angle) * groupRadius,
       };
     });
     const spread = 60 + Math.sqrt(nodes.length) * 5;
-    for (const node of nodes) {
-      const m: UnifiedMemory = node._memory;
-      if (m.cluster >= 0) {
-        const cid = String(m.cluster);
-        if (clusterCenters[cid]) {
-          node.x = clusterCenters[cid].x + (Math.random() - 0.5) * spread;
-          node.y = clusterCenters[cid].y + (Math.random() - 0.5) * spread;
+    const nodeAssigned = new Set<string>();
+    for (const [groupId, members] of Object.entries(groups)) {
+      const center = groupCenters[groupId];
+      for (const mid of members) {
+        if (nodeAssigned.has(mid)) continue;
+        nodeAssigned.add(mid);
+        const node = nodes.find((n: { id: string }) => n.id === mid);
+        if (node && center) {
+          node.x = center.x + (Math.random() - 0.5) * spread;
+          node.y = center.y + (Math.random() - 0.5) * spread;
         }
       }
     }
@@ -238,21 +268,21 @@ export function Graph2DRenderer({
     });
 
     network.on("afterDrawing", (ctx: CanvasRenderingContext2D) => {
-      for (const [clusterId, memberIds] of Object.entries(filteredClusters)) {
-        const cid = parseInt(clusterId);
-        const color = clusterColor(cid);
-        drawHullForGroup(
-          ctx,
-          network,
-          memberIds as string[],
-          color,
-          0.07,
-          0.3,
-          `Cluster ${clusterId}`,
-        );
-      }
-
-      if (showTagOverlayRef.current) {
+      if (hullModeRef.current === "clusters") {
+        for (const [clusterId, memberIds] of Object.entries(filteredClusters)) {
+          const cid = parseInt(clusterId);
+          const color = clusterColor(cid);
+          drawHullForGroup(
+            ctx,
+            network,
+            memberIds as string[],
+            color,
+            0.07,
+            0.3,
+            `Cluster ${clusterId}`,
+          );
+        }
+      } else {
         const tagGroups = new Map<string, string[]>();
         for (const m of filteredMemoriesRef.current) {
           for (const tag of m.tags) {
@@ -402,21 +432,13 @@ export function Graph2DRenderer({
         const node = nodes.find((n: { id: string }) => n.id === nodeId);
         if (node?._memory) {
           onNodeSelect(nodeId);
-          focusOnNode(nodeId);
-          network.focus(nodeId, {
-            scale: network.getScale(),
-            animation: { duration: 400, easingFunction: "easeInOutQuad" },
-          });
         }
       } else if (params.nodes.length === 0 && params.edges.length === 0) {
         onNodeSelect(null);
-        exitFocusMode();
       }
     });
 
     networkRef.current = network;
-  // showTagOverlay intentionally excluded — tag overlay is drawn live via ref in afterDrawing
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     data,
     sizeMode,
@@ -427,6 +449,7 @@ export function Graph2DRenderer({
     filteredClusters,
     onNodeSelect,
     onReady,
+    hullMode,
   ]);
 
   useEffect(() => {
@@ -442,14 +465,13 @@ export function Graph2DRenderer({
     };
   }, [buildGraph]);
 
-  // Respond to external selectedNodeId changes (e.g. MiniGraph navigation)
   useEffect(() => {
     if (selectedNodeId) {
       focusOnNodeRef.current?.(selectedNodeId);
       if (networkRef.current) {
         networkRef.current.focus(selectedNodeId, {
-          animation: { duration: 600, easingFunction: "easeInOutQuad" },
           scale: networkRef.current.getScale(),
+          animation: { duration: 400, easingFunction: "easeInOutQuad" },
         });
       }
     } else {

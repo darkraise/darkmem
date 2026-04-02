@@ -25,8 +25,8 @@ interface GraphToolbarProps {
   onSpacingChange: (v: number) => void;
   clusterTightness: number;
   onClusterTightnessChange: (v: number) => void;
-  showTagOverlay: boolean;
-  onShowTagOverlayChange: (v: boolean) => void;
+  hullMode: "clusters" | "tags";
+  onHullModeChange: (v: "clusters" | "tags") => void;
   onReset: () => void;
 }
 
@@ -87,8 +87,8 @@ export function GraphToolbar({
   onSpacingChange,
   clusterTightness,
   onClusterTightnessChange,
-  showTagOverlay,
-  onShowTagOverlayChange,
+  hullMode,
+  onHullModeChange,
   onReset,
 }: GraphToolbarProps) {
   return (
@@ -177,14 +177,24 @@ export function GraphToolbar({
               value={spacing}
               onChange={onSpacingChange}
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`h-7 text-xs ${showTagOverlay ? "text-cyan-400" : "text-muted-foreground"}`}
-              onClick={() => onShowTagOverlayChange(!showTagOverlay)}
-            >
-              Tags
-            </Button>
+            <div className="flex items-center rounded-sm overflow-hidden border border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 text-xs rounded-none px-2.5 ${hullMode === "clusters" ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
+                onClick={() => onHullModeChange("clusters")}
+              >
+                Clusters
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 text-xs rounded-none px-2.5 ${hullMode === "tags" ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
+                onClick={() => onHullModeChange("tags")}
+              >
+                Tags
+              </Button>
+            </div>
           </>
         ) : (
           <Slider

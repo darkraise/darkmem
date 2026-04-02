@@ -52,7 +52,7 @@ export default function UnifiedGraph() {
   // Layout (view-specific)
   const [nodeSpacing, setNodeSpacing] = useState(100);
   const [clusterTightness, setClusterTightness] = useState(300);
-  const [showTagOverlay, setShowTagOverlay] = useState(false);
+  const [hullMode, setHullMode] = useState<"clusters" | "tags">("clusters");
   const [spacing3D, setSpacing3D] = useState(50);
   const debouncedTightness = useDebouncedValue(clusterTightness, 500);
   const debouncedSpacing2D = useDebouncedValue(nodeSpacing, 500);
@@ -73,17 +73,26 @@ export default function UnifiedGraph() {
   // Container dimensions (for 3D renderer)
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const hasGraphData = (data?.memories.length ?? 0) > 0;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      if (width > 0 && height > 0) setDimensions({ width, height });
+      if (width > 0 && height > 0) {
+        setDimensions((prev) =>
+          prev && prev.width === width && prev.height === height
+            ? prev
+            : { width, height },
+        );
+      }
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [hasGraphData]);
+
+  const handleGraphReady = useCallback(() => setGraphReady(true), []);
 
   // Reset ready state on view switch so loading overlay re-appears
   useEffect(() => {
@@ -106,7 +115,7 @@ export default function UnifiedGraph() {
     setNodeSpacing(100);
     setSpacing3D(50);
     setSizeMode("connections");
-    setShowTagOverlay(false);
+    setHullMode("clusters");
     clearFilters();
   }
 
@@ -264,11 +273,11 @@ export default function UnifiedGraph() {
                   filteredEdges={filteredEdges}
                   selectedNodeId={selectedNodeId}
                   onNodeSelect={handleNodeSelect}
-                  onReady={() => setGraphReady(true)}
+                  onReady={handleGraphReady}
                   sizeMode={sizeMode}
                   spacing={debouncedSpacing2D}
                   clusterTightness={debouncedTightness}
-                  showTagOverlay={showTagOverlay}
+                  hullMode={hullMode}
                 />
               )}
               {dimensions && viewMode === "3d" && (
@@ -278,7 +287,7 @@ export default function UnifiedGraph() {
                   height={dimensions.height}
                   selectedNodeId={selectedNodeId}
                   onNodeSelect={handleNodeSelect}
-                  onReady={() => setGraphReady(true)}
+                  onReady={handleGraphReady}
                   spacing={spacing3D}
                 />
               )}
@@ -320,8 +329,8 @@ export default function UnifiedGraph() {
               onSpacingChange={viewMode === "2d" ? setNodeSpacing : setSpacing3D}
               clusterTightness={clusterTightness}
               onClusterTightnessChange={setClusterTightness}
-              showTagOverlay={showTagOverlay}
-              onShowTagOverlayChange={setShowTagOverlay}
+              hullMode={hullMode}
+              onHullModeChange={setHullMode}
               onReset={handleReset}
             />
 

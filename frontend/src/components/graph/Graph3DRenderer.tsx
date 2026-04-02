@@ -61,11 +61,16 @@ export function Graph3DRenderer({
     document.body.style.cursor = node ? "pointer" : "default";
   }, []);
 
+  const prevSpacingRef = useRef(spacing);
   useEffect(() => {
     if (!fgRef.current) return;
     fgRef.current.d3Force("charge")?.strength(-50);
     fgRef.current.d3Force("link")?.distance(spacing)?.strength(0.7);
     fgRef.current.d3Force("center")?.strength(1.5);
+    if (prevSpacingRef.current !== spacing) {
+      prevSpacingRef.current = spacing;
+      fgRef.current.d3ReheatSimulation();
+    }
   }, [graphData, spacing]);
 
   useEffect(() => {
