@@ -1,82 +1,94 @@
-export const CLUSTER_PALETTE = [
-  "#a855f7",
-  "#3fb950",
-  "#f97316",
-  "#06b6d4",
-  "#ec4899",
-  "#eab308",
-  "#6366f1",
-  "#14b8a6",
-  "#f43f5e",
-  "#84cc16",
-  "#8b5cf6",
-  "#0ea5e9",
+export type ColorMode = "type" | "cluster" | "tag";
+
+export const PALETTE_400 = [
+  "#f87171","#fb923c","#fbbf24","#facc15","#a3e635","#4ade80","#34d399",
+  "#2dd4bf","#22d3ee","#38bdf8","#60a5fa","#818cf8","#a78bfa","#c084fc",
+  "#e879f9","#f472b6","#fb7185",
 ];
 
-export const TAG_PALETTE = [
-  "#22d3ee",
-  "#2dd4bf",
-  "#4ade80",
-  "#a3e635",
-  "#facc15",
-  "#fb923c",
+export const PALETTE_200 = [
+  "#fecaca","#fed7aa","#fde68a","#fef08a","#d9f99d","#bbf7d0","#a7f3d0",
+  "#99f6e4","#a5f3fc","#bae6fd","#bfdbfe","#c7d2fe","#ddd6fe","#e9d5ff",
+  "#f5d0fe","#fbcfe8","#fecdd3",
 ];
+
+export const PALETTE_600 = [
+  "#dc2626","#ea580c","#d97706","#ca8a04","#65a30d","#16a34a","#059669",
+  "#0d9488","#0891b2","#0284c7","#2563eb","#4f46e5","#7c3aed","#9333ea",
+  "#c026d3","#db2777","#e11d48",
+];
+
+export const UNIFIED_PALETTE = [...PALETTE_400, ...PALETTE_200, ...PALETTE_600];
 
 export const UNCLUSTERED_COLOR = "#8b949e";
 
-export const TYPE_COLOR_PREASSIGNED: Record<string, string> = {
-  fact: "#58a6ff",
-  decision: "#d2a8ff",
-  debug: "#f85149",
-  architecture: "#3fb950",
-  preference: "#ffa657",
-  session: "#79c0ff",
-  workflow: "#56d364",
+const KNOWN_TYPE_INDICES: Record<string, number> = {
+  fact: 10,
+  decision: 12,
+  debug: 0,
+  architecture: 5,
+  preference: 1,
+  session: 8,
+  workflow: 6,
 };
 
-const TYPE_COLOR_DYNAMIC = [
-  "#f778ba",
-  "#bb86fc",
-  "#4fc3f7",
-  "#aed581",
-  "#ffb74d",
-  "#ff6b6b",
-  "#22d3ee",
-  "#e879f9",
-];
-
-const typeColorAssignments = new Map<string, string>();
-let nextDynamicIdx = 0;
-
-export function clusterColor(id: number): string {
-  if (id < 0) return UNCLUSTERED_COLOR;
-  return CLUSTER_PALETTE[id % CLUSTER_PALETTE.length];
-}
-
-export function tagColor(idx: number): string {
-  return TAG_PALETTE[idx % TAG_PALETTE.length];
-}
-
-export function typeColor(memoryType: string | null): string {
-  if (!memoryType) return UNCLUSTERED_COLOR;
-  if (TYPE_COLOR_PREASSIGNED[memoryType]) return TYPE_COLOR_PREASSIGNED[memoryType];
-  if (!typeColorAssignments.has(memoryType)) {
-    typeColorAssignments.set(
-      memoryType,
-      TYPE_COLOR_DYNAMIC[nextDynamicIdx % TYPE_COLOR_DYNAMIC.length],
-    );
-    nextDynamicIdx++;
+function stableHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
   }
-  return typeColorAssignments.get(memoryType)!;
+  return Math.abs(hash);
+}
+
+export function resolveNodeColor(
+  node: { cluster: number; memory_type: string | null; tags: string[] },
+  colorMode: ColorMode,
+): string {
+  if (colorMode === "cluster") {
+    if (node.cluster < 0) return UNCLUSTERED_COLOR;
+    return UNIFIED_PALETTE[node.cluster % 51];
+  }
+
+  if (colorMode === "type") {
+    if (!node.memory_type) return UNCLUSTERED_COLOR;
+    const idx = KNOWN_TYPE_INDICES[node.memory_type];
+    if (idx !== undefined) return UNIFIED_PALETTE[idx];
+    return UNIFIED_PALETTE[stableHash(node.memory_type) % 51];
+  }
+
+  // tag mode
+  if (!node.tags || node.tags.length === 0) return UNCLUSTERED_COLOR;
+  const prefix = node.tags[0].split("/")[0];
+  return UNIFIED_PALETTE[stableHash(prefix) % 51];
+}
+
+export function resolveGroupColor(
+  groupKey: string,
+  groupIndex: number,
+  colorMode: ColorMode,
+  hullMode: string,
+): string {
+  if (colorMode === hullMode && colorMode === "cluster") {
+    const id = parseInt(groupKey, 10);
+    if (!isNaN(id) && id >= 0) return UNIFIED_PALETTE[id % 51];
+    return UNCLUSTERED_COLOR;
+  }
+
+  if (colorMode === hullMode && colorMode === "tag") {
+    const prefix = groupKey.split("/")[0];
+    return UNIFIED_PALETTE[stableHash(prefix) % 51];
+  }
+
+  return UNIFIED_PALETTE[groupIndex % 51];
 }
 
 export const ENTITY_TYPE_COLORS: Record<string, string> = {
-  person: "#58a6ff",
-  service: "#3fb950",
-  project: "#d2a8ff",
-  technology: "#ffa657",
+  person: "#60a5fa",
+  service: "#4ade80",
+  project: "#c084fc",
+  technology: "#fb923c",
   concept: "#8b949e",
-  organization: "#f778ba",
+  organization: "#f472b6",
 };
 
 export function entityTypeColor(entityType: string): string {
