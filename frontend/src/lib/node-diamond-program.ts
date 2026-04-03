@@ -52,14 +52,17 @@ export function drawDiamondNodeHover(
   const weight = settings.labelWeight;
   context.font = `${weight} ${size}px ${font}`;
 
+  const BORDER = 3;
+  const PADDING = 2;
+  const outer = data.size + BORDER + PADDING;
+  const inner = data.size;
+
+  // 1) White background with shadow for label box + outer diamond
   context.fillStyle = "#FFF";
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 0;
   context.shadowBlur = 8;
   context.shadowColor = "#000";
-
-  const PADDING = 2;
-  const r = data.size + PADDING;
 
   if (typeof data.label === "string") {
     const textWidth = context.measureText(data.label).width;
@@ -67,45 +70,40 @@ export function drawDiamondNodeHover(
     const boxHeight = Math.round(size + 2 * PADDING);
 
     context.beginPath();
-    // Diamond shape on the left (rotated square)
-    context.moveTo(data.x, data.y - r);     // top
-    context.lineTo(data.x + r, data.y);     // right
-    // Label box extending right from the diamond
-    context.lineTo(data.x + r, data.y + boxHeight / 2);
-    context.lineTo(data.x + r + boxWidth, data.y + boxHeight / 2);
-    context.lineTo(data.x + r + boxWidth, data.y - boxHeight / 2);
-    context.lineTo(data.x + r, data.y - boxHeight / 2);
-    context.lineTo(data.x + r, data.y);     // back to right point
-    context.lineTo(data.x, data.y + r);     // bottom
-    context.lineTo(data.x - r, data.y);     // left
+    context.moveTo(data.x, data.y - outer);
+    context.lineTo(data.x + outer, data.y);
+    context.lineTo(data.x + outer, data.y + boxHeight / 2);
+    context.lineTo(data.x + outer + boxWidth, data.y + boxHeight / 2);
+    context.lineTo(data.x + outer + boxWidth, data.y - boxHeight / 2);
+    context.lineTo(data.x + outer, data.y - boxHeight / 2);
+    context.lineTo(data.x + outer, data.y);
+    context.lineTo(data.x, data.y + outer);
+    context.lineTo(data.x - outer, data.y);
     context.closePath();
     context.fill();
   } else {
-    // Diamond shape only (no label)
     context.beginPath();
-    context.moveTo(data.x, data.y - r);
-    context.lineTo(data.x + r, data.y);
-    context.lineTo(data.x, data.y + r);
-    context.lineTo(data.x - r, data.y);
+    context.moveTo(data.x, data.y - outer);
+    context.lineTo(data.x + outer, data.y);
+    context.lineTo(data.x, data.y + outer);
+    context.lineTo(data.x - outer, data.y);
     context.closePath();
     context.fill();
   }
 
-  context.shadowOffsetX = 0;
-  context.shadowOffsetY = 0;
   context.shadowBlur = 0;
 
-  // Draw diamond border on top of the node
-  const br = data.size * 0.75 + 2;
+  // 2) Re-fill the inner diamond with the node's color to restore it
+  context.fillStyle = data.color;
   context.beginPath();
-  context.moveTo(data.x, data.y - br);
-  context.lineTo(data.x + br, data.y);
-  context.lineTo(data.x, data.y + br);
-  context.lineTo(data.x - br, data.y);
+  context.moveTo(data.x, data.y - inner);
+  context.lineTo(data.x + inner, data.y);
+  context.lineTo(data.x, data.y + inner);
+  context.lineTo(data.x - inner, data.y);
   context.closePath();
-  context.strokeStyle = "#ffffff";
-  context.lineWidth = 3;
-  context.stroke();
+  context.fill();
+
+  // The white ring between outer and inner acts as the border
 
   drawDiscNodeLabel(context, data, settings);
 }
