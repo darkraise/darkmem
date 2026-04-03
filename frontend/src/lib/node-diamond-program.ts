@@ -95,6 +95,18 @@ function drawDiamondNodeHover(
   context.shadowOffsetY = 0;
   context.shadowBlur = 0;
 
+  // Draw diamond border on top of the node
+  const br = data.size + 1;
+  context.beginPath();
+  context.moveTo(data.x, data.y - br);
+  context.lineTo(data.x + br, data.y);
+  context.lineTo(data.x, data.y + br);
+  context.lineTo(data.x - br, data.y);
+  context.closePath();
+  context.strokeStyle = "#ffffff";
+  context.lineWidth = 2.5;
+  context.stroke();
+
   drawDiscNodeLabel(context, data, settings);
 }
 
