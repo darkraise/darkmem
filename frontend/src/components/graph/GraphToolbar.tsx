@@ -109,8 +109,8 @@ export function GraphToolbar({
           onValueChange={(v) => { if (v.length) onViewModeChange(v[0] as ViewMode); }}
           className="gap-0 border border-border rounded-md"
         >
-          <ToggleGroupItem value="2d" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">2D</ToggleGroupItem>
-          <ToggleGroupItem value="3d" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">3D</ToggleGroupItem>
+          <ToggleGroupItem value="2d" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">2D</ToggleGroupItem>
+          <ToggleGroupItem value="3d" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">3D</ToggleGroupItem>
         </ToggleGroup>
 
         <div className="w-px h-4 bg-border" />
@@ -120,9 +120,9 @@ export function GraphToolbar({
           onValueChange={(v) => { if (v.length) onColorModeChange(v[0] as ColorMode); }}
           className="gap-0 border border-border rounded-md"
         >
-          <ToggleGroupItem value="type" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Type</ToggleGroupItem>
-          <ToggleGroupItem value="cluster" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Cluster</ToggleGroupItem>
-          <ToggleGroupItem value="tag" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Tag</ToggleGroupItem>
+          <ToggleGroupItem value="type" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Type</ToggleGroupItem>
+          <ToggleGroupItem value="cluster" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Cluster</ToggleGroupItem>
+          <ToggleGroupItem value="tag" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Tag</ToggleGroupItem>
         </ToggleGroup>
 
         <ToggleGroup
@@ -130,10 +130,10 @@ export function GraphToolbar({
           onValueChange={(v) => { if (v.length) onHullModeChange(v[0] as HullMode); }}
           className="gap-0 border border-border rounded-md"
         >
-          <ToggleGroupItem value="none" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">None</ToggleGroupItem>
-          <ToggleGroupItem value="cluster" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Cluster</ToggleGroupItem>
-          <ToggleGroupItem value="tag" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Tag</ToggleGroupItem>
-          <ToggleGroupItem value="source" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Source</ToggleGroupItem>
+          <ToggleGroupItem value="none" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">None</ToggleGroupItem>
+          <ToggleGroupItem value="cluster" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Cluster</ToggleGroupItem>
+          <ToggleGroupItem value="tag" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Tag</ToggleGroupItem>
+          <ToggleGroupItem value="source" size="sm" variant="outline" className="h-7 text-xs border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Source</ToggleGroupItem>
         </ToggleGroup>
 
         <div className="w-px h-4 bg-border" />
@@ -182,9 +182,9 @@ export function GraphToolbar({
                 onValueChange={(v) => { if (v.length) onSizeModeChange(v[0] as SizeMode); }}
                 className="gap-0 border border-border rounded-md"
               >
-                <ToggleGroupItem value="connections" size="sm" variant="outline" className="h-7 text-xs border-0 px-2 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Connections</ToggleGroupItem>
-                <ToggleGroupItem value="importance" size="sm" variant="outline" className="h-7 text-xs border-0 px-2 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Importance</ToggleGroupItem>
-                <ToggleGroupItem value="uniform" size="sm" variant="outline" className="h-7 text-xs border-0 px-2 first:rounded-l-md last:rounded-r-md data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Uniform</ToggleGroupItem>
+                <ToggleGroupItem value="connections" size="sm" variant="outline" className="h-7 text-xs border-0 px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Connections</ToggleGroupItem>
+                <ToggleGroupItem value="importance" size="sm" variant="outline" className="h-7 text-xs border-0 px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Importance</ToggleGroupItem>
+                <ToggleGroupItem value="uniform" size="sm" variant="outline" className="h-7 text-xs border-0 px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Uniform</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
