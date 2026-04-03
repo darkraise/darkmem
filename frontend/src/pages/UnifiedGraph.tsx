@@ -349,7 +349,7 @@ export default function UnifiedGraph() {
             )}
 
             {/* Filter button — top left */}
-            <div className="absolute top-3 left-3 z-20">
+            <div className="absolute top-3 left-3 z-10">
               <Button
                 variant="outline"
                 size="sm"
@@ -402,7 +402,7 @@ export default function UnifiedGraph() {
 
             {/* Floating filter panel */}
             <div
-              className={`absolute top-14 left-3 z-20 rounded-lg border border-border shadow-xl bg-card overflow-clip flex flex-col transition-all duration-200 ease-out origin-top ${showFilters ? "opacity-100 scale-y-100" : "opacity-0 scale-y-0 pointer-events-none"}`}
+              className={`absolute top-14 left-3 z-[15] rounded-lg border border-border shadow-xl bg-card overflow-clip flex flex-col transition-all duration-200 ease-out origin-top ${showFilters ? "opacity-100 scale-y-100" : "opacity-0 scale-y-0 pointer-events-none"}`}
               style={{ maxHeight: "calc(100% - 68px)" }}
             >
               <GraphFilterPanel

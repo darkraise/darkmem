@@ -131,7 +131,7 @@ export function GraphToolbar({
   }, [showSettings, onToggleSettings]);
 
   return (
-    <div className="absolute top-3 left-0 right-0 z-10 flex flex-col items-center pointer-events-none">
+    <div className="absolute top-3 left-0 right-0 z-20 flex flex-col items-center pointer-events-none">
       <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-md border border-border shadow-lg px-3 py-1.5 pointer-events-auto flex-wrap justify-center">
         <SegmentedControl
           options={[
