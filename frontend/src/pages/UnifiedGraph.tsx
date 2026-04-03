@@ -14,6 +14,8 @@ import {
   type SizeMode,
   type FilterState,
 } from "@/lib/graph-utils";
+import type { ColorMode } from "@/lib/graph-colors";
+import type { HullMode } from "@/lib/graph-geometry";
 
 type ViewMode = "2d" | "3d";
 
@@ -31,6 +33,8 @@ export default function UnifiedGraph() {
   // View
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [graphReady, setGraphReady] = useState(false);
+  const [colorMode, setColorMode] = useState<ColorMode>("type");
+  const [showSettings, setShowSettings] = useState(false);
 
   // API params (shared, debounced)
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5);
@@ -57,7 +61,7 @@ export default function UnifiedGraph() {
   // Layout (view-specific)
   const [nodeSpacing, setNodeSpacing] = useState(100);
   const [clusterTightness, setClusterTightness] = useState(300);
-  const [hullMode, setHullMode] = useState<"clusters" | "tags">("clusters");
+  const [hullMode, setHullMode] = useState<HullMode>("none");
   const [spacing3D, setSpacing3D] = useState(50);
   const debouncedTightness = useDebouncedValue(clusterTightness, 500);
   const debouncedSpacing2D = useDebouncedValue(nodeSpacing, 500);
@@ -114,13 +118,14 @@ export default function UnifiedGraph() {
 
   function handleReset() {
     setSimilarityThreshold(0.5);
-
     setMinClusterSize(3);
     setClusterTightness(300);
     setNodeSpacing(100);
     setSpacing3D(50);
     setSizeMode("connections");
-    setHullMode("clusters");
+    setColorMode("type");
+    setHullMode("none");
+    setShowSettings(false);
     setEntityLayerEnabled(false);
     setSelectedEntityTypes(new Set());
     setSelectedEntityId(null);
@@ -180,18 +185,6 @@ export default function UnifiedGraph() {
     selectedClusters,
   ]);
 
-  // Filtered clusters (only include clusters that still have members after filtering)
-  const filteredClusters = useMemo(() => {
-    if (!data) return {} as Record<string, string[]>;
-    const filteredIds = new Set(filteredMemories.map((m) => m.id));
-    const result: Record<string, string[]> = {};
-    for (const [cid, members] of Object.entries(data.clusters)) {
-      const kept = (members as string[]).filter((id) => filteredIds.has(id));
-      if (kept.length > 0) result[cid] = kept;
-    }
-    return result;
-  }, [data, filteredMemories]);
-
   // Filtered similarity edges (both endpoints must be in filtered set)
   const filteredEdges = useMemo(() => {
     if (!data) return [];
@@ -241,10 +234,10 @@ export default function UnifiedGraph() {
       selectedEntityTypes,
     };
     return transformToGraphData(
-      data, sizeMode, filters,
+      data, sizeMode, filters, colorMode,
       entityLayerEnabled, filteredEntities, filteredEntityRelations,
     );
-  }, [data, sizeMode, debouncedSearchText, selectedTags, selectedTypes, selectedSources, selectedClusters, selectedEntityTypes, entityLayerEnabled, filteredEntities, filteredEntityRelations]);
+  }, [data, sizeMode, debouncedSearchText, selectedTags, selectedTypes, selectedSources, selectedClusters, selectedEntityTypes, colorMode, entityLayerEnabled, filteredEntities, filteredEntityRelations]);
 
   // Derived totals for filter panel counts (always from full data, not filtered)
   const allTags = useMemo((): [string, number][] => {
@@ -318,12 +311,12 @@ export default function UnifiedGraph() {
                 <Graph2DRenderer
                   data={data}
                   filteredMemories={filteredMemories}
-                  filteredClusters={filteredClusters}
                   filteredEdges={filteredEdges}
                   selectedNodeId={selectedNodeId}
                   onNodeSelect={handleNodeSelect}
                   onReady={handleGraphReady}
                   sizeMode={sizeMode}
+                  colorMode={colorMode}
                   spacing={debouncedSpacing2D}
                   clusterTightness={debouncedTightness}
                   hullMode={hullMode}
@@ -342,6 +335,8 @@ export default function UnifiedGraph() {
                   onNodeSelect={handleNodeSelect}
                   onReady={handleGraphReady}
                   spacing={spacing3D}
+                  colorMode={colorMode}
+                  hullMode={hullMode}
                 />
               )}
             </div>
@@ -370,6 +365,14 @@ export default function UnifiedGraph() {
             <GraphToolbar
               viewMode={viewMode}
               onViewModeChange={setViewMode}
+              colorMode={colorMode}
+              onColorModeChange={setColorMode}
+              hullMode={hullMode}
+              onHullModeChange={setHullMode}
+              entityLayer={entityLayerEnabled}
+              onEntityLayerChange={setEntityLayerEnabled}
+              showSettings={showSettings}
+              onToggleSettings={() => setShowSettings((v) => !v)}
               sizeMode={sizeMode}
               onSizeModeChange={setSizeMode}
               similarityThreshold={similarityThreshold}
@@ -380,10 +383,6 @@ export default function UnifiedGraph() {
               onSpacingChange={viewMode === "2d" ? setNodeSpacing : setSpacing3D}
               clusterTightness={clusterTightness}
               onClusterTightnessChange={setClusterTightness}
-              hullMode={hullMode}
-              onHullModeChange={setHullMode}
-              entityLayer={entityLayerEnabled}
-              onEntityLayerChange={setEntityLayerEnabled}
               onReset={handleReset}
             />
 
@@ -407,6 +406,7 @@ export default function UnifiedGraph() {
               style={{ maxHeight: "calc(100% - 68px)" }}
             >
               <GraphFilterPanel
+                colorMode={colorMode}
                 tagGroups={tagGroups}
                 allTypes={allTypes}
                 allSources={allSources}
@@ -467,6 +467,7 @@ export default function UnifiedGraph() {
       {showPanel && memoryCount > 0 && (
         <div className="w-[320px] shrink-0 border-l border-border bg-card overflow-auto">
           <GraphDetailPanel
+            colorMode={colorMode}
             selectedMemory={selectedMemory}
             clusterName={data?.cluster_names?.[String(selectedMemory?.cluster)] ?? ""}
             memories={filteredMemories}
