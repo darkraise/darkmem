@@ -193,12 +193,26 @@ function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetail
       )}
 
       <div className="text-xs text-muted-foreground space-y-0.5">
-        <div>
-          Source: <span className="text-foreground">{memory.source}</span>
+        <div className="flex items-center gap-1">
+          Source:{" "}
+          <span className="inline-flex items-center gap-1 text-foreground">
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ backgroundColor: colorMode === "tag" ? resolveNodeColor({ cluster: -1, memory_type: null, tags: memory.tags.length > 0 ? [memory.tags[0]] : [] }, "tag") : "#8b949e" }}
+            />
+            {memory.source}
+          </span>
         </div>
         {memory.memory_type && (
-          <div>
-            Type: <span className="text-foreground">{memory.memory_type}</span>
+          <div className="flex items-center gap-1">
+            Type:{" "}
+            <span className="inline-flex items-center gap-1 text-foreground">
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ backgroundColor: colorMode === "type" ? resolveNodeColor({ cluster: -1, memory_type: memory.memory_type, tags: [] }, "type") : "#8b949e" }}
+              />
+              {memory.memory_type}
+            </span>
           </div>
         )}
         <div>
