@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, MessageCircle, Search } from "lucide-react";
 import type { ChatConversation } from "@/hooks/useApi";
 
 interface ChatSidebarProps {
@@ -18,7 +19,8 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
 }
 
 export function ChatSidebar({
@@ -28,38 +30,72 @@ export function ChatSidebar({
   onCreate,
   onDelete,
 }: ChatSidebarProps) {
+  const [search, setSearch] = useState("");
+
+  const filtered = search.trim()
+    ? conversations.filter((c) =>
+        (c.title ?? "").toLowerCase().includes(search.toLowerCase()),
+      )
+    : conversations;
+
   return (
-    <div className="w-[280px] shrink-0 border-r border-border flex flex-col h-full">
-      <div className="p-3 border-b border-border flex items-center justify-between">
-        <span className="text-sm font-semibold">Conversations</span>
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={onCreate}>
-          <Plus className="w-3.5 h-3.5" /> New
-        </Button>
+    <div className="w-[280px] shrink-0 border-r border-border flex flex-col h-full bg-card/50">
+      <div className="p-3 border-b border-border space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold">Conversations</span>
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={onCreate}>
+            <Plus className="w-3.5 h-3.5" /> New
+          </Button>
+        </div>
+        {conversations.length > 3 && (
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+            <input
+              type="text"
+              placeholder="Search conversations..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-muted/50 border border-border rounded-md pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+            />
+          </div>
+        )}
       </div>
       <div className="flex-1 overflow-auto p-2 space-y-0.5">
         {conversations.length === 0 && (
-          <p className="text-xs text-muted-foreground p-3 text-center">
-            No conversations yet
-          </p>
+          <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+            <MessageCircle className="w-8 h-8 opacity-20" />
+            <p className="text-xs text-center">
+              No conversations yet.<br />Click "New" to start one.
+            </p>
+          </div>
         )}
-        {conversations.map((conv) => (
+        {filtered.map((conv) => (
           <div
             key={conv.id}
-            className={`group flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer text-sm transition-colors ${
+            className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer text-sm transition-all ${
               conv.id === activeId
-                ? "bg-primary/20 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-primary/15 text-primary shadow-sm"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
             onClick={() => onSelect(conv.id)}
           >
-            <span className="flex-1 truncate">
-              {conv.title || "Untitled"}
-            </span>
-            <span className="text-xs opacity-50 shrink-0 group-hover:hidden">
-              {timeAgo(conv.updated_at)}
-            </span>
+            <div className="flex-1 min-w-0">
+              <div className="truncate font-medium text-[13px]">
+                {conv.title || "Untitled"}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] opacity-50">
+                  {timeAgo(conv.updated_at)}
+                </span>
+                {conv.message_count > 0 && (
+                  <span className="text-[10px] opacity-40">
+                    {conv.message_count} msg{conv.message_count !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+            </div>
             <button
-              className="hidden group-hover:block text-muted-foreground hover:text-destructive shrink-0"
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0 transition-opacity"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(conv.id);
@@ -69,6 +105,11 @@ export function ChatSidebar({
             </button>
           </div>
         ))}
+        {search && filtered.length === 0 && (
+          <p className="text-xs text-muted-foreground/50 text-center py-4">
+            No matches found
+          </p>
+        )}
       </div>
     </div>
   );
