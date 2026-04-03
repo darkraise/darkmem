@@ -396,6 +396,16 @@ export function Graph2DRenderer({
   }, [buildGraph]);
 
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      sigmaRef.current?.refresh();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId;
     sigmaRef.current?.refresh();
   }, [selectedNodeId]);
