@@ -3,13 +3,18 @@ import ForceGraph3D from "react-force-graph-3d";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import type { Node3D, GraphData3D } from "@/lib/graph-utils";
-import { clusterColor } from "@/lib/graph-colors";
+import { resolveGroupColor } from "@/lib/graph-colors";
+import type { ColorMode } from "@/lib/graph-colors";
+import { computeHullGroups } from "@/lib/graph-geometry";
+import type { HullMode } from "@/lib/graph-geometry";
 
 interface Graph3DRendererProps {
   graphData: GraphData3D;
   width: number;
   height: number;
   spacing: number;
+  colorMode: ColorMode;
+  hullMode: HullMode;
   selectedNodeId: string | null;
   onNodeSelect: (nodeId: string | null) => void;
   onReady: () => void;
@@ -20,6 +25,8 @@ export function Graph3DRenderer({
   width,
   height,
   spacing,
+  colorMode,
+  hullMode,
   selectedNodeId,
   onNodeSelect,
   onReady,
@@ -128,7 +135,7 @@ export function Graph3DRenderer({
     }
   }, [neighborSet, selectedNodeId, graphData.nodes]);
 
-  const buildClusterHulls = useCallback(() => {
+  const buildHulls = useCallback(() => {
     const scene = fgRef.current?.scene();
     if (!scene) return;
 
@@ -139,14 +146,12 @@ export function Graph3DRenderer({
     });
     hullMeshesRef.current = [];
 
-    const clusterNodes = new Map<number, Node3D[]>();
-    for (const node of graphData.nodes) {
-      if (node.cluster >= 0 && node.x != null) {
-        const group = clusterNodes.get(node.cluster) ?? [];
-        group.push(node);
-        clusterNodes.set(node.cluster, group);
-      }
-    }
+    if (hullMode === "none") return;
+
+    const memoryNodes = graphData.nodes.filter(
+      (n) => n.nodeKind === "memory" && n.x != null,
+    );
+    const hullGroups = computeHullGroups(memoryNodes, hullMode);
 
     const sampleDirs: THREE.Vector3[] = [];
     const numSamples = 80;
@@ -163,17 +168,25 @@ export function Graph3DRenderer({
       );
     }
 
-    clusterNodes.forEach((nodes) => {
-      if (nodes.length < 4) return;
+    const nodeMap = new Map(graphData.nodes.map((n) => [n.id, n]));
+
+    let groupIdx = 0;
+    for (const [groupKey, memberIds] of hullGroups) {
+      const positions: THREE.Vector3[] = [];
+      for (const id of memberIds) {
+        const node = nodeMap.get(id);
+        if (node && node.x != null) {
+          positions.push(new THREE.Vector3(node.x!, node.y!, node.z!));
+        }
+      }
+      if (positions.length < 4) { groupIdx++; continue; }
 
       const centroid = new THREE.Vector3();
-      const positions = nodes.map((n) => new THREE.Vector3(n.x!, n.y!, n.z!));
       positions.forEach((p) => centroid.add(p));
       centroid.divideScalar(positions.length);
 
       const padding = 15;
       const points: THREE.Vector3[] = [];
-
       for (const dir of sampleDirs) {
         let maxProj = 0;
         for (const p of positions) {
@@ -188,8 +201,9 @@ export function Graph3DRenderer({
       try {
         const geometry = new ConvexGeometry(points);
         geometry.computeVertexNormals();
+        const hullColor = resolveGroupColor(groupKey, groupIdx, colorMode, hullMode);
         const material = new THREE.MeshPhongMaterial({
-          color: clusterColor(nodes[0].cluster),
+          color: hullColor,
           transparent: true,
           opacity: 0.06,
           side: THREE.DoubleSide,
@@ -202,8 +216,9 @@ export function Graph3DRenderer({
       } catch {
         // ConvexGeometry can throw if points are coplanar
       }
-    });
-  }, [graphData]);
+      groupIdx++;
+    }
+  }, [graphData, colorMode, hullMode]);
 
   const nodeThreeObject = useCallback((node: Node3D) => {
     const radius = 1 + node.val * 1.5;
@@ -290,7 +305,7 @@ export function Graph3DRenderer({
       warmupTicks={80}
       cooldownTicks={150}
       onEngineStop={() => {
-        buildClusterHulls();
+        buildHulls();
         onReady();
       }}
     />
