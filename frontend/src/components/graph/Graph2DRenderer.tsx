@@ -318,6 +318,30 @@ export function Graph2DRenderer({
         );
         idx++;
       }
+
+      // Draw diamond border for hovered or selected entity nodes
+      const activeNode = selectedNodeIdRef.current || hoveredNodeRef.current;
+      if (activeNode && graph.hasNode(activeNode)) {
+        const attrs = graph.getNodeAttributes(activeNode);
+        if (attrs._kind === "entity") {
+          const displayData = sigmaRef.current.getNodeDisplayData(activeNode);
+          if (displayData) {
+            const vp = sigmaRef.current.framedGraphToViewport(displayData);
+            const nodeSize = sigmaRef.current.scaleSize(displayData.size);
+            const border = 3;
+            const r = nodeSize + border;
+            hullCtx.beginPath();
+            hullCtx.moveTo(vp.x, vp.y - r);
+            hullCtx.lineTo(vp.x + r, vp.y);
+            hullCtx.lineTo(vp.x, vp.y + r);
+            hullCtx.lineTo(vp.x - r, vp.y);
+            hullCtx.closePath();
+            hullCtx.strokeStyle = "#ffffff";
+            hullCtx.lineWidth = border;
+            hullCtx.stroke();
+          }
+        }
+      }
     }
 
     sigma.on("afterRender", drawHulls);

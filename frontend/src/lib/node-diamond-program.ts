@@ -52,12 +52,9 @@ export function drawDiamondNodeHover(
   const weight = settings.labelWeight;
   context.font = `${weight} ${size}px ${font}`;
 
-  const BORDER = 3;
   const PADDING = 2;
-  const outer = data.size + BORDER + PADDING;
-  const inner = data.size;
+  const r = data.size + PADDING;
 
-  // 1) White background with shadow for label box + outer diamond
   context.fillStyle = "#FFF";
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 0;
@@ -70,41 +67,28 @@ export function drawDiamondNodeHover(
     const boxHeight = Math.round(size + 2 * PADDING);
 
     context.beginPath();
-    context.moveTo(data.x, data.y - outer);
-    context.lineTo(data.x + outer, data.y);
-    context.lineTo(data.x + outer, data.y + boxHeight / 2);
-    context.lineTo(data.x + outer + boxWidth, data.y + boxHeight / 2);
-    context.lineTo(data.x + outer + boxWidth, data.y - boxHeight / 2);
-    context.lineTo(data.x + outer, data.y - boxHeight / 2);
-    context.lineTo(data.x + outer, data.y);
-    context.lineTo(data.x, data.y + outer);
-    context.lineTo(data.x - outer, data.y);
+    context.moveTo(data.x, data.y - r);
+    context.lineTo(data.x + r, data.y);
+    context.lineTo(data.x + r, data.y + boxHeight / 2);
+    context.lineTo(data.x + r + boxWidth, data.y + boxHeight / 2);
+    context.lineTo(data.x + r + boxWidth, data.y - boxHeight / 2);
+    context.lineTo(data.x + r, data.y - boxHeight / 2);
+    context.lineTo(data.x + r, data.y);
+    context.lineTo(data.x, data.y + r);
+    context.lineTo(data.x - r, data.y);
     context.closePath();
     context.fill();
   } else {
     context.beginPath();
-    context.moveTo(data.x, data.y - outer);
-    context.lineTo(data.x + outer, data.y);
-    context.lineTo(data.x, data.y + outer);
-    context.lineTo(data.x - outer, data.y);
+    context.moveTo(data.x, data.y - r);
+    context.lineTo(data.x + r, data.y);
+    context.lineTo(data.x, data.y + r);
+    context.lineTo(data.x - r, data.y);
     context.closePath();
     context.fill();
   }
 
   context.shadowBlur = 0;
-
-  // 2) Re-fill the inner diamond with the node's color to restore it
-  context.fillStyle = data.color;
-  context.beginPath();
-  context.moveTo(data.x, data.y - inner);
-  context.lineTo(data.x + inner, data.y);
-  context.lineTo(data.x, data.y + inner);
-  context.lineTo(data.x - inner, data.y);
-  context.closePath();
-  context.fill();
-
-  // The white ring between outer and inner acts as the border
-
   drawDiscNodeLabel(context, data, settings);
 }
 
