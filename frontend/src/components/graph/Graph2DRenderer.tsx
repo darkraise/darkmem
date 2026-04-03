@@ -6,15 +6,17 @@ import { NodeDiamondProgram } from "@/lib/node-diamond-program";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { computeSize } from "@/lib/graph-utils";
-import { drawHullForSigma } from "@/lib/graph-geometry";
+import { computeHullGroups, drawHullForSigma } from "@/lib/graph-geometry";
+import type { HullMode } from "@/lib/graph-geometry";
 import type { SizeMode } from "@/lib/graph-utils";
 import {
-  clusterColor,
-  tagColor,
+  resolveNodeColor,
+  resolveGroupColor,
   entityTypeColor,
   lightenHex,
   darkenHex,
 } from "@/lib/graph-colors";
+import type { ColorMode } from "@/lib/graph-colors";
 import type {
   UnifiedMemory,
   UnifiedGraphData,
@@ -25,15 +27,15 @@ import type {
 interface Graph2DRendererProps {
   data: UnifiedGraphData;
   filteredMemories: UnifiedMemory[];
-  filteredClusters: Record<string, string[]>;
   filteredEdges: { source: string; target: string; score: number }[];
   selectedNodeId: string | null;
   onNodeSelect: (nodeId: string | null) => void;
   onReady: () => void;
   sizeMode: SizeMode;
+  colorMode: ColorMode;
   spacing: number;
   clusterTightness: number;
-  hullMode: "clusters" | "tags";
+  hullMode: HullMode;
   entityLayerEnabled: boolean;
   entities: GraphEntity[];
   entityRelations: EntityRelation[];
@@ -42,12 +44,12 @@ interface Graph2DRendererProps {
 
 export function Graph2DRenderer({
   filteredMemories,
-  filteredClusters,
   filteredEdges,
   selectedNodeId,
   onNodeSelect,
   onReady,
   sizeMode,
+  colorMode,
   hullMode,
   entityLayerEnabled,
   entities,
@@ -60,8 +62,8 @@ export function Graph2DRenderer({
   const fa2Ref = useRef<FA2Layout | null>(null);
   const selectedNodeIdRef = useRef(selectedNodeId);
   const hoveredNodeRef = useRef<string | null>(null);
+  const colorModeRef = useRef(colorMode);
   const hullModeRef = useRef(hullMode);
-  const filteredClustersRef = useRef(filteredClusters);
   const filteredMemoriesRef = useRef(filteredMemories);
 
   const buildGraph = useCallback(() => {
@@ -88,7 +90,7 @@ export function Graph2DRenderer({
 
     const allNodeIds = new Set<string>();
     for (const m of filteredMemories) {
-      const color = clusterColor(m.cluster);
+      const color = resolveNodeColor(m, colorModeRef.current);
       const conns = connMap.get(m.id) ?? 0;
       const size = computeSize(sizeMode, conns, m.importance);
       allNodeIds.add(m.id);
@@ -292,43 +294,19 @@ export function Graph2DRenderer({
       hullCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       hullCtx.clearRect(0, 0, w, h);
 
-      if (hullModeRef.current === "clusters") {
-        for (const [cid, members] of Object.entries(
-          filteredClustersRef.current,
-        )) {
-          const color = clusterColor(parseInt(cid));
-          drawHullForSigma(
-            hullCtx,
-            sigmaRef.current,
-            members,
-            color,
-            0.07,
-            0.2,
-          );
-        }
-      } else {
-        const tagGroups = new Map<string, string[]>();
-        for (const m of filteredMemoriesRef.current) {
-          for (const tag of m.tags) {
-            const arr = tagGroups.get(tag) ?? [];
-            arr.push(m.id);
-            tagGroups.set(tag, arr);
-          }
-        }
-        let idx = 0;
-        for (const [, members] of tagGroups.entries()) {
-          if (members.length >= 2) {
-            drawHullForSigma(
-              hullCtx,
-              sigmaRef.current,
-              members,
-              tagColor(idx),
-              0.05,
-              0.15,
-            );
-          }
-          idx++;
-        }
+      const hullGroups = computeHullGroups(filteredMemoriesRef.current, hullModeRef.current);
+      let idx = 0;
+      for (const [groupKey, members] of hullGroups) {
+        const color = resolveGroupColor(groupKey, idx, colorModeRef.current, hullModeRef.current);
+        drawHullForSigma(
+          hullCtx,
+          sigmaRef.current,
+          members,
+          color,
+          0.07,
+          0.2,
+        );
+        idx++;
       }
     }
 
@@ -357,6 +335,7 @@ export function Graph2DRenderer({
     filteredMemories,
     filteredEdges,
     sizeMode,
+    colorMode,
     entityLayerEnabled,
     entities,
     entityRelations,
@@ -387,11 +366,11 @@ export function Graph2DRenderer({
   }, [selectedNodeId]);
 
   useEffect(() => {
+    colorModeRef.current = colorMode;
     hullModeRef.current = hullMode;
-    filteredClustersRef.current = filteredClusters;
     filteredMemoriesRef.current = filteredMemories;
     sigmaRef.current?.refresh();
-  }, [hullMode, filteredClusters, filteredMemories]);
+  }, [colorMode, hullMode, filteredMemories]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
 }
