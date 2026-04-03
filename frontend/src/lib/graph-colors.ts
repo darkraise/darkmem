@@ -18,18 +18,28 @@ export const PALETTE_600 = [
   "#c026d3","#db2777","#e11d48",
 ];
 
-export const UNIFIED_PALETTE = [...PALETTE_400, ...PALETTE_200, ...PALETTE_600];
+// Golden-ratio stepping (step=10, mod 17) maximizes hue spread between
+// consecutive picks: red, indigo, green, rose, blue, lime, pink, sky,
+// yellow, fuchsia, cyan, amber, purple, teal, orange, violet, emerald
+const HUE_ORDER = [0, 11, 5, 16, 10, 4, 15, 9, 3, 14, 8, 2, 13, 7, 1, 12, 6];
+const reorder = (palette: string[]) => HUE_ORDER.map((i) => palette[i]);
+
+export const UNIFIED_PALETTE = [
+  ...reorder(PALETTE_400),
+  ...reorder(PALETTE_200),
+  ...reorder(PALETTE_600),
+];
 
 export const UNCLUSTERED_COLOR = "#8b949e";
 
 const KNOWN_TYPE_INDICES: Record<string, number> = {
-  fact: 10,
-  decision: 12,
-  debug: 0,
-  architecture: 5,
-  preference: 1,
-  session: 8,
-  workflow: 6,
+  fact: 4,        // blue
+  decision: 15,   // violet
+  debug: 0,       // red
+  architecture: 2, // green
+  preference: 14,  // orange
+  session: 10,     // cyan
+  workflow: 16,    // emerald
 };
 
 function stableHash(str: string): number {
