@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { transformToGraphData, computeNodeVal } from "@/lib/graph-utils";
-import { clusterColor, CLUSTER_PALETTE, UNCLUSTERED_COLOR } from "@/lib/graph-colors";
+import { resolveNodeColor, UNIFIED_PALETTE, UNCLUSTERED_COLOR } from "@/lib/graph-colors";
 import type { UnifiedGraphData } from "@/hooks/useApi";
 import type { FilterState } from "@/lib/graph-utils";
 
@@ -28,18 +28,39 @@ const sampleData: UnifiedGraphData = {
   ],
 };
 
-describe("clusterColor", () => {
+describe("resolveNodeColor", () => {
   it("returns palette color for valid cluster", () => {
-    expect(clusterColor(0)).toBe(CLUSTER_PALETTE[0]);
-    expect(clusterColor(3)).toBe(CLUSTER_PALETTE[3]);
+    expect(resolveNodeColor({ cluster: 0, memory_type: null, tags: [] }, "cluster")).toBe(UNIFIED_PALETTE[0]);
+    expect(resolveNodeColor({ cluster: 3, memory_type: null, tags: [] }, "cluster")).toBe(UNIFIED_PALETTE[3]);
   });
 
   it("wraps around palette for large cluster IDs", () => {
-    expect(clusterColor(12)).toBe(CLUSTER_PALETTE[0]);
+    expect(resolveNodeColor({ cluster: 51, memory_type: null, tags: [] }, "cluster")).toBe(UNIFIED_PALETTE[0]);
   });
 
   it("returns gray for unclustered (-1)", () => {
-    expect(clusterColor(-1)).toBe(UNCLUSTERED_COLOR);
+    expect(resolveNodeColor({ cluster: -1, memory_type: null, tags: [] }, "cluster")).toBe(UNCLUSTERED_COLOR);
+  });
+
+  it("returns consistent color for known types", () => {
+    const factColor = resolveNodeColor({ cluster: 0, memory_type: "fact", tags: [] }, "type");
+    expect(UNIFIED_PALETTE).toContain(factColor);
+    expect(resolveNodeColor({ cluster: 1, memory_type: "fact", tags: [] }, "type")).toBe(factColor);
+  });
+
+  it("returns gray for null type", () => {
+    expect(resolveNodeColor({ cluster: 0, memory_type: null, tags: [] }, "type")).toBe(UNCLUSTERED_COLOR);
+  });
+
+  it("returns consistent color for tag prefix", () => {
+    const color1 = resolveNodeColor({ cluster: 0, memory_type: null, tags: ["project/darkmem"] }, "tag");
+    const color2 = resolveNodeColor({ cluster: 1, memory_type: null, tags: ["project/homelab"] }, "tag");
+    expect(color1).toBe(color2);
+    expect(UNIFIED_PALETTE).toContain(color1);
+  });
+
+  it("returns gray for no tags", () => {
+    expect(resolveNodeColor({ cluster: 0, memory_type: null, tags: [] }, "tag")).toBe(UNCLUSTERED_COLOR);
   });
 });
 
@@ -68,12 +89,20 @@ describe("transformToGraphData", () => {
     expect(result.links).toHaveLength(3);
   });
 
-  it("assigns type color to nodes", () => {
+  it("uses type coloring by default", () => {
     const result = transformToGraphData(sampleData, "connections", emptyFilters);
     const nodeA = result.nodes.find((n) => n.id === "a")!;
-    expect(nodeA.color).toBe("#58a6ff"); // fact = blue
+    expect(nodeA.color).toBe(resolveNodeColor({ cluster: 0, memory_type: "fact", tags: ["test"] }, "type"));
     const nodeD = result.nodes.find((n) => n.id === "d")!;
-    expect(nodeD.color).toBe(UNCLUSTERED_COLOR); // null type = gray
+    expect(nodeD.color).toBe(UNCLUSTERED_COLOR);
+  });
+
+  it("uses cluster coloring when specified", () => {
+    const result = transformToGraphData(sampleData, "connections", emptyFilters, "cluster");
+    const nodeA = result.nodes.find((n) => n.id === "a")!;
+    expect(nodeA.color).toBe(UNIFIED_PALETTE[0]);
+    const nodeD = result.nodes.find((n) => n.id === "d")!;
+    expect(nodeD.color).toBe(UNCLUSTERED_COLOR);
   });
 
   it("resolves cluster names", () => {
