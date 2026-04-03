@@ -36,12 +36,14 @@ export function Graph3DRenderer({
   const ringRef = useRef<THREE.Mesh | null>(null);
   const hullMeshesRef = useRef<THREE.Mesh[]>([]);
 
+  const isEntitySelected = selectedNodeId?.startsWith("entity:") ?? false;
+
   const neighborSet = useMemo(() => {
     if (!selectedNodeId) return null;
     const ids = new Set<string>();
     ids.add(selectedNodeId);
     for (const link of graphData.links) {
-      if (link.hidden) continue;
+      if (link.hidden && !isEntitySelected) continue;
       const src =
         typeof link.source === "object" ? (link.source as any).id : link.source;
       const tgt =
@@ -50,7 +52,7 @@ export function Graph3DRenderer({
       if (tgt === selectedNodeId) ids.add(src);
     }
     return ids;
-  }, [selectedNodeId, graphData.links]);
+  }, [selectedNodeId, isEntitySelected, graphData.links]);
 
   const handleNodeHover = useCallback((node: any) => {
     if (hoveredRef.current?.__threeObj) {

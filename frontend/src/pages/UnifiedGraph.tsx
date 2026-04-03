@@ -146,7 +146,7 @@ export default function UnifiedGraph() {
 
   const handleEntitySelect = useCallback((entityId: string | null) => {
     setSelectedEntityId(entityId);
-    setSelectedNodeId(null);
+    setSelectedNodeId(entityId ? `entity:${entityId}` : null);
     if (entityId) setShowPanel(true);
   }, []);
 
