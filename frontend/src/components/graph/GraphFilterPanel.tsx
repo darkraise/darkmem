@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { clusterColor, typeColor, entityTypeColor } from "@/lib/graph-colors";
+import { UNIFIED_PALETTE, UNCLUSTERED_COLOR, entityTypeColor, resolveNodeColor } from "@/lib/graph-colors";
+import type { ColorMode } from "@/lib/graph-colors";
 
 export interface GraphFilterPanelProps {
   tagGroups: [string, [string, number][]][];
@@ -12,6 +13,7 @@ export interface GraphFilterPanelProps {
   selectedSources: Set<string>;
   selectedClusters: Set<number>;
   searchText: string;
+  colorMode: ColorMode;
   onSearchChange: (v: string) => void;
   onTagToggle: (tag: string) => void;
   onTypeToggle: (type: string) => void;
@@ -35,6 +37,7 @@ export function GraphFilterPanel({
   selectedSources,
   selectedClusters,
   searchText,
+  colorMode,
   onSearchChange,
   onTagToggle,
   onTypeToggle,
@@ -147,7 +150,9 @@ export function GraphFilterPanel({
               <div className="space-y-0.5">
                 {allTypes.map(([type, count]) => {
                   const realType = type === "(none)" ? null : type;
-                  const color = typeColor(realType);
+                  const color = colorMode === "type"
+                    ? resolveNodeColor({ cluster: -1, memory_type: realType, tags: [] }, "type")
+                    : "#8b949e";
                   return (
                     <label
                       key={type}
@@ -223,7 +228,9 @@ export function GraphFilterPanel({
               </p>
               <div className="space-y-0.5">
                 {allClusters.map(([cid, count]) => {
-                  const color = clusterColor(cid);
+                  const color = colorMode === "cluster"
+                    ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length]
+                    : "#8b949e";
                   return (
                     <label
                       key={cid}
