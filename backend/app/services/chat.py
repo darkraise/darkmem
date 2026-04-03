@@ -1,8 +1,6 @@
 import re
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
-
 from sqlalchemy import select, func as sa_func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -178,7 +176,7 @@ class ChatService:
         await self.session.execute(
             update(Conversation)
             .where(Conversation.id == conversation_id)
-            .values(updated_at=datetime.now(timezone.utc))
+            .values(updated_at=sa_func.now())
         )
         await self.session.flush()
 
