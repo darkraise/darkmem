@@ -319,28 +319,30 @@ export function Graph2DRenderer({
         idx++;
       }
 
-      // Draw diamond border for hovered or selected entity nodes
-      const activeNode = selectedNodeIdRef.current || hoveredNodeRef.current;
-      if (activeNode && graph.hasNode(activeNode)) {
-        const attrs = graph.getNodeAttributes(activeNode);
-        if (attrs._kind === "entity") {
-          const displayData = sigmaRef.current.getNodeDisplayData(activeNode);
-          if (displayData) {
-            const vp = sigmaRef.current.framedGraphToViewport(displayData);
-            const nodeSize = sigmaRef.current.scaleSize(displayData.size);
-            const border = 3;
-            const r = nodeSize + border;
-            hullCtx.beginPath();
-            hullCtx.moveTo(vp.x, vp.y - r);
-            hullCtx.lineTo(vp.x + r, vp.y);
-            hullCtx.lineTo(vp.x, vp.y + r);
-            hullCtx.lineTo(vp.x - r, vp.y);
-            hullCtx.closePath();
-            hullCtx.strokeStyle = "#ffffff";
-            hullCtx.lineWidth = border;
-            hullCtx.stroke();
-          }
-        }
+      // Draw diamond border for hovered and/or selected entity nodes
+      const borderTargets = new Set<string>();
+      if (hoveredNodeRef.current) borderTargets.add(hoveredNodeRef.current);
+      if (selectedNodeIdRef.current) borderTargets.add(selectedNodeIdRef.current);
+      for (const nodeId of borderTargets) {
+        if (!graph.hasNode(nodeId)) continue;
+        const attrs = graph.getNodeAttributes(nodeId);
+        if (attrs._kind !== "entity") continue;
+        const displayData = sigmaRef.current.getNodeDisplayData(nodeId);
+        if (!displayData) continue;
+        const vp = sigmaRef.current.framedGraphToViewport(displayData);
+        const nodeSize = sigmaRef.current.scaleSize(displayData.size);
+        const correctionRatio = (sigmaRef.current as any).correctionRatio || 1;
+        const r = nodeSize * correctionRatio + 4;
+        const border = 3;
+        hullCtx.beginPath();
+        hullCtx.moveTo(vp.x, vp.y - r);
+        hullCtx.lineTo(vp.x + r, vp.y);
+        hullCtx.lineTo(vp.x, vp.y + r);
+        hullCtx.lineTo(vp.x - r, vp.y);
+        hullCtx.closePath();
+        hullCtx.strokeStyle = "#ffffff";
+        hullCtx.lineWidth = border;
+        hullCtx.stroke();
       }
     }
 
