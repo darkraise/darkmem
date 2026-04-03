@@ -372,7 +372,7 @@ export default function UnifiedGraph() {
               entityLayer={entityLayerEnabled}
               onEntityLayerChange={setEntityLayerEnabled}
               showSettings={showSettings}
-              onToggleSettings={() => setShowSettings((v) => !v)}
+              onToggleSettings={setShowSettings}
               sizeMode={sizeMode}
               onSizeModeChange={setSizeMode}
               similarityThreshold={similarityThreshold}

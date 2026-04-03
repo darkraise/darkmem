@@ -1,5 +1,6 @@
 import { useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { Toggle } from "@/components/ui/toggle";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Settings, RotateCcw } from "lucide-react";
 import type { SizeMode } from "@/lib/graph-utils";
 import type { ColorMode } from "@/lib/graph-colors";
@@ -17,7 +18,7 @@ interface GraphToolbarProps {
   entityLayer: boolean;
   onEntityLayerChange: (v: boolean) => void;
   showSettings: boolean;
-  onToggleSettings: () => void;
+  onToggleSettings: (pressed: boolean) => void;
   sizeMode: SizeMode;
   onSizeModeChange: (mode: SizeMode) => void;
   similarityThreshold: number;
@@ -29,36 +30,6 @@ interface GraphToolbarProps {
   clusterTightness: number;
   onClusterTightnessChange: (v: number) => void;
   onReset: () => void;
-}
-
-function SegmentedControl<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { label: string; value: T }[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="flex items-center rounded-sm overflow-hidden border border-border">
-      {options.map((opt) => (
-        <Button
-          key={opt.value}
-          variant="ghost"
-          size="sm"
-          className={`h-7 text-xs rounded-none px-2.5 ${
-            value === opt.value
-              ? "bg-primary/20 text-primary"
-              : "text-muted-foreground"
-          }`}
-          onClick={() => onChange(opt.value)}
-        >
-          {opt.label}
-        </Button>
-      ))}
-    </div>
-  );
 }
 
 interface SliderProps {
@@ -120,7 +91,7 @@ export function GraphToolbar({
     if (!showSettings) return;
     function handleClick(e: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onToggleSettings();
+        onToggleSettings(false);
       }
     }
     const timer = setTimeout(() => document.addEventListener("click", handleClick), 0);
@@ -133,66 +104,64 @@ export function GraphToolbar({
   return (
     <div className="absolute top-3 left-0 right-0 z-20 flex flex-col items-center pointer-events-none">
       <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-md border border-border shadow-lg px-3 py-1.5 pointer-events-auto flex-wrap justify-center">
-        <SegmentedControl
-          options={[
-            { label: "2D", value: "2d" as ViewMode },
-            { label: "3D", value: "3d" as ViewMode },
-          ]}
-          value={viewMode}
-          onChange={onViewModeChange}
-        />
+        <ToggleGroup
+          value={[viewMode]}
+          onValueChange={(v) => { if (v.length) onViewModeChange(v[0] as ViewMode); }}
+          className="gap-0 border border-border rounded-sm"
+        >
+          <ToggleGroupItem value="2d" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">2D</ToggleGroupItem>
+          <ToggleGroupItem value="3d" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">3D</ToggleGroupItem>
+        </ToggleGroup>
 
         <div className="w-px h-4 bg-border" />
 
-        <SegmentedControl
-          options={[
-            { label: "Type", value: "type" as ColorMode },
-            { label: "Cluster", value: "cluster" as ColorMode },
-            { label: "Tag", value: "tag" as ColorMode },
-          ]}
-          value={colorMode}
-          onChange={onColorModeChange}
-        />
+        <ToggleGroup
+          value={[colorMode]}
+          onValueChange={(v) => { if (v.length) onColorModeChange(v[0] as ColorMode); }}
+          className="gap-0 border border-border rounded-sm"
+        >
+          <ToggleGroupItem value="type" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Type</ToggleGroupItem>
+          <ToggleGroupItem value="cluster" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Cluster</ToggleGroupItem>
+          <ToggleGroupItem value="tag" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Tag</ToggleGroupItem>
+        </ToggleGroup>
 
-        <SegmentedControl
-          options={[
-            { label: "None", value: "none" as HullMode },
-            { label: "Cluster", value: "cluster" as HullMode },
-            { label: "Tag", value: "tag" as HullMode },
-            { label: "Source", value: "source" as HullMode },
-          ]}
-          value={hullMode}
-          onChange={onHullModeChange}
-        />
+        <ToggleGroup
+          value={[hullMode]}
+          onValueChange={(v) => { if (v.length) onHullModeChange(v[0] as HullMode); }}
+          className="gap-0 border border-border rounded-sm"
+        >
+          <ToggleGroupItem value="none" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">None</ToggleGroupItem>
+          <ToggleGroupItem value="cluster" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Cluster</ToggleGroupItem>
+          <ToggleGroupItem value="tag" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Tag</ToggleGroupItem>
+          <ToggleGroupItem value="source" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Source</ToggleGroupItem>
+        </ToggleGroup>
 
         <div className="w-px h-4 bg-border" />
 
-        <Button
-          variant="ghost"
+        <Toggle
           size="sm"
-          className={`h-7 text-xs ${entityLayer ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
-          onClick={() => onEntityLayerChange(!entityLayer)}
+          pressed={entityLayer}
+          onPressedChange={onEntityLayerChange}
+          className="h-7 text-xs data-[pressed]:bg-primary/20 data-[pressed]:text-primary"
         >
           Entities
-        </Button>
+        </Toggle>
 
-        <Button
-          variant="ghost"
+        <Toggle
           size="sm"
-          className={`h-7 text-xs ${showSettings ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
-          onClick={onToggleSettings}
+          pressed={showSettings}
+          onPressedChange={onToggleSettings}
+          className="h-7 text-xs data-[pressed]:bg-primary/20 data-[pressed]:text-primary"
         >
           <Settings className="w-3.5 h-3.5" />
-        </Button>
+        </Toggle>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs text-muted-foreground"
+        <button
+          className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           onClick={onReset}
         >
           <RotateCcw className="w-3.5 h-3.5" />
-        </Button>
+        </button>
       </div>
 
       {showSettings && (
@@ -208,15 +177,15 @@ export function GraphToolbar({
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground w-14 text-right shrink-0">Size</span>
-              <SegmentedControl
-                options={[
-                  { label: "Connections", value: "connections" as SizeMode },
-                  { label: "Importance", value: "importance" as SizeMode },
-                  { label: "Uniform", value: "uniform" as SizeMode },
-                ]}
-                value={sizeMode}
-                onChange={onSizeModeChange}
-              />
+              <ToggleGroup
+                value={[sizeMode]}
+                onValueChange={(v) => { if (v.length) onSizeModeChange(v[0] as SizeMode); }}
+                className="gap-0 border border-border rounded-sm"
+              >
+                <ToggleGroupItem value="connections" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Connections</ToggleGroupItem>
+                <ToggleGroupItem value="importance" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Importance</ToggleGroupItem>
+                <ToggleGroupItem value="uniform" size="sm" variant="outline" className="h-7 text-xs rounded-none border-0 px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Uniform</ToggleGroupItem>
+              </ToggleGroup>
             </div>
 
             <Slider
