@@ -9,6 +9,7 @@ import { GraphDetailPanel } from "@/components/graph/GraphDetailPanel";
 import { Graph2DRenderer } from "@/components/graph/Graph2DRenderer";
 import { Graph3DRenderer } from "@/components/graph/Graph3DRenderer";
 import { GraphToolbar } from "@/components/graph/GraphToolbar";
+import { ChatOverlay } from "@/components/chat/ChatOverlay";
 import {
   transformToGraphData,
   type SizeMode,
@@ -459,6 +460,11 @@ export default function UnifiedGraph() {
                 }
               />
             </div>
+
+            <ChatOverlay
+              selectedNodeId={selectedNodeId}
+              selectedEntityId={selectedEntityId}
+            />
           </div>
         )}
       </div>
