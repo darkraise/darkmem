@@ -465,7 +465,7 @@ export default function UnifiedGraph() {
 
       {/* Right panel */}
       {showPanel && memoryCount > 0 && (
-        <div className="w-[320px] shrink-0 border-l border-border bg-card overflow-auto">
+        <div className="w-[320px] shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
           <GraphDetailPanel
             colorMode={colorMode}
             selectedMemory={selectedMemory}

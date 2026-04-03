@@ -40,7 +40,7 @@ export function GraphDetailPanel({
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border">
+      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border shrink-0">
         <span className="text-sm font-medium">{panelTitle}</span>
         <button
           className="text-muted-foreground hover:text-foreground rounded-sm p-1"
@@ -50,6 +50,7 @@ export function GraphDetailPanel({
         </button>
       </div>
 
+      <div className="flex-1 overflow-auto min-h-0">
       {selectedEntity ? (
         <EntityDetail
           entity={selectedEntity}
@@ -76,6 +77,7 @@ export function GraphDetailPanel({
           entityRelations={entityRelations}
         />
       )}
+      </div>
     </>
   );
 }
