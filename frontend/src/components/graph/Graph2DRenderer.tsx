@@ -330,10 +330,10 @@ export function Graph2DRenderer({
         const displayData = sigmaRef.current.getNodeDisplayData(nodeId);
         if (!displayData) continue;
         const vp = sigmaRef.current.framedGraphToViewport(displayData);
-        const nodeSize = sigmaRef.current.scaleSize(displayData.size);
+        const scaledSize = sigmaRef.current.scaleSize(displayData.size);
         const correctionRatio = (sigmaRef.current as any).correctionRatio || 1;
-        const r = nodeSize * correctionRatio + 6;
-        const border = 4;
+        const r = scaledSize * correctionRatio * 2 + 5;
+        const border = 3;
         hullCtx.beginPath();
         hullCtx.moveTo(vp.x, vp.y - r);
         hullCtx.lineTo(vp.x + r, vp.y);
