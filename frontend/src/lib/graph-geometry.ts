@@ -2,6 +2,8 @@ import type { Network } from "vis-network/standalone";
 import type Sigma from "sigma";
 import { hexToRgba } from "@/lib/graph-colors";
 
+export type HullMode = "none" | "cluster" | "tag" | "source";
+
 export function convexHull(
   pts: { x: number; y: number }[],
 ): { x: number; y: number }[] {
@@ -168,4 +170,47 @@ export function drawHullForSigma(
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.restore();
+}
+
+export function computeHullGroups(
+  memories: { id: string; cluster: number; tags: string[]; source: string }[],
+  hullMode: HullMode,
+): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  if (hullMode === "none") return groups;
+
+  for (const m of memories) {
+    switch (hullMode) {
+      case "cluster": {
+        if (m.cluster < 0) break;
+        const key = String(m.cluster);
+        const arr = groups.get(key) ?? [];
+        arr.push(m.id);
+        groups.set(key, arr);
+        break;
+      }
+      case "tag": {
+        for (const tag of m.tags) {
+          const arr = groups.get(tag) ?? [];
+          arr.push(m.id);
+          groups.set(tag, arr);
+        }
+        break;
+      }
+      case "source": {
+        const arr = groups.get(m.source) ?? [];
+        arr.push(m.id);
+        groups.set(m.source, arr);
+        break;
+      }
+    }
+  }
+
+  if (hullMode === "tag" || hullMode === "source") {
+    for (const [key, members] of groups) {
+      if (members.length < 2) groups.delete(key);
+    }
+  }
+
+  return groups;
 }
