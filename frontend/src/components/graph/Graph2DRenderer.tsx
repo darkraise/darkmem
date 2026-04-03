@@ -331,7 +331,7 @@ export function Graph2DRenderer({
         if (!displayData) continue;
         const vp = sigmaRef.current.framedGraphToViewport(displayData);
         const sizePixels = sigmaRef.current.scaleSize(displayData.size);
-        const r = sizePixels * Math.SQRT2 + 4;
+        const r = sizePixels * Math.SQRT2 + 1;
         const border = 3;
         hullCtx.beginPath();
         hullCtx.moveTo(vp.x, vp.y - r);
