@@ -1,7 +1,9 @@
 import type { UnifiedMemory, UnifiedGraphData, GraphEntity, EntityRelation } from "@/hooks/useApi";
-import { clusterColor, typeColor, entityTypeColor } from "@/lib/graph-colors";
-export { clusterColor, typeColor, entityTypeColor };
-export { CLUSTER_PALETTE, UNCLUSTERED_COLOR, ENTITY_TYPE_COLORS } from "@/lib/graph-colors";
+import { resolveNodeColor, entityTypeColor } from "@/lib/graph-colors";
+import type { ColorMode } from "@/lib/graph-colors";
+export { resolveNodeColor, entityTypeColor };
+export type { ColorMode };
+export { UNIFIED_PALETTE, UNCLUSTERED_COLOR, ENTITY_TYPE_COLORS } from "@/lib/graph-colors";
 
 export type SizeMode = "connections" | "importance" | "uniform";
 
@@ -96,6 +98,7 @@ export function transformToGraphData(
   data: UnifiedGraphData,
   sizeMode: SizeMode,
   filters: FilterState,
+  colorMode: ColorMode = "type",
   entityLayerEnabled = false,
   entities: GraphEntity[] = [],
   entityRelations: EntityRelation[] = [],
@@ -121,7 +124,7 @@ export function transformToGraphData(
     importance: m.importance,
     cluster: m.cluster,
     clusterName: data.cluster_names[String(m.cluster)] ?? "",
-    color: typeColor(m.memory_type),
+    color: resolveNodeColor(m, colorMode),
     val: computeNodeVal(sizeMode, edgeCountMap.get(m.id) ?? 0, m.importance),
   }));
 
