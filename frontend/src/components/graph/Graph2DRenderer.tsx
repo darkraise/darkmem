@@ -193,15 +193,15 @@ export function Graph2DRenderer({
         if (hov === node) {
           res.color = lightenHex(data.color || "#8b949e", 0.4);
           res.size = (data.size || 5) * 1.4;
-          res.highlighted = true;
+          if (data.type !== "diamond") res.highlighted = true;
         } else if (sel === node) {
-          res.highlighted = true;
           if (data.type === "diamond") {
             res.color = "#ffffff";
             res.size = (data.size || 5) * 1.6;
           } else {
             res.color = lightenHex(data.color || "#8b949e", 0.4);
             res.size = (data.size || 5) * 1.4;
+            res.highlighted = true;
             res.borderColor = "#ffffff";
             res.borderSize = 3;
           }
