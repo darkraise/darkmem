@@ -16,6 +16,7 @@ import Analytics from "@/pages/Analytics";
 import LlmConfig from "@/pages/LlmConfig";
 import Settings from "@/pages/Settings";
 import PipelineLogs from "@/pages/PipelineLogs";
+import Chat from "@/pages/Chat";
 import Setup from "@/pages/Setup";
 import Login from "@/pages/Login";
 
@@ -43,6 +44,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             <Route path="/llm" element={<LlmConfig />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/pipeline" element={<PipelineLogs />} />
+            <Route path="/chat" element={<Chat />} />
           </Routes>
         </ErrorBoundary>
       </main>

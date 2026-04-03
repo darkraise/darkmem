@@ -13,6 +13,7 @@ import {
   Activity,
   Settings,
   LogOut,
+  MessageCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -29,6 +30,7 @@ const navItems: (NavItem | null)[] = [
   { to: "/unified-graph", label: "Unified Graph", icon: Hexagon },
   { to: "/vectors", label: "Vector Space", icon: Atom },
   { to: "/search", label: "Search", icon: Search },
+  { to: "/chat", label: "Chat", icon: MessageCircle },
   null,
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/llm", label: "LLM Config", icon: Cpu },
