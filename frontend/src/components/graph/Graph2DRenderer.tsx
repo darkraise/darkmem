@@ -332,8 +332,8 @@ export function Graph2DRenderer({
         const vp = sigmaRef.current.framedGraphToViewport(displayData);
         const nodeSize = sigmaRef.current.scaleSize(displayData.size);
         const correctionRatio = (sigmaRef.current as any).correctionRatio || 1;
-        const r = nodeSize * correctionRatio + 4;
-        const border = 3;
+        const r = nodeSize * correctionRatio + 6;
+        const border = 4;
         hullCtx.beginPath();
         hullCtx.moveTo(vp.x, vp.y - r);
         hullCtx.lineTo(vp.x + r, vp.y);
