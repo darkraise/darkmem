@@ -17,8 +17,6 @@ interface GraphToolbarProps {
   onSizeModeChange: (mode: SizeMode) => void;
   similarityThreshold: number;
   onSimilarityChange: (v: number) => void;
-  clusterMinScore: number;
-  onClusterMinScoreChange: (v: number) => void;
   minClusterSize: number;
   onMinClusterSizeChange: (v: number) => void;
   spacing: number;
@@ -81,8 +79,6 @@ export function GraphToolbar({
   onSizeModeChange,
   similarityThreshold,
   onSimilarityChange,
-  clusterMinScore,
-  onClusterMinScoreChange,
   minClusterSize,
   onMinClusterSizeChange,
   spacing,
@@ -140,15 +136,6 @@ export function GraphToolbar({
           step={0.05}
           value={similarityThreshold}
           onChange={onSimilarityChange}
-          float
-        />
-        <Slider
-          label="Cluster"
-          min={0.2}
-          max={0.8}
-          step={0.05}
-          value={clusterMinScore}
-          onChange={onClusterMinScoreChange}
           float
         />
         <Slider

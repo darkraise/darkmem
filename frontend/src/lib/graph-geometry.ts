@@ -1,4 +1,5 @@
 import type { Network } from "vis-network/standalone";
+import type Sigma from "sigma";
 import { hexToRgba } from "@/lib/graph-colors";
 
 export function convexHull(
@@ -119,5 +120,52 @@ export function drawHullForGroup(
   ctx.lineWidth = 2;
   ctx.stroke();
 
+  ctx.restore();
+}
+
+export function drawHullForSigma(
+  ctx: CanvasRenderingContext2D,
+  sigma: Sigma,
+  memberIds: string[],
+  color: string,
+  fillAlpha: number,
+  strokeAlpha: number,
+) {
+  const positions: { x: number; y: number }[] = [];
+  for (const id of memberIds) {
+    const data = sigma.getNodeDisplayData(id);
+    if (data) {
+      const vp = sigma.framedGraphToViewport(data);
+      positions.push({ x: vp.x, y: vp.y });
+    }
+  }
+  if (positions.length < 2) return;
+
+  if (positions.length === 2) {
+    const cx = (positions[0].x + positions[1].x) / 2;
+    const cy = (positions[0].y + positions[1].y) / 2;
+    const dx = positions[1].x - positions[0].x;
+    const dy = positions[1].y - positions[0].y;
+    const dist = Math.sqrt(dx * dx + dy * dy) / 2 + 30;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, dist, dist * 0.6, Math.atan2(dy, dx), 0, Math.PI * 2);
+    ctx.fillStyle = hexToRgba(color, fillAlpha);
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(color, strokeAlpha);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  const hull = expandHull(convexHull(positions), 25);
+  ctx.save();
+  drawSmoothClosed(ctx, hull);
+  ctx.fillStyle = hexToRgba(color, fillAlpha);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(color, strokeAlpha);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
   ctx.restore();
 }

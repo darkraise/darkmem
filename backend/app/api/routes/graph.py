@@ -48,7 +48,6 @@ async def list_entities(
 async def get_unified_graph(
     limit: int = Query(200),
     similarity_threshold: float = Query(0.75, ge=0.0, le=1.0),
-    cluster_min_score: float = Query(0.5, ge=0.1, le=0.95),
     min_cluster_size: int = Query(3, ge=2, le=10),
     include_entities: bool = Query(False),
     _user=Depends(require_auth),
@@ -76,7 +75,7 @@ async def get_unified_graph(
     if vector_repo:
         try:
             import numpy as np
-            clustered = await vector_repo.get_louvain_clustered_vectors(min_score=cluster_min_score, min_cluster_size=min_cluster_size, limit=limit)
+            clustered = await vector_repo.get_louvain_clustered_vectors(min_score=similarity_threshold, min_cluster_size=min_cluster_size, limit=limit)
             for p in clustered:
                 payload = p.get("payload", {})
                 mid = str(p["memory_id"])

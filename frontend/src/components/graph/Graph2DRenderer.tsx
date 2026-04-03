@@ -2,16 +2,18 @@ import { useRef, useEffect, useCallback } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
 import EdgeCurveProgram from "@sigma/edge-curve";
+import { NodeDiamondProgram } from "@/lib/node-diamond-program";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { computeSize } from "@/lib/graph-utils";
+import { drawHullForSigma } from "@/lib/graph-geometry";
 import type { SizeMode } from "@/lib/graph-utils";
 import {
   clusterColor,
+  tagColor,
   entityTypeColor,
   lightenHex,
   darkenHex,
-  blendHex,
 } from "@/lib/graph-colors";
 import type {
   UnifiedMemory,
@@ -40,11 +42,13 @@ interface Graph2DRendererProps {
 
 export function Graph2DRenderer({
   filteredMemories,
+  filteredClusters,
   filteredEdges,
   selectedNodeId,
   onNodeSelect,
   onReady,
   sizeMode,
+  hullMode,
   entityLayerEnabled,
   entities,
   entityRelations,
@@ -56,6 +60,9 @@ export function Graph2DRenderer({
   const fa2Ref = useRef<FA2Layout | null>(null);
   const selectedNodeIdRef = useRef(selectedNodeId);
   const hoveredNodeRef = useRef<string | null>(null);
+  const hullModeRef = useRef(hullMode);
+  const filteredClustersRef = useRef(filteredClusters);
+  const filteredMemoriesRef = useRef(filteredMemories);
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return;
@@ -101,9 +108,7 @@ export function Graph2DRenderer({
         try {
           const srcColor =
             graph.getNodeAttribute(e.source, "color") || "#8b949e";
-          const tgtColor =
-            graph.getNodeAttribute(e.target, "color") || "#8b949e";
-          const edgeColor = darkenHex(blendHex(srcColor, tgtColor), 0.6);
+          const edgeColor = darkenHex(srcColor, 0.6);
           graph.addEdge(e.source, e.target, {
             color: edgeColor,
             size: 2.5,
@@ -113,6 +118,7 @@ export function Graph2DRenderer({
         }
       }
     }
+
 
     if (entityLayerEnabled) {
       const visibleEntities = entities.filter((ent) =>
@@ -126,9 +132,10 @@ export function Graph2DRenderer({
           x: (Math.random() - 0.5) * 10,
           y: (Math.random() - 0.5) * 10,
           label: ent.name,
-          size: 3,
+          size: 10,
           color: bg,
           borderColor: darkenHex(bg),
+          type: "diamond",
           _kind: "entity",
           _entityData: ent,
         });
@@ -139,7 +146,7 @@ export function Graph2DRenderer({
           try {
             graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
               color: "#ffa65770",
-              size: 0.8,
+              size: 2.5,
               label: r.type,
             });
           } catch {
@@ -154,7 +161,7 @@ export function Graph2DRenderer({
             try {
               graph.addEdge(`entity:${ent.id}`, mid, {
                 color: "#58606920",
-                size: 0.3,
+                size: 2.5,
               });
             } catch {
               /* duplicate */
@@ -172,6 +179,7 @@ export function Graph2DRenderer({
       labelColor: { color: "#c9d1d9" },
       labelFont: "Inter, sans-serif",
       defaultEdgeType: "curve",
+      nodeProgramClasses: { diamond: NodeDiamondProgram },
       edgeProgramClasses: { curve: EdgeCurveProgram },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
@@ -211,9 +219,9 @@ export function Graph2DRenderer({
         if (sel) {
           if (src === sel || tgt === sel) {
             res.size = (data.size || 2.5) * 2;
-            const neighborColor = graph.getNodeAttribute(
-              src === sel ? tgt : src, "color",
-            ) || "#8b949e";
+            const neighborColor =
+              graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
+              "#8b949e";
             res.color = lightenHex(neighborColor, 0.3);
           } else {
             res.color = "#444444";
@@ -224,9 +232,9 @@ export function Graph2DRenderer({
         // Hover highlight overrides for hovered node's edges only
         if (hov && (src === hov || tgt === hov)) {
           res.size = (data.size || 2.5) * 2;
-          const neighborColor = graph.getNodeAttribute(
-            src === hov ? tgt : src, "color",
-          ) || "#8b949e";
+          const neighborColor =
+            graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
+            "#8b949e";
           res.color = lightenHex(neighborColor, 0.3);
         }
 
@@ -259,6 +267,73 @@ export function Graph2DRenderer({
     });
 
     sigmaRef.current = sigma;
+
+    // Hull canvas: placed on top of sigma with pointer-events: none
+    const sigmaContainer = sigma.getContainer();
+    const hullCanvas = document.createElement("canvas");
+    hullCanvas.style.position = "absolute";
+    hullCanvas.style.inset = "0";
+    hullCanvas.style.pointerEvents = "none";
+    hullCanvas.style.zIndex = "1";
+    sigmaContainer.appendChild(hullCanvas);
+    const hullCtx = hullCanvas.getContext("2d")!;
+
+    function drawHulls() {
+      if (!sigmaRef.current || !containerRef.current) return;
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      const dpr = window.devicePixelRatio || 1;
+      if (hullCanvas.width !== w * dpr || hullCanvas.height !== h * dpr) {
+        hullCanvas.width = w * dpr;
+        hullCanvas.height = h * dpr;
+        hullCanvas.style.width = w + "px";
+        hullCanvas.style.height = h + "px";
+      }
+      hullCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      hullCtx.clearRect(0, 0, w, h);
+
+      if (hullModeRef.current === "clusters") {
+        for (const [cid, members] of Object.entries(
+          filteredClustersRef.current,
+        )) {
+          const color = clusterColor(parseInt(cid));
+          drawHullForSigma(
+            hullCtx,
+            sigmaRef.current,
+            members,
+            color,
+            0.07,
+            0.2,
+          );
+        }
+      } else {
+        const tagGroups = new Map<string, string[]>();
+        for (const m of filteredMemoriesRef.current) {
+          for (const tag of m.tags) {
+            const arr = tagGroups.get(tag) ?? [];
+            arr.push(m.id);
+            tagGroups.set(tag, arr);
+          }
+        }
+        let idx = 0;
+        for (const [, members] of tagGroups.entries()) {
+          if (members.length >= 2) {
+            drawHullForSigma(
+              hullCtx,
+              sigmaRef.current,
+              members,
+              tagColor(idx),
+              0.05,
+              0.15,
+            );
+          }
+          idx++;
+        }
+      }
+    }
+
+    sigma.on("afterRender", drawHulls);
+    sigma.on("kill", () => hullCanvas.remove());
 
     // Let the library infer optimal FA2 settings from the graph structure
     const fa2 = new FA2Layout(graph, {
@@ -310,6 +385,13 @@ export function Graph2DRenderer({
     selectedNodeIdRef.current = selectedNodeId;
     sigmaRef.current?.refresh();
   }, [selectedNodeId]);
+
+  useEffect(() => {
+    hullModeRef.current = hullMode;
+    filteredClustersRef.current = filteredClusters;
+    filteredMemoriesRef.current = filteredMemories;
+    sigmaRef.current?.refresh();
+  }, [hullMode, filteredClusters, filteredMemories]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
 }

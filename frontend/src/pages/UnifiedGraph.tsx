@@ -34,10 +34,10 @@ export default function UnifiedGraph() {
 
   // API params (shared, debounced)
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5);
-  const [clusterMinScore, setClusterMinScore] = useState(0.2);
+
   const [minClusterSize, setMinClusterSize] = useState(3);
   const debouncedSimilarity = useDebouncedValue(similarityThreshold, 500);
-  const debouncedClusterScore = useDebouncedValue(clusterMinScore, 500);
+
   const debouncedMinSize = useDebouncedValue(minClusterSize, 500);
 
   // Entity layer
@@ -47,7 +47,6 @@ export default function UnifiedGraph() {
 
   const { data, isLoading } = useUnifiedGraph(
     debouncedSimilarity,
-    debouncedClusterScore,
     debouncedMinSize,
     entityLayerEnabled,
   );
@@ -115,7 +114,7 @@ export default function UnifiedGraph() {
 
   function handleReset() {
     setSimilarityThreshold(0.5);
-    setClusterMinScore(0.2);
+
     setMinClusterSize(3);
     setClusterTightness(300);
     setNodeSpacing(100);
@@ -375,8 +374,6 @@ export default function UnifiedGraph() {
               onSizeModeChange={setSizeMode}
               similarityThreshold={similarityThreshold}
               onSimilarityChange={setSimilarityThreshold}
-              clusterMinScore={clusterMinScore}
-              onClusterMinScoreChange={setClusterMinScore}
               minClusterSize={minClusterSize}
               onMinClusterSizeChange={setMinClusterSize}
               spacing={viewMode === "2d" ? nodeSpacing : spacing3D}

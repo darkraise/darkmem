@@ -225,10 +225,10 @@ export interface UnifiedGraphData {
   entity_relations?: EntityRelation[];
 }
 
-export function useUnifiedGraph(similarityThreshold = 0.75, clusterMinScore = 0.5, minClusterSize = 3, includeEntities = false) {
+export function useUnifiedGraph(similarityThreshold = 0.75, minClusterSize = 3, includeEntities = false) {
   return useQuery<UnifiedGraphData>({
-    queryKey: ["unifiedGraph", similarityThreshold, clusterMinScore, minClusterSize, includeEntities],
-    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}&cluster_min_score=${clusterMinScore}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}`),
+    queryKey: ["unifiedGraph", similarityThreshold, minClusterSize, includeEntities],
+    queryFn: () => apiFetch(`/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}`),
   });
 }
 
