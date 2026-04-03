@@ -72,6 +72,8 @@ export function GraphDetailPanel({
           clusterNames={clusterNames}
           visibleEdgeCount={visibleEdgeCount}
           colorMode={colorMode}
+          entities={allEntities}
+          entityRelations={entityRelations}
         />
       )}
     </>
@@ -237,9 +239,11 @@ interface GraphSummaryProps {
   clusterNames: Record<string, string>;
   visibleEdgeCount: number;
   colorMode: ColorMode;
+  entities?: GraphEntity[];
+  entityRelations?: EntityRelation[];
 }
 
-function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: GraphSummaryProps) {
+function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode, entities, entityRelations }: GraphSummaryProps) {
   const clusterCounts = new Map<number, number>();
   const typeCounts = new Map<string, number>();
   const sourceCounts = new Map<string, number>();
@@ -258,10 +262,16 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: G
     }
   }
 
+  const entityTypeCounts = new Map<string, number>();
+  for (const e of entities ?? []) {
+    entityTypeCounts.set(e.entity_type, (entityTypeCounts.get(e.entity_type) ?? 0) + 1);
+  }
+
   const sortedClusters = [...clusterCounts.entries()].sort((a, b) => b[1] - a[1]);
   const sortedTypes = [...typeCounts.entries()].sort((a, b) => b[1] - a[1]);
   const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1]);
   const sortedTagCategories = [...tagCategoryCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const sortedEntityTypes = [...entityTypeCounts.entries()].sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="p-4 space-y-4">
@@ -282,6 +292,18 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: G
           <p className="text-2xl font-bold">{typeCounts.size}</p>
           <p className="text-xs text-muted-foreground">Types</p>
         </div>
+        {(entities?.length ?? 0) > 0 && (
+          <div className="bg-background rounded-lg p-3">
+            <p className="text-2xl font-bold">{entities!.length}</p>
+            <p className="text-xs text-muted-foreground">Entities</p>
+          </div>
+        )}
+        {(entityRelations?.length ?? 0) > 0 && (
+          <div className="bg-background rounded-lg p-3">
+            <p className="text-2xl font-bold">{entityRelations!.length}</p>
+            <p className="text-xs text-muted-foreground">Relations</p>
+          </div>
+        )}
       </div>
 
       {sortedClusters.length > 0 && (
@@ -355,6 +377,26 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: G
             {sortedSources.map(([src, count]) => (
               <div key={src} className="flex items-center gap-2 text-sm">
                 <span className="flex-1 text-foreground">{src}</span>
+                <span className="text-xs text-muted-foreground">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sortedEntityTypes.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+            Entity Types
+          </p>
+          <div className="space-y-1.5">
+            {sortedEntityTypes.map(([etype, count]) => (
+              <div key={etype} className="flex items-center gap-2 text-sm">
+                <span
+                  className="w-2.5 h-2.5 shrink-0"
+                  style={{ backgroundColor: entityTypeColor(etype), clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
+                />
+                <span className="flex-1 text-foreground capitalize">{etype}</span>
                 <span className="text-xs text-muted-foreground">{count}</span>
               </div>
             ))}
