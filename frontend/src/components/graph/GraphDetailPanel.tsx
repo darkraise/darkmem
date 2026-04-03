@@ -243,6 +243,7 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: G
   const clusterCounts = new Map<number, number>();
   const typeCounts = new Map<string, number>();
   const sourceCounts = new Map<string, number>();
+  const tagCategoryCounts = new Map<string, number>();
 
   for (const m of memories) {
     if (m.cluster >= 0) {
@@ -251,11 +252,16 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: G
     const t = m.memory_type || "(none)";
     typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
     sourceCounts.set(m.source, (sourceCounts.get(m.source) ?? 0) + 1);
+    for (const tag of m.tags) {
+      const prefix = tag.includes("/") ? tag.split("/")[0] : tag;
+      tagCategoryCounts.set(prefix, (tagCategoryCounts.get(prefix) ?? 0) + 1);
+    }
   }
 
   const sortedClusters = [...clusterCounts.entries()].sort((a, b) => b[1] - a[1]);
   const sortedTypes = [...typeCounts.entries()].sort((a, b) => b[1] - a[1]);
   const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const sortedTagCategories = [...tagCategoryCounts.entries()].sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="p-4 space-y-4">
@@ -293,6 +299,26 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: G
                 <span className="flex-1 truncate text-foreground">
                   {clusterNames[String(cid)] || `Cluster ${cid}`}
                 </span>
+                <span className="text-xs text-muted-foreground">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sortedTagCategories.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+            Tag Categories
+          </p>
+          <div className="space-y-1.5">
+            {sortedTagCategories.map(([category, count]) => (
+              <div key={category} className="flex items-center gap-2 text-sm">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: colorMode === "tag" ? resolveNodeColor({ cluster: -1, memory_type: null, tags: [category + "/x"] }, "tag") : "#8b949e" }}
+                />
+                <span className="flex-1 text-foreground capitalize">{category}</span>
                 <span className="text-xs text-muted-foreground">{count}</span>
               </div>
             ))}

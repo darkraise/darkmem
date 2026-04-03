@@ -97,9 +97,13 @@ export function GraphFilterPanel({
                 {tagGroups.map(([category, tags]) => (
                   <div key={category}>
                     <button
-                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground w-full text-left mb-1"
+                      className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground w-full text-left mb-1"
                       onClick={() => toggleGroup(category)}
                     >
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: colorMode === "tag" ? resolveNodeColor({ cluster: -1, memory_type: null, tags: [category + "/x"] }, "tag") : "#8b949e" }}
+                      />
                       <span className="font-medium capitalize">{category}</span>
                       <span className="ml-auto opacity-60">
                         {collapsedGroups.has(category) ? "▶" : "▼"}
