@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/useApi";
-import { clusterColor, typeColor, entityTypeColor } from "@/lib/graph-colors";
+import { UNIFIED_PALETTE, UNCLUSTERED_COLOR, entityTypeColor, resolveNodeColor } from "@/lib/graph-colors";
+import type { ColorMode } from "@/lib/graph-colors";
 
 interface GraphDetailPanelProps {
   selectedMemory: UnifiedMemory | null;
@@ -14,6 +15,7 @@ interface GraphDetailPanelProps {
   entityRelations?: EntityRelation[];
   allEntities?: GraphEntity[];
   onNavigateToMemory?: (memoryId: string) => void;
+  colorMode: ColorMode;
 }
 
 export function GraphDetailPanel({
@@ -28,6 +30,7 @@ export function GraphDetailPanel({
   entityRelations,
   allEntities,
   onNavigateToMemory,
+  colorMode,
 }: GraphDetailPanelProps) {
   const panelTitle = selectedEntity
     ? "Entity Detail"
@@ -59,6 +62,7 @@ export function GraphDetailPanel({
         <MemoryDetail
           memory={selectedMemory}
           clusterName={clusterName}
+          colorMode={colorMode}
         >
           {children}
         </MemoryDetail>
@@ -67,6 +71,7 @@ export function GraphDetailPanel({
           memories={memories}
           clusterNames={clusterNames}
           visibleEdgeCount={visibleEdgeCount}
+          colorMode={colorMode}
         />
       )}
     </>
@@ -164,9 +169,10 @@ interface MemoryDetailProps {
   memory: UnifiedMemory;
   clusterName: string;
   children?: React.ReactNode;
+  colorMode: ColorMode;
 }
 
-function MemoryDetail({ memory, clusterName, children }: MemoryDetailProps) {
+function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetailProps) {
   return (
     <div className="p-4 space-y-3">
       <p className="text-sm text-foreground leading-relaxed">{memory.content}</p>
@@ -203,7 +209,7 @@ function MemoryDetail({ memory, clusterName, children }: MemoryDetailProps) {
             <span className="inline-flex items-center gap-1 text-foreground">
               <span
                 className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: clusterColor(memory.cluster) }}
+                style={{ backgroundColor: colorMode === "cluster" ? UNIFIED_PALETTE[memory.cluster % UNIFIED_PALETTE.length] : "#8b949e" }}
               />
               {clusterName || `Cluster ${memory.cluster}`}
             </span>
@@ -230,9 +236,10 @@ interface GraphSummaryProps {
   memories: UnifiedMemory[];
   clusterNames: Record<string, string>;
   visibleEdgeCount: number;
+  colorMode: ColorMode;
 }
 
-function GraphSummary({ memories, clusterNames, visibleEdgeCount }: GraphSummaryProps) {
+function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode }: GraphSummaryProps) {
   const clusterCounts = new Map<number, number>();
   const typeCounts = new Map<string, number>();
   const sourceCounts = new Map<string, number>();
@@ -281,7 +288,7 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount }: GraphSummary
               <div key={cid} className="flex items-center gap-2 text-sm">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: clusterColor(cid) }}
+                  style={{ backgroundColor: colorMode === "cluster" ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length] : "#8b949e" }}
                 />
                 <span className="flex-1 truncate text-foreground">
                   {clusterNames[String(cid)] || `Cluster ${cid}`}
@@ -303,7 +310,7 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount }: GraphSummary
               <div key={type} className="flex items-center gap-2 text-sm">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: typeColor(type === "(none)" ? null : type) }}
+                  style={{ backgroundColor: colorMode === "type" ? resolveNodeColor({ cluster: -1, memory_type: type === "(none)" ? null : type, tags: [] }, "type") : "#8b949e" }}
                 />
                 <span className="flex-1 text-foreground">{type}</span>
                 <span className="text-xs text-muted-foreground">{count}</span>
