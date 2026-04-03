@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 from app.config import LLMPurposeConfig
@@ -41,6 +43,41 @@ class LLMOrchestrator:
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
+
+    async def chat_completion_stream(
+        self,
+        purpose: str,
+        messages: list[dict],
+    ):
+        """Yields token strings as they arrive from the LLM."""
+        cfg = self.config[purpose]
+        headers = self._headers(cfg)
+
+        body: dict = {"model": cfg.model, "messages": messages, "stream": True}
+        for key, value in cfg.params.items():
+            if key != "extra_body":
+                body[key] = value
+        if "extra_body" in cfg.params:
+            body.update(cfg.params["extra_body"])
+
+        async with self._client.stream(
+            "POST",
+            f"{cfg.base_url}/chat/completions",
+            headers=headers,
+            json=body,
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                content = delta.get("content")
+                if content:
+                    yield content
 
     async def close(self):
         await self._client.aclose()
