@@ -487,6 +487,7 @@ export default function UnifiedGraph() {
               <MiniGraph
                 memoryId={selectedMemory.id}
                 onNavigate={handleNavigate}
+                onEntitySelect={entityLayerEnabled ? handleEntitySelect : undefined}
               />
             )}
           </GraphDetailPanel>

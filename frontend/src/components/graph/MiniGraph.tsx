@@ -5,9 +5,10 @@ import { useMemoryContext } from "@/hooks/useApi";
 export interface MiniGraphProps {
   memoryId: string;
   onNavigate: (id: string) => void;
+  onEntitySelect?: (entityId: string) => void;
 }
 
-export function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
+export function MiniGraph({ memoryId, onNavigate, onEntitySelect }: MiniGraphProps) {
   const { data, isLoading } = useMemoryContext(memoryId);
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -43,6 +44,8 @@ export function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
         },
         font: { color: "#c9d1d9", size: 11, face: "Inter, sans-serif" },
         borderWidth: 2,
+        _isEntity: true,
+        _entityId: e.id,
       });
     }
 
@@ -163,6 +166,8 @@ export function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
         const node = nodes.find((n) => n.id === nodeId);
         if (node?._isNeighbor) {
           onNavigate(node._neighborId as string);
+        } else if (node?._isEntity && onEntitySelect) {
+          onEntitySelect(node._entityId as string);
         }
       }
     });
@@ -173,7 +178,7 @@ export function MiniGraph({ memoryId, onNavigate }: MiniGraphProps) {
       network.destroy();
       networkRef.current = null;
     };
-  }, [data, onNavigate]);
+  }, [data, onNavigate, onEntitySelect]);
 
   if (isLoading)
     return (
