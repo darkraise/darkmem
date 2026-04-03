@@ -96,7 +96,7 @@ function drawDiamondNodeHover(
   context.shadowBlur = 0;
 
   // Draw diamond border on top of the node
-  const br = data.size + 1;
+  const br = data.size * 0.75 + 2;
   context.beginPath();
   context.moveTo(data.x, data.y - br);
   context.lineTo(data.x + br, data.y);
@@ -104,14 +104,17 @@ function drawDiamondNodeHover(
   context.lineTo(data.x - br, data.y);
   context.closePath();
   context.strokeStyle = "#ffffff";
-  context.lineWidth = 2.5;
+  context.lineWidth = 3;
   context.stroke();
 
   drawDiscNodeLabel(context, data, settings);
 }
 
 export class NodeDiamondProgram extends NodeSquareProgram {
-  override drawHover = drawDiamondNodeHover;
+  constructor(...args: ConstructorParameters<typeof NodeSquareProgram>) {
+    super(...args);
+    this.drawHover = drawDiamondNodeHover;
+  }
 
   getDefinition() {
     const def = super.getDefinition();
