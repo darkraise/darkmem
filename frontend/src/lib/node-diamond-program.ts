@@ -93,6 +93,13 @@ export function drawDiamondNodeHover(
 }
 
 export class NodeDiamondProgram extends NodeSquareProgram {
+  constructor(...args: ConstructorParameters<typeof NodeSquareProgram>) {
+    super(...args);
+    // Clear inherited drawSquareNodeHover so sigma falls through to
+    // defaultDrawNodeHover where we route to drawDiamondNodeHover
+    this.drawHover = undefined as any;
+  }
+
   getDefinition() {
     const def = super.getDefinition();
     return {
