@@ -2,7 +2,8 @@ import { useRef, useEffect, useCallback } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
 import EdgeCurveProgram from "@sigma/edge-curve";
-import { NodeDiamondProgram } from "@/lib/node-diamond-program";
+import { NodeDiamondProgram, drawDiamondNodeHover } from "@/lib/node-diamond-program";
+import { drawDiscNodeHover } from "sigma/rendering";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { computeSize } from "@/lib/graph-utils";
@@ -183,6 +184,13 @@ export function Graph2DRenderer({
       defaultEdgeType: "curve",
       nodeProgramClasses: { diamond: NodeDiamondProgram },
       edgeProgramClasses: { curve: EdgeCurveProgram },
+      defaultDrawNodeHover: (context, data, settings) => {
+        if (data.type === "diamond") {
+          drawDiamondNodeHover(context, data, settings);
+        } else {
+          drawDiscNodeHover(context, data, settings);
+        }
+      },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
       defaultNodeColor: "#8b949e",

@@ -42,7 +42,7 @@ void main() {
 }
 `;
 
-function drawDiamondNodeHover(
+export function drawDiamondNodeHover(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
@@ -111,11 +111,6 @@ function drawDiamondNodeHover(
 }
 
 export class NodeDiamondProgram extends NodeSquareProgram {
-  constructor(...args: ConstructorParameters<typeof NodeSquareProgram>) {
-    super(...args);
-    this.drawHover = drawDiamondNodeHover;
-  }
-
   getDefinition() {
     const def = super.getDefinition();
     return {
