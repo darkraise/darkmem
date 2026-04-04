@@ -20,13 +20,13 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
         onClick={() => setExpanded((v) => !v)}
       >
         {memories.length > 0 && (
-          <span className="inline-flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-md">
+          <span className="inline-flex items-center gap-1 bg-indigo-500/8 border border-indigo-500/15 text-indigo-300 px-2 py-0.5 rounded-md">
             <FileText className="w-3 h-3" />
             {memories.length} {memories.length === 1 ? "memory" : "memories"}
           </span>
         )}
         {entityCount > 0 && (
-          <span className="inline-flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-md">
+          <span className="inline-flex items-center gap-1 bg-violet-500/8 border border-violet-500/15 text-violet-300 px-2 py-0.5 rounded-md">
             <Diamond className="w-3 h-3" />
             {entityCount} {entityCount === 1 ? "entity" : "entities"}
           </span>
@@ -43,15 +43,15 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
           {memories.map((m, i) => (
             <div
               key={m.id ?? i}
-              className="bg-muted/30 rounded-lg p-2.5 border border-border/50"
+              className="bg-[#0c1018] rounded-lg p-2.5 border border-[rgba(99,102,241,0.1)]"
             >
               <div className="text-foreground/90 line-clamp-2 leading-relaxed">
                 {m.content?.slice(0, 150) ?? `Memory ${m.id?.slice(0, 8)}`}
               </div>
-              <div className="flex gap-3 mt-1.5 text-muted-foreground/60">
+              <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground/50">
                 {m.source && (
                   <span className="inline-flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
                     {m.source}
                   </span>
                 )}
@@ -69,15 +69,15 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
             .map((e, i) => (
               <div
                 key={e.id ?? i}
-                className="flex items-center gap-2.5 bg-muted/30 rounded-lg p-2.5 border border-border/50"
+                className="flex items-center gap-2.5 bg-[#0c1018] rounded-lg p-2.5 border border-[rgba(99,102,241,0.1)]"
               >
                 <span
                   className="w-3 h-3 shrink-0"
-                  style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)", backgroundColor: "#fb923c" }}
+                  style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)", backgroundColor: "#a78bfa" }}
                 />
                 <span className="text-foreground/90 font-medium">{e.name}</span>
                 {e.entity_type && (
-                  <span className="text-muted-foreground/60 capitalize text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                  <span className="capitalize text-xs bg-violet-500/10 text-violet-300 px-1.5 py-0.5 rounded">
                     {e.entity_type}
                   </span>
                 )}
