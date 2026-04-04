@@ -1,4 +1,5 @@
 import { usePipelineLogs, useHealth, useReprocessAll, useReprocessFailed } from "@/hooks/useApi";
+import { ServiceDot } from "@/components/ServiceDot";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,10 +8,6 @@ import { toast } from "sonner";
 function StatusBadge({ value }: { value: string }) {
   const variant = value === "ok" ? "default" : value === "error" ? "destructive" : "secondary";
   return <Badge variant={variant} className="text-xs">{value}</Badge>;
-}
-
-function ServiceDot({ ok }: { ok: boolean }) {
-  return <span className={`inline-block w-2 h-2 rounded-full ${ok ? "bg-green-500" : "bg-destructive"}`} />;
 }
 
 export default function PipelineLogs() {

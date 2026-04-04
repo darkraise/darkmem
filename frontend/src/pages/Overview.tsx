@@ -1,5 +1,6 @@
 import { useStats, useMemories, useHealth, usePipelineLogs } from "@/hooks/useApi";
 import { MemoryCard } from "@/components/MemoryCard";
+import { ServiceDot } from "@/components/ServiceDot";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -13,12 +14,6 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
         {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
       </CardContent>
     </Card>
-  );
-}
-
-function ServiceDot({ ok }: { ok: boolean }) {
-  return (
-    <span className={`inline-block w-2 h-2 rounded-full ${ok ? "bg-green-500" : "bg-destructive"}`} />
   );
 }
 

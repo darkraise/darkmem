@@ -39,6 +39,7 @@ function showPipelineToast(event: string, data: PipelineStatus) {
 
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
+  const retryCount = useRef<number>(0);
   const qc = useQueryClient();
 
   const connect = useCallback(() => {
@@ -62,8 +63,14 @@ export function useWebSocket() {
       }
     };
 
+    ws.current.onopen = () => {
+      retryCount.current = 0;
+    };
+
     ws.current.onclose = () => {
-      setTimeout(connect, 3000);
+      const delay = Math.min(1000 * Math.pow(2, retryCount.current), 30000);
+      retryCount.current++;
+      setTimeout(connect, delay);
     };
   }, [qc]);
 
