@@ -39,11 +39,11 @@ export function ChatSidebar({
     : conversations;
 
   return (
-    <div className="w-[280px] shrink-0 border-r border-border flex flex-col h-full bg-card/50">
+    <div className="w-[280px] shrink-0 border-r border-border flex flex-col h-full bg-gradient-to-b from-[#0f1318] to-[#0a0e14]">
       <div className="p-3 border-b border-border space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Conversations</span>
-          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={onCreate}>
+          <Button size="sm" className="h-7 text-xs gap-1 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 text-white border-0" onClick={onCreate}>
             <Plus className="w-3.5 h-3.5" /> New
           </Button>
         </div>
@@ -55,7 +55,7 @@ export function ChatSidebar({
               placeholder="Search conversations..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-muted/50 border border-border rounded-md pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+              className="w-full bg-muted/50 border border-border rounded-md pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/40"
             />
           </div>
         )}
@@ -63,7 +63,7 @@ export function ChatSidebar({
       <div className="flex-1 overflow-auto p-2 space-y-0.5">
         {conversations.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
-            <MessageCircle className="w-8 h-8 opacity-20" />
+            <MessageCircle className="w-8 h-8 text-indigo-500/30" />
             <p className="text-xs text-center">
               No conversations yet.<br />Click "New" to start one.
             </p>
@@ -74,8 +74,8 @@ export function ChatSidebar({
             key={conv.id}
             className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer text-sm transition-all ${
               conv.id === activeId
-                ? "bg-primary/15 text-primary shadow-sm"
-                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                ? "bg-[rgba(99,102,241,0.08)] border border-[rgba(99,102,241,0.15)] text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.05)]"
+                : "text-muted-foreground hover:bg-[rgba(99,102,241,0.04)] hover:text-foreground border border-transparent"
             }`}
             onClick={() => onSelect(conv.id)}
           >
@@ -84,11 +84,11 @@ export function ChatSidebar({
                 {conv.title || "Untitled"}
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] opacity-50">
+                <span className="text-xs opacity-50">
                   {timeAgo(conv.updated_at)}
                 </span>
                 {conv.message_count > 0 && (
-                  <span className="text-[10px] opacity-40">
+                  <span className="text-xs opacity-40">
                     {conv.message_count} msg{conv.message_count !== 1 ? "s" : ""}
                   </span>
                 )}
