@@ -12,23 +12,15 @@ import { GraphToolbar } from "@/components/graph/GraphToolbar";
 import { ChatOverlay } from "@/components/chat/ChatOverlay";
 import {
   transformToGraphData,
-  type SizeMode,
   type FilterState,
 } from "@/lib/graph-utils";
 import type { ColorMode } from "@/lib/graph-colors";
-import type { HullMode } from "@/lib/graph-geometry";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useGraphFilters } from "@/hooks/useGraphFilters";
+import { useGraphLayout } from "@/hooks/useGraphLayout";
+import { useGraphSelection } from "@/hooks/useGraphSelection";
 
 type ViewMode = "2d" | "3d";
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    if (Object.is(debounced, value)) return;
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay, debounced]);
-  return debounced;
-}
 
 export default function UnifiedGraph() {
   // View
@@ -37,18 +29,15 @@ export default function UnifiedGraph() {
   const [colorMode, setColorMode] = useState<ColorMode>("type");
   const [showSettings, setShowSettings] = useState(false);
 
-  // API params (shared, debounced)
+  // API params
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5);
-
   const [minClusterSize, setMinClusterSize] = useState(3);
   const debouncedSimilarity = useDebouncedValue(similarityThreshold, 500);
-
   const debouncedMinSize = useDebouncedValue(minClusterSize, 500);
 
   // Entity layer
   const [entityLayerEnabled, setEntityLayerEnabled] = useState(false);
   const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<string>>(new Set());
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
   const { data, isLoading } = useUnifiedGraph(
     debouncedSimilarity,
@@ -56,29 +45,9 @@ export default function UnifiedGraph() {
     entityLayerEnabled,
   );
 
-  // Layout (shared)
-  const [sizeMode, setSizeMode] = useState<SizeMode>("connections");
-
-  // Layout (view-specific)
-  const [nodeSpacing, setNodeSpacing] = useState(100);
-  const [clusterTightness, setClusterTightness] = useState(300);
-  const [hullMode, setHullMode] = useState<HullMode>("none");
-  const [spacing3D, setSpacing3D] = useState(50);
-  const debouncedTightness = useDebouncedValue(clusterTightness, 500);
-  const debouncedSpacing2D = useDebouncedValue(nodeSpacing, 500);
-
-  // Selection & UI
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [showPanel, setShowPanel] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Filters
-  const [searchText, setSearchText] = useState("");
-  const debouncedSearchText = useDebouncedValue(searchText, 1000);
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
-  const [selectedClusters, setSelectedClusters] = useState<Set<number>>(new Set());
+  const layout = useGraphLayout();
+  const filters = useGraphFilters(data, entityLayerEnabled, selectedEntityTypes);
+  const selection = useGraphSelection();
 
   // Container dimensions (for 3D renderer)
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,189 +78,54 @@ export default function UnifiedGraph() {
     setGraphReady(false);
   }, [viewMode]);
 
-  function clearFilters() {
-    setSearchText("");
-    setSelectedTags(new Set());
-    setSelectedTypes(new Set());
-    setSelectedSources(new Set());
-    setSelectedClusters(new Set());
-  }
-
   function handleReset() {
     setSimilarityThreshold(0.5);
     setMinClusterSize(3);
-    setClusterTightness(300);
-    setNodeSpacing(100);
-    setSpacing3D(50);
-    setSizeMode("connections");
+    layout.setClusterTightness(300);
+    layout.setNodeSpacing(100);
+    layout.setSpacing3D(50);
+    layout.setSizeMode("connections");
     setColorMode("type");
-    setHullMode("none");
+    layout.setHullMode("none");
     setShowSettings(false);
     setEntityLayerEnabled(false);
     setSelectedEntityTypes(new Set());
-    setSelectedEntityId(null);
-    clearFilters();
+    selection.setSelectedEntityId(null);
+    filters.clearFilters();
   }
 
-  const handleNodeSelect = useCallback((id: string | null) => {
-    setSelectedNodeId(id);
-    setSelectedEntityId(null);
-    if (id) setShowPanel(true);
-  }, []);
-
-  const handleNavigate = useCallback((id: string) => {
-    setSelectedNodeId(id);
-    setSelectedEntityId(null);
-    setShowPanel(true);
-  }, []);
-
-  const handleEntitySelect = useCallback((entityId: string | null) => {
-    setSelectedEntityId(entityId);
-    setSelectedNodeId(entityId ? `entity:${entityId}` : null);
-    if (entityId) setShowPanel(true);
-  }, []);
-
-  // Filtered memories
-  const filteredMemories = useMemo(() => {
-    if (!data) return [];
-    const hasFilter =
-      debouncedSearchText.trim() !== "" ||
-      selectedTags.size > 0 ||
-      selectedTypes.size > 0 ||
-      selectedSources.size > 0 ||
-      selectedClusters.size > 0;
-    if (!hasFilter) return data.memories;
-    return data.memories.filter((m) => {
-      if (selectedTags.size > 0 && !m.tags.some((t) => selectedTags.has(t)))
-        return false;
-      if (selectedTypes.size > 0 && (!m.memory_type || !selectedTypes.has(m.memory_type)))
-        return false;
-      if (selectedSources.size > 0 && !selectedSources.has(m.source))
-        return false;
-      if (selectedClusters.size > 0 && !selectedClusters.has(m.cluster))
-        return false;
-      if (
-        debouncedSearchText.trim() &&
-        !m.content.toLowerCase().includes(debouncedSearchText.trim().toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  }, [
-    data,
-    debouncedSearchText,
-    selectedTags,
-    selectedTypes,
-    selectedSources,
-    selectedClusters,
-  ]);
-
-  // Filtered similarity edges (both endpoints must be in filtered set)
-  const filteredEdges = useMemo(() => {
-    if (!data) return [];
-    const filteredIds = new Set(filteredMemories.map((m) => m.id));
-    return data.similarity_edges.filter(
-      (e) => filteredIds.has(e.source) && filteredIds.has(e.target),
-    );
-  }, [data, filteredMemories]);
-
-  // Filtered entities (only those linked to visible memories)
-  const filteredEntities = useMemo(() => {
-    if (!data?.entities || !entityLayerEnabled) return [];
-    const memoryIdSet = new Set(filteredMemories.map((m) => m.id));
-    return data.entities.filter((e) => {
-      if (selectedEntityTypes.size > 0 && !selectedEntityTypes.has(e.entity_type)) return false;
-      return e.memory_ids.some((mid) => memoryIdSet.has(mid));
-    });
-  }, [data, entityLayerEnabled, filteredMemories, selectedEntityTypes]);
-
-  const filteredEntityRelations = useMemo(() => {
-    if (!data?.entity_relations || !entityLayerEnabled) return [];
-    const entityIdSet = new Set(filteredEntities.map((e) => e.id));
-    return data.entity_relations.filter(
-      (r) => entityIdSet.has(r.source) && entityIdSet.has(r.target),
-    );
-  }, [data, entityLayerEnabled, filteredEntities]);
-
-  // All entity types for filter panel counts
-  const allEntityTypes = useMemo((): [string, number][] => {
-    if (!data?.entities) return [];
-    const counts = new Map<string, number>();
-    for (const e of data.entities) {
-      counts.set(e.entity_type, (counts.get(e.entity_type) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [data]);
-
-  // 3D graph data (includes filter logic internally via transformToGraphData)
+  // 3D graph data depends on both filter and layout state
   const graphData3D = useMemo(() => {
     if (!data) return { nodes: [], links: [] };
-    const filters: FilterState = {
-      searchText: debouncedSearchText,
-      selectedTags,
-      selectedTypes,
-      selectedSources,
-      selectedClusters,
+    const graphFilters: FilterState = {
+      searchText: filters.debouncedSearchText,
+      selectedTags: filters.selectedTags,
+      selectedTypes: filters.selectedTypes,
+      selectedSources: filters.selectedSources,
+      selectedClusters: filters.selectedClusters,
       selectedEntityTypes,
     };
     return transformToGraphData(
-      data, sizeMode, filters, colorMode,
-      entityLayerEnabled, filteredEntities, filteredEntityRelations,
+      data, layout.sizeMode, graphFilters, colorMode,
+      entityLayerEnabled, filters.filteredEntities, filters.filteredEntityRelations,
     );
-  }, [data, sizeMode, debouncedSearchText, selectedTags, selectedTypes, selectedSources, selectedClusters, selectedEntityTypes, colorMode, entityLayerEnabled, filteredEntities, filteredEntityRelations]);
+  }, [
+    data,
+    layout.sizeMode,
+    filters.debouncedSearchText,
+    filters.selectedTags,
+    filters.selectedTypes,
+    filters.selectedSources,
+    filters.selectedClusters,
+    selectedEntityTypes,
+    colorMode,
+    entityLayerEnabled,
+    filters.filteredEntities,
+    filters.filteredEntityRelations,
+  ]);
 
-  // Derived totals for filter panel counts (always from full data, not filtered)
-  const allTags = useMemo((): [string, number][] => {
-    if (!data) return [];
-    const counts = new Map<string, number>();
-    for (const m of data.memories) {
-      for (const t of m.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [data]);
-
-  const allTypes = useMemo(() => {
-    if (!data) return [] as [string, number][];
-    const counts = new Map<string, number>();
-    for (const m of data.memories) {
-      const t = m.memory_type ?? "(none)";
-      counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [data]);
-
-  const allSources = useMemo(() => {
-    if (!data) return [] as [string, number][];
-    const counts = new Map<string, number>();
-    for (const m of data.memories)
-      counts.set(m.source, (counts.get(m.source) ?? 0) + 1);
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [data]);
-
-  const allClusters = useMemo(() => {
-    if (!data) return [] as [number, number][];
-    const counts = new Map<number, number>();
-    for (const m of data.memories) {
-      if (m.cluster >= 0)
-        counts.set(m.cluster, (counts.get(m.cluster) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).sort((a, b) => a[0] - b[0]);
-  }, [data]);
-
-  const tagGroups = useMemo(() => {
-    const groups = new Map<string, [string, number][]>();
-    for (const [tag, count] of allTags) {
-      const slash = tag.indexOf("/");
-      const category = slash >= 0 ? tag.slice(0, slash) : "other";
-      const arr = groups.get(category) ?? [];
-      arr.push([tag, count]);
-      groups.set(category, arr);
-    }
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [allTags]);
-
-  const selectedMemory = data?.memories.find((m) => m.id === selectedNodeId) ?? null;
-  const selectedEntity = data?.entities?.find((e) => e.id === selectedEntityId) ?? null;
+  const selectedMemory = data?.memories.find((m) => m.id === selection.selectedNodeId) ?? null;
+  const selectedEntity = data?.entities?.find((e) => e.id === selection.selectedEntityId) ?? null;
   const memoryCount = data?.memories.length ?? 0;
 
   return (
@@ -311,20 +145,20 @@ export default function UnifiedGraph() {
               {dimensions && viewMode === "2d" && data && (
                 <Graph2DRenderer
                   data={data}
-                  filteredMemories={filteredMemories}
-                  filteredEdges={filteredEdges}
-                  selectedNodeId={selectedNodeId}
-                  onNodeSelect={handleNodeSelect}
+                  filteredMemories={filters.filteredMemories}
+                  filteredEdges={filters.filteredEdges}
+                  selectedNodeId={selection.selectedNodeId}
+                  onNodeSelect={selection.handleNodeSelect}
                   onReady={handleGraphReady}
-                  sizeMode={sizeMode}
+                  sizeMode={layout.sizeMode}
                   colorMode={colorMode}
-                  spacing={debouncedSpacing2D}
-                  clusterTightness={debouncedTightness}
-                  hullMode={hullMode}
+                  spacing={layout.debouncedSpacing2D}
+                  clusterTightness={layout.debouncedTightness}
+                  hullMode={layout.hullMode}
                   entityLayerEnabled={entityLayerEnabled}
-                  entities={filteredEntities}
-                  entityRelations={filteredEntityRelations}
-                  onEntitySelect={handleEntitySelect}
+                  entities={filters.filteredEntities}
+                  entityRelations={filters.filteredEntityRelations}
+                  onEntitySelect={selection.handleEntitySelect}
                 />
               )}
               {dimensions && viewMode === "3d" && (
@@ -332,12 +166,12 @@ export default function UnifiedGraph() {
                   graphData={graphData3D}
                   width={dimensions.width}
                   height={dimensions.height}
-                  selectedNodeId={selectedNodeId}
-                  onNodeSelect={handleNodeSelect}
+                  selectedNodeId={selection.selectedNodeId}
+                  onNodeSelect={selection.handleNodeSelect}
                   onReady={handleGraphReady}
-                  spacing={spacing3D}
+                  spacing={layout.spacing3D}
                   colorMode={colorMode}
-                  hullMode={hullMode}
+                  hullMode={layout.hullMode}
                 />
               )}
             </div>
@@ -354,8 +188,8 @@ export default function UnifiedGraph() {
               <Button
                 variant="outline"
                 size="sm"
-                className={`shadow-lg ${showFilters ? "bg-primary/20 border-primary text-primary hover:bg-primary/30 hover:text-primary" : "bg-card/80 backdrop-blur-sm"}`}
-                onClick={() => setShowFilters((v) => !v)}
+                className={`shadow-lg ${filters.showFilters ? "bg-primary/20 border-primary text-primary hover:bg-primary/30 hover:text-primary" : "bg-card/80 backdrop-blur-sm"}`}
+                onClick={() => filters.setShowFilters((v) => !v)}
               >
                 <Filter className="w-4 h-4 mr-1.5" />
                 Filters
@@ -368,33 +202,33 @@ export default function UnifiedGraph() {
               onViewModeChange={setViewMode}
               colorMode={colorMode}
               onColorModeChange={setColorMode}
-              hullMode={hullMode}
-              onHullModeChange={setHullMode}
+              hullMode={layout.hullMode}
+              onHullModeChange={layout.setHullMode}
               entityLayer={entityLayerEnabled}
               onEntityLayerChange={setEntityLayerEnabled}
               showSettings={showSettings}
               onToggleSettings={setShowSettings}
-              sizeMode={sizeMode}
-              onSizeModeChange={setSizeMode}
+              sizeMode={layout.sizeMode}
+              onSizeModeChange={layout.setSizeMode}
               similarityThreshold={similarityThreshold}
               onSimilarityChange={setSimilarityThreshold}
               minClusterSize={minClusterSize}
               onMinClusterSizeChange={setMinClusterSize}
-              spacing={viewMode === "2d" ? nodeSpacing : spacing3D}
-              onSpacingChange={viewMode === "2d" ? setNodeSpacing : setSpacing3D}
-              clusterTightness={clusterTightness}
-              onClusterTightnessChange={setClusterTightness}
+              spacing={viewMode === "2d" ? layout.nodeSpacing : layout.spacing3D}
+              onSpacingChange={viewMode === "2d" ? layout.setNodeSpacing : layout.setSpacing3D}
+              clusterTightness={layout.clusterTightness}
+              onClusterTightnessChange={layout.setClusterTightness}
               onReset={handleReset}
             />
 
             {/* Panel toggle — top right */}
-            {!showPanel && (
+            {!selection.showPanel && (
               <div className="absolute top-3 right-3 z-30">
                 <Button
                   variant="outline"
                   size="sm"
                   className="shadow-lg bg-card/80 backdrop-blur-sm"
-                  onClick={() => setShowPanel(true)}
+                  onClick={() => selection.setShowPanel(true)}
                 >
                   <PanelRightClose className="w-4 h-4" />
                 </Button>
@@ -403,53 +237,53 @@ export default function UnifiedGraph() {
 
             {/* Floating filter panel */}
             <div
-              className={`absolute top-14 left-3 z-[25] rounded-lg border border-border shadow-xl bg-card overflow-clip flex flex-col transition-all duration-200 ease-out origin-top ${showFilters ? "opacity-100 scale-y-100" : "opacity-0 scale-y-0 pointer-events-none"}`}
+              className={`absolute top-14 left-3 z-[25] rounded-lg border border-border shadow-xl bg-card overflow-clip flex flex-col transition-all duration-200 ease-out origin-top ${filters.showFilters ? "opacity-100 scale-y-100" : "opacity-0 scale-y-0 pointer-events-none"}`}
               style={{ maxHeight: "calc(100% - 68px)" }}
             >
               <GraphFilterPanel
                 colorMode={colorMode}
-                tagGroups={tagGroups}
-                allTypes={allTypes}
-                allSources={allSources}
-                allClusters={allClusters}
+                tagGroups={filters.tagGroups}
+                allTypes={filters.allTypes}
+                allSources={filters.allSources}
+                allClusters={filters.allClusters}
                 clusterNames={data?.cluster_names ?? {}}
-                selectedTags={selectedTags}
-                selectedTypes={selectedTypes}
-                selectedSources={selectedSources}
-                selectedClusters={selectedClusters}
-                searchText={searchText}
-                onSearchChange={setSearchText}
+                selectedTags={filters.selectedTags}
+                selectedTypes={filters.selectedTypes}
+                selectedSources={filters.selectedSources}
+                selectedClusters={filters.selectedClusters}
+                searchText={filters.searchText}
+                onSearchChange={filters.setSearchText}
                 onTagToggle={(tag) =>
-                  setSelectedTags((prev) => {
+                  filters.setSelectedTags((prev) => {
                     const next = new Set(prev);
                     next.has(tag) ? next.delete(tag) : next.add(tag);
                     return next;
                   })
                 }
                 onTypeToggle={(type) =>
-                  setSelectedTypes((prev) => {
+                  filters.setSelectedTypes((prev) => {
                     const next = new Set(prev);
                     next.has(type) ? next.delete(type) : next.add(type);
                     return next;
                   })
                 }
                 onSourceToggle={(src) =>
-                  setSelectedSources((prev) => {
+                  filters.setSelectedSources((prev) => {
                     const next = new Set(prev);
                     next.has(src) ? next.delete(src) : next.add(src);
                     return next;
                   })
                 }
                 onClusterToggle={(cid) =>
-                  setSelectedClusters((prev) => {
+                  filters.setSelectedClusters((prev) => {
                     const next = new Set(prev);
                     next.has(cid) ? next.delete(cid) : next.add(cid);
                     return next;
                   })
                 }
-                onShowAll={clearFilters}
+                onShowAll={filters.clearFilters}
                 entityLayerEnabled={entityLayerEnabled}
-                allEntityTypes={allEntityTypes}
+                allEntityTypes={filters.allEntityTypes}
                 selectedEntityTypes={selectedEntityTypes}
                 onEntityTypeToggle={(etype) =>
                   setSelectedEntityTypes((prev) => {
@@ -462,15 +296,15 @@ export default function UnifiedGraph() {
             </div>
 
             <ChatOverlay
-              selectedNodeId={selectedNodeId}
-              selectedEntityId={selectedEntityId}
+              selectedNodeId={selection.selectedNodeId}
+              selectedEntityId={selection.selectedEntityId}
               onNodeSelect={(type, id) => {
                 if (type === "entity") {
-                  setSelectedEntityId(id);
-                  setSelectedNodeId(`entity:${id}`);
+                  selection.setSelectedEntityId(id);
+                  selection.setSelectedNodeId(`entity:${id}`);
                 } else {
-                  setSelectedNodeId(id);
-                  setSelectedEntityId(null);
+                  selection.setSelectedNodeId(id);
+                  selection.setSelectedEntityId(null);
                 }
               }}
             />
@@ -479,30 +313,30 @@ export default function UnifiedGraph() {
       </div>
 
       {/* Right panel */}
-      {showPanel && memoryCount > 0 && (
+      {selection.showPanel && memoryCount > 0 && (
         <div className="w-[320px] shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
           <GraphDetailPanel
             colorMode={colorMode}
             selectedMemory={selectedMemory}
             clusterName={data?.cluster_names?.[String(selectedMemory?.cluster)] ?? ""}
-            memories={filteredMemories}
+            memories={filters.filteredMemories}
             clusterNames={data?.cluster_names ?? {}}
-            visibleEdgeCount={filteredEdges.length}
+            visibleEdgeCount={filters.filteredEdges.length}
             onClose={() => {
-              setShowPanel(false);
-              setSelectedNodeId(null);
-              setSelectedEntityId(null);
+              selection.setShowPanel(false);
+              selection.setSelectedNodeId(null);
+              selection.setSelectedEntityId(null);
             }}
             selectedEntity={selectedEntity}
-            entityRelations={filteredEntityRelations}
+            entityRelations={filters.filteredEntityRelations}
             allEntities={data?.entities}
-            onNavigateToMemory={handleNavigate}
+            onNavigateToMemory={selection.handleNavigate}
           >
             {selectedMemory && viewMode === "2d" && (
               <MiniGraph
                 memoryId={selectedMemory.id}
-                onNavigate={handleNavigate}
-                onEntitySelect={entityLayerEnabled ? handleEntitySelect : undefined}
+                onNavigate={selection.handleNavigate}
+                onEntitySelect={entityLayerEnabled ? selection.handleEntitySelect : undefined}
               />
             )}
           </GraphDetailPanel>
