@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.jwt_secret == "darkmem-jwt-secret-change-me":
+        logger.warning("Using default JWT secret — set JWT_SECRET env var for production")
+
     # Initialize optional services
     pipeline = None
     qdrant_client = None

@@ -41,6 +41,9 @@ class ExtractionService:
                 response_format={"type": "json_object"},
             )
             return json.loads(response)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"Extraction failed: {e}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Extraction returned invalid JSON: {e}")
+            return {"entities": [], "relationships": [], "memory_type": "fact", "importance": 0.5}
+        except Exception as e:
+            logger.error(f"Extraction failed: {e}")
             return {"entities": [], "relationships": [], "memory_type": "fact", "importance": 0.5}
