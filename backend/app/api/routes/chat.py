@@ -1,61 +1,22 @@
 import json
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
 from app.api.auth import require_auth
 from app.api.deps import get_chat_service
+from app.schemas.chat import (
+    CompletionRequest,
+    ConversationCreate,
+    ConversationDetailResponse,
+    ConversationListResponse,
+    ConversationResponse,
+    ConversationUpdate,
+    MessageResponse,
+)
 from app.services.chat import ChatService
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
-
-
-# ── Schemas ───────────────────────────────────────────
-
-class ConversationCreate(BaseModel):
-    title: str | None = None
-
-
-class ConversationUpdate(BaseModel):
-    title: str | None = None
-    is_archived: bool | None = None
-
-
-class ConversationResponse(BaseModel):
-    id: uuid.UUID
-    title: str | None
-    created_at: str
-    updated_at: str
-    is_archived: bool
-    message_count: int = 0
-
-
-class MessageResponse(BaseModel):
-    id: uuid.UUID
-    role: str
-    content: str
-    context: dict | None
-    created_at: str
-
-
-class ConversationDetailResponse(BaseModel):
-    id: uuid.UUID
-    title: str | None
-    created_at: str
-    updated_at: str
-    messages: list[MessageResponse]
-
-
-class ConversationListResponse(BaseModel):
-    conversations: list[ConversationResponse]
-
-
-class CompletionRequest(BaseModel):
-    conversation_id: uuid.UUID | None = None
-    content: str
-    context: dict | None = Field(default=None)
 
 
 # ── Conversation CRUD ─────────────────────────────────

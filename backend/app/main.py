@@ -38,10 +38,10 @@ async def lifespan(app: FastAPI):
         await neo4j_driver.verify_connectivity()
 
         # Read LLM config from DB (falls back to env vars)
-        from app.api.routes.config import _get_llm_config
+        from app.services.config import get_llm_config
         from app.database import async_session_factory
         async with async_session_factory() as session:
-            llm_config = await _get_llm_config(session)
+            llm_config = await get_llm_config(session)
         llm = LLMOrchestrator(llm_config)
 
         # Auto-detect embedding dimensions

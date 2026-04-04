@@ -8,43 +8,9 @@ from app.database import get_session
 from app.models.config import Config, SystemPromptProfile
 from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMPurposeConfigSchema
 from app.schemas.prompt import SystemPromptResponse
+from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema, get_llm_config
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
-
-LLM_CONFIG_KEY = "llm_config"
-PURPOSES = ["embedding", "extraction", "reasoning", "summarization"]
-
-
-def _cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeConfigSchema:
-    return LLMPurposeConfigSchema(
-        provider=cfg.provider, base_url=cfg.base_url, model=cfg.model,
-        api_key="***" if (mask_key and cfg.api_key) else cfg.api_key,
-        dimensions=cfg.dimensions, params=cfg.params,
-    )
-
-
-async def _get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
-    """Read LLM config from DB, fall back to env/settings defaults."""
-    result = await session.execute(select(Config).where(Config.key == LLM_CONFIG_KEY))
-    db_config = result.scalar_one_or_none()
-
-    defaults = {
-        "embedding": settings.llm_embedding,
-        "extraction": settings.llm_extraction,
-        "reasoning": settings.llm_reasoning,
-        "summarization": settings.llm_summarization,
-    }
-
-    if not db_config:
-        return defaults
-
-    merged = {}
-    for purpose in PURPOSES:
-        if purpose in db_config.value:
-            merged[purpose] = LLMPurposeConfig(**db_config.value[purpose])
-        else:
-            merged[purpose] = defaults[purpose]
-    return merged
 
 
 @router.get("/llm", response_model=LLMConfigResponse)
@@ -52,8 +18,8 @@ async def get_llm_config(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    config = await _get_llm_config(session)
-    return LLMConfigResponse(**{p: _cfg_to_schema(c) for p, c in config.items()})
+    config = await get_llm_config(session)
+    return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
 
 
 @router.post("/llm", response_model=LLMConfigResponse)
@@ -67,7 +33,7 @@ async def update_llm_config(
     db_entry = result.scalar_one_or_none()
 
     # Build new config from existing + updates
-    current = await _get_llm_config(session)
+    current = await get_llm_config(session)
     update_data = body.model_dump(exclude_unset=True)
 
     new_value = {}
@@ -93,7 +59,7 @@ async def update_llm_config(
 
     # Return updated config (masked)
     updated = {p: LLMPurposeConfig(**v) for p, v in new_value.items()}
-    return LLMConfigResponse(**{p: _cfg_to_schema(c) for p, c in updated.items()})
+    return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in updated.items()})
 
 
 @router.get("/system-prompt", response_model=SystemPromptResponse)
