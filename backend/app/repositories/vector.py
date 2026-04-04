@@ -77,11 +77,9 @@ class QdrantVectorRepository:
             return points
 
         import numpy as np
+        from app.utils.math import cosine_similarity_matrix
         vectors = np.array([p["vector"] for p in points], dtype=np.float32)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        norms[norms == 0] = 1
-        normalized = vectors / norms
-        similarity = normalized @ normalized.T
+        similarity = cosine_similarity_matrix(vectors)
         distance_matrix = 1 - similarity
 
         n = len(points)
@@ -133,11 +131,9 @@ class QdrantVectorRepository:
             return points
 
         import numpy as np
+        from app.utils.math import cosine_similarity_matrix
         vectors = np.array([p["vector"] for p in points], dtype=np.float32)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        norms[norms == 0] = 1
-        normalized = vectors / norms
-        sim_matrix = normalized @ normalized.T
+        sim_matrix = cosine_similarity_matrix(vectors)
 
         n = len(points)
 

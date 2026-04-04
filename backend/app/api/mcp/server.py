@@ -40,17 +40,7 @@ async def _mcp_session():
             pass
 
 
-def _memory_to_dict(memory) -> dict:
-    return {
-        "id": str(memory.id),
-        "content": memory.content,
-        "source": memory.source,
-        "source_agent": memory.source_agent,
-        "memory_type": memory.memory_type,
-        "importance": memory.importance,
-        "tags": [t.name for t in memory.tags],
-        "created_at": memory.created_at.isoformat(),
-    }
+from app.utils.serialization import memory_to_dict as _memory_to_dict
 
 
 def _validate_uuid(value: str) -> UUID:

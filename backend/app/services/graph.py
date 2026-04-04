@@ -118,11 +118,9 @@ class GraphService:
         if len(clustered) < 2:
             return []
 
+        from app.utils.math import cosine_similarity_matrix
         vectors = np.array([p["vector"] for p in clustered], dtype=np.float32)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        norms[norms == 0] = 1
-        normalized = vectors / norms
-        sim_matrix = normalized @ normalized.T
+        sim_matrix = cosine_similarity_matrix(vectors)
         ids = [str(p["memory_id"]) for p in clustered]
 
         edges = []
