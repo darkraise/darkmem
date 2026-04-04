@@ -22,7 +22,7 @@ def set_pipeline(pipeline):
 
 
 @asynccontextmanager
-async def _mcp_session():
+async def _memory_service_context():
     session = async_session_factory()
     try:
         yield MemoryService(session, pipeline=_pipeline)
@@ -68,7 +68,7 @@ async def memory_add(
         source_agent: Optional agent/session identifier.
         memory_type: Classification: fact, decision, preference, debug, architecture, workflow, or session.
     """
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         data = MemoryCreate(content=content, tags=tags, source=source, source_agent=source_agent, memory_type=memory_type)
         memory = await service.create_memory(data, api_key_id=None)
         return json.dumps(_memory_to_dict(memory))
@@ -94,7 +94,7 @@ async def memory_search(
         source: Filter by origin (e.g., "claude-code", "mcp", "api").
         limit: Maximum number of results (default: 20).
     """
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         params = MemorySearchRequest(query=query, tags_any=tags_any, tags_all=tags_all, memory_type=memory_type, source=source, limit=limit)
         memories = await service.search_memories(params)
         return json.dumps([_memory_to_dict(m) for m in memories])
@@ -109,7 +109,7 @@ async def memory_get(memory_id: str) -> str:
         memory_id: The UUID of the memory to retrieve.
     """
     mid = _validate_uuid(memory_id)
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         memory = await service.get_memory(mid)
         if not memory:
             raise ValueError(f"Memory not found: {memory_id}")
@@ -133,7 +133,7 @@ async def memory_update(
         memory_type: New type classification. Omit to keep current type.
     """
     mid = _validate_uuid(memory_id)
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         data = MemoryUpdate(content=content, tags=tags, memory_type=memory_type)
         memory = await service.update_memory(mid, data, api_key_id=None)
         if not memory:
@@ -150,7 +150,7 @@ async def memory_delete(memory_id: str) -> str:
         memory_id: The UUID of the memory to delete.
     """
     mid = _validate_uuid(memory_id)
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         result = await service.delete_memory(mid, api_key_id=None)
         if not result:
             raise ValueError(f"Memory not found: {memory_id}")
@@ -167,7 +167,7 @@ async def memory_batch_add(entries: list[dict]) -> str:
     """
     if not entries:
         raise ValueError("entries list cannot be empty")
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         results = []
         for entry in entries:
             data = MemoryCreate(**entry)
@@ -185,7 +185,7 @@ async def memory_reason(question: str, limit: int = 10) -> str:
         question: The question to answer using stored knowledge.
         limit: Maximum number of source memories to consider (default: 10).
     """
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         result = await service.reason(question, limit=limit)
         return json.dumps(result)
 
@@ -200,7 +200,7 @@ async def memory_find_duplicates(memory_id: str, threshold: float = 0.9) -> str:
         threshold: Minimum similarity score (0.0-1.0, default: 0.9). Lower values return more results.
     """
     mid = _validate_uuid(memory_id)
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         results = await service.find_duplicates(mid, threshold)
         return json.dumps(results, default=str)
 
@@ -213,7 +213,7 @@ async def memory_stats() -> str:
 
     from app.models.memory import Memory, Tag
 
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         session = service.session
         memory_count = (await session.execute(select(func.count()).select_from(Memory))).scalar()
         tag_count = (await session.execute(select(func.count()).select_from(Tag))).scalar()
@@ -228,7 +228,7 @@ async def memory_stats() -> str:
 async def memory_tags() -> str:
     from app.repositories.relational import PostgresTagRepository
 
-    async with _mcp_session() as service:
+    async with _memory_service_context() as service:
         repo = PostgresTagRepository(service.session)
         tags_with_counts = await repo.get_with_counts()
         return json.dumps([{"name": t.name, "category": t.category, "count": c} for t, c in tags_with_counts])

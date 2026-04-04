@@ -66,7 +66,7 @@ class Neo4jGraphRepository:
             records = await result.data()
             return [r["entity"] for r in records]
 
-    async def get_neighbors_by_name(self, name: str, depth: int = 1) -> dict:
+    async def get_neighbors_by_name(self, name: str) -> dict:
         async with self.driver.session() as session:
             result = await session.run(
                 """
@@ -87,7 +87,7 @@ class Neo4jGraphRepository:
                 "relations": record["relations"],
             }
 
-    async def get_neighbors_by_id(self, entity_id: str, depth: int = 1) -> dict:
+    async def get_neighbors_by_id(self, entity_id: str) -> dict:
         async with self.driver.session() as session:
             result = await session.run(
                 """

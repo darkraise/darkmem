@@ -72,12 +72,11 @@ async def get_memory_context(
 @router.get("/entities/{entity_id}/neighbors", response_model=NeighborsResponse)
 async def get_neighbors(
     entity_id: str,
-    depth: int = Query(1, ge=1, le=3),
     _user=Depends(require_auth),
     request: Request = None,
 ):
     repo = _get_graph_repo(request)
-    result = await repo.get_neighbors_by_id(entity_id, depth=depth)
+    result = await repo.get_neighbors_by_id(entity_id)
     if not result["entity"]:
         raise HTTPException(status_code=404, detail="Entity not found")
     return NeighborsResponse(

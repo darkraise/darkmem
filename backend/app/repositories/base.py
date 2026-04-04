@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from app.models.api_key import ApiKey
     from app.models.memory import Memory, Tag
 
 
@@ -41,23 +40,6 @@ class TagRepositoryBase(ABC):
 
     @abstractmethod
     async def get_with_counts(self) -> list[tuple[Tag, int]]: ...
-
-
-class ApiKeyRepositoryBase(ABC):
-    @abstractmethod
-    async def create(self, name: str, key_hash: str, scopes: list[str], profile: str, expires_at=None) -> ApiKey: ...
-
-    @abstractmethod
-    async def get_by_key_hash(self, key_hash: str) -> ApiKey | None: ...
-
-    @abstractmethod
-    async def list_all(self) -> list[ApiKey]: ...
-
-    @abstractmethod
-    async def delete(self, key_id: UUID) -> bool: ...
-
-    @abstractmethod
-    async def update_last_used(self, key_id: UUID) -> None: ...
 
 
 class AuditRepositoryBase(ABC):

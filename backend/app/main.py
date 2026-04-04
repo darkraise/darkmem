@@ -149,11 +149,8 @@ async def health():
             return False
 
     async def check_llm():
-        if not llm:
-            return False
         try:
-            await llm.embed("health check")
-            return True
+            return llm is not None and llm._client is not None
         except Exception:
             return False
 

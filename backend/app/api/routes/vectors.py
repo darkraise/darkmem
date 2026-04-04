@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-import numpy as np
-
 from app.api.auth import require_auth
 from app.repositories.vector import QdrantVectorRepository
+from app.utils.math import pca_2d
 
 router = APIRouter(prefix="/api/v1/vectors", tags=["vectors"])
 
@@ -13,20 +12,6 @@ def _get_vector_repo(request: Request) -> QdrantVectorRepository:
     if not repo:
         raise HTTPException(status_code=503, detail="Vector service not available")
     return repo
-
-
-def _pca_2d(vectors: list[list[float]]) -> list[list[float]]:
-    mat = np.array(vectors, dtype=np.float32)
-    mat -= mat.mean(axis=0)
-    cov = np.cov(mat, rowvar=False)
-    eigenvalues, eigenvectors = np.linalg.eigh(cov)
-    idx = np.argsort(eigenvalues)[::-1][:2]
-    projection = mat @ eigenvectors[:, idx]
-    # Normalize to [-1, 1]
-    pmax = np.abs(projection).max(axis=0, keepdims=True)
-    pmax[pmax == 0] = 1
-    projection = projection / pmax
-    return projection.tolist()
 
 
 @router.get("/projection")
@@ -53,7 +38,7 @@ async def get_vector_projection(
         ]}
 
     vectors = [p["vector"] for p in points]
-    coords = _pca_2d(vectors)
+    coords = pca_2d(vectors)
 
     result = []
     for i, p in enumerate(points):
