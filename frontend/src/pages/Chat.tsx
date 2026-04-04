@@ -104,6 +104,7 @@ export default function Chat() {
               streamingContent={stream.streamingContent}
               streamingSources={stream.sources}
               isStreaming={stream.isStreaming}
+              pendingUserMessage={stream.pendingUserMessage}
             />
             <ChatInput
               onSend={handleSend}

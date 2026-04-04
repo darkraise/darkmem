@@ -2,8 +2,15 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, FileText, Diamond } from "lucide-react";
 
 interface SourceBadgesProps {
-  memories: { index?: number; content?: string; source?: string; tags?: string[]; score?: number; id?: string }[];
+  memories: { index?: number; content?: string; source?: string; tags?: string[]; score?: number; id?: string; created_at?: string }[];
   entities: { id?: string; name?: string; entity_type?: string }[];
+}
+
+function formatMemoryDate(dateStr?: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function SourceBadges({ memories, entities }: SourceBadgesProps) {
@@ -40,30 +47,34 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
 
       {expanded && (
         <div className="mt-2 space-y-1.5 text-xs animate-in slide-in-from-top-1 duration-150">
-          {memories.map((m, i) => (
-            <div
-              key={m.id ?? i}
-              className="bg-[#0c1018] rounded-lg p-2.5 border border-[rgba(99,102,241,0.1)]"
-            >
-              <div className="text-foreground/90 line-clamp-2 leading-relaxed">
-                {m.content?.slice(0, 150) ?? `Memory ${m.id?.slice(0, 8)}`}
+          {memories.map((m, i) => {
+            const dateLabel = formatMemoryDate(m.created_at);
+            return (
+              <div
+                key={m.id ?? i}
+                className="bg-[#0c1018] rounded-lg p-2.5 border border-[rgba(99,102,241,0.1)]"
+              >
+                <div className="text-foreground/90 line-clamp-2 leading-relaxed">
+                  {m.content || `Memory ${m.id?.slice(0, 8)}`}
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground/50">
+                  {m.source && (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                      {m.source}
+                    </span>
+                  )}
+                  {m.score != null && (
+                    <span>{Math.round(m.score * 100)}% match</span>
+                  )}
+                  {dateLabel && <span>{dateLabel}</span>}
+                  {m.tags && m.tags.length > 0 && (
+                    <span className="truncate">{m.tags.slice(0, 2).join(", ")}</span>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground/50">
-                {m.source && (
-                  <span className="inline-flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                    {m.source}
-                  </span>
-                )}
-                {m.score != null && (
-                  <span>{Math.round(m.score * 100)}% match</span>
-                )}
-                {m.tags && m.tags.length > 0 && (
-                  <span className="truncate">{m.tags.slice(0, 2).join(", ")}</span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {entities
             .filter((e) => e.name)
             .map((e, i) => (

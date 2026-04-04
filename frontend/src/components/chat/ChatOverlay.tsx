@@ -9,9 +9,10 @@ import { useChatStream } from "@/hooks/useChatStream";
 interface ChatOverlayProps {
   selectedNodeId?: string | null;
   selectedEntityId?: string | null;
+  onNodeSelect?: (type: "memory" | "entity", id: string) => void;
 }
 
-export function ChatOverlay({ selectedNodeId, selectedEntityId }: ChatOverlayProps) {
+export function ChatOverlay({ selectedNodeId, selectedEntityId, onNodeSelect }: ChatOverlayProps) {
   const [open, setOpen] = useState(false);
   const [convId, setConvId] = useState<string | null>(null);
   const [contextLabel, setContextLabel] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export function ChatOverlay({ selectedNodeId, selectedEntityId }: ChatOverlayPro
   }
 
   return (
-    <div className="fixed bottom-16 right-4 z-40 w-[320px] h-[400px] bg-card border border-[rgba(99,102,241,0.15)] rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.08)] flex flex-col overflow-hidden">
+    <div className="fixed bottom-16 right-4 z-40 w-[480px] h-[680px] max-h-[calc(100vh-5rem)] bg-card border border-[rgba(99,102,241,0.15)] rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.08)] flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="text-sm font-semibold">Chat</span>
         <div className="flex items-center gap-1.5">
@@ -82,6 +83,8 @@ export function ChatOverlay({ selectedNodeId, selectedEntityId }: ChatOverlayPro
         streamingContent={stream.streamingContent}
         streamingSources={stream.sources}
         isStreaming={stream.isStreaming}
+        pendingUserMessage={stream.pendingUserMessage}
+        onNodeSelect={onNodeSelect}
       />
 
       <ChatInput

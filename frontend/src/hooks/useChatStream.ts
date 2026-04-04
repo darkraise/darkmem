@@ -12,6 +12,7 @@ interface ChatStreamState {
   streamingContent: string;
   sources: ChatSources | null;
   error: string | null;
+  pendingUserMessage: string | null;
 }
 
 export function useChatStream() {
@@ -20,6 +21,7 @@ export function useChatStream() {
     streamingContent: "",
     sources: null,
     error: null,
+    pendingUserMessage: null,
   });
   const abortRef = useRef<AbortController | null>(null);
   const qc = useQueryClient();
@@ -34,7 +36,7 @@ export function useChatStream() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      setState({ isStreaming: true, streamingContent: "", sources: null, error: null });
+      setState({ isStreaming: true, streamingContent: "", sources: null, error: null, pendingUserMessage: content });
 
       try {
         const token = getAuthToken();
@@ -106,7 +108,7 @@ export function useChatStream() {
           }
         }
 
-        setState((s) => ({ ...s, isStreaming: false }));
+        setState((s) => ({ ...s, isStreaming: false, pendingUserMessage: null }));
         if (resultConversationId) {
           qc.invalidateQueries({ queryKey: ["conversation", resultConversationId] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -115,7 +117,7 @@ export function useChatStream() {
         return resultConversationId;
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          setState((s) => ({ ...s, isStreaming: false, error: (err as Error).message }));
+          setState((s) => ({ ...s, isStreaming: false, pendingUserMessage: null, error: (err as Error).message }));
         }
       }
     },
@@ -124,7 +126,7 @@ export function useChatStream() {
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
-    setState((s) => ({ ...s, isStreaming: false }));
+    setState((s) => ({ ...s, isStreaming: false, pendingUserMessage: null }));
   }, []);
 
   return {

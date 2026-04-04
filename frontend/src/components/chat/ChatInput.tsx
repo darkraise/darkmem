@@ -59,28 +59,24 @@ export function ChatInput({
         </div>
       )}
       <div className="flex gap-2 items-end">
-        <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            placeholder={placeholder}
-            onInput={autoResize}
-            onKeyDown={handleKeyDown}
-            disabled={disabled}
-            className="w-full bg-[#0c1018] border border-[rgba(99,102,241,0.12)] rounded-2xl px-4 py-2.5 pr-12 text-sm text-foreground placeholder:text-muted-foreground/50 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/40 focus:shadow-[0_0_20px_rgba(99,102,241,0.06)] transition-all min-h-[40px] max-h-[120px]"
-          />
-          <div className="absolute right-2 bottom-1.5">
-            {isStreaming ? (
-              <Button size="sm" variant="outline" className="h-7 w-7 p-0 rounded-xl" onClick={onStop}>
-                <Square className="w-3 h-3" />
-              </Button>
-            ) : (
-              <Button size="sm" className="h-7 w-7 p-0 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 border-0" onClick={handleSubmit} disabled={disabled}>
-                <SendHorizonal className="w-3.5 h-3.5 text-white" />
-              </Button>
-            )}
-          </div>
-        </div>
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          placeholder={placeholder}
+          onInput={autoResize}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          className="flex-1 bg-[#0c1018] border border-[rgba(99,102,241,0.12)] rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/40 focus:shadow-[0_0_20px_rgba(99,102,241,0.06)] transition-all min-h-[40px] max-h-[120px] scrollbar-thin"
+        />
+        {isStreaming ? (
+          <Button size="sm" variant="outline" className="h-9 w-9 p-0 rounded-xl shrink-0 mb-0.5" onClick={onStop}>
+            <Square className="w-3.5 h-3.5" />
+          </Button>
+        ) : (
+          <Button size="sm" className="h-9 w-9 p-0 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 border-0 shrink-0 mb-0.5" onClick={handleSubmit} disabled={disabled}>
+            <SendHorizonal className="w-4 h-4 text-white" />
+          </Button>
+        )}
       </div>
       <p className="text-xs text-muted-foreground/30 text-center">
         Enter to send · Shift+Enter for new line

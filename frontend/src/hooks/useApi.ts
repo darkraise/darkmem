@@ -276,8 +276,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   context: {
-    memories?: { id: string; score: number }[];
-    entities?: { id: string; name: string }[];
+    memories?: { id: string; score: number; content?: string; source?: string; tags?: string[]; created_at?: string }[];
+    entities?: { id: string; name: string; entity_type?: string }[];
   } | null;
   created_at: string;
 }

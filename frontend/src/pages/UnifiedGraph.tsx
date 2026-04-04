@@ -464,6 +464,15 @@ export default function UnifiedGraph() {
             <ChatOverlay
               selectedNodeId={selectedNodeId}
               selectedEntityId={selectedEntityId}
+              onNodeSelect={(type, id) => {
+                if (type === "entity") {
+                  setSelectedEntityId(id);
+                  setSelectedNodeId(`entity:${id}`);
+                } else {
+                  setSelectedNodeId(id);
+                  setSelectedEntityId(null);
+                }
+              }}
             />
           </div>
         )}

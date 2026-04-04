@@ -154,11 +154,22 @@ class ChatService:
             content=assistant_content,
             context={
                 "memories": [
-                    {"id": str(m["memory_id"]), "score": m["score"]}
+                    {
+                        "id": str(m["memory_id"]),
+                        "score": m.get("score", 0),
+                        "content": m.get("payload", {}).get("content", "")[:150],
+                        "source": m.get("payload", {}).get("source", ""),
+                        "tags": m.get("payload", {}).get("tags", []),
+                        "created_at": m.get("payload", {}).get("created_at", ""),
+                    }
                     for m in retrieval["raw_memories"]
                 ],
                 "entities": [
-                    {"id": e.get("id", ""), "name": e["name"]}
+                    {
+                        "id": e.get("id", ""),
+                        "name": e["name"],
+                        "entity_type": e.get("entity_type", ""),
+                    }
                     for e in retrieval["entities"]
                     if not e.get("_relation")
                 ],
@@ -206,6 +217,10 @@ class ChatService:
         )
 
         raw_memories, entities = await asyncio.gather(memories_task, graph_task)
+
+        # Auto-discover entities from top retrieved memories
+        if not entities and self.graph_repo and raw_memories:
+            entities = await self._entities_from_memories(raw_memories[:5])
 
         formatted_memories = []
         for i, m in enumerate(raw_memories, 1):
@@ -256,6 +271,33 @@ class ChatService:
                     for rel in neighbors.get("relations", [])[:5]:
                         entities.append({"_relation": True, **rel})
 
+        return entities
+
+    async def _entities_from_memories(self, memories: list[dict], max_entities: int = 10) -> list[dict]:
+        import asyncio
+
+        mids = [
+            str(m.get("memory_id", m.get("id", "")))
+            for m in memories
+            if m.get("memory_id") or m.get("id")
+        ]
+        if not mids:
+            return []
+
+        results = await asyncio.gather(
+            *(self.graph_repo.get_entities_by_memory_id(mid) for mid in mids)
+        )
+
+        seen_names: set[str] = set()
+        entities: list[dict] = []
+        for linked in results:
+            for e in linked:
+                name = e.get("name", "")
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    entities.append(e)
+                    if len(entities) >= max_entities:
+                        return entities
         return entities
 
     # ── Prompt Building ───────────────────────────────────
