@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_session
 from app.repositories.relational import PostgresTagRepository
 from app.services.chat import ChatService
+from app.services.analytics import AnalyticsService
 from app.services.graph import GraphService
 from app.services.memory import MemoryService
 
@@ -21,6 +22,11 @@ async def get_chat_service(request: Request, session: AsyncSession = Depends(get
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="LLM service unavailable")
     return ChatService(session, llm, vector_repo, graph_repo)
+
+
+async def get_analytics_service(request: Request, session: AsyncSession = Depends(get_session)) -> AnalyticsService:
+    pipeline = getattr(request.app.state, "pipeline", None)
+    return AnalyticsService(session, pipeline)
 
 
 async def get_graph_service(request: Request, session: AsyncSession = Depends(get_session)) -> GraphService:
