@@ -8,7 +8,8 @@ from app.database import get_session
 from app.models.config import Config, SystemPromptProfile
 from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMPurposeConfigSchema
 from app.schemas.prompt import SystemPromptResponse
-from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema, get_llm_config
+from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema
+from app.services.config import get_llm_config as fetch_llm_config
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
@@ -18,7 +19,7 @@ async def get_llm_config(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    config = await get_llm_config(session)
+    config = await fetch_llm_config(session)
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
 
 
@@ -33,7 +34,7 @@ async def update_llm_config(
     db_entry = result.scalar_one_or_none()
 
     # Build new config from existing + updates
-    current = await get_llm_config(session)
+    current = await fetch_llm_config(session)
     update_data = body.model_dump(exclude_unset=True)
 
     new_value = {}

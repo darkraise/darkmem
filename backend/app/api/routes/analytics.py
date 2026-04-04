@@ -37,7 +37,7 @@ async def get_stats(
             entity_count = stats["entity_count"]
             rel_count = stats["relationship_count"]
         except Exception:
-            pass
+            logger.debug("Graph stats unavailable")
 
     return StatsResponse(
         memories=memory_count, tags=tag_count,

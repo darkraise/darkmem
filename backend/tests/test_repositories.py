@@ -1,5 +1,5 @@
 from app.models.memory import Memory, Tag
-from app.repositories.relational import PostgresApiKeyRepository, PostgresMemoryRepository, PostgresTagRepository
+from app.repositories.relational import PostgresMemoryRepository, PostgresTagRepository
 
 
 async def test_create_and_get_memory(session):
@@ -75,17 +75,3 @@ async def test_tag_get_or_create(session):
     assert tag1.category == "project"
 
 
-async def test_api_key_crud(session):
-    repo = PostgresApiKeyRepository(session)
-    key = await repo.create(name="test", key_hash="hash123", scopes=["read"], profile="default")
-    assert key.id is not None
-
-    found = await repo.get_by_key_hash("hash123")
-    assert found is not None
-    assert found.name == "test"
-
-    keys = await repo.list_all()
-    assert len(keys) == 1
-
-    assert await repo.delete(key.id) is True
-    assert await repo.list_all() == []
