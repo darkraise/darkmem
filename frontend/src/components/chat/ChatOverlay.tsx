@@ -47,7 +47,7 @@ export function ChatOverlay({ selectedNodeId, selectedEntityId }: ChatOverlayPro
   if (!open) {
     return (
       <button
-        className="fixed bottom-4 right-4 z-40 w-10 h-10 bg-primary rounded-full flex items-center justify-center text-primary-foreground shadow-lg hover:opacity-90 transition-opacity"
+        className="fixed bottom-4 right-4 z-40 w-10 h-10 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full flex items-center justify-center text-white shadow-lg hover:from-indigo-400 hover:to-violet-400 transition-all"
         onClick={() => setOpen(true)}
       >
         <MessageCircle className="w-5 h-5" />
@@ -56,7 +56,7 @@ export function ChatOverlay({ selectedNodeId, selectedEntityId }: ChatOverlayPro
   }
 
   return (
-    <div className="fixed bottom-16 right-4 z-40 w-[320px] h-[400px] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed bottom-16 right-4 z-40 w-[320px] h-[400px] bg-card border border-[rgba(99,102,241,0.15)] rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.08)] flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="text-sm font-semibold">Chat</span>
         <div className="flex items-center gap-1.5">
