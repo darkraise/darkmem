@@ -77,7 +77,7 @@ export default function Chat() {
                 <input
                   autoFocus
                   defaultValue={convDetail?.title || ""}
-                  className="text-sm font-semibold bg-transparent border-b border-primary focus:outline-none flex-1"
+                  className="text-sm font-semibold bg-transparent border-b border-primary focus:outline-none focus:ring-0 focus:border-indigo-400 flex-1"
                   onBlur={(e) => handleTitleSubmit(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleTitleSubmit(e.currentTarget.value);
@@ -94,7 +94,7 @@ export default function Chat() {
                 </h2>
               )}
               {messages.length > 0 && (
-                <span className="text-[10px] text-muted-foreground/50 shrink-0">
+                <span className="text-xs text-muted-foreground/40 shrink-0">
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
                 </span>
               )}
@@ -113,8 +113,11 @@ export default function Chat() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-6 text-muted-foreground px-4">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Sparkles className="w-8 h-8 text-primary/60" />
+            <div
+              className="w-20 h-20 rounded-2xl flex items-center justify-center"
+              style={{ background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)" }}
+            >
+              <Sparkles className="w-8 h-8 text-indigo-400" />
             </div>
             <div className="text-center max-w-md">
               <p className="text-xl font-semibold text-foreground mb-2">
@@ -134,7 +137,7 @@ export default function Chat() {
               ].map((prompt) => (
                 <button
                   key={prompt}
-                  className="text-xs bg-muted hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20 px-4 py-2 rounded-full text-foreground transition-all"
+                  className="text-xs bg-[rgba(99,102,241,0.04)] border border-[rgba(99,102,241,0.1)] hover:bg-[rgba(99,102,241,0.1)] hover:border-[rgba(99,102,241,0.2)] hover:text-indigo-200 px-4 py-2 rounded-full text-slate-300 transition-all"
                   onClick={async () => {
                     const resultId = await stream.sendMessage(null, prompt);
                     if (resultId) setActiveId(resultId);
