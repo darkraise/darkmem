@@ -179,6 +179,6 @@ class Neo4jGraphRepository:
         async with self.driver.session() as session:
             entity_result = await session.run("MATCH (e:Entity) RETURN count(e) as count")
             entity_count = (await entity_result.single())["count"]
-            rel_result = await session.run("MATCH ()-[r:RELATES_TO]-() RETURN count(r) as count")
+            rel_result = await session.run("MATCH ()-[r:RELATES_TO]->() RETURN count(r) as count")
             rel_count = (await rel_result.single())["count"]
             return {"entity_count": entity_count, "relationship_count": rel_count}

@@ -7,25 +7,58 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 try:
-    import tree_sitter_python as tspython
-    import tree_sitter_javascript as tsjavascript
-    import tree_sitter_typescript as tstypescript
-    import tree_sitter_go as tsgo
-    import tree_sitter_rust as tsrust
-    import tree_sitter_c_sharp as tscsharp
-    import tree_sitter_cpp as tscpp
     from tree_sitter import Language, Parser, Node
-
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+_GRAMMAR_MODULES: dict[str, str] = {
+    "python": "tree_sitter_python",
+    "javascript": "tree_sitter_javascript",
+    "typescript": "tree_sitter_typescript",
+    "go": "tree_sitter_go",
+    "rust": "tree_sitter_rust",
+    "csharp": "tree_sitter_c_sharp",
+    "cpp": "tree_sitter_cpp",
+    "c": "tree_sitter_c",
+    "java": "tree_sitter_java",
+    "ruby": "tree_sitter_ruby",
+    "php": "tree_sitter_php",
+    "bash": "tree_sitter_bash",
+    "html": "tree_sitter_html",
+    "css": "tree_sitter_css",
+    "json": "tree_sitter_json",
+    "scala": "tree_sitter_scala",
+    "haskell": "tree_sitter_haskell",
+    "kotlin": "tree_sitter_kotlin",
+    "swift": "tree_sitter_swift",
+    "lua": "tree_sitter_lua",
+    "toml": "tree_sitter_toml",
+    "yaml": "tree_sitter_yaml",
+    "sql": "tree_sitter_sql",
+    "julia": "tree_sitter_julia",
+    "ocaml": "tree_sitter_ocaml",
+    "zig": "tree_sitter_zig",
+    "elixir": "tree_sitter_elixir",
+    "xml": "tree_sitter_xml",
+    "regex": "tree_sitter_regex",
+    "cmake": "tree_sitter_cmake",
+    "make": "tree_sitter_make",
+    "objc": "tree_sitter_objc",
+    "markdown": "tree_sitter_markdown",
+}
+
+_loaded_languages: dict[str, object] = {}
+
 EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".py": "python",
+    ".pyi": "python",
     ".ts": "typescript",
     ".tsx": "typescript",
     ".js": "javascript",
     ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
     ".go": "go",
     ".rs": "rust",
     ".cs": "csharp",
@@ -34,6 +67,44 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".cxx": "cpp",
     ".hpp": "cpp",
     ".h": "cpp",
+    ".c": "c",
+    ".java": "java",
+    ".rb": "ruby",
+    ".php": "php",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "css",
+    ".json": "json",
+    ".scala": "scala",
+    ".sc": "scala",
+    ".hs": "haskell",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".swift": "swift",
+    ".lua": "lua",
+    ".toml": "toml",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".sql": "sql",
+    ".jl": "julia",
+    ".ml": "ocaml",
+    ".mli": "ocaml",
+    ".zig": "zig",
+    ".ex": "elixir",
+    ".exs": "elixir",
+    ".xml": "xml",
+    ".svg": "xml",
+    ".cmake": "cmake",
+    ".m": "objc",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    "Makefile": "make",
+    "Dockerfile": "bash",
+    "CMakeLists.txt": "cmake",
 }
 
 FUNCTION_NODE_TYPES: set[str] = {
@@ -127,6 +198,9 @@ class ParseResult:
 
 
 def detect_language(file_path: str) -> str | None:
+    basename = os.path.basename(file_path)
+    if basename in EXTENSION_TO_LANGUAGE:
+        return EXTENSION_TO_LANGUAGE[basename]
     _, ext = os.path.splitext(file_path)
     return EXTENSION_TO_LANGUAGE.get(ext.lower())
 
@@ -135,20 +209,28 @@ def _get_language(lang_name: str) -> "Language | None":
     if not TREE_SITTER_AVAILABLE:
         return None
 
-    loaders: dict[str, object] = {
-        "python": lambda: Language(tspython.language()),
-        "javascript": lambda: Language(tsjavascript.language()),
-        "typescript": lambda: Language(tstypescript.language_typescript()),
-        "go": lambda: Language(tsgo.language()),
-        "rust": lambda: Language(tsrust.language()),
-        "csharp": lambda: Language(tscsharp.language()),
-        "cpp": lambda: Language(tscpp.language()),
-    }
-    loader = loaders.get(lang_name)
-    if loader is None:
+    if lang_name in _loaded_languages:
+        return _loaded_languages[lang_name]
+
+    module_name = _GRAMMAR_MODULES.get(lang_name)
+    if module_name is None:
         return None
+
     try:
-        return loader()
+        import importlib
+        mod = importlib.import_module(module_name)
+        if lang_name == "typescript":
+            lang = Language(mod.language_typescript())
+        elif hasattr(mod, "language"):
+            lang = Language(mod.language())
+        else:
+            logger.warning("Grammar module %s has no language() function", module_name)
+            return None
+        _loaded_languages[lang_name] = lang
+        return lang
+    except ImportError:
+        logger.debug("Grammar package %s not installed, skipping %s", module_name, lang_name)
+        return None
     except Exception as exc:
         logger.warning("Failed to load tree-sitter language %s: %s", lang_name, exc)
         return None

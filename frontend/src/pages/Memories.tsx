@@ -7,13 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -87,8 +80,8 @@ export default function Memories() {
     setSelected(new Set());
   };
 
-  const handleFilterChange = (setter: (v: string) => void) => (value: string) => {
-    setter(value === "__all__" ? "" : value);
+  const handleFilterChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setter(e.target.value);
     setOffset(0);
     setSelected(new Set());
   };
@@ -160,27 +153,30 @@ export default function Memories() {
           className="flex-1"
         />
         <div className="flex gap-2 flex-wrap">
-          <Select value={sourceFilter || "__all__"} onValueChange={handleFilterChange(setSourceFilter)}>
-            <SelectTrigger className="w-32"><SelectValue placeholder="Source" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All sources</SelectItem>
-              {distinctSources.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={tagFilter || "__all__"} onValueChange={handleFilterChange(setTagFilter)}>
-            <SelectTrigger className="w-32"><SelectValue placeholder="Tags" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All tags</SelectItem>
-              {tagsData?.map((t) => <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={typeFilter || "__all__"} onValueChange={handleFilterChange(setTypeFilter)}>
-            <SelectTrigger className="w-32"><SelectValue placeholder="Type" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All types</SelectItem>
-              {distinctTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <select
+            value={sourceFilter}
+            onChange={handleFilterChange(setSourceFilter)}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
+          >
+            <option value="">All sources</option>
+            {distinctSources.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            value={tagFilter}
+            onChange={handleFilterChange(setTagFilter)}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
+          >
+            <option value="">All tags</option>
+            {tagsData?.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+          </select>
+          <select
+            value={typeFilter}
+            onChange={handleFilterChange(setTypeFilter)}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
+          >
+            <option value="">All types</option>
+            {distinctTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
           <Button type="submit" size="sm">Search</Button>
         </div>
       </form>

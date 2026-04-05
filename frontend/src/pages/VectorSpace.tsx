@@ -23,6 +23,9 @@ interface VPoint {
   memory_type: string | null;
 }
 
+const PAD = 56;
+const TICK_VALUES = [-1.0, -0.5, 0.0, 0.5, 1.0];
+
 export default function VectorSpace() {
   const { data, isLoading } = useVectorProjection();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,7 +45,6 @@ export default function VectorSpace() {
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     const w = rect.width;
     const h = rect.height;
-    const pad = 40;
 
     ctx.fillStyle = "#161b22";
     ctx.fillRect(0, 0, w, h);
@@ -51,16 +53,44 @@ export default function VectorSpace() {
     ctx.strokeStyle = "#21262d";
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= 4; i++) {
-      const gx = pad + (i / 4) * (w - 2 * pad);
-      const gy = pad + (i / 4) * (h - 2 * pad);
-      ctx.beginPath(); ctx.moveTo(gx, pad); ctx.lineTo(gx, h - pad); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(w - pad, gy); ctx.stroke();
+      const gx = PAD + (i / 4) * (w - 2 * PAD);
+      const gy = PAD + (i / 4) * (h - 2 * PAD);
+      ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, h - PAD); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(w - PAD, gy); ctx.stroke();
     }
+
+    // Axis tick labels
+    ctx.fillStyle = "#484f58";
+    ctx.font = "10px Inter, sans-serif";
+    for (let i = 0; i <= 4; i++) {
+      const gx = PAD + (i / 4) * (w - 2 * PAD);
+      const gy = PAD + (i / 4) * (h - 2 * PAD);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(TICK_VALUES[i].toFixed(1), gx, h - PAD + 4);
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(TICK_VALUES[4 - i].toFixed(1), PAD - 6, gy);
+    }
+
+    // Axis labels
+    ctx.fillStyle = "#484f58";
+    ctx.font = "12px Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("PCA Component 1", w / 2, h - PAD + 18);
+
+    ctx.save();
+    ctx.translate(PAD - 36, h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText("PCA Component 2", 0, 0);
+    ctx.restore();
 
     // Points
     for (const p of points) {
-      const px = pad + ((p.x + 1) / 2) * (w - 2 * pad);
-      const py = pad + ((1 - (p.y + 1) / 2)) * (h - 2 * pad);
+      const px = PAD + ((p.x + 1) / 2) * (w - 2 * PAD);
+      const py = PAD + ((1 - (p.y + 1) / 2)) * (h - 2 * PAD);
       ctx.beginPath();
       ctx.arc(px, py, 5, 0, Math.PI * 2);
       ctx.fillStyle = getColor(p.source);
@@ -85,14 +115,13 @@ export default function VectorSpace() {
     const my = e.clientY - rect.top;
     const w = rect.width;
     const h = rect.height;
-    const pad = 40;
 
     let closest: (VPoint & { screenX: number; screenY: number }) | null = null;
     let minDist = 15;
 
     for (const p of points) {
-      const px = pad + ((p.x + 1) / 2) * (w - 2 * pad);
-      const py = pad + ((1 - (p.y + 1) / 2)) * (h - 2 * pad);
+      const px = PAD + ((p.x + 1) / 2) * (w - 2 * PAD);
+      const py = PAD + ((1 - (p.y + 1) / 2)) * (h - 2 * PAD);
       const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
       if (dist < minDist) {
         minDist = dist;

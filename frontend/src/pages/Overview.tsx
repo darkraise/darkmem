@@ -12,6 +12,9 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
 
@@ -141,20 +144,30 @@ export default function Overview() {
         </Card>
       </div>
 
-      {/* Desktop bottom row: sources | tags | recent */}
-      <div className="hidden lg:grid grid-cols-4 gap-4">
+      {/* Desktop: sources | tags */}
+      <div className="hidden lg:grid grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Sources</CardTitle></CardHeader>
           <CardContent>
             {data?.sources?.length ? (
-              <div className="space-y-2">
-                {data.sources.map((s, i) => (
-                  <div key={s.name} className="flex items-center gap-2 text-sm">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sourceColor(s.name, i) }} />
-                    <span className="truncate">{s.name}</span>
-                    <span className="ml-auto text-muted-foreground text-xs">{totalSourceCount > 0 ? Math.round((s.count / totalSourceCount) * 100) : 0}%</span>
-                  </div>
-                ))}
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width={100} height={100}>
+                  <PieChart>
+                    <Pie data={data.sources} dataKey="count" nameKey="name" cx="50%" cy="50%" innerRadius={28} outerRadius={45} paddingAngle={2} strokeWidth={0}>
+                      {data.sources.map((s, i) => <Cell key={s.name} fill={sourceColor(s.name, i)} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #21262d", color: "#c9d1d9", fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  {data.sources.map((s, i) => (
+                    <div key={s.name} className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sourceColor(s.name, i) }} />
+                      <span className="truncate">{s.name}</span>
+                      <span className="ml-auto text-muted-foreground">{totalSourceCount > 0 ? Math.round((s.count / totalSourceCount) * 100) : 0}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : <p className="text-muted-foreground text-sm">No sources yet</p>}
           </CardContent>
@@ -164,39 +177,43 @@ export default function Overview() {
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Top Tags</CardTitle></CardHeader>
           <CardContent>
             {data?.top_tags?.length ? (
-              <div className="space-y-2">
-                {data.top_tags.map((t) => (
-                  <div key={t.name} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{t.name}</span>
-                    <span className="text-muted-foreground text-xs">{t.count}</span>
-                  </div>
-                ))}
-              </div>
+              <ResponsiveContainer width="100%" height={120}>
+                <BarChart data={data.top_tags} layout="vertical" margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fill: "#8b949e", fontSize: 10 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={100} tick={(props: { x: number; y: number; payload: { value: string } }) => {
+                    const label = props.payload.value.length > 14 ? props.payload.value.slice(0, 13) + "…" : props.payload.value;
+                    return <text x={props.x} y={props.y} dy={4} textAnchor="end" fill="#c9d1d9" fontSize={11}>{label}</text>;
+                  }} />
+                  <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #21262d", color: "#c9d1d9", fontSize: 12 }} />
+                  <Bar dataKey="count" fill="#3fb950" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             ) : <p className="text-muted-foreground text-sm">No tags yet</p>}
           </CardContent>
         </Card>
-
-        <Card className="col-span-2">
-          <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Recent Memories</CardTitle></CardHeader>
-          <CardContent>
-            {data?.recent_memories?.length ? (
-              <div className="space-y-1.5">
-                {data.recent_memories.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center gap-3 p-2 border border-border rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-                    onClick={() => navigate("/memories")}
-                  >
-                    <span className="text-sm truncate flex-1">{m.content}</span>
-                    <Badge variant="secondary" className="text-xs shrink-0">{m.source}</Badge>
-                    <span className="text-xs text-muted-foreground shrink-0">{relativeTime(m.created_at)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : <p className="text-muted-foreground text-sm">No memories yet. Create one to get started.</p>}
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Desktop: recent memories */}
+      <Card className="hidden lg:block">
+        <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Recent Memories</CardTitle></CardHeader>
+        <CardContent>
+          {data?.recent_memories?.length ? (
+            <div className="space-y-1.5">
+              {data.recent_memories.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center gap-3 p-2 border border-border rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
+                  onClick={() => navigate("/memories")}
+                >
+                  <span className="text-sm truncate flex-1">{m.content}</span>
+                  <Badge variant="secondary" className="text-xs shrink-0">{m.source}</Badge>
+                  <span className="text-xs text-muted-foreground shrink-0">{relativeTime(m.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-muted-foreground text-sm">No memories yet. Create one to get started.</p>}
+        </CardContent>
+      </Card>
 
       {/* ===== MOBILE / TABLET LAYOUT (<lg) ===== */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 lg:hidden">
@@ -242,14 +259,24 @@ export default function Overview() {
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Sources</CardTitle></CardHeader>
           <CardContent>
             {data?.sources?.length ? (
-              <div className="space-y-2">
-                {data.sources.map((s, i) => (
-                  <div key={s.name} className="flex items-center gap-2 text-sm">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sourceColor(s.name, i) }} />
-                    <span className="truncate">{s.name}</span>
-                    <span className="ml-auto text-muted-foreground text-xs">{totalSourceCount > 0 ? Math.round((s.count / totalSourceCount) * 100) : 0}%</span>
-                  </div>
-                ))}
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width={100} height={100}>
+                  <PieChart>
+                    <Pie data={data.sources} dataKey="count" nameKey="name" cx="50%" cy="50%" innerRadius={28} outerRadius={45} paddingAngle={2} strokeWidth={0}>
+                      {data.sources.map((s, i) => <Cell key={s.name} fill={sourceColor(s.name, i)} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #21262d", color: "#c9d1d9", fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  {data.sources.map((s, i) => (
+                    <div key={s.name} className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sourceColor(s.name, i) }} />
+                      <span className="truncate">{s.name}</span>
+                      <span className="ml-auto text-muted-foreground">{totalSourceCount > 0 ? Math.round((s.count / totalSourceCount) * 100) : 0}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : <p className="text-muted-foreground text-sm">No sources yet</p>}
           </CardContent>
@@ -260,14 +287,14 @@ export default function Overview() {
         <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Top Tags</CardTitle></CardHeader>
         <CardContent>
           {data?.top_tags?.length ? (
-            <div className="space-y-2">
-              {data.top_tags.map((t) => (
-                <div key={t.name} className="flex items-center justify-between text-sm">
-                  <span className="truncate">{t.name}</span>
-                  <span className="text-muted-foreground text-xs">{t.count}</span>
-                </div>
-              ))}
-            </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={data.top_tags} layout="vertical" margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
+                <XAxis type="number" tick={{ fill: "#8b949e", fontSize: 10 }} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#c9d1d9", fontSize: 11 }} width={70} />
+                <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #21262d", color: "#c9d1d9", fontSize: 12 }} />
+                <Bar dataKey="count" fill="#3fb950" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           ) : <p className="text-muted-foreground text-sm">No tags yet</p>}
         </CardContent>
       </Card>

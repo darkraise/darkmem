@@ -1,41 +1,91 @@
-import { usePipelineLogs, useHealth, useReprocessAll, useReprocessFailed } from "@/hooks/useApi";
+import { usePipelineLogs, useHealth, useReprocessStream } from "@/hooks/useApi";
 import { ServiceDot } from "@/components/ServiceDot";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { useEffect, useRef } from "react";
 
 function StatusBadge({ value }: { value: string }) {
   const variant = value === "ok" ? "default" : value === "error" ? "destructive" : "secondary";
   return <Badge variant={variant} className="text-xs">{value}</Badge>;
 }
 
+function ReprocessProgress({ label, stream }: { label: string; stream: ReturnType<typeof useReprocessStream> }) {
+  const { progress, isPending } = stream;
+  if (!isPending || !progress) return null;
+
+  const pct = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+
+  return (
+    <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="text-muted-foreground tabular-nums">
+          {progress.current} / {progress.total}
+        </span>
+      </div>
+      <Progress value={pct} />
+      <div className="flex gap-3 text-xs text-muted-foreground">
+        <span className="text-green-500">{progress.processed} succeeded</span>
+        {progress.errors > 0 && <span className="text-destructive">{progress.errors} failed</span>}
+        {progress.memoryId && (
+          <span className="ml-auto font-mono">{progress.memoryId.slice(0, 8)}...</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PipelineLogs() {
   const { data: health } = useHealth();
   const { data: logs, isLoading } = usePipelineLogs(50);
-  const reprocessAll = useReprocessAll();
-  const reprocessFailed = useReprocessFailed();
+  const reprocessAll = useReprocessStream("/analytics/reprocess/stream");
+  const reprocessFailed = useReprocessStream("/analytics/reprocess-failed/stream");
 
   const totalRuns = logs?.length ?? 0;
   const successCount = logs?.filter((l) => !l.details?.error).length ?? 0;
   const errorCount = totalRuns - successCount;
 
+  const prevAllPending = useRef(false);
+  const prevFailedPending = useRef(false);
+
+  useEffect(() => {
+    if (prevAllPending.current && !reprocessAll.isPending && reprocessAll.progress) {
+      const p = reprocessAll.progress;
+      if (p.errors > 0) {
+        toast.success(`Reprocessed ${p.processed}/${p.total} memories`, { description: `${p.errors} errors` });
+      } else {
+        toast.success(`Reprocessed ${p.processed}/${p.total} memories`);
+      }
+    }
+    prevAllPending.current = reprocessAll.isPending;
+  }, [reprocessAll.isPending, reprocessAll.progress]);
+
+  useEffect(() => {
+    if (prevFailedPending.current && !reprocessFailed.isPending && reprocessFailed.progress) {
+      const p = reprocessFailed.progress;
+      if (p.total === 0) {
+        toast.info("No failed entries to retry");
+      } else if (p.errors > 0) {
+        toast.success(`Retried ${p.processed}/${p.total} failed memories`, { description: `${p.errors} still failing` });
+      } else {
+        toast.success(`Retried ${p.processed}/${p.total} failed memories`);
+      }
+    }
+    prevFailedPending.current = reprocessFailed.isPending;
+  }, [reprocessFailed.isPending, reprocessFailed.progress]);
+
   const handleReprocessAll = () => {
-    reprocessAll.mutate(undefined, {
-      onSuccess: (data) => toast.success(`Reprocessed ${data.processed}/${data.total} memories`, { description: data.errors > 0 ? `${data.errors} errors` : undefined }),
-      onError: () => toast.error("Reprocess failed"),
-    });
+    reprocessAll.mutate().catch(() => toast.error("Reprocess failed"));
   };
 
   const handleRetryFailed = () => {
-    reprocessFailed.mutate(undefined, {
-      onSuccess: (data) => {
-        if (data.total === 0) toast.info("No failed entries to retry");
-        else toast.success(`Retried ${data.processed}/${data.total} failed memories`, { description: data.errors > 0 ? `${data.errors} still failing` : undefined });
-      },
-      onError: () => toast.error("Retry failed"),
-    });
+    reprocessFailed.mutate().catch(() => toast.error("Retry failed"));
   };
+
+  const anyPending = reprocessAll.isPending || reprocessFailed.isPending;
 
   return (
     <div className="p-6">
@@ -46,7 +96,7 @@ export default function PipelineLogs() {
             variant="outline"
             size="sm"
             onClick={handleRetryFailed}
-            disabled={reprocessFailed.isPending || errorCount === 0}
+            disabled={anyPending || errorCount === 0}
           >
             {reprocessFailed.isPending ? "Retrying..." : "Retry Failed"}
           </Button>
@@ -54,12 +104,17 @@ export default function PipelineLogs() {
             variant="outline"
             size="sm"
             onClick={handleReprocessAll}
-            disabled={reprocessAll.isPending}
+            disabled={anyPending}
           >
             {reprocessAll.isPending ? "Reprocessing..." : "Reprocess All"}
           </Button>
         </div>
       </div>
+
+      {/* Progress display */}
+      <ReprocessProgress label="Reprocessing all memories..." stream={reprocessAll} />
+      <ReprocessProgress label="Retrying failed memories..." stream={reprocessFailed} />
+      {(reprocessAll.isPending || reprocessFailed.isPending) && <div className="mb-6" />}
 
       {/* Status summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
