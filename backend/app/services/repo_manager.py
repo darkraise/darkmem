@@ -233,9 +233,13 @@ class RepoManager:
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"git command timed out after 300s: {' '.join(cmd)}")
+        stderr_text = result.stderr.decode()
         if result.returncode != 0:
-            logger.error("git command failed: %s\nstderr: %s", " ".join(cmd), result.stderr.decode())
-            raise RuntimeError(f"git command failed: {result.stderr.decode()}")
+            if "Clone succeeded, but checkout failed" in stderr_text:
+                logger.warning("git clone succeeded with checkout warning: %s", stderr_text.strip())
+            else:
+                logger.error("git command failed: %s\nstderr: %s", " ".join(cmd), stderr_text)
+                raise RuntimeError(f"git command failed: {stderr_text}")
         return result.stdout.decode()
 
     @staticmethod

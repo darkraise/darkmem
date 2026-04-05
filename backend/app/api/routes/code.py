@@ -175,7 +175,7 @@ async def list_files(
 async def code_graph(
     repo_id: UUID,
     request: Request,
-    view: str = Query("files", regex="^(files|symbols)$"),
+    view: str = Query("files", pattern="^(files|symbols)$"),
     _user=Depends(require_auth),
 ):
     graph_repo = getattr(request.app.state, "graph_repo", None)

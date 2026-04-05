@@ -15,4 +15,4 @@ python -m alembic upgrade head
 
 # Start server with hot-reload
 echo "Starting darkmem API server..."
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude "data/*"
