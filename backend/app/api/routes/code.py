@@ -296,7 +296,7 @@ async def code_graph(
 
 
 class BlastRadiusRequest(BaseModel):
-    symbol_id: UUID
+    symbol_id: str
     max_depth: int = 10
 
 
@@ -307,15 +307,38 @@ async def blast_radius(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    sym = (await session.execute(
-        select(CodeSymbol).where(CodeSymbol.id == body.symbol_id)
-    )).scalar_one_or_none()
+    # Support both UUID and composite "name::file_path" format
+    sym = None
+    file = None
+    if "::" in body.symbol_id:
+        parts = body.symbol_id.split("::", 1)
+        name, file_path = parts[0], parts[1]
+        sym = (await session.execute(
+            select(CodeSymbol).join(CodeFile).where(
+                CodeSymbol.name == name,
+                CodeFile.file_path == file_path,
+            )
+        )).scalars().first()
+        if sym:
+            file = (await session.execute(
+                select(CodeFile).where(CodeFile.id == sym.file_id)
+            )).scalar_one_or_none()
+    else:
+        try:
+            from uuid import UUID as UUIDType
+            uid = UUIDType(body.symbol_id)
+            sym = (await session.execute(
+                select(CodeSymbol).where(CodeSymbol.id == uid)
+            )).scalar_one_or_none()
+            if sym:
+                file = (await session.execute(
+                    select(CodeFile).where(CodeFile.id == sym.file_id)
+                )).scalar_one_or_none()
+        except ValueError:
+            pass
+
     if not sym:
         raise HTTPException(status_code=404, detail="Symbol not found")
-
-    file = (await session.execute(
-        select(CodeFile).where(CodeFile.id == sym.file_id)
-    )).scalar_one_or_none()
 
     graph_repo = getattr(request.app.state, "graph_repo", None)
     if not graph_repo:
