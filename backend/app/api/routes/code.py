@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,3 +169,99 @@ async def list_files(
         )
         for f in rows
     ]
+
+
+@router.get("/graph/{repo_id}")
+async def code_graph(
+    repo_id: UUID,
+    request: Request,
+    view: str = Query("files", regex="^(files|symbols)$"),
+    _user=Depends(require_auth),
+):
+    graph_repo = getattr(request.app.state, "graph_repo", None)
+    if not graph_repo:
+        raise HTTPException(status_code=503, detail="Graph service not available")
+
+    async with graph_repo.driver.session() as neo:
+        if view == "files":
+            result = await neo.run(
+                """
+                MATCH (f:CodeFile {repo_id: $repo_id})
+                OPTIONAL MATCH (f)-[:IMPORTS]->(i:CodeImport)<-[:IMPORTS]-(f2:CodeFile {repo_id: $repo_id})
+                WHERE f <> f2
+                RETURN collect(DISTINCT {id: f.path, label: f.path, type: 'file'}) AS nodes,
+                       collect(DISTINCT {source: f.path, target: f2.path, label: i.source}) AS edges
+                """,
+                repo_id=str(repo_id),
+            )
+        else:
+            result = await neo.run(
+                """
+                MATCH (s:CodeSymbol {repo_id: $repo_id})
+                OPTIONAL MATCH (s)-[r:CALLS|CONTAINS]->(t:CodeSymbol {repo_id: $repo_id})
+                RETURN collect(DISTINCT {id: s.name, label: s.name, kind: s.kind, file_path: s.file_path}) AS nodes,
+                       collect(DISTINCT {source: s.name, target: t.name, label: type(r)}) AS edges
+                """,
+                repo_id=str(repo_id),
+            )
+        record = await result.single()
+
+    nodes = record["nodes"] if record else []
+    edges = [e for e in (record["edges"] if record else []) if e.get("target") is not None]
+    return {"nodes": nodes, "edges": edges}
+
+
+class BlastRadiusRequest(BaseModel):
+    symbol_id: UUID
+    max_depth: int = 10
+
+
+@router.post("/blast-radius")
+async def blast_radius(
+    body: BlastRadiusRequest,
+    request: Request,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    sym = (await session.execute(
+        select(CodeSymbol).where(CodeSymbol.id == body.symbol_id)
+    )).scalar_one_or_none()
+    if not sym:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+
+    file = (await session.execute(
+        select(CodeFile).where(CodeFile.id == sym.file_id)
+    )).scalar_one_or_none()
+
+    graph_repo = getattr(request.app.state, "graph_repo", None)
+    if not graph_repo:
+        raise HTTPException(status_code=503, detail="Graph service not available")
+
+    async with graph_repo.driver.session() as neo:
+        result = await neo.run(
+            """
+            MATCH (start:CodeSymbol {name: $name, repo_id: $repo_id})
+            MATCH (caller:CodeSymbol)-[:CALLS*1..]->(start)
+            WHERE caller <> start AND caller.repo_id = $repo_id
+            RETURN DISTINCT caller.name AS name, caller.kind AS kind, caller.file_path AS file_path
+            """,
+            name=sym.name,
+            repo_id=str(file.repo_id) if file else "",
+        )
+        records = [r async for r in result]
+
+    affected = [
+        {"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]}
+        for r in records
+    ]
+
+    return {
+        "symbol": {
+            "id": str(sym.id),
+            "name": sym.name,
+            "file_path": file.file_path if file else "",
+            "repo_id": str(file.repo_id) if file else "",
+        },
+        "affected": affected,
+        "total": len(affected),
+    }

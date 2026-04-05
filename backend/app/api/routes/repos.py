@@ -1,10 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import get_code_indexer, get_repo_manager
-from app.models.code import Repository
+from app.database import get_session
+from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import RepoCreate, RepoResponse, RepoUpdate
 from app.services.code_indexer import CodeIndexer
 from app.services.repo_manager import RepoManager
@@ -48,6 +51,29 @@ async def list_repos(
 ):
     entries = await manager.list_all()
     return [_to_response(e["repo"], e["file_count"], e["symbol_count"]) for e in entries]
+
+
+@router.get("/stats")
+async def repo_stats(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    total_repos = (await session.execute(select(func.count()).select_from(Repository))).scalar() or 0
+    total_files = (await session.execute(select(func.count()).select_from(CodeFile))).scalar() or 0
+    total_symbols = (await session.execute(select(func.count()).select_from(CodeSymbol))).scalar() or 0
+    pending = (await session.execute(
+        select(func.count()).select_from(CodeSymbol).where(CodeSymbol.enrichment_status == "pending")
+    )).scalar() or 0
+    completed = (await session.execute(
+        select(func.count()).select_from(CodeSymbol).where(CodeSymbol.enrichment_status == "completed")
+    )).scalar() or 0
+    return {
+        "total_repos": total_repos,
+        "total_files": total_files,
+        "total_symbols": total_symbols,
+        "enrichment_pending": pending,
+        "enrichment_completed": completed,
+    }
 
 
 @router.get("/{repo_id}", response_model=RepoResponse)
