@@ -184,7 +184,15 @@ export function useCodeSearch() {
 export function useCodeSymbolDetail(symbolId: string | null) {
   return useQuery<CodeSymbolDetail>({
     queryKey: ["codeSymbol", symbolId],
-    queryFn: () => apiFetch(`/code/symbols/${symbolId}`),
+    queryFn: () => {
+      if (!symbolId) throw new Error("No symbol ID");
+      if (symbolId.includes("::")) {
+        const [name, ...rest] = symbolId.split("::");
+        const filePath = rest.join("::");
+        return apiFetch(`/code/symbols/lookup?name=${encodeURIComponent(name)}&file_path=${encodeURIComponent(filePath)}`);
+      }
+      return apiFetch(`/code/symbols/${symbolId}`);
+    },
     enabled: !!symbolId,
   });
 }

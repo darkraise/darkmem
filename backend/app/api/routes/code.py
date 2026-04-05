@@ -112,6 +112,42 @@ async def list_symbols(
     return {"items": items, "total": total}
 
 
+@router.get("/symbols/lookup")
+async def lookup_symbol(
+    name: str = Query(...),
+    file_path: str = Query(...),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    sym = (await session.execute(
+        select(CodeSymbol).join(CodeFile).where(
+            CodeSymbol.name == name,
+            CodeFile.file_path == file_path,
+        )
+    )).scalars().first()
+    if not sym:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+
+    file = (await session.execute(
+        select(CodeFile).where(CodeFile.id == sym.file_id)
+    )).scalar_one_or_none()
+
+    return CodeSymbolResponse(
+        id=sym.id,
+        name=sym.name,
+        kind=sym.kind,
+        file_path=file.file_path if file else "",
+        line_start=sym.line_start,
+        line_end=sym.line_end,
+        signature=sym.signature,
+        docstring=sym.docstring,
+        visibility=sym.visibility,
+        source_code=sym.source_code,
+        summary=sym.summary,
+        enrichment_status=sym.enrichment_status,
+    )
+
+
 @router.get("/symbols/{symbol_id}", response_model=CodeSymbolResponse)
 async def get_symbol(
     symbol_id: UUID,
