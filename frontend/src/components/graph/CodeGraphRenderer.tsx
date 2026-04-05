@@ -145,9 +145,9 @@ export function CodeGraphRenderer({
     });
 
     const nodeCount = graph.order;
-    const gravity = nodeCount < 500 ? 0.05 : nodeCount < 2000 ? 0.02 : 0.01;
-    const scalingRatio = nodeCount < 500 ? 20 : nodeCount < 2000 ? 50 : 80;
-    const slowDown = nodeCount < 500 ? 2 : nodeCount < 2000 ? 5 : 10;
+    const gravity = nodeCount < 500 ? 0.8 : nodeCount < 2000 ? 0.5 : nodeCount < 10000 ? 0.3 : 0.15;
+    const scalingRatio = nodeCount < 500 ? 15 : nodeCount < 2000 ? 30 : nodeCount < 10000 ? 60 : 100;
+    const slowDown = nodeCount < 500 ? 1 : nodeCount < 2000 ? 2 : nodeCount < 10000 ? 3 : 5;
     const layoutTimeout = nodeCount < 500 ? 8000 : nodeCount < 2000 ? 20000 : 30000;
 
     const sigma = new Sigma(graph, containerRef.current, {
@@ -281,7 +281,10 @@ export function CodeGraphRenderer({
         linLogMode: false,
         outboundAttractionDistribution: true,
         strongGravityMode: false,
+        adjustSizes: true,
+        edgeWeightInfluence: 1,
         barnesHutOptimize: nodeCount > 200,
+        barnesHutTheta: nodeCount >= 2000 ? 0.8 : 0.6,
         gravity,
         scalingRatio,
         slowDown,
