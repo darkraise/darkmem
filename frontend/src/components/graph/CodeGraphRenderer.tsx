@@ -7,20 +7,20 @@ import { inferSettings } from "graphology-layout-forceatlas2";
 import { lightenHex } from "@/lib/graph-colors";
 
 const NODE_SIZES: Record<string, number> = {
-  module: 16,
-  namespace: 14,
-  class: 10,
-  struct: 10,
-  interface: 9,
-  trait: 9,
-  enum: 8,
-  file: 7,
-  function: 5,
-  method: 4,
-  type: 3,
-  impl: 3,
+  file: 12,
+  module: 10,
+  namespace: 9,
+  class: 8,
+  struct: 8,
+  interface: 7,
+  trait: 7,
+  enum: 6,
+  function: 4,
+  method: 3,
+  type: 2,
+  impl: 2,
 };
-const DEFAULT_NODE_SIZE = 4;
+const DEFAULT_NODE_SIZE = 3;
 
 const NODE_COLORS: Record<string, string> = {
   module: "#8b5cf6",
@@ -57,14 +57,16 @@ const EDGE_SIZES: Record<string, number> = {
 const DEFAULT_EDGE_SIZE = 0.5;
 
 const NODE_MASS: Record<string, number> = {
-  module: 20,
-  namespace: 15,
-  class: 5,
-  struct: 5,
-  interface: 4,
-  file: 3,
+  file: 30,
+  module: 15,
+  namespace: 12,
+  class: 6,
+  struct: 6,
+  interface: 5,
+  trait: 5,
+  enum: 4,
   function: 2,
-  method: 2,
+  method: 1,
 };
 
 interface CodeGraphRendererProps {
@@ -102,14 +104,49 @@ export function CodeGraphRenderer({
     const graph = new Graph();
     graphRef.current = graph;
 
+    // Pre-position nodes hierarchically: files in a wide ring, symbols near their parent file
+    const fileNodes = nodes.filter((n) => n.kind === "file");
+    const moduleNodes = nodes.filter((n) => n.kind === "module");
+    const symbolNodes = nodes.filter((n) => n.kind !== "file" && n.kind !== "module");
+
+    const filePositions: Record<string, { x: number; y: number }> = {};
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const fileRadius = Math.max(50, Math.sqrt(fileNodes.length) * 12);
+
+    fileNodes.forEach((f, i) => {
+      const angle = i * goldenAngle;
+      const r = fileRadius * Math.sqrt((i + 1) / fileNodes.length);
+      filePositions[f.id] = { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+    });
+
+    const moduleRadius = fileRadius * 1.3;
+    moduleNodes.forEach((m, i) => {
+      const angle = i * goldenAngle * 1.5;
+      const r = moduleRadius + Math.random() * 20;
+      filePositions[m.id] = { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+    });
+
     for (const n of nodes) {
       if (graph.hasNode(n.id)) continue;
       const kind = n.kind?.toLowerCase() ?? "";
       const color = NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR;
       const size = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
+
+      let x: number, y: number;
+      if (filePositions[n.id]) {
+        x = filePositions[n.id].x;
+        y = filePositions[n.id].y;
+      } else if (n.file_path && filePositions[n.file_path]) {
+        x = filePositions[n.file_path].x + (Math.random() - 0.5) * 8;
+        y = filePositions[n.file_path].y + (Math.random() - 0.5) * 8;
+      } else {
+        x = (Math.random() - 0.5) * fileRadius;
+        y = (Math.random() - 0.5) * fileRadius;
+      }
+
       graph.addNode(n.id, {
-        x: (Math.random() - 0.5) * 10,
-        y: (Math.random() - 0.5) * 10,
+        x,
+        y,
         label: n.label,
         size,
         color,
@@ -153,7 +190,7 @@ export function CodeGraphRenderer({
       labelWeight: "500",
       labelFont: "JetBrains Mono, monospace",
       labelColor: { color: "#e4e4ed" },
-      labelRenderedSizeThreshold: 8,
+      labelRenderedSizeThreshold: 12,
       defaultEdgeType: "curve",
       edgeProgramClasses: { curve: EdgeCurveProgram },
       stagePadding: 60,
