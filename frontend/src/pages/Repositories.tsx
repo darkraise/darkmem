@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useRepoStats,
   useRepos,
@@ -154,9 +154,15 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
 
 export default function Repositories() {
   const { data: stats } = useRepoStats();
-  const { data: repos, isLoading } = useRepos();
+  const [polling, setPolling] = useState(false);
+  const { data: repos, isLoading } = useRepos(polling ? 3000 : undefined);
   const deleteRepo = useDeleteRepo();
   const reindexRepo = useReindexRepo();
+  useEffect(() => {
+    const hasTransient = repos?.some((r) => r.status === "cloning" || r.status === "indexing");
+    setPolling(!!hasTransient);
+  }, [repos]);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reindexingId, setReindexingId] = useState<string | null>(null);
 
@@ -238,7 +244,14 @@ export default function Repositories() {
                   className="flex items-center gap-3 px-4 py-3"
                 >
                   <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${repo.is_active ? "bg-green-500" : "bg-muted-foreground"}`}
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      repo.status === "cloning" ? "bg-yellow-500 animate-pulse"
+                      : repo.status === "error" ? "bg-red-500"
+                      : repo.status === "indexing" ? "bg-blue-500 animate-pulse"
+                      : repo.is_active ? "bg-green-500"
+                      : "bg-muted-foreground"
+                    }`}
+                    title={repo.status_message ?? repo.status}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -254,6 +267,21 @@ export default function Repositories() {
                       >
                         {repo.provider}
                       </Badge>
+                      {repo.status === "cloning" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-yellow-500 border-yellow-500">
+                          Cloning...
+                        </Badge>
+                      )}
+                      {repo.status === "error" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-destructive border-destructive" title={repo.status_message ?? ""}>
+                          Error
+                        </Badge>
+                      )}
+                      {repo.status === "indexing" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-blue-500 border-blue-500">
+                          Indexing...
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                       <span className="truncate max-w-[300px]">

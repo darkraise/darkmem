@@ -26,6 +26,8 @@ def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -
         last_indexed_commit=repo.last_indexed_commit,
         last_indexed_at=repo.last_indexed_at,
         sync_interval_minutes=repo.sync_interval_minutes,
+        status=repo.status,
+        status_message=repo.status_message,
         is_active=repo.is_active,
         file_count=file_count,
         symbol_count=symbol_count,

@@ -22,6 +22,8 @@ class Repository(Base):
     last_indexed_commit: Mapped[str | None] = mapped_column(String(64))
     last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    status_message: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -31,6 +31,8 @@ class RepoManager:
             provider=data.provider,
             default_branch=data.default_branch,
             sync_interval_minutes=data.sync_interval_minutes,
+            status="cloning" if data.url else "ready",
+            status_message="Cloning repository..." if data.url else None,
         )
         self.session.add(repo)
         await self.session.flush()
@@ -40,12 +42,43 @@ class RepoManager:
             config = Config(key=repo.auth_token_ref, value={"token": data.auth_token})
             self.session.add(config)
 
-        if data.url:
-            await self._clone_repo(repo)
-
         await self.session.commit()
         await self.session.refresh(repo)
+
+        if data.url:
+            asyncio.create_task(self._clone_in_background(repo.id, data))
+
         return repo
+
+    async def _clone_in_background(self, repo_id: UUID, data: RepoCreate) -> None:
+        from app.database import async_session_factory
+        try:
+            async with async_session_factory() as session:
+                repo = (await session.execute(
+                    select(Repository).where(Repository.id == repo_id)
+                )).scalar_one_or_none()
+                if not repo:
+                    return
+
+                manager = RepoManager(session)
+                await manager._clone_repo(repo)
+                repo.status = "ready"
+                repo.status_message = None
+                logger.info(f"Background clone completed for {repo.name}")
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Background clone failed for repo {repo_id}: {e}")
+            try:
+                async with async_session_factory() as session:
+                    repo = (await session.execute(
+                        select(Repository).where(Repository.id == repo_id)
+                    )).scalar_one_or_none()
+                    if repo:
+                        repo.status = "error"
+                        repo.status_message = str(e)[:500]
+                        await session.commit()
+            except Exception:
+                pass
 
     async def get(self, repo_id: UUID) -> Repository | None:
         return await self.session.get(Repository, repo_id)
@@ -125,15 +158,25 @@ class RepoManager:
 
     async def pull_repo(self, repo: Repository) -> str | None:
         cwd = self.repo_working_dir(repo)
-        if not cwd.exists():
-            return None
+
+        if not cwd.exists() or not (cwd / ".git").exists():
+            if repo.url:
+                if cwd.exists():
+                    shutil.rmtree(cwd, ignore_errors=True)
+                await self._clone_repo(repo)
+                cwd = self._clone_path(repo)
+            else:
+                return None
 
         token = await self.get_auth_token(repo)
         env: dict[str, str] = {}
         if token and repo.url:
             auth_url = self._auth_url(repo.url, token)
             env["GIT_ASKPASS"] = "echo"
-            await self._run_git(cwd, ["git", "remote", "set-url", "origin", auth_url], env=env)
+            try:
+                await self._run_git(cwd, ["git", "remote", "set-url", "origin", auth_url], env=env)
+            except RuntimeError:
+                await self._run_git(cwd, ["git", "remote", "add", "origin", auth_url], env=env)
 
         await self._run_git(cwd, ["git", "fetch", "origin", repo.default_branch], env=env)
         await self._run_git(cwd, ["git", "reset", "--hard", f"origin/{repo.default_branch}"], env=env)
@@ -151,14 +194,18 @@ class RepoManager:
             return
 
         dest = self._clone_path(repo)
-        dest.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
         url = repo.url
         token = await self.get_auth_token(repo)
         if token:
             url = self._auth_url(repo.url, token)
 
-        cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", url, str(dest)]
+        abs_dest = str(dest.resolve())
+        cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", url, abs_dest]
         await self._run_git(dest.parent, cmd)
 
     @staticmethod

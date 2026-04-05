@@ -19,6 +19,8 @@ export interface Repo {
   last_indexed_commit: string | null;
   last_indexed_at: string | null;
   sync_interval_minutes: number;
+  status: string;
+  status_message: string | null;
   is_active: boolean;
   file_count: number;
   symbol_count: number;
@@ -95,10 +97,11 @@ export function useRepoStats() {
   });
 }
 
-export function useRepos() {
+export function useRepos(refetchInterval?: number) {
   return useQuery<Repo[]>({
     queryKey: ["repos"],
     queryFn: () => apiFetch("/repos"),
+    refetchInterval,
   });
 }
 

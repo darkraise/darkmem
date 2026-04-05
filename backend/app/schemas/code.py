@@ -32,6 +32,8 @@ class RepoResponse(BaseModel):
     last_indexed_commit: str | None
     last_indexed_at: datetime | None
     sync_interval_minutes: int
+    status: str = "pending"
+    status_message: str | None = None
     is_active: bool
     file_count: int = 0
     symbol_count: int = 0
