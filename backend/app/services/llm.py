@@ -21,6 +21,20 @@ class LLMOrchestrator:
         response.raise_for_status()
         return response.json()["data"][0]["embedding"]
 
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        cfg = self.config["embedding"]
+        headers = self._headers(cfg)
+        response = await self._client.post(
+            f"{cfg.base_url}/embeddings",
+            headers=headers,
+            json={"input": texts, "model": cfg.model},
+        )
+        response.raise_for_status()
+        data = response.json()["data"]
+        return [d["embedding"] for d in sorted(data, key=lambda x: x["index"])]
+
     async def chat_completion(self, purpose: str, messages: list[dict], response_format: dict | None = None) -> str:
         cfg = self.config[purpose]
         headers = self._headers(cfg)

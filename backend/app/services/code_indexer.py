@@ -279,38 +279,33 @@ class CodeIndexer:
     ) -> int:
         from qdrant_client.models import PointStruct
 
-        points: list[PointStruct] = []
-        for chunk in chunks:
-            text = chunk["content"][:2000]
-            try:
-                vector = await self.llm.embed(text)
-            except Exception as exc:
-                logger.warning("Embedding failed for chunk in %s: %s", file_path, exc)
-                continue
+        texts = [c["content"][:2000] for c in chunks]
+        try:
+            vectors = await self.llm.embed_batch(texts)
+        except Exception as exc:
+            logger.warning("Batch embedding failed for %s: %s", file_path, exc)
+            return 0
 
-            point_id = str(uuid4())
-            points.append(
-                PointStruct(
-                    id=point_id,
-                    vector=vector,
-                    payload={
-                        "repo_id": str(repo_id),
-                        "file_path": file_path,
-                        "language": language,
-                        "symbol_name": chunk.get("symbol_name"),
-                        "chunk_content": chunk["content"],
-                        "line_start": chunk["line_start"],
-                        "line_end": chunk["line_end"],
-                    },
-                )
-            )
+        points = []
+        for chunk, vector in zip(chunks, vectors):
+            points.append(PointStruct(
+                id=str(uuid4()),
+                vector=vector,
+                payload={
+                    "repo_id": str(repo_id),
+                    "file_path": file_path,
+                    "language": language,
+                    "symbol_name": chunk.get("symbol_name"),
+                    "chunk_content": chunk["content"][:5000],
+                    "line_start": chunk["line_start"],
+                    "line_end": chunk["line_end"],
+                },
+            ))
 
         if points:
             await self.vector_repo.client.upsert(
-                collection_name="code_chunks",
-                points=points,
+                collection_name="code_chunks", points=points
             )
-
         return len(points)
 
     async def _store_graph(
@@ -320,70 +315,77 @@ class CodeIndexer:
         symbols: list[ExtractedSymbol],
         imports: list,
     ) -> None:
+        sym_data = []
+        contains_data = []
+
+        def collect(sym, parent_name=None):
+            sym_data.append({
+                "name": sym.name,
+                "kind": sym.kind,
+                "line_start": sym.line_start,
+                "line_end": sym.line_end,
+                "visibility": sym.visibility,
+            })
+            if parent_name:
+                contains_data.append({"parent": parent_name, "child": sym.name})
+            for child in sym.children:
+                collect(child, sym.name)
+
+        for sym in symbols:
+            collect(sym)
+
         async with self.graph_repo.driver.session() as neo_session:
-            for sym in symbols:
-                await self._create_symbol_node(neo_session, repo, file_path, sym)
-                for child in sym.children:
-                    await self._create_symbol_node(neo_session, repo, file_path, child)
-                    await neo_session.run(
-                        """
-                        MATCH (p:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: $parent})
-                        MATCH (c:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: $child})
-                        MERGE (p)-[:CONTAINS]->(c)
-                        """,
-                        repo_id=str(repo.id),
-                        file_path=file_path,
-                        parent=sym.name,
-                        child=child.name,
-                    )
+            await neo_session.run(
+                "MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})",
+                repo_id=str(repo.id), file_path=file_path,
+            )
+
+            if sym_data:
+                await neo_session.run(
+                    """
+                    UNWIND $symbols AS sym
+                    MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
+                    MERGE (s:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: sym.name})
+                    ON CREATE SET s.kind = sym.kind, s.line_start = sym.line_start,
+                                  s.line_end = sym.line_end, s.visibility = sym.visibility
+                    ON MATCH SET s.kind = sym.kind, s.line_start = sym.line_start,
+                                 s.line_end = sym.line_end, s.visibility = sym.visibility
+                    MERGE (f)-[:DEFINES]->(s)
+                    """,
+                    repo_id=str(repo.id), file_path=file_path, symbols=sym_data,
+                )
+
+            if contains_data:
+                await neo_session.run(
+                    """
+                    UNWIND $pairs AS pair
+                    MATCH (p:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: pair.parent})
+                    MATCH (c:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: pair.child})
+                    MERGE (p)-[:CONTAINS]->(c)
+                    """,
+                    repo_id=str(repo.id), file_path=file_path, pairs=contains_data,
+                )
+
+            if imports:
+                import_data = [{"source": imp.source, "names": imp.names} for imp in imports]
+                await neo_session.run(
+                    """
+                    UNWIND $imports AS imp
+                    MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
+                    MERGE (m:Module {name: imp.source})
+                    MERGE (f)-[:IMPORTS]->(m)
+                    """,
+                    repo_id=str(repo.id), file_path=file_path, imports=import_data,
+                )
 
             await neo_session.run(
                 """
-                MATCH (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
+                MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
                 MERGE (r:Repository {id: $repo_id})
-                ON CREATE SET r.name = $repo_name
                 MERGE (r)-[:DEFINES]->(f)
                 """,
-                repo_id=str(repo.id),
-                file_path=file_path,
-                repo_name=repo.name,
+                repo_id=str(repo.id), file_path=file_path, repo_name=repo.name,
             )
-
-            for imp in imports:
-                await neo_session.run(
-                    """
-                    MATCH (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
-                    MERGE (m:Module {name: $source})
-                    MERGE (f)-[:IMPORTS {names: $names}]->(m)
-                    """,
-                    repo_id=str(repo.id),
-                    file_path=file_path,
-                    source=imp.source,
-                    names=imp.names,
-                )
-
-    @staticmethod
-    async def _create_symbol_node(
-        neo_session, repo: Repository, file_path: str, sym: ExtractedSymbol
-    ) -> None:
-        await neo_session.run(
-            """
-            MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
-            MERGE (s:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: $name})
-            ON CREATE SET s.kind = $kind, s.line_start = $line_start,
-                          s.line_end = $line_end, s.visibility = $visibility
-            ON MATCH SET s.kind = $kind, s.line_start = $line_start,
-                         s.line_end = $line_end, s.visibility = $visibility
-            MERGE (f)-[:DEFINES]->(s)
-            """,
-            repo_id=str(repo.id),
-            file_path=file_path,
-            name=sym.name,
-            kind=sym.kind,
-            line_start=sym.line_start,
-            line_end=sym.line_end,
-            visibility=sym.visibility,
-        )
 
     async def _resolve_calls(
         self,
@@ -395,19 +397,16 @@ class CodeIndexer:
         from app.services.call_resolver import CallResolver, build_import_map
         from app.services.symbol_table import SymbolEntry, SymbolTable
 
+        rows = (await self.session.execute(
+            select(CodeSymbol, CodeFile.file_path)
+            .join(CodeFile)
+            .where(CodeFile.repo_id == repo.id)
+        )).all()
+
         symbol_table = SymbolTable()
-        symbols = (await self.session.execute(
-            select(CodeSymbol).join(CodeFile).where(CodeFile.repo_id == repo.id)
-        )).scalars().all()
+        symbol_by_id: dict[str, tuple] = {}
 
-        file_map: dict[UUID, str] = {}
-        for sym in symbols:
-            if sym.file_id not in file_map:
-                file = (await self.session.execute(
-                    select(CodeFile).where(CodeFile.id == sym.file_id)
-                )).scalar_one_or_none()
-                file_map[sym.file_id] = file.file_path if file else ""
-
+        for sym, file_path in rows:
             param_count = None
             if sym.signature:
                 params = sym.signature.strip("()").split(",")
@@ -415,66 +414,76 @@ class CodeIndexer:
 
             symbol_table.add(SymbolEntry(
                 node_id=str(sym.id),
-                file_path=file_map[sym.file_id],
+                file_path=file_path,
                 name=sym.name,
                 kind=sym.kind,
                 param_count=param_count,
                 owner_id=str(sym.parent_symbol_id) if sym.parent_symbol_id else None,
             ))
+            symbol_by_id[str(sym.id)] = (sym, file_path)
+
+        enclosing_index: dict[str, list[tuple[int, int, str]]] = {}
+        for sym, file_path in rows:
+            if sym.kind in ("function", "method"):
+                enclosing_index.setdefault(file_path, []).append(
+                    (sym.line_start, sym.line_end, sym.name)
+                )
+        for fp in enclosing_index:
+            enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
 
         import_map = build_import_map(all_file_paths, all_imports)
         resolver = CallResolver(symbol_table, import_map)
+        call_edges = []
+
+        for file_path, calls in all_calls.items():
+            for call in calls:
+                result = resolver.resolve(call, file_path)
+                if not result:
+                    continue
+
+                target_id, confidence = result
+
+                enclosing_name = None
+                for start, end, name in enclosing_index.get(file_path, []):
+                    if start <= call.line <= end:
+                        enclosing_name = name
+                        break
+
+                if not enclosing_name:
+                    continue
+
+                target_entry = symbol_by_id.get(target_id)
+                if not target_entry:
+                    continue
+
+                target_sym, target_file = target_entry
+
+                call_edges.append({
+                    "src_name": enclosing_name,
+                    "src_file": file_path,
+                    "tgt_name": target_sym.name,
+                    "tgt_file": target_file,
+                    "confidence": confidence,
+                    "line": call.line,
+                })
+
         calls_created = 0
-
-        async with self.graph_repo.driver.session() as neo_session:
-            for file_path, calls in all_calls.items():
-                for call in calls:
-                    result = resolver.resolve(call, file_path)
-                    if not result:
-                        continue
-
-                    target_id, confidence = result
-
-                    enclosing = (await self.session.execute(
-                        select(CodeSymbol).join(CodeFile).where(
-                            CodeFile.repo_id == repo.id,
-                            CodeFile.file_path == file_path,
-                            CodeSymbol.line_start <= call.line,
-                            CodeSymbol.line_end >= call.line,
-                            CodeSymbol.kind.in_(["function", "method"]),
-                        ).order_by(CodeSymbol.line_start.desc())
-                    )).scalars().first()
-
-                    if not enclosing:
-                        continue
-
-                    target_sym = None
-                    for s in symbols:
-                        if str(s.id) == target_id:
-                            target_sym = s
-                            break
-
-                    if not target_sym:
-                        continue
-
-                    target_file = file_map.get(target_sym.file_id, "")
-
+        if call_edges and self.graph_repo:
+            async with self.graph_repo.driver.session() as neo_session:
+                batch_size = 500
+                for i in range(0, len(call_edges), batch_size):
+                    batch = call_edges[i:i + batch_size]
                     await neo_session.run(
                         """
-                        MATCH (src:CodeSymbol {repo_id: $repo_id, name: $src_name, file_path: $src_file})
-                        MATCH (tgt:CodeSymbol {repo_id: $repo_id, name: $tgt_name, file_path: $tgt_file})
+                        UNWIND $edges AS edge
+                        MATCH (src:CodeSymbol {repo_id: $repo_id, name: edge.src_name, file_path: edge.src_file})
+                        MATCH (tgt:CodeSymbol {repo_id: $repo_id, name: edge.tgt_name, file_path: edge.tgt_file})
                         MERGE (src)-[r:CALLS]->(tgt)
-                        ON CREATE SET r.confidence = $confidence, r.line = $line
+                        ON CREATE SET r.confidence = edge.confidence, r.line = edge.line
                         """,
-                        repo_id=str(repo.id),
-                        src_name=enclosing.name,
-                        src_file=file_path,
-                        tgt_name=target_sym.name,
-                        tgt_file=target_file,
-                        confidence=confidence,
-                        line=call.line,
+                        repo_id=str(repo.id), edges=batch,
                     )
-                    calls_created += 1
+                    calls_created += len(batch)
 
         logger.info("Resolved %d CALLS edges for %s", calls_created, repo.name)
         return calls_created
