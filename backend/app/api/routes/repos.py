@@ -148,6 +148,8 @@ async def reindex_repo(
                 await idx.index_repo(repo_id, full=full)
         except Exception as e:
             logger.error(f"Background reindex failed for {repo_id}: {e}")
+            from app.api.websocket import event_manager
+            await event_manager.broadcast("repo.indexing_failed", {"repo_id": str(repo_id), "error": str(e)[:200]})
             try:
                 async with async_session_factory() as session:
                     from app.models.code import Repository

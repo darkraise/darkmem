@@ -48,10 +48,10 @@ export function useWebSocket() {
     ws.current = new WebSocket(url);
 
     ws.current.onmessage = (event) => {
-      const msg = JSON.parse(event.data as string) as { event?: string; data?: PipelineStatus };
+      const msg = JSON.parse(event.data as string) as { event?: string; data?: Record<string, unknown> };
 
       if (msg.event?.startsWith("pipeline.") && msg.data) {
-        showPipelineToast(msg.event, msg.data);
+        showPipelineToast(msg.event, msg.data as PipelineStatus);
         void qc.invalidateQueries({ queryKey: ["memories"] });
         void qc.invalidateQueries({ queryKey: ["stats"] });
         void qc.invalidateQueries({ queryKey: ["tags"] });
@@ -60,6 +60,26 @@ export function useWebSocket() {
         void qc.invalidateQueries({ queryKey: ["memories"] });
         void qc.invalidateQueries({ queryKey: ["stats"] });
         void qc.invalidateQueries({ queryKey: ["tags"] });
+      }
+
+      if (msg.event?.startsWith("repo.")) {
+        void qc.invalidateQueries({ queryKey: ["repos"] });
+        void qc.invalidateQueries({ queryKey: ["repoTasks"] });
+        void qc.invalidateQueries({ queryKey: ["repoStats"] });
+
+        if (msg.event === "repo.clone_completed") {
+          toast.success(`Repository ${msg.data?.name} cloned`);
+        } else if (msg.event === "repo.clone_failed") {
+          toast.error(`Clone failed: ${msg.data?.error}`);
+        } else if (msg.event === "repo.indexing_completed") {
+          toast.success(`Indexed ${msg.data?.files_changed} files, ${msg.data?.symbols_indexed} symbols`);
+        } else if (msg.event === "repo.indexing_failed") {
+          toast.error(`Indexing failed: ${msg.data?.error}`);
+        }
+      }
+
+      if (msg.event?.startsWith("enrichment.")) {
+        void qc.invalidateQueries({ queryKey: ["repoStats"] });
       }
     };
 

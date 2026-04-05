@@ -59,6 +59,7 @@ class RepoManager:
         return repo
 
     async def _clone_in_background(self, repo_id: UUID, data: RepoCreate) -> None:
+        from app.api.websocket import event_manager
         from app.database import async_session_factory
         try:
             async with async_session_factory() as session:
@@ -68,14 +69,17 @@ class RepoManager:
                 if not repo:
                     return
 
+                await event_manager.broadcast("repo.clone_started", {"repo_id": str(repo_id), "name": repo.name})
                 manager = RepoManager(session)
                 await manager._clone_repo(repo)
                 repo.status = "ready"
                 repo.status_message = None
                 logger.info(f"Background clone completed for {repo.name}")
                 await session.commit()
+                await event_manager.broadcast("repo.clone_completed", {"repo_id": str(repo_id), "name": repo.name})
         except Exception as e:
             logger.error(f"Background clone failed for repo {repo_id}: {e}")
+            await event_manager.broadcast("repo.clone_failed", {"repo_id": str(repo_id), "error": str(e)[:200]})
             try:
                 async with async_session_factory() as session:
                     repo = (await session.execute(

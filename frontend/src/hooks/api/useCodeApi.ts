@@ -97,11 +97,10 @@ export function useRepoStats() {
   });
 }
 
-export function useRepos(refetchInterval?: number) {
+export function useRepos() {
   return useQuery<Repo[]>({
     queryKey: ["repos"],
     queryFn: () => apiFetch("/repos"),
-    refetchInterval,
   });
 }
 
@@ -118,7 +117,6 @@ export function useRepoTasks(repoId: string | null) {
     queryKey: ["repoTasks", repoId],
     queryFn: () => apiFetch(`/repos/${repoId}/tasks`),
     enabled: !!repoId,
-    refetchInterval: 3000,
   });
 }
 

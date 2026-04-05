@@ -74,9 +74,14 @@ class CodeIndexer:
         else:
             changed_files, deleted_files = await self._diff_files(work_dir, old_sha, new_sha)
 
+        from app.api.websocket import event_manager
+
         repo.status = "indexing"
         repo.status_message = f"Indexing {len(changed_files)} files..."
         await self.session.commit()
+
+        total_files = len(changed_files)
+        await event_manager.broadcast("repo.indexing_started", {"repo_id": str(repo.id), "total_files": total_files})
 
         stats = {
             "status": "indexed",
@@ -97,11 +102,11 @@ class CodeIndexer:
                 logger.error("Error deleting data for %s: %s", rel_path, exc)
                 stats["errors"].append(f"delete:{rel_path}:{exc}")
 
-        total_files = len(changed_files)
         for i, rel_path in enumerate(changed_files):
             repo.status_message = f"Indexing file {i + 1}/{total_files}: {rel_path}"
             if i % 5 == 0:
                 await self.session.commit()
+                await event_manager.broadcast("repo.indexing_progress", {"repo_id": str(repo.id), "current": i + 1, "total": total_files, "file_path": rel_path})
             try:
                 result = await self._index_file(repo, work_dir, rel_path)
                 if result is None:
@@ -119,6 +124,8 @@ class CodeIndexer:
         repo.status = "ready"
         repo.status_message = None
         await self.session.commit()
+
+        await event_manager.broadcast("repo.indexing_completed", {"repo_id": str(repo.id), "files_changed": stats["files_changed"], "symbols_indexed": stats["symbols_indexed"]})
 
         logger.info(
             "Indexed %s: %d changed, %d skipped, %d deleted, %d symbols, %d errors",

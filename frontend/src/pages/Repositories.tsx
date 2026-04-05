@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   useRepoStats,
   useRepos,
@@ -261,15 +261,10 @@ function RepoRow({ repo, onReindex, onDelete }: { repo: Repo; onReindex: (id: st
 
 export default function Repositories() {
   const { data: stats } = useRepoStats();
-  const [polling, setPolling] = useState(false);
-  const { data: repos, isLoading } = useRepos(polling ? 3000 : undefined);
+  const { data: repos, isLoading } = useRepos();
   const deleteRepo = useDeleteRepo();
   const reindexRepo = useReindexRepo();
   const triggerEnrichment = useTriggerEnrichment();
-  useEffect(() => {
-    const hasTransient = repos?.some((r) => r.status === "cloning" || r.status === "indexing");
-    setPolling(!!hasTransient);
-  }, [repos]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
 

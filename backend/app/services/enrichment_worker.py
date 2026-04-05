@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.code import CodeSymbol
 from app.services.llm import LLMOrchestrator
@@ -63,6 +63,12 @@ class EnrichmentWorker:
                     symbol.enrichment_status = "failed"
 
             await session.commit()
+
+            from app.api.websocket import event_manager
+            pending_count = (await session.execute(
+                select(func.count()).select_from(CodeSymbol).where(CodeSymbol.enrichment_status == "pending")
+            )).scalar() or 0
+            await event_manager.broadcast("enrichment.batch_completed", {"processed": processed, "pending_remaining": pending_count})
         return processed
 
     async def run_loop(self) -> None:
