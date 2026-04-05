@@ -167,30 +167,38 @@ class RepoManager:
     async def pull_repo(self, repo: Repository) -> str | None:
         cwd = self.repo_working_dir(repo)
 
-        if not cwd.exists() or not (cwd / ".git").exists():
-            if repo.url:
-                if cwd.exists():
-                    shutil.rmtree(cwd, onexc=_force_remove)
-                await self._clone_repo(repo)
-                cwd = self._clone_path(repo)
-            else:
-                return None
+        needs_clone = not cwd.exists() or not (cwd / ".git").exists()
 
-        token = await self.get_auth_token(repo)
-        env: dict[str, str] = {}
-        if token and repo.url:
-            auth_url = self._auth_url(repo.url, token)
-            env["GIT_ASKPASS"] = "echo"
+        if not needs_clone:
             try:
-                await self._run_git(cwd, ["git", "remote", "set-url", "origin", auth_url], env=env)
-            except RuntimeError:
-                await self._run_git(cwd, ["git", "remote", "add", "origin", auth_url], env=env)
+                token = await self.get_auth_token(repo)
+                env: dict[str, str] = {}
+                if token and repo.url:
+                    auth_url = self._auth_url(repo.url, token)
+                    env["GIT_ASKPASS"] = "echo"
+                    try:
+                        await self._run_git(cwd, ["git", "remote", "set-url", "origin", auth_url], env=env)
+                    except RuntimeError:
+                        await self._run_git(cwd, ["git", "remote", "add", "origin", auth_url], env=env)
 
-        await self._run_git(cwd, ["git", "fetch", "origin", repo.default_branch], env=env)
-        await self._run_git(cwd, ["git", "reset", "--hard", f"origin/{repo.default_branch}"], env=env)
+                await self._run_git(cwd, ["git", "fetch", "origin", repo.default_branch], env=env)
+                await self._run_git(cwd, ["git", "reset", "--hard", f"origin/{repo.default_branch}"], env=env)
 
-        result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"], env=env)
-        return result.strip() if result else None
+                result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"], env=env)
+                return result.strip() if result else None
+            except RuntimeError as e:
+                logger.warning("Pull failed for %s, will re-clone: %s", repo.name, e)
+                needs_clone = True
+
+        if needs_clone and repo.url:
+            if cwd.exists():
+                shutil.rmtree(cwd, onexc=_force_remove)
+            await self._clone_repo(repo)
+            cwd = self._clone_path(repo)
+            result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"])
+            return result.strip() if result else None
+
+        return None
 
     def repo_working_dir(self, repo: Repository) -> Path:
         if repo.local_path:
