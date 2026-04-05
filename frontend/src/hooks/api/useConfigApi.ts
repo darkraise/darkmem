@@ -68,3 +68,37 @@ export function useResetSystemPrompt() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["systemPrompts"] }),
   });
 }
+
+export interface EnrichmentConfig {
+  enabled: boolean;
+  batch_size: number;
+  interval_seconds: number;
+}
+
+export function useEnrichmentConfig() {
+  return useQuery<EnrichmentConfig>({
+    queryKey: ["enrichmentConfig"],
+    queryFn: () => apiFetch("/config/enrichment"),
+  });
+}
+
+export function useUpdateEnrichmentConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: EnrichmentConfig) =>
+      apiFetch("/config/enrichment", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["enrichmentConfig"] }),
+  });
+}
+
+export function useTriggerEnrichment() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ processed: number }>("/config/enrichment/trigger", {
+        method: "POST",
+      }),
+  });
+}

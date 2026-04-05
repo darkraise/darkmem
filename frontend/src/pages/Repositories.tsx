@@ -5,6 +5,7 @@ import {
   useCreateRepo,
   useDeleteRepo,
   useReindexRepo,
+  useTriggerEnrichment,
 } from "@/hooks/useApi";
 import type { RepoCreateParams } from "@/hooks/useApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -158,6 +159,7 @@ export default function Repositories() {
   const { data: repos, isLoading } = useRepos(polling ? 3000 : undefined);
   const deleteRepo = useDeleteRepo();
   const reindexRepo = useReindexRepo();
+  const triggerEnrichment = useTriggerEnrichment();
   useEffect(() => {
     const hasTransient = repos?.some((r) => r.status === "cloning" || r.status === "indexing");
     setPolling(!!hasTransient);
@@ -188,22 +190,38 @@ export default function Repositories() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Repositories</h2>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger
-            render={
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-1" />
-                Add Repo
-              </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              triggerEnrichment.mutate(undefined, {
+                onSuccess: (data) =>
+                  toast.success(`Enriched ${data.processed} symbols`),
+                onError: () => toast.error("Enrichment failed"),
+              })
             }
-          />
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Repository</DialogTitle>
-            </DialogHeader>
-            <AddRepoDialog onClose={() => setDialogOpen(false)} />
-          </DialogContent>
-        </Dialog>
+            disabled={triggerEnrichment.isPending}
+          >
+            {triggerEnrichment.isPending ? "Enriching..." : "Run Enrichment"}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger
+              render={
+                <Button size="sm">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Repo
+                </Button>
+              }
+            />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Repository</DialogTitle>
+              </DialogHeader>
+              <AddRepoDialog onClose={() => setDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

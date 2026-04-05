@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useSystemPrompts,
   useUpdateSystemPrompt,
   useResetSystemPrompt,
+  useEnrichmentConfig,
+  useUpdateEnrichmentConfig,
+  useTriggerEnrichment,
   type SystemPromptProfile,
 } from "@/hooks/useApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -129,6 +134,104 @@ function PromptCard({
   );
 }
 
+function EnrichmentCard() {
+  const { data: config } = useEnrichmentConfig();
+  const updateConfig = useUpdateEnrichmentConfig();
+  const trigger = useTriggerEnrichment();
+
+  const [enabled, setEnabled] = useState(false);
+  const [batchSize, setBatchSize] = useState(5);
+  const [interval, setInterval] = useState(10);
+
+  useEffect(() => {
+    if (config) {
+      setEnabled(config.enabled);
+      setBatchSize(config.batch_size);
+      setInterval(config.interval_seconds);
+    }
+  }, [config]);
+
+  const handleSave = () => {
+    updateConfig.mutate(
+      { enabled, batch_size: batchSize, interval_seconds: interval },
+      {
+        onSuccess: () => toast.success("Enrichment config saved"),
+        onError: (err) =>
+          toast.error(`Failed to save: ${(err as Error).message}`),
+      },
+    );
+  };
+
+  const handleTrigger = () => {
+    trigger.mutate(undefined, {
+      onSuccess: (data) => {
+        if (data.processed > 0) {
+          toast.success(`Enriched ${data.processed} symbols`);
+        } else {
+          toast.info("No pending symbols");
+        }
+      },
+      onError: () => toast.error("Enrichment failed"),
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Enrichment Worker</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          LLM-powered code symbol summarization
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="text-sm">Enabled</label>
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Batch Size</label>
+            <Input
+              type="number"
+              min={1}
+              value={batchSize}
+              onChange={(e) => setBatchSize(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">
+              Interval (seconds)
+            </label>
+            <Input
+              type="number"
+              min={1}
+              value={interval}
+              onChange={(e) => setInterval(Number(e.target.value))}
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={updateConfig.isPending}
+          >
+            {updateConfig.isPending ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTrigger}
+            disabled={trigger.isPending}
+          >
+            {trigger.isPending ? "Running..." : "Run Now"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Settings() {
   const { data: prompts, isLoading, error } = useSystemPrompts();
   const [editingPurpose, setEditingPurpose] = useState<string | null>(null);
@@ -161,6 +264,11 @@ export default function Settings() {
             onCancel={() => setEditingPurpose(null)}
           />
         ))}
+      </div>
+
+      <h3 className="text-lg font-semibold mt-8 mb-4">Workers</h3>
+      <div className="grid grid-cols-1 gap-4">
+        <EnrichmentCard />
       </div>
     </div>
   );
