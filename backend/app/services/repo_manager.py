@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories"))
 
 
+def _force_remove(func, path, exc_info):
+    import stat
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
 class RepoManager:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -144,7 +150,7 @@ class RepoManager:
 
         clone_dir = self._clone_path(repo)
         if clone_dir.exists():
-            shutil.rmtree(clone_dir)
+            shutil.rmtree(clone_dir, onexc=_force_remove)
 
         await self.session.delete(repo)
         await self.session.commit()
@@ -164,7 +170,7 @@ class RepoManager:
         if not cwd.exists() or not (cwd / ".git").exists():
             if repo.url:
                 if cwd.exists():
-                    shutil.rmtree(cwd, ignore_errors=True)
+                    shutil.rmtree(cwd, onexc=_force_remove)
                 await self._clone_repo(repo)
                 cwd = self._clone_path(repo)
             else:
@@ -197,7 +203,7 @@ class RepoManager:
 
         dest = self._clone_path(repo)
         if dest.exists():
-            shutil.rmtree(dest, ignore_errors=True)
+            shutil.rmtree(dest, onexc=_force_remove)
 
         dest.parent.mkdir(parents=True, exist_ok=True)
 
