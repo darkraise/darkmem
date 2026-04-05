@@ -105,6 +105,35 @@ export function useRepos(refetchInterval?: number) {
   });
 }
 
+export interface RepoTask {
+  id: string;
+  kind: string;
+  status: string;
+  message: string;
+  created_at: string;
+}
+
+export function useRepoTasks(repoId: string | null) {
+  return useQuery<RepoTask[]>({
+    queryKey: ["repoTasks", repoId],
+    queryFn: () => apiFetch(`/repos/${repoId}/tasks`),
+    enabled: !!repoId,
+    refetchInterval: 3000,
+  });
+}
+
+export function useCancelTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ repoId, taskId }: { repoId: string; taskId: string }) =>
+      apiFetch(`/repos/${repoId}/tasks/${taskId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["repoTasks"] });
+      qc.invalidateQueries({ queryKey: ["repos"] });
+    },
+  });
+}
+
 export function useCreateRepo() {
   const qc = useQueryClient();
   return useMutation({

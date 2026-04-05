@@ -6,8 +6,10 @@ import {
   useDeleteRepo,
   useReindexRepo,
   useTriggerEnrichment,
+  useRepoTasks,
+  useCancelTask,
 } from "@/hooks/useApi";
-import type { RepoCreateParams } from "@/hooks/useApi";
+import type { RepoCreateParams, RepoTask } from "@/hooks/useApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2, X } from "lucide-react";
+import type { Repo } from "@/hooks/useApi";
 import { toast } from "sonner";
 
 function relativeTime(iso: string): string {
@@ -153,6 +156,109 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+function RepoRow({ repo, onReindex, onDelete }: { repo: Repo; onReindex: (id: string) => void; onDelete: (id: string, name: string) => void }) {
+  const { data: tasks } = useRepoTasks(
+    repo.status === "cloning" || repo.status === "indexing" ? repo.id : null
+  );
+  const cancelTask = useCancelTask();
+
+  return (
+    <div className="px-4 py-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            repo.status === "cloning" ? "bg-yellow-500 animate-pulse"
+            : repo.status === "error" ? "bg-red-500"
+            : repo.status === "cancelled" ? "bg-orange-500"
+            : repo.status === "indexing" ? "bg-blue-500 animate-pulse"
+            : repo.is_active ? "bg-green-500"
+            : "bg-muted-foreground"
+          }`}
+          title={repo.status_message ?? repo.status}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold truncate">{repo.name}</span>
+            <Badge
+              variant={PROVIDER_VARIANT[repo.provider.toLowerCase()] ?? "outline"}
+              className="text-[10px] px-1.5 py-0 shrink-0"
+            >
+              {repo.provider}
+            </Badge>
+            {(repo.status === "cloning" || repo.status === "indexing") && (
+              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${
+                repo.status === "cloning" ? "text-yellow-500 border-yellow-500" : "text-blue-500 border-blue-500"
+              }`}>
+                {repo.status_message ?? (repo.status === "cloning" ? "Cloning..." : "Indexing...")}
+              </Badge>
+            )}
+            {repo.status === "error" && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-destructive border-destructive" title={repo.status_message ?? ""}>
+                Error: {repo.status_message ? repo.status_message.slice(0, 60) : "Unknown"}
+              </Badge>
+            )}
+            {repo.status === "cancelled" && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-orange-500 border-orange-500">
+                Cancelled
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+            <span className="truncate max-w-[300px]">{repo.url ?? repo.local_path ?? "—"}</span>
+            <span className="shrink-0">·</span>
+            <span className="shrink-0">{repo.last_indexed_at ? relativeTime(repo.last_indexed_at) : "Never"}</span>
+            <span className="shrink-0">·</span>
+            <span className="shrink-0">{repo.file_count} files</span>
+            <span className="shrink-0">·</span>
+            <span className="shrink-0">{repo.symbol_count} symbols</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={repo.status === "cloning" || repo.status === "indexing"}
+            onClick={() => onReindex(repo.id)}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${repo.status === "indexing" ? "animate-spin" : ""}`} />
+            {repo.status === "indexing" ? "Indexing..." : "Reindex"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+            onClick={() => onDelete(repo.id, repo.name)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
+      {tasks && tasks.length > 0 && (
+        <div className="ml-5 space-y-1">
+          {tasks.map((task) => (
+            <div key={task.id} className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+              <Badge variant="outline" className="text-[9px] px-1 py-0">{task.kind}</Badge>
+              <span className="truncate flex-1">{task.message}</span>
+              <span className="shrink-0">{relativeTime(task.created_at)}</span>
+              <button
+                className="text-muted-foreground hover:text-destructive shrink-0"
+                onClick={() => cancelTask.mutate({ repoId: repo.id, taskId: task.id }, {
+                  onSuccess: () => toast.success(`Task ${task.kind} cancelled`),
+                  onError: () => toast.error("Failed to cancel task"),
+                })}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Repositories() {
   const { data: stats } = useRepoStats();
   const [polling, setPolling] = useState(false);
@@ -249,93 +355,7 @@ export default function Repositories() {
           <CardContent className="p-0">
             <div className="divide-y divide-border">
               {repos.map((repo) => (
-                <div
-                  key={repo.id}
-                  className="flex items-center gap-3 px-4 py-3"
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      repo.status === "cloning" ? "bg-yellow-500 animate-pulse"
-                      : repo.status === "error" ? "bg-red-500"
-                      : repo.status === "indexing" ? "bg-blue-500 animate-pulse"
-                      : repo.is_active ? "bg-green-500"
-                      : "bg-muted-foreground"
-                    }`}
-                    title={repo.status_message ?? repo.status}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold truncate">
-                        {repo.name}
-                      </span>
-                      <Badge
-                        variant={
-                          PROVIDER_VARIANT[repo.provider.toLowerCase()] ??
-                          "outline"
-                        }
-                        className="text-[10px] px-1.5 py-0 shrink-0"
-                      >
-                        {repo.provider}
-                      </Badge>
-                      {repo.status === "cloning" && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-yellow-500 border-yellow-500">
-                          {repo.status_message ?? "Cloning..."}
-                        </Badge>
-                      )}
-                      {repo.status === "error" && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-destructive border-destructive" title={repo.status_message ?? ""}>
-                          Error: {repo.status_message ? repo.status_message.slice(0, 60) : "Unknown"}
-                        </Badge>
-                      )}
-                      {repo.status === "indexing" && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-blue-500 border-blue-500">
-                          {repo.status_message ?? "Indexing..."}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                      <span className="truncate max-w-[300px]">
-                        {repo.url ?? repo.local_path ?? "—"}
-                      </span>
-                      <span className="shrink-0">·</span>
-                      <span className="shrink-0">
-                        {repo.last_indexed_at
-                          ? relativeTime(repo.last_indexed_at)
-                          : "Never"}
-                      </span>
-                      <span className="shrink-0">·</span>
-                      <span className="shrink-0">
-                        {repo.file_count} files
-                      </span>
-                      <span className="shrink-0">·</span>
-                      <span className="shrink-0">
-                        {repo.symbol_count} symbols
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={repo.status === "cloning" || repo.status === "indexing"}
-                      onClick={() => handleReindex(repo.id)}
-                    >
-                      <RefreshCw
-                        className={`w-3.5 h-3.5 mr-1 ${repo.status === "indexing" ? "animate-spin" : ""}`}
-                      />
-                      {repo.status === "indexing" ? "Indexing..." : "Reindex"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(repo.id, repo.name)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                <RepoRow key={repo.id} repo={repo} onReindex={handleReindex} onDelete={handleDelete} />
               ))}
             </div>
           </CardContent>

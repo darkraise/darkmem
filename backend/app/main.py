@@ -158,10 +158,8 @@ async def lifespan(app: FastAPI):
     if enrichment_task:
         enrichment_task.cancel()
 
-    from app.services.repo_manager import RepoManager
-    from app.api.routes.repos import cancel_active_reindex_tasks
-    RepoManager.cancel_active_tasks()
-    cancel_active_reindex_tasks()
+    from app.services.task_registry import TaskRegistry
+    TaskRegistry.cancel_all()
 
     # Cleanup
     if llm:

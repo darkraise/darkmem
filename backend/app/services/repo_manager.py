@@ -20,16 +20,8 @@ REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories")
 
 
 class RepoManager:
-    _active_tasks: set[asyncio.Task] = set()
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-
-    @classmethod
-    def cancel_active_tasks(cls):
-        for task in cls._active_tasks:
-            task.cancel()
-        cls._active_tasks.clear()
 
     async def create(self, data: RepoCreate) -> Repository:
         repo = Repository(
@@ -54,9 +46,9 @@ class RepoManager:
         await self.session.refresh(repo)
 
         if data.url:
+            from app.services.task_registry import TaskRegistry
             task = asyncio.create_task(self._clone_in_background(repo.id, data))
-            RepoManager._active_tasks.add(task)
-            task.add_done_callback(RepoManager._active_tasks.discard)
+            TaskRegistry.register(repo.id, "clone", task, "Cloning repository...")
 
         return repo
 

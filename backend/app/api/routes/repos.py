@@ -18,15 +18,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
 
-_active_reindex_tasks: set[asyncio.Task] = set()
-
-
-def cancel_active_reindex_tasks():
-    for task in _active_reindex_tasks:
-        task.cancel()
-    _active_reindex_tasks.clear()
-
-
 def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -> RepoResponse:
     return RepoResponse(
         id=repo.id,
@@ -171,10 +162,40 @@ async def reindex_repo(
             except Exception as inner_e:
                 logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
+    from app.services.task_registry import TaskRegistry
     task = asyncio.create_task(_run_index())
-    _active_reindex_tasks.add(task)
-    task.add_done_callback(_active_reindex_tasks.discard)
+    TaskRegistry.register(repo_id, "reindex", task, "Indexing repository...")
     return {"status": "indexing", "repo_id": str(repo_id)}
+
+
+@router.get("/{repo_id}/tasks")
+async def get_repo_tasks(
+    repo_id: UUID,
+    _user=Depends(require_auth),
+):
+    from app.services.task_registry import TaskRegistry
+    return TaskRegistry.get_repo_tasks(repo_id)
+
+
+@router.delete("/{repo_id}/tasks/{task_id}")
+async def cancel_repo_task(
+    repo_id: UUID,
+    task_id: str,
+    _user=Depends(require_auth),
+    manager: RepoManager = Depends(get_repo_manager),
+):
+    from app.services.task_registry import TaskRegistry
+    cancelled = TaskRegistry.cancel(task_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Task not found or already completed")
+
+    repo = await manager.get(repo_id)
+    if repo and repo.status in ("cloning", "indexing"):
+        repo.status = "cancelled"
+        repo.status_message = f"Task {task_id} cancelled by user"
+        await manager.session.flush()
+
+    return {"status": "cancelled", "task_id": task_id}
 
 
 @router.post("/webhook")
