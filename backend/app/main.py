@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
@@ -8,8 +9,10 @@ from neo4j import AsyncGraphDatabase
 from qdrant_client import AsyncQdrantClient
 from starlette.routing import Mount
 
+from sqlalchemy import select
+
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, config, graph, memories, repos, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, graph, memories, repos, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.repositories.graph import Neo4jGraphRepository
@@ -57,6 +60,8 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Could not auto-detect embedding dimensions: {e}")
         vector_repo = QdrantVectorRepository(qdrant_client, dimensions=embedding_dims)
         await vector_repo.ensure_collection()
+        code_vector_repo = QdrantVectorRepository(qdrant_client, dimensions=embedding_dims, collection_name="code_chunks")
+        await code_vector_repo.ensure_collection()
         graph_repo = Neo4jGraphRepository(neo4j_driver)
 
         pipeline = ProcessingPipeline(llm, vector_repo, graph_repo)
@@ -83,9 +88,39 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed data: {e}")
 
+    async def periodic_repo_sync():
+        while True:
+            try:
+                await asyncio.sleep(300)
+                async with async_session_factory() as sync_session:
+                    from app.services.code_indexer import CodeIndexer
+                    from app.models.code import Repository
+                    repos_result = (await sync_session.execute(
+                        select(Repository).where(Repository.is_active == True)
+                    )).scalars().all()
+                    for repo in repos_result:
+                        if repo.last_indexed_at:
+                            from datetime import datetime, timezone, timedelta
+                            next_sync = repo.last_indexed_at + timedelta(minutes=repo.sync_interval_minutes)
+                            if datetime.now(timezone.utc) < next_sync:
+                                continue
+                        indexer = CodeIndexer(sync_session, llm, vector_repo, graph_repo)
+                        try:
+                            await indexer.index_repo(repo.id)
+                            await sync_session.commit()
+                        except Exception as e:
+                            await sync_session.rollback()
+                            logger.error(f"Periodic sync failed for {repo.name}: {e}")
+            except Exception as e:
+                logger.error(f"Periodic sync loop error: {e}")
+
+    sync_task = asyncio.create_task(periodic_repo_sync())
+
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
         yield
+
+    sync_task.cancel()
 
     # Cleanup
     if llm:
@@ -115,6 +150,7 @@ app.include_router(config.router)
 app.include_router(vectors.router)
 app.include_router(chat.router)
 app.include_router(repos.router)
+app.include_router(code.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)

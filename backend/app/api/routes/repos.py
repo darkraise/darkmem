@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status
 
 from app.api.auth import require_auth
-from app.api.deps import get_repo_manager
+from app.api.deps import get_code_indexer, get_repo_manager
 from app.models.code import Repository
 from app.schemas.code import RepoCreate, RepoResponse, RepoUpdate
+from app.services.code_indexer import CodeIndexer
 from app.services.repo_manager import RepoManager
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
@@ -82,3 +83,45 @@ async def delete_repo(
 ):
     if not await manager.delete(repo_id):
         raise HTTPException(status_code=404, detail="Repository not found")
+
+
+@router.post("/{repo_id}/reindex")
+async def reindex_repo(
+    repo_id: UUID,
+    full: bool = False,
+    _user=Depends(require_auth),
+    indexer: CodeIndexer = Depends(get_code_indexer),
+):
+    result = await indexer.index_repo(repo_id, full=full)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/webhook")
+async def webhook(
+    request: FastAPIRequest,
+    indexer: CodeIndexer = Depends(get_code_indexer),
+    manager: RepoManager = Depends(get_repo_manager),
+):
+    body = await request.json()
+    repo_url = None
+    if "repository" in body:
+        repo_url = (
+            body["repository"].get("clone_url")
+            or body["repository"].get("html_url")
+            or body["repository"].get("url")
+        )
+    if not repo_url:
+        return {"status": "ignored", "reason": "no repository URL found"}
+    repos_list = await manager.list_all()
+    matched = None
+    for item in repos_list:
+        r = item["repo"]
+        if r.url and repo_url.rstrip(".git").rstrip("/") in r.url.rstrip(".git").rstrip("/"):
+            matched = r
+            break
+    if not matched:
+        return {"status": "ignored", "reason": "no matching repository"}
+    result = await indexer.index_repo(matched.id)
+    return {"status": "indexed", "repo": matched.name, "result": result}

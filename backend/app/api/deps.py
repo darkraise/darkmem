@@ -7,6 +7,7 @@ from app.services.chat import ChatService
 from app.services.analytics import AnalyticsService
 from app.services.graph import GraphService
 from app.services.memory import MemoryService
+from app.services.code_indexer import CodeIndexer
 from app.services.repo_manager import RepoManager
 
 
@@ -36,6 +37,13 @@ async def get_graph_service(request: Request, session: AsyncSession = Depends(ge
     graph_repo = getattr(request.app.state, "graph_repo", None)
     llm = getattr(request.app.state, "llm", None)
     return GraphService(session, vector_repo, graph_repo, llm)
+
+
+async def get_code_indexer(request: Request, session: AsyncSession = Depends(get_session)) -> CodeIndexer:
+    llm = getattr(request.app.state, "llm", None)
+    vector_repo = getattr(request.app.state, "vector_repo", None)
+    graph_repo = getattr(request.app.state, "graph_repo", None)
+    return CodeIndexer(session, llm, vector_repo, graph_repo)
 
 
 async def get_repo_manager(session: AsyncSession = Depends(get_session)) -> RepoManager:
