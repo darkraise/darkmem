@@ -194,10 +194,10 @@ export function CodeGraphRenderer({
     });
 
     const nodeCount = graph.order;
-    const gravity = nodeCount < 500 ? 0.8 : nodeCount < 2000 ? 0.5 : 0.3;
-    const scalingRatio = nodeCount < 500 ? 15 : nodeCount < 2000 ? 30 : 60;
-    const slowDown = nodeCount < 500 ? 1 : nodeCount < 2000 ? 2 : 3;
-    const layoutTimeout = nodeCount < 500 ? 5000 : 15000;
+    const gravity = nodeCount < 500 ? 0.05 : nodeCount < 2000 ? 0.02 : 0.01;
+    const scalingRatio = nodeCount < 500 ? 20 : nodeCount < 2000 ? 50 : 80;
+    const slowDown = nodeCount < 500 ? 2 : nodeCount < 2000 ? 5 : 10;
+    const layoutTimeout = nodeCount < 500 ? 8000 : nodeCount < 2000 ? 20000 : 30000;
 
     const sigma = new Sigma(graph, containerRef.current, {
       allowInvalidContainer: true,
@@ -327,9 +327,10 @@ export function CodeGraphRenderer({
     const fa2 = new FA2Layout(graph, {
       settings: {
         ...inferSettings(graph),
-        linLogMode: true,
-        outboundAttractionDistribution: false,
-        strongGravityMode: true,
+        linLogMode: false,
+        outboundAttractionDistribution: true,
+        strongGravityMode: false,
+        barnesHutOptimize: nodeCount > 200,
         gravity,
         scalingRatio,
         slowDown,
