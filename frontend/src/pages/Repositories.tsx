@@ -1,0 +1,318 @@
+import { useState } from "react";
+import {
+  useRepoStats,
+  useRepos,
+  useCreateRepo,
+  useDeleteRepo,
+  useReindexRepo,
+} from "@/hooks/useApi";
+import type { RepoCreateParams } from "@/hooks/useApi";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+const PROVIDER_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
+  github: "default",
+  gitlab: "secondary",
+  local: "outline",
+};
+
+function StatValue({ label, value }: { label: string; value: string | number }) {
+  return (
+    <Card>
+      <CardContent className="pt-4">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+          {label}
+        </div>
+        <div className="text-3xl font-bold mt-1">{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AddRepoDialog({ onClose }: { onClose: () => void }) {
+  const createRepo = useCreateRepo();
+  const [form, setForm] = useState<RepoCreateParams>({
+    name: "",
+    url: "",
+    local_path: "",
+    provider: "github",
+    default_branch: "main",
+    auth_token: "",
+    sync_interval_minutes: 30,
+  });
+
+  const set = (field: keyof RepoCreateParams, value: string | number) =>
+    setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+
+    const params: RepoCreateParams = { name: form.name.trim() };
+    if (form.url) params.url = form.url;
+    if (form.local_path) params.local_path = form.local_path;
+    if (form.provider) params.provider = form.provider;
+    if (form.default_branch) params.default_branch = form.default_branch;
+    if (form.auth_token) params.auth_token = form.auth_token;
+    if (form.sync_interval_minutes != null)
+      params.sync_interval_minutes = form.sync_interval_minutes;
+
+    createRepo.mutate(params, {
+      onSuccess: () => {
+        toast.success("Repository added");
+        onClose();
+      },
+      onError: () => toast.error("Failed to add repository"),
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label className="text-xs text-muted-foreground">Name *</label>
+        <Input
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+          required
+        />
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground">URL</label>
+        <Input
+          value={form.url ?? ""}
+          onChange={(e) => set("url", e.target.value)}
+          placeholder="https://github.com/org/repo"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground">Local path</label>
+        <Input
+          value={form.local_path ?? ""}
+          onChange={(e) => set("local_path", e.target.value)}
+          placeholder="/home/user/projects/repo"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground">Provider</label>
+        <select
+          value={form.provider ?? "github"}
+          onChange={(e) => set("provider", e.target.value)}
+          className="w-full h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
+        >
+          <option value="github">GitHub</option>
+          <option value="gitlab">GitLab</option>
+          <option value="local">Local</option>
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Default branch</label>
+          <Input
+            value={form.default_branch ?? "main"}
+            onChange={(e) => set("default_branch", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">
+            Sync interval (min)
+          </label>
+          <Input
+            type="number"
+            value={form.sync_interval_minutes ?? 30}
+            onChange={(e) => set("sync_interval_minutes", Number(e.target.value))}
+            min={1}
+          />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground">Auth token</label>
+        <Input
+          type="password"
+          value={form.auth_token ?? ""}
+          onChange={(e) => set("auth_token", e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
+      <Button type="submit" className="w-full" disabled={createRepo.isPending}>
+        {createRepo.isPending ? "Adding..." : "Add Repository"}
+      </Button>
+    </form>
+  );
+}
+
+export default function Repositories() {
+  const { data: stats } = useRepoStats();
+  const { data: repos, isLoading } = useRepos();
+  const deleteRepo = useDeleteRepo();
+  const reindexRepo = useReindexRepo();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [reindexingId, setReindexingId] = useState<string | null>(null);
+
+  const handleReindex = (id: string) => {
+    setReindexingId(id);
+    reindexRepo.mutate(id, {
+      onSuccess: () => {
+        toast.success("Reindex started");
+        setReindexingId(null);
+      },
+      onError: () => {
+        toast.error("Reindex failed");
+        setReindexingId(null);
+      },
+    });
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    if (!window.confirm(`Delete repository "${name}"?`)) return;
+    deleteRepo.mutate(id, {
+      onSuccess: () => toast.success("Repository deleted"),
+      onError: () => toast.error("Failed to delete repository"),
+    });
+  };
+
+  const enrichmentLabel = stats
+    ? `${stats.enrichment_completed}/${stats.enrichment_completed + stats.enrichment_pending}`
+    : "—";
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Repositories</h2>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger
+            render={
+              <Button size="sm">
+                <Plus className="w-4 h-4 mr-1" />
+                Add Repo
+              </Button>
+            }
+          />
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Repository</DialogTitle>
+            </DialogHeader>
+            <AddRepoDialog onClose={() => setDialogOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatValue label="Repos" value={stats?.total_repos ?? "—"} />
+        <StatValue label="Files" value={stats?.total_files ?? "—"} />
+        <StatValue label="Symbols" value={stats?.total_symbols ?? "—"} />
+        <StatValue label="Enrichment" value={enrichmentLabel} />
+      </div>
+
+      {isLoading && <p className="text-muted-foreground">Loading...</p>}
+
+      {!isLoading && repos?.length === 0 && (
+        <p className="text-muted-foreground">
+          No repositories yet. Add one to get started.
+        </p>
+      )}
+
+      {repos && repos.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              Repositories
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border">
+              {repos.map((repo) => (
+                <div
+                  key={repo.id}
+                  className="flex items-center gap-3 px-4 py-3"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${repo.is_active ? "bg-green-500" : "bg-muted-foreground"}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold truncate">
+                        {repo.name}
+                      </span>
+                      <Badge
+                        variant={
+                          PROVIDER_VARIANT[repo.provider.toLowerCase()] ??
+                          "outline"
+                        }
+                        className="text-[10px] px-1.5 py-0 shrink-0"
+                      >
+                        {repo.provider}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                      <span className="truncate max-w-[300px]">
+                        {repo.url ?? repo.local_path ?? "—"}
+                      </span>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0">
+                        {repo.last_indexed_at
+                          ? relativeTime(repo.last_indexed_at)
+                          : "Never"}
+                      </span>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0">
+                        {repo.file_count} files
+                      </span>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0">
+                        {repo.symbol_count} symbols
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      disabled={reindexingId === repo.id}
+                      onClick={() => handleReindex(repo.id)}
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 mr-1 ${reindexingId === repo.id ? "animate-spin" : ""}`}
+                      />
+                      {reindexingId === repo.id ? "Indexing..." : "Reindex"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                      onClick={() => handleDelete(repo.id, repo.name)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
