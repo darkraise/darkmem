@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status
@@ -11,6 +12,8 @@ from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import RepoCreate, RepoResponse, RepoUpdate
 from app.services.code_indexer import CodeIndexer
 from app.services.repo_manager import RepoManager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
 
@@ -119,11 +122,49 @@ async def reindex_repo(
     full: bool = False,
     _user=Depends(require_auth),
     indexer: CodeIndexer = Depends(get_code_indexer),
+    manager: RepoManager = Depends(get_repo_manager),
 ):
-    result = await indexer.index_repo(repo_id, full=full)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    import asyncio
+    from app.database import async_session_factory
+
+    repo = await manager.get(repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    repo.status = "indexing"
+    repo.status_message = "Queued for indexing..."
+    await manager.session.flush()
+    await manager.session.commit()
+
+    async def _run_index():
+        try:
+            async with async_session_factory() as session:
+                from app.api.deps import get_code_indexer as _make_indexer
+                idx = CodeIndexer(
+                    session,
+                    indexer.llm,
+                    indexer.vector_repo,
+                    indexer.graph_repo,
+                )
+                await idx.index_repo(repo_id, full=full)
+        except Exception as e:
+            logger.error(f"Background reindex failed for {repo_id}: {e}")
+            try:
+                async with async_session_factory() as session:
+                    from app.models.code import Repository
+                    from sqlalchemy import select
+                    r = (await session.execute(
+                        select(Repository).where(Repository.id == repo_id)
+                    )).scalar_one_or_none()
+                    if r:
+                        r.status = "error"
+                        r.status_message = str(e)[:500]
+                        await session.commit()
+            except Exception:
+                pass
+
+    asyncio.create_task(_run_index())
+    return {"status": "indexing", "repo_id": str(repo_id)}
 
 
 @router.post("/webhook")
