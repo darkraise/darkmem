@@ -95,6 +95,29 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, offset=0):
+        base = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
+
+        if query:
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            base = base.where(Memory.content.ilike(f"%{escaped}%"))
+        if tags_any:
+            base = base.where(Memory.tags.any(Tag.name.in_(tags_any)))
+        if tags_all:
+            for tag_name in tags_all:
+                base = base.where(Memory.tags.any(Tag.name == tag_name))
+        if memory_type:
+            base = base.where(Memory.memory_type == memory_type)
+        if source:
+            base = base.where(Memory.source == source)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total = (await self.session.execute(count_stmt)).scalar() or 0
+
+        items_stmt = base.order_by(Memory.created_at.desc()).offset(offset).limit(limit)
+        result = await self.session.execute(items_stmt)
+        return list(result.scalars().all()), total
+
     async def set_tags(self, memory_id, tag_names):
         memory = await self.get(memory_id)
         if not memory:

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.auth import require_auth
 from app.api.deps import get_memory_service
 from app.models.memory import Memory
-from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate
+from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.services.memory import MemoryService
 
@@ -92,6 +92,21 @@ async def search_memories(
 ):
     memories = await service.search_memories(body)
     return [_to_response(m) for m in memories]
+
+
+@router.post("/search/paginated", response_model=PaginatedMemoryResponse)
+async def search_memories_paginated(
+    body: MemorySearchRequest,
+    _user=Depends(require_auth),
+    service: MemoryService = Depends(get_memory_service),
+):
+    result = await service.search_memories_paginated(body)
+    return PaginatedMemoryResponse(
+        items=[_to_response(m) for m in result["items"]],
+        total=result["total"],
+        limit=result["limit"],
+        offset=result["offset"],
+    )
 
 
 @router.post("/batch", response_model=list[MemoryResponse], status_code=status.HTTP_201_CREATED)

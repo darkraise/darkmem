@@ -40,6 +40,13 @@ class MemoryResponse(BaseModel):
     is_archived: bool
 
 
+class PaginatedMemoryResponse(BaseModel):
+    items: list[MemoryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class MemorySearchRequest(BaseModel):
     query: str | None = None
     tags_any: list[str] | None = None
@@ -47,6 +54,7 @@ class MemorySearchRequest(BaseModel):
     memory_type: str | None = None
     source: str | None = None
     limit: int = 20
+    offset: int = 0
 
 
 class MemoryBatchCreate(BaseModel):

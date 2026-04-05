@@ -103,6 +103,35 @@ class MemoryService:
             memory_type=params.memory_type, source=params.source, limit=params.limit,
         )
 
+    async def search_memories_paginated(self, params: MemorySearchRequest) -> dict:
+        if params.query and self.pipeline:
+            semantic_results = await self.pipeline.semantic_search(params.query, limit=params.limit + params.offset + 50)
+            if semantic_results:
+                memory_ids = [r["memory_id"] for r in semantic_results]
+                memories = []
+                for mid in memory_ids:
+                    m = await self.memory_repo.get(mid)
+                    if m and not m.is_archived:
+                        if params.memory_type and m.memory_type != params.memory_type:
+                            continue
+                        if params.source and m.source != params.source:
+                            continue
+                        if params.tags_any:
+                            tag_names = [t.name for t in m.tags]
+                            if not any(t in tag_names for t in params.tags_any):
+                                continue
+                        memories.append(m)
+                total = len(memories)
+                page = memories[params.offset:params.offset + params.limit]
+                return {"items": page, "total": total, "limit": params.limit, "offset": params.offset}
+
+        items, total = await self.memory_repo.search_by_tags_paginated(
+            query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
+            memory_type=params.memory_type, source=params.source,
+            limit=params.limit, offset=params.offset,
+        )
+        return {"items": items, "total": total, "limit": params.limit, "offset": params.offset}
+
     async def list_memories(self, offset: int = 0, limit: int = 50) -> tuple[list[Memory], int]:
         return await self.memory_repo.list_memories(offset=offset, limit=limit)
 
