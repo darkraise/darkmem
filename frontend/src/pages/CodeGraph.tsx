@@ -20,16 +20,23 @@ import {
 } from "@/hooks/api";
 import { ZoomIn, ZoomOut } from "lucide-react";
 
-const EDGE_COLORS_FOR_UI: Record<string, string> = {
-  calls: "#7c3aed",
-  imports: "#1d4ed8",
-  contains: "#2d5a3d",
-  defines: "#0e7490",
+const NODE_COLORS_FOR_FILTER: Record<string, string> = {
+  file: "#3b82f6", module: "#8b5cf6", class: "#f59e0b", struct: "#fb923c",
+  interface: "#ec4899", trait: "#f472b6", enum: "#f97316", function: "#10b981",
+  method: "#14b8a6", type: "#64748b", impl: "#7c3aed",
 };
+
+const EDGE_COLORS_FOR_FILTER: Record<string, string> = {
+  calls: "#7c3aed", imports: "#1d4ed8", contains: "#2d5a3d", defines: "#0e7490",
+};
+
+const ALL_NODE_TYPES = [
+  "file", "module", "class", "struct", "interface", "trait",
+  "enum", "function", "method", "type", "impl",
+];
 
 export default function CodeGraph() {
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"files" | "symbols">("symbols");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<{
     id: string;
@@ -46,6 +53,10 @@ export default function CodeGraph() {
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<Set<string>>(
     new Set(["calls", "contains", "defines", "imports"]),
   );
+  const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(
+    new Set(ALL_NODE_TYPES),
+  );
+  const [focusDepth, setFocusDepth] = useState<number | null>(null);
 
   const toggleEdgeType = useCallback((type: string) => {
     setVisibleEdgeTypes((prev) => {
@@ -56,16 +67,68 @@ export default function CodeGraph() {
     });
   }, []);
 
+  const toggleNodeType = useCallback((type: string) => {
+    setVisibleNodeTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
+
   const { data: repos } = useRepos();
-  const { data: graphData, isLoading } = useCodeGraph(selectedRepoId, viewMode);
+  const { data: graphData, isLoading } = useCodeGraph(selectedRepoId);
   const codeSearch = useCodeSearch();
   const blastRadius = useBlastRadius();
   const { data: symbolDetail } = useCodeSymbolDetail(
-    viewMode === "symbols" && selectedNode ? selectedNode.id : null,
+    selectedNode && selectedNode.kind !== "file" && selectedNode.kind !== "module"
+      ? selectedNode.id
+      : null,
   );
 
-  const nodes = useMemo(() => graphData?.nodes ?? [], [graphData]);
-  const edges = useMemo(() => graphData?.edges ?? [], [graphData]);
+  const filteredNodes = useMemo(() => {
+    if (!graphData?.nodes) return [];
+    let nodes = graphData.nodes.filter((n) =>
+      visibleNodeTypes.has(n.kind || "function"),
+    );
+
+    if (focusDepth !== null && selectedNodeId) {
+      const edgeMap = new Map<string, Set<string>>();
+      for (const e of graphData.edges) {
+        if (!edgeMap.has(e.source)) edgeMap.set(e.source, new Set());
+        if (!edgeMap.has(e.target)) edgeMap.set(e.target, new Set());
+        edgeMap.get(e.source)!.add(e.target);
+        edgeMap.get(e.target)!.add(e.source);
+      }
+
+      const visited = new Set<string>();
+      const queue: [string, number][] = [[selectedNodeId, 0]];
+      visited.add(selectedNodeId);
+
+      while (queue.length > 0) {
+        const [current, depth] = queue.shift()!;
+        if (depth >= focusDepth) continue;
+        for (const neighbor of edgeMap.get(current) || []) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push([neighbor, depth + 1]);
+          }
+        }
+      }
+
+      nodes = nodes.filter((n) => visited.has(n.id));
+    }
+
+    return nodes;
+  }, [graphData, visibleNodeTypes, focusDepth, selectedNodeId]);
+
+  const filteredEdges = useMemo(() => {
+    if (!graphData?.edges) return [];
+    const nodeIds = new Set(filteredNodes.map((n) => n.id));
+    return graphData.edges.filter(
+      (e) => nodeIds.has(e.source) && nodeIds.has(e.target),
+    );
+  }, [graphData, filteredNodes]);
 
   const handleSelect = useCallback(
     (
@@ -100,7 +163,7 @@ export default function CodeGraph() {
 
   const handleSearchResultClick = useCallback(
     (result: CodeSearchResult) => {
-      const matchNode = nodes.find(
+      const matchNode = filteredNodes.find(
         (n) =>
           n.label === result.symbol_name || n.label === result.file_path,
       );
@@ -110,7 +173,7 @@ export default function CodeGraph() {
       }
       setShowSearchResults(false);
     },
-    [nodes, handleSelect],
+    [filteredNodes, handleSelect],
   );
 
   const handleBlastRadius = useCallback(() => {
@@ -128,13 +191,12 @@ export default function CodeGraph() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 p-4 border-b border-border flex-wrap">
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 p-3 border-b border-border bg-card">
         <select
           className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={selectedRepoId ?? ""}
-          onChange={(e) =>
-            setSelectedRepoId(e.target.value || null)
-          }
+          onChange={(e) => setSelectedRepoId(e.target.value || null)}
         >
           <option value="">Select a repo</option>
           {repos?.map((r) => (
@@ -143,40 +205,6 @@ export default function CodeGraph() {
             </option>
           ))}
         </select>
-
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant={viewMode === "files" ? "secondary" : "ghost"}
-            onClick={() => setViewMode("files")}
-          >
-            Files
-          </Button>
-          <Button
-            size="sm"
-            variant={viewMode === "symbols" ? "secondary" : "ghost"}
-            onClick={() => setViewMode("symbols")}
-          >
-            Symbols
-          </Button>
-        </div>
-
-        {viewMode === "symbols" && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Edges:</span>
-            {["calls", "contains", "defines", "imports"].map((type) => (
-              <label key={type} className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={visibleEdgeTypes.has(type)}
-                  onChange={() => toggleEdgeType(type)}
-                  className="accent-primary w-3 h-3"
-                />
-                <span style={{ color: EDGE_COLORS_FOR_UI[type] }}>{type}</span>
-              </label>
-            ))}
-          </div>
-        )}
 
         <div className="relative">
           <Input
@@ -195,9 +223,7 @@ export default function CodeGraph() {
                   className="w-full text-left px-3 py-2 text-sm hover:bg-accent border-b border-border last:border-0"
                   onMouseDown={() => handleSearchResultClick(r)}
                 >
-                  <div className="font-medium truncate">
-                    {r.file_path}
-                  </div>
+                  <div className="font-medium truncate">{r.file_path}</div>
                   {r.symbol_name && (
                     <div className="text-xs text-muted-foreground">
                       {r.symbol_name}
@@ -225,10 +251,30 @@ export default function CodeGraph() {
           </Button>
         )}
 
-        <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-          {nodes.length > 0 && (
+        <div className="flex-1" />
+
+        {/* Focus depth */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">Depth:</span>
+          {([null, 1, 2, 3, 5] as const).map((d) => (
+            <button
+              key={d ?? "all"}
+              className={`px-1.5 py-0.5 rounded text-xs ${
+                focusDepth === d
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setFocusDepth(d)}
+            >
+              {d === null ? "All" : `${d}`}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {filteredNodes.length > 0 && (
             <span>
-              {nodes.length} nodes, {edges.length} edges
+              {filteredNodes.length} nodes, {filteredEdges.length} edges
             </span>
           )}
           <ZoomIn className="w-4 h-4" />
@@ -236,33 +282,94 @@ export default function CodeGraph() {
         </div>
       </div>
 
-      <div className="relative flex-1">
-        {!selectedRepoId && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            Select a repository to visualize its code graph.
+      {/* Content: filter sidebar + graph + detail panel */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Filter sidebar */}
+        <div className="w-44 border-r border-border bg-card p-3 space-y-4 overflow-y-auto shrink-0">
+          {/* Node Types */}
+          <div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-2">
+              Node Types
+            </div>
+            <div className="space-y-1">
+              {ALL_NODE_TYPES.map((type) => (
+                <label
+                  key={type}
+                  className="flex items-center gap-2 text-xs cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleNodeTypes.has(type)}
+                    onChange={() => toggleNodeType(type)}
+                    className="accent-primary w-3 h-3"
+                  />
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: NODE_COLORS_FOR_FILTER[type] }}
+                  />
+                  <span className="capitalize">{type}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        )}
-        {selectedRepoId && isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            Loading graph...
+
+          {/* Edge Types */}
+          <div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-2">
+              Edge Types
+            </div>
+            <div className="space-y-1">
+              {["calls", "contains", "defines", "imports"].map((type) => (
+                <label
+                  key={type}
+                  className="flex items-center gap-2 text-xs cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleEdgeTypes.has(type)}
+                    onChange={() => toggleEdgeType(type)}
+                    className="accent-primary w-3 h-3"
+                  />
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: EDGE_COLORS_FOR_FILTER[type] }}
+                  />
+                  <span className="capitalize">{type}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        )}
-        {selectedRepoId && !isLoading && nodes.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            No graph data for this repository. Index it first from the
-            Repositories page.
-          </div>
-        )}
-        {nodes.length > 0 && (
-          <CodeGraphRenderer
-            nodes={nodes}
-            edges={edges}
-            selectedId={selectedNodeId}
-            onSelect={handleSelect}
-            highlightedIds={blastRadiusIds}
-            visibleEdgeTypes={visibleEdgeTypes}
-          />
-        )}
+        </div>
+
+        {/* Graph canvas */}
+        <div className="relative flex-1">
+          {!selectedRepoId && (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              Select a repository to visualize its code graph.
+            </div>
+          )}
+          {selectedRepoId && isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              Loading graph...
+            </div>
+          )}
+          {selectedRepoId && !isLoading && filteredNodes.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              No graph data for this repository. Index it first from the
+              Repositories page.
+            </div>
+          )}
+          {filteredNodes.length > 0 && (
+            <CodeGraphRenderer
+              nodes={filteredNodes}
+              edges={filteredEdges}
+              selectedId={selectedNodeId}
+              onSelect={handleSelect}
+              highlightedIds={blastRadiusIds}
+              visibleEdgeTypes={visibleEdgeTypes}
+            />
+          )}
+        </div>
       </div>
 
       <Sheet
@@ -275,14 +382,12 @@ export default function CodeGraph() {
           <SheetHeader>
             <SheetTitle>{selectedNode?.label}</SheetTitle>
             <SheetDescription>
-              {viewMode === "symbols"
-                ? selectedNode?.kind ?? "symbol"
-                : "file"}
+              {selectedNode?.kind ?? "symbol"}
             </SheetDescription>
           </SheetHeader>
 
           <div className="px-4 pb-4 overflow-y-auto flex-1 space-y-4">
-            {viewMode === "symbols" && symbolDetail && (
+            {symbolDetail && (
               <>
                 <div className="space-y-2">
                   <div className="flex gap-2 flex-wrap">
@@ -336,9 +441,7 @@ export default function CodeGraph() {
                   onClick={handleBlastRadius}
                   disabled={blastRadius.isPending}
                 >
-                  {blastRadius.isPending
-                    ? "Analyzing..."
-                    : "Blast Radius"}
+                  {blastRadius.isPending ? "Analyzing..." : "Blast Radius"}
                 </Button>
 
                 {blastRadiusIds && blastRadiusIds.size > 0 && (
@@ -350,13 +453,13 @@ export default function CodeGraph() {
               </>
             )}
 
-            {viewMode === "symbols" && !symbolDetail && selectedNode && (
+            {!symbolDetail && selectedNode && selectedNode.kind !== "file" && selectedNode.kind !== "module" && (
               <p className="text-sm text-muted-foreground">
                 Loading symbol details...
               </p>
             )}
 
-            {viewMode === "files" && selectedNode && (
+            {selectedNode && (selectedNode.kind === "file" || selectedNode.kind === "module") && (
               <div className="space-y-2">
                 <p className="text-sm">
                   <span className="text-muted-foreground">Path: </span>

@@ -166,10 +166,10 @@ export function useReindexRepo() {
   });
 }
 
-export function useCodeGraph(repoId: string | null, view: "files" | "symbols" = "symbols") {
+export function useCodeGraph(repoId: string | null) {
   return useQuery<CodeGraphData>({
-    queryKey: ["codeGraph", repoId, view],
-    queryFn: () => apiFetch(`/code/graph/${repoId}?view=${view}`),
+    queryKey: ["codeGraph", repoId],
+    queryFn: () => apiFetch(`/code/graph/${repoId}`),
     enabled: !!repoId,
   });
 }

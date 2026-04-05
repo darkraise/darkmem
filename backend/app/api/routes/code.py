@@ -211,55 +211,87 @@ async def list_files(
 async def code_graph(
     repo_id: UUID,
     request: Request,
-    view: str = Query("files", pattern="^(files|symbols)$"),
     _user=Depends(require_auth),
 ):
     graph_repo = getattr(request.app.state, "graph_repo", None)
     if not graph_repo:
         raise HTTPException(status_code=503, detail="Graph service not available")
 
+    repo_id_str = str(repo_id)
+    nodes = []
+    edges = []
+
     async with graph_repo.driver.session() as neo:
-        if view == "files":
-            file_result = await neo.run(
-                """
-                MATCH (f:CodeFile {repo_id: $repo_id})
-                RETURN collect(DISTINCT {id: f.file_path, label: f.file_path, kind: 'file'}) AS nodes
-                """,
-                repo_id=str(repo_id),
-            )
-            file_record = await file_result.single()
-            file_nodes = file_record["nodes"] if file_record else []
+        file_result = await neo.run(
+            "MATCH (f:CodeFile {repo_id: $repo_id}) RETURN f.file_path AS id, f.file_path AS label, 'file' AS kind",
+            repo_id=repo_id_str,
+        )
+        async for record in file_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"]})
 
-            mod_result = await neo.run(
-                """
-                MATCH (f:CodeFile {repo_id: $repo_id})-[:IMPORTS]->(m:Module)
-                RETURN collect(DISTINCT {id: 'mod::' + m.name, label: m.name, kind: 'module'}) AS nodes,
-                       collect(DISTINCT {source: f.file_path, target: 'mod::' + m.name, type: 'imports'}) AS edges
-                """,
-                repo_id=str(repo_id),
-            )
-            mod_record = await mod_result.single()
-            mod_nodes = mod_record["nodes"] if mod_record else []
-            edges = mod_record["edges"] if mod_record else []
+        sym_result = await neo.run(
+            """
+            MATCH (s:CodeSymbol {repo_id: $repo_id})
+            RETURN s.name + '::' + s.file_path AS id, s.name AS label, s.kind AS kind, s.file_path AS file_path
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in sym_result:
+            nodes.append({
+                "id": record["id"], "label": record["label"],
+                "kind": record["kind"], "file_path": record["file_path"],
+            })
 
-            nodes = file_nodes + mod_nodes
-            edges = [e for e in edges if e.get("target") is not None]
-            return {"nodes": nodes, "edges": edges}
+        mod_result = await neo.run(
+            """
+            MATCH (:CodeFile {repo_id: $repo_id})-[:IMPORTS]->(m:Module)
+            RETURN DISTINCT 'mod::' + m.name AS id, m.name AS label, 'module' AS kind
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in mod_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"]})
 
-        else:
-            result = await neo.run(
-                """
-                MATCH (s:CodeSymbol {repo_id: $repo_id})
-                OPTIONAL MATCH (s)-[r:CALLS|CONTAINS|DEFINES]->(t:CodeSymbol {repo_id: $repo_id})
-                RETURN collect(DISTINCT {id: s.name + '::' + s.file_path, label: s.name, kind: s.kind, file_path: s.file_path}) AS nodes,
-                       collect(DISTINCT {source: s.name + '::' + s.file_path, target: t.name + '::' + t.file_path, type: type(r)}) AS edges
-                """,
-                repo_id=str(repo_id),
-            )
-        record = await result.single()
+        defines_result = await neo.run(
+            """
+            MATCH (f:CodeFile {repo_id: $repo_id})-[:DEFINES]->(s:CodeSymbol {repo_id: $repo_id})
+            RETURN f.file_path AS source, s.name + '::' + s.file_path AS target, 'defines' AS type
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in defines_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
 
-    nodes = record["nodes"] if record else []
-    edges = [e for e in (record["edges"] if record else []) if e.get("target") is not None]
+        contains_result = await neo.run(
+            """
+            MATCH (p:CodeSymbol {repo_id: $repo_id})-[:CONTAINS]->(c:CodeSymbol {repo_id: $repo_id})
+            RETURN p.name + '::' + p.file_path AS source, c.name + '::' + c.file_path AS target, 'contains' AS type
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in contains_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        imports_result = await neo.run(
+            """
+            MATCH (f:CodeFile {repo_id: $repo_id})-[:IMPORTS]->(m:Module)
+            RETURN f.file_path AS source, 'mod::' + m.name AS target, 'imports' AS type
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in imports_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        calls_result = await neo.run(
+            """
+            MATCH (s1:CodeSymbol {repo_id: $repo_id})-[r:CALLS]->(s2:CodeSymbol {repo_id: $repo_id})
+            RETURN s1.name + '::' + s1.file_path AS source, s2.name + '::' + s2.file_path AS target, 'calls' AS type
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in calls_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
     return {"nodes": nodes, "edges": edges}
 
 
