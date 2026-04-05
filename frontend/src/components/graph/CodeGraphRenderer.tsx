@@ -57,15 +57,15 @@ const EDGE_SIZES: Record<string, number> = {
 const DEFAULT_EDGE_SIZE = 0.5;
 
 const NODE_MASS: Record<string, number> = {
-  file: 30,
-  module: 15,
-  namespace: 12,
-  class: 6,
-  struct: 6,
-  interface: 5,
-  trait: 5,
-  enum: 4,
-  function: 2,
+  file: 5,
+  module: 4,
+  namespace: 4,
+  class: 3,
+  struct: 3,
+  interface: 3,
+  trait: 3,
+  enum: 2,
+  function: 1,
   method: 1,
 };
 
