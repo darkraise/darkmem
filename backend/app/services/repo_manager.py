@@ -20,8 +20,16 @@ REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories")
 
 
 class RepoManager:
+    _active_tasks: set[asyncio.Task] = set()
+
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    @classmethod
+    def cancel_active_tasks(cls):
+        for task in cls._active_tasks:
+            task.cancel()
+        cls._active_tasks.clear()
 
     async def create(self, data: RepoCreate) -> Repository:
         repo = Repository(
@@ -46,7 +54,9 @@ class RepoManager:
         await self.session.refresh(repo)
 
         if data.url:
-            asyncio.create_task(self._clone_in_background(repo.id, data))
+            task = asyncio.create_task(self._clone_in_background(repo.id, data))
+            RepoManager._active_tasks.add(task)
+            task.add_done_callback(RepoManager._active_tasks.discard)
 
         return repo
 
@@ -77,8 +87,8 @@ class RepoManager:
                         repo.status = "error"
                         repo.status_message = str(e)[:500]
                         await session.commit()
-            except Exception:
-                pass
+            except Exception as inner_e:
+                logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
     async def get(self, repo_id: UUID) -> Repository | None:
         return await self.session.get(Repository, repo_id)
@@ -221,12 +231,16 @@ class RepoManager:
     async def _run_git(cwd: Path, cmd: list[str], env: dict[str, str] | None = None) -> str:
         import subprocess
         full_env = {**os.environ, **(env or {})}
-        result = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: subprocess.run(
-                cmd, cwd=str(cwd), capture_output=True, env=full_env,
-            ),
-        )
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    cmd, cwd=str(cwd), capture_output=True, env=full_env,
+                    timeout=300,
+                ),
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"git command timed out after 300s: {' '.join(cmd)}")
         if result.returncode != 0:
             logger.error("git command failed: %s\nstderr: %s", " ".join(cmd), result.stderr.decode())
             raise RuntimeError(f"git command failed: {result.stderr.decode()}")

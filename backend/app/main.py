@@ -134,8 +134,7 @@ async def lifespan(app: FastAPI):
                 config = result.scalar_one_or_none()
                 enrichment_config = config.value if config else {"enabled": False}
 
-            enrichment_session = async_session_factory()
-            enrichment_worker = EnrichmentWorker(enrichment_session, llm)
+            enrichment_worker = EnrichmentWorker(llm)
 
             if enrichment_config.get("enabled", False):
                 enrichment_worker.batch_size = enrichment_config.get("batch_size", 5)
@@ -158,6 +157,11 @@ async def lifespan(app: FastAPI):
         enrichment_worker.stop()
     if enrichment_task:
         enrichment_task.cancel()
+
+    from app.services.repo_manager import RepoManager
+    from app.api.routes.repos import cancel_active_reindex_tasks
+    RepoManager.cancel_active_tasks()
+    cancel_active_reindex_tasks()
 
     # Cleanup
     if llm:

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import UUID
 
@@ -16,6 +17,14 @@ from app.services.repo_manager import RepoManager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
+
+_active_reindex_tasks: set[asyncio.Task] = set()
+
+
+def cancel_active_reindex_tasks():
+    for task in _active_reindex_tasks:
+        task.cancel()
+    _active_reindex_tasks.clear()
 
 
 def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -> RepoResponse:
@@ -124,7 +133,6 @@ async def reindex_repo(
     indexer: CodeIndexer = Depends(get_code_indexer),
     manager: RepoManager = Depends(get_repo_manager),
 ):
-    import asyncio
     from app.database import async_session_factory
 
     repo = await manager.get(repo_id)
@@ -160,10 +168,12 @@ async def reindex_repo(
                         r.status = "error"
                         r.status_message = str(e)[:500]
                         await session.commit()
-            except Exception:
-                pass
+            except Exception as inner_e:
+                logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
-    asyncio.create_task(_run_index())
+    task = asyncio.create_task(_run_index())
+    _active_reindex_tasks.add(task)
+    task.add_done_callback(_active_reindex_tasks.discard)
     return {"status": "indexing", "repo_id": str(repo_id)}
 
 

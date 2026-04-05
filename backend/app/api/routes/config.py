@@ -184,6 +184,12 @@ async def update_enrichment_config(
         if body.enabled and not worker._running:
             import asyncio
 
+            old_task = getattr(request.app.state, "enrichment_task", None)
+            if old_task and not old_task.done():
+                worker.stop()
+                old_task.cancel()
+                worker._running = False
+
             task = asyncio.create_task(worker.run_loop())
             request.app.state.enrichment_task = task
         elif not body.enabled and worker._running:
@@ -197,16 +203,13 @@ async def trigger_enrichment(
     _user=Depends(require_auth),
     request: Request = None,
 ):
-    from app.database import async_session_factory
     from app.services.enrichment_worker import EnrichmentWorker
 
     llm = getattr(request.app.state, "llm", None) if request else None
     if not llm:
         raise HTTPException(status_code=503, detail="LLM not available")
 
-    async with async_session_factory() as session:
-        worker = EnrichmentWorker(session, llm)
-        count = await worker.process_batch(batch_size=10)
-        await session.commit()
+    worker = EnrichmentWorker(llm)
+    count = await worker.process_batch(batch_size=10)
 
     return {"processed": count}

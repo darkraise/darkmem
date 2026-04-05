@@ -2,7 +2,6 @@ import asyncio
 import logging
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeSymbol
 from app.services.llm import LLMOrchestrator
@@ -20,47 +19,50 @@ MAX_SOURCE_CHARS = 3000
 
 
 class EnrichmentWorker:
-    def __init__(self, session: AsyncSession, llm: LLMOrchestrator):
-        self.session = session
+    def __init__(self, llm: LLMOrchestrator):
         self.llm = llm
         self._running = False
         self.batch_size = 5
         self.interval = 10
 
     async def process_batch(self, batch_size: int | None = None) -> int:
-        batch_size = batch_size if batch_size is not None else self.batch_size
-        stmt = (
-            select(CodeSymbol)
-            .where(CodeSymbol.enrichment_status == "pending")
-            .order_by(CodeSymbol.enrichment_priority.desc())
-            .limit(batch_size)
-        )
-        result = await self.session.execute(stmt)
-        symbols = result.scalars().all()
+        from app.database import async_session_factory
 
-        processed = 0
-        for symbol in symbols:
-            try:
-                prompt = SUMMARY_PROMPT.format(
-                    kind=symbol.kind,
-                    source_code=symbol.source_code[:MAX_SOURCE_CHARS],
-                )
-                system_prompt = await PromptService.get("summarization", self.session)
-                summary = await self.llm.chat_completion(
-                    "summarization",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                )
-                symbol.summary = summary
-                symbol.enrichment_status = "completed"
-                processed += 1
-            except Exception:
-                logger.exception("Failed to enrich symbol %s", symbol.id)
-                symbol.enrichment_status = "failed"
+        size = batch_size if batch_size is not None else self.batch_size
 
-        await self.session.flush()
+        async with async_session_factory() as session:
+            stmt = (
+                select(CodeSymbol)
+                .where(CodeSymbol.enrichment_status == "pending")
+                .order_by(CodeSymbol.enrichment_priority.desc())
+                .limit(size)
+            )
+            result = await session.execute(stmt)
+            symbols = result.scalars().all()
+
+            processed = 0
+            for symbol in symbols:
+                try:
+                    prompt = SUMMARY_PROMPT.format(
+                        kind=symbol.kind,
+                        source_code=symbol.source_code[:MAX_SOURCE_CHARS],
+                    )
+                    system_prompt = await PromptService.get("summarization", session)
+                    summary = await self.llm.chat_completion(
+                        "summarization",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt},
+                        ],
+                    )
+                    symbol.summary = summary
+                    symbol.enrichment_status = "completed"
+                    processed += 1
+                except Exception:
+                    logger.exception("Failed to enrich symbol %s", symbol.id)
+                    symbol.enrichment_status = "failed"
+
+            await session.commit()
         return processed
 
     async def run_loop(self) -> None:
