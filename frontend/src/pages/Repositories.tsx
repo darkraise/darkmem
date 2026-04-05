@@ -279,17 +279,17 @@ export default function Repositories() {
                       </Badge>
                       {repo.status === "cloning" && (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-yellow-500 border-yellow-500">
-                          Cloning...
+                          {repo.status_message ?? "Cloning..."}
                         </Badge>
                       )}
                       {repo.status === "error" && (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-destructive border-destructive" title={repo.status_message ?? ""}>
-                          Error
+                          Error: {repo.status_message ? repo.status_message.slice(0, 60) : "Unknown"}
                         </Badge>
                       )}
                       {repo.status === "indexing" && (
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 text-blue-500 border-blue-500">
-                          Indexing...
+                          {repo.status_message ?? "Indexing..."}
                         </Badge>
                       )}
                     </div>

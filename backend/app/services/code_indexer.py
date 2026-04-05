@@ -97,7 +97,10 @@ class CodeIndexer:
                 logger.error("Error deleting data for %s: %s", rel_path, exc)
                 stats["errors"].append(f"delete:{rel_path}:{exc}")
 
-        for rel_path in changed_files:
+        total_files = len(changed_files)
+        for i, rel_path in enumerate(changed_files):
+            repo.status_message = f"Indexing file {i + 1}/{total_files}: {rel_path}"
+            await self.session.flush()
             try:
                 result = await self._index_file(repo, work_dir, rel_path)
                 if result is None:
@@ -115,6 +118,12 @@ class CodeIndexer:
         repo.status = "ready"
         repo.status_message = None
         await self.session.commit()
+
+        logger.info(
+            "Indexed %s: %d changed, %d skipped, %d deleted, %d symbols, %d errors",
+            repo.name, stats["files_changed"], stats["files_skipped"],
+            stats["files_deleted"], stats["symbols_indexed"], len(stats["errors"]),
+        )
 
         return stats
 
