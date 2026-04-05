@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol, Repository
-from app.services.code_parser import ExtractedSymbol, parse_file
+from app.services.code_parser import ExtractedCall, ExtractedSymbol, parse_file
 from app.services.llm import LLMOrchestrator
 from app.services.repo_manager import RepoManager
 from app.repositories.graph import Neo4jGraphRepository
@@ -92,8 +92,13 @@ class CodeIndexer:
             "files_skipped": 0,
             "symbols_indexed": 0,
             "chunks_stored": 0,
+            "calls_resolved": 0,
             "errors": [],
         }
+
+        all_calls: dict[str, list[ExtractedCall]] = {}
+        all_file_paths: list[str] = []
+        all_imports: dict[str, list[str]] = {}
 
         for rel_path in deleted_files:
             try:
@@ -116,9 +121,24 @@ class CodeIndexer:
                     stats["files_changed"] += 1
                     stats["symbols_indexed"] += result.get("symbols", 0)
                     stats["chunks_stored"] += result.get("chunks", 0)
+                    if result.get("calls"):
+                        all_calls[rel_path] = result["calls"]
+                        all_file_paths.append(rel_path)
+                    if result.get("imports"):
+                        all_imports[rel_path] = result["imports"]
             except Exception as exc:
                 logger.error("Error indexing %s: %s", rel_path, exc)
                 stats["errors"].append(f"index:{rel_path}:{exc}")
+
+        if self.graph_repo and all_calls:
+            repo.status_message = "Resolving function calls..."
+            await self.session.commit()
+            await event_manager.broadcast("repo.indexing_progress", {
+                "repo_id": str(repo.id), "current": total_files, "total": total_files,
+                "file_path": "Resolving calls...",
+            })
+            calls_created = await self._resolve_calls(repo, all_calls, all_file_paths, all_imports)
+            stats["calls_resolved"] = calls_created
 
         repo.last_indexed_commit = new_sha
         repo.last_indexed_at = datetime.now(timezone.utc)
@@ -205,7 +225,12 @@ class CodeIndexer:
                 repo, rel_path, parse_result.symbols, parse_result.imports
             )
 
-        return {"symbols": symbol_count, "chunks": chunk_count}
+        return {
+            "symbols": symbol_count,
+            "chunks": chunk_count,
+            "calls": parse_result.calls,
+            "imports": [imp.source for imp in parse_result.imports],
+        }
 
     def _store_symbol(
         self,
@@ -359,6 +384,100 @@ class CodeIndexer:
             line_end=sym.line_end,
             visibility=sym.visibility,
         )
+
+    async def _resolve_calls(
+        self,
+        repo: Repository,
+        all_calls: dict[str, list[ExtractedCall]],
+        all_file_paths: list[str],
+        all_imports: dict[str, list[str]],
+    ) -> int:
+        from app.services.call_resolver import CallResolver, build_import_map
+        from app.services.symbol_table import SymbolEntry, SymbolTable
+
+        symbol_table = SymbolTable()
+        symbols = (await self.session.execute(
+            select(CodeSymbol).join(CodeFile).where(CodeFile.repo_id == repo.id)
+        )).scalars().all()
+
+        file_map: dict[UUID, str] = {}
+        for sym in symbols:
+            if sym.file_id not in file_map:
+                file = (await self.session.execute(
+                    select(CodeFile).where(CodeFile.id == sym.file_id)
+                )).scalar_one_or_none()
+                file_map[sym.file_id] = file.file_path if file else ""
+
+            param_count = None
+            if sym.signature:
+                params = sym.signature.strip("()").split(",")
+                param_count = len([p for p in params if p.strip()]) if params != [""] else 0
+
+            symbol_table.add(SymbolEntry(
+                node_id=str(sym.id),
+                file_path=file_map[sym.file_id],
+                name=sym.name,
+                kind=sym.kind,
+                param_count=param_count,
+                owner_id=str(sym.parent_symbol_id) if sym.parent_symbol_id else None,
+            ))
+
+        import_map = build_import_map(all_file_paths, all_imports)
+        resolver = CallResolver(symbol_table, import_map)
+        calls_created = 0
+
+        async with self.graph_repo.driver.session() as neo_session:
+            for file_path, calls in all_calls.items():
+                for call in calls:
+                    result = resolver.resolve(call, file_path)
+                    if not result:
+                        continue
+
+                    target_id, confidence = result
+
+                    enclosing = (await self.session.execute(
+                        select(CodeSymbol).join(CodeFile).where(
+                            CodeFile.repo_id == repo.id,
+                            CodeFile.file_path == file_path,
+                            CodeSymbol.line_start <= call.line,
+                            CodeSymbol.line_end >= call.line,
+                            CodeSymbol.kind.in_(["function", "method"]),
+                        ).order_by(CodeSymbol.line_start.desc())
+                    )).scalars().first()
+
+                    if not enclosing:
+                        continue
+
+                    target_sym = None
+                    for s in symbols:
+                        if str(s.id) == target_id:
+                            target_sym = s
+                            break
+
+                    if not target_sym:
+                        continue
+
+                    target_file = file_map.get(target_sym.file_id, "")
+
+                    await neo_session.run(
+                        """
+                        MATCH (src:CodeSymbol {repo_id: $repo_id, name: $src_name, file_path: $src_file})
+                        MATCH (tgt:CodeSymbol {repo_id: $repo_id, name: $tgt_name, file_path: $tgt_file})
+                        MERGE (src)-[r:CALLS]->(tgt)
+                        ON CREATE SET r.confidence = $confidence, r.line = $line
+                        """,
+                        repo_id=str(repo.id),
+                        src_name=enclosing.name,
+                        src_file=file_path,
+                        tgt_name=target_sym.name,
+                        tgt_file=target_file,
+                        confidence=confidence,
+                        line=call.line,
+                    )
+                    calls_created += 1
+
+        logger.info("Resolved %d CALLS edges for %s", calls_created, repo.name)
+        return calls_created
 
     async def _delete_all_repo_data(self, repo_id: UUID) -> None:
         from sqlalchemy import delete

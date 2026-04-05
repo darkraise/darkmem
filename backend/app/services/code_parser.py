@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 try:
-    from tree_sitter import Language, Parser, Node
+    from tree_sitter import Language, Parser, Node, Query, QueryCursor
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
@@ -190,11 +190,21 @@ class ExtractedImport:
 
 
 @dataclass
+class ExtractedCall:
+    called_name: str
+    call_form: str
+    receiver_name: str | None = None
+    arg_count: int | None = None
+    line: int = 0
+
+
+@dataclass
 class ParseResult:
     language: str
     symbols: list[ExtractedSymbol]
     imports: list[ExtractedImport]
     chunks: list[dict]
+    calls: list[ExtractedCall] = field(default_factory=list)
 
 
 def detect_language(file_path: str) -> str | None:
@@ -258,12 +268,14 @@ def parse_file(file_path: str, content: str) -> ParseResult | None:
 
     _walk_tree(tree.root_node, source, symbols, imports)
 
+    calls = extract_calls(tree, source, lang_name, file_path)
     chunks = _build_chunks(symbols, content, file_path)
     return ParseResult(
         language=lang_name,
         symbols=symbols,
         imports=imports,
         chunks=chunks,
+        calls=calls,
     )
 
 
@@ -490,3 +502,149 @@ def _line_based_chunks(content: str, file_path: str) -> list[dict]:
             break
         start += LINE_CHUNK_WINDOW - LINE_CHUNK_OVERLAP
     return chunks
+
+
+# ---------------------------------------------------------------------------
+# Call extraction
+# ---------------------------------------------------------------------------
+
+CALL_QUERIES: dict[str, str] = {
+    "python": """
+(call function: (identifier) @call.name) @call
+(call function: (attribute attribute: (identifier) @call.name)) @call
+""",
+    "javascript": """
+(call_expression function: (identifier) @call.name) @call
+(call_expression function: (member_expression property: (property_identifier) @call.name)) @call
+(new_expression constructor: (identifier) @call.name) @call
+""",
+    "typescript": """
+(call_expression function: (identifier) @call.name) @call
+(call_expression function: (member_expression property: (property_identifier) @call.name)) @call
+(new_expression constructor: (identifier) @call.name) @call
+""",
+    "go": """
+(call_expression function: (identifier) @call.name) @call
+(call_expression function: (selector_expression field: (field_identifier) @call.name)) @call
+""",
+    "rust": """
+(call_expression function: (identifier) @call.name) @call
+(call_expression function: (field_expression field: (field_identifier) @call.name)) @call
+(call_expression function: (scoped_identifier name: (identifier) @call.name)) @call
+""",
+    "csharp": """
+(invocation_expression function: (identifier) @call.name) @call
+(invocation_expression function: (member_access_expression name: (identifier) @call.name)) @call
+(object_creation_expression type: (identifier) @call.name) @call
+""",
+    "cpp": """
+(call_expression function: (identifier) @call.name) @call
+(call_expression function: (field_expression field: (field_identifier) @call.name)) @call
+(call_expression function: (qualified_identifier name: (identifier) @call.name)) @call
+""",
+    "java": """
+(method_invocation name: (identifier) @call.name) @call
+(method_invocation object: (_) name: (identifier) @call.name) @call
+(object_creation_expression type: (type_identifier) @call.name) @call
+""",
+}
+
+CONSTRUCTOR_NODE_TYPES = {"new_expression", "object_creation_expression", "struct_expression"}
+MEMBER_ACCESS_NODE_TYPES = {
+    "member_expression", "attribute", "member_access_expression",
+    "field_expression", "selector_expression",
+}
+
+
+def extract_calls(tree, source: bytes, language: str, file_path: str) -> list[ExtractedCall]:
+    if not TREE_SITTER_AVAILABLE:
+        return []
+
+    query_str = CALL_QUERIES.get(language)
+    if not query_str:
+        return []
+
+    lang_obj = _get_language(language)
+    if not lang_obj:
+        return []
+
+    try:
+        query = Query(lang_obj, query_str)
+    except Exception as e:
+        logger.debug("Failed to create call query for %s: %s", language, e)
+        return []
+
+    cursor = QueryCursor(query)
+    matches = cursor.matches(tree.root_node)
+
+    calls: list[ExtractedCall] = []
+    for _pattern_idx, match_dict in matches:
+        name_nodes = match_dict.get("call.name", [])
+        call_nodes = match_dict.get("call", [])
+
+        if not name_nodes:
+            continue
+
+        name_node = name_nodes[0]
+        call_node = call_nodes[0] if call_nodes else name_node.parent
+
+        called_name = _get_text(name_node, source)
+        if not called_name:
+            continue
+
+        call_form = _infer_call_form(call_node, name_node, language)
+
+        receiver_name = None
+        if call_form == "member":
+            receiver_name = _extract_receiver_name(name_node, source, language)
+
+        arg_count = _count_args(call_node, language)
+
+        calls.append(ExtractedCall(
+            called_name=called_name,
+            call_form=call_form,
+            receiver_name=receiver_name,
+            arg_count=arg_count,
+            line=name_node.start_point[0] + 1,
+        ))
+
+    return calls
+
+
+def _infer_call_form(call_node, name_node, language: str) -> str:
+    if call_node.type in CONSTRUCTOR_NODE_TYPES:
+        return "constructor"
+    parent = name_node.parent
+    if parent and parent.type in MEMBER_ACCESS_NODE_TYPES:
+        return "member"
+    if call_node.type == "method_invocation" and call_node.child_by_field_name("object"):
+        return "member"
+    return "free"
+
+
+def _extract_receiver_name(name_node, source: bytes, language: str) -> str | None:
+    parent = name_node.parent
+    if not parent:
+        return None
+
+    receiver = (
+        parent.child_by_field_name("object")
+        or parent.child_by_field_name("value")
+        or parent.child_by_field_name("operand")
+    )
+
+    if not receiver:
+        if parent.parent and parent.parent.type == "method_invocation":
+            receiver = parent.parent.child_by_field_name("object")
+
+    if receiver and receiver.type in ("identifier", "simple_identifier", "this", "self"):
+        return _get_text(receiver, source)
+
+    return None
+
+
+def _count_args(call_node, language: str) -> int | None:
+    for child in call_node.children:
+        if child.type in ("arguments", "argument_list"):
+            return len([c for c in child.children if c.is_named and c.type != "comment"])
+    return None
