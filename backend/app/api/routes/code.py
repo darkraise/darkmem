@@ -184,23 +184,39 @@ async def code_graph(
 
     async with graph_repo.driver.session() as neo:
         if view == "files":
-            result = await neo.run(
+            file_result = await neo.run(
                 """
                 MATCH (f:CodeFile {repo_id: $repo_id})
-                OPTIONAL MATCH (f)-[:IMPORTS]->(m:Module)<-[:IMPORTS]-(f2:CodeFile {repo_id: $repo_id})
-                WHERE f <> f2
-                RETURN collect(DISTINCT {id: f.file_path, label: f.file_path, type: 'file'}) AS nodes,
-                       collect(DISTINCT {source: f.file_path, target: f2.file_path, label: m.name}) AS edges
+                RETURN collect(DISTINCT {id: f.file_path, label: f.file_path, kind: 'file'}) AS nodes
                 """,
                 repo_id=str(repo_id),
             )
+            file_record = await file_result.single()
+            file_nodes = file_record["nodes"] if file_record else []
+
+            mod_result = await neo.run(
+                """
+                MATCH (f:CodeFile {repo_id: $repo_id})-[:IMPORTS]->(m:Module)
+                RETURN collect(DISTINCT {id: 'mod::' + m.name, label: m.name, kind: 'module'}) AS nodes,
+                       collect(DISTINCT {source: f.file_path, target: 'mod::' + m.name, type: 'imports'}) AS edges
+                """,
+                repo_id=str(repo_id),
+            )
+            mod_record = await mod_result.single()
+            mod_nodes = mod_record["nodes"] if mod_record else []
+            edges = mod_record["edges"] if mod_record else []
+
+            nodes = file_nodes + mod_nodes
+            edges = [e for e in edges if e.get("target") is not None]
+            return {"nodes": nodes, "edges": edges}
+
         else:
             result = await neo.run(
                 """
                 MATCH (s:CodeSymbol {repo_id: $repo_id})
-                OPTIONAL MATCH (s)-[r:CALLS|CONTAINS]->(t:CodeSymbol {repo_id: $repo_id})
+                OPTIONAL MATCH (s)-[r:CALLS|CONTAINS|DEFINES]->(t:CodeSymbol {repo_id: $repo_id})
                 RETURN collect(DISTINCT {id: s.name + '::' + s.file_path, label: s.name, kind: s.kind, file_path: s.file_path}) AS nodes,
-                       collect(DISTINCT {source: s.name + '::' + s.file_path, target: t.name + '::' + t.file_path, label: type(r)}) AS edges
+                       collect(DISTINCT {source: s.name + '::' + s.file_path, target: t.name + '::' + t.file_path, type: type(r)}) AS edges
                 """,
                 repo_id=str(repo_id),
             )
