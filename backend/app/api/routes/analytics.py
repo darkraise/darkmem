@@ -1,6 +1,8 @@
+import json
 import logging
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +63,35 @@ async def reprocess_failed_memories(
     return await service.reprocess_failed()
 
 
+async def _sse_generator(stream):
+    async for event in stream:
+        yield f"data: {json.dumps(event)}\n\n"
+
+
+@router.post("/reprocess/stream")
+async def reprocess_all_stream(
+    _user=Depends(require_auth),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    return StreamingResponse(
+        _sse_generator(service.reprocess_all_stream()),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/reprocess-failed/stream")
+async def reprocess_failed_stream(
+    _user=Depends(require_auth),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    return StreamingResponse(
+        _sse_generator(service.reprocess_failed_stream()),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/pipeline-logs")
 async def get_pipeline_logs(
     limit: int = 20,
@@ -84,3 +115,13 @@ async def get_pipeline_logs(
         }
         for log in logs
     ]
+
+
+@router.get("/overview")
+async def get_overview(
+    days: int = 7,
+    _user=Depends(require_auth),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    clamped_days = max(1, min(days, 90))
+    return await service.get_overview(clamped_days)

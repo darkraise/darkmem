@@ -26,7 +26,8 @@ async def get_chat_service(request: Request, session: AsyncSession = Depends(get
 
 async def get_analytics_service(request: Request, session: AsyncSession = Depends(get_session)) -> AnalyticsService:
     pipeline = getattr(request.app.state, "pipeline", None)
-    return AnalyticsService(session, pipeline)
+    graph_repo = getattr(request.app.state, "graph_repo", None)
+    return AnalyticsService(session, pipeline, graph_repo)
 
 
 async def get_graph_service(request: Request, session: AsyncSession = Depends(get_session)) -> GraphService:
