@@ -6,68 +6,69 @@ import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { lightenHex } from "@/lib/graph-colors";
 
+// Exact GitNexus node sizes
 const NODE_SIZES: Record<string, number> = {
-  file: 12,
-  module: 10,
-  namespace: 9,
-  class: 8,
-  struct: 8,
-  interface: 7,
-  trait: 7,
-  enum: 6,
-  function: 4,
-  method: 3,
-  type: 2,
-  impl: 2,
+  project: 20, package: 16, module: 13, folder: 10,
+  file: 6, class: 8, struct: 8, record: 8,
+  function: 4, method: 3, constructor: 4,
+  interface: 7, trait: 7, enum: 5,
+  variable: 2, import: 1.5, decorator: 2,
+  type: 3, impl: 3, namespace: 13,
+  property: 2, const: 2, static: 2,
 };
 const DEFAULT_NODE_SIZE = 3;
 
+// Exact GitNexus node colors
 const NODE_COLORS: Record<string, string> = {
-  module: "#8b5cf6",
-  namespace: "#6366f1",
-  class: "#f59e0b",
-  struct: "#fb923c",
-  interface: "#ec4899",
-  trait: "#f472b6",
-  enum: "#f97316",
-  function: "#10b981",
-  method: "#14b8a6",
-  type: "#64748b",
-  impl: "#7c3aed",
-  file: "#3b82f6",
+  project: "#a855f7", package: "#8b5cf6", module: "#7c3aed",
+  folder: "#6366f1", file: "#3b82f6",
+  class: "#f59e0b", struct: "#f59e0b", record: "#f59e0b",
+  function: "#10b981", method: "#14b8a6", constructor: "#10b981",
+  variable: "#64748b", import: "#475569", decorator: "#eab308",
+  interface: "#ec4899", trait: "#ec4899",
+  enum: "#f97316", type: "#a78bfa", impl: "#14b8a6",
+  namespace: "#7c3aed", property: "#64748b",
 };
 const DEFAULT_NODE_COLOR = "#6b7280";
 
+// Exact GitNexus edge styles
 const EDGE_COLORS: Record<string, string> = {
-  calls: "#7c3aed",
-  imports: "#1d4ed8",
-  contains: "#2d5a3d",
-  defines: "#0e7490",
-  extends: "#c2410c",
-  implements: "#be185d",
+  contains: "#2d5a3d", defines: "#0e7490",
+  imports: "#1d4ed8", calls: "#7c3aed",
+  extends: "#c2410c", implements: "#be185d",
 };
 const DEFAULT_EDGE_COLOR = "#2a2a3a";
 
-const EDGE_SIZES: Record<string, number> = {
-  calls: 0.8,
-  imports: 0.6,
-  defines: 0.5,
-  contains: 0.4,
+const EDGE_SIZE_MULTIPLIERS: Record<string, number> = {
+  contains: 0.4, defines: 0.5, imports: 0.6, calls: 0.8,
+  extends: 1.0, implements: 0.9,
 };
 const DEFAULT_EDGE_SIZE = 0.5;
 
-const NODE_MASS: Record<string, number> = {
-  file: 5,
-  module: 4,
-  namespace: 4,
-  class: 3,
-  struct: 3,
-  interface: 3,
-  trait: 3,
-  enum: 2,
-  function: 1,
-  method: 1,
-};
+// Exact GitNexus mass values
+function getNodeMass(kind: string, nodeCount: number): number {
+  const m = nodeCount > 5000 ? 2 : nodeCount > 1000 ? 1.5 : 1;
+  switch (kind) {
+    case "project": return 50 * m;
+    case "package": return 30 * m;
+    case "module": return 20 * m;
+    case "folder": return 15 * m;
+    case "namespace": return 20 * m;
+    case "class": case "interface": return 5 * m;
+    case "file": return 3 * m;
+    case "function": case "method": return 2 * m;
+    default: return 1;
+  }
+}
+
+// Exact GitNexus size scaling for large graphs
+function getScaledNodeSize(baseSize: number, nodeCount: number): number {
+  if (nodeCount > 50000) return Math.max(1, baseSize * 0.4);
+  if (nodeCount > 20000) return Math.max(1.5, baseSize * 0.5);
+  if (nodeCount > 5000) return Math.max(2, baseSize * 0.65);
+  if (nodeCount > 1000) return Math.max(2.5, baseSize * 0.8);
+  return baseSize;
+}
 
 interface CodeGraphRendererProps {
   nodes: Array<{ id: string; label: string; kind?: string; language?: string; file_path?: string }>;
@@ -106,11 +107,15 @@ export function CodeGraphRenderer({
 
     const spread = Math.max(100, Math.sqrt(nodes.length) * 10);
 
+    const nodeCount = nodes.length;
+    const edgeBaseSize = nodeCount > 20000 ? 0.4 : nodeCount > 5000 ? 0.6 : 1.0;
+
     for (const n of nodes) {
       if (graph.hasNode(n.id)) continue;
       const kind = n.kind?.toLowerCase() ?? "";
       const color = NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR;
-      const size = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
+      const baseSize = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
+      const size = getScaledNodeSize(baseSize, nodeCount);
 
       graph.addNode(n.id, {
         x: (Math.random() - 0.5) * spread,
@@ -118,7 +123,7 @@ export function CodeGraphRenderer({
         label: n.label,
         size,
         color,
-        mass: NODE_MASS[kind] ?? 1,
+        mass: getNodeMass(kind, nodeCount),
         _kind: n.kind,
         _filePath: n.file_path,
         _baseSize: size,
@@ -131,7 +136,7 @@ export function CodeGraphRenderer({
         const edgeType = e.type?.toLowerCase() ?? "";
         graph.addEdge(e.source, e.target, {
           color: EDGE_COLORS[edgeType] || DEFAULT_EDGE_COLOR,
-          size: EDGE_SIZES[edgeType] || DEFAULT_EDGE_SIZE,
+          size: edgeBaseSize * (EDGE_SIZE_MULTIPLIERS[edgeType] || DEFAULT_EDGE_SIZE),
           type: "curve",
           curvature: 0.12 + Math.random() * 0.08,
           _relType: edgeType,
@@ -144,7 +149,6 @@ export function CodeGraphRenderer({
       edgeMaxIndexAttribute: "parallelMaxIndex",
     });
 
-    const nodeCount = graph.order;
     const gravity = nodeCount < 500 ? 0.8 : nodeCount < 2000 ? 0.5 : nodeCount < 10000 ? 0.3 : 0.15;
     const scalingRatio = nodeCount < 500 ? 15 : nodeCount < 2000 ? 30 : nodeCount < 10000 ? 60 : 100;
     const slowDown = nodeCount < 500 ? 1 : nodeCount < 2000 ? 2 : nodeCount < 10000 ? 3 : 5;
@@ -158,12 +162,16 @@ export function CodeGraphRenderer({
       labelWeight: "500",
       labelFont: "JetBrains Mono, monospace",
       labelColor: { color: "#e4e4ed" },
-      labelRenderedSizeThreshold: 12,
+      labelRenderedSizeThreshold: 8,
+      labelDensity: 0.1,
       defaultEdgeType: "curve",
       edgeProgramClasses: { curve: EdgeCurveProgram },
       stagePadding: 60,
       defaultNodeColor: DEFAULT_NODE_COLOR,
       defaultEdgeColor: DEFAULT_EDGE_COLOR,
+      minCameraRatio: 0.002,
+      maxCameraRatio: 50,
+      hideEdgesOnMove: true,
       zIndex: true,
       nodeReducer(node, data) {
         const res = { ...data };
