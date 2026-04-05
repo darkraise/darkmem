@@ -104,44 +104,7 @@ export function CodeGraphRenderer({
     const graph = new Graph();
     graphRef.current = graph;
 
-    // Pre-position: group files by directory, scatter with jitter, symbols near parent file
-    const filePositions: Record<string, { x: number; y: number }> = {};
-    const spread = Math.max(100, Math.sqrt(nodes.length) * 8);
-
-    // Group files by parent directory for spatial locality
-    const dirGroups: Record<string, string[]> = {};
-    for (const n of nodes) {
-      if (n.kind === "file") {
-        const dir = n.id.split("/").slice(0, -1).join("/") || "/";
-        (dirGroups[dir] ??= []).push(n.id);
-      }
-    }
-
-    // Position each directory cluster with wide spacing
-    const dirNames = Object.keys(dirGroups);
-    dirNames.forEach((dir, i) => {
-      const angle = (i / dirNames.length) * Math.PI * 2 + Math.random() * 0.5;
-      const r = spread * 0.4 + Math.random() * spread * 0.4;
-      const cx = Math.cos(angle) * r;
-      const cy = Math.sin(angle) * r;
-
-      dirGroups[dir].forEach((fileId, j) => {
-        filePositions[fileId] = {
-          x: cx + (Math.random() - 0.5) * spread * 0.3,
-          y: cy + (Math.random() - 0.5) * spread * 0.3,
-        };
-      });
-    });
-
-    // Modules scattered in outer area
-    for (const n of nodes) {
-      if (n.kind === "module" && !filePositions[n.id]) {
-        filePositions[n.id] = {
-          x: (Math.random() - 0.5) * spread * 1.5,
-          y: (Math.random() - 0.5) * spread * 1.5,
-        };
-      }
-    }
+    const spread = Math.max(100, Math.sqrt(nodes.length) * 10);
 
     for (const n of nodes) {
       if (graph.hasNode(n.id)) continue;
@@ -149,21 +112,9 @@ export function CodeGraphRenderer({
       const color = NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR;
       const size = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
 
-      let x: number, y: number;
-      if (filePositions[n.id]) {
-        x = filePositions[n.id].x;
-        y = filePositions[n.id].y;
-      } else if (n.file_path && filePositions[n.file_path]) {
-        x = filePositions[n.file_path].x + (Math.random() - 0.5) * 8;
-        y = filePositions[n.file_path].y + (Math.random() - 0.5) * 8;
-      } else {
-        x = (Math.random() - 0.5) * fileRadius;
-        y = (Math.random() - 0.5) * fileRadius;
-      }
-
       graph.addNode(n.id, {
-        x,
-        y,
+        x: (Math.random() - 0.5) * spread,
+        y: (Math.random() - 0.5) * spread,
         label: n.label,
         size,
         color,
