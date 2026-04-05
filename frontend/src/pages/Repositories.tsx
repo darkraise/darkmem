@@ -164,19 +164,11 @@ export default function Repositories() {
   }, [repos]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [reindexingId, setReindexingId] = useState<string | null>(null);
 
   const handleReindex = (id: string) => {
-    setReindexingId(id);
     reindexRepo.mutate(id, {
-      onSuccess: () => {
-        toast.success("Reindex started");
-        setReindexingId(null);
-      },
-      onError: () => {
-        toast.error("Reindex failed");
-        setReindexingId(null);
-      },
+      onSuccess: () => toast.success("Reindex triggered"),
+      onError: () => toast.error("Reindex failed"),
     });
   };
 
@@ -308,13 +300,13 @@ export default function Repositories() {
                       variant="ghost"
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      disabled={reindexingId === repo.id}
+                      disabled={repo.status === "cloning" || repo.status === "indexing"}
                       onClick={() => handleReindex(repo.id)}
                     >
                       <RefreshCw
-                        className={`w-3.5 h-3.5 mr-1 ${reindexingId === repo.id ? "animate-spin" : ""}`}
+                        className={`w-3.5 h-3.5 mr-1 ${repo.status === "indexing" ? "animate-spin" : ""}`}
                       />
-                      {reindexingId === repo.id ? "Indexing..." : "Reindex"}
+                      {repo.status === "indexing" ? "Indexing..." : "Reindex"}
                     </Button>
                     <Button
                       variant="ghost"

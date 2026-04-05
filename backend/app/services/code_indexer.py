@@ -60,6 +60,10 @@ class CodeIndexer:
         old_sha = repo.last_indexed_commit
 
         if old_sha == new_sha and not full:
+            if repo.status != "ready":
+                repo.status = "ready"
+                repo.status_message = None
+                await self.session.flush()
             return {"status": "up_to_date", "commit": new_sha}
 
         work_dir = self.repo_manager.repo_working_dir(repo)
@@ -69,6 +73,10 @@ class CodeIndexer:
             deleted_files: list[str] = []
         else:
             changed_files, deleted_files = await self._diff_files(work_dir, old_sha, new_sha)
+
+        repo.status = "indexing"
+        repo.status_message = f"Indexing {len(changed_files)} files..."
+        await self.session.flush()
 
         stats = {
             "status": "indexed",
@@ -104,6 +112,8 @@ class CodeIndexer:
 
         repo.last_indexed_commit = new_sha
         repo.last_indexed_at = datetime.now(timezone.utc)
+        repo.status = "ready"
+        repo.status_message = None
         await self.session.commit()
 
         return stats
