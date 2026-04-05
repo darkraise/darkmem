@@ -76,7 +76,7 @@ class CodeIndexer:
 
         repo.status = "indexing"
         repo.status_message = f"Indexing {len(changed_files)} files..."
-        await self.session.flush()
+        await self.session.commit()
 
         stats = {
             "status": "indexed",
@@ -100,7 +100,8 @@ class CodeIndexer:
         total_files = len(changed_files)
         for i, rel_path in enumerate(changed_files):
             repo.status_message = f"Indexing file {i + 1}/{total_files}: {rel_path}"
-            await self.session.flush()
+            if i % 5 == 0:
+                await self.session.commit()
             try:
                 result = await self._index_file(repo, work_dir, rel_path)
                 if result is None:
