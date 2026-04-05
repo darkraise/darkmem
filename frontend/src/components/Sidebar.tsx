@@ -14,6 +14,7 @@ import {
   LogOut,
   MessageCircle,
   GitBranch,
+  GitGraph,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -31,6 +32,7 @@ const navItems: (NavItem | null)[] = [
   { to: "/vectors", label: "Vector Space", icon: Atom },
   { to: "/chat", label: "Chat", icon: MessageCircle },
   { to: "/repos", label: "Repositories", icon: GitBranch },
+  { to: "/code-graph", label: "Code Graph", icon: GitGraph },
   null,
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/llm", label: "LLM Config", icon: Cpu },
