@@ -187,10 +187,10 @@ async def code_graph(
             result = await neo.run(
                 """
                 MATCH (f:CodeFile {repo_id: $repo_id})
-                OPTIONAL MATCH (f)-[:IMPORTS]->(i:CodeImport)<-[:IMPORTS]-(f2:CodeFile {repo_id: $repo_id})
+                OPTIONAL MATCH (f)-[:IMPORTS]->(m:Module)<-[:IMPORTS]-(f2:CodeFile {repo_id: $repo_id})
                 WHERE f <> f2
-                RETURN collect(DISTINCT {id: f.path, label: f.path, type: 'file'}) AS nodes,
-                       collect(DISTINCT {source: f.path, target: f2.path, label: i.source}) AS edges
+                RETURN collect(DISTINCT {id: f.file_path, label: f.file_path, type: 'file'}) AS nodes,
+                       collect(DISTINCT {source: f.file_path, target: f2.file_path, label: m.name}) AS edges
                 """,
                 repo_id=str(repo_id),
             )
@@ -199,8 +199,8 @@ async def code_graph(
                 """
                 MATCH (s:CodeSymbol {repo_id: $repo_id})
                 OPTIONAL MATCH (s)-[r:CALLS|CONTAINS]->(t:CodeSymbol {repo_id: $repo_id})
-                RETURN collect(DISTINCT {id: s.name, label: s.name, kind: s.kind, file_path: s.file_path}) AS nodes,
-                       collect(DISTINCT {source: s.name, target: t.name, label: type(r)}) AS edges
+                RETURN collect(DISTINCT {id: s.name + '::' + s.file_path, label: s.name, kind: s.kind, file_path: s.file_path}) AS nodes,
+                       collect(DISTINCT {source: s.name + '::' + s.file_path, target: t.name + '::' + t.file_path, label: type(r)}) AS edges
                 """,
                 repo_id=str(repo_id),
             )
