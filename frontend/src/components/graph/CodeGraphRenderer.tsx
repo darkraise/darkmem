@@ -1,38 +1,71 @@
 import { useRef, useEffect, useCallback } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
-import { EdgeCurvedArrowProgram, indexParallelEdgesIndex, createDrawCurvedEdgeLabel, DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS } from "@sigma/edge-curve";
-import { drawDiscNodeHover, DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS } from "sigma/rendering";
+import EdgeCurveProgram, { indexParallelEdgesIndex } from "@sigma/edge-curve";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
-import { lightenHex, darkenHex } from "@/lib/graph-colors";
+import { lightenHex } from "@/lib/graph-colors";
 
-const KIND_COLORS: Record<string, string> = {
-  function: "#58a6ff",
-  class: "#4ade80",
-  interface: "#c084fc",
+const NODE_SIZES: Record<string, number> = {
+  module: 16,
+  namespace: 14,
+  class: 10,
+  struct: 10,
+  interface: 9,
+  trait: 9,
+  enum: 8,
+  file: 7,
+  function: 5,
+  method: 4,
+  type: 3,
+  impl: 3,
+};
+const DEFAULT_NODE_SIZE = 4;
+
+const NODE_COLORS: Record<string, string> = {
+  module: "#8b5cf6",
+  namespace: "#6366f1",
+  class: "#f59e0b",
   struct: "#fb923c",
-  method: "#38bdf8",
+  interface: "#ec4899",
   trait: "#f472b6",
-  enum: "#fbbf24",
-  namespace: "#8b949e",
+  enum: "#f97316",
+  function: "#10b981",
+  method: "#14b8a6",
+  type: "#64748b",
+  impl: "#7c3aed",
+  file: "#3b82f6",
 };
+const DEFAULT_NODE_COLOR = "#6b7280";
 
-const LANGUAGE_COLORS: Record<string, string> = {
-  python: "#3fb950",
-  typescript: "#58a6ff",
-  javascript: "#fbbf24",
-  go: "#00ADD8",
-  rust: "#fb923c",
+const EDGE_COLORS: Record<string, string> = {
+  calls: "#7c3aed",
+  imports: "#1d4ed8",
+  contains: "#2d5a3d",
+  defines: "#0e7490",
+  extends: "#c2410c",
+  implements: "#be185d",
 };
+const DEFAULT_EDGE_COLOR = "#2a2a3a";
 
-const DEFAULT_COLOR = "#8b949e";
+const EDGE_SIZES: Record<string, number> = {
+  calls: 0.8,
+  imports: 0.6,
+  defines: 0.5,
+  contains: 0.4,
+};
+const DEFAULT_EDGE_SIZE = 0.5;
 
-function nodeColor(kind?: string, language?: string): string {
-  if (kind) return KIND_COLORS[kind] ?? DEFAULT_COLOR;
-  if (language) return LANGUAGE_COLORS[language.toLowerCase()] ?? DEFAULT_COLOR;
-  return DEFAULT_COLOR;
-}
+const NODE_MASS: Record<string, number> = {
+  module: 20,
+  namespace: 15,
+  class: 5,
+  struct: 5,
+  interface: 4,
+  file: 3,
+  function: 2,
+  method: 2,
+};
 
 interface CodeGraphRendererProps {
   nodes: Array<{ id: string; label: string; kind?: string; language?: string; file_path?: string }>;
@@ -40,6 +73,7 @@ interface CodeGraphRendererProps {
   selectedId: string | null;
   onSelect: (node: { id: string; label: string; kind?: string; file_path?: string } | null) => void;
   highlightedIds?: Set<string>;
+  visibleEdgeTypes?: Set<string>;
 }
 
 export function CodeGraphRenderer({
@@ -48,6 +82,7 @@ export function CodeGraphRenderer({
   selectedId,
   onSelect,
   highlightedIds,
+  visibleEdgeTypes,
 }: CodeGraphRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma | null>(null);
@@ -56,6 +91,7 @@ export function CodeGraphRenderer({
   const selectedIdRef = useRef(selectedId);
   const hoveredNodeRef = useRef<string | null>(null);
   const highlightedIdsRef = useRef(highlightedIds);
+  const visibleEdgeTypesRef = useRef(visibleEdgeTypes);
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return;
@@ -68,26 +104,32 @@ export function CodeGraphRenderer({
 
     for (const n of nodes) {
       if (graph.hasNode(n.id)) continue;
-      const color = nodeColor(n.kind, n.language);
+      const kind = n.kind?.toLowerCase() ?? "";
+      const color = NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR;
+      const size = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
       graph.addNode(n.id, {
         x: (Math.random() - 0.5) * 10,
         y: (Math.random() - 0.5) * 10,
         label: n.label,
-        size: 14,
+        size,
         color,
-        borderColor: darkenHex(color),
+        mass: NODE_MASS[kind] ?? 1,
         _kind: n.kind,
         _filePath: n.file_path,
+        _baseSize: size,
       });
     }
 
     for (const e of edges) {
       if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
       try {
+        const edgeType = e.type?.toLowerCase() ?? "";
         graph.addEdge(e.source, e.target, {
-          color: "#58606980",
-          size: 1.5,
-          label: e.type || "",
+          color: EDGE_COLORS[edgeType] || DEFAULT_EDGE_COLOR,
+          size: EDGE_SIZES[edgeType] || DEFAULT_EDGE_SIZE,
+          type: "curve",
+          curvature: 0.12 + Math.random() * 0.08,
+          _relType: edgeType,
         });
       } catch { /* duplicate edge */ }
     }
@@ -97,83 +139,108 @@ export function CodeGraphRenderer({
       edgeMaxIndexAttribute: "parallelMaxIndex",
     });
 
+    const nodeCount = graph.order;
+    const gravity = nodeCount < 500 ? 0.8 : nodeCount < 2000 ? 0.5 : 0.3;
+    const scalingRatio = nodeCount < 500 ? 15 : nodeCount < 2000 ? 30 : 60;
+    const slowDown = nodeCount < 500 ? 1 : nodeCount < 2000 ? 2 : 3;
+    const layoutTimeout = nodeCount < 500 ? 5000 : 15000;
+
     const sigma = new Sigma(graph, containerRef.current, {
-      antiAliasingFeather: 2,
+      allowInvalidContainer: true,
       renderLabels: true,
-      renderEdgeLabels: true,
-      labelSize: 12,
-      labelColor: { color: "#c9d1d9" },
-      labelFont: "Inter, sans-serif",
-      edgeLabelSize: 10,
-      edgeLabelColor: { color: "#6e7681" },
-      defaultEdgeType: "curvedArrow",
-      edgeProgramClasses: { curvedArrow: EdgeCurvedArrowProgram },
-      defaultDrawEdgeLabel: createDrawCurvedEdgeLabel({
-        ...DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS,
-        arrowHead: DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS,
-      }),
-      defaultDrawNodeHover: drawDiscNodeHover,
-      stagePadding: 40,
-      labelRenderedSizeThreshold: 6,
-      defaultNodeColor: DEFAULT_COLOR,
+      renderEdgeLabels: false,
+      labelSize: 11,
+      labelWeight: "500",
+      labelFont: "JetBrains Mono, monospace",
+      labelColor: { color: "#e4e4ed" },
+      labelRenderedSizeThreshold: 8,
+      defaultEdgeType: "curve",
+      edgeProgramClasses: { curve: EdgeCurveProgram },
+      stagePadding: 60,
+      defaultNodeColor: DEFAULT_NODE_COLOR,
+      defaultEdgeColor: DEFAULT_EDGE_COLOR,
+      zIndex: true,
       nodeReducer(node, data) {
         const res = { ...data };
+        const baseSize = (data._baseSize as number) || DEFAULT_NODE_SIZE;
         const hl = highlightedIdsRef.current;
 
         if (hl && hl.size > 0) {
           if (hl.has(node)) {
-            res.color = "#f87171";
-            res.size = (data.size || 14) * 1.3;
+            res.color = "#ef4444";
+            res.size = baseSize * 1.8;
+            res.zIndex = 2;
           } else {
             res.color = "#333333";
+            res.size = baseSize * 0.3;
             res.label = "";
+            res.zIndex = 0;
           }
           return res;
         }
 
         const hov = hoveredNodeRef.current;
         const sel = selectedIdRef.current;
-        if (hov === node) {
-          res.color = lightenHex(data.color || DEFAULT_COLOR, 0.4);
-          res.size = (data.size || 14) * 1.4;
-          res.highlighted = true;
-        } else if (sel === node) {
-          res.color = lightenHex(data.color || DEFAULT_COLOR, 0.4);
-          res.size = (data.size || 14) * 1.4;
-          res.highlighted = true;
-          res.borderColor = "#ffffff";
-          res.borderSize = 3;
-        } else if (sel && sel !== node) {
-          const isNeighbor = graph.hasEdge(sel, node) || graph.hasEdge(node, sel);
-          if (!isNeighbor) {
-            res.color = "#444444";
+        const active = hov || sel;
+
+        if (active) {
+          const isNeighbor = graph.hasEdge(active, node) || graph.hasEdge(node, active);
+
+          if (node === active) {
+            res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.4);
+            res.size = baseSize * 1.8;
+            res.zIndex = 2;
+            res.highlighted = true;
+          } else if (isNeighbor) {
+            res.size = baseSize * 1.3;
+            res.zIndex = 1;
+          } else {
+            res.color = "#333333";
+            res.size = baseSize * 0.6;
             res.label = "";
+            res.zIndex = 0;
           }
         }
+
         return res;
       },
       edgeReducer(edge, data) {
         const res = { ...data };
-        const hov = hoveredNodeRef.current;
-        const sel = selectedIdRef.current;
-        const src = graph.source(edge);
-        const tgt = graph.target(edge);
+        const edgeType = (graph.getEdgeAttribute(edge, "_relType") as string) || "";
 
-        if (sel) {
-          if (src === sel || tgt === sel) {
-            res.size = (data.size || 1.5) * 2;
-            const neighborColor = graph.getNodeAttribute(src === sel ? tgt : src, "color") || DEFAULT_COLOR;
-            res.color = lightenHex(neighborColor, 0.3);
-          } else {
-            res.color = "#444444";
-            res.size = (data.size || 1.5) * 0.5;
-          }
+        if (visibleEdgeTypesRef.current && !visibleEdgeTypesRef.current.has(edgeType)) {
+          res.hidden = true;
+          return res;
         }
 
-        if (hov && (src === hov || tgt === hov)) {
-          res.size = (data.size || 1.5) * 2;
-          const neighborColor = graph.getNodeAttribute(src === hov ? tgt : src, "color") || DEFAULT_COLOR;
-          res.color = lightenHex(neighborColor, 0.3);
+        const hl = highlightedIdsRef.current;
+        if (hl && hl.size > 0) {
+          const src = graph.source(edge);
+          const tgt = graph.target(edge);
+          if (!hl.has(src) || !hl.has(tgt)) {
+            res.hidden = true;
+          }
+          return res;
+        }
+
+        const hov = hoveredNodeRef.current;
+        const sel = selectedIdRef.current;
+        const active = hov || sel;
+
+        if (active) {
+          const src = graph.source(edge);
+          const tgt = graph.target(edge);
+          if (src === active || tgt === active) {
+            res.size = (data.size || DEFAULT_EDGE_SIZE) * 2;
+            const neighborNode = src === active ? tgt : src;
+            res.color = lightenHex(
+              (graph.getNodeAttribute(neighborNode, "color") as string) || DEFAULT_NODE_COLOR,
+              0.3,
+            );
+          } else {
+            res.color = "#1a1a24";
+            res.size = (data.size || DEFAULT_EDGE_SIZE) * 0.3;
+          }
         }
 
         return res;
@@ -209,13 +276,14 @@ export function CodeGraphRenderer({
         linLogMode: true,
         outboundAttractionDistribution: false,
         strongGravityMode: true,
-        gravity: 1,
-        slowDown: 12,
+        gravity,
+        scalingRatio,
+        slowDown,
       },
     });
     fa2Ref.current = fa2;
     fa2.start();
-    setTimeout(() => { if (fa2Ref.current) fa2Ref.current.stop(); }, 5000);
+    setTimeout(() => { if (fa2Ref.current) fa2Ref.current.stop(); }, layoutTimeout);
   }, [nodes, edges, onSelect]);
 
   useEffect(() => {
@@ -245,5 +313,16 @@ export function CodeGraphRenderer({
     sigmaRef.current?.refresh();
   }, [highlightedIds]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  useEffect(() => {
+    visibleEdgeTypesRef.current = visibleEdgeTypes;
+    sigmaRef.current?.refresh();
+  }, [visibleEdgeTypes]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0"
+      style={{ background: "linear-gradient(135deg, #06060a 0%, #0a0a10 50%, #0d0b1a 100%)" }}
+    />
+  );
 }

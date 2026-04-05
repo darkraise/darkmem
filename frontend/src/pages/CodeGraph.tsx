@@ -20,6 +20,13 @@ import {
 } from "@/hooks/api";
 import { ZoomIn, ZoomOut } from "lucide-react";
 
+const EDGE_COLORS_FOR_UI: Record<string, string> = {
+  calls: "#7c3aed",
+  imports: "#1d4ed8",
+  contains: "#2d5a3d",
+  defines: "#0e7490",
+};
+
 export default function CodeGraph() {
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"files" | "symbols">("symbols");
@@ -36,6 +43,18 @@ export default function CodeGraph() {
   );
   const [searchResults, setSearchResults] = useState<CodeSearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<Set<string>>(
+    new Set(["calls", "contains", "defines", "imports"]),
+  );
+
+  const toggleEdgeType = useCallback((type: string) => {
+    setVisibleEdgeTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
 
   const { data: repos } = useRepos();
   const { data: graphData, isLoading } = useCodeGraph(selectedRepoId, viewMode);
@@ -142,6 +161,23 @@ export default function CodeGraph() {
           </Button>
         </div>
 
+        {viewMode === "symbols" && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Edges:</span>
+            {["calls", "contains", "defines", "imports"].map((type) => (
+              <label key={type} className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={visibleEdgeTypes.has(type)}
+                  onChange={() => toggleEdgeType(type)}
+                  className="accent-primary w-3 h-3"
+                />
+                <span style={{ color: EDGE_COLORS_FOR_UI[type] }}>{type}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
         <div className="relative">
           <Input
             placeholder="Search code..."
@@ -224,6 +260,7 @@ export default function CodeGraph() {
             selectedId={selectedNodeId}
             onSelect={handleSelect}
             highlightedIds={blastRadiusIds}
+            visibleEdgeTypes={visibleEdgeTypes}
           />
         )}
       </div>
