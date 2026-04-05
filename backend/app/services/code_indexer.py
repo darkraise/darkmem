@@ -71,6 +71,7 @@ class CodeIndexer:
         if full or not old_sha:
             changed_files = self._list_all_files(work_dir)
             deleted_files: list[str] = []
+            await self._delete_all_repo_data(repo.id)
         else:
             changed_files, deleted_files = await self._diff_files(work_dir, old_sha, new_sha)
 
@@ -358,6 +359,21 @@ class CodeIndexer:
             line_end=sym.line_end,
             visibility=sym.visibility,
         )
+
+    async def _delete_all_repo_data(self, repo_id: UUID) -> None:
+        from sqlalchemy import delete
+        await self.session.execute(
+            delete(CodeSymbol).where(
+                CodeSymbol.file_id.in_(
+                    select(CodeFile.id).where(CodeFile.repo_id == repo_id)
+                )
+            )
+        )
+        await self.session.execute(
+            delete(CodeFile).where(CodeFile.repo_id == repo_id)
+        )
+        await self.session.flush()
+        logger.info("Cleared all indexed data for repo %s", repo_id)
 
     async def _delete_file_data(self, repo_id: UUID, file_path: str) -> None:
         existing = (
