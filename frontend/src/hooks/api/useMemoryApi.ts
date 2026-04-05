@@ -65,3 +65,37 @@ export function useSearchMemories() {
 export function useTags() {
   return useQuery<Tag[]>({ queryKey: ["tags"], queryFn: () => apiFetch("/tags") });
 }
+
+export interface PaginatedSearchParams {
+  query?: string;
+  tags_any?: string[];
+  source?: string;
+  memory_type?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PaginatedMemories {
+  items: Memory[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function usePaginatedSearch(params: PaginatedSearchParams) {
+  return useQuery<PaginatedMemories>({
+    queryKey: ["memoriesPaginated", params],
+    queryFn: () =>
+      apiFetch("/memories/search/paginated", {
+        method: "POST",
+        body: JSON.stringify({
+          query: params.query || undefined,
+          tags_any: params.tags_any?.length ? params.tags_any : undefined,
+          source: params.source || undefined,
+          memory_type: params.memory_type || undefined,
+          limit: params.limit ?? 50,
+          offset: params.offset ?? 0,
+        }),
+      }),
+  });
+}
