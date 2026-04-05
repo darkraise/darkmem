@@ -104,27 +104,44 @@ export function CodeGraphRenderer({
     const graph = new Graph();
     graphRef.current = graph;
 
-    // Pre-position nodes hierarchically: files in a wide ring, symbols near their parent file
-    const fileNodes = nodes.filter((n) => n.kind === "file");
-    const moduleNodes = nodes.filter((n) => n.kind === "module");
-    const symbolNodes = nodes.filter((n) => n.kind !== "file" && n.kind !== "module");
-
+    // Pre-position: group files by directory, scatter with jitter, symbols near parent file
     const filePositions: Record<string, { x: number; y: number }> = {};
-    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-    const fileRadius = Math.max(50, Math.sqrt(fileNodes.length) * 12);
+    const spread = Math.max(100, Math.sqrt(nodes.length) * 8);
 
-    fileNodes.forEach((f, i) => {
-      const angle = i * goldenAngle;
-      const r = fileRadius * Math.sqrt((i + 1) / fileNodes.length);
-      filePositions[f.id] = { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+    // Group files by parent directory for spatial locality
+    const dirGroups: Record<string, string[]> = {};
+    for (const n of nodes) {
+      if (n.kind === "file") {
+        const dir = n.id.split("/").slice(0, -1).join("/") || "/";
+        (dirGroups[dir] ??= []).push(n.id);
+      }
+    }
+
+    // Position each directory cluster with wide spacing
+    const dirNames = Object.keys(dirGroups);
+    dirNames.forEach((dir, i) => {
+      const angle = (i / dirNames.length) * Math.PI * 2 + Math.random() * 0.5;
+      const r = spread * 0.4 + Math.random() * spread * 0.4;
+      const cx = Math.cos(angle) * r;
+      const cy = Math.sin(angle) * r;
+
+      dirGroups[dir].forEach((fileId, j) => {
+        filePositions[fileId] = {
+          x: cx + (Math.random() - 0.5) * spread * 0.3,
+          y: cy + (Math.random() - 0.5) * spread * 0.3,
+        };
+      });
     });
 
-    const moduleRadius = fileRadius * 1.3;
-    moduleNodes.forEach((m, i) => {
-      const angle = i * goldenAngle * 1.5;
-      const r = moduleRadius + Math.random() * 20;
-      filePositions[m.id] = { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
-    });
+    // Modules scattered in outer area
+    for (const n of nodes) {
+      if (n.kind === "module" && !filePositions[n.id]) {
+        filePositions[n.id] = {
+          x: (Math.random() - 0.5) * spread * 1.5,
+          y: (Math.random() - 0.5) * spread * 1.5,
+        };
+      }
+    }
 
     for (const n of nodes) {
       if (graph.hasNode(n.id)) continue;
