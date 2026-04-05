@@ -1,12 +1,12 @@
 import json
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.services.llm import LLMOrchestrator
+from app.services.prompt import PromptService
 
 logger = logging.getLogger(__name__)
-
-EXTRACTION_SYSTEM = """You are a knowledge extraction engine. Extract structured information from text.
-Return ONLY valid JSON with no additional text."""
 
 EXTRACTION_PROMPT = """Analyze this text and extract:
 1. Named entities (people, services, projects, technologies, concepts)
@@ -30,12 +30,15 @@ class ExtractionService:
     def __init__(self, llm: LLMOrchestrator):
         self.llm = llm
 
-    async def extract(self, content: str) -> dict:
+    async def extract(self, content: str, session: AsyncSession | None = None) -> dict:
         try:
+            system_prompt = ""
+            if session:
+                system_prompt = await PromptService.get("extraction", session)
             response = await self.llm.chat_completion(
                 "extraction",
                 messages=[
-                    {"role": "system", "content": EXTRACTION_SYSTEM},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": EXTRACTION_PROMPT + content},
                 ],
                 response_format={"type": "json_object"},

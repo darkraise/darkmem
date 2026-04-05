@@ -6,16 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import Conversation, Message
 from app.services.llm import LLMOrchestrator
+from app.services.prompt import PromptService
 from app.repositories.vector import QdrantVectorRepository
 from app.repositories.graph import Neo4jGraphRepository
-
-SYSTEM_PROMPT = (
-    "You are a knowledge assistant for a personal memory system called darkmem. "
-    "Answer questions based on the retrieved memories and entity data provided below. "
-    "When citing information, reference the memory source and content. "
-    "If the retrieved context doesn't contain enough information to answer, say so honestly. "
-    "Keep answers concise and well-structured. Use markdown formatting."
-)
 
 MENTION_RE = re.compile(r"@([\w./-]+)")
 CLUSTER_RE = re.compile(r"@cluster:(\d+)")
@@ -307,7 +300,8 @@ class ChatService:
     ) -> list[dict]:
         messages: list[dict] = []
 
-        context_parts = [SYSTEM_PROMPT, "", "## Retrieved Memories", ""]
+        system_prompt = await PromptService.get("chat", self.session)
+        context_parts = [system_prompt, "", "## Retrieved Memories", ""]
         for m in retrieval["memories"]:
             context_parts.append(
                 f"[{m['index']}] (source: {m['source']}, tags: {', '.join(m['tags'])}, relevance: {m['score']})\n{m['content']}"

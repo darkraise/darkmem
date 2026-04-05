@@ -9,6 +9,7 @@ from app.models.memory import Memory
 from app.repositories.graph import Neo4jGraphRepository
 from app.repositories.vector import QdrantVectorRepository
 from app.services.llm import LLMOrchestrator
+from app.services.prompt import PromptService
 
 logger = logging.getLogger(__name__)
 
@@ -152,13 +153,14 @@ class GraphService:
             if cid >= 0:
                 content_by_cluster.setdefault(cid, []).append(m["content"][:100])
 
+        cluster_system_prompt = await PromptService.get("cluster_naming", self.session)
         for cid, contents in content_by_cluster.items():
             try:
                 sample = "\n".join(contents[:8])
                 name = await self.llm.chat_completion(
                     "extraction",
                     messages=[
-                        {"role": "system", "content": "You are a naming assistant. Given a group of related memory snippets, generate a short descriptive name (2-4 words, no quotes). Just output the name, nothing else."},
+                        {"role": "system", "content": cluster_system_prompt},
                         {"role": "user", "content": sample},
                     ],
                 )

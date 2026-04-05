@@ -11,7 +11,7 @@ from app.services.memory import MemoryService
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("darkmem", json_response=True, stateless_http=True, streamable_http_path="/")
+mcp = FastMCP("darkmem", json_response=True, stateless_http=True, streamable_http_path="/", instructions="")
 
 _pipeline = None
 

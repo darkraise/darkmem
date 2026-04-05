@@ -79,11 +79,15 @@ async def lifespan(app: FastAPI):
     # Set pipeline reference for MCP tools
     set_pipeline(pipeline)
 
-    # Seed system prompt profiles
+    # Seed system prompt profiles and load MCP instructions
     from app.db.seed import seed_profiles
+    from app.services.prompt import PromptService
     try:
         async with async_session_factory() as session:
             await seed_profiles(session)
+            agent_instructions = await PromptService.get("agent_instructions", session)
+            if agent_instructions:
+                mcp_server._mcp_server.instructions = agent_instructions
         logger.info("Seed data applied")
     except Exception as e:
         logger.warning(f"Failed to seed data: {e}")

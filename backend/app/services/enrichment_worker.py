@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeSymbol
 from app.services.llm import LLMOrchestrator
+from app.services.prompt import PromptService
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +42,11 @@ class EnrichmentWorker:
                     kind=symbol.kind,
                     source_code=symbol.source_code[:MAX_SOURCE_CHARS],
                 )
+                system_prompt = await PromptService.get("summarization", self.session)
                 summary = await self.llm.chat_completion(
                     "summarization",
                     messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a code documentation assistant. Be concise and precise.",
-                        },
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt},
                     ],
                 )

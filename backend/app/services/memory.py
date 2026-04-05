@@ -7,6 +7,7 @@ from app.models.memory import Memory
 from app.repositories.relational import PostgresAuditRepository, PostgresMemoryRepository
 from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.pipeline import ProcessingPipeline
+from app.services.prompt import PromptService
 
 logger = logging.getLogger(__name__)
 
@@ -177,10 +178,11 @@ Memories:
 
 Question: {question}"""
 
+        system_prompt = await PromptService.get("reasoning", self.session)
         answer = await self.pipeline.llm.chat_completion(
             "reasoning",
             messages=[
-                {"role": "system", "content": "You are a knowledge retrieval assistant. Answer questions using only the provided memory context. Be concise and accurate."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
         )
