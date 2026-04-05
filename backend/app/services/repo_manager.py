@@ -16,7 +16,7 @@ from app.schemas.code import RepoCreate, RepoUpdate
 
 logger = logging.getLogger(__name__)
 
-REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "/tmp/darkmem/repos"))
+REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories"))
 
 
 class RepoManager:
@@ -172,19 +172,18 @@ class RepoManager:
 
     @staticmethod
     async def _run_git(cwd: Path, cmd: list[str], env: dict[str, str] | None = None) -> str:
+        import subprocess
         full_env = {**os.environ, **(env or {})}
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=str(cwd),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=full_env,
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                cmd, cwd=str(cwd), capture_output=True, env=full_env,
+            ),
         )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            logger.error("git command failed: %s\nstderr: %s", " ".join(cmd), stderr.decode())
-            raise RuntimeError(f"git command failed: {stderr.decode()}")
-        return stdout.decode()
+        if result.returncode != 0:
+            logger.error("git command failed: %s\nstderr: %s", " ".join(cmd), result.stderr.decode())
+            raise RuntimeError(f"git command failed: {result.stderr.decode()}")
+        return result.stdout.decode()
 
     @staticmethod
     def _clone_path(repo: Repository) -> Path:

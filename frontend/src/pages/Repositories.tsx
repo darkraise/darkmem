@@ -56,7 +56,6 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<RepoCreateParams>({
     name: "",
     url: "",
-    local_path: "",
     provider: "github",
     default_branch: "main",
     auth_token: "",
@@ -72,7 +71,6 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
 
     const params: RepoCreateParams = { name: form.name.trim() };
     if (form.url) params.url = form.url;
-    if (form.local_path) params.local_path = form.local_path;
     if (form.provider) params.provider = form.provider;
     if (form.default_branch) params.default_branch = form.default_branch;
     if (form.auth_token) params.auth_token = form.auth_token;
@@ -104,14 +102,6 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
           value={form.url ?? ""}
           onChange={(e) => set("url", e.target.value)}
           placeholder="https://github.com/org/repo"
-        />
-      </div>
-      <div>
-        <label className="text-xs text-muted-foreground">Local path</label>
-        <Input
-          value={form.local_path ?? ""}
-          onChange={(e) => set("local_path", e.target.value)}
-          placeholder="/home/user/projects/repo"
         />
       </div>
       <div>

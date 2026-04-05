@@ -7,7 +7,7 @@ from app.config import LLMPurposeConfig, settings
 from app.database import get_session
 from app.models.config import Config, SystemPromptProfile
 from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMPurposeConfigSchema
-from app.schemas.prompt import SystemPromptResponse
+from app.schemas.prompt import SystemPromptResponse, SystemPromptUpdate
 from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema
 from app.services.config import get_llm_config as fetch_llm_config
 
@@ -65,16 +65,16 @@ async def update_llm_config(
 
 @router.get("/system-prompt", response_model=SystemPromptResponse)
 async def get_system_prompt(
-    profile: str = "default",
+    purpose: str = "extraction",
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(
-        select(SystemPromptProfile).where(SystemPromptProfile.name == profile)
+        select(SystemPromptProfile).where(SystemPromptProfile.purpose == purpose)
     )
     prompt = result.scalar_one_or_none()
     if not prompt:
-        raise HTTPException(status_code=404, detail=f"Profile '{profile}' not found")
+        raise HTTPException(status_code=404, detail=f"Prompt '{purpose}' not found")
     return SystemPromptResponse.model_validate(prompt)
 
 
@@ -83,5 +83,60 @@ async def list_system_prompts(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    result = await session.execute(select(SystemPromptProfile).order_by(SystemPromptProfile.name))
+    result = await session.execute(
+        select(SystemPromptProfile).order_by(SystemPromptProfile.purpose)
+    )
     return [SystemPromptResponse.model_validate(p) for p in result.scalars().all()]
+
+
+@router.put("/system-prompt/{purpose}", response_model=SystemPromptResponse)
+async def update_system_prompt(
+    purpose: str,
+    body: SystemPromptUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(SystemPromptProfile).where(SystemPromptProfile.purpose == purpose)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"Prompt '{purpose}' not found")
+    profile.content = body.content
+    await session.flush()
+
+    from app.services.prompt import PromptService
+
+    PromptService.invalidate()
+
+    return SystemPromptResponse.model_validate(profile)
+
+
+@router.post("/system-prompt/{purpose}/reset", response_model=SystemPromptResponse)
+async def reset_system_prompt(
+    purpose: str,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.db.seed import PROFILES
+
+    default = next((p for p in PROFILES if p["purpose"] == purpose), None)
+    if not default:
+        raise HTTPException(status_code=404, detail=f"No default for '{purpose}'")
+
+    result = await session.execute(
+        select(SystemPromptProfile).where(SystemPromptProfile.purpose == purpose)
+    )
+    profile = result.scalar_one_or_none()
+    if profile:
+        profile.content = default["content"]
+    else:
+        profile = SystemPromptProfile(**default)
+        session.add(profile)
+    await session.flush()
+
+    from app.services.prompt import PromptService
+
+    PromptService.invalidate()
+
+    return SystemPromptResponse.model_validate(profile)

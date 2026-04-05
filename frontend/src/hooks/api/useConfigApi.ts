@@ -18,10 +18,11 @@ export interface LlmConfigResponse {
 }
 
 export interface SystemPromptProfile {
-  name: string;
+  purpose: string;
   display_name: string;
-  is_default: boolean;
-  extraction_depth: string;
+  content: string;
+  is_editable: boolean;
+  updated_at: string;
 }
 
 export function useLlmConfig() {
@@ -44,5 +45,26 @@ export function useSystemPrompts() {
   return useQuery<SystemPromptProfile[]>({
     queryKey: ["systemPrompts"],
     queryFn: () => apiFetch<SystemPromptProfile[]>("/config/system-prompt/list"),
+  });
+}
+
+export function useUpdateSystemPrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ purpose, content }: { purpose: string; content: string }) =>
+      apiFetch(`/config/system-prompt/${purpose}`, {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["systemPrompts"] }),
+  });
+}
+
+export function useResetSystemPrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (purpose: string) =>
+      apiFetch(`/config/system-prompt/${purpose}/reset`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["systemPrompts"] }),
   });
 }
