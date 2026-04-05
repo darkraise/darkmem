@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,3 +141,72 @@ async def reset_system_prompt(
     PromptService.invalidate()
 
     return SystemPromptResponse.model_validate(profile)
+
+
+class EnrichmentConfigUpdate(BaseModel):
+    enabled: bool = False
+    batch_size: int = 5
+    interval_seconds: int = 10
+
+
+@router.get("/enrichment")
+async def get_enrichment_config(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Config).where(Config.key == "enrichment_config"))
+    config = result.scalar_one_or_none()
+    if not config:
+        return {"enabled": False, "batch_size": 5, "interval_seconds": 10}
+    return config.value
+
+
+@router.put("/enrichment")
+async def update_enrichment_config(
+    body: EnrichmentConfigUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    request: Request = None,
+):
+    result = await session.execute(select(Config).where(Config.key == "enrichment_config"))
+    config = result.scalar_one_or_none()
+    new_value = body.model_dump()
+    if config:
+        config.value = new_value
+    else:
+        session.add(Config(key="enrichment_config", value=new_value))
+    await session.flush()
+
+    worker = getattr(request.app.state, "enrichment_worker", None) if request else None
+    if worker:
+        worker.batch_size = body.batch_size
+        worker.interval = body.interval_seconds
+        if body.enabled and not worker._running:
+            import asyncio
+
+            task = asyncio.create_task(worker.run_loop())
+            request.app.state.enrichment_task = task
+        elif not body.enabled and worker._running:
+            worker.stop()
+
+    return new_value
+
+
+@router.post("/enrichment/trigger")
+async def trigger_enrichment(
+    _user=Depends(require_auth),
+    request: Request = None,
+):
+    from app.database import async_session_factory
+    from app.services.enrichment_worker import EnrichmentWorker
+
+    llm = getattr(request.app.state, "llm", None) if request else None
+    if not llm:
+        raise HTTPException(status_code=503, detail="LLM not available")
+
+    async with async_session_factory() as session:
+        worker = EnrichmentWorker(session, llm)
+        count = await worker.process_batch(batch_size=10)
+        await session.commit()
+
+    return {"processed": count}

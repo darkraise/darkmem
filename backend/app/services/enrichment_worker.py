@@ -24,8 +24,11 @@ class EnrichmentWorker:
         self.session = session
         self.llm = llm
         self._running = False
+        self.batch_size = 5
+        self.interval = 10
 
-    async def process_batch(self, batch_size: int = 10) -> int:
+    async def process_batch(self, batch_size: int | None = None) -> int:
+        batch_size = batch_size if batch_size is not None else self.batch_size
         stmt = (
             select(CodeSymbol)
             .where(CodeSymbol.enrichment_status == "pending")
@@ -60,20 +63,20 @@ class EnrichmentWorker:
         await self.session.flush()
         return processed
 
-    async def run_loop(self, interval: int = 10, batch_size: int = 5) -> None:
+    async def run_loop(self) -> None:
         self._running = True
-        logger.info("Enrichment worker started (interval=%ds, batch_size=%d)", interval, batch_size)
+        logger.info("Enrichment worker started (interval=%ds, batch_size=%d)", self.interval, self.batch_size)
 
         while self._running:
             try:
-                processed = await self.process_batch(batch_size)
+                processed = await self.process_batch()
                 if processed > 0:
                     logger.info("Enriched %d symbols", processed)
                 else:
-                    await asyncio.sleep(interval)
+                    await asyncio.sleep(self.interval)
             except Exception:
                 logger.exception("Enrichment loop error")
-                await asyncio.sleep(interval)
+                await asyncio.sleep(self.interval)
 
         logger.info("Enrichment worker stopped")
 

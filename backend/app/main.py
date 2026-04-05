@@ -120,11 +120,44 @@ async def lifespan(app: FastAPI):
 
     sync_task = asyncio.create_task(periodic_repo_sync())
 
+    enrichment_worker = None
+    enrichment_task = None
+    if llm:
+        from app.services.enrichment_worker import EnrichmentWorker
+        from app.models.config import Config as ConfigModel
+
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(ConfigModel).where(ConfigModel.key == "enrichment_config")
+                )
+                config = result.scalar_one_or_none()
+                enrichment_config = config.value if config else {"enabled": False}
+
+            enrichment_session = async_session_factory()
+            enrichment_worker = EnrichmentWorker(enrichment_session, llm)
+
+            if enrichment_config.get("enabled", False):
+                enrichment_worker.batch_size = enrichment_config.get("batch_size", 5)
+                enrichment_worker.interval = enrichment_config.get("interval_seconds", 10)
+                enrichment_task = asyncio.create_task(enrichment_worker.run_loop())
+                logger.info("Enrichment worker started")
+
+            app.state.enrichment_worker = enrichment_worker
+            app.state.enrichment_task = enrichment_task
+        except Exception as e:
+            logger.warning(f"Failed to start enrichment worker: {e}")
+
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
         yield
 
     sync_task.cancel()
+
+    if enrichment_worker:
+        enrichment_worker.stop()
+    if enrichment_task:
+        enrichment_task.cancel()
 
     # Cleanup
     if llm:
