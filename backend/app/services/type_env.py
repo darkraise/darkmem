@@ -208,5 +208,30 @@ def _extract_java_typed_declaration(node, source: bytes, env: TypeEnvironment, s
                 env.add(_text(name_node, source), type_name, "annotation", scope)
 
 
+def propagate_types(type_envs: dict[str, TypeEnvironment], import_map: dict[str, set[str]], symbol_table=None) -> None:
+    """Propagate exported type bindings from upstream files to downstream files.
+
+    Uses iterative BFS so upstream files are propagated before downstream consumers.
+    """
+    max_passes = 3
+    for _ in range(max_passes):
+        changed = False
+        for file_path, env in type_envs.items():
+            imported_files = import_map.get(file_path, set())
+            for imp_file in imported_files:
+                imp_env = type_envs.get(imp_file)
+                if not imp_env:
+                    continue
+                for key, bindings in imp_env._bindings.items():
+                    if key.startswith("file::"):
+                        name = key.split("::", 1)[1]
+                        target_key = f"file::{name}"
+                        if target_key not in env._bindings:
+                            env._bindings[target_key] = bindings[:]
+                            changed = True
+        if not changed:
+            break
+
+
 def _text(node, source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")

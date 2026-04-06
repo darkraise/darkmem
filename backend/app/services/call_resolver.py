@@ -27,11 +27,12 @@ BUILTIN_SKIP = {
 
 
 class CallResolver:
-    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]], type_envs=None, named_imports=None):
+    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]], type_envs=None, named_imports=None, wildcard_imports=None):
         self.symbols = symbol_table
         self.import_map = import_map
         self.type_envs = type_envs or {}
         self.named_imports = named_imports or {}
+        self.wildcard_imports = wildcard_imports or {}
 
     def resolve(self, call: ExtractedCall, from_file: str) -> tuple[str, float] | None:
         if call.called_name in BUILTIN_SKIP:
@@ -70,6 +71,14 @@ class CallResolver:
             if len(filtered) == 1:
                 return (filtered[0].node_id, CONFIDENCE["import-scoped"])
 
+        if self.wildcard_imports and from_file in self.wildcard_imports:
+            wildcard_files = self.wildcard_imports[from_file]
+            wildcard_candidates = [c for c in candidates if c.file_path in wildcard_files]
+            if wildcard_candidates:
+                filtered = self._filter(wildcard_candidates, call)
+                if len(filtered) == 1:
+                    return (filtered[0].node_id, 0.85)
+
         if candidates:
             filtered = self._filter(candidates, call)
             if len(filtered) == 1:
@@ -91,6 +100,34 @@ class CallResolver:
                 result = arity_match
 
         return result
+
+    def resolve_chain(self, calls: list[ExtractedCall], from_file: str) -> list[tuple[str, float]]:
+        """Resolve a chain of member calls by walking return types."""
+        results = []
+        current_type = None
+
+        for call in calls:
+            if current_type and call.call_form == "member":
+                methods = self.symbols.lookup_by_owner(current_type, call.called_name)
+                filtered = self._filter(methods, call)
+                if len(filtered) == 1:
+                    results.append((filtered[0].node_id, 0.88))
+                    current_type = filtered[0].return_type
+                    continue
+
+            result = self.resolve(call, from_file)
+            if result:
+                results.append(result)
+                entry = next(
+                    (e for e in self.symbols.lookup_global(call.called_name) if e.node_id == result[0]),
+                    None,
+                )
+                if entry:
+                    current_type = entry.return_type
+            else:
+                current_type = None
+
+        return results
 
 
 def build_import_map(
@@ -170,4 +207,22 @@ def build_named_imports(
         if named:
             result[file_path] = named
 
+    return result
+
+
+def build_wildcard_imports(
+    file_imports: dict[str, list[str]],
+    file_paths: list[str],
+) -> dict[str, set[str]]:
+    """Find files that use wildcard imports and map them to source files."""
+    result: dict[str, set[str]] = {}
+    for file_path, imports in file_imports.items():
+        for imp in imports:
+            if "import *" in imp or "import *" in imp.replace(" ", ""):
+                parts = imp.split("import")
+                if len(parts) >= 2:
+                    module = parts[0].replace("from", "").strip()
+                    for fp in file_paths:
+                        if fp.endswith(module.replace(".", "/") + ".py") or fp.endswith(module.replace(".", "/") + "/__init__.py"):
+                            result.setdefault(file_path, set()).add(fp)
     return result

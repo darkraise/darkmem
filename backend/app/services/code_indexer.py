@@ -17,7 +17,7 @@ from app.services.code_parser import (
 )
 from app.services.llm import LLMOrchestrator
 from app.services.repo_manager import RepoManager
-from app.services.type_env import build_type_env
+from app.services.type_env import build_type_env, propagate_types
 from app.services.heritage_resolver import HeritageResolver, AccessResolver
 from app.repositories.graph import Neo4jGraphRepository
 from app.repositories.vector import QdrantVectorRepository
@@ -182,6 +182,11 @@ class CodeIndexer:
                                         type_envs[file_path] = build_type_env(tree, content.encode("utf-8"), lang, file_path)
                             except Exception as e:
                                 logger.debug("Failed to build type env for %s: %s", file_path, e)
+
+                if type_envs and all_imports:
+                    from app.services.call_resolver import build_import_map as _build_import_map
+                    phase3_import_map = _build_import_map(list(type_envs.keys()), all_imports)
+                    propagate_types(type_envs, phase3_import_map)
 
                 if member_calls and type_envs:
                     access_resolver = AccessResolver(self.graph_repo, str(repo.id))
@@ -552,7 +557,8 @@ class CodeIndexer:
         all_file_paths: list[str],
         all_imports: dict[str, list[str]],
     ) -> int:
-        from app.services.call_resolver import CallResolver, build_import_map, build_named_imports
+        from app.services.call_resolver import CallResolver, build_import_map, build_named_imports, build_wildcard_imports
+        from app.services.code_parser import extract_return_type_from_signature
         from app.services.symbol_table import SymbolEntry, SymbolTable
 
         rows = (await self.session.execute(
@@ -570,6 +576,8 @@ class CodeIndexer:
                 params = sym.signature.strip("()").split(",")
                 param_count = len([p for p in params if p.strip()]) if params != [""] else 0
 
+            return_type = extract_return_type_from_signature(sym.signature, sym.source_code)
+
             symbol_table.add(SymbolEntry(
                 node_id=str(sym.id),
                 file_path=file_path,
@@ -577,6 +585,7 @@ class CodeIndexer:
                 kind=sym.kind,
                 param_count=param_count,
                 owner_id=str(sym.parent_symbol_id) if sym.parent_symbol_id else None,
+                return_type=return_type,
             ))
             symbol_by_id[str(sym.id)] = (sym, file_path)
 
@@ -591,7 +600,8 @@ class CodeIndexer:
 
         import_map = build_import_map(all_file_paths, all_imports)
         named_imports = build_named_imports(all_imports, all_file_paths)
-        resolver = CallResolver(symbol_table, import_map, named_imports=named_imports)
+        wildcard_imports = build_wildcard_imports(all_imports, all_file_paths)
+        resolver = CallResolver(symbol_table, import_map, named_imports=named_imports, wildcard_imports=wildcard_imports)
         call_edges = []
 
         for file_path, calls in all_calls.items():

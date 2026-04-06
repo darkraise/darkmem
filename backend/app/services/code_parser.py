@@ -181,6 +181,7 @@ class ExtractedSymbol:
     visibility: str | None
     source_code: str
     children: list[ExtractedSymbol] = field(default_factory=list)
+    return_type: str | None = None
 
 
 @dataclass
@@ -365,6 +366,8 @@ def _extract_symbol(node: "Node", source: bytes) -> ExtractedSymbol | None:
             if child_sym:
                 children.append(child_sym)
 
+    return_type = _extract_return_type(node, source)
+
     return ExtractedSymbol(
         name=name,
         kind=kind,
@@ -375,6 +378,7 @@ def _extract_symbol(node: "Node", source: bytes) -> ExtractedSymbol | None:
         visibility=visibility,
         source_code=source_code,
         children=children,
+        return_type=return_type,
     )
 
 
@@ -457,6 +461,31 @@ def _extract_visibility(node: "Node", source: bytes) -> str | None:
         name = _extract_name(node, source)
         if name and name.startswith("_"):
             return "private"
+    return None
+
+
+def _extract_return_type(node: "Node", source: bytes) -> str | None:
+    for field_name in ("return_type", "type", "result"):
+        ret = node.child_by_field_name(field_name)
+        if ret:
+            text = _get_text(ret, source).lstrip(": ")
+            if text:
+                return text
+    return None
+
+
+def extract_return_type_from_signature(signature: str | None, source_code: str | None) -> str | None:
+    if not signature and not source_code:
+        return None
+    text = signature or ""
+    if "->" in text:
+        return text.split("->")[-1].strip().rstrip(":")
+    if source_code:
+        first_line = source_code.split("\n")[0]
+        if "->" in first_line:
+            ret = first_line.split("->")[-1].strip().rstrip(":").rstrip("{").strip()
+            if ret:
+                return ret
     return None
 
 
