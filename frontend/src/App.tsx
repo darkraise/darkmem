@@ -18,6 +18,7 @@ import PipelineLogs from "@/pages/PipelineLogs";
 import Chat from "@/pages/Chat";
 import Repositories from "@/pages/Repositories";
 import CodeGraph from "@/pages/CodeGraph";
+import CodeWiki from "@/pages/CodeWiki";
 import Setup from "@/pages/Setup";
 import Login from "@/pages/Login";
 
@@ -47,6 +48,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
             <Route path="/chat" element={<Chat />} />
             <Route path="/repos" element={<Repositories />} />
             <Route path="/code-graph" element={<CodeGraph />} />
+            <Route path="/code-wiki" element={<CodeWiki />} />
           </Routes>
         </ErrorBoundary>
       </main>

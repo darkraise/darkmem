@@ -15,6 +15,7 @@ import {
   MessageCircle,
   GitBranch,
   GitGraph,
+  BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -33,6 +34,7 @@ const navItems: (NavItem | null)[] = [
   { to: "/chat", label: "Chat", icon: MessageCircle },
   { to: "/repos", label: "Repositories", icon: GitBranch },
   { to: "/code-graph", label: "Code Graph", icon: GitGraph },
+  { to: "/code-wiki", label: "Code Wiki", icon: BookOpen },
   null,
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/llm", label: "LLM Config", icon: Cpu },
