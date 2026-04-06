@@ -97,6 +97,12 @@ export function CodeGraphRenderer({
   const visibleEdgeTypesRef = useRef(visibleEdgeTypes);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+
+  const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}`;
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return;
@@ -324,7 +330,8 @@ export function CodeGraphRenderer({
     fa2Ref.current = fa2;
     fa2.start();
     setTimeout(() => { if (fa2Ref.current) fa2Ref.current.stop(); }, layoutTimeout);
-  }, [nodes, edges]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphKey]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => buildGraph());
