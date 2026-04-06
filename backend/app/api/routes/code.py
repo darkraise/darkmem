@@ -496,6 +496,7 @@ async def code_graph(
 @router.get("/wiki/{repo_id}")
 async def get_wiki(
     repo_id: UUID,
+    force: bool = False,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     request: Request = None,
@@ -503,7 +504,7 @@ async def get_wiki(
     from app.services.wiki_generator import WikiGenerator
     llm = getattr(request.app.state, "llm", None) if request else None
     generator = WikiGenerator(session, llm)
-    return await generator.generate(repo_id)
+    return await generator.generate(repo_id, force=force)
 
 
 class BlastRadiusRequest(BaseModel):

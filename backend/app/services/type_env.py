@@ -211,26 +211,64 @@ def _extract_java_typed_declaration(node, source: bytes, env: TypeEnvironment, s
 def propagate_types(type_envs: dict[str, TypeEnvironment], import_map: dict[str, set[str]], symbol_table=None) -> None:
     """Propagate exported type bindings from upstream files to downstream files.
 
-    Uses iterative BFS so upstream files are propagated before downstream consumers.
+    Uses topological sort (Kahn's algorithm) on the import graph so upstream
+    files are processed before their dependents. Single pass in dependency order.
     """
-    max_passes = 3
-    for _ in range(max_passes):
-        changed = False
-        for file_path, env in type_envs.items():
-            imported_files = import_map.get(file_path, set())
-            for imp_file in imported_files:
-                imp_env = type_envs.get(imp_file)
-                if not imp_env:
+    from collections import deque
+
+    all_files = set(type_envs.keys())
+
+    in_degree: dict[str, int] = {f: 0 for f in all_files}
+    dependents: dict[str, list[str]] = {f: [] for f in all_files}
+
+    for file_path in all_files:
+        imported = import_map.get(file_path, set())
+        for imp in imported:
+            if imp in all_files:
+                in_degree[file_path] = in_degree.get(file_path, 0) + 1
+                dependents.setdefault(imp, []).append(file_path)
+
+    queue = deque(f for f, d in in_degree.items() if d == 0)
+
+    while queue:
+        current = queue.popleft()
+        current_env = type_envs.get(current)
+        if not current_env:
+            continue
+
+        for dependent in dependents.get(current, []):
+            dep_env = type_envs.get(dependent)
+            if not dep_env:
+                continue
+
+            for key, bindings in current_env._bindings.items():
+                if key.startswith("file::"):
+                    if key not in dep_env._bindings:
+                        dep_env._bindings[key] = bindings[:]
+
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                queue.append(dependent)
+
+    remaining = [f for f, d in in_degree.items() if d > 0]
+    if remaining:
+        for _ in range(2):
+            changed = False
+            for file_path in remaining:
+                env = type_envs.get(file_path)
+                if not env:
                     continue
-                for key, bindings in imp_env._bindings.items():
-                    if key.startswith("file::"):
-                        name = key.split("::", 1)[1]
-                        target_key = f"file::{name}"
-                        if target_key not in env._bindings:
-                            env._bindings[target_key] = bindings[:]
+                imported = import_map.get(file_path, set())
+                for imp in imported:
+                    imp_env = type_envs.get(imp)
+                    if not imp_env:
+                        continue
+                    for key, bindings in imp_env._bindings.items():
+                        if key.startswith("file::") and key not in env._bindings:
+                            env._bindings[key] = bindings[:]
                             changed = True
-        if not changed:
-            break
+            if not changed:
+                break
 
 
 def _text(node, source: bytes) -> str:

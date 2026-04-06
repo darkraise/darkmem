@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol, Repository
+from app.models.config import Config
 from app.services.llm import LLMOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -15,13 +16,27 @@ class WikiGenerator:
         self.session = session
         self.llm = llm
 
-    async def generate(self, repo_id: UUID) -> dict:
+    async def generate(self, repo_id: UUID, force: bool = False) -> dict:
         """Generate wiki documentation for a repository."""
         repo = (await self.session.execute(
             select(Repository).where(Repository.id == repo_id)
         )).scalar_one_or_none()
         if not repo:
             return {"error": "Repository not found"}
+
+        cache_key = f"wiki_{repo_id}"
+
+        if not force:
+            cached = (await self.session.execute(
+                select(Config).where(Config.key == cache_key)
+            )).scalar_one_or_none()
+            if cached:
+                cache_data = cached.value
+                cached_at = cache_data.get("_cached_at")
+                repo_indexed = repo.last_indexed_at.isoformat() if repo.last_indexed_at else None
+                if cached_at and cached_at == repo_indexed:
+                    result = {k: v for k, v in cache_data.items() if not k.startswith("_")}
+                    return result
 
         files = (await self.session.execute(
             select(CodeFile).where(CodeFile.repo_id == repo_id).order_by(CodeFile.file_path)
@@ -118,10 +133,22 @@ class WikiGenerator:
             except Exception as e:
                 logger.warning("Wiki overview failed: %s", e)
 
-        return {
+        result = {
             "repo_name": repo.name,
             "overview": overview,
             "modules": module_entries,
             "total_modules": len(module_entries),
             "total_files": len(files),
         }
+
+        cache_value = {**result, "_cached_at": repo.last_indexed_at.isoformat() if repo.last_indexed_at else None}
+        existing_cache = (await self.session.execute(
+            select(Config).where(Config.key == cache_key)
+        )).scalar_one_or_none()
+        if existing_cache:
+            existing_cache.value = cache_value
+        else:
+            self.session.add(Config(key=cache_key, value=cache_value))
+        await self.session.flush()
+
+        return result

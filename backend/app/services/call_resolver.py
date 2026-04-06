@@ -47,6 +47,12 @@ class CallResolver:
                 if len(filtered) == 1:
                     return (filtered[0].node_id, 0.92)
 
+        if call.call_form == "member" and call.receiver_name:
+            receiver_methods = self.symbols.lookup_by_owner(call.receiver_name, call.called_name)
+            filtered = self._filter(receiver_methods, call)
+            if len(filtered) == 1:
+                return (filtered[0].node_id, 0.80)
+
         locals_ = self.symbols.lookup_local(from_file, call.called_name)
         if locals_:
             filtered = self._filter(locals_, call)
@@ -109,6 +115,8 @@ class CallResolver:
         for call in calls:
             if current_type and call.call_form == "member":
                 methods = self.symbols.lookup_by_owner(current_type, call.called_name)
+                if not methods:
+                    methods = [e for e in self.symbols.lookup_global(call.called_name) if e.kind in ("method", "function")]
                 filtered = self._filter(methods, call)
                 if len(filtered) == 1:
                     results.append((filtered[0].node_id, 0.88))

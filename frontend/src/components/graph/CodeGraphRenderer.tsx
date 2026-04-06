@@ -353,7 +353,48 @@ export function CodeGraphRenderer({
     });
     fa2Ref.current = fa2;
     fa2.start();
-    setTimeout(() => { if (fa2Ref.current) fa2Ref.current.stop(); }, layoutTimeout);
+    setTimeout(() => {
+      if (fa2Ref.current) fa2Ref.current.stop();
+
+      if (graphRef.current && graphRef.current.order < 5000) {
+        const g = graphRef.current;
+        const nodes = g.nodes();
+        for (let pass = 0; pass < 5; pass++) {
+          let moved = false;
+          for (let i = 0; i < nodes.length; i++) {
+            const a = nodes[i];
+            const ax = g.getNodeAttribute(a, "x");
+            const ay = g.getNodeAttribute(a, "y");
+            const aSize = g.getNodeAttribute(a, "size") || 3;
+
+            for (let j = i + 1; j < nodes.length; j++) {
+              const b = nodes[j];
+              const bx = g.getNodeAttribute(b, "x");
+              const by = g.getNodeAttribute(b, "y");
+              const bSize = g.getNodeAttribute(b, "size") || 3;
+
+              const dx = bx - ax;
+              const dy = by - ay;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              const minDist = (aSize + bSize) * 1.5;
+
+              if (dist < minDist && dist > 0) {
+                const overlap = (minDist - dist) / 2;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                g.setNodeAttribute(a, "x", ax - nx * overlap);
+                g.setNodeAttribute(a, "y", ay - ny * overlap);
+                g.setNodeAttribute(b, "x", bx + nx * overlap);
+                g.setNodeAttribute(b, "y", by + ny * overlap);
+                moved = true;
+              }
+            }
+          }
+          if (!moved) break;
+        }
+        sigmaRef.current?.refresh();
+      }
+    }, layoutTimeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphKey]);
 
