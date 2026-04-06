@@ -95,6 +95,8 @@ export function CodeGraphRenderer({
   const hoveredNodeRef = useRef<string | null>(null);
   const highlightedIdsRef = useRef(highlightedIds);
   const visibleEdgeTypesRef = useRef(visibleEdgeTypes);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return;
@@ -293,14 +295,14 @@ export function CodeGraphRenderer({
     });
     sigma.on("clickNode", ({ node }) => {
       const attrs = graph.getNodeAttributes(node);
-      onSelect({
+      onSelectRef.current({
         id: node,
         label: attrs.label as string,
         kind: attrs._kind as string | undefined,
         file_path: attrs._filePath as string | undefined,
       });
     });
-    sigma.on("clickStage", () => onSelect(null));
+    sigma.on("clickStage", () => onSelectRef.current(null));
 
     sigmaRef.current = sigma;
 
@@ -322,7 +324,7 @@ export function CodeGraphRenderer({
     fa2Ref.current = fa2;
     fa2.start();
     setTimeout(() => { if (fa2Ref.current) fa2Ref.current.stop(); }, layoutTimeout);
-  }, [nodes, edges, onSelect]);
+  }, [nodes, edges]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => buildGraph());
