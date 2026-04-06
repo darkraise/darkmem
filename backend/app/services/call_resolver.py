@@ -27,13 +27,23 @@ BUILTIN_SKIP = {
 
 
 class CallResolver:
-    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]]):
+    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]], type_envs=None):
         self.symbols = symbol_table
         self.import_map = import_map
+        self.type_envs = type_envs or {}
 
     def resolve(self, call: ExtractedCall, from_file: str) -> tuple[str, float] | None:
         if call.called_name in BUILTIN_SKIP:
             return None
+
+        if call.call_form == "member" and call.receiver_name and from_file in self.type_envs:
+            env = self.type_envs[from_file]
+            receiver_type = env.resolve(call.receiver_name)
+            if receiver_type:
+                owner_methods = self.symbols.lookup_by_owner(receiver_type, call.called_name)
+                filtered = self._filter(owner_methods, call)
+                if len(filtered) == 1:
+                    return (filtered[0].node_id, 0.92)
 
         locals_ = self.symbols.lookup_local(from_file, call.called_name)
         if locals_:

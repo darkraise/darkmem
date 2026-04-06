@@ -17,6 +17,8 @@ from app.services.code_parser import (
 )
 from app.services.llm import LLMOrchestrator
 from app.services.repo_manager import RepoManager
+from app.services.type_env import build_type_env
+from app.services.heritage_resolver import HeritageResolver, AccessResolver
 from app.repositories.graph import Neo4jGraphRepository
 from app.repositories.vector import QdrantVectorRepository
 
@@ -142,6 +144,49 @@ class CodeIndexer:
             })
             calls_created = await self._resolve_calls(repo, all_calls, all_file_paths, all_imports)
             stats["calls_resolved"] = calls_created
+
+        # Phase 3: Heritage resolution + type-based edges
+        if self.graph_repo:
+            repo.status_message = "Resolving inheritance and type relationships..."
+            await self.session.commit()
+            await event_manager.broadcast("repo.indexing_progress", {
+                "repo_id": str(repo.id), "current": total_files, "total": total_files,
+                "file_path": "Resolving types...",
+            })
+
+            heritage_resolver = HeritageResolver(self.graph_repo, str(repo.id))
+            heritage_result = await heritage_resolver.resolve_all()
+            stats["method_overrides"] = heritage_result["overrides"]
+            stats["method_implements"] = heritage_result["implements"]
+
+            if all_calls:
+                work_dir = self.repo_manager.repo_working_dir(repo)
+                type_envs = {}
+                member_calls = {}
+                for file_path, calls in all_calls.items():
+                    member = [c for c in calls if c.call_form == "member"]
+                    if member:
+                        member_calls[file_path] = member
+                        full_path = work_dir / file_path
+                        if full_path.is_file():
+                            try:
+                                content = full_path.read_text(encoding="utf-8", errors="replace")
+                                from app.services.code_parser import detect_language, _get_language
+                                lang = detect_language(file_path)
+                                if lang:
+                                    lang_obj = _get_language(lang)
+                                    if lang_obj:
+                                        from tree_sitter import Parser, Language
+                                        p = Parser(lang_obj if isinstance(lang_obj, Language) else Language(lang_obj))
+                                        tree = p.parse(content.encode("utf-8"))
+                                        type_envs[file_path] = build_type_env(tree, content.encode("utf-8"), lang, file_path)
+                            except Exception as e:
+                                logger.debug("Failed to build type env for %s: %s", file_path, e)
+
+                if member_calls and type_envs:
+                    access_resolver = AccessResolver(self.graph_repo, str(repo.id))
+                    accesses = await access_resolver.resolve(type_envs, member_calls)
+                    stats["accesses"] = accesses
 
         repo.last_indexed_commit = new_sha
         repo.last_indexed_at = datetime.now(timezone.utc)

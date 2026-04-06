@@ -31,6 +31,7 @@ const EDGE_COLORS_FOR_FILTER: Record<string, string> = {
   calls: "#7c3aed", imports: "#1d4ed8", contains: "#2d5a3d", defines: "#0e7490",
   extends: "#c2410c", implements: "#be185d", has_method: "#0e7490",
   has_property: "#64748b", handles_route: "#f43f5e", handles_tool: "#a855f7",
+  method_overrides: "#c2410c", method_implements: "#be185d", accesses: "#64748b",
 };
 
 const ALL_NODE_TYPES = [
@@ -55,7 +56,7 @@ export default function CodeGraph() {
   const [searchResults, setSearchResults] = useState<CodeSearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<Set<string>>(
-    new Set(["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool"]),
+    new Set(["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses"]),
   );
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(
     new Set(ALL_NODE_TYPES),
@@ -327,7 +328,7 @@ export default function CodeGraph() {
               Edge Types
             </div>
             <div className="space-y-1">
-              {["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool"].map((type) => (
+              {["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses"].map((type) => (
                 <label
                   key={type}
                   className="flex items-center gap-2 text-xs cursor-pointer"

@@ -40,6 +40,7 @@ const EDGE_COLORS: Record<string, string> = {
   extends: "#c2410c", implements: "#be185d",
   has_method: "#0e7490", has_property: "#64748b",
   handles_route: "#f43f5e", handles_tool: "#a855f7",
+  method_overrides: "#c2410c", method_implements: "#be185d", accesses: "#64748b",
   queries: "#eab308", fetches: "#06b6d4",
 };
 const DEFAULT_EDGE_COLOR = "#2a2a3a";
@@ -47,7 +48,8 @@ const DEFAULT_EDGE_COLOR = "#2a2a3a";
 const EDGE_SIZE_MULTIPLIERS: Record<string, number> = {
   contains: 0.4, defines: 0.5, imports: 0.6, calls: 0.8,
   extends: 1.0, implements: 0.9, has_method: 0.5, has_property: 0.4,
-  handles_route: 0.7, handles_tool: 0.7, queries: 0.6, fetches: 0.6,
+  handles_route: 0.7, handles_tool: 0.7, method_overrides: 0.8, method_implements: 0.8, accesses: 0.5,
+  queries: 0.6, fetches: 0.6,
 };
 const DEFAULT_EDGE_SIZE = 0.5;
 

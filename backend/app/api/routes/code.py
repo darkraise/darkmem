@@ -364,6 +364,30 @@ async def code_graph(
         async for record in ht_result:
             edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
 
+        # METHOD_OVERRIDES edges
+        mo_result = await neo.run(
+            "MATCH (c:CodeSymbol {repo_id: $repo_id})-[:METHOD_OVERRIDES]->(m:CodeSymbol {repo_id: $repo_id}) RETURN c.name + '::' + c.file_path AS source, m.name + '::' + m.file_path AS target, 'method_overrides' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in mo_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # METHOD_IMPLEMENTS edges
+        mi_result = await neo.run(
+            "MATCH (m1:CodeSymbol {repo_id: $repo_id})-[:METHOD_IMPLEMENTS]->(m2:CodeSymbol {repo_id: $repo_id}) RETURN m1.name + '::' + m1.file_path AS source, m2.name + '::' + m2.file_path AS target, 'method_implements' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in mi_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # ACCESSES edges
+        acc_result = await neo.run(
+            "MATCH (s:CodeSymbol {repo_id: $repo_id})-[:ACCESSES]->(p:Property {repo_id: $repo_id}) RETURN s.name + '::' + s.file_path AS source, 'prop::' + p.owner + '.' + p.name + '::' + p.file_path AS target, 'accesses' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in acc_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
     return {"nodes": nodes, "edges": edges}
 
 

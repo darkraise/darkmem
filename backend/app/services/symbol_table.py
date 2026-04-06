@@ -11,6 +11,10 @@ class SymbolEntry:
     kind: str
     param_count: int | None = None
     owner_id: str | None = None
+    return_type: str | None = None
+    param_types: list[str] | None = None
+    declared_type: str | None = None
+    is_static: bool = False
 
 
 CALLABLE_KINDS = {"function", "method", "constructor"}
@@ -34,3 +38,17 @@ class SymbolTable:
 
     def lookup_callable(self, name: str) -> list[SymbolEntry]:
         return [e for e in self.lookup_global(name) if e.kind in CALLABLE_KINDS]
+
+    def lookup_by_owner(self, owner_name: str, member_name: str) -> list[SymbolEntry]:
+        """Find a method/property belonging to a specific class."""
+        results = []
+        for entry in self.lookup_global(member_name):
+            if entry.owner_id and entry.kind in ("method", "function"):
+                results.append(entry)
+        for entry in self.lookup_global(member_name):
+            if entry.kind in ("method", "function"):
+                for cls_entry in self.lookup_global(owner_name):
+                    if cls_entry.file_path == entry.file_path and cls_entry.kind in ("class", "struct", "interface", "trait"):
+                        results.append(entry)
+                        break
+        return list({e.node_id: e for e in results}.values())
