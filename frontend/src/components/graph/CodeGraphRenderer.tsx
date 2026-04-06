@@ -194,21 +194,34 @@ export function CodeGraphRenderer({
 
         const hov = hoveredNodeRef.current;
         const sel = selectedIdRef.current;
-        const active = hov || sel;
 
-        if (active) {
-          const isNeighbor = graph.hasEdge(active, node) || graph.hasEdge(node, active);
-
-          if (node === active) {
-            res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.4);
-            res.size = baseSize * 1.8;
-            res.zIndex = 2;
-            res.highlighted = true;
-          } else if (isNeighbor) {
-            res.size = baseSize * 1.3;
+        if (hov === node) {
+          res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.4);
+          res.size = baseSize * 1.4;
+          res.zIndex = 2;
+          res.highlighted = true;
+        } else if (sel === node) {
+          res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.4);
+          res.size = baseSize * 1.4;
+          res.zIndex = 2;
+          res.highlighted = true;
+          res.borderColor = "#ffffff";
+          res.borderSize = 3;
+        } else if (hov && !sel) {
+          const isHovNeighbor = graph.hasEdge(hov, node) || graph.hasEdge(node, hov);
+          if (isHovNeighbor) {
+            res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.2);
+            res.size = baseSize * 1.2;
+            res.zIndex = 1;
+          }
+        } else if (sel) {
+          const isSelNeighbor = graph.hasEdge(sel, node) || graph.hasEdge(node, sel);
+          if (isSelNeighbor) {
+            res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.2);
+            res.size = baseSize * 1.2;
             res.zIndex = 1;
           } else {
-            res.color = "#333333";
+            res.color = "#444444";
             res.size = baseSize * 0.6;
             res.label = "";
             res.zIndex = 0;
@@ -238,14 +251,13 @@ export function CodeGraphRenderer({
 
         const hov = hoveredNodeRef.current;
         const sel = selectedIdRef.current;
-        const active = hov || sel;
+        const src = graph.source(edge);
+        const tgt = graph.target(edge);
 
-        if (active) {
-          const src = graph.source(edge);
-          const tgt = graph.target(edge);
-          if (src === active || tgt === active) {
+        if (sel) {
+          if (src === sel || tgt === sel) {
             res.size = (data.size || DEFAULT_EDGE_SIZE) * 2;
-            const neighborNode = src === active ? tgt : src;
+            const neighborNode = src === sel ? tgt : src;
             res.color = lightenHex(
               (graph.getNodeAttribute(neighborNode, "color") as string) || DEFAULT_NODE_COLOR,
               0.3,
@@ -254,6 +266,15 @@ export function CodeGraphRenderer({
             res.color = "#1a1a24";
             res.size = (data.size || DEFAULT_EDGE_SIZE) * 0.3;
           }
+        }
+
+        if (hov && (src === hov || tgt === hov)) {
+          res.size = (data.size || DEFAULT_EDGE_SIZE) * 2;
+          const neighborNode = src === hov ? tgt : src;
+          res.color = lightenHex(
+            (graph.getNodeAttribute(neighborNode, "color") as string) || DEFAULT_NODE_COLOR,
+            0.3,
+          );
         }
 
         return res;
