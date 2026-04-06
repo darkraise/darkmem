@@ -33,6 +33,7 @@ IGNORED_EXTENSIONS = {
     ".pyc", ".pyo", ".exe", ".dll", ".so", ".dylib",
 }
 MAX_FILE_SIZE = 500_000
+PARALLEL_BATCH = 10
 
 
 class CodeIndexer:
@@ -113,27 +114,50 @@ class CodeIndexer:
                 logger.error("Error deleting data for %s: %s", rel_path, exc)
                 stats["errors"].append(f"delete:{rel_path}:{exc}")
 
-        for i, rel_path in enumerate(changed_files):
-            repo.status_message = f"Indexing file {i + 1}/{total_files}: {rel_path}"
-            if i % 5 == 0:
-                await self.session.commit()
-                await event_manager.broadcast("repo.indexing_progress", {"repo_id": str(repo.id), "current": i + 1, "total": total_files, "file_path": rel_path})
-            try:
-                result = await self._index_file(repo, work_dir, rel_path)
+        for batch_start in range(0, total_files, PARALLEL_BATCH):
+            batch_end = min(batch_start + PARALLEL_BATCH, total_files)
+            batch = changed_files[batch_start:batch_end]
+
+            repo.status_message = f"Parsing files {batch_start + 1}-{batch_end}/{total_files}..."
+            await self.session.commit()
+            await event_manager.broadcast("repo.indexing_progress", {
+                "repo_id": str(repo.id), "current": batch_start, "total": total_files,
+                "file_path": f"Batch {batch_start // PARALLEL_BATCH + 1}",
+            })
+
+            tasks = [self._parse_file_async(work_dir, fp, repo.id) for fp in batch]
+            parsed_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for i, result in enumerate(parsed_results):
+                rel_path = batch[i]
+
+                if isinstance(result, Exception):
+                    logger.error("Error parsing %s: %s", rel_path, result)
+                    stats["errors"].append(f"parse:{rel_path}:{result}")
+                    continue
+
                 if result is None:
                     stats["files_skipped"] += 1
-                else:
-                    stats["files_changed"] += 1
-                    stats["symbols_indexed"] += result.get("symbols", 0)
-                    stats["chunks_stored"] += result.get("chunks", 0)
-                    if result.get("calls"):
-                        all_calls[rel_path] = result["calls"]
-                        all_file_paths.append(rel_path)
-                    if result.get("imports"):
-                        all_imports[rel_path] = result["imports"]
-            except Exception as exc:
-                logger.error("Error indexing %s: %s", rel_path, exc)
-                stats["errors"].append(f"index:{rel_path}:{exc}")
+                    continue
+
+                try:
+                    store_result = await self._store_parsed_file(repo, result)
+                    if store_result:
+                        stats["files_changed"] += 1
+                        stats["symbols_indexed"] += store_result.get("symbols", 0)
+                        stats["chunks_stored"] += store_result.get("chunks", 0)
+                        if store_result.get("calls"):
+                            all_calls[rel_path] = store_result["calls"]
+                            all_file_paths.append(rel_path)
+                        if store_result.get("imports"):
+                            all_imports[rel_path] = store_result["imports"]
+                    else:
+                        stats["files_skipped"] += 1
+                except Exception as exc:
+                    logger.error("Error storing %s: %s", rel_path, exc)
+                    stats["errors"].append(f"store:{rel_path}:{exc}")
+
+            await self.session.commit()
 
         if self.graph_repo and all_calls:
             repo.status_message = "Resolving function calls..."
@@ -303,6 +327,126 @@ class CodeIndexer:
             "heritage": len(parse_result.heritage),
             "properties": len(parse_result.properties),
             "routes": len(parse_result.routes),
+        }
+
+    async def _parse_file_async(
+        self, work_dir: Path, rel_path: str, repo_id: UUID,
+    ) -> dict | None:
+        """Parse a file and generate embeddings without touching the database."""
+        full_path = work_dir / rel_path
+        if not full_path.is_file():
+            return None
+
+        try:
+            size = full_path.stat().st_size
+        except OSError:
+            return None
+
+        if size > MAX_FILE_SIZE:
+            return None
+
+        try:
+            content = full_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return None
+
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        parse_result = parse_file(rel_path, content)
+        if not parse_result:
+            return None
+
+        vectors: list = []
+        if parse_result.chunks and self.llm:
+            texts = [c["content"][:2000] for c in parse_result.chunks]
+            try:
+                vectors = await self.llm.embed_batch(texts)
+            except Exception as exc:
+                logger.warning("Batch embedding failed for %s: %s", rel_path, exc)
+
+        return {
+            "rel_path": rel_path,
+            "content_hash": content_hash,
+            "parse_result": parse_result,
+            "vectors": vectors,
+        }
+
+    async def _store_parsed_file(
+        self, repo: Repository, parsed: dict,
+    ) -> dict | None:
+        """Store a pre-parsed file's data to PostgreSQL, Qdrant, and Neo4j."""
+        rel_path = parsed["rel_path"]
+        content_hash = parsed["content_hash"]
+        parse_result = parsed["parse_result"]
+        vectors = parsed["vectors"]
+
+        existing = (
+            await self.session.execute(
+                select(CodeFile).where(
+                    CodeFile.repo_id == repo.id,
+                    CodeFile.file_path == rel_path,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if existing and existing.content_hash == content_hash:
+            return None
+
+        if existing:
+            await self._delete_file_data(repo.id, rel_path)
+
+        code_file = CodeFile(
+            id=uuid4(),
+            repo_id=repo.id,
+            file_path=rel_path,
+            language=parse_result.language,
+            content_hash=content_hash,
+        )
+        self.session.add(code_file)
+        await self.session.flush()
+
+        symbol_count = 0
+        symbol_map: dict[str, UUID] = {}
+        for sym in parse_result.symbols:
+            symbol_count += self._store_symbol(code_file, sym, None, symbol_map)
+
+        chunk_count = 0
+        if vectors and parse_result.chunks and self.vector_repo:
+            from qdrant_client.models import PointStruct
+
+            points = []
+            for chunk, vector in zip(parse_result.chunks, vectors):
+                points.append(PointStruct(
+                    id=str(uuid4()),
+                    vector=vector,
+                    payload={
+                        "repo_id": str(repo.id),
+                        "file_path": rel_path,
+                        "language": parse_result.language,
+                        "symbol_name": chunk.get("symbol_name"),
+                        "chunk_content": chunk["content"][:5000],
+                        "line_start": chunk["line_start"],
+                        "line_end": chunk["line_end"],
+                    },
+                ))
+            if points:
+                await self.vector_repo.client.upsert(
+                    collection_name="code_chunks", points=points,
+                )
+                chunk_count = len(points)
+
+        if self.graph_repo:
+            await self._store_graph(
+                repo, rel_path, parse_result.symbols, parse_result.imports,
+                heritage=parse_result.heritage,
+                properties=parse_result.properties,
+                routes=parse_result.routes,
+            )
+
+        return {
+            "symbols": symbol_count,
+            "chunks": chunk_count,
+            "calls": parse_result.calls,
+            "imports": [imp.source for imp in parse_result.imports],
         }
 
     def _store_symbol(
