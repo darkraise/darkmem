@@ -7,4 +7,4 @@ dist/
 node_modules/
 .superpowers/
 .claude/**
-backend/data/
+backend/data/**
