@@ -188,6 +188,20 @@ class CodeIndexer:
                     accesses = await access_resolver.resolve(type_envs, member_calls)
                     stats["accesses"] = accesses
 
+        # Phase 4: Community detection + process tracing
+        if self.graph_repo:
+            repo.status_message = "Detecting communities and tracing execution flows..."
+            await self.session.commit()
+
+            from app.services.community_detector import CommunityDetector
+            from app.services.process_tracer import ProcessTracer
+
+            detector = CommunityDetector(self.graph_repo, str(repo.id))
+            stats["communities"] = await detector.detect()
+
+            tracer = ProcessTracer(self.graph_repo, str(repo.id))
+            stats["processes"] = await tracer.trace()
+
         repo.last_indexed_commit = new_sha
         repo.last_indexed_at = datetime.now(timezone.utc)
         repo.status = "ready"

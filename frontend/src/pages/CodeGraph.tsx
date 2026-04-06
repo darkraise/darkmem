@@ -25,6 +25,7 @@ const NODE_COLORS_FOR_FILTER: Record<string, string> = {
   interface: "#ec4899", trait: "#f472b6", enum: "#f97316", function: "#10b981",
   method: "#14b8a6", type: "#64748b", impl: "#7c3aed",
   property: "#64748b", route: "#f43f5e", tool: "#a855f7",
+  community: "#818cf8", process: "#f43f5e",
 };
 
 const EDGE_COLORS_FOR_FILTER: Record<string, string> = {
@@ -32,12 +33,14 @@ const EDGE_COLORS_FOR_FILTER: Record<string, string> = {
   extends: "#c2410c", implements: "#be185d", has_method: "#0e7490",
   has_property: "#64748b", handles_route: "#f43f5e", handles_tool: "#a855f7",
   method_overrides: "#c2410c", method_implements: "#be185d", accesses: "#64748b",
+  member_of: "#818cf8", step_in_process: "#f43f5e", entry_point_of: "#f43f5e",
 };
 
 const ALL_NODE_TYPES = [
   "file", "module", "class", "struct", "interface", "trait",
   "enum", "function", "method", "type", "impl",
   "property", "route", "tool",
+  "community", "process",
 ];
 
 export default function CodeGraph() {
@@ -56,7 +59,7 @@ export default function CodeGraph() {
   const [searchResults, setSearchResults] = useState<CodeSearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<Set<string>>(
-    new Set(["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses"]),
+    new Set(["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses", "member_of", "step_in_process", "entry_point_of"]),
   );
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(
     new Set(ALL_NODE_TYPES),
@@ -328,7 +331,7 @@ export default function CodeGraph() {
               Edge Types
             </div>
             <div className="space-y-1">
-              {["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses"].map((type) => (
+              {["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses", "member_of", "step_in_process", "entry_point_of"].map((type) => (
                 <label
                   key={type}
                   className="flex items-center gap-2 text-xs cursor-pointer"

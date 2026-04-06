@@ -388,6 +388,54 @@ async def code_graph(
         async for record in acc_result:
             edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
 
+        # Community nodes
+        comm_result = await neo.run(
+            "MATCH (c:Community {repo_id: $repo_id}) RETURN 'comm::' + toString(c.community_id) AS id, c.label AS label, 'community' AS kind",
+            repo_id=repo_id_str,
+        )
+        async for record in comm_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"]})
+
+        # Process nodes
+        proc_result = await neo.run(
+            "MATCH (p:Process {repo_id: $repo_id}) RETURN 'proc::' + p.name AS id, p.name AS label, 'process' AS kind",
+            repo_id=repo_id_str,
+        )
+        async for record in proc_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"]})
+
+        # MEMBER_OF edges
+        mof_result = await neo.run(
+            "MATCH (s:CodeSymbol {repo_id: $repo_id})-[:MEMBER_OF]->(c:Community {repo_id: $repo_id}) RETURN s.name + '::' + s.file_path AS source, 'comm::' + toString(c.community_id) AS target, 'member_of' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in mof_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # STEP_IN_PROCESS edges
+        sip_result = await neo.run(
+            "MATCH (s:CodeSymbol {repo_id: $repo_id})-[:STEP_IN_PROCESS]->(p:Process {repo_id: $repo_id}) RETURN s.name + '::' + s.file_path AS source, 'proc::' + p.name AS target, 'step_in_process' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in sip_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # ENTRY_POINT_OF edges
+        epo_result = await neo.run(
+            """
+            MATCH (r)-[:ENTRY_POINT_OF]->(p:Process {repo_id: $repo_id})
+            WHERE r.repo_id = $repo_id AND (r:Route OR r:Tool)
+            RETURN
+                CASE WHEN r:Route THEN 'route::' + COALESCE(r.method, '') + '::' + r.path
+                     ELSE 'tool::' + r.name END AS source,
+                'proc::' + p.name AS target,
+                'entry_point_of' AS type
+            """,
+            repo_id=repo_id_str,
+        )
+        async for record in epo_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
     return {"nodes": nodes, "edges": edges}
 
 
@@ -444,27 +492,42 @@ async def blast_radius(
         result = await neo.run(
             """
             MATCH (start:CodeSymbol {name: $name, repo_id: $repo_id})
-            MATCH (caller:CodeSymbol)-[:CALLS*1..]->(start)
+            MATCH path = (caller)-[:CALLS|EXTENDS|IMPLEMENTS|ACCESSES|METHOD_OVERRIDES*1..10]->(start)
             WHERE caller <> start AND caller.repo_id = $repo_id
-            RETURN DISTINCT caller.name AS name, caller.kind AS kind, caller.file_path AS file_path
+            RETURN DISTINCT caller.name AS name, caller.kind AS kind, caller.file_path AS file_path, length(path) AS distance
+            ORDER BY distance
             """,
             name=sym.name,
             repo_id=str(file.repo_id) if file else "",
         )
         records = [r async for r in result]
 
-    affected = [
-        {"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]}
-        for r in records
-    ]
+    by_depth: dict[str, list] = {"1": [], "2": [], "3+": []}
+    affected = []
+    for r in records:
+        entry = {"name": r["name"], "kind": r["kind"], "file_path": r["file_path"], "distance": r["distance"]}
+        affected.append(entry)
+        d = r["distance"]
+        if d == 1:
+            by_depth["1"].append(entry)
+        elif d == 2:
+            by_depth["2"].append(entry)
+        else:
+            by_depth["3+"].append(entry)
+
+    direct_callers = len(by_depth["1"])
+    risk = "LOW"
+    if direct_callers > 10:
+        risk = "CRITICAL"
+    elif direct_callers > 5:
+        risk = "HIGH"
+    elif direct_callers > 2:
+        risk = "MEDIUM"
 
     return {
-        "symbol": {
-            "id": str(sym.id),
-            "name": sym.name,
-            "file_path": file.file_path if file else "",
-            "repo_id": str(file.repo_id) if file else "",
-        },
+        "symbol": {"id": str(sym.id), "name": sym.name, "file_path": file.file_path if file else ""},
         "affected": affected,
+        "by_depth": by_depth,
+        "risk": risk,
         "total": len(affected),
     }

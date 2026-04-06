@@ -15,6 +15,7 @@ const NODE_SIZES: Record<string, number> = {
   variable: 2, import: 1.5, decorator: 2,
   type: 3, impl: 3, namespace: 13,
   property: 2, route: 5, tool: 5, model: 4,
+  community: 6, process: 5,
   const: 2, static: 2,
 };
 const DEFAULT_NODE_SIZE = 3;
@@ -30,6 +31,7 @@ const NODE_COLORS: Record<string, string> = {
   enum: "#f97316", type: "#a78bfa", impl: "#14b8a6",
   namespace: "#7c3aed", property: "#64748b",
   route: "#f43f5e", tool: "#a855f7", model: "#f59e0b",
+  community: "#818cf8", process: "#f43f5e",
 };
 const DEFAULT_NODE_COLOR = "#6b7280";
 
@@ -41,6 +43,7 @@ const EDGE_COLORS: Record<string, string> = {
   has_method: "#0e7490", has_property: "#64748b",
   handles_route: "#f43f5e", handles_tool: "#a855f7",
   method_overrides: "#c2410c", method_implements: "#be185d", accesses: "#64748b",
+  member_of: "#818cf8", step_in_process: "#f43f5e", entry_point_of: "#f43f5e",
   queries: "#eab308", fetches: "#06b6d4",
 };
 const DEFAULT_EDGE_COLOR = "#2a2a3a";
@@ -49,6 +52,7 @@ const EDGE_SIZE_MULTIPLIERS: Record<string, number> = {
   contains: 0.4, defines: 0.5, imports: 0.6, calls: 0.8,
   extends: 1.0, implements: 0.9, has_method: 0.5, has_property: 0.4,
   handles_route: 0.7, handles_tool: 0.7, method_overrides: 0.8, method_implements: 0.8, accesses: 0.5,
+  member_of: 0.3, step_in_process: 0.5, entry_point_of: 0.7,
   queries: 0.6, fetches: 0.6,
 };
 const DEFAULT_EDGE_SIZE = 0.5;
@@ -65,6 +69,7 @@ function getNodeMass(kind: string, nodeCount: number): number {
     case "class": case "interface": return 5 * m;
     case "file": return 3 * m;
     case "function": case "method": return 2 * m;
+    case "community": case "process": return 3 * m;
     case "route": case "tool": return 3 * m;
     case "model": return 3 * m;
     case "property": return 1;

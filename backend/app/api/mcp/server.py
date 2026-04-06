@@ -542,3 +542,52 @@ async def code_dependencies(
         {"file": r["file"], "module": r["module"], "names": r["names"]}
         for r in records
     ])
+
+
+@mcp.tool(description="List code communities detected via Leiden clustering for a repository.")
+async def code_communities(repo_name: str) -> str:
+    async with _code_service_context() as session:
+        from sqlalchemy import select
+        from app.models.code import Repository
+        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
+        if not repo:
+            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+
+        if not _pipeline or not _pipeline.graph_repo:
+            return json.dumps({"error": "Graph service not available"})
+
+        async with _pipeline.graph_repo.driver.session() as neo:
+            result = await neo.run(
+                "MATCH (c:Community {repo_id: $repo_id}) RETURN c.community_id AS id, c.label AS label, c.size AS size ORDER BY c.size DESC",
+                repo_id=str(repo.id),
+            )
+            communities = [{"id": r["id"], "label": r["label"], "size": r["size"]} async for r in result]
+
+        return json.dumps(communities)
+
+
+@mcp.tool(description="List execution flow processes traced from route and tool entry points.")
+async def code_processes(repo_name: str) -> str:
+    async with _code_service_context() as session:
+        from sqlalchemy import select
+        from app.models.code import Repository
+        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
+        if not repo:
+            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+
+        if not _pipeline or not _pipeline.graph_repo:
+            return json.dumps({"error": "Graph service not available"})
+
+        async with _pipeline.graph_repo.driver.session() as neo:
+            result = await neo.run(
+                """
+                MATCH (p:Process {repo_id: $repo_id})
+                OPTIONAL MATCH (sym:CodeSymbol)-[:STEP_IN_PROCESS]->(p)
+                RETURN p.name AS name, p.entry_kind AS kind, p.entry_file AS file, collect(sym.name) AS steps
+                ORDER BY p.name
+                """,
+                repo_id=str(repo.id),
+            )
+            processes = [{"name": r["name"], "kind": r["kind"], "entry_file": r["file"], "steps": r["steps"]} async for r in result]
+
+        return json.dumps(processes)

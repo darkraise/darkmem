@@ -85,9 +85,11 @@ export interface CodeSymbolDetail {
 }
 
 export interface BlastRadiusResult {
-  source: { id: string; name: string; file_path: string | null };
-  affected: Array<{ name: string; kind: string; file_path: string }>;
-  total_affected: number;
+  symbol: { id: string; name: string; file_path: string | null };
+  affected: Array<{ name: string; kind: string; file_path: string; distance: number }>;
+  by_depth: { "1": Array<any>; "2": Array<any>; "3+": Array<any> };
+  risk: string;
+  total: number;
 }
 
 export function useRepoStats() {
