@@ -461,7 +461,7 @@ async def code_blast_radius(
         file = sym.file
         repo_id = str(file.repo_id) if file else ""
 
-    depth = int(max_depth)
+    depth = max(1, min(int(max_depth), 50))
     async with _pipeline.graph_repo.driver.session() as neo:
         result = await neo.run(
             f"""

@@ -130,6 +130,9 @@ async def reindex_repo(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
+    if repo.status in ("indexing", "cloning"):
+        return {"status": "already_running", "repo_id": str(repo_id)}
+
     repo.status = "indexing"
     repo.status_message = "Queued for indexing..."
     await manager.session.flush()

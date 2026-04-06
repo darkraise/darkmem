@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -17,6 +18,10 @@ from app.schemas.code import RepoCreate, RepoUpdate
 logger = logging.getLogger(__name__)
 
 REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories"))
+
+
+def _sanitize_url(text: str) -> str:
+    return re.sub(r'x-access-token:[^@]+@', 'x-access-token:***@', text)
 
 
 def _force_remove(func, path, exc_info):
@@ -79,7 +84,7 @@ class RepoManager:
                 await event_manager.broadcast("repo.clone_completed", {"repo_id": str(repo_id), "name": repo.name})
         except Exception as e:
             logger.error(f"Background clone failed for repo {repo_id}: {e}")
-            await event_manager.broadcast("repo.clone_failed", {"repo_id": str(repo_id), "error": str(e)[:200]})
+            await event_manager.broadcast("repo.clone_failed", {"repo_id": str(repo_id), "error": _sanitize_url(str(e))[:200]})
             try:
                 async with async_session_factory() as session:
                     repo = (await session.execute(
@@ -256,7 +261,7 @@ class RepoManager:
             if "Clone succeeded, but checkout failed" in stderr_text:
                 logger.warning("git clone succeeded with checkout warning: %s", stderr_text.strip())
             else:
-                logger.error("git command failed: %s\nstderr: %s", " ".join(cmd), stderr_text)
+                logger.error("git command failed: %s\nstderr: %s", _sanitize_url(" ".join(cmd)), stderr_text)
                 raise RuntimeError(f"git command failed: {stderr_text}")
         return result.stdout.decode()
 

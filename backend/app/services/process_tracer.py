@@ -9,7 +9,8 @@ class ProcessTracer:
         self.graph_repo = graph_repo
         self.repo_id = repo_id
 
-    async def trace(self, max_depth: int = 15) -> int:
+    async def trace(self, max_depth: int = 10) -> int:
+        max_depth = max(1, min(max_depth, 20))
         async with self.graph_repo.driver.session() as neo:
             await neo.run(
                 "MATCH (p:Process {repo_id: $repo_id}) DETACH DELETE p",
@@ -42,6 +43,7 @@ class ProcessTracer:
                     """
                     MATCH (start:CodeSymbol {repo_id: $repo_id, file_path: $file_path})
                     WHERE start.kind IN ['function', 'method']
+                    WITH start ORDER BY start.line_start LIMIT 3
                     MATCH path = (start)-[:CALLS*0..""" + str(max_depth) + """]->(step:CodeSymbol {repo_id: $repo_id})
                     RETURN DISTINCT step.name + '::' + step.file_path AS step_id, length(path) AS depth
                     ORDER BY depth

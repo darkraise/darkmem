@@ -125,6 +125,8 @@ class CodeIndexer:
                 "file_path": f"Batch {batch_start // PARALLEL_BATCH + 1}",
             })
 
+            # _parse_file_async does NOT touch self.session.
+            # _store_parsed_file DOES use self.session and MUST run sequentially.
             tasks = [self._parse_file_async(work_dir, fp, repo.id) for fp in batch]
             parsed_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -635,22 +637,22 @@ class CodeIndexer:
                     await neo_session.run(
                         """
                         UNWIND $pairs AS pair
-                        MATCH (child:CodeSymbol {repo_id: $repo_id, name: pair.child})
+                        MATCH (child:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: pair.child})
                         MATCH (parent:CodeSymbol {repo_id: $repo_id, name: pair.parent})
                         MERGE (child)-[:EXTENDS]->(parent)
                         """,
-                        repo_id=str(repo.id), pairs=extends_data,
+                        repo_id=str(repo.id), file_path=file_path, pairs=extends_data,
                     )
 
                 if impl_data:
                     await neo_session.run(
                         """
                         UNWIND $pairs AS pair
-                        MATCH (child:CodeSymbol {repo_id: $repo_id, name: pair.child})
+                        MATCH (child:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: pair.child})
                         MATCH (parent:CodeSymbol {repo_id: $repo_id, name: pair.parent})
                         MERGE (child)-[:IMPLEMENTS]->(parent)
                         """,
-                        repo_id=str(repo.id), pairs=impl_data,
+                        repo_id=str(repo.id), file_path=file_path, pairs=impl_data,
                     )
 
             # Property nodes + HAS_PROPERTY edges
@@ -814,6 +816,20 @@ class CodeIndexer:
             delete(CodeFile).where(CodeFile.repo_id == repo_id)
         )
         await self.session.flush()
+
+        if self.graph_repo:
+            async with self.graph_repo.driver.session() as neo:
+                await neo.run("MATCH (n {repo_id: $repo_id}) DETACH DELETE n", repo_id=str(repo_id))
+
+        if self.vector_repo:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            await self.vector_repo.client.delete(
+                collection_name="code_chunks",
+                points_selector=Filter(must=[
+                    FieldCondition(key="repo_id", match=MatchValue(value=str(repo_id))),
+                ]),
+            )
+
         logger.info("Cleared all indexed data for repo %s", repo_id)
 
     async def _delete_file_data(self, repo_id: UUID, file_path: str) -> None:
@@ -829,6 +845,31 @@ class CodeIndexer:
         if existing:
             await self.session.delete(existing)
             await self.session.flush()
+
+        if self.graph_repo:
+            async with self.graph_repo.driver.session() as neo:
+                await neo.run(
+                    "MATCH (s:CodeSymbol {repo_id: $repo_id, file_path: $file_path}) DETACH DELETE s",
+                    repo_id=str(repo_id), file_path=file_path,
+                )
+                await neo.run(
+                    "MATCH (p:Property {repo_id: $repo_id, file_path: $file_path}) DETACH DELETE p",
+                    repo_id=str(repo_id), file_path=file_path,
+                )
+                await neo.run(
+                    "MATCH (f:CodeFile {repo_id: $repo_id, file_path: $file_path}) DETACH DELETE f",
+                    repo_id=str(repo_id), file_path=file_path,
+                )
+
+        if self.vector_repo:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+            await self.vector_repo.client.delete(
+                collection_name="code_chunks",
+                points_selector=Filter(must=[
+                    FieldCondition(key="repo_id", match=MatchValue(value=str(repo_id))),
+                    FieldCondition(key="file_path", match=MatchValue(value=file_path)),
+                ]),
+            )
 
     async def _diff_files(
         self, work_dir: Path, old_sha: str, new_sha: str

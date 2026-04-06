@@ -356,10 +356,10 @@ export function CodeGraphRenderer({
     setTimeout(() => {
       if (fa2Ref.current) fa2Ref.current.stop();
 
-      if (graphRef.current && graphRef.current.order < 5000) {
+      if (graphRef.current && graphRef.current.order < 2000) {
         const g = graphRef.current;
         const nodes = g.nodes();
-        for (let pass = 0; pass < 5; pass++) {
+        for (let pass = 0; pass < 3; pass++) {
           let moved = false;
           for (let i = 0; i < nodes.length; i++) {
             const a = nodes[i];

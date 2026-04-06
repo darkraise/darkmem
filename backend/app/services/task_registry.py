@@ -23,6 +23,8 @@ class TaskRegistry:
 
     @classmethod
     def register(cls, repo_id: UUID, kind: str, task: asyncio.Task, message: str = "") -> str:
+        if len(cls._tasks) > 100:
+            cls.cleanup_completed()
         task_id = str(uuid4())[:8]
         info = TaskInfo(
             id=task_id,
