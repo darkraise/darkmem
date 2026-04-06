@@ -27,10 +27,11 @@ BUILTIN_SKIP = {
 
 
 class CallResolver:
-    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]], type_envs=None):
+    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]], type_envs=None, named_imports=None):
         self.symbols = symbol_table
         self.import_map = import_map
         self.type_envs = type_envs or {}
+        self.named_imports = named_imports or {}
 
     def resolve(self, call: ExtractedCall, from_file: str) -> tuple[str, float] | None:
         if call.called_name in BUILTIN_SKIP:
@@ -50,6 +51,16 @@ class CallResolver:
             filtered = self._filter(locals_, call)
             if len(filtered) == 1:
                 return (filtered[0].node_id, CONFIDENCE["same-file"])
+
+        if call.called_name in self.named_imports.get(from_file, {}):
+            source_file, exported_name = self.named_imports[from_file][call.called_name]
+            alias_candidates = self.symbols.lookup_local(source_file, exported_name)
+            if not alias_candidates:
+                alias_candidates = self.symbols.lookup_global(exported_name)
+                alias_candidates = [c for c in alias_candidates if c.file_path == source_file]
+            filtered = self._filter(alias_candidates, call)
+            if len(filtered) == 1:
+                return (filtered[0].node_id, 0.90)
 
         imported_files = self.import_map.get(from_file, set())
         candidates = self.symbols.lookup_global(call.called_name)
@@ -131,3 +142,32 @@ def build_import_map(
         import_map[file_path] = resolved
 
     return import_map
+
+
+def build_named_imports(
+    file_imports: dict[str, list[str]],
+    file_paths: list[str],
+) -> dict[str, dict[str, tuple[str, str]]]:
+    """Build named import map: file -> {local_name: (source_module, exported_name)}"""
+    path_set = set(file_paths)
+    result: dict[str, dict[str, tuple[str, str]]] = {}
+
+    for file_path, imports in file_imports.items():
+        named: dict[str, tuple[str, str]] = {}
+        for imp in imports:
+            if "import" in imp and "from" in imp:
+                parts = imp.split("import")
+                if len(parts) == 2:
+                    module = parts[0].replace("from", "").strip()
+                    names = parts[1].strip()
+                    for name_part in names.split(","):
+                        name_part = name_part.strip()
+                        if " as " in name_part:
+                            exported, local = name_part.split(" as ")
+                            named[local.strip()] = (module.strip(), exported.strip())
+                        elif name_part:
+                            named[name_part] = (module.strip(), name_part)
+        if named:
+            result[file_path] = named
+
+    return result

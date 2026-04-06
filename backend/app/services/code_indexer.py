@@ -552,7 +552,7 @@ class CodeIndexer:
         all_file_paths: list[str],
         all_imports: dict[str, list[str]],
     ) -> int:
-        from app.services.call_resolver import CallResolver, build_import_map
+        from app.services.call_resolver import CallResolver, build_import_map, build_named_imports
         from app.services.symbol_table import SymbolEntry, SymbolTable
 
         rows = (await self.session.execute(
@@ -590,7 +590,8 @@ class CodeIndexer:
             enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
 
         import_map = build_import_map(all_file_paths, all_imports)
-        resolver = CallResolver(symbol_table, import_map)
+        named_imports = build_named_imports(all_imports, all_file_paths)
+        resolver = CallResolver(symbol_table, import_map, named_imports=named_imports)
         call_edges = []
 
         for file_path, calls in all_calls.items():

@@ -544,6 +544,149 @@ async def code_dependencies(
     ])
 
 
+@mcp.tool(description="Get 360-degree context for a code symbol: callers, callees, heritage, accesses, processes, community.")
+async def code_context(
+    symbol_name: str,
+    repo_name: str | None = None,
+) -> str:
+    """
+    Args:
+        symbol_name: Name of the function, class, or method.
+        repo_name: Optional repository name filter.
+    """
+    async with _code_service_context() as session:
+        from sqlalchemy import select
+        from app.models.code import CodeSymbol, CodeFile, Repository
+
+        stmt = select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(CodeSymbol.name == symbol_name)
+        if repo_name:
+            stmt = stmt.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
+        row = (await session.execute(stmt.limit(1))).first()
+        if not row:
+            return json.dumps({"error": f"Symbol '{symbol_name}' not found"})
+
+        sym, file_path = row
+        file = (await session.execute(select(CodeFile).where(CodeFile.id == sym.file_id))).scalar_one_or_none()
+        repo_id = str(file.repo_id) if file else ""
+
+    context = {
+        "symbol": {"name": sym.name, "kind": sym.kind, "file_path": file_path, "signature": sym.signature, "summary": sym.summary},
+        "callers": [], "callees": [], "heritage": [], "accesses": [], "processes": [], "community": None,
+    }
+
+    graph_repo = _pipeline.graph_repo if _pipeline else None
+    if not graph_repo:
+        return json.dumps(context)
+
+    async with graph_repo.driver.session() as neo:
+        result = await neo.run(
+            "MATCH (caller:CodeSymbol {repo_id: $r})-[:CALLS]->(s:CodeSymbol {repo_id: $r, name: $name}) RETURN caller.name AS name, caller.kind AS kind, caller.file_path AS file_path",
+            r=repo_id, name=sym.name,
+        )
+        context["callers"] = [{"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]} async for r in result]
+
+        result = await neo.run(
+            "MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:CALLS]->(callee:CodeSymbol {repo_id: $r}) RETURN callee.name AS name, callee.kind AS kind, callee.file_path AS file_path",
+            r=repo_id, name=sym.name,
+        )
+        context["callees"] = [{"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]} async for r in result]
+
+        result = await neo.run(
+            """
+            OPTIONAL MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:EXTENDS]->(parent:CodeSymbol {repo_id: $r})
+            OPTIONAL MATCH (child:CodeSymbol {repo_id: $r})-[:EXTENDS]->(s2:CodeSymbol {repo_id: $r, name: $name})
+            OPTIONAL MATCH (s3:CodeSymbol {repo_id: $r, name: $name})-[:IMPLEMENTS]->(iface:CodeSymbol {repo_id: $r})
+            RETURN collect(DISTINCT parent.name) AS parents, collect(DISTINCT child.name) AS children, collect(DISTINCT iface.name) AS interfaces
+            """,
+            r=repo_id, name=sym.name,
+        )
+        record = await result.single()
+        if record:
+            context["heritage"] = {
+                "extends": [n for n in record["parents"] if n],
+                "extended_by": [n for n in record["children"] if n],
+                "implements": [n for n in record["interfaces"] if n],
+            }
+
+        result = await neo.run(
+            "MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:MEMBER_OF]->(c:Community {repo_id: $r}) RETURN c.label AS label, c.community_id AS id",
+            r=repo_id, name=sym.name,
+        )
+        record = await result.single()
+        if record:
+            context["community"] = {"label": record["label"], "id": record["id"]}
+
+        result = await neo.run(
+            "MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:STEP_IN_PROCESS]->(p:Process {repo_id: $r}) RETURN p.name AS name",
+            r=repo_id, name=sym.name,
+        )
+        context["processes"] = [r["name"] async for r in result]
+
+    return json.dumps(context)
+
+
+@mcp.tool(description="Analyze uncommitted git changes and identify affected code symbols and processes.")
+async def code_changes(
+    repo_name: str,
+) -> str:
+    """
+    Args:
+        repo_name: Repository name to analyze.
+    """
+    async with _code_service_context() as session:
+        from sqlalchemy import select
+        from app.models.code import Repository, CodeFile, CodeSymbol
+        from app.services.repo_manager import RepoManager
+
+        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
+        if not repo:
+            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+
+        manager = RepoManager(session)
+        work_dir = manager.repo_working_dir(repo)
+
+        if not work_dir.exists():
+            return json.dumps({"error": "Repository working directory not found"})
+
+        try:
+            diff_output = await RepoManager._run_git(work_dir, ["git", "diff", "--name-status", "HEAD"])
+        except Exception:
+            diff_output = ""
+
+        try:
+            staged_output = await RepoManager._run_git(work_dir, ["git", "diff", "--name-status", "--cached"])
+        except Exception:
+            staged_output = ""
+
+        changed_files = set()
+        for line in (diff_output + "\n" + staged_output).strip().split("\n"):
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                changed_files.add(parts[-1])
+
+        if not changed_files:
+            return json.dumps({"changed_files": [], "affected_symbols": [], "message": "No uncommitted changes"})
+
+        affected = []
+        for fp in changed_files:
+            syms = (await session.execute(
+                select(CodeSymbol).join(CodeFile).where(
+                    CodeFile.repo_id == repo.id,
+                    CodeFile.file_path == fp,
+                )
+            )).scalars().all()
+            for s in syms:
+                affected.append({"name": s.name, "kind": s.kind, "file_path": fp, "line_start": s.line_start})
+
+        return json.dumps({
+            "changed_files": list(changed_files),
+            "affected_symbols": affected,
+            "total_symbols": len(affected),
+        })
+
+
 @mcp.tool(description="List code communities detected via Leiden clustering for a repository.")
 async def code_communities(repo_name: str) -> str:
     async with _code_service_context() as session:

@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.database import get_session
-from app.models.code import CodeFile, CodeSymbol
+from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import (
     CodeFileResponse,
     CodeSearchRequest,
@@ -16,49 +17,102 @@ from app.schemas.code import (
     CodeSymbolResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/code", tags=["code"])
 
 
 @router.post("/search", response_model=list[CodeSearchResult])
 async def search_code(
     body: CodeSearchRequest,
-    request: Request,
     _user=Depends(require_auth),
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
 ):
-    llm = getattr(request.app.state, "llm", None)
-    vector_repo = getattr(request.app.state, "vector_repo", None)
-    if not llm or not vector_repo:
-        raise HTTPException(status_code=503, detail="Search service not available")
+    results_map: dict[str, dict] = {}
 
-    query_vector = await llm.embed(body.query)
+    llm = getattr(request.app.state, "llm", None) if request else None
+    qdrant = getattr(request.app.state, "vector_repo", None) if request else None
 
-    conditions = []
-    if body.repo_id:
-        conditions.append(FieldCondition(key="repo_id", match=MatchValue(value=str(body.repo_id))))
-    if body.language:
-        conditions.append(FieldCondition(key="language", match=MatchValue(value=body.language)))
+    if llm and qdrant:
+        try:
+            vector = await llm.embed(body.query)
+            conditions = []
+            if body.repo_id:
+                conditions.append(FieldCondition(key="repo_id", match=MatchValue(value=str(body.repo_id))))
+            if body.language:
+                conditions.append(FieldCondition(key="language", match=MatchValue(value=body.language)))
+            qdrant_filter = Filter(must=conditions) if conditions else None
 
-    query_filter = Filter(must=conditions) if conditions else None
+            vector_results = await qdrant.client.query_points(
+                collection_name="code_chunks",
+                query=vector,
+                limit=body.limit * 2,
+                query_filter=qdrant_filter,
+            )
+            for rank, p in enumerate(vector_results.points):
+                key = f"{p.payload.get('file_path', '')}:{p.payload.get('line_start', 0)}"
+                if key not in results_map:
+                    results_map[key] = {
+                        "chunk_content": p.payload.get("chunk_content", ""),
+                        "file_path": p.payload.get("file_path", ""),
+                        "repo_id": p.payload.get("repo_id", ""),
+                        "language": p.payload.get("language"),
+                        "symbol_name": p.payload.get("symbol_name"),
+                        "line_start": p.payload.get("line_start", 0),
+                        "line_end": p.payload.get("line_end", 0),
+                        "rrf_score": 0,
+                    }
+                results_map[key]["rrf_score"] += 1.0 / (60 + rank)
+        except Exception as e:
+            logger.warning("Vector search failed: %s", e)
 
-    results = await vector_repo.client.query_points(
-        collection_name="code_chunks",
-        query=query_vector,
-        query_filter=query_filter,
-        limit=body.limit,
-    )
+    try:
+        escaped = body.query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        text_query = (
+            select(CodeSymbol, CodeFile.file_path, CodeFile.repo_id)
+            .join(CodeFile)
+            .where(
+                (CodeSymbol.name.ilike(f"%{escaped}%"))
+                | (CodeSymbol.source_code.ilike(f"%{escaped}%"))
+            )
+        )
+        if body.repo_id:
+            text_query = text_query.where(CodeFile.repo_id == body.repo_id)
+        text_query = text_query.limit(body.limit * 2)
+
+        text_results = (await session.execute(text_query)).all()
+        for rank, (sym, file_path, repo_id) in enumerate(text_results):
+            key = f"{file_path}:{sym.line_start}"
+            if key not in results_map:
+                results_map[key] = {
+                    "chunk_content": sym.source_code[:500] if sym.source_code else "",
+                    "file_path": file_path,
+                    "repo_id": str(repo_id),
+                    "language": None,
+                    "symbol_name": sym.name,
+                    "line_start": sym.line_start,
+                    "line_end": sym.line_end,
+                    "rrf_score": 0,
+                }
+            results_map[key]["rrf_score"] += 1.0 / (60 + rank)
+    except Exception as e:
+        logger.warning("Text search failed: %s", e)
+
+    sorted_results = sorted(results_map.values(), key=lambda x: x["rrf_score"], reverse=True)[:body.limit]
 
     return [
         CodeSearchResult(
-            chunk_content=p.payload.get("chunk_content", ""),
-            file_path=p.payload.get("file_path", ""),
-            repo_id=p.payload.get("repo_id", ""),
-            language=p.payload.get("language"),
-            symbol_name=p.payload.get("symbol_name"),
-            line_start=p.payload.get("line_start", 0),
-            line_end=p.payload.get("line_end", 0),
-            score=p.score,
+            chunk_content=r["chunk_content"],
+            file_path=r["file_path"],
+            repo_id=UUID(r["repo_id"]) if r["repo_id"] else UUID("00000000-0000-0000-0000-000000000000"),
+            language=r["language"],
+            symbol_name=r["symbol_name"],
+            line_start=r["line_start"],
+            line_end=r["line_end"],
+            score=r["rrf_score"],
         )
-        for p in results.points
+        for r in sorted_results
     ]
 
 
