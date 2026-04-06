@@ -292,6 +292,78 @@ async def code_graph(
         async for record in calls_result:
             edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
 
+        # Property nodes
+        prop_result = await neo.run(
+            "MATCH (p:Property {repo_id: $repo_id}) RETURN 'prop::' + p.owner + '.' + p.name + '::' + p.file_path AS id, p.name AS label, 'property' AS kind, p.file_path AS file_path",
+            repo_id=repo_id_str,
+        )
+        async for record in prop_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"], "file_path": record.get("file_path")})
+
+        # Route nodes
+        route_result = await neo.run(
+            "MATCH (r:Route {repo_id: $repo_id}) RETURN 'route::' + r.method + '::' + r.path AS id, COALESCE(r.method, '') + ' ' + r.path AS label, 'route' AS kind",
+            repo_id=repo_id_str,
+        )
+        async for record in route_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"]})
+
+        # Tool nodes
+        tool_result = await neo.run(
+            "MATCH (t:Tool {repo_id: $repo_id}) RETURN 'tool::' + t.name AS id, t.name AS label, 'tool' AS kind",
+            repo_id=repo_id_str,
+        )
+        async for record in tool_result:
+            nodes.append({"id": record["id"], "label": record["label"], "kind": record["kind"]})
+
+        # EXTENDS edges
+        extends_result = await neo.run(
+            "MATCH (c:CodeSymbol {repo_id: $repo_id})-[:EXTENDS]->(p:CodeSymbol {repo_id: $repo_id}) RETURN c.name + '::' + c.file_path AS source, p.name + '::' + p.file_path AS target, 'extends' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in extends_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # IMPLEMENTS edges
+        impl_result = await neo.run(
+            "MATCH (c:CodeSymbol {repo_id: $repo_id})-[:IMPLEMENTS]->(p:CodeSymbol {repo_id: $repo_id}) RETURN c.name + '::' + c.file_path AS source, p.name + '::' + p.file_path AS target, 'implements' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in impl_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # HAS_METHOD edges
+        hm_result = await neo.run(
+            "MATCH (c:CodeSymbol {repo_id: $repo_id})-[:HAS_METHOD]->(m:CodeSymbol {repo_id: $repo_id}) RETURN c.name + '::' + c.file_path AS source, m.name + '::' + m.file_path AS target, 'has_method' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in hm_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # HAS_PROPERTY edges
+        hp_result = await neo.run(
+            "MATCH (c:CodeSymbol {repo_id: $repo_id})-[:HAS_PROPERTY]->(p:Property {repo_id: $repo_id}) RETURN c.name + '::' + c.file_path AS source, 'prop::' + p.owner + '.' + p.name + '::' + p.file_path AS target, 'has_property' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in hp_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # HANDLES_ROUTE edges
+        hr_result = await neo.run(
+            "MATCH (f:CodeFile {repo_id: $repo_id})-[:HANDLES_ROUTE]->(r:Route {repo_id: $repo_id}) RETURN f.file_path AS source, 'route::' + COALESCE(r.method, '') + '::' + r.path AS target, 'handles_route' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in hr_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
+        # HANDLES_TOOL edges
+        ht_result = await neo.run(
+            "MATCH (f:CodeFile {repo_id: $repo_id})-[:HANDLES_TOOL]->(t:Tool {repo_id: $repo_id}) RETURN f.file_path AS source, 'tool::' + t.name AS target, 'handles_tool' AS type",
+            repo_id=repo_id_str,
+        )
+        async for record in ht_result:
+            edges.append({"source": record["source"], "target": record["target"], "type": record["type"]})
+
     return {"nodes": nodes, "edges": edges}
 
 

@@ -199,12 +199,42 @@ class ExtractedCall:
 
 
 @dataclass
+class ExtractedHeritage:
+    symbol_name: str
+    base_name: str
+    relation: str  # "extends" or "implements"
+
+
+@dataclass
+class ExtractedProperty:
+    name: str
+    owner_name: str
+    type_annotation: str | None = None
+    line: int = 0
+    visibility: str | None = None
+    is_static: bool = False
+
+
+@dataclass
+class ExtractedRoute:
+    path: str
+    method: str | None = None
+    handler_name: str = ""
+    kind: str = "route"  # "route", "tool", "query"
+    framework: str | None = None
+    line: int = 0
+
+
+@dataclass
 class ParseResult:
     language: str
     symbols: list[ExtractedSymbol]
     imports: list[ExtractedImport]
     chunks: list[dict]
     calls: list[ExtractedCall] = field(default_factory=list)
+    heritage: list[ExtractedHeritage] = field(default_factory=list)
+    properties: list[ExtractedProperty] = field(default_factory=list)
+    routes: list[ExtractedRoute] = field(default_factory=list)
 
 
 def detect_language(file_path: str) -> str | None:
@@ -269,6 +299,9 @@ def parse_file(file_path: str, content: str) -> ParseResult | None:
     _walk_tree(tree.root_node, source, symbols, imports)
 
     calls = extract_calls(tree, source, lang_name, file_path)
+    heritage = extract_heritage(tree, source, lang_name)
+    properties = extract_properties(symbols, tree, source, lang_name)
+    routes = extract_routes(tree, source, lang_name, file_path)
     chunks = _build_chunks(symbols, content, file_path)
     return ParseResult(
         language=lang_name,
@@ -276,6 +309,9 @@ def parse_file(file_path: str, content: str) -> ParseResult | None:
         imports=imports,
         chunks=chunks,
         calls=calls,
+        heritage=heritage,
+        properties=properties,
+        routes=routes,
     )
 
 
@@ -647,4 +683,205 @@ def _count_args(call_node, language: str) -> int | None:
     for child in call_node.children:
         if child.type in ("arguments", "argument_list"):
             return len([c for c in child.children if c.is_named and c.type != "comment"])
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Heritage extraction (extends / implements)
+# ---------------------------------------------------------------------------
+
+def extract_heritage(tree, source: bytes, language: str) -> list[ExtractedHeritage]:
+    if not TREE_SITTER_AVAILABLE:
+        return []
+    results: list[ExtractedHeritage] = []
+
+    def walk(node):
+        # Python
+        if language == "python" and node.type == "class_definition":
+            class_name = None
+            for child in node.children:
+                if child.type == "identifier":
+                    class_name = _get_text(child, source)
+                if child.type == "argument_list" and class_name:
+                    for arg in child.children:
+                        if arg.type == "identifier":
+                            base = _get_text(arg, source)
+                            if base and base not in ("object", "ABC"):
+                                results.append(ExtractedHeritage(class_name, base, "extends"))
+                        elif arg.type == "keyword_argument":
+                            pass
+
+        # TypeScript/JavaScript
+        if language in ("typescript", "javascript") and node.type == "class_declaration":
+            class_name = None
+            for child in node.children:
+                if child.type in ("type_identifier", "identifier"):
+                    class_name = _get_text(child, source)
+                if child.type == "class_heritage" and class_name:
+                    for clause in child.children:
+                        if clause.type == "extends_clause":
+                            for val in clause.children:
+                                if val.type in ("identifier", "type_identifier"):
+                                    results.append(ExtractedHeritage(class_name, _get_text(val, source), "extends"))
+                        if clause.type == "implements_clause":
+                            for val in clause.children:
+                                if val.type in ("identifier", "type_identifier"):
+                                    results.append(ExtractedHeritage(class_name, _get_text(val, source), "implements"))
+
+        # Java/C#
+        if language in ("java", "csharp") and node.type == "class_declaration":
+            class_name = None
+            for child in node.children:
+                if child.type in ("identifier", "name"):
+                    class_name = _get_text(child, source)
+                if class_name:
+                    sc = child if child.type == "superclass" else node.child_by_field_name("superclass")
+                    if sc and sc.type == "superclass":
+                        for t in sc.children:
+                            if t.type in ("type_identifier", "identifier"):
+                                results.append(ExtractedHeritage(class_name, _get_text(t, source), "extends"))
+                    si = node.child_by_field_name("interfaces") or node.child_by_field_name("super_interfaces")
+                    if si:
+                        for t in si.named_children:
+                            if t.type in ("type_identifier", "identifier", "type_list"):
+                                for inner in (t.named_children if t.type == "type_list" else [t]):
+                                    if inner.type in ("type_identifier", "identifier"):
+                                        results.append(ExtractedHeritage(class_name, _get_text(inner, source), "implements"))
+
+        # Rust
+        if language == "rust" and node.type == "impl_item":
+            trait_name = None
+            struct_name = None
+            for child in node.children:
+                if child.type == "type_identifier":
+                    if trait_name is None:
+                        trait_name = _get_text(child, source)
+                    else:
+                        struct_name = _get_text(child, source)
+            if trait_name and struct_name:
+                results.append(ExtractedHeritage(struct_name, trait_name, "implements"))
+
+        for child in node.children:
+            walk(child)
+
+    walk(tree.root_node)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Property extraction (class fields / properties)
+# ---------------------------------------------------------------------------
+
+def extract_properties(symbols: list[ExtractedSymbol], tree, source: bytes, language: str) -> list[ExtractedProperty]:
+    if not TREE_SITTER_AVAILABLE:
+        return []
+    results: list[ExtractedProperty] = []
+
+    def walk(node, owner_name: str | None = None):
+        if node.type in CLASS_NODE_TYPES:
+            name = _extract_name(node, source)
+            if name:
+                owner_name = name
+
+        if node.type in ("field_definition", "public_field_definition", "field_declaration", "property_declaration") and owner_name:
+            for child in node.children:
+                if child.type in ("property_identifier", "identifier", "variable_declarator"):
+                    prop_name = _get_text(child, source) if child.type != "variable_declarator" else None
+                    if child.type == "variable_declarator":
+                        for gc in child.children:
+                            if gc.type in ("identifier", "name"):
+                                prop_name = _get_text(gc, source)
+                                break
+                    if prop_name:
+                        type_ann = None
+                        ta = node.child_by_field_name("type") or node.child_by_field_name("type_annotation")
+                        if ta:
+                            type_ann = _get_text(ta, source)
+                        vis = _extract_visibility(node, source)
+                        results.append(ExtractedProperty(
+                            name=prop_name, owner_name=owner_name,
+                            type_annotation=type_ann, line=node.start_point[0] + 1,
+                            visibility=vis,
+                        ))
+
+        for child in node.children:
+            walk(child, owner_name)
+
+    walk(tree.root_node)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Route / tool extraction
+# ---------------------------------------------------------------------------
+
+def extract_routes(tree, source: bytes, language: str, file_path: str) -> list[ExtractedRoute]:
+    if not TREE_SITTER_AVAILABLE:
+        return []
+    results: list[ExtractedRoute] = []
+
+    def walk(node):
+        # Python decorators: @app.get("/path"), @router.post("/path"), @mcp.tool()
+        if language == "python" and node.type == "decorated_definition":
+            for child in node.children:
+                if child.type == "decorator":
+                    dec_text = _get_text(child, source)
+                    for method in ("get", "post", "put", "delete", "patch"):
+                        if f".{method}(" in dec_text:
+                            path = _extract_string_arg(child, source)
+                            func_name = _get_decorated_func_name(node, source)
+                            if path and func_name:
+                                results.append(ExtractedRoute(
+                                    path=path, method=method.upper(),
+                                    handler_name=func_name, kind="route",
+                                    framework="fastapi", line=node.start_point[0] + 1,
+                                ))
+                    if ".tool(" in dec_text:
+                        func_name = _get_decorated_func_name(node, source)
+                        if func_name:
+                            results.append(ExtractedRoute(
+                                path=func_name, method=None,
+                                handler_name=func_name, kind="tool",
+                                framework="mcp", line=node.start_point[0] + 1,
+                            ))
+
+        # JS/TS: app.get("/path", handler), router.post("/path", handler)
+        if language in ("typescript", "javascript") and node.type == "call_expression":
+            text = _get_text(node, source)
+            for method in ("get", "post", "put", "delete", "patch"):
+                if f".{method}(" in text.lower():
+                    path = _extract_string_arg(node, source)
+                    if path and path.startswith("/"):
+                        results.append(ExtractedRoute(
+                            path=path, method=method.upper(),
+                            handler_name="", kind="route",
+                            framework="express", line=node.start_point[0] + 1,
+                        ))
+                    break
+
+        for child in node.children:
+            walk(child)
+
+    walk(tree.root_node)
+    return results
+
+
+def _extract_string_arg(node, source: bytes) -> str | None:
+    for child in node.children:
+        if child.type == "argument_list":
+            for arg in child.children:
+                if arg.type in ("string", "interpreted_string_literal"):
+                    return _get_text(arg, source).strip("\"'`")
+        if child.type in ("string", "interpreted_string_literal"):
+            return _get_text(child, source).strip("\"'`")
+        result = _extract_string_arg(child, source)
+        if result:
+            return result
+    return None
+
+
+def _get_decorated_func_name(node, source: bytes) -> str | None:
+    for child in node.children:
+        if child.type in ("function_definition", "function_declaration"):
+            return _extract_name(child, source)
     return None

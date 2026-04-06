@@ -11,7 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol, Repository
-from app.services.code_parser import ExtractedCall, ExtractedSymbol, parse_file
+from app.services.code_parser import (
+    ExtractedCall, ExtractedHeritage, ExtractedProperty, ExtractedRoute,
+    ExtractedSymbol, parse_file,
+)
 from app.services.llm import LLMOrchestrator
 from app.services.repo_manager import RepoManager
 from app.repositories.graph import Neo4jGraphRepository
@@ -222,7 +225,10 @@ class CodeIndexer:
 
         if self.graph_repo:
             await self._store_graph(
-                repo, rel_path, parse_result.symbols, parse_result.imports
+                repo, rel_path, parse_result.symbols, parse_result.imports,
+                heritage=parse_result.heritage,
+                properties=parse_result.properties,
+                routes=parse_result.routes,
             )
 
         return {
@@ -230,6 +236,9 @@ class CodeIndexer:
             "chunks": chunk_count,
             "calls": parse_result.calls,
             "imports": [imp.source for imp in parse_result.imports],
+            "heritage": len(parse_result.heritage),
+            "properties": len(parse_result.properties),
+            "routes": len(parse_result.routes),
         }
 
     def _store_symbol(
@@ -314,6 +323,9 @@ class CodeIndexer:
         file_path: str,
         symbols: list[ExtractedSymbol],
         imports: list,
+        heritage: list[ExtractedHeritage] | None = None,
+        properties: list[ExtractedProperty] | None = None,
+        routes: list[ExtractedRoute] | None = None,
     ) -> None:
         sym_data = []
         contains_data = []
@@ -386,6 +398,93 @@ class CodeIndexer:
                 """,
                 repo_id=str(repo.id), file_path=file_path, repo_name=repo.name,
             )
+
+            # HAS_METHOD edges (class → method children)
+            method_data = []
+            for sym in symbols:
+                if sym.kind in ("class", "struct", "interface", "trait"):
+                    for child in sym.children:
+                        if child.kind in ("method", "function"):
+                            method_data.append({"parent": sym.name, "child": child.name})
+
+            if method_data:
+                await neo_session.run(
+                    """
+                    UNWIND $pairs AS pair
+                    MATCH (p:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: pair.parent})
+                    MATCH (c:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: pair.child})
+                    MERGE (p)-[:HAS_METHOD]->(c)
+                    """,
+                    repo_id=str(repo.id), file_path=file_path, pairs=method_data,
+                )
+
+            # EXTENDS / IMPLEMENTS edges
+            if heritage:
+                extends_data = [{"child": h.symbol_name, "parent": h.base_name} for h in heritage if h.relation == "extends"]
+                impl_data = [{"child": h.symbol_name, "parent": h.base_name} for h in heritage if h.relation == "implements"]
+
+                if extends_data:
+                    await neo_session.run(
+                        """
+                        UNWIND $pairs AS pair
+                        MATCH (child:CodeSymbol {repo_id: $repo_id, name: pair.child})
+                        MATCH (parent:CodeSymbol {repo_id: $repo_id, name: pair.parent})
+                        MERGE (child)-[:EXTENDS]->(parent)
+                        """,
+                        repo_id=str(repo.id), pairs=extends_data,
+                    )
+
+                if impl_data:
+                    await neo_session.run(
+                        """
+                        UNWIND $pairs AS pair
+                        MATCH (child:CodeSymbol {repo_id: $repo_id, name: pair.child})
+                        MATCH (parent:CodeSymbol {repo_id: $repo_id, name: pair.parent})
+                        MERGE (child)-[:IMPLEMENTS]->(parent)
+                        """,
+                        repo_id=str(repo.id), pairs=impl_data,
+                    )
+
+            # Property nodes + HAS_PROPERTY edges
+            if properties:
+                prop_data = [{"name": p.name, "owner": p.owner_name, "type_ann": p.type_annotation, "line": p.line, "vis": p.visibility} for p in properties]
+                await neo_session.run(
+                    """
+                    UNWIND $props AS prop
+                    MERGE (p:Property {repo_id: $repo_id, file_path: $file_path, name: prop.name, owner: prop.owner})
+                    ON CREATE SET p.type_annotation = prop.type_ann, p.line = prop.line, p.visibility = prop.vis
+                    WITH p, prop
+                    MATCH (cls:CodeSymbol {repo_id: $repo_id, file_path: $file_path, name: prop.owner})
+                    MERGE (cls)-[:HAS_PROPERTY]->(p)
+                    """,
+                    repo_id=str(repo.id), file_path=file_path, props=prop_data,
+                )
+
+            # Route / Tool nodes + edges
+            if routes:
+                for route in routes:
+                    if route.kind == "route":
+                        await neo_session.run(
+                            """
+                            MERGE (r:Route {repo_id: $repo_id, path: $path, method: $method})
+                            ON CREATE SET r.framework = $framework
+                            MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
+                            MERGE (f)-[:HANDLES_ROUTE]->(r)
+                            """,
+                            repo_id=str(repo.id), file_path=file_path,
+                            path=route.path, method=route.method, framework=route.framework,
+                        )
+                    elif route.kind == "tool":
+                        await neo_session.run(
+                            """
+                            MERGE (t:Tool {repo_id: $repo_id, name: $name})
+                            ON CREATE SET t.framework = $framework
+                            MERGE (f:CodeFile {repo_id: $repo_id, file_path: $file_path})
+                            MERGE (f)-[:HANDLES_TOOL]->(t)
+                            """,
+                            repo_id=str(repo.id), file_path=file_path,
+                            name=route.path, framework=route.framework,
+                        )
 
     async def _resolve_calls(
         self,
