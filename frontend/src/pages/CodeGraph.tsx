@@ -141,6 +141,7 @@ export default function CodeGraph() {
     ) => {
       setSelectedNode(node);
       setSelectedNodeId(node?.id ?? null);
+      if (!node) setBlastRadiusIds(undefined);
     },
     [],
   );
@@ -182,7 +183,10 @@ export default function CodeGraph() {
       { symbol_id: selectedNode.id },
       {
         onSuccess: (data) => {
-          const ids = new Set(data.affected.map((a) => a.name));
+          const ids = new Set(
+            data.affected.map((a) => `${a.name}::${a.file_path}`)
+          );
+          if (selectedNode) ids.add(selectedNode.id);
           setBlastRadiusIds(ids);
         },
       },
