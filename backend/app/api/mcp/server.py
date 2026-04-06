@@ -734,3 +734,100 @@ async def code_processes(repo_name: str) -> str:
             processes = [{"name": r["name"], "kind": r["kind"], "entry_file": r["file"], "steps": r["steps"]} async for r in result]
 
         return json.dumps(processes)
+
+
+@mcp.tool(description="Find all references to a symbol for cross-file rename. Returns locations and confidence.")
+async def code_rename(
+    symbol_name: str,
+    repo_name: str,
+) -> str:
+    """
+    Args:
+        symbol_name: Name of the symbol to rename.
+        repo_name: Repository name.
+    """
+    async with _code_service_context() as session:
+        from sqlalchemy import select
+        from app.models.code import Repository, CodeSymbol, CodeFile
+
+        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
+        if not repo:
+            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+
+        definitions = (await session.execute(
+            select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(
+                CodeFile.repo_id == repo.id,
+                CodeSymbol.name == symbol_name,
+            )
+        )).all()
+
+        if not definitions:
+            return json.dumps({"error": f"Symbol '{symbol_name}' not found", "references": []})
+
+        references = []
+
+        for sym, fp in definitions:
+            references.append({
+                "file_path": fp,
+                "line": sym.line_start,
+                "kind": "definition",
+                "symbol_kind": sym.kind,
+                "confidence": 1.0,
+            })
+
+        if _pipeline and _pipeline.graph_repo:
+            async with _pipeline.graph_repo.driver.session() as neo:
+                result = await neo.run(
+                    """
+                    MATCH (caller:CodeSymbol {repo_id: $repo_id})-[r:CALLS]->(target:CodeSymbol {repo_id: $repo_id, name: $name})
+                    RETURN caller.name AS caller_name, caller.file_path AS file_path, r.line AS line, r.confidence AS confidence
+                    """,
+                    repo_id=str(repo.id), name=symbol_name,
+                )
+                async for r in result:
+                    references.append({
+                        "file_path": r["file_path"],
+                        "line": r["line"],
+                        "kind": "call",
+                        "caller": r["caller_name"],
+                        "confidence": r["confidence"] or 0.5,
+                    })
+
+                result = await neo.run(
+                    """
+                    MATCH (child:CodeSymbol {repo_id: $repo_id})-[:EXTENDS|IMPLEMENTS]->(target:CodeSymbol {repo_id: $repo_id, name: $name})
+                    RETURN child.name AS name, child.file_path AS file_path, child.line_start AS line
+                    """,
+                    repo_id=str(repo.id), name=symbol_name,
+                )
+                async for r in result:
+                    references.append({
+                        "file_path": r["file_path"],
+                        "line": r["line"],
+                        "kind": "heritage",
+                        "symbol": r["name"],
+                        "confidence": 0.95,
+                    })
+
+                result = await neo.run(
+                    """
+                    MATCH (f:CodeFile {repo_id: $repo_id})-[:IMPORTS]->(m:Module {name: $name})
+                    RETURN f.file_path AS file_path
+                    """,
+                    repo_id=str(repo.id), name=symbol_name,
+                )
+                async for r in result:
+                    references.append({
+                        "file_path": r["file_path"],
+                        "line": 0,
+                        "kind": "import",
+                        "confidence": 0.8,
+                    })
+
+        references.sort(key=lambda x: (-x.get("confidence", 0), x.get("file_path", ""), x.get("line", 0)))
+
+        return json.dumps({
+            "symbol": symbol_name,
+            "total_references": len(references),
+            "references": references,
+        })

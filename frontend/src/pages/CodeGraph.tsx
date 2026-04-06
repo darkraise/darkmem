@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,42 @@ const ALL_NODE_TYPES = [
   "property", "route", "tool",
   "community", "process",
 ];
+
+function FileTree({ files, onSelect }: { files: string[]; onSelect: (id: string) => void }) {
+  const tree = useMemo(() => {
+    const root: Record<string, any> = {};
+    for (const fp of files) {
+      const parts = fp.replace(/\\/g, "/").split("/");
+      let current = root;
+      for (const part of parts) {
+        if (!current[part]) current[part] = {};
+        current = current[part];
+      }
+    }
+    return root;
+  }, [files]);
+
+  const renderTree = (node: Record<string, any>, path: string = "", depth: number = 0): ReactNode[] => {
+    return Object.keys(node).sort().map((key) => {
+      const fullPath = path ? `${path}/${key}` : key;
+      const isLeaf = Object.keys(node[key]).length === 0;
+      return (
+        <div key={fullPath}>
+          <div
+            className={`flex items-center gap-1 py-0.5 px-1 text-xs cursor-pointer hover:bg-accent/30 rounded ${isLeaf ? "text-foreground" : "text-muted-foreground font-medium"}`}
+            style={{ paddingLeft: `${depth * 12 + 4}px` }}
+            onClick={() => isLeaf ? onSelect(fullPath) : undefined}
+          >
+            <span className="truncate">{key}</span>
+          </div>
+          {!isLeaf && renderTree(node[key], fullPath, depth + 1)}
+        </div>
+      );
+    });
+  };
+
+  return <div className="text-xs max-h-48 overflow-y-auto">{renderTree(tree)}</div>;
+}
 
 export default function CodeGraph() {
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
@@ -137,6 +173,11 @@ export default function CodeGraph() {
       (e) => nodeIds.has(e.source) && nodeIds.has(e.target),
     );
   }, [graphData, filteredNodes]);
+
+  const fileList = useMemo(() =>
+    filteredNodes.filter(n => n.kind === "file").map(n => n.id).sort(),
+    [filteredNodes]
+  );
 
   const handleSelect = useCallback(
     (
@@ -298,6 +339,19 @@ export default function CodeGraph() {
       <div className="flex flex-1 overflow-hidden">
         {/* Filter sidebar */}
         <div className="w-44 border-r border-border bg-card p-3 space-y-4 overflow-y-auto shrink-0">
+          {fileList.length > 0 && (
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-2">Files</div>
+              <FileTree
+                files={fileList}
+                onSelect={(id) => {
+                  setSelectedNodeId(id);
+                  handleSelect({ id, label: id.split("/").pop() || id, kind: "file" });
+                }}
+              />
+            </div>
+          )}
+
           {/* Node Types */}
           <div>
             <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-2">

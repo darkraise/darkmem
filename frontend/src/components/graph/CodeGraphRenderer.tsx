@@ -323,6 +323,14 @@ export function CodeGraphRenderer({
         kind: attrs._kind as string | undefined,
         file_path: attrs._filePath as string | undefined,
       });
+
+      const nodePosition = sigma.getNodeDisplayData(node);
+      if (nodePosition) {
+        sigma.getCamera().animate(
+          { x: nodePosition.x, y: nodePosition.y, ratio: 0.3 },
+          { duration: 500 },
+        );
+      }
     });
     sigma.on("clickStage", () => onSelectRef.current(null));
 
@@ -369,6 +377,16 @@ export function CodeGraphRenderer({
   useEffect(() => {
     selectedIdRef.current = selectedId;
     sigmaRef.current?.refresh();
+
+    if (selectedId && sigmaRef.current && graphRef.current?.hasNode(selectedId)) {
+      const nodePosition = sigmaRef.current.getNodeDisplayData(selectedId);
+      if (nodePosition) {
+        sigmaRef.current.getCamera().animate(
+          { x: nodePosition.x, y: nodePosition.y, ratio: 0.3 },
+          { duration: 500 },
+        );
+      }
+    }
   }, [selectedId]);
 
   useEffect(() => {
