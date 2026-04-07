@@ -17,7 +17,7 @@ export function clearAuthToken() {
 }
 
 export function isAuthenticated(): boolean {
-  return authToken !== null;
+  return localStorage.getItem("darkmem_token") !== null;
 }
 
 export async function checkSetupStatus(): Promise<{ initialized: boolean }> {
@@ -68,7 +68,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (response.status === 401) {
     clearAuthToken();
     window.location.reload();
-    throw new Error("Session expired");
+    return undefined as T;
   }
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));

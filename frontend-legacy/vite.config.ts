@@ -1,0 +1,28 @@
+/// <reference types="vitest/config" />
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  test: {
+    environment: "node",
+    include: ["src/__tests__/**/*.test.ts"],
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 3636,
+    allowedHosts: ['host.docker.internal'],
+    proxy: {
+      "/api": "http://localhost:8000",
+      "/health": "http://localhost:8000",
+      "/ws": { target: "ws://localhost:8000", ws: true },
+    },
+  },
+});
