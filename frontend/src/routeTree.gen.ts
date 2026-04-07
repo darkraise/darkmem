@@ -19,6 +19,8 @@ import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated/pipeline'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedLlmRouteImport } from './routes/_authenticated/llm'
+import { Route as AuthenticatedCodeWikiRouteImport } from './routes/_authenticated/code-wiki'
+import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 
 const GuestRoute = GuestRouteImport.update({
@@ -69,6 +71,16 @@ const AuthenticatedLlmRoute = AuthenticatedLlmRouteImport.update({
   path: '/llm',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCodeWikiRoute = AuthenticatedCodeWikiRouteImport.update({
+  id: '/code-wiki',
+  path: '/code-wiki',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -78,6 +90,8 @@ const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/chat': typeof AuthenticatedChatRoute
+  '/code-wiki': typeof AuthenticatedCodeWikiRoute
   '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -89,6 +103,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/chat': typeof AuthenticatedChatRoute
+  '/code-wiki': typeof AuthenticatedCodeWikiRoute
   '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -102,6 +118,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_guest': typeof GuestRouteWithChildren
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
+  '/_authenticated/chat': typeof AuthenticatedChatRoute
+  '/_authenticated/code-wiki': typeof AuthenticatedCodeWikiRoute
   '/_authenticated/llm': typeof AuthenticatedLlmRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
@@ -116,6 +134,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/analytics'
+    | '/chat'
+    | '/code-wiki'
     | '/llm'
     | '/memories'
     | '/pipeline'
@@ -127,6 +147,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/analytics'
+    | '/chat'
+    | '/code-wiki'
     | '/llm'
     | '/memories'
     | '/pipeline'
@@ -139,6 +161,8 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/_guest'
     | '/_authenticated/analytics'
+    | '/_authenticated/chat'
+    | '/_authenticated/code-wiki'
     | '/_authenticated/llm'
     | '/_authenticated/memories'
     | '/_authenticated/pipeline'
@@ -226,6 +250,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLlmRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/code-wiki': {
+      id: '/_authenticated/code-wiki'
+      path: '/code-wiki'
+      fullPath: '/code-wiki'
+      preLoaderRoute: typeof AuthenticatedCodeWikiRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/chat': {
+      id: '/_authenticated/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof AuthenticatedChatRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/analytics': {
       id: '/_authenticated/analytics'
       path: '/analytics'
@@ -238,6 +276,8 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
+  AuthenticatedChatRoute: typeof AuthenticatedChatRoute
+  AuthenticatedCodeWikiRoute: typeof AuthenticatedCodeWikiRoute
   AuthenticatedLlmRoute: typeof AuthenticatedLlmRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
@@ -248,6 +288,8 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
+  AuthenticatedChatRoute: AuthenticatedChatRoute,
+  AuthenticatedCodeWikiRoute: AuthenticatedCodeWikiRoute,
   AuthenticatedLlmRoute: AuthenticatedLlmRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
