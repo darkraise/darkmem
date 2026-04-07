@@ -12,7 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as GuestRouteImport } from './routes/_guest'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as GuestSetupRouteImport } from './routes/_guest/setup'
 import { Route as GuestLoginRouteImport } from './routes/_guest/login'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedLlmRouteImport } from './routes/_authenticated/llm'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -27,37 +30,64 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const GuestSetupRoute = GuestSetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => GuestRoute,
+} as any)
 const GuestLoginRoute = GuestLoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => GuestRoute,
 } as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedLlmRoute = AuthenticatedLlmRouteImport.update({
+  id: '/llm',
+  path: '/llm',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/llm': typeof AuthenticatedLlmRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/login': typeof GuestLoginRoute
+  '/setup': typeof GuestSetupRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
+  '/llm': typeof AuthenticatedLlmRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/login': typeof GuestLoginRoute
+  '/setup': typeof GuestSetupRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_guest': typeof GuestRouteWithChildren
+  '/_authenticated/llm': typeof AuthenticatedLlmRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_guest/login': typeof GuestLoginRoute
+  '/_guest/setup': typeof GuestSetupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login'
+  fullPaths: '/' | '/llm' | '/settings' | '/login' | '/setup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login'
+  to: '/' | '/llm' | '/settings' | '/login' | '/setup'
   id:
     | '__root__'
     | '/_authenticated'
     | '/_guest'
+    | '/_authenticated/llm'
+    | '/_authenticated/settings'
     | '/_guest/login'
+    | '/_guest/setup'
     | '/_authenticated/'
   fileRoutesById: FileRoutesById
 }
@@ -89,6 +119,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_guest/setup': {
+      id: '/_guest/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof GuestSetupRouteImport
+      parentRoute: typeof GuestRoute
+    }
     '/_guest/login': {
       id: '/_guest/login'
       path: '/login'
@@ -96,14 +133,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GuestLoginRouteImport
       parentRoute: typeof GuestRoute
     }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/llm': {
+      id: '/_authenticated/llm'
+      path: '/llm'
+      fullPath: '/llm'
+      preLoaderRoute: typeof AuthenticatedLlmRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedLlmRoute: typeof AuthenticatedLlmRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedLlmRoute: AuthenticatedLlmRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 
@@ -113,10 +168,12 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 interface GuestRouteChildren {
   GuestLoginRoute: typeof GuestLoginRoute
+  GuestSetupRoute: typeof GuestSetupRoute
 }
 
 const GuestRouteChildren: GuestRouteChildren = {
   GuestLoginRoute: GuestLoginRoute,
+  GuestSetupRoute: GuestSetupRoute,
 }
 
 const GuestRouteWithChildren = GuestRoute._addFileChildren(GuestRouteChildren)

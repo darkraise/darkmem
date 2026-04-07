@@ -33,6 +33,10 @@ export async function apiFetch<T>(
   return response.json() as Promise<T>
 }
 
+export function getAuthToken(): string | null {
+  return useAuthStore.getState().token
+}
+
 export async function checkSetupStatus(): Promise<{ initialized: boolean }> {
   const response = await fetch(`${API_BASE}/auth/status`)
   return response.json()
