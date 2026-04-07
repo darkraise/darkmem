@@ -7,6 +7,14 @@ import { Card, CardContent } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
+import { Checkbox } from "darkraise-ui/components/checkbox"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "darkraise-ui/components/select"
 import {
   Sheet,
   SheetContent,
@@ -86,12 +94,11 @@ function MemoriesPage() {
     setSelected(new Set())
   }
 
-  const handleFilterChange =
-    (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setter(e.target.value)
-      setOffset(0)
-      setSelected(new Set())
-    }
+  const handleFilterChange = (setter: (v: string) => void) => (v: string) => {
+    setter(v)
+    setOffset(0)
+    setSelected(new Set())
+  }
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -165,42 +172,45 @@ function MemoriesPage() {
           className="flex-1"
         />
         <div className="flex gap-2 flex-wrap">
-          <select
-            value={sourceFilter}
-            onChange={handleFilterChange(setSourceFilter)}
-            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
-          >
-            <option value="">All sources</option>
-            {distinctSources.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select
-            value={tagFilter}
-            onChange={handleFilterChange(setTagFilter)}
-            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
-          >
-            <option value="">All tags</option>
-            {tagsData?.map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={typeFilter}
-            onChange={handleFilterChange(setTypeFilter)}
-            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
-          >
-            <option value="">All types</option>
-            {distinctTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <Select value={sourceFilter} onValueChange={handleFilterChange(setSourceFilter)}>
+            <SelectTrigger className="h-8 w-36">
+              <SelectValue placeholder="All sources" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All sources</SelectItem>
+              {distinctSources.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={tagFilter} onValueChange={handleFilterChange(setTagFilter)}>
+            <SelectTrigger className="h-8 w-36">
+              <SelectValue placeholder="All tags" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All tags</SelectItem>
+              {tagsData?.map((t) => (
+                <SelectItem key={t.name} value={t.name}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={typeFilter} onValueChange={handleFilterChange(setTypeFilter)}>
+            <SelectTrigger className="h-8 w-36">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All types</SelectItem>
+              {distinctTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button type="submit" size="sm">
             Search
           </Button>
@@ -221,11 +231,10 @@ function MemoriesPage() {
         <Card className="flex-1 overflow-hidden">
           <CardContent className="p-0">
             <div className="flex items-center gap-3 px-4 py-2 border-b border-border text-xs text-muted-foreground">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={selected.size === memories.length && memories.length > 0}
-                onChange={toggleSelectAll}
-                className="accent-primary"
+                onCheckedChange={() => toggleSelectAll()}
+                className="h-3.5 w-3.5"
               />
               <span>Select all</span>
             </div>
@@ -237,15 +246,13 @@ function MemoriesPage() {
                   className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-accent/30 ${selected.has(m.id) ? "bg-accent/20" : ""}`}
                   onClick={() => setDetailMemory(m)}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selected.has(m.id)}
-                    onChange={(e) => {
-                      e.stopPropagation()
-                      toggleSelect(m.id)
+                    onCheckedChange={(checked) => {
+                      if (checked !== "indeterminate") toggleSelect(m.id)
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="accent-primary mt-1"
+                    className="h-3.5 w-3.5 mt-1"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "darkraise-ui/components/button";
+import { Input } from "darkraise-ui/components/input";
 import { Plus, Trash2, MessageCircle, Search } from "lucide-react";
 import type { ChatConversation } from "@/hooks/api";
 
@@ -49,13 +50,12 @@ export function ChatSidebar({
         </div>
         {conversations.length > 3 && (
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-            <input
-              type="text"
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 z-10" />
+            <Input
               placeholder="Search conversations..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-muted/50 border border-border rounded-md pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/40"
+              className="w-full bg-muted/50 pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/40"
             />
           </div>
         )}
@@ -94,15 +94,17 @@ export function ChatSidebar({
                 )}
               </div>
             </div>
-            <button
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0 transition-opacity"
+            <Button
+              variant="ghost"
+              size="icon"
+              className="opacity-0 group-hover:opacity-100 h-6 w-6 text-muted-foreground hover:text-destructive shrink-0 transition-opacity"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(conv.id);
               }}
             >
               <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         ))}
         {search && filtered.length === 0 && (

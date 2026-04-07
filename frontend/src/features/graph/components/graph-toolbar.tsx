@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { Toggle } from "darkraise-ui/components/toggle";
 import { ToggleGroup, ToggleGroupItem } from "darkraise-ui/components/toggle-group";
+import { Slider } from "darkraise-ui/components/slider";
 import { Settings, RotateCcw } from "lucide-react";
 import type { SizeMode } from "@/features/graph/lib/graph-utils";
 import type { ColorMode } from "@/features/graph/lib/graph-colors";
@@ -32,7 +33,7 @@ interface GraphToolbarProps {
   onReset: () => void;
 }
 
-interface SliderProps {
+interface SliderRowProps {
   label: string;
   min: number;
   max: number;
@@ -42,19 +43,16 @@ interface SliderProps {
   float?: boolean;
 }
 
-function Slider({ label, min, max, step, value, onChange, float = false }: SliderProps) {
+function SliderRow({ label, min, max, step, value, onChange, float = false }: SliderRowProps) {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <label className="w-14 text-right shrink-0">{label}</label>
-      <input
-        type="range"
+      <Slider
+        value={[value]}
+        onValueChange={([v]) => onChange(float ? v : Math.round(v))}
         min={min}
         max={max}
         step={step}
-        value={value}
-        onChange={(e) =>
-          onChange(float ? parseFloat(e.target.value) : parseInt(e.target.value))
-        }
         className="flex-1"
       />
       <span className="w-8 font-mono text-right">{value}</span>
@@ -188,7 +186,7 @@ export function GraphToolbar({
               </ToggleGroup>
             </div>
 
-            <Slider
+            <SliderRow
               label="Edges"
               min={0.3}
               max={0.95}
@@ -197,7 +195,7 @@ export function GraphToolbar({
               onChange={onSimilarityChange}
               float
             />
-            <Slider
+            <SliderRow
               label="Min Size"
               min={2}
               max={10}
@@ -206,7 +204,7 @@ export function GraphToolbar({
               onChange={onMinClusterSizeChange}
             />
             {viewMode === "2d" && (
-              <Slider
+              <SliderRow
                 label="Tightness"
                 min={30}
                 max={300}
@@ -215,7 +213,7 @@ export function GraphToolbar({
                 onChange={onClusterTightnessChange}
               />
             )}
-            <Slider
+            <SliderRow
               label="Spacing"
               min={viewMode === "2d" ? 100 : 30}
               max={viewMode === "2d" ? 500 : 200}

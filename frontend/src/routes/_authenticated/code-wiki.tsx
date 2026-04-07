@@ -4,6 +4,13 @@ import { useRepos } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "darkraise-ui/components/select"
 import { PageHeader } from "darkraise-ui/layout"
 import { useQuery } from "@tanstack/react-query"
 
@@ -54,21 +61,25 @@ function CodeWikiPage() {
       <PageHeader title="Code Wiki" />
 
       <div className="flex items-center gap-4">
-        <select
+        <Select
           value={selectedRepoId || ""}
-          onChange={(e) => {
-            setSelectedRepoId(e.target.value || null)
+          onValueChange={(v) => {
+            setSelectedRepoId(v || null)
             setExpandedModule(null)
           }}
-          className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
         >
-          <option value="">Select a repo</option>
-          {repos?.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="h-8 w-48">
+            <SelectValue placeholder="Select a repo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Select a repo</SelectItem>
+            {repos?.map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                {r.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading && (

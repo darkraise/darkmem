@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { UNIFIED_PALETTE, UNCLUSTERED_COLOR, entityTypeColor, resolveNodeColor } from "@/features/graph/lib/graph-colors";
 import type { ColorMode } from "@/features/graph/lib/graph-colors";
+import { Input } from "darkraise-ui/components/input";
+import { Checkbox } from "darkraise-ui/components/checkbox";
+import { Label } from "darkraise-ui/components/label";
+import { Button } from "darkraise-ui/components/button";
 
 export interface GraphFilterPanelProps {
   tagGroups: [string, [string, number][]][];
@@ -74,12 +78,11 @@ export function GraphFilterPanel({
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
           Search
         </p>
-        <input
-          type="text"
+        <Input
           placeholder="Filter by content…"
           value={searchText}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full text-sm bg-background border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+          className="w-full text-sm"
         />
       </div>
 
@@ -109,15 +112,14 @@ export function GraphFilterPanel({
                     {!collapsedGroups.has(category) && (
                       <div className="space-y-0.5 pl-1">
                         {tags.map(([tag, count]) => (
-                          <label
+                          <Label
                             key={tag}
-                            className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                            className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group font-normal"
                           >
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={selectedTags.has(tag)}
-                              onChange={() => onTagToggle(tag)}
-                              className="accent-primary w-3.5 h-3.5"
+                              onCheckedChange={() => onTagToggle(tag)}
+                              className="h-3.5 w-3.5"
                             />
                             <span
                               className={`flex-1 truncate ${
@@ -132,7 +134,7 @@ export function GraphFilterPanel({
                                 : tag}
                             </span>
                             <span className="opacity-40 text-xs">{count}</span>
-                          </label>
+                          </Label>
                         ))}
                       </div>
                     )}
@@ -154,15 +156,14 @@ export function GraphFilterPanel({
                     ? resolveNodeColor({ cluster: -1, memory_type: realType, tags: [] }, "type")
                     : "#8b949e";
                   return (
-                    <label
+                    <Label
                       key={type}
-                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group font-normal"
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedTypes.has(type)}
-                        onChange={() => onTypeToggle(type)}
-                        className="accent-primary w-3.5 h-3.5"
+                        onCheckedChange={() => onTypeToggle(type)}
+                        className="h-3.5 w-3.5"
                       />
                       <span
                         className="w-2 h-2 rounded-full flex-shrink-0"
@@ -178,7 +179,7 @@ export function GraphFilterPanel({
                         {type}
                       </span>
                       <span className="opacity-40 text-xs">{count}</span>
-                    </label>
+                    </Label>
                   );
                 })}
               </div>
@@ -192,15 +193,14 @@ export function GraphFilterPanel({
               </p>
               <div className="space-y-0.5">
                 {allSources.map(([src, count]) => (
-                  <label
+                  <Label
                     key={src}
-                    className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                    className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group font-normal"
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selectedSources.has(src)}
-                      onChange={() => onSourceToggle(src)}
-                      className="accent-primary w-3.5 h-3.5"
+                      onCheckedChange={() => onSourceToggle(src)}
+                      className="h-3.5 w-3.5"
                     />
                     <span
                       className={`flex-1 truncate ${
@@ -213,7 +213,7 @@ export function GraphFilterPanel({
                       {src}
                     </span>
                     <span className="opacity-40 text-xs">{count}</span>
-                  </label>
+                  </Label>
                 ))}
               </div>
             </div>
@@ -230,15 +230,14 @@ export function GraphFilterPanel({
                     ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length]
                     : "#8b949e";
                   return (
-                    <label
+                    <Label
                       key={cid}
-                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group font-normal"
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedClusters.has(cid)}
-                        onChange={() => onClusterToggle(cid)}
-                        className="accent-primary w-3.5 h-3.5"
+                        onCheckedChange={() => onClusterToggle(cid)}
+                        className="h-3.5 w-3.5"
                       />
                       <span
                         className="w-2 h-2 rounded-full flex-shrink-0 opacity-70"
@@ -254,7 +253,7 @@ export function GraphFilterPanel({
                         {clusterNames[String(cid)] || `Cluster ${cid}`}
                       </span>
                       <span className="opacity-40 text-xs">{count}</span>
-                    </label>
+                    </Label>
                   );
                 })}
               </div>
@@ -270,15 +269,14 @@ export function GraphFilterPanel({
                 {allEntityTypes.map(([etype, count]) => {
                   const color = entityTypeColor(etype);
                   return (
-                    <label
+                    <Label
                       key={etype}
-                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group"
+                      className="flex items-center gap-2 text-sm cursor-pointer py-0.5 group font-normal"
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedEntityTypes?.has(etype) ?? false}
-                        onChange={() => onEntityTypeToggle?.(etype)}
-                        className="accent-primary w-3.5 h-3.5"
+                        onCheckedChange={() => onEntityTypeToggle?.(etype)}
+                        className="h-3.5 w-3.5"
                       />
                       <span
                         className="w-2 h-2 flex-shrink-0"
@@ -294,7 +292,7 @@ export function GraphFilterPanel({
                         {etype}
                       </span>
                       <span className="opacity-40 text-xs">{count}</span>
-                    </label>
+                    </Label>
                   );
                 })}
               </div>
@@ -304,17 +302,14 @@ export function GraphFilterPanel({
       </div>
 
       <div className="p-3 border-t border-border shrink-0">
-        <button
-          className={`w-full text-sm py-1.5 rounded border transition-colors ${
-            hasFilters
-              ? "border-primary text-primary hover:bg-primary/10"
-              : "border-border text-muted-foreground cursor-default opacity-50"
-          }`}
+        <Button
+          variant="outline"
+          className="w-full text-sm"
           onClick={onShowAll}
           disabled={!hasFilters}
         >
           Show All
-        </button>
+        </Button>
       </div>
     </div>
   );

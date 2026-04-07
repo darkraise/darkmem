@@ -3,6 +3,15 @@ import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { Button } from "darkraise-ui/components/button";
 import { Input } from "darkraise-ui/components/input";
 import { Badge } from "darkraise-ui/components/badge";
+import { Checkbox } from "darkraise-ui/components/checkbox";
+import { Label } from "darkraise-ui/components/label";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "darkraise-ui/components/select";
 import {
   Sheet,
   SheetContent,
@@ -250,18 +259,19 @@ function CodeGraphPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 p-3 border-b border-border bg-card">
-        <select
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          value={selectedRepoId ?? ""}
-          onChange={(e) => setSelectedRepoId(e.target.value || null)}
-        >
-          <option value="">Select a repo</option>
-          {repos?.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+        <Select value={selectedRepoId ?? ""} onValueChange={(v) => setSelectedRepoId(v || null)}>
+          <SelectTrigger className="h-9 w-48">
+            <SelectValue placeholder="Select a repo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Select a repo</SelectItem>
+            {repos?.map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                {r.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div className="relative">
           <Input
@@ -359,22 +369,21 @@ function CodeGraphPage() {
             </div>
             <div className="space-y-1">
               {ALL_NODE_TYPES.map((type) => (
-                <label
+                <Label
                   key={type}
-                  className="flex items-center gap-2 text-xs cursor-pointer"
+                  className="flex items-center gap-2 text-xs cursor-pointer font-normal"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={visibleNodeTypes.has(type)}
-                    onChange={() => toggleNodeType(type)}
-                    className="accent-primary w-3 h-3"
+                    onCheckedChange={() => toggleNodeType(type)}
+                    className="h-3 w-3"
                   />
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: NODE_COLORS_FOR_FILTER[type] }}
                   />
                   <span className="capitalize">{type}</span>
-                </label>
+                </Label>
               ))}
             </div>
           </div>
@@ -385,22 +394,21 @@ function CodeGraphPage() {
             </div>
             <div className="space-y-1">
               {["calls", "contains", "defines", "imports", "extends", "implements", "has_method", "has_property", "handles_route", "handles_tool", "method_overrides", "method_implements", "accesses", "member_of", "step_in_process", "entry_point_of"].map((type) => (
-                <label
+                <Label
                   key={type}
-                  className="flex items-center gap-2 text-xs cursor-pointer"
+                  className="flex items-center gap-2 text-xs cursor-pointer font-normal"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={visibleEdgeTypes.has(type)}
-                    onChange={() => toggleEdgeType(type)}
-                    className="accent-primary w-3 h-3"
+                    onCheckedChange={() => toggleEdgeType(type)}
+                    className="h-3 w-3"
                   />
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: EDGE_COLORS_FOR_FILTER[type] }}
                   />
                   <span className="capitalize">{type}</span>
-                </label>
+                </Label>
               ))}
             </div>
           </div>

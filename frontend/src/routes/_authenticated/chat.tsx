@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { ChatSidebar } from "@/features/chat/components/chat-sidebar"
 import { ChatMessages } from "@/features/chat/components/chat-messages"
 import { ChatInput } from "@/features/chat/components/chat-input"
+import { Input } from "darkraise-ui/components/input"
 import {
   useConversations,
   useConversation,
@@ -83,10 +84,10 @@ function ChatPage() {
           <>
             <div className="px-4 py-3 border-b border-border shrink-0 flex items-center gap-2">
               {editingTitle ? (
-                <input
+                <Input
                   autoFocus
                   defaultValue={convDetail?.title || ""}
-                  className="text-sm font-semibold bg-transparent border-b border-primary focus:outline-none focus:ring-0 focus:border-indigo-400 flex-1"
+                  className="text-sm font-semibold bg-transparent border-b border-primary focus:ring-0 focus:border-indigo-400 flex-1 h-auto py-0 rounded-none"
                   onBlur={(e) => handleTitleSubmit(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleTitleSubmit(e.currentTarget.value)

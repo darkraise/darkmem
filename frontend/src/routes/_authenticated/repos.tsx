@@ -15,6 +15,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/component
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
+import { Label } from "darkraise-ui/components/label"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "darkraise-ui/components/select"
 import {
   Dialog,
   DialogContent,
@@ -98,11 +106,11 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <label className="text-xs text-muted-foreground">Name *</label>
+        <Label className="text-xs text-muted-foreground">Name *</Label>
         <Input value={form.name} onChange={(e) => set("name", e.target.value)} required />
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">URL</label>
+        <Label className="text-xs text-muted-foreground">URL</Label>
         <Input
           value={form.url ?? ""}
           onChange={(e) => set("url", e.target.value)}
@@ -110,27 +118,28 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">Provider</label>
-        <select
-          value={form.provider ?? "github"}
-          onChange={(e) => set("provider", e.target.value)}
-          className="w-full h-8 rounded-lg border border-input bg-transparent px-2 text-sm text-foreground outline-none dark:bg-input/30"
-        >
-          <option value="github">GitHub</option>
-          <option value="gitlab">GitLab</option>
-          <option value="local">Local</option>
-        </select>
+        <Label className="text-xs text-muted-foreground">Provider</Label>
+        <Select value={form.provider ?? "github"} onValueChange={(v) => set("provider", v)}>
+          <SelectTrigger className="h-8 w-full">
+            <SelectValue placeholder="Select provider" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="github">GitHub</SelectItem>
+            <SelectItem value="gitlab">GitLab</SelectItem>
+            <SelectItem value="local">Local</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-muted-foreground">Default branch</label>
+          <Label className="text-xs text-muted-foreground">Default branch</Label>
           <Input
             value={form.default_branch ?? "main"}
             onChange={(e) => set("default_branch", e.target.value)}
           />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Sync interval (min)</label>
+          <Label className="text-xs text-muted-foreground">Sync interval (min)</Label>
           <Input
             type="number"
             value={form.sync_interval_minutes ?? 30}
@@ -140,7 +149,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">Auth token</label>
+        <Label className="text-xs text-muted-foreground">Auth token</Label>
         <Input
           type="password"
           value={form.auth_token ?? ""}

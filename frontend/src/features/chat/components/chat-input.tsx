@@ -1,5 +1,6 @@
 import { useRef, useCallback } from "react";
 import { Button } from "darkraise-ui/components/button";
+import { Textarea } from "darkraise-ui/components/textarea";
 import { SendHorizonal, Square } from "lucide-react";
 
 interface ChatInputProps {
@@ -54,12 +55,12 @@ export function ChatInput({
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
             Context: {contextLabel}
-            <button className="hover:text-foreground ml-0.5" onClick={onClearContext}>×</button>
+            <Button variant="ghost" size="icon" className="h-4 w-4 ml-0.5 hover:text-foreground" onClick={onClearContext}>×</Button>
           </span>
         </div>
       )}
       <div className="flex gap-2 items-end">
-        <textarea
+        <Textarea
           ref={textareaRef}
           rows={1}
           placeholder={placeholder}
