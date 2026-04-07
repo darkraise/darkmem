@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { toast } from "darkraise-ui/components/sonner"
+import { toast } from "sonner"
 
 interface PipelineStatus {
   memory_id: string

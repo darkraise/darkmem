@@ -15,7 +15,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
-import { toast } from "darkraise-ui/components/sonner"
+import { toast } from "sonner"
 import { PageHeader } from "darkraise-ui/layout"
 import { ThemeSwitcher } from "darkraise-ui/theme"
 
