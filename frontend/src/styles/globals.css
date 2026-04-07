@@ -1,0 +1,59 @@
+@import "tailwindcss";
+@import "darkraise-ui/styles.css";
+@plugin "@tailwindcss/typography";
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary, rgba(99, 102, 241, 0.15)) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-primary, rgba(99, 102, 241, 0.15));
+  border-radius: 3px;
+}
+
+.chat-prose {
+  @apply prose prose-invert prose-sm max-w-none text-sm;
+}
+.chat-prose pre {
+  @apply bg-[#0c1018] border border-border rounded-lg p-3;
+}
+.chat-prose pre code {
+  @apply bg-transparent p-0 text-foreground;
+}
+.chat-prose code {
+  @apply text-primary bg-muted px-1.5 py-0.5 rounded text-xs;
+}
+.chat-prose a {
+  @apply text-primary no-underline hover:underline;
+}
+.chat-prose table {
+  @apply border-collapse;
+}
+.chat-prose th,
+.chat-prose td {
+  @apply border border-border px-3 py-1.5;
+}
+.chat-prose blockquote {
+  @apply border-l-4 border-l-primary/50 text-muted-foreground;
+}
+.chat-prose hr {
+  @apply border-border;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
