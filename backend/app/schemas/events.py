@@ -83,12 +83,24 @@ class PipelineRetryBatchProgress(BaseModel):
     state: Literal["started", "progress", "done"]
 
 
+class PipelineReembedBatchProgress(BaseModel):
+    batch_id: str
+    category: Literal["memories", "code_chunks", "entities"]
+    current: int
+    total: int
+    processed: int
+    errors: int
+    state: Literal["started", "progress", "done"]
+    error_message: str | None = None
+
+
 EVENT_SCHEMAS: dict[str, type[BaseModel]] = {
     "pipeline.completed": PipelineStatus,
     "pipeline.partial": PipelineStatus,
     "pipeline.failed": PipelineStatus,
     "pipeline.failure.updated": PipelineFailureUpdated,
     "pipeline.retry_batch.progress": PipelineRetryBatchProgress,
+    "pipeline.reembed_batch.progress": PipelineReembedBatchProgress,
     "memory.deleted": MemoryDeleted,
     "repo.clone_started": RepoCloneStarted,
     "repo.clone_completed": RepoCloneCompleted,

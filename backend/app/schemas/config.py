@@ -7,6 +7,8 @@ class LLMPurposeConfigSchema(BaseModel):
     model: str
     api_key: str | None = None
     dimensions: int | None = None
+    reasoning: bool = False
+    tool_call_mode: str = "json"
     params: dict = Field(default_factory=dict)
 
 
@@ -16,6 +18,8 @@ class LLMPurposeConfigUpdate(BaseModel):
     model: str | None = None
     api_key: str | None = None
     dimensions: int | None = None
+    reasoning: bool | None = None
+    tool_call_mode: str | None = None
     params: dict | None = None
 
 
@@ -24,6 +28,13 @@ class LLMConfigResponse(BaseModel):
     extraction: LLMPurposeConfigSchema
     reasoning: LLMPurposeConfigSchema
     summarization: LLMPurposeConfigSchema
+    reranker: LLMPurposeConfigSchema
+
+
+class LLMConfigUpdateResponse(LLMConfigResponse):
+    """Returned by POST /api/v1/config/llm. Extends LLMConfigResponse with
+    computed obsolete counts for the new embedding model."""
+    obsolete_after_change: dict[str, int] | None = None
 
 
 class LLMConfigUpdate(BaseModel):
@@ -31,6 +42,7 @@ class LLMConfigUpdate(BaseModel):
     extraction: LLMPurposeConfigUpdate | None = None
     reasoning: LLMPurposeConfigUpdate | None = None
     summarization: LLMPurposeConfigUpdate | None = None
+    reranker: LLMPurposeConfigUpdate | None = None
 
 
 class StatsResponse(BaseModel):
