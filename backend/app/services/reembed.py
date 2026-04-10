@@ -215,3 +215,344 @@ class ReembedService:
         )
         await self.session.commit()
         return result.rowcount or 0
+
+    async def reembed_memories(
+        self,
+        current_fingerprint: str,
+        llm,
+        batch_id: str,
+        broadcast: BroadcastFn | None,
+        flags: dict,
+    ) -> dict:
+        """Re-embed all obsolete memories. Returns {'processed': N, 'errors': N, 'last_error': str | None}."""
+        embed_chunk_size = flags.get("embedding_batch_size", 20)
+        embed_concurrency = flags.get("embedding_concurrency", 1)
+
+        total = (await self.session.execute(
+            text("""
+                SELECT COUNT(*) FROM memory_embeddings
+                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            """),
+            {"fp": current_fingerprint},
+        )).scalar_one()
+        total = int(total)
+
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": "memories",
+                "current": 0, "total": total, "processed": 0, "errors": 0,
+                "state": "started", "error_message": None,
+            })
+
+        processed = 0
+        errors = 0
+        last_error: str | None = None
+        chunk_size_rows = 100
+
+        while True:
+            rows = (await self.session.execute(
+                text("""
+                    SELECT me.id AS embedding_id, me.memory_id, m.content
+                    FROM memory_embeddings me
+                    JOIN memories m ON m.id = me.memory_id
+                    WHERE me.model_fingerprint != :fp OR me.model_fingerprint IS NULL
+                    LIMIT :limit
+                """),
+                {"fp": current_fingerprint, "limit": chunk_size_rows},
+            )).mappings().all()
+
+            if not rows:
+                break
+
+            texts = [r["content"] for r in rows]
+            try:
+                vectors = await llm.embed_batch_chunked(texts, embed_chunk_size, embed_concurrency)
+            except Exception as e:
+                logger.exception("Re-embed batch failed for memories")
+                errors += len(rows)
+                last_error = f"{type(e).__name__}: {e}"[:500]
+                if broadcast:
+                    await broadcast("pipeline.reembed_batch.progress", {
+                        "batch_id": batch_id, "category": "memories",
+                        "current": processed + errors, "total": total,
+                        "processed": processed, "errors": errors,
+                        "state": "progress", "error_message": None,
+                    })
+                break
+
+            updates = [
+                {"id": str(r["embedding_id"]), "vec": str(vec)}
+                for r, vec in zip(rows, vectors)
+            ]
+            try:
+                await self.session.execute(
+                    text("""
+                        UPDATE memory_embeddings
+                        SET embedding = v.vec::vector,
+                            model_fingerprint = :fp
+                        FROM jsonb_to_recordset(CAST(:updates AS jsonb)) AS v(id uuid, vec text)
+                        WHERE memory_embeddings.id = v.id
+                    """),
+                    {"fp": current_fingerprint, "updates": json.dumps(updates)},
+                )
+                await self.session.commit()
+                processed += len(rows)
+            except Exception as e:
+                logger.exception("Failed to persist re-embedded memories")
+                await self.session.rollback()
+                errors += len(rows)
+                last_error = f"{type(e).__name__}: {e}"[:500]
+                break
+
+            if broadcast:
+                await broadcast("pipeline.reembed_batch.progress", {
+                    "batch_id": batch_id, "category": "memories",
+                    "current": processed + errors, "total": total,
+                    "processed": processed, "errors": errors,
+                    "state": "progress", "error_message": None,
+                })
+
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": "memories",
+                "current": total, "total": total,
+                "processed": processed, "errors": errors,
+                "state": "done", "error_message": last_error,
+            })
+
+        return {"processed": processed, "errors": errors, "last_error": last_error}
+
+    async def reembed_code_chunks(
+        self,
+        current_fingerprint: str,
+        llm,
+        batch_id: str,
+        broadcast: BroadcastFn | None,
+        flags: dict,
+    ) -> dict:
+        """Re-embed all obsolete code chunks."""
+        embed_chunk_size = flags.get("embedding_batch_size", 20)
+        embed_concurrency = flags.get("embedding_concurrency", 1)
+
+        total = (await self.session.execute(
+            text("""
+                SELECT COUNT(*) FROM code_chunk_embeddings
+                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            """),
+            {"fp": current_fingerprint},
+        )).scalar_one()
+        total = int(total)
+
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": "code_chunks",
+                "current": 0, "total": total, "processed": 0, "errors": 0,
+                "state": "started", "error_message": None,
+            })
+
+        processed = 0
+        errors = 0
+        last_error: str | None = None
+        chunk_size_rows = 100
+
+        while True:
+            rows = (await self.session.execute(
+                text("""
+                    SELECT id, chunk_content
+                    FROM code_chunk_embeddings
+                    WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
+                      AND chunk_content IS NOT NULL
+                    LIMIT :limit
+                """),
+                {"fp": current_fingerprint, "limit": chunk_size_rows},
+            )).mappings().all()
+
+            if not rows:
+                break
+
+            texts = [r["chunk_content"] for r in rows]
+            try:
+                vectors = await llm.embed_batch_chunked(texts, embed_chunk_size, embed_concurrency)
+            except Exception as e:
+                logger.exception("Re-embed batch failed for code_chunks")
+                errors += len(rows)
+                last_error = f"{type(e).__name__}: {e}"[:500]
+                if broadcast:
+                    await broadcast("pipeline.reembed_batch.progress", {
+                        "batch_id": batch_id, "category": "code_chunks",
+                        "current": processed + errors, "total": total,
+                        "processed": processed, "errors": errors,
+                        "state": "progress", "error_message": None,
+                    })
+                break
+
+            updates = [
+                {"id": str(r["id"]), "vec": str(vec)}
+                for r, vec in zip(rows, vectors)
+            ]
+            try:
+                await self.session.execute(
+                    text("""
+                        UPDATE code_chunk_embeddings
+                        SET embedding = v.vec::vector,
+                            model_fingerprint = :fp
+                        FROM jsonb_to_recordset(CAST(:updates AS jsonb)) AS v(id uuid, vec text)
+                        WHERE code_chunk_embeddings.id = v.id
+                    """),
+                    {"fp": current_fingerprint, "updates": json.dumps(updates)},
+                )
+                await self.session.commit()
+                processed += len(rows)
+            except Exception as e:
+                logger.exception("Failed to persist re-embedded code chunks")
+                await self.session.rollback()
+                errors += len(rows)
+                last_error = f"{type(e).__name__}: {e}"[:500]
+                break
+
+            if broadcast:
+                await broadcast("pipeline.reembed_batch.progress", {
+                    "batch_id": batch_id, "category": "code_chunks",
+                    "current": processed + errors, "total": total,
+                    "processed": processed, "errors": errors,
+                    "state": "progress", "error_message": None,
+                })
+
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": "code_chunks",
+                "current": total, "total": total,
+                "processed": processed, "errors": errors,
+                "state": "done", "error_message": last_error,
+            })
+
+        return {"processed": processed, "errors": errors, "last_error": last_error}
+
+    async def reembed_entities(
+        self,
+        current_fingerprint: str,
+        llm,
+        batch_id: str,
+        broadcast: BroadcastFn | None,
+        flags: dict,
+    ) -> dict:
+        """Re-embed all obsolete entity names. Also upserts new embeddings
+        into entity_embedding_cache so future ingestions benefit from the cache."""
+        embed_chunk_size = flags.get("embedding_batch_size", 20)
+        embed_concurrency = flags.get("embedding_concurrency", 1)
+
+        total = (await self.session.execute(
+            text("""
+                SELECT COUNT(*) FROM entities
+                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            """),
+            {"fp": current_fingerprint},
+        )).scalar_one()
+        total = int(total)
+
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": "entities",
+                "current": 0, "total": total, "processed": 0, "errors": 0,
+                "state": "started", "error_message": None,
+            })
+
+        processed = 0
+        errors = 0
+        last_error: str | None = None
+        chunk_size_rows = 100
+
+        while True:
+            rows = (await self.session.execute(
+                text("""
+                    SELECT id, name
+                    FROM entities
+                    WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+                    LIMIT :limit
+                """),
+                {"fp": current_fingerprint, "limit": chunk_size_rows},
+            )).mappings().all()
+
+            if not rows:
+                break
+
+            texts = [r["name"] for r in rows]
+            try:
+                vectors = await llm.embed_batch_chunked(texts, embed_chunk_size, embed_concurrency)
+            except Exception as e:
+                logger.exception("Re-embed batch failed for entities")
+                errors += len(rows)
+                last_error = f"{type(e).__name__}: {e}"[:500]
+                if broadcast:
+                    await broadcast("pipeline.reembed_batch.progress", {
+                        "batch_id": batch_id, "category": "entities",
+                        "current": processed + errors, "total": total,
+                        "processed": processed, "errors": errors,
+                        "state": "progress", "error_message": None,
+                    })
+                break
+
+            updates = [
+                {"id": str(r["id"]), "vec": str(vec)}
+                for r, vec in zip(rows, vectors)
+            ]
+            try:
+                # Update entities table
+                await self.session.execute(
+                    text("""
+                        UPDATE entities
+                        SET embedding = v.vec::vector,
+                            model_fingerprint = :fp
+                        FROM jsonb_to_recordset(CAST(:updates AS jsonb)) AS v(id uuid, vec text)
+                        WHERE entities.id = v.id
+                    """),
+                    {"fp": current_fingerprint, "updates": json.dumps(updates)},
+                )
+
+                # Dedupe by lowercase name for the cache upsert (multiple entities
+                # can share the same name across types)
+                cache_upserts: dict[str, list[float]] = {}
+                for row, vec in zip(rows, vectors):
+                    cache_upserts[row["name"].lower()] = vec
+
+                for name_lower, vec in cache_upserts.items():
+                    await self.session.execute(
+                        text("""
+                            INSERT INTO entity_embedding_cache
+                                (name_lower, model_fingerprint, embedding, created_at, last_used_at, hit_count)
+                            VALUES
+                                (:name, :fp, CAST(:vec AS vector), NOW(), NOW(), 1)
+                            ON CONFLICT (name_lower, model_fingerprint) DO UPDATE SET
+                                embedding = EXCLUDED.embedding,
+                                last_used_at = NOW(),
+                                hit_count = entity_embedding_cache.hit_count + 1
+                        """),
+                        {"name": name_lower, "fp": current_fingerprint, "vec": str(vec)},
+                    )
+
+                await self.session.commit()
+                processed += len(rows)
+            except Exception as e:
+                logger.exception("Failed to persist re-embedded entities")
+                await self.session.rollback()
+                errors += len(rows)
+                last_error = f"{type(e).__name__}: {e}"[:500]
+                break
+
+            if broadcast:
+                await broadcast("pipeline.reembed_batch.progress", {
+                    "batch_id": batch_id, "category": "entities",
+                    "current": processed + errors, "total": total,
+                    "processed": processed, "errors": errors,
+                    "state": "progress", "error_message": None,
+                })
+
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": "entities",
+                "current": total, "total": total,
+                "processed": processed, "errors": errors,
+                "state": "done", "error_message": last_error,
+            })
+
+        return {"processed": processed, "errors": errors, "last_error": last_error}
