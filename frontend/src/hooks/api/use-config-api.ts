@@ -27,12 +27,22 @@ export function useLlmConfig() {
   });
 }
 
+export interface LlmConfigUpdateResponse extends LlmConfigResponse {
+  obsolete_after_change: { memories: number; code_chunks: number; entities: number } | null
+}
+
 export function useUpdateLlmConfig() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiFetch("/config/llm", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["llmConfig"] }),
+  return useMutation<LlmConfigUpdateResponse, Error, Record<string, unknown>>({
+    mutationFn: (data) =>
+      apiFetch<LlmConfigUpdateResponse>("/config/llm", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llmConfig"] });
+      qc.invalidateQueries({ queryKey: ["obsoleteCounts"] });
+    },
   });
 }
 

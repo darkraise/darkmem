@@ -1,12 +1,22 @@
 import { useState, useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { useLlmConfig, useUpdateLlmConfig, type LlmPurposeConfig } from "@/hooks/api"
+import { useNavigate } from "@tanstack/react-router"
+import { useLlmConfig, useUpdateLlmConfig, useReembedAll, type LlmPurposeConfig } from "@/hooks/api"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Label } from "darkraise-ui/components/label"
+import { Switch } from "darkraise-ui/components/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "darkraise-ui/components/dialog"
 import { PageHeader } from "darkraise-ui/layout"
+import { toast } from "sonner"
 
 export const Route = createFileRoute("/_authenticated/llm")({
   component: LlmConfigPage,
@@ -30,6 +40,8 @@ function PurposeCard({
     model: "",
     api_key: "",
     dimensions: "",
+    reasoning: false,
+    tool_call_mode: "json",
     params: "",
   })
 
@@ -41,6 +53,8 @@ function PurposeCard({
         model: config.model || "",
         api_key: config.api_key === "***" ? "***" : config.api_key || "",
         dimensions: config.dimensions?.toString() || "",
+        reasoning: config.reasoning ?? false,
+        tool_call_mode: config.tool_call_mode || "json",
         params: Object.keys(config.params || {}).length > 0 ? JSON.stringify(config.params, null, 2) : "",
       })
     }
@@ -53,6 +67,8 @@ function PurposeCard({
       provider: form.provider,
       base_url: form.base_url,
       model: form.model,
+      reasoning: form.reasoning,
+      tool_call_mode: form.tool_call_mode,
     }
     if (form.api_key && form.api_key !== "***") {
       data.api_key = form.api_key
@@ -107,6 +123,16 @@ function PurposeCard({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Dimensions</span>
                 <span>{config.dimensions}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Reasoning</span>
+              <span>{config.reasoning ? "On" : "Off"}</span>
+            </div>
+            {title.toLowerCase() === "extraction" && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Extraction Mode</span>
+                <span className="capitalize">{config.tool_call_mode || "json"}</span>
               </div>
             )}
             {Object.keys(config.params || {}).length > 0 && (
@@ -179,6 +205,27 @@ function PurposeCard({
               />
             </div>
           )}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-xs text-muted-foreground">Reasoning</Label>
+              <p className="text-muted-foreground text-[10px]">Enable for models with thinking mode (e.g., Qwen3). Disable to append /no_think.</p>
+            </div>
+            <Switch checked={form.reasoning} onCheckedChange={(v) => setForm({ ...form, reasoning: v })} />
+          </div>
+          {title.toLowerCase() === "extraction" && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Extraction Mode</Label>
+              <select
+                value={form.tool_call_mode}
+                onChange={(e) => setForm({ ...form, tool_call_mode: e.target.value })}
+                className="w-full h-8 text-sm rounded-md border border-input bg-background px-3"
+              >
+                <option value="json">JSON (default)</option>
+                <option value="flat">Flat Tool Call (small models)</option>
+                <option value="nested">Nested Tool Call (large models)</option>
+              </select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Params (JSON)</Label>
             <Textarea
@@ -198,9 +245,41 @@ function PurposeCard({
 function LlmConfigPage() {
   const { data, isLoading, error } = useLlmConfig()
   const updateConfig = useUpdateLlmConfig()
+  const reembedAll = useReembedAll()
+  const navigate = useNavigate()
+
+  const [obsoleteDialog, setObsoleteDialog] = useState<{
+    memories: number
+    code_chunks: number
+    entities: number
+  } | null>(null)
 
   const handleSave = (purpose: string, purposeData: Partial<LlmPurposeConfig>) => {
-    updateConfig.mutate({ [purpose]: purposeData })
+    updateConfig.mutate(
+      { [purpose]: purposeData },
+      {
+        onSuccess: (data) => {
+          const obs = data.obsolete_after_change
+          if (obs && (obs.memories > 0 || obs.code_chunks > 0 || obs.entities > 0)) {
+            setObsoleteDialog(obs)
+          } else {
+            toast.success("LLM config updated")
+          }
+        },
+        onError: (err) => toast.error(`Save failed: ${(err as Error).message}`),
+      },
+    )
+  }
+
+  const handleReembedNow = () => {
+    reembedAll.mutate(undefined, {
+      onSuccess: () => {
+        toast.info("Re-embed started — track progress on the Pipeline page")
+        setObsoleteDialog(null)
+        navigate({ to: "/pipeline" })
+      },
+      onError: (err) => toast.error(`Re-embed failed: ${(err as Error).message}`),
+    })
   }
 
   return (
@@ -221,7 +300,55 @@ function LlmConfigPage() {
         <PurposeCard title="Extraction" config={data?.extraction} onSave={handleSave} saving={updateConfig.isPending} />
         <PurposeCard title="Reasoning" config={data?.reasoning} onSave={handleSave} saving={updateConfig.isPending} />
         <PurposeCard title="Summarization" config={data?.summarization} onSave={handleSave} saving={updateConfig.isPending} />
+        <PurposeCard title="Reranker" config={data?.reranker} onSave={handleSave} saving={updateConfig.isPending} />
       </div>
+
+      <Dialog
+        open={obsoleteDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setObsoleteDialog(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Embedding Model Changed</DialogTitle>
+          </DialogHeader>
+          {obsoleteDialog && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm">
+                You changed the embedding model. The following data still uses the old model
+                and should be re-embedded:
+              </p>
+              <ul className="text-sm space-y-1 pl-4 list-disc">
+                {obsoleteDialog.memories > 0 && (
+                  <li>{obsoleteDialog.memories} memories</li>
+                )}
+                {obsoleteDialog.entities > 0 && (
+                  <li>{obsoleteDialog.entities} entities</li>
+                )}
+                {obsoleteDialog.code_chunks > 0 && (
+                  <li>{obsoleteDialog.code_chunks} code chunks</li>
+                )}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Re-embedding will not re-run extraction or classification, only the vector
+                embeddings. Search quality will be degraded until re-embedding completes.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setObsoleteDialog(null)}>
+              Later
+            </Button>
+            <Button
+              onClick={handleReembedNow}
+              disabled={reembedAll.isPending}
+            >
+              {reembedAll.isPending ? "Starting..." : "Re-embed now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
