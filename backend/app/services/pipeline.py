@@ -37,6 +37,76 @@ class ProcessingPipeline:
         self.session_factory = session_factory
         self.embedding_dims = embedding_dims
         self._broadcast = broadcast
+        self.embedding_fingerprint = f"{llm.config['embedding'].model}|{embedding_dims}"
+        self._entity_cache: dict[tuple[str, str], tuple[list[float], float]] = {}
+        self._entity_cache_lock = asyncio.Lock()
+
+    async def _lookup_entity_embeddings(
+        self,
+        name_lowers: list[str],
+        ttl_seconds: float,
+        use_memory_cache: bool,
+    ) -> tuple[dict[str, list[float]], list[str]]:
+        """Return (hits, misses). Hits map name_lower to embedding.
+        Misses are names needing fresh embedding."""
+        import time as _time
+
+        hits: dict[str, list[float]] = {}
+        still_missing: list[str] = []
+        now = _time.monotonic()
+        fp = self.embedding_fingerprint
+
+        if use_memory_cache:
+            async with self._entity_cache_lock:
+                for name in name_lowers:
+                    entry = self._entity_cache.get((name, fp))
+                    if entry is not None:
+                        emb, cached_at = entry
+                        if now - cached_at <= ttl_seconds:
+                            hits[name] = emb
+                            continue
+                        else:
+                            del self._entity_cache[(name, fp)]
+                    still_missing.append(name)
+        else:
+            still_missing = list(name_lowers)
+
+        if still_missing:
+            async with self.session_factory() as session:
+                repo = PostgresGraphRepository(session)
+                db_hits = await repo.get_cached_entity_embeddings(still_missing, fp)
+            if db_hits:
+                if use_memory_cache:
+                    async with self._entity_cache_lock:
+                        for name, emb in db_hits.items():
+                            self._entity_cache[(name, fp)] = (emb, now)
+                hits.update(db_hits)
+                still_missing = [n for n in still_missing if n not in db_hits]
+
+        return hits, still_missing
+
+    async def _store_entity_embeddings(
+        self,
+        name_to_embedding: dict[str, list[float]],
+        use_memory_cache: bool,
+    ) -> None:
+        """Write new embeddings to DB cache and (optionally) in-memory cache."""
+        import time as _time
+
+        if not name_to_embedding:
+            return
+        fp = self.embedding_fingerprint
+
+        async with self.session_factory() as session:
+            repo = PostgresGraphRepository(session)
+            await repo.upsert_entity_embeddings_cache(name_to_embedding, fp)
+            await session.commit()
+
+        if use_memory_cache:
+            now = _time.monotonic()
+            async with self._entity_cache_lock:
+                for name, emb in name_to_embedding.items():
+                    self._entity_cache[(name, fp)] = (emb, now)
 
     async def process_memory(self, memory_id: UUID, content: str, source: str, tags: list[str], memory_type: str | None, created_at: str, vector: list[float] | None = None, flags: dict | None = None) -> dict:
         status = {
