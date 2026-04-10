@@ -3,7 +3,7 @@
 import json
 import logging
 
-from app.services.classification_areas import get_merged_llm_types
+from app.services.classification_areas import get_merged_llm_types, SIMPLE_NORMALIZATION
 from app.services.llm import LLMOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class ClassificationService:
         content: str,
         enabled_areas: list[str],
         system_prompt: str,
-        mode: str = "expanded",
+        mode: str = "simple",
     ) -> dict:
         llm_types = get_merged_llm_types(enabled_areas, mode=mode)
         valid_names = sorted(llm_types.keys())
@@ -55,7 +55,6 @@ class ClassificationService:
             result = json.loads(response)
             classified_type = result.get("type", "fact")
             if mode == "simple" and classified_type not in valid_names:
-                from app.services.classification_areas import SIMPLE_NORMALIZATION
                 classified_type = SIMPLE_NORMALIZATION.get(classified_type, classified_type)
             if classified_type not in valid_names:
                 logger.warning("LLM returned invalid type '%s', falling back to 'fact'", classified_type)

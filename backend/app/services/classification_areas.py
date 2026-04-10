@@ -564,7 +564,7 @@ SIMPLE_NORMALIZATION: dict[str, str] = {
 }
 
 
-def get_merged_markers(enabled_areas: list[str] | None = None, mode: str = "expanded") -> dict[str, list[str]]:
+def get_merged_markers(enabled_areas: list[str] | None = None, mode: str = "simple") -> dict[str, list[str]]:
     """Merge regex markers from all enabled areas into a single type->markers dict."""
     if enabled_areas is None:
         enabled_areas = ["general"]
@@ -594,7 +594,7 @@ def get_merged_markers(enabled_areas: list[str] | None = None, mode: str = "expa
     return merged
 
 
-def get_merged_llm_types(enabled_areas: list[str] | None = None, mode: str = "expanded") -> dict[str, str]:
+def get_merged_llm_types(enabled_areas: list[str] | None = None, mode: str = "simple") -> dict[str, str]:
     """Merge LLM type descriptions from all enabled areas. Always includes 'fact'."""
     if mode == "simple":
         return dict(SIMPLE_TYPES)

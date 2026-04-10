@@ -524,7 +524,7 @@ class TestMemoryClassifier:
         assert result["hall"] == "problem"
 
     def test_emotional_classification(self):
-        result = classify("I'm so proud of what we built together. I love this team and everything we've achieved.")
+        result = classify("I'm so proud of what we built together. I love this team and everything we've achieved.", mode="expanded")
         assert result["hall"] == "emotional"
 
     def test_low_signal_text_returns_fact(self):
@@ -608,10 +608,10 @@ class TestClassificationMode:
         assert "architecture" in types
         assert len(types) > 7
 
-    def test_default_mode_is_expanded(self):
+    def test_default_mode_is_simple(self):
         from app.services.classification_areas import get_merged_llm_types
         types = get_merged_llm_types(["general", "technical"])
-        assert len(types) > 7
+        assert len(types) == 7
 
     def test_simple_markers_remap_types(self):
         from app.services.classification_areas import get_merged_markers

@@ -433,13 +433,14 @@ def _disambiguate(scores: dict[str, float], text: str) -> Optional[str]:
 # =============================================================================
 
 
-def classify(text: str, min_confidence: float = 0.3, enabled_areas: list[str] | None = None, mode: str = "expanded") -> dict:
+def classify(text: str, min_confidence: float = 0.3, enabled_areas: list[str] | None = None, mode: str = "simple") -> dict:
     """Classify a text chunk into a memory type using zero-LLM heuristics.
 
     Args:
         text: Text to classify (any format — conversations, notes, docs).
         min_confidence: Minimum confidence threshold (0.0–1.0).
         enabled_areas: List of classification area keys to use. Defaults to ["general"].
+        mode: "simple" uses the 7-type collapsed set; "expanded" uses per-area types. Defaults to "simple".
 
     Returns:
         Dict with keys:
@@ -505,7 +506,7 @@ def classify(text: str, min_confidence: float = 0.3, enabled_areas: list[str] | 
     }
 
 
-def extract_memories(text: str, min_confidence: float = 0.3, enabled_areas: list[str] | None = None, mode: str = "expanded") -> list[dict]:
+def extract_memories(text: str, min_confidence: float = 0.3, enabled_areas: list[str] | None = None, mode: str = "simple") -> list[dict]:
     """Extract typed memory chunks from a text string.
 
     Splits the text into segments (by speaker turns or paragraphs), classifies
@@ -515,6 +516,7 @@ def extract_memories(text: str, min_confidence: float = 0.3, enabled_areas: list
         text: Source text in any format.
         min_confidence: Minimum confidence threshold (0.0–1.0).
         enabled_areas: List of classification area keys. Defaults to ["general"].
+        mode: "simple" uses the 7-type collapsed set; "expanded" uses per-area types. Defaults to "simple".
 
     Returns:
         List of dicts: {"content": str, "memory_type": str, "chunk_index": int}.
