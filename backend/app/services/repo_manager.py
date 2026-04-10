@@ -148,6 +148,11 @@ class RepoManager:
         return repo
 
     async def delete(self, repo_id: UUID) -> bool:
+        from app.services.pipeline_failures import PipelineFailureService
+        from app.api.websocket import event_manager
+        failure_svc = PipelineFailureService(self.session, broadcast=event_manager.broadcast)
+        await failure_svc.forget_all_for_repo(repo_id)
+
         repo = await self.session.get(Repository, repo_id)
         if not repo:
             return False
