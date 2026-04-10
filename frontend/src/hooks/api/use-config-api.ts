@@ -7,6 +7,8 @@ export interface LlmPurposeConfig {
   model: string;
   api_key: string | null;
   dimensions: number | null;
+  reasoning: boolean;
+  tool_call_mode: string;
   params: Record<string, unknown>;
 }
 
@@ -15,14 +17,7 @@ export interface LlmConfigResponse {
   extraction?: LlmPurposeConfig;
   reasoning?: LlmPurposeConfig;
   summarization?: LlmPurposeConfig;
-}
-
-export interface SystemPromptProfile {
-  purpose: string;
-  display_name: string;
-  content: string;
-  is_editable: boolean;
-  updated_at: string;
+  reranker?: LlmPurposeConfig;
 }
 
 export function useLlmConfig() {
@@ -41,31 +36,47 @@ export function useUpdateLlmConfig() {
   });
 }
 
-export function useSystemPrompts() {
-  return useQuery<SystemPromptProfile[]>({
-    queryKey: ["systemPrompts"],
-    queryFn: () => apiFetch<SystemPromptProfile[]>("/config/system-prompt/list"),
+export interface FeatureFlags {
+  llm_enrichment_enabled: boolean;
+  hybrid_search_enabled: boolean;
+  reranker_enabled: boolean;
+  pipeline_concurrency: number;
+  classification_areas: string[];
+  classification_mode: "simple" | "expanded";
+}
+
+export function useFeatureFlags() {
+  return useQuery<FeatureFlags>({
+    queryKey: ["featureFlags"],
+    queryFn: () => apiFetch<FeatureFlags>("/config/feature-flags"),
+    staleTime: 30_000,
   });
 }
 
-export function useUpdateSystemPrompt() {
+export function useUpdateFeatureFlags() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ purpose, content }: { purpose: string; content: string }) =>
-      apiFetch(`/config/system-prompt/${purpose}`, {
+    mutationFn: (data: Partial<FeatureFlags>) =>
+      apiFetch<FeatureFlags>("/config/feature-flags", {
         method: "PUT",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["systemPrompts"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["featureFlags"] }),
   });
 }
 
-export function useResetSystemPrompt() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (purpose: string) =>
-      apiFetch(`/config/system-prompt/${purpose}/reset`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["systemPrompts"] }),
+export interface ClassificationAreaInfo {
+  key: string;
+  display_name: string;
+  types: string[];
+  type_descriptions: Record<string, string>;
+}
+
+export function useClassificationAreas() {
+  return useQuery<ClassificationAreaInfo[]>({
+    queryKey: ["classificationAreas"],
+    queryFn: () => apiFetch<ClassificationAreaInfo[]>("/config/classification-areas"),
+    staleTime: 300_000,
   });
 }
 
