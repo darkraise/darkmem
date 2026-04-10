@@ -307,6 +307,84 @@ function FeatureFlagsCard() {
             />
           </div>
         </div>
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div>
+            <Label className="text-sm">Embedding Batch Size</Label>
+            <p className="text-muted-foreground text-xs">Texts per embed call to the embedding model</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={200}
+              value={flags.embedding_batch_size ?? 20}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(200, Number(e.target.value) || 20))
+                updateFlags.mutate(
+                  { embedding_batch_size: v },
+                  {
+                    onSuccess: () => toast.success(`Embedding batch size set to ${v}`),
+                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+                  },
+                )
+              }}
+              className="w-16 h-8 text-sm text-center"
+              disabled={updateFlags.isPending}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div>
+            <Label className="text-sm">Embedding Concurrency</Label>
+            <p className="text-muted-foreground text-xs">Parallel embed calls when chunked batching</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={flags.embedding_concurrency ?? 1}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(10, Number(e.target.value) || 1))
+                updateFlags.mutate(
+                  { embedding_concurrency: v },
+                  {
+                    onSuccess: () => toast.success(`Embedding concurrency set to ${v}`),
+                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+                  },
+                )
+              }}
+              className="w-16 h-8 text-sm text-center"
+              disabled={updateFlags.isPending}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div>
+            <Label className="text-sm">Entity Cache TTL (minutes)</Label>
+            <p className="text-muted-foreground text-xs">How long entity lookups are cached during extraction</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={1440}
+              value={flags.entity_cache_ttl_minutes ?? 60}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(1440, Number(e.target.value) || 60))
+                updateFlags.mutate(
+                  { entity_cache_ttl_minutes: v },
+                  {
+                    onSuccess: () => toast.success(`Entity cache TTL set to ${v} minutes`),
+                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+                  },
+                )
+              }}
+              className="w-16 h-8 text-sm text-center"
+              disabled={updateFlags.isPending}
+            />
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
