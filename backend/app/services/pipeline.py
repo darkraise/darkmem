@@ -155,6 +155,7 @@ class ProcessingPipeline:
             # Apply canonical_map to entity names and relationship endpoints
             for entity in extraction.get("entities", []):
                 low = entity["name"].lower()
+                entity["_orig_lower"] = low
                 if low in canonical_map:
                     entity["name"] = canonical_map[low]
             for rel in extraction.get("relationships", []):
@@ -218,7 +219,7 @@ class ProcessingPipeline:
                                     name=entity["name"], entity_type=entity["type"],
                                     properties=entity.get("properties", {}), memory_id=memory_id,
                                 )
-                                emb = name_to_embedding.get(entity["name"].lower())
+                                emb = name_to_embedding.get(entity.get("_orig_lower", entity["name"].lower()))
                                 if emb and created:
                                     await graph_repo.upsert_entity_embedding(
                                         created["id"], emb, model_fingerprint=self.embedding_fingerprint,
