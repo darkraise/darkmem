@@ -8,6 +8,7 @@ from .config import Config
 from .embedding import CodeChunkEmbedding, EntityEmbeddingCache, MemoryEmbedding
 from .graph import Entity, EntityRelation, KnowledgeTriple
 from .memory import Memory, Tag, memory_tags
+from .pipeline_failure import PipelineFailure
 
 __all__ = [
     "Base",
@@ -31,4 +32,5 @@ __all__ = [
     "MemoryEmbedding",
     "CodeChunkEmbedding",
     "EntityEmbeddingCache",
+    "PipelineFailure",
 ]
