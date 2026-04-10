@@ -70,7 +70,8 @@ class ReembedService:
         chunk_count = (await self.session.execute(
             text("""
                 SELECT COUNT(*) FROM code_chunk_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
+                  AND chunk_content IS NOT NULL
             """),
             {"fp": current_fingerprint},
         )).scalar_one()
@@ -137,7 +138,8 @@ class ReembedService:
         total = (await self.session.execute(
             text("""
                 SELECT COUNT(*) FROM code_chunk_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
+                  AND chunk_content IS NOT NULL
             """),
             {"fp": current_fingerprint},
         )).scalar_one()
@@ -147,7 +149,8 @@ class ReembedService:
                 SELECT id, file_path, symbol_name, model_fingerprint,
                        LEFT(chunk_content, 120) AS chunk_preview
                 FROM code_chunk_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
+                  AND chunk_content IS NOT NULL
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
@@ -337,7 +340,8 @@ class ReembedService:
         total = (await self.session.execute(
             text("""
                 SELECT COUNT(*) FROM code_chunk_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
+                  AND chunk_content IS NOT NULL
             """),
             {"fp": current_fingerprint},
         )).scalar_one()
