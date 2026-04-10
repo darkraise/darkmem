@@ -124,40 +124,45 @@ async def _dispatch_single_category(
             content={"accepted": False, "reason": "already_running"},
         )
 
-    snapshot_fingerprint = pipeline.embedding_fingerprint
-    snapshot_llm = pipeline.llm
-    batch_id = str(uuid4())
+    try:
+        snapshot_fingerprint = pipeline.embedding_fingerprint
+        snapshot_llm = pipeline.llm
+        batch_id = str(uuid4())
 
-    svc = ReembedService(session)
-    counts = await svc.count_obsolete(snapshot_fingerprint)
-    total = counts.get(category, 0)
+        svc = ReembedService(session)
+        counts = await svc.count_obsolete(snapshot_fingerprint)
+        total = counts.get(category, 0)
 
-    method_name_map = {
-        "memories": "reembed_memories",
-        "code_chunks": "reembed_code_chunks",
-        "entities": "reembed_entities",
-    }
-    method_name = method_name_map[category]
+        method_name_map = {
+            "memories": "reembed_memories",
+            "code_chunks": "reembed_code_chunks",
+            "entities": "reembed_entities",
+        }
+        method_name = method_name_map[category]
 
-    async def _run():
-        try:
-            flags = await _get_flags()
-            async with async_session_factory() as bg_session:
-                bg_svc = ReembedService(bg_session)
-                method = getattr(bg_svc, method_name)
-                await method(
-                    current_fingerprint=snapshot_fingerprint,
-                    llm=snapshot_llm,
-                    batch_id=batch_id,
-                    broadcast=event_manager.broadcast,
-                    flags=flags,
-                )
-        except Exception:
-            logger.exception("Re-embed %s background task failed", category)
-        finally:
-            reembed_locks.release(category)
+        async def _run():
+            try:
+                flags = await _get_flags()
+                async with async_session_factory() as bg_session:
+                    bg_svc = ReembedService(bg_session)
+                    method = getattr(bg_svc, method_name)
+                    await method(
+                        current_fingerprint=snapshot_fingerprint,
+                        llm=snapshot_llm,
+                        batch_id=batch_id,
+                        broadcast=event_manager.broadcast,
+                        flags=flags,
+                    )
+            except Exception:
+                logger.exception("Re-embed %s background task failed", category)
+            finally:
+                reembed_locks.release(category)
 
-    asyncio.create_task(_run())
+        asyncio.create_task(_run())
+    except Exception:
+        reembed_locks.release(category)
+        raise
+
     return {"accepted": True, "batch_id": batch_id, "total": total}
 
 
@@ -223,41 +228,47 @@ async def reembed_all(
                 },
             )
 
-    snapshot_fingerprint = pipeline.embedding_fingerprint
-    snapshot_llm = pipeline.llm
-    batch_id = str(uuid4())
+    try:
+        snapshot_fingerprint = pipeline.embedding_fingerprint
+        snapshot_llm = pipeline.llm
+        batch_id = str(uuid4())
 
-    svc = ReembedService(session)
-    totals = await svc.count_obsolete(snapshot_fingerprint)
+        svc = ReembedService(session)
+        totals = await svc.count_obsolete(snapshot_fingerprint)
 
-    async def _run_all():
-        try:
-            flags = await _get_flags()
-            async with async_session_factory() as bg_session:
-                bg_svc = ReembedService(bg_session)
-                sequence = [
-                    ("memories", bg_svc.reembed_memories),
-                    ("entities", bg_svc.reembed_entities),
-                    ("code_chunks", bg_svc.reembed_code_chunks),
-                ]
-                for category, method in sequence:
-                    try:
-                        await method(
-                            current_fingerprint=snapshot_fingerprint,
-                            llm=snapshot_llm,
-                            batch_id=batch_id,
-                            broadcast=event_manager.broadcast,
-                            flags=flags,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Re-embed %s failed under batch %s", category, batch_id,
-                        )
-        finally:
-            for cat in ("memories", "entities", "code_chunks"):
-                reembed_locks.release(cat)
+        async def _run_all():
+            try:
+                flags = await _get_flags()
+                async with async_session_factory() as bg_session:
+                    bg_svc = ReembedService(bg_session)
+                    sequence = [
+                        ("memories", bg_svc.reembed_memories),
+                        ("entities", bg_svc.reembed_entities),
+                        ("code_chunks", bg_svc.reembed_code_chunks),
+                    ]
+                    for category, method in sequence:
+                        try:
+                            await method(
+                                current_fingerprint=snapshot_fingerprint,
+                                llm=snapshot_llm,
+                                batch_id=batch_id,
+                                broadcast=event_manager.broadcast,
+                                flags=flags,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Re-embed %s failed under batch %s", category, batch_id,
+                            )
+            finally:
+                for cat in ("memories", "entities", "code_chunks"):
+                    reembed_locks.release(cat)
 
-    asyncio.create_task(_run_all())
+        asyncio.create_task(_run_all())
+    except Exception:
+        for cat in ("memories", "entities", "code_chunks"):
+            reembed_locks.release(cat)
+        raise
+
     return {"accepted": True, "batch_id": batch_id, "totals": totals}
 
 
