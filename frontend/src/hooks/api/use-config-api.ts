@@ -43,6 +43,9 @@ export interface FeatureFlags {
   pipeline_concurrency: number;
   classification_areas: string[];
   classification_mode: "simple" | "expanded";
+  embedding_batch_size: number;
+  embedding_concurrency: number;
+  entity_cache_ttl_minutes: number;
 }
 
 export function useFeatureFlags() {
