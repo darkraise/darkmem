@@ -71,6 +71,7 @@ async def update_llm_config(
     if pipeline is not None:
         pipeline.llm = new_llm
         pipeline.extraction.llm = new_llm
+        pipeline.embedding_fingerprint = f"{new_llm.config['embedding'].model}|{getattr(request.app.state, 'embedding_dims', 1024)}"
 
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in updated_config.items()})
 

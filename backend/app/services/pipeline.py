@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from uuid import UUID
 
 from sqlalchemy import select
@@ -49,11 +50,9 @@ class ProcessingPipeline:
     ) -> tuple[dict[str, list[float]], list[str]]:
         """Return (hits, misses). Hits map name_lower to embedding.
         Misses are names needing fresh embedding."""
-        import time as _time
-
         hits: dict[str, list[float]] = {}
         still_missing: list[str] = []
-        now = _time.monotonic()
+        now = time.monotonic()
         fp = self.embedding_fingerprint
 
         if use_memory_cache:
@@ -91,19 +90,21 @@ class ProcessingPipeline:
         use_memory_cache: bool,
     ) -> None:
         """Write new embeddings to DB cache and (optionally) in-memory cache."""
-        import time as _time
-
         if not name_to_embedding:
             return
         fp = self.embedding_fingerprint
 
-        async with self.session_factory() as session:
-            repo = PostgresGraphRepository(session)
-            await repo.upsert_entity_embeddings_cache(name_to_embedding, fp)
-            await session.commit()
+        try:
+            async with self.session_factory() as session:
+                repo = PostgresGraphRepository(session)
+                await repo.upsert_entity_embeddings_cache(name_to_embedding, fp)
+                await session.commit()
+        except Exception:
+            logger.warning("Failed to persist entity embedding cache to DB", exc_info=True)
+            return
 
         if use_memory_cache:
-            now = _time.monotonic()
+            now = time.monotonic()
             async with self._entity_cache_lock:
                 for name, emb in name_to_embedding.items():
                     self._entity_cache[(name, fp)] = (emb, now)
