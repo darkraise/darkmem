@@ -80,6 +80,21 @@ export function useWebSocket() {
         }
       }
 
+      if (msg.event === "pipeline.reembed_batch.progress") {
+        const d = msg.data as WebSocketEventMap["pipeline.reembed_batch.progress"]
+        qc.setQueryData(["reembedBatchProgress", d.batch_id, d.category], d)
+        if (d.state === "done") {
+          void qc.invalidateQueries({ queryKey: ["obsoleteCounts"] })
+          if (d.errors > 0) {
+            toast.warning(`Re-embed ${d.category}: ${d.processed} succeeded, ${d.errors} failed`, {
+              description: d.error_message || undefined,
+            })
+          } else if (d.processed > 0) {
+            toast.success(`Re-embed ${d.category} complete: ${d.processed} updated`)
+          }
+        }
+      }
+
       if (
         msg.event === "repo.clone_started" ||
         msg.event === "repo.clone_completed" ||
