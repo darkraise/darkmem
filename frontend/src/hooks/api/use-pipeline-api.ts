@@ -248,3 +248,80 @@ export function useRetryBatchProgress(batchId: string | null) {
     staleTime: Infinity,
   })
 }
+
+export interface ObsoleteCounts {
+  memories: number
+  code_chunks: number
+  entities: number
+  current_fingerprint: string
+}
+
+export function useObsoleteCounts() {
+  return useQuery<ObsoleteCounts>({
+    queryKey: ["obsoleteCounts"],
+    queryFn: () => apiFetch<ObsoleteCounts>("/reembed/obsolete-counts"),
+    refetchInterval: 30_000,
+  })
+}
+
+export function useReembedMemories() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ accepted: boolean; batch_id: string; total: number }>(
+        "/reembed/memories",
+        { method: "POST" },
+      ),
+  })
+}
+
+export function useReembedCodeChunks() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ accepted: boolean; batch_id: string; total: number }>(
+        "/reembed/code-chunks",
+        { method: "POST" },
+      ),
+  })
+}
+
+export function useReembedEntities() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ accepted: boolean; batch_id: string; total: number }>(
+        "/reembed/entities",
+        { method: "POST" },
+      ),
+  })
+}
+
+export function useReembedAll() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{
+        accepted: boolean
+        batch_id: string
+        totals: { memories: number; entities: number; code_chunks: number }
+      }>("/reembed/all", { method: "POST" }),
+  })
+}
+
+export function usePruneObsoleteCache() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ deleted: number }>("/reembed/prune-cache", { method: "POST" }),
+  })
+}
+
+export function useReembedBatchProgress(
+  batchId: string | null,
+  category: "memories" | "code_chunks" | "entities",
+) {
+  return useQuery<
+    import("@/lib/websocket-events").PipelineReembedBatchProgress | undefined
+  >({
+    queryKey: ["reembedBatchProgress", batchId, category],
+    queryFn: () => undefined,
+    enabled: false,
+    staleTime: Infinity,
+  })
+}
