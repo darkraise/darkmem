@@ -10,6 +10,13 @@ import {
   useForgetFailure,
   useRetryAllFailures,
   useRetryBatchProgress,
+  useObsoleteCounts,
+  useReembedMemories,
+  useReembedCodeChunks,
+  useReembedEntities,
+  useReembedAll,
+  usePruneObsoleteCache,
+  useReembedBatchProgress,
 } from "@/hooks/api"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
@@ -261,6 +268,203 @@ function UnresolvedFailuresCard() {
   )
 }
 
+type ReembedCategory = "memories" | "code_chunks" | "entities"
+
+function CategoryProgressBar({
+  batchId,
+  category,
+}: {
+  batchId: string | null
+  category: ReembedCategory
+}) {
+  const { data: progress } = useReembedBatchProgress(batchId, category)
+  if (!progress || progress.state === "done") return null
+  const pct = progress.total > 0 ? (progress.current / progress.total) * 100 : 0
+  return (
+    <div className="mt-2 space-y-1">
+      <Progress value={pct} />
+      <p className="text-xs text-muted-foreground">
+        {progress.current} / {progress.total}
+        {progress.errors > 0 && (
+          <span className="text-destructive ml-2">({progress.errors} errors)</span>
+        )}
+      </p>
+    </div>
+  )
+}
+
+function ObsoleteEmbeddingsCard() {
+  const { data: counts } = useObsoleteCounts()
+  const reembedMemories = useReembedMemories()
+  const reembedCodeChunks = useReembedCodeChunks()
+  const reembedEntities = useReembedEntities()
+  const reembedAll = useReembedAll()
+  const pruneCache = usePruneObsoleteCache()
+
+  const [batchIds, setBatchIds] = useState<Record<ReembedCategory, string | null>>({
+    memories: null,
+    code_chunks: null,
+    entities: null,
+  })
+
+  if (!counts) return null
+
+  const totalObsolete = counts.memories + counts.code_chunks + counts.entities
+  const anyRunning =
+    batchIds.memories !== null ||
+    batchIds.code_chunks !== null ||
+    batchIds.entities !== null
+
+  if (totalObsolete === 0 && !anyRunning) return null
+
+  const handleReembed = (
+    category: ReembedCategory,
+    mutation: typeof reembedMemories,
+  ) => {
+    mutation.mutate(undefined, {
+      onSuccess: (data) => {
+        if (data.total === 0) {
+          toast.info(`No obsolete ${category}`)
+          return
+        }
+        setBatchIds((prev) => ({ ...prev, [category]: data.batch_id }))
+        toast.info(`Re-embedding ${data.total} ${category}...`)
+      },
+      onError: (err) => toast.error(`Re-embed ${category} failed: ${(err as Error).message}`),
+    })
+  }
+
+  const handleReembedAll = () => {
+    reembedAll.mutate(undefined, {
+      onSuccess: (data) => {
+        setBatchIds({
+          memories: data.batch_id,
+          code_chunks: data.batch_id,
+          entities: data.batch_id,
+        })
+        toast.info(
+          `Re-embedding all obsolete: ${data.totals.memories} memories, ${data.totals.entities} entities, ${data.totals.code_chunks} code chunks`,
+        )
+      },
+      onError: (err) => toast.error(`Re-embed all failed: ${(err as Error).message}`),
+    })
+  }
+
+  const handlePruneCache = () => {
+    pruneCache.mutate(undefined, {
+      onSuccess: (data) => toast.success(`Pruned ${data.deleted} old cache entries`),
+      onError: (err) => toast.error(`Prune failed: ${(err as Error).message}`),
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm">Obsolete Embeddings</CardTitle>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReembedAll}
+              disabled={reembedAll.isPending || anyRunning || totalObsolete === 0}
+            >
+              Re-embed all obsolete
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handlePruneCache}
+              disabled={pruneCache.isPending}
+            >
+              Prune old cache entries
+            </Button>
+          </div>
+        </div>
+        <p className="text-muted-foreground text-xs font-mono mt-1">
+          Current: {counts.current_fingerprint}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="divide-y divide-border rounded-md border border-border">
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex-1">
+              <span className="text-sm font-medium">Memories</span>
+              <p className="text-muted-foreground text-xs">
+                {counts.memories} obsolete
+              </p>
+              <CategoryProgressBar
+                batchId={batchIds.memories}
+                category="memories"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleReembed("memories", reembedMemories)}
+              disabled={
+                reembedMemories.isPending ||
+                batchIds.memories !== null ||
+                counts.memories === 0
+              }
+            >
+              Re-embed
+            </Button>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex-1">
+              <span className="text-sm font-medium">Entities</span>
+              <p className="text-muted-foreground text-xs">
+                {counts.entities} obsolete
+              </p>
+              <CategoryProgressBar
+                batchId={batchIds.entities}
+                category="entities"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleReembed("entities", reembedEntities)}
+              disabled={
+                reembedEntities.isPending ||
+                batchIds.entities !== null ||
+                counts.entities === 0
+              }
+            >
+              Re-embed
+            </Button>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex-1">
+              <span className="text-sm font-medium">Code chunks</span>
+              <p className="text-muted-foreground text-xs">
+                {counts.code_chunks} obsolete
+              </p>
+              <CategoryProgressBar
+                batchId={batchIds.code_chunks}
+                category="code_chunks"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleReembed("code_chunks", reembedCodeChunks)}
+              disabled={
+                reembedCodeChunks.isPending ||
+                batchIds.code_chunks !== null ||
+                counts.code_chunks === 0
+              }
+            >
+              Re-embed
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function PipelinePage() {
   const { data: health } = useHealth()
   const { data: logs, isLoading } = usePipelineLogs(50)
@@ -300,6 +504,10 @@ function PipelinePage() {
         <Button variant="outline" size="sm" onClick={handleReprocessAll} disabled={anyPending}>
           {reprocessAll.isPending ? "Reprocessing..." : "Reprocess All"}
         </Button>
+      </div>
+
+      <div className="mb-6">
+        <ObsoleteEmbeddingsCard />
       </div>
 
       <div className="mb-6">
