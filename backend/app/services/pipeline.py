@@ -279,8 +279,6 @@ class ProcessingPipeline:
         tags: list[str],
         memory_type: str | None,
         created_at: str,
-        vector: list[float] | None = None,
-        flags: dict | None = None,
     ) -> dict:
         """Process a single memory. Delegates to process_batch for consistent phasing."""
         entry = {
@@ -347,13 +345,15 @@ class ProcessingPipeline:
                     logger.warning("LLM classification failed: %s", exc)
                     return None
 
-        extract_tasks = [run_extract(e["content"]) for e in entries]
-        classify_tasks = [run_classify(e["content"]) for e in entries] if llm_enrichment else None
-
-        extractions = await asyncio.gather(*extract_tasks)
-        classifications: list[dict | None] = (
-            await asyncio.gather(*classify_tasks) if classify_tasks else [None] * len(entries)
-        )
+        if llm_enrichment:
+            extract_tasks = [run_extract(e["content"]) for e in entries]
+            classify_tasks = [run_classify(e["content"]) for e in entries]
+            all_results = await asyncio.gather(*extract_tasks, *classify_tasks)
+            extractions = all_results[: len(entries)]
+            classifications: list[dict | None] = all_results[len(entries) :]
+        else:
+            extractions = await asyncio.gather(*[run_extract(e["content"]) for e in entries])
+            classifications = [None] * len(entries)
         logger.info("Phase 2 complete: extractions=%d, classifications=%s", len(extractions), "on" if llm_enrichment else "off")
 
         # Phase 3: Entity embedding with cache
