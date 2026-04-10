@@ -4,11 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.config import LLMPurposeConfig, settings
+from app.config import FEATURE_FLAGS_DEFAULTS, LLMPurposeConfig, settings
 from app.database import get_session
-from app.models.config import Config, SystemPromptProfile
+from app.models.config import Config
 from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMPurposeConfigSchema
-from app.schemas.prompt import SystemPromptResponse, SystemPromptUpdate
 from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema
 from app.services.config import get_llm_config as fetch_llm_config
 
@@ -27,9 +26,12 @@ async def get_llm_config(
 @router.post("/llm", response_model=LLMConfigResponse)
 async def update_llm_config(
     body: LLMConfigUpdate,
+    request: Request,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
+    from app.services.llm import LLMOrchestrator
+
     # Read existing DB config
     result = await session.execute(select(Config).where(Config.key == LLM_CONFIG_KEY))
     db_entry = result.scalar_one_or_none()
@@ -59,88 +61,106 @@ async def update_llm_config(
 
     await session.flush()
 
-    # Return updated config (masked)
-    updated = {p: LLMPurposeConfig(**v) for p, v in new_value.items()}
-    return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in updated.items()})
+    # Swap the live LLM orchestrator so new requests pick up the updated config.
+    # In-flight requests keep their existing reference to the old orchestrator (safe).
+    updated_config = {p: LLMPurposeConfig(**v) for p, v in new_value.items()}
+    new_llm = LLMOrchestrator(updated_config)
+    request.app.state.llm = new_llm
+
+    pipeline = getattr(request.app.state, "pipeline", None)
+    if pipeline is not None:
+        pipeline.llm = new_llm
+        pipeline.extraction.llm = new_llm
+
+    return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in updated_config.items()})
 
 
-@router.get("/system-prompt", response_model=SystemPromptResponse)
-async def get_system_prompt(
-    purpose: str = "extraction",
+class FeatureFlagsResponse(BaseModel):
+    llm_enrichment_enabled: bool
+    hybrid_search_enabled: bool
+    reranker_enabled: bool
+    pipeline_concurrency: int
+    classification_areas: list[str]
+    classification_mode: str
+
+
+class FeatureFlagsUpdate(BaseModel):
+    llm_enrichment_enabled: bool | None = None
+    hybrid_search_enabled: bool | None = None
+    reranker_enabled: bool | None = None
+    pipeline_concurrency: int | None = None
+    classification_areas: list[str] | None = None
+    classification_mode: str | None = None
+
+
+FEATURE_FLAGS_KEY = "feature_flags"
+
+
+async def get_feature_flags_dict(session: AsyncSession) -> dict:
+    result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
+    config = result.scalar_one_or_none()
+    if not config:
+        return dict(FEATURE_FLAGS_DEFAULTS)
+    merged = dict(FEATURE_FLAGS_DEFAULTS)
+    merged.update(config.value)
+    return merged
+
+
+@router.get("/feature-flags", response_model=FeatureFlagsResponse)
+async def get_feature_flags(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    result = await session.execute(
-        select(SystemPromptProfile).where(SystemPromptProfile.purpose == purpose)
-    )
-    prompt = result.scalar_one_or_none()
-    if not prompt:
-        raise HTTPException(status_code=404, detail=f"Prompt '{purpose}' not found")
-    return SystemPromptResponse.model_validate(prompt)
+    flags = await get_feature_flags_dict(session)
+    return FeatureFlagsResponse(**flags)
 
 
-@router.get("/system-prompt/list", response_model=list[SystemPromptResponse])
-async def list_system_prompts(
+@router.put("/feature-flags", response_model=FeatureFlagsResponse)
+async def update_feature_flags(
+    body: FeatureFlagsUpdate,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    result = await session.execute(
-        select(SystemPromptProfile).order_by(SystemPromptProfile.purpose)
-    )
-    return [SystemPromptResponse.model_validate(p) for p in result.scalars().all()]
+    current = await get_feature_flags_dict(session)
+    updates = body.model_dump(exclude_unset=True)
 
+    if "classification_areas" in updates:
+        from app.services.classification_areas import AREAS
+        invalid = [a for a in updates["classification_areas"] if a not in AREAS]
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"Unknown classification areas: {invalid}")
 
-@router.put("/system-prompt/{purpose}", response_model=SystemPromptResponse)
-async def update_system_prompt(
-    purpose: str,
-    body: SystemPromptUpdate,
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-):
-    result = await session.execute(
-        select(SystemPromptProfile).where(SystemPromptProfile.purpose == purpose)
-    )
-    profile = result.scalar_one_or_none()
-    if not profile:
-        raise HTTPException(status_code=404, detail=f"Prompt '{purpose}' not found")
-    profile.content = body.content
-    await session.flush()
+    if "classification_mode" in updates:
+        if updates["classification_mode"] not in ("simple", "expanded"):
+            raise HTTPException(status_code=422, detail="classification_mode must be 'simple' or 'expanded'")
 
-    from app.services.prompt import PromptService
+    current.update(updates)
 
-    PromptService.invalidate()
-
-    return SystemPromptResponse.model_validate(profile)
-
-
-@router.post("/system-prompt/{purpose}/reset", response_model=SystemPromptResponse)
-async def reset_system_prompt(
-    purpose: str,
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-):
-    from app.db.seed import PROFILES
-
-    default = next((p for p in PROFILES if p["purpose"] == purpose), None)
-    if not default:
-        raise HTTPException(status_code=404, detail=f"No default for '{purpose}'")
-
-    result = await session.execute(
-        select(SystemPromptProfile).where(SystemPromptProfile.purpose == purpose)
-    )
-    profile = result.scalar_one_or_none()
-    if profile:
-        profile.content = default["content"]
+    result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
+    config = result.scalar_one_or_none()
+    if config:
+        config.value = current
     else:
-        profile = SystemPromptProfile(**default)
-        session.add(profile)
+        session.add(Config(key=FEATURE_FLAGS_KEY, value=current))
     await session.flush()
 
-    from app.services.prompt import PromptService
+    return FeatureFlagsResponse(**current)
 
-    PromptService.invalidate()
 
-    return SystemPromptResponse.model_validate(profile)
+@router.get("/classification-areas")
+async def list_classification_areas(
+    _user=Depends(require_auth),
+):
+    from app.services.classification_areas import AREAS, get_merged_llm_types
+    return [
+        {
+            "key": area.key,
+            "display_name": area.display_name,
+            "types": list(area.llm_types.keys()),
+            "type_descriptions": area.llm_types,
+        }
+        for area in AREAS.values()
+    ]
 
 
 class EnrichmentConfigUpdate(BaseModel):
