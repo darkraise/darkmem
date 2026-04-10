@@ -195,6 +195,7 @@ class ProcessingPipeline:
 
                         await vector_repo.upsert(
                             memory_id=memory_id, vector=vector, payload=payload,
+                            model_fingerprint=self.embedding_fingerprint,
                         )
                         status["vector"] = "ok"
 

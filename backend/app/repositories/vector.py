@@ -1,160 +1,173 @@
-from uuid import UUID
+import json
+from uuid import UUID, uuid4
 
-from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+import numpy as np
+from sqlalchemy import delete, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.embedding import CodeChunkEmbedding, MemoryEmbedding
+
+_COMMUNITY_SAMPLE_CAP = 10_000
 
 
-class QdrantVectorRepository:
-    def __init__(self, client: AsyncQdrantClient, dimensions: int = 768, collection_name: str = "memories"):
-        self.client = client
+class PostgresVectorRepository:
+    def __init__(self, session: AsyncSession, dimensions: int = 1024, collection_name: str = "memories"):
+        self.session = session
         self.dimensions = dimensions
         self.collection_name = collection_name
 
     async def ensure_collection(self):
-        import logging
-        log = logging.getLogger(__name__)
-        collections = await self.client.get_collections()
-        names = [c.name for c in collections.collections]
-        if self.collection_name in names:
-            info = await self.client.get_collection(self.collection_name)
-            current_dim = info.config.params.vectors.size
-            if current_dim != self.dimensions:
-                log.warning(f"Collection dimension mismatch: {current_dim} vs {self.dimensions}. Recreating.")
-                await self.client.delete_collection(self.collection_name)
-                names.remove(self.collection_name)
-        if self.collection_name not in names:
-            await self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(size=self.dimensions, distance=Distance.COSINE),
-            )
-            log.info(f"Created Qdrant collection '{self.collection_name}' with {self.dimensions} dimensions")
+        pass
 
-    async def upsert(self, memory_id: UUID, vector: list[float], payload: dict):
-        await self.client.upsert(
-            collection_name=self.collection_name,
-            points=[PointStruct(id=str(memory_id), vector=vector, payload=payload)],
+    async def upsert(self, memory_id: UUID, vector: list[float], payload: dict, model_fingerprint: str | None = None):
+        await self.session.execute(
+            text("""
+                INSERT INTO memory_embeddings (id, memory_id, embedding, payload, model_fingerprint)
+                VALUES (:id, :memory_id, :embedding, CAST(:payload AS jsonb), :fingerprint)
+                ON CONFLICT (memory_id) DO UPDATE
+                    SET embedding = EXCLUDED.embedding,
+                        payload = EXCLUDED.payload,
+                        model_fingerprint = EXCLUDED.model_fingerprint
+            """),
+            {
+                "id": uuid4(),
+                "memory_id": memory_id,
+                "embedding": str(vector),
+                "payload": json.dumps(payload),
+                "fingerprint": model_fingerprint,
+            },
         )
 
     async def search(self, vector: list[float], limit: int = 20) -> list[dict]:
-        results = await self.client.query_points(
-            collection_name=self.collection_name,
-            query=vector,
-            limit=limit,
+        result = await self.session.execute(
+            text("""
+                SELECT memory_id,
+                       1 - (embedding <=> CAST(:vec AS vector)) AS score,
+                       payload
+                FROM memory_embeddings
+                ORDER BY embedding <=> CAST(:vec AS vector)
+                LIMIT :limit
+            """),
+            {"vec": str(vector), "limit": limit},
         )
         return [
-            {"memory_id": UUID(p.id), "score": p.score, "payload": p.payload}
-            for p in results.points
+            {"memory_id": UUID(str(row.memory_id)), "score": float(row.score), "payload": row.payload}
+            for row in result
         ]
 
     async def delete(self, memory_id: UUID):
-        await self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=[str(memory_id)],
+        await self.session.execute(
+            delete(MemoryEmbedding).where(MemoryEmbedding.memory_id == memory_id)
         )
 
+    @staticmethod
+    def _parse_vector(raw) -> list[float]:
+        if isinstance(raw, str):
+            return [float(x) for x in raw.strip("[]").split(",")]
+        if isinstance(raw, (list, tuple)):
+            return [float(x) for x in raw]
+        return list(raw)
+
     async def get_all_vectors(self, limit: int = 500) -> list[dict]:
-        points, _offset = await self.client.scroll(
-            collection_name=self.collection_name,
-            limit=limit,
-            with_vectors=True,
-            with_payload=True,
+        result = await self.session.execute(
+            text("""
+                SELECT memory_id, embedding, payload
+                FROM memory_embeddings
+                LIMIT :limit
+            """),
+            {"limit": limit},
         )
         return [
             {
-                "memory_id": p.id,
-                "vector": list(p.vector),
-                "payload": p.payload,
+                "memory_id": UUID(str(row.memory_id)),
+                "vector": self._parse_vector(row.embedding),
+                "payload": row.payload,
             }
-            for p in points
+            for row in result
         ]
 
     async def get_clustered_vectors(self, eps: float = 0.5, min_samples: int = 2, limit: int = 300) -> list[dict]:
-        """Get all vectors with DBSCAN cluster assignments."""
+        from sklearn.cluster import DBSCAN
+
         points = await self.get_all_vectors(limit=limit)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
             return points
 
-        import numpy as np
-        from app.utils.math import cosine_similarity_matrix
         vectors = np.array([p["vector"] for p in points], dtype=np.float32)
-        similarity = cosine_similarity_matrix(vectors)
-        distance_matrix = 1 - similarity
-
-        n = len(points)
-        labels = [-1] * n
-        cluster_id = 0
-        visited = [False] * n
-
-        def region_query(idx):
-            return [j for j in range(n) if distance_matrix[idx][j] <= eps]
-
-        for i in range(n):
-            if visited[i]:
-                continue
-            visited[i] = True
-            neighbors = region_query(i)
-            if len(neighbors) < min_samples:
-                continue
-            labels[i] = cluster_id
-            seed_set = list(neighbors)
-            j = 0
-            while j < len(seed_set):
-                q = seed_set[j]
-                if not visited[q]:
-                    visited[q] = True
-                    q_neighbors = region_query(q)
-                    if len(q_neighbors) >= min_samples:
-                        seed_set.extend([x for x in q_neighbors if x not in seed_set])
-                if labels[q] == -1:
-                    labels[q] = cluster_id
-                j += 1
-            cluster_id += 1
+        clustering = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine").fit(vectors)
 
         for i, p in enumerate(points):
-            p["cluster"] = labels[i]
+            p["cluster"] = int(clustering.labels_[i])
 
         return points
 
-    async def get_louvain_clustered_vectors(self, min_score: float = 0.5, min_cluster_size: int = 3, limit: int = 500) -> list[dict]:
-        """Get all vectors with Louvain community detection clusters.
+    async def get_louvain_clustered_vectors(
+        self, min_score: float = 0.5, min_cluster_size: int = 3, limit: int = 500
+    ) -> list[dict]:
+        import igraph
 
-        Builds a similarity graph from cosine similarity, then runs Louvain
-        to find natural communities. Each memory belongs to exactly one cluster.
-        Number of clusters is auto-detected from data structure.
-        """
         points = await self.get_all_vectors(limit=limit)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
             return points
 
-        import numpy as np
-        from app.utils.math import cosine_similarity_matrix
-        vectors = np.array([p["vector"] for p in points], dtype=np.float32)
-        sim_matrix = cosine_similarity_matrix(vectors)
+        vectors_arr = np.array([p["vector"] for p in points], dtype=np.float32)
 
-        n = len(points)
+        if len(points) > _COMMUNITY_SAMPLE_CAP:
+            rng = np.random.default_rng(seed=42)
+            sample_idx = rng.choice(len(points), size=_COMMUNITY_SAMPLE_CAP, replace=False)
+            remainder_mask = np.ones(len(points), dtype=bool)
+            remainder_mask[sample_idx] = False
+            remainder_idx = np.where(remainder_mask)[0]
 
-        # Build weighted adjacency list (edges where similarity >= min_score)
-        adj: dict[int, dict[int, float]] = {i: {} for i in range(n)}
-        for i in range(n):
-            for j in range(i + 1, n):
-                score = float(sim_matrix[i][j])
-                if score >= min_score:
-                    adj[i][j] = score
-                    adj[j][i] = score
+            sample_vecs = vectors_arr[sample_idx]
+            membership = self._louvain_igraph(sample_vecs, min_score)
 
-        # Louvain community detection
-        node2comm = self._louvain(adj)
+            comm_members: dict[int, list[int]] = {}
+            for local_i, comm_id in enumerate(membership):
+                comm_members.setdefault(comm_id, []).append(local_i)
 
-        # Group by community, filter small clusters
+            valid_clusters: dict[int, int] = {}
+            next_id = 0
+            for comm_id, members in sorted(comm_members.items()):
+                if len(members) >= min_cluster_size:
+                    valid_clusters[comm_id] = next_id
+                    next_id += 1
+
+            all_clusters: list[int] = [-1] * len(points)
+            for local_i, global_i in enumerate(sample_idx.tolist()):
+                all_clusters[global_i] = valid_clusters.get(membership[local_i], -1)
+
+            if valid_clusters:
+                centroids: dict[int, np.ndarray] = {}
+                for comm_id, new_id in valid_clusters.items():
+                    centroids[new_id] = sample_vecs[comm_members[comm_id]].mean(axis=0)
+
+                centroid_ids = sorted(centroids.keys())
+                centroid_matrix = np.array([centroids[c] for c in centroid_ids], dtype=np.float32)
+                remainder_vecs = vectors_arr[remainder_idx]
+                sims = remainder_vecs @ centroid_matrix.T
+                norms_r = np.linalg.norm(remainder_vecs, axis=1, keepdims=True)
+                norms_c = np.linalg.norm(centroid_matrix, axis=1, keepdims=True).T
+                sims = sims / (norms_r * norms_c + 1e-8)
+                best_centroid = np.argmax(sims, axis=1)
+                for local_i, global_i in enumerate(remainder_idx.tolist()):
+                    all_clusters[global_i] = centroid_ids[best_centroid[local_i]]
+
+            for i, p in enumerate(points):
+                p["cluster"] = all_clusters[i]
+
+            return points
+
+        membership = self._louvain_igraph(vectors_arr, min_score)
+
         comm_members: dict[int, list[int]] = {}
-        for node_id, comm_id in node2comm.items():
-            comm_members.setdefault(comm_id, []).append(node_id)
+        for i, comm_id in enumerate(membership):
+            comm_members.setdefault(comm_id, []).append(i)
 
-        # Renumber valid clusters (>= min_cluster_size) starting from 0
         valid_clusters: dict[int, int] = {}
         next_id = 0
         for comm_id, members in sorted(comm_members.items()):
@@ -162,112 +175,212 @@ class QdrantVectorRepository:
                 valid_clusters[comm_id] = next_id
                 next_id += 1
 
-        # Assign cluster to each point (-1 for noise/small clusters)
         for i, p in enumerate(points):
-            orig_comm = node2comm.get(i, -1)
-            p["cluster"] = valid_clusters.get(orig_comm, -1)
+            p["cluster"] = valid_clusters.get(membership[i], -1)
 
         return points
 
     @staticmethod
-    def _louvain(adj: dict[int, dict[int, float]]) -> dict[int, int]:
-        """Louvain community detection on a weighted graph."""
-        if not adj:
-            return {}
+    def _build_sparse_edges(
+        normalized: np.ndarray, threshold: float, chunk_size: int = 500
+    ) -> tuple[list[tuple[int, int]], list[float]]:
+        n = len(normalized)
+        edges: list[tuple[int, int]] = []
+        weights: list[float] = []
+        for i in range(0, n, chunk_size):
+            chunk = normalized[i : i + chunk_size]
+            sims = chunk @ normalized.T
+            for local_idx in range(len(chunk)):
+                global_idx = i + local_idx
+                for j in range(global_idx + 1, n):
+                    if sims[local_idx, j] >= threshold:
+                        edges.append((global_idx, j))
+                        weights.append(float(sims[local_idx, j]))
+        return edges, weights
 
-        nodes = list(adj.keys())
-        node2comm = {n: n for n in nodes}
+    @staticmethod
+    def _louvain_igraph(vectors: np.ndarray, min_score: float) -> list[int]:
+        import igraph
 
-        # Total weight of all edges
-        m2 = sum(w for n in nodes for w in adj[n].values())
-        if m2 == 0.0:
-            return node2comm
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        normalized = vectors / norms
 
-        k = {n: sum(adj[n].values()) for n in nodes}
+        n = len(vectors)
+        edges, weights = PostgresVectorRepository._build_sparse_edges(normalized, threshold=min_score)
 
-        def _one_level(adj_, node2comm_, k_, m2_):
-            sigma_tot: dict[int, float] = {}
-            for n in adj_:
-                c = node2comm_[n]
-                sigma_tot[c] = sigma_tot.get(c, 0.0) + k_[n]
+        if not edges:
+            return list(range(n))
 
-            improved = True
-            changed = False
-            while improved:
-                improved = False
-                for n in adj_:
-                    c_old = node2comm_[n]
-                    k_n = k_[n]
-
-                    comm_weights: dict[int, float] = {}
-                    for nb, w in adj_[n].items():
-                        c_nb = node2comm_[nb]
-                        comm_weights[c_nb] = comm_weights.get(c_nb, 0.0) + w
-
-                    k_in_old = comm_weights.get(c_old, 0.0)
-                    sigma_tot[c_old] -= k_n
-
-                    best_comm = c_old
-                    best_gain = 0.0
-
-                    for c_target, k_in_target in comm_weights.items():
-                        gain = (k_in_target - k_in_old) / m2_ - \
-                               k_n * (sigma_tot.get(c_target, 0.0) - sigma_tot.get(c_old, 0.0)) / (m2_ * m2_)
-                        if gain > best_gain:
-                            best_gain = gain
-                            best_comm = c_target
-
-                    node2comm_[n] = best_comm
-                    sigma_tot[best_comm] = sigma_tot.get(best_comm, 0.0) + k_n
-
-                    if best_comm != c_old:
-                        improved = True
-                        changed = True
-            return changed
-
-        _one_level(adj, node2comm, k, m2)
-
-        for _ in range(20):
-            comm_set = set(node2comm.values())
-            if len(comm_set) == len(adj):
-                break
-
-            super_adj: dict[int, dict[int, float]] = {c: {} for c in comm_set}
-            for n in adj:
-                c_n = node2comm[n]
-                for nb, w in adj[n].items():
-                    c_nb = node2comm[nb]
-                    if c_n != c_nb:
-                        super_adj[c_n][c_nb] = super_adj[c_n].get(c_nb, 0.0) + w
-
-            super_k: dict[int, float] = {}
-            for c in comm_set:
-                super_k[c] = sum(super_adj[c].values())
-                for n in adj:
-                    if node2comm[n] == c:
-                        for nb, w in adj[n].items():
-                            if node2comm[nb] == c:
-                                super_k[c] += w
-
-            super_node2comm = {c: c for c in comm_set}
-            changed = _one_level(super_adj, super_node2comm, super_k, m2)
-
-            if not changed:
-                break
-
-            for n in list(node2comm.keys()):
-                node2comm[n] = super_node2comm.get(node2comm[n], node2comm[n])
-
-        comm_ids = sorted(set(node2comm.values()))
-        remap = {c: i for i, c in enumerate(comm_ids)}
-        return {n: remap[c] for n, c in node2comm.items()}
+        g = igraph.Graph(n=n, edges=edges, directed=False)
+        g.es["weight"] = weights
+        partition = g.community_multilevel(weights="weight")
+        return partition.membership
 
     async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
-        points = await self.client.retrieve(
-            collection_name=self.collection_name, ids=[str(memory_id)], with_vectors=True,
+        result = await self.session.execute(
+            select(MemoryEmbedding.embedding).where(MemoryEmbedding.memory_id == memory_id)
         )
-        if not points:
+        row = result.scalar_one_or_none()
+        if row is None:
             return []
-        vector = points[0].vector
+        vector = self._parse_vector(row)
         results = await self.search(vector, limit=limit + 1)
         return [r for r in results if r["memory_id"] != memory_id and r["score"] >= threshold]
+
+    async def find_similar_memories(self, memory_id: UUID, top_k: int = 5, min_score: float = 0.4) -> list[dict]:
+        result = await self.session.execute(
+            text("""
+                SELECT me2.memory_id,
+                       1 - (me1.embedding <=> me2.embedding) AS score
+                FROM memory_embeddings me1, memory_embeddings me2
+                WHERE me1.memory_id = :memory_id
+                  AND me2.memory_id != :memory_id
+                  AND 1 - (me1.embedding <=> me2.embedding) > :min_score
+                ORDER BY me1.embedding <=> me2.embedding
+                LIMIT :top_k
+            """),
+            {"memory_id": memory_id, "min_score": min_score, "top_k": top_k},
+        )
+        return [{"memory_id": str(row.memory_id), "score": float(row.score)} for row in result]
+
+    async def store_crossrefs(self, memory_id: UUID, crossrefs: list[dict]):
+        if not crossrefs:
+            return
+        await self.session.execute(
+            text("DELETE FROM memory_crossrefs WHERE memory_id = :memory_id"),
+            {"memory_id": memory_id},
+        )
+        for ref in crossrefs:
+            await self.session.execute(
+                text("""
+                    INSERT INTO memory_crossrefs (memory_id, related_memory_id, score)
+                    VALUES (:memory_id, :related_memory_id, :score)
+                    ON CONFLICT (memory_id, related_memory_id) DO UPDATE SET score = EXCLUDED.score
+                """),
+                {"memory_id": memory_id, "related_memory_id": ref["memory_id"], "score": ref["score"]},
+            )
+
+    async def get_crossrefs(self, memory_id: UUID) -> list[dict]:
+        result = await self.session.execute(
+            text("""
+                SELECT related_memory_id AS memory_id, score FROM memory_crossrefs WHERE memory_id = :id
+                UNION
+                SELECT memory_id, score FROM memory_crossrefs WHERE related_memory_id = :id
+                ORDER BY score DESC
+            """),
+            {"id": memory_id},
+        )
+        return [{"memory_id": str(row.memory_id), "score": float(row.score)} for row in result]
+
+    # --- Code chunk methods ---
+
+    async def upsert_code_chunks(self, chunks: list[dict]):
+        """Insert code chunk embeddings. Callers must call delete_code_chunks_by_file
+        for the relevant file before calling this to avoid duplicate rows."""
+        if not chunks:
+            return
+        import json
+
+        await self.session.execute(
+            text("""
+                INSERT INTO code_chunk_embeddings
+                    (id, repo_id, file_path, language, symbol_name, chunk_content,
+                     line_start, line_end, embedding)
+                SELECT
+                    gen_random_uuid(),
+                    d.repo_id::uuid,
+                    d.file_path,
+                    d.language,
+                    d.symbol_name,
+                    d.chunk_content,
+                    d.line_start::int,
+                    d.line_end::int,
+                    CAST(d.embedding AS vector)
+                FROM jsonb_to_recordset(CAST(:data AS jsonb)) AS d(
+                    repo_id       text,
+                    file_path     text,
+                    language      text,
+                    symbol_name   text,
+                    chunk_content text,
+                    line_start    text,
+                    line_end      text,
+                    embedding     text
+                )
+            """),
+            {"data": json.dumps([
+                {
+                    "repo_id": str(c["repo_id"]),
+                    "file_path": c.get("file_path", ""),
+                    "language": c.get("language"),
+                    "symbol_name": c.get("symbol_name"),
+                    "chunk_content": c.get("chunk_content"),
+                    "line_start": str(c["line_start"]) if c.get("line_start") is not None else None,
+                    "line_end": str(c["line_end"]) if c.get("line_end") is not None else None,
+                    "embedding": str(c["embedding"]),
+                }
+                for c in chunks
+            ])},
+        )
+
+    async def search_code_chunks(
+        self,
+        vector: list[float],
+        limit: int = 20,
+        repo_id: UUID | None = None,
+        language: str | None = None,
+    ) -> list[dict]:
+        filters = ""
+        params: dict = {"vec": str(vector), "limit": limit}
+        if repo_id is not None:
+            filters += " AND repo_id = :repo_id"
+            params["repo_id"] = repo_id
+        if language is not None:
+            filters += " AND language = :language"
+            params["language"] = language
+
+        result = await self.session.execute(
+            text(f"""
+                SELECT id,
+                       repo_id,
+                       file_path,
+                       language,
+                       symbol_name,
+                       chunk_content,
+                       line_start,
+                       line_end,
+                       1 - (embedding <=> CAST(:vec AS vector)) AS score
+                FROM code_chunk_embeddings
+                WHERE TRUE {filters}
+                ORDER BY embedding <=> CAST(:vec AS vector)
+                LIMIT :limit
+            """),
+            params,
+        )
+        return [
+            {
+                "id": UUID(str(row.id)),
+                "repo_id": UUID(str(row.repo_id)),
+                "file_path": row.file_path,
+                "language": row.language,
+                "symbol_name": row.symbol_name,
+                "chunk_content": row.chunk_content,
+                "line_start": row.line_start,
+                "line_end": row.line_end,
+                "score": float(row.score),
+            }
+            for row in result
+        ]
+
+    async def delete_code_chunks_by_repo(self, repo_id: UUID):
+        await self.session.execute(
+            delete(CodeChunkEmbedding).where(CodeChunkEmbedding.repo_id == repo_id)
+        )
+
+    async def delete_code_chunks_by_file(self, repo_id: UUID, file_path: str):
+        await self.session.execute(
+            delete(CodeChunkEmbedding).where(
+                CodeChunkEmbedding.repo_id == repo_id,
+                CodeChunkEmbedding.file_path == file_path,
+            )
+        )
