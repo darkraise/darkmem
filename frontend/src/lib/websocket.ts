@@ -1,17 +1,7 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-
-interface PipelineStatus {
-  memory_id: string
-  embed: string
-  extract: string
-  qdrant: string
-  neo4j: string
-  entities_count: number
-  relations_count: number
-  error: string | null
-}
+import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
 
 function showPipelineToast(event: string, data: PipelineStatus) {
   const id = data.memory_id.slice(0, 8)
@@ -24,8 +14,8 @@ function showPipelineToast(event: string, data: PipelineStatus) {
     const failed = [
       data.embed === "error" && "embedding",
       data.extract === "error" && "extraction",
-      data.qdrant === "error" && "vector store",
-      data.neo4j === "error" && "graph store",
+      data.vector === "error" && "vector store",
+      data.graph === "error" && "graph store",
     ]
       .filter(Boolean)
       .join(", ")
@@ -51,41 +41,74 @@ export function useWebSocket() {
 
     ws.current.onmessage = (event) => {
       const msg = JSON.parse(event.data as string) as {
-        event?: string
-        data?: Record<string, unknown>
-      }
+        [K in keyof WebSocketEventMap]?: { event: K; data: WebSocketEventMap[K] }
+      }[keyof WebSocketEventMap] & { event?: string; data?: unknown }
 
-      if (msg.event?.startsWith("pipeline.") && msg.data) {
+      if (!msg.event) return
+
+      if (msg.event === "pipeline.completed" || msg.event === "pipeline.partial" || msg.event === "pipeline.failed") {
         showPipelineToast(msg.event, msg.data as PipelineStatus)
         void qc.invalidateQueries({ queryKey: ["memories"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
         void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
-      } else if (msg.event?.startsWith("memory.")) {
+      } else if (msg.event === "memory.deleted") {
         void qc.invalidateQueries({ queryKey: ["memories"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
       }
 
-      if (msg.event?.startsWith("repo.")) {
+      if (msg.event === "pipeline.failure.updated") {
+        void qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+        void qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+        const d = msg.data as WebSocketEventMap["pipeline.failure.updated"]
+        if (d.state === "resolved") {
+          toast.success(`${d.pipeline_name} retry resolved`)
+        } else if (d.state === "recorded") {
+          void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
+        }
+      }
+
+      if (msg.event === "pipeline.retry_batch.progress") {
+        const d = msg.data as WebSocketEventMap["pipeline.retry_batch.progress"]
+        qc.setQueryData(["retryBatchProgress", d.batch_id], d)
+        if (d.state === "done") {
+          void qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+          void qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+          void qc.invalidateQueries({ queryKey: ["stats"] })
+          void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
+        }
+      }
+
+      if (
+        msg.event === "repo.clone_started" ||
+        msg.event === "repo.clone_completed" ||
+        msg.event === "repo.clone_failed" ||
+        msg.event === "repo.indexing_started" ||
+        msg.event === "repo.indexing_progress" ||
+        msg.event === "repo.indexing_completed" ||
+        msg.event === "repo.indexing_failed"
+      ) {
         void qc.invalidateQueries({ queryKey: ["repos"] })
         void qc.invalidateQueries({ queryKey: ["repoTasks"] })
         void qc.invalidateQueries({ queryKey: ["repoStats"] })
 
         if (msg.event === "repo.clone_completed") {
-          toast.success(`Repository ${msg.data?.name} cloned`)
+          const d = msg.data as WebSocketEventMap["repo.clone_completed"]
+          toast.success(`Repository ${d.name} cloned`)
         } else if (msg.event === "repo.clone_failed") {
-          toast.error(`Clone failed: ${msg.data?.error}`)
+          const d = msg.data as WebSocketEventMap["repo.clone_failed"]
+          toast.error(`Clone failed: ${d.error}`)
         } else if (msg.event === "repo.indexing_completed") {
-          toast.success(
-            `Indexed ${msg.data?.files_changed} files, ${msg.data?.symbols_indexed} symbols`,
-          )
+          const d = msg.data as WebSocketEventMap["repo.indexing_completed"]
+          toast.success(`Indexed ${d.files_changed} files, ${d.symbols_indexed} symbols`)
         } else if (msg.event === "repo.indexing_failed") {
-          toast.error(`Indexing failed: ${msg.data?.error}`)
+          const d = msg.data as WebSocketEventMap["repo.indexing_failed"]
+          toast.error(`Indexing failed: ${d.error}`)
         }
       }
 
-      if (msg.event?.startsWith("enrichment.")) {
+      if (msg.event === "enrichment.batch_completed") {
         void qc.invalidateQueries({ queryKey: ["repoStats"] })
       }
     }
