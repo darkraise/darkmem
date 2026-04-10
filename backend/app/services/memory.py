@@ -74,11 +74,14 @@ class MemoryService:
         return memory
 
     async def delete_memory(self, memory_id: UUID, api_key_id: UUID | None) -> bool:
-        from app.services.pipeline_failures import PipelineFailureService
-        from app.api.websocket import event_manager
+        try:
+            from app.services.pipeline_failures import PipelineFailureService
+            from app.api.websocket import event_manager
 
-        failure_svc = PipelineFailureService(self.session, broadcast=event_manager.broadcast)
-        await failure_svc.forget("memory", memory_id)
+            failure_svc = PipelineFailureService(self.session, broadcast=event_manager.broadcast)
+            await failure_svc.forget("memory", memory_id)
+        except Exception as e:
+            logger.warning("Failed to forget pipeline failure for memory %s: %s", memory_id, e)
 
         result = await self.memory_repo.delete(memory_id)
         if result:
@@ -214,7 +217,7 @@ class MemoryService:
 
         # Step 3: Ask LLM with context
         context = "\n\n".join(context_parts)[:_MAX_CONTENT_CHARS]
-        prompt = (
+        user_prompt = (
             "Based on the following stored memories, answer the question.\n"
             "If the memories don't contain enough information, say so.\n"
             "Reference the memory numbers [1], [2], etc. when citing sources.\n\n"
@@ -229,7 +232,7 @@ class MemoryService:
             "reasoning",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": user_prompt},
             ],
         )
 
