@@ -1,184 +1,572 @@
 import json
+from typing import Any
 from uuid import UUID, uuid4
 
-from neo4j import AsyncDriver
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class Neo4jGraphRepository:
-    def __init__(self, driver: AsyncDriver):
-        self.driver = driver
+
+class PostgresGraphRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def find_similar_entity(self, embedding: list[float], threshold: float = 0.85) -> dict | None:
+        result = await self.session.execute(
+            text("""
+                SELECT id, name, entity_type,
+                       1 - (embedding <=> CAST(:vec AS vector)) AS score
+                FROM entities
+                WHERE embedding IS NOT NULL
+                  AND 1 - (embedding <=> CAST(:vec AS vector)) > :threshold
+                ORDER BY embedding <=> CAST(:vec AS vector)
+                LIMIT 1
+            """),
+            {"vec": str(embedding), "threshold": threshold},
+        )
+        row = result.mappings().first()
+        if not row:
+            return None
+        return {"id": str(row["id"]), "name": row["name"], "entity_type": row["entity_type"], "score": float(row["score"])}
+
+    async def upsert_entity_embedding(self, entity_id: str, embedding: list[float], model_fingerprint: str | None = None):
+        await self.session.execute(
+            text("""
+                UPDATE entities
+                SET embedding = CAST(:vec AS vector),
+                    model_fingerprint = :fp
+                WHERE id = CAST(:id AS uuid)
+            """),
+            {"id": entity_id, "vec": str(embedding), "fp": model_fingerprint},
+        )
+
+    async def get_cached_entity_embeddings(
+        self,
+        name_lowers: list[str],
+        model_fingerprint: str,
+    ) -> dict[str, list[float]]:
+        """Return {name_lower: embedding} for entries matching the fingerprint.
+
+        Names not present in the cache (for this fingerprint) are omitted.
+        """
+        if not name_lowers:
+            return {}
+        result = await self.session.execute(
+            text("""
+                SELECT name_lower, embedding::text AS embedding_text
+                FROM entity_embedding_cache
+                WHERE name_lower = ANY(:names) AND model_fingerprint = :fp
+            """),
+            {"names": name_lowers, "fp": model_fingerprint},
+        )
+        out: dict[str, list[float]] = {}
+        for row in result.mappings().all():
+            text_vec = row["embedding_text"]
+            out[row["name_lower"]] = [float(x) for x in text_vec.strip("[]").split(",")]
+        return out
+
+    async def upsert_entity_embeddings_cache(
+        self,
+        name_to_embedding: dict[str, list[float]],
+        model_fingerprint: str,
+    ) -> None:
+        """Upsert cache entries. ON CONFLICT updates last_used_at and hit_count."""
+        if not name_to_embedding:
+            return
+        for name_lower, embedding in name_to_embedding.items():
+            await self.session.execute(
+                text("""
+                    INSERT INTO entity_embedding_cache
+                        (name_lower, model_fingerprint, embedding, created_at, last_used_at, hit_count)
+                    VALUES
+                        (:name, :fp, CAST(:vec AS vector), NOW(), NOW(), 1)
+                    ON CONFLICT (name_lower, model_fingerprint) DO UPDATE SET
+                        last_used_at = NOW(),
+                        hit_count = entity_embedding_cache.hit_count + 1
+                """),
+                {"name": name_lower, "fp": model_fingerprint, "vec": str(embedding)},
+            )
 
     async def create_entity(self, name: str, entity_type: str, properties: dict, memory_id: UUID) -> dict:
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MERGE (e:Entity {name: $name, entity_type: $entity_type})
-                ON CREATE SET e.id = $id, e.properties = $properties, e.memory_ids = [$memory_id]
-                ON MATCH SET e.properties = $properties,
-                    e.memory_ids = CASE
-                        WHEN NOT $memory_id IN e.memory_ids THEN e.memory_ids + $memory_id
-                        ELSE e.memory_ids
+        result = await self.session.execute(
+            text("""
+                INSERT INTO entities (id, name, entity_type, properties, memory_ids)
+                VALUES (:id, :name, :entity_type, CAST(:properties AS jsonb), ARRAY[CAST(:memory_id AS uuid)])
+                ON CONFLICT (name, entity_type) DO UPDATE SET
+                    properties = EXCLUDED.properties,
+                    memory_ids = CASE
+                        WHEN CAST(:memory_id AS uuid) = ANY(entities.memory_ids) THEN entities.memory_ids
+                        ELSE array_append(entities.memory_ids, CAST(:memory_id AS uuid))
                     END
-                RETURN e{.id, .name, .entity_type, .properties, .memory_ids} as entity
-                """,
-                name=name, entity_type=entity_type, id=str(uuid4()),
-                properties=json.dumps(properties), memory_id=str(memory_id),
-            )
-            record = await result.single()
-            return record["entity"]
+                RETURNING id, name, entity_type, properties, memory_ids
+            """),
+            {
+                "id": str(uuid4()),
+                "name": name,
+                "entity_type": entity_type,
+                "properties": json.dumps(properties),
+                "memory_id": str(memory_id),
+            },
+        )
+        row = result.mappings().one()
+        return {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "entity_type": row["entity_type"],
+            "properties": row["properties"] or {},
+            "memory_ids": [str(m) for m in (row["memory_ids"] or [])],
+        }
 
-    async def create_relationship(self, source_name: str, target_name: str, rel_type: str, properties: dict, weight: float, memory_id: UUID):
-        async with self.driver.session() as session:
-            await session.run(
-                """
-                MATCH (a:Entity {name: $source}), (b:Entity {name: $target})
-                MERGE (a)-[r:RELATES_TO {rel_type: $rel_type}]->(b)
-                ON CREATE SET r.properties = $properties, r.weight = $weight,
-                    r.memory_ids = [$memory_id], r.created_at = datetime()
-                ON MATCH SET r.weight = $weight,
-                    r.memory_ids = CASE
-                        WHEN NOT $memory_id IN r.memory_ids THEN r.memory_ids + $memory_id
-                        ELSE r.memory_ids
+    async def create_relationship(
+        self,
+        source_name: str,
+        target_name: str,
+        rel_type: str,
+        properties: dict,
+        weight: float,
+        memory_id: UUID,
+    ):
+        pair_result = await self.session.execute(
+            text("""
+                SELECT s.id AS source_id, t.id AS target_id
+                FROM entities s, entities t
+                WHERE s.name = :source_name AND t.name = :target_name
+                LIMIT 1
+            """),
+            {"source_name": source_name, "target_name": target_name},
+        )
+        pair = pair_result.mappings().first()
+        if not pair:
+            return
+
+        await self.session.execute(
+            text("""
+                INSERT INTO entity_relations (id, source_entity_id, target_entity_id, rel_type, properties, weight, memory_ids)
+                VALUES (:id, :source_id, :target_id, :rel_type, CAST(:properties AS jsonb), :weight, ARRAY[CAST(:memory_id AS uuid)])
+                ON CONFLICT (source_entity_id, target_entity_id, rel_type) DO UPDATE SET
+                    weight = GREATEST(entity_relations.weight, EXCLUDED.weight),
+                    memory_ids = CASE
+                        WHEN CAST(:memory_id AS uuid) = ANY(entity_relations.memory_ids) THEN entity_relations.memory_ids
+                        ELSE array_append(entity_relations.memory_ids, CAST(:memory_id AS uuid))
                     END
-                """,
-                source=source_name, target=target_name, rel_type=rel_type,
-                properties=json.dumps(properties), weight=weight, memory_id=str(memory_id),
-            )
+            """),
+            {
+                "id": str(uuid4()),
+                "source_id": str(pair["source_id"]),
+                "target_id": str(pair["target_id"]),
+                "rel_type": rel_type,
+                "properties": json.dumps(properties),
+                "weight": weight,
+                "memory_id": str(memory_id),
+            },
+        )
 
-    async def get_entities(self, entity_type: str | None = None, name_query: str | None = None, limit: int = 50) -> list[dict]:
-        query = "MATCH (e:Entity)"
-        params: dict = {"limit": limit}
+    async def get_entities(
+        self,
+        entity_type: str | None = None,
+        name_query: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
         conditions = []
+        params: dict = {"limit": limit}
 
         if entity_type:
-            conditions.append("e.entity_type = $entity_type")
+            conditions.append("entity_type = :entity_type")
             params["entity_type"] = entity_type
         if name_query:
-            conditions.append("e.name CONTAINS $name_query")
-            params["name_query"] = name_query
+            conditions.append("name ILIKE :name_query ESCAPE '\\'")
+            escaped = name_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            params["name_query"] = f"%{escaped}%"
 
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " RETURN e{.id, .name, .entity_type, .properties, .memory_ids} as entity LIMIT $limit"
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        result = await self.session.execute(
+            text(f"SELECT id, name, entity_type, properties, memory_ids FROM entities {where_clause} LIMIT :limit"),
+            params,
+        )
+        rows = result.mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "entity_type": r["entity_type"],
+                "properties": r["properties"] or {},
+                "memory_ids": [str(m) for m in (r["memory_ids"] or [])],
+            }
+            for r in rows
+        ]
 
-        async with self.driver.session() as session:
-            result = await session.run(query, **params)
-            records = await result.data()
-            return [r["entity"] for r in records]
+    async def _build_neighbors(self, entity_row) -> dict:
+        if not entity_row:
+            return {"entity": None, "neighbors": [], "relations": []}
+
+        entity_id = entity_row["id"]
+        entity_dict = {
+            "id": str(entity_id),
+            "name": entity_row["name"],
+            "entity_type": entity_row["entity_type"],
+            "properties": entity_row["properties"] or {},
+        }
+
+        rel_result = await self.session.execute(
+            text("""
+                SELECT
+                    r.rel_type,
+                    r.weight,
+                    src.name AS source_name,
+                    tgt.name AS target_name,
+                    n.id AS neighbor_id,
+                    n.name AS neighbor_name,
+                    n.entity_type AS neighbor_type,
+                    n.properties AS neighbor_properties
+                FROM entity_relations r
+                JOIN entities src ON src.id = r.source_entity_id
+                JOIN entities tgt ON tgt.id = r.target_entity_id
+                JOIN entities n ON n.id = CASE
+                    WHEN r.source_entity_id = :entity_id THEN r.target_entity_id
+                    ELSE r.source_entity_id
+                END
+                WHERE r.source_entity_id = :entity_id OR r.target_entity_id = :entity_id
+            """),
+            {"entity_id": entity_id},
+        )
+        rel_rows = rel_result.mappings().all()
+
+        seen_neighbor_ids: set = set()
+        neighbors = []
+        relations = []
+
+        for r in rel_rows:
+            nid = str(r["neighbor_id"])
+            if nid not in seen_neighbor_ids:
+                seen_neighbor_ids.add(nid)
+                neighbors.append({
+                    "id": nid,
+                    "name": r["neighbor_name"],
+                    "entity_type": r["neighbor_type"],
+                    "properties": r["neighbor_properties"] or {},
+                })
+            relations.append({
+                "type": r["rel_type"],
+                "weight": r["weight"],
+                "source": r["source_name"],
+                "target": r["target_name"],
+            })
+
+        return {"entity": entity_dict, "neighbors": neighbors, "relations": relations}
 
     async def get_neighbors_by_name(self, name: str) -> dict:
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (e:Entity {name: $name})
-                OPTIONAL MATCH (e)-[r]-(n:Entity)
-                RETURN e{.id, .name, .entity_type, .properties} as entity,
-                       collect(distinct n{.id, .name, .entity_type, .properties}) as neighbors,
-                       collect(distinct {type: r.rel_type, weight: r.weight, source: startNode(r).name, target: endNode(r).name}) as relations
-                """,
-                name=name,
-            )
-            record = await result.single()
-            if not record or not record["entity"]:
-                return {"entity": None, "neighbors": [], "relations": []}
-            return {
-                "entity": record["entity"],
-                "neighbors": record["neighbors"],
-                "relations": record["relations"],
-            }
+        result = await self.session.execute(
+            text("SELECT id, name, entity_type, properties, memory_ids FROM entities WHERE name = :name LIMIT 1"),
+            {"name": name},
+        )
+        return await self._build_neighbors(result.mappings().first())
 
     async def get_neighbors_by_id(self, entity_id: str) -> dict:
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (e:Entity {id: $id})
-                OPTIONAL MATCH (e)-[r]-(n:Entity)
-                RETURN e{.id, .name, .entity_type, .properties} as entity,
-                       collect(distinct n{.id, .name, .entity_type, .properties}) as neighbors,
-                       collect(distinct {type: r.rel_type, weight: r.weight, source: startNode(r).name, target: endNode(r).name}) as relations
-                """,
-                id=entity_id,
-            )
-            record = await result.single()
-            if not record or not record["entity"]:
-                return {"entity": None, "neighbors": [], "relations": []}
-            return {
-                "entity": record["entity"],
-                "neighbors": record["neighbors"],
-                "relations": record["relations"],
-            }
+        result = await self.session.execute(
+            text("SELECT id, name, entity_type, properties, memory_ids FROM entities WHERE id = :id LIMIT 1"),
+            {"id": entity_id},
+        )
+        return await self._build_neighbors(result.mappings().first())
 
     async def get_full_graph(self, limit: int = 200) -> dict:
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (e:Entity)
-                WITH e LIMIT $limit
-                OPTIONAL MATCH (e)-[r:RELATES_TO]->(t:Entity)
-                RETURN collect(distinct e{.id, .name, .entity_type, .properties, .memory_ids}) as entities,
-                       collect(distinct {source: startNode(r).id, target: endNode(r).id, type: r.rel_type, weight: r.weight}) as relations
-                """,
-                limit=limit,
-            )
-            record = await result.single()
-            entities = record["entities"] if record else []
-            relations = [r for r in (record["relations"] if record else []) if r.get("source") and r.get("target")]
-            return {"entities": entities, "relations": relations}
+        entity_result = await self.session.execute(
+            text("SELECT id, name, entity_type, properties, memory_ids FROM entities LIMIT :limit"),
+            {"limit": limit},
+        )
+        entity_rows = entity_result.mappings().all()
+        entity_ids = [r["id"] for r in entity_rows]
+
+        entities = [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "entity_type": r["entity_type"],
+                "properties": r["properties"] or {},
+                "memory_ids": [str(m) for m in (r["memory_ids"] or [])],
+            }
+            for r in entity_rows
+        ]
+
+        if not entity_ids:
+            return {"entities": [], "relations": []}
+
+        rel_result = await self.session.execute(
+            text("""
+                SELECT r.source_entity_id, r.target_entity_id, r.rel_type, r.weight
+                FROM entity_relations r
+                WHERE r.source_entity_id = ANY(:ids) AND r.target_entity_id = ANY(:ids)
+            """),
+            {"ids": entity_ids},
+        )
+        rel_rows = rel_result.mappings().all()
+        relations = [
+            {
+                "source": str(r["source_entity_id"]),
+                "target": str(r["target_entity_id"]),
+                "type": r["rel_type"],
+                "weight": r["weight"],
+            }
+            for r in rel_rows
+        ]
+
+        return {"entities": entities, "relations": relations}
 
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)
-        async with self.driver.session() as session:
-            # Remove memory_id from entities, delete orphans
-            await session.run(
-                """
-                MATCH (e:Entity) WHERE $mid IN e.memory_ids
-                SET e.memory_ids = [m IN e.memory_ids WHERE m <> $mid]
-                """,
-                mid=mid,
-            )
-            await session.run("MATCH (e:Entity) WHERE size(e.memory_ids) = 0 DETACH DELETE e")
 
-            # Remove memory_id from relationships, delete orphans
-            await session.run(
-                """
-                MATCH ()-[r:RELATES_TO]-() WHERE $mid IN r.memory_ids
-                SET r.memory_ids = [m IN r.memory_ids WHERE m <> $mid]
-                """,
-                mid=mid,
-            )
-            await session.run("MATCH ()-[r:RELATES_TO]-() WHERE size(r.memory_ids) = 0 DELETE r")
+        await self.session.execute(
+            text("""
+                UPDATE entities
+                SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
+                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+            """),
+            {"mid": mid},
+        )
+        await self.session.execute(
+            text("""
+                DELETE FROM entities
+                WHERE array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0
+            """),
+        )
+
+        await self.session.execute(
+            text("""
+                UPDATE entity_relations
+                SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
+                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+            """),
+            {"mid": mid},
+        )
+        await self.session.execute(
+            text("""
+                DELETE FROM entity_relations
+                WHERE array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0
+            """),
+        )
 
     async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (e:Entity) WHERE $mid IN e.memory_ids
-                RETURN e{.id, .name, .entity_type, .properties, .memory_ids} as entity
-                """,
-                mid=memory_id,
-            )
-            records = await result.data()
-            return [r["entity"] for r in records]
+        result = await self.session.execute(
+            text("""
+                SELECT id, name, entity_type, properties, memory_ids
+                FROM entities
+                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+            """),
+            {"mid": memory_id},
+        )
+        rows = result.mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "entity_type": r["entity_type"],
+                "properties": r["properties"] or {},
+                "memory_ids": [str(m) for m in (r["memory_ids"] or [])],
+            }
+            for r in rows
+        ]
 
     async def get_relations_between(self, entity_names: list[str]) -> list[dict]:
         if not entity_names:
             return []
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity)
-                WHERE a.name IN $names AND b.name IN $names
-                RETURN {source: a.name, target: b.name, type: r.rel_type, weight: r.weight} as relation
-                """,
-                names=entity_names,
-            )
-            records = await result.data()
-            return [r["relation"] for r in records]
+
+        result = await self.session.execute(
+            text("""
+                SELECT src.name AS source, tgt.name AS target, r.rel_type AS type, r.weight
+                FROM entity_relations r
+                JOIN entities src ON src.id = r.source_entity_id
+                JOIN entities tgt ON tgt.id = r.target_entity_id
+                WHERE src.name = ANY(:names) AND tgt.name = ANY(:names)
+            """),
+            {"names": entity_names},
+        )
+        rows = result.mappings().all()
+        return [
+            {
+                "source": r["source"],
+                "target": r["target"],
+                "type": r["type"],
+                "weight": r["weight"],
+            }
+            for r in rows
+        ]
 
     async def get_stats(self) -> dict:
-        async with self.driver.session() as session:
-            entity_result = await session.run("MATCH (e:Entity) RETURN count(e) as count")
-            entity_count = (await entity_result.single())["count"]
-            rel_result = await session.run("MATCH ()-[r:RELATES_TO]->() RETURN count(r) as count")
-            rel_count = (await rel_result.single())["count"]
-            return {"entity_count": entity_count, "relationship_count": rel_count}
+        entity_result = await self.session.execute(text("SELECT COUNT(*) AS count FROM entities"))
+        entity_count = entity_result.scalar_one()
+
+        rel_result = await self.session.execute(text("SELECT COUNT(*) AS count FROM entity_relations"))
+        rel_count = rel_result.scalar_one()
+
+        return {"entity_count": entity_count, "relationship_count": rel_count}
+
+    # ── knowledge_triples / temporal graph ───────────────────────────────
+
+    async def upsert_entity_simple(self, name: str, entity_type: str, properties_json: str) -> dict:
+        result = await self.session.execute(
+            text("""
+                INSERT INTO entities (name, entity_type, properties)
+                VALUES (:name, :entity_type, CAST(:properties AS jsonb))
+                ON CONFLICT (name, entity_type) DO UPDATE
+                    SET properties = entities.properties || CAST(:properties AS jsonb)
+                RETURNING id, name, entity_type, properties, created_at
+            """),
+            {"name": name, "entity_type": entity_type, "properties": properties_json},
+        )
+        return dict(result.mappings().one())
+
+    async def insert_entity_stub(self, name: str) -> None:
+        await self.session.execute(
+            text("""
+                INSERT INTO entities (name, entity_type)
+                VALUES (:name, 'unknown')
+                ON CONFLICT (name, entity_type) DO NOTHING
+            """),
+            {"name": name},
+        )
+
+    async def get_active_triple(self, subject: str, predicate: str, obj: str) -> dict | None:
+        result = await self.session.execute(
+            text("""
+                SELECT id, subject, predicate, object, valid_from, valid_to,
+                       confidence, source_memory_id, created_at
+                FROM knowledge_triples
+                WHERE subject = :sub AND predicate = :pred AND object = :obj
+                  AND valid_to IS NULL
+            """),
+            {"sub": subject, "pred": predicate, "obj": obj},
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def insert_triple(
+        self,
+        subject: str,
+        predicate: str,
+        obj: str,
+        valid_from: str | None,
+        source_memory_id: str | None,
+    ) -> dict:
+        result = await self.session.execute(
+            text("""
+                INSERT INTO knowledge_triples
+                    (subject, predicate, object, valid_from, source_memory_id)
+                VALUES
+                    (:sub, :pred, :obj, :valid_from, :source_memory_id)
+                RETURNING id, subject, predicate, object, valid_from, valid_to,
+                          confidence, source_memory_id, created_at
+            """),
+            {
+                "sub": subject,
+                "pred": predicate,
+                "obj": obj,
+                "valid_from": valid_from,
+                "source_memory_id": source_memory_id,
+            },
+        )
+        return dict(result.mappings().one())
+
+    async def expire_triple(
+        self, subject: str, predicate: str, obj: str, ended: str
+    ) -> int:
+        result = await self.session.execute(
+            text("""
+                UPDATE knowledge_triples
+                SET valid_to = :ended
+                WHERE subject = :sub AND predicate = :pred AND object = :obj
+                  AND valid_to IS NULL
+            """),
+            {"ended": ended, "sub": subject, "pred": predicate, "obj": obj},
+        )
+        return result.rowcount
+
+    async def get_triples_by_subject(
+        self, slug: str, temporal_clause: str, params: dict[str, Any]
+    ) -> list[dict]:
+        result = await self.session.execute(
+            text(f"""
+                SELECT t.id, t.subject, t.predicate, t.object,
+                       t.valid_from, t.valid_to, t.confidence,
+                       t.source_memory_id, t.created_at
+                FROM knowledge_triples t
+                WHERE t.subject = :slug{temporal_clause}
+                ORDER BY t.valid_from ASC NULLS LAST
+            """),
+            params,
+        )
+        return [dict(r) for r in result.mappings()]
+
+    async def get_triples_by_object(
+        self, slug: str, temporal_clause: str, params: dict[str, Any]
+    ) -> list[dict]:
+        result = await self.session.execute(
+            text(f"""
+                SELECT t.id, t.subject, t.predicate, t.object,
+                       t.valid_from, t.valid_to, t.confidence,
+                       t.source_memory_id, t.created_at
+                FROM knowledge_triples t
+                WHERE t.object = :slug{temporal_clause}
+                ORDER BY t.valid_from ASC NULLS LAST
+            """),
+            params,
+        )
+        return [dict(r) for r in result.mappings()]
+
+    async def get_triples_by_predicate(self, predicate: str) -> list[dict]:
+        result = await self.session.execute(
+            text("""
+                SELECT subject, predicate, object, valid_from, valid_to, confidence
+                FROM knowledge_triples
+                WHERE predicate = :pred
+                ORDER BY valid_from ASC NULLS LAST
+            """),
+            {"pred": predicate},
+        )
+        return [dict(r) for r in result.mappings()]
+
+    async def get_triples_for_entity_timeline(self, slug: str) -> list[dict]:
+        result = await self.session.execute(
+            text("""
+                SELECT subject, predicate, object, valid_from, valid_to, confidence
+                FROM knowledge_triples
+                WHERE subject = :slug OR object = :slug
+                ORDER BY valid_from ASC NULLS LAST
+            """),
+            {"slug": slug},
+        )
+        return [dict(r) for r in result.mappings()]
+
+    async def get_recent_triples(self, limit: int = 100) -> list[dict]:
+        result = await self.session.execute(
+            text("""
+                SELECT subject, predicate, object, valid_from, valid_to, confidence
+                FROM knowledge_triples
+                ORDER BY valid_from ASC NULLS LAST
+                LIMIT :limit
+            """),
+            {"limit": limit},
+        )
+        return [dict(r) for r in result.mappings()]
+
+    async def get_triple_stats(self) -> dict:
+        row = await self.session.execute(
+            text("""
+                SELECT
+                    (SELECT COUNT(*) FROM entities)                          AS entities,
+                    (SELECT COUNT(*) FROM knowledge_triples)                 AS triples,
+                    (SELECT COUNT(*) FROM knowledge_triples WHERE valid_to IS NULL) AS current_facts
+            """)
+        )
+        counts = row.mappings().one()
+
+        pred_rows = await self.session.execute(
+            text("SELECT DISTINCT predicate FROM knowledge_triples ORDER BY predicate")
+        )
+        predicates = [r["predicate"] for r in pred_rows.mappings()]
+
+        return {
+            "entities": counts["entities"],
+            "triples": counts["triples"],
+            "current_facts": counts["current_facts"],
+            "expired_facts": counts["triples"] - counts["current_facts"],
+            "relationship_types": predicates,
+        }
