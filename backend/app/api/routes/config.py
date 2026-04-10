@@ -7,7 +7,7 @@ from app.api.auth import require_auth
 from app.config import FEATURE_FLAGS_DEFAULTS, LLMPurposeConfig, settings
 from app.database import get_session
 from app.models.config import Config
-from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMPurposeConfigSchema
+from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMConfigUpdateResponse, LLMPurposeConfigSchema
 from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema
 from app.services.config import get_llm_config as fetch_llm_config
 
@@ -23,7 +23,7 @@ async def get_llm_config(
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
 
 
-@router.post("/llm", response_model=LLMConfigResponse)
+@router.post("/llm", response_model=LLMConfigUpdateResponse)
 async def update_llm_config(
     body: LLMConfigUpdate,
     request: Request,
@@ -73,7 +73,18 @@ async def update_llm_config(
         pipeline.extraction.llm = new_llm
         pipeline.embedding_fingerprint = f"{new_llm.config['embedding'].model}|{getattr(request.app.state, 'embedding_dims', 1024)}"
 
-    return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in updated_config.items()})
+    # Feature 3: compute obsolete counts for the new fingerprint
+    obsolete_after_change = None
+    if pipeline is not None:
+        from app.services.reembed import ReembedService
+        reembed_svc = ReembedService(session)
+        obsolete_after_change = await reembed_svc.count_obsolete(pipeline.embedding_fingerprint)
+
+    purpose_payload = {p: cfg_to_schema(c) for p, c in updated_config.items()}
+    return LLMConfigUpdateResponse(
+        **purpose_payload,
+        obsolete_after_change=obsolete_after_change,
+    )
 
 
 class FeatureFlagsResponse(BaseModel):
