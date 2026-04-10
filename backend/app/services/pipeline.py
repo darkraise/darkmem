@@ -436,6 +436,47 @@ class ProcessingPipeline:
                 })
             else:
                 normalized.append(result)
+
+        # Feature 2: record pipeline failure state for each memory
+        try:
+            from app.services.pipeline_failures import (
+                PipelineFailureService, derive_memory_failed_step,
+            )
+            from app.api.websocket import event_manager
+
+            async with self.session_factory() as failure_session:
+                failure_svc = PipelineFailureService(
+                    failure_session, broadcast=event_manager.broadcast,
+                )
+                for entry, result in zip(entries, normalized):
+                    if not isinstance(result, dict):
+                        continue
+                    mem_id_str = result.get("memory_id")
+                    if not mem_id_str:
+                        continue
+                    try:
+                        entity_id = UUID(mem_id_str) if isinstance(mem_id_str, str) else mem_id_str
+                    except (ValueError, TypeError):
+                        continue
+                    failed_step = derive_memory_failed_step(result)
+                    if failed_step is not None:
+                        await failure_svc.record(
+                            entity_type="memory",
+                            entity_id=entity_id,
+                            pipeline_name="memory_ingest",
+                            failed_step=failed_step,
+                            error_message=result.get("error") or "Unknown error",
+                        )
+                    else:
+                        await failure_svc.resolve(
+                            entity_type="memory",
+                            entity_id=entity_id,
+                            pipeline_name="memory_ingest",
+                        )
+                await failure_session.commit()
+        except Exception as e:
+            logger.warning("Failed to record pipeline failures for batch: %s", e)
+
         return normalized
 
     async def delete_memory(self, memory_id: UUID):
