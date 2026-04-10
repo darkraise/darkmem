@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import {
-  useSystemPrompts,
-  useUpdateSystemPrompt,
-  useResetSystemPrompt,
   useEnrichmentConfig,
   useUpdateEnrichmentConfig,
   useTriggerEnrichment,
-  type SystemPromptProfile,
+  useFeatureFlags,
+  useUpdateFeatureFlags,
+  useClassificationAreas,
+  type ClassificationAreaInfo,
 } from "@/hooks/api"
 import {
   Card,
@@ -15,11 +15,9 @@ import {
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
-import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
-import { Textarea } from "darkraise-ui/components/textarea"
 import { Label } from "darkraise-ui/components/label"
 import { toast } from "sonner"
 import { PageHeader } from "darkraise-ui/layout"
@@ -27,124 +25,6 @@ import { PageHeader } from "darkraise-ui/layout"
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 })
-
-function PromptCard({
-  profile,
-  isEditing,
-  onEdit,
-  onCancel,
-}: {
-  profile: SystemPromptProfile
-  isEditing: boolean
-  onEdit: () => void
-  onCancel: () => void
-}) {
-  const [draft, setDraft] = useState(profile.content)
-  const updatePrompt = useUpdateSystemPrompt()
-  const resetPrompt = useResetSystemPrompt()
-
-  const handleSave = () => {
-    updatePrompt.mutate(
-      { purpose: profile.purpose, content: draft },
-      {
-        onSuccess: () => {
-          toast.success(`Saved ${profile.display_name}`)
-          onCancel()
-        },
-        onError: (err) =>
-          toast.error(`Failed to save: ${(err as Error).message}`),
-      },
-    )
-  }
-
-  const handleReset = () => {
-    resetPrompt.mutate(profile.purpose, {
-      onSuccess: () => {
-        toast.success(`Reset ${profile.display_name} to default`)
-        onCancel()
-      },
-      onError: (err) =>
-        toast.error(`Failed to reset: ${(err as Error).message}`),
-    })
-  }
-
-  if (!isEditing) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-sm">{profile.display_name}</CardTitle>
-              <Badge variant="secondary">{profile.purpose}</Badge>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={onEdit}
-            >
-              Edit
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <pre className="text-muted-foreground bg-muted/50 max-h-40 overflow-y-auto rounded p-3 font-mono text-xs whitespace-pre-wrap">
-            {profile.content}
-          </pre>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <Card className="border-primary border-2">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm">{profile.display_name}</CardTitle>
-            <Badge variant="secondary">{profile.purpose}</Badge>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive h-6 px-2 text-xs"
-              onClick={handleReset}
-              disabled={resetPrompt.isPending}
-            >
-              {resetPrompt.isPending ? "Resetting..." : "Reset to Default"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={onCancel}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-primary h-6 px-2 text-xs"
-              onClick={handleSave}
-              disabled={updatePrompt.isPending}
-            >
-              {updatePrompt.isPending ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={10}
-          className="resize-none font-mono text-sm"
-        />
-      </CardContent>
-    </Card>
-  )
-}
 
 function EnrichmentCard() {
   const { data: config } = useEnrichmentConfig()
@@ -244,51 +124,220 @@ function EnrichmentCard() {
   )
 }
 
+function ClassificationAreasCard() {
+  const { data: flags } = useFeatureFlags()
+  const updateFlags = useUpdateFeatureFlags()
+  const { data: allAreas } = useClassificationAreas()
+
+  if (!flags || !allAreas) return null
+
+  const mode = flags.classification_mode || "simple"
+  const enabled = new Set(flags.classification_areas || [])
+
+  const handleModeChange = (newMode: "simple" | "expanded") => {
+    updateFlags.mutate(
+      { classification_mode: newMode },
+      {
+        onSuccess: () => toast.success(`Classification mode: ${newMode}`),
+        onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+      },
+    )
+  }
+
+  const toggleArea = (key: string) => {
+    const next = enabled.has(key)
+      ? flags.classification_areas.filter((a) => a !== key)
+      : [...flags.classification_areas, key]
+    updateFlags.mutate(
+      { classification_areas: next },
+      {
+        onSuccess: () => toast.success("Classification areas updated"),
+        onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+      },
+    )
+  }
+
+  const simpleTypes = [
+    { key: "fact", description: "Neutral factual information, how things work, definitions" },
+    { key: "decision", description: "Explicit choices made, trade-offs with reasoning" },
+    { key: "preference", description: "Habits, rules, style preferences" },
+    { key: "problem", description: "Bugs, errors, root causes, workarounds, gotchas" },
+    { key: "reference", description: "Documentation pointers, specs, standards" },
+    { key: "architecture", description: "System design, component responsibilities, patterns" },
+    { key: "milestone", description: "Breakthroughs, achievements, releases" },
+  ]
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Classification</CardTitle>
+        <p className="text-muted-foreground text-xs">
+          Control how memories are typed during pipeline processing.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-1 rounded-md border border-border p-0.5 w-fit">
+          {(["simple", "expanded"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => handleModeChange(m)}
+              disabled={updateFlags.isPending}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                mode === m
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m.charAt(0).toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {mode === "simple" ? (
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs">
+              7 universal types optimized for small models. Invalid LLM outputs are
+              automatically remapped.
+            </p>
+            <div className="divide-y divide-border rounded-md border border-border">
+              {simpleTypes.map((t) => (
+                <div key={t.key} className="flex items-baseline gap-3 px-3 py-2">
+                  <code className="text-xs font-semibold shrink-0 w-24">{t.key}</code>
+                  <span className="text-muted-foreground text-xs">{t.description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-muted-foreground text-xs">
+              Fine-grained types from enabled domain areas. Best with larger models.
+            </p>
+            <div className="divide-y divide-border rounded-md border border-border">
+              {allAreas.map((area: ClassificationAreaInfo) => (
+                <div key={area.key} className="flex items-center justify-between px-3 py-2.5">
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium">{area.display_name}</span>
+                    <p className="text-muted-foreground text-xs truncate">
+                      {area.types.join(", ")}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={area.key === "general" || enabled.has(area.key)}
+                    onCheckedChange={() => toggleArea(area.key)}
+                    disabled={area.key === "general" || updateFlags.isPending}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function FeatureFlagsCard() {
+  const { data: flags, isLoading } = useFeatureFlags()
+  const updateFlags = useUpdateFeatureFlags()
+
+  if (isLoading || !flags) return null
+
+  const items = [
+    { label: "Hybrid Search (BM25 + RRF)", key: "hybrid_search_enabled" as const, description: "Combines vector similarity with full-text search via Reciprocal Rank Fusion" },
+    { label: "LLM Enrichment", key: "llm_enrichment_enabled" as const, description: "Run LLM classification alongside regex for A/B comparison" },
+    { label: "Reranker", key: "reranker_enabled" as const, description: "Re-score search results using LLM relevance scoring" },
+  ]
+
+  const handleToggle = (key: keyof typeof flags, value: boolean) => {
+    updateFlags.mutate(
+      { [key]: value },
+      {
+        onSuccess: () => toast.success(`${key.replace(/_/g, " ")} ${value ? "enabled" : "disabled"}`),
+        onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+      },
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Feature Flags</CardTitle>
+        <p className="text-muted-foreground text-xs">
+          Toggle pipeline features. Changes take effect on the next operation.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.map((item) => (
+          <div key={item.key} className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">{item.label}</Label>
+              <p className="text-muted-foreground text-xs">{item.description}</p>
+            </div>
+            <Switch
+              checked={flags[item.key]}
+              onCheckedChange={(v) => handleToggle(item.key, v)}
+              disabled={updateFlags.isPending}
+            />
+          </div>
+        ))}
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div>
+            <Label className="text-sm">Pipeline Concurrency</Label>
+            <p className="text-muted-foreground text-xs">Max parallel LLM calls during batch processing</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={flags.pipeline_concurrency}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(20, Number(e.target.value) || 5))
+                updateFlags.mutate(
+                  { pipeline_concurrency: v },
+                  {
+                    onSuccess: () => toast.success(`Pipeline concurrency set to ${v}`),
+                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+                  },
+                )
+              }}
+              className="w-16 h-8 text-sm text-center"
+              disabled={updateFlags.isPending}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function SettingsPage() {
-  const { data: prompts, isLoading, error } = useSystemPrompts()
-  const [editingPurpose, setEditingPurpose] = useState<string | null>(null)
-
-  const editable = prompts?.filter((p) => p.is_editable)
-
   return (
     <div className="p-6">
       <PageHeader
         title="Settings"
-        description="Configure system prompts and workers."
+        description="Configure workers, feature flags, and classification areas."
       />
 
       <div className="mb-8">
-        <h3 className="mb-2 text-base font-semibold">System Prompts</h3>
-        <p className="text-muted-foreground mb-4 text-sm">
-          Edit system prompts used by the pipeline. Changes take effect on the
-          next memory operation.
-        </p>
-        {isLoading && <p className="text-muted-foreground">Loading...</p>}
-        {error && (
-          <div className="bg-destructive/10 border-destructive/30 mb-4 rounded-lg border p-4">
-            <p className="text-destructive text-sm">Failed to load prompts.</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {(error as Error).message}
-            </p>
-          </div>
-        )}
+        <h3 className="mb-4 text-base font-semibold">Workers</h3>
         <div className="grid grid-cols-1 gap-4">
-          {editable?.map((p) => (
-            <PromptCard
-              key={p.purpose}
-              profile={p}
-              isEditing={editingPurpose === p.purpose}
-              onEdit={() => setEditingPurpose(p.purpose)}
-              onCancel={() => setEditingPurpose(null)}
-            />
-          ))}
+          <EnrichmentCard />
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="mb-4 text-base font-semibold">Feature Flags</h3>
+        <div className="grid grid-cols-1 gap-4">
+          <FeatureFlagsCard />
         </div>
       </div>
 
       <div>
-        <h3 className="mb-4 text-base font-semibold">Workers</h3>
+        <h3 className="mb-4 text-base font-semibold">Classification</h3>
         <div className="grid grid-cols-1 gap-4">
-          <EnrichmentCard />
+          <ClassificationAreasCard />
         </div>
       </div>
     </div>
