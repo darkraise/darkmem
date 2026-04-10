@@ -109,10 +109,29 @@ class ProcessingPipeline:
                 for name, emb in name_to_embedding.items():
                     self._entity_cache[(name, fp)] = (emb, now)
 
-    async def process_memory(self, memory_id: UUID, content: str, source: str, tags: list[str], memory_type: str | None, created_at: str, vector: list[float] | None = None, flags: dict | None = None) -> dict:
+    async def _write_memory(
+        self,
+        entry: dict,
+        vector: list[float] | None,
+        extraction: dict | Exception,
+        llm_classification: dict | None,
+        name_to_embedding: dict[str, list[float]],
+        canonical_map: dict[str, str],
+        flags: dict,
+    ) -> dict:
+        memory_id = entry["memory_id"]
+        content = entry["content"]
+        source = entry.get("source", "mcp")
+        tags = entry.get("tags", [])
+        memory_type = entry.get("memory_type")
+        created_at = entry.get("created_at", "")
+
+        areas = flags.get("classification_areas", ["general"])
+        mode = flags.get("classification_mode", "simple")
+
         status = {
             "memory_id": str(memory_id),
-            "embed": "pending",
+            "embed": "ok" if vector is not None else "error",
             "extract": "pending",
             "vector": "pending",
             "graph": "pending",
@@ -121,52 +140,10 @@ class ProcessingPipeline:
             "error": None,
         }
 
-        if flags is None:
-            flags = await _get_feature_flags(self.session_factory)
-        areas = flags.get("classification_areas", ["general"])
-        mode = flags.get("classification_mode", "simple")
-        llm_enrichment = flags.get("llm_enrichment_enabled", False)
-
-        llm_classification = None
-        tasks: list = []
-        task_names: list[str] = []
-
-        ext_prompt = prompt.get("extraction")
-        cls_prompt = prompt.get("classification") if llm_enrichment else ""
-
-        if vector is not None:
-            status["embed"] = "ok"
-        else:
-            tasks.append(self.llm.embed(content))
-            task_names.append("embed")
-
-        tasks.append(self.extraction.extract(content, system_prompt=ext_prompt))
-        task_names.append("extract")
-
-        if llm_enrichment:
-            tasks.append(self.classification.classify(content, areas, cls_prompt, mode=mode))
-            task_names.append("classify")
-
-        logger.debug("process_memory %s: launching %s", memory_id, task_names)
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        result_map = dict(zip(task_names, results))
-
-        if "embed" in result_map:
-            embed_result = result_map["embed"]
-            if isinstance(embed_result, Exception):
-                status["embed"] = "error"
-                status["error"] = f"Embedding failed: {embed_result}"
-                logger.error(f"Embedding failed for {memory_id}: {embed_result}")
-            else:
-                vector = embed_result
-                status["embed"] = "ok"
-
-        extraction = result_map["extract"]
         if isinstance(extraction, Exception):
             status["extract"] = "error"
-            status["error"] = status["error"] or f"Extraction failed: {extraction}"
-            logger.error(f"Extraction failed for {memory_id}: {extraction}")
+            status["error"] = f"Extraction failed: {extraction}"
+            extraction = None
         elif isinstance(extraction, dict):
             status["extract"] = "ok"
             status["entities_count"] = len(extraction.get("entities", []))
@@ -174,45 +151,23 @@ class ProcessingPipeline:
             if extraction.get("_error"):
                 status["extract"] = "partial"
                 status["error"] = status["error"] or f"Extraction degraded: {extraction['_error']}"
+
+            # Apply canonical_map to entity names and relationship endpoints
+            for entity in extraction.get("entities", []):
+                low = entity["name"].lower()
+                if low in canonical_map:
+                    entity["name"] = canonical_map[low]
+            for rel in extraction.get("relationships", []):
+                src_low = rel.get("source", "").lower()
+                tgt_low = rel.get("target", "").lower()
+                if src_low in canonical_map:
+                    rel["source"] = canonical_map[src_low]
+                if tgt_low in canonical_map:
+                    rel["target"] = canonical_map[tgt_low]
         else:
             status["extract"] = "error"
             status["error"] = status["error"] or "Extraction returned invalid data"
-
-        if "classify" in result_map:
-            cls_result = result_map["classify"]
-            if isinstance(cls_result, dict):
-                llm_classification = cls_result
-            elif isinstance(cls_result, Exception):
-                logger.warning(f"LLM classification failed for {memory_id}: {cls_result}")
-
-        # Entity embedding dedup (outside savepoint — calls LLM embed)
-        entity_embeddings: dict[str, list[float]] = {}
-        if status["extract"] == "ok" and isinstance(extraction, dict):
-            canonical_map: dict[str, str] = {}
-            try:
-                async with self.session_factory() as dedup_session:
-                    dedup_repo = PostgresGraphRepository(dedup_session)
-                    for entity in extraction.get("entities", []):
-                        name = entity["name"]
-                        try:
-                            emb = await self.llm.embed(name)
-                            entity_embeddings[name] = emb
-                            match = await dedup_repo.find_similar_entity(emb, threshold=0.85)
-                            if match and match["name"] != name:
-                                canonical_map[name] = match["name"]
-                        except Exception:
-                            pass
-                if canonical_map:
-                    for entity in extraction["entities"]:
-                        if entity["name"] in canonical_map:
-                            entity["name"] = canonical_map[entity["name"]]
-                    for rel in extraction.get("relationships", []):
-                        if rel.get("source") in canonical_map:
-                            rel["source"] = canonical_map[rel["source"]]
-                        if rel.get("target") in canonical_map:
-                            rel["target"] = canonical_map[rel["target"]]
-            except Exception as e:
-                logger.warning(f"Entity dedup failed for {memory_id}: {e}")
+            extraction = None
 
         async with self.session_factory() as session:
             vector_repo = PostgresVectorRepository(session, self.embedding_dims)
@@ -257,15 +212,17 @@ class ProcessingPipeline:
                                 mem_record.llm_emotions = llm_classification.get("emotions") or None
                                 mem_record.llm_flags = llm_classification.get("flags") or None
 
-                        if status["extract"] == "ok" and isinstance(extraction, dict):
+                        if status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
                             for entity in extraction.get("entities", []):
                                 created = await graph_repo.create_entity(
                                     name=entity["name"], entity_type=entity["type"],
                                     properties=entity.get("properties", {}), memory_id=memory_id,
                                 )
-                                emb = entity_embeddings.get(entity["name"])
+                                emb = name_to_embedding.get(entity["name"].lower())
                                 if emb and created:
-                                    await graph_repo.upsert_entity_embedding(created["id"], emb)
+                                    await graph_repo.upsert_entity_embedding(
+                                        created["id"], emb, model_fingerprint=self.embedding_fingerprint,
+                                    )
                             for rel in extraction.get("relationships", []):
                                 await graph_repo.create_relationship(
                                     source_name=rel["source"], target_name=rel["target"],
@@ -314,61 +271,170 @@ class ProcessingPipeline:
 
         return status
 
-    async def process_batch(
+    async def process_memory(
         self,
-        entries: list[dict],
-    ) -> list[dict]:
-        """Process multiple memories concurrently with a configurable semaphore.
+        memory_id,
+        content: str,
+        source: str,
+        tags: list[str],
+        memory_type: str | None,
+        created_at: str,
+        vector: list[float] | None = None,
+        flags: dict | None = None,
+    ) -> dict:
+        """Process a single memory. Delegates to process_batch for consistent phasing."""
+        entry = {
+            "memory_id": memory_id,
+            "content": content,
+            "source": source,
+            "tags": tags,
+            "memory_type": memory_type,
+            "created_at": created_at,
+        }
+        results = await self.process_batch([entry])
+        return results[0]
 
-        Embeddings are computed in a single batch request upfront, then each
-        memory runs extraction + DB writes concurrently with the semaphore.
+    async def process_batch(self, entries: list[dict]) -> list[dict]:
+        """Process multiple memories through phased pipeline.
 
-        Each entry dict has: memory_id, content, source, tags, memory_type, created_at.
+        Phases:
+          1. Content embedding (chunked, concurrent)
+          2. Extraction and LLM classification (per-memory, concurrent)
+          3. Entity embedding with cache
+          4. Dedup lookup (per unique name)
+          5. Per-memory writes (concurrent)
         """
         flags = await _get_feature_flags(self.session_factory)
-        concurrency = flags.get("pipeline_concurrency", 5)
-        semaphore = asyncio.Semaphore(concurrency)
+        pipeline_concurrency = flags.get("pipeline_concurrency", 5)
+        embed_chunk_size = flags.get("embedding_batch_size", 20)
+        embed_concurrency = flags.get("embedding_concurrency", 1)
+        ttl_seconds = flags.get("entity_cache_ttl_minutes", 60) * 60
+        llm_enrichment = flags.get("llm_enrichment_enabled", False)
 
-        vectors: list[list[float] | None] = [None] * len(entries)
+        logger.info(
+            "Starting batch pipeline: %d memories, pipeline_concurrency=%d, embed_chunk_size=%d, embed_concurrency=%d",
+            len(entries), pipeline_concurrency, embed_chunk_size, embed_concurrency,
+        )
+
+        # Phase 1: Content embedding
+        contents = [e["content"] for e in entries]
         try:
-            contents = [e["content"] for e in entries]
-            logger.info("Batch embedding %d texts...", len(contents))
-            batch_vectors = await self.llm.embed_batch(contents)
-            vectors = batch_vectors
-            logger.info("Batch-embedded %d texts in one request", len(contents))
+            vectors = await self.llm.embed_batch_chunked(contents, embed_chunk_size, embed_concurrency)
+            logger.info("Phase 1 complete: embedded %d contents", len(vectors))
         except Exception as e:
-            logger.warning("Batch embedding failed, falling back to per-memory: %s: %s", type(e).__name__, e)
+            logger.error("Phase 1 content embedding failed: %s: %s", type(e).__name__, e)
+            vectors = [None] * len(entries)
 
-        logger.info("Starting pipeline processing for %d memories (concurrency=%d, llm_enrichment=%s)", len(entries), concurrency, flags.get("llm_enrichment_enabled"))
+        # Phase 2: Extraction and LLM classification
+        ext_prompt = prompt.get("extraction")
+        cls_prompt = prompt.get("classification") if llm_enrichment else ""
+        semaphore = asyncio.Semaphore(pipeline_concurrency)
 
-        async def _process_one(entry: dict, vec: list[float] | None) -> dict:
+        async def run_extract(content: str):
             async with semaphore:
-                return await self.process_memory(
-                    memory_id=entry["memory_id"],
-                    content=entry["content"],
-                    source=entry.get("source", "mcp"),
-                    tags=entry.get("tags", []),
-                    memory_type=entry.get("memory_type"),
-                    created_at=entry.get("created_at", ""),
-                    vector=vec,
-                    flags=flags,
+                try:
+                    return await self.extraction.extract(content, system_prompt=ext_prompt)
+                except Exception as exc:
+                    return exc
+
+        async def run_classify(content: str):
+            async with semaphore:
+                try:
+                    areas = flags.get("classification_areas", ["general"])
+                    mode = flags.get("classification_mode", "simple")
+                    return await self.classification.classify(content, areas, cls_prompt, mode=mode)
+                except Exception as exc:
+                    logger.warning("LLM classification failed: %s", exc)
+                    return None
+
+        extract_tasks = [run_extract(e["content"]) for e in entries]
+        classify_tasks = [run_classify(e["content"]) for e in entries] if llm_enrichment else None
+
+        extractions = await asyncio.gather(*extract_tasks)
+        classifications: list[dict | None] = (
+            await asyncio.gather(*classify_tasks) if classify_tasks else [None] * len(entries)
+        )
+        logger.info("Phase 2 complete: extractions=%d, classifications=%s", len(extractions), "on" if llm_enrichment else "off")
+
+        # Phase 3: Entity embedding with cache
+        unique_names: set[str] = set()
+        for ext in extractions:
+            if isinstance(ext, dict):
+                for entity in ext.get("entities", []):
+                    name = entity.get("name")
+                    if name:
+                        unique_names.add(name.lower())
+
+        unique_names_list = sorted(unique_names)
+        name_to_embedding: dict[str, list[float]] = {}
+
+        if unique_names_list:
+            hits, misses = await self._lookup_entity_embeddings(
+                unique_names_list, ttl_seconds, use_memory_cache=True,
+            )
+            name_to_embedding.update(hits)
+            logger.info("Phase 3 cache lookup: %d hits, %d misses", len(hits), len(misses))
+
+            if misses:
+                try:
+                    new_embeddings_list = await self.llm.embed_batch_chunked(
+                        misses, embed_chunk_size, embed_concurrency,
+                    )
+                    new_map = dict(zip(misses, new_embeddings_list))
+                    await self._store_entity_embeddings(new_map, use_memory_cache=True)
+                    name_to_embedding.update(new_map)
+                    logger.info("Phase 3 complete: embedded %d new entity names", len(new_map))
+                except Exception as e:
+                    logger.warning("Phase 3 entity embedding failed: %s: %s", type(e).__name__, e)
+        else:
+            logger.info("Phase 3 skipped: no entities to embed")
+
+        # Phase 4: Dedup lookup (one call per unique name)
+        canonical_map: dict[str, str] = {}
+        if name_to_embedding:
+            async with self.session_factory() as dedup_session:
+                dedup_repo = PostgresGraphRepository(dedup_session)
+                for lower_name, emb in name_to_embedding.items():
+                    try:
+                        match = await dedup_repo.find_similar_entity(emb, threshold=0.85)
+                        if match and match["name"].lower() != lower_name:
+                            canonical_map[lower_name] = match["name"]
+                    except Exception as e:
+                        logger.warning("Dedup lookup failed for %s: %s", lower_name, e)
+            logger.info("Phase 4 complete: %d canonical remappings", len(canonical_map))
+
+        # Phase 5: Per-memory writes
+        async def run_write(entry: dict, vector: list[float] | None, extraction, classification):
+            async with semaphore:
+                return await self._write_memory(
+                    entry, vector, extraction, classification,
+                    name_to_embedding, canonical_map, flags,
                 )
 
         results = await asyncio.gather(
-            *[_process_one(e, vectors[i] if i < len(vectors) else None) for i, e in enumerate(entries)],
+            *[
+                run_write(e, v, ext, cls)
+                for e, v, ext, cls in zip(entries, vectors, extractions, classifications)
+            ],
             return_exceptions=True,
         )
+        logger.info("Phase 5 complete: wrote %d memories", len(results))
 
-        statuses = []
-        for i, result in enumerate(results):
+        # Normalize any exception returns into error dicts
+        normalized: list[dict] = []
+        for entry, result in zip(entries, results):
             if isinstance(result, Exception):
-                statuses.append({
-                    "memory_id": str(entries[i]["memory_id"]),
+                logger.error("Memory %s write failed: %s", entry.get("memory_id"), result)
+                normalized.append({
+                    "memory_id": str(entry.get("memory_id")),
+                    "embed": "unknown", "extract": "unknown",
+                    "vector": "error", "graph": "error",
+                    "entities_count": 0, "relations_count": 0,
                     "error": str(result),
                 })
             else:
-                statuses.append(result)
-        return statuses
+                normalized.append(result)
+        return normalized
 
     async def delete_memory(self, memory_id: UUID):
         try:
