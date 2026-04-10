@@ -82,6 +82,9 @@ class FeatureFlagsResponse(BaseModel):
     pipeline_concurrency: int
     classification_areas: list[str]
     classification_mode: str
+    embedding_batch_size: int
+    embedding_concurrency: int
+    entity_cache_ttl_minutes: int
 
 
 class FeatureFlagsUpdate(BaseModel):
@@ -91,6 +94,9 @@ class FeatureFlagsUpdate(BaseModel):
     pipeline_concurrency: int | None = None
     classification_areas: list[str] | None = None
     classification_mode: str | None = None
+    embedding_batch_size: int | None = None
+    embedding_concurrency: int | None = None
+    entity_cache_ttl_minutes: int | None = None
 
 
 FEATURE_FLAGS_KEY = "feature_flags"
@@ -133,6 +139,21 @@ async def update_feature_flags(
     if "classification_mode" in updates:
         if updates["classification_mode"] not in ("simple", "expanded"):
             raise HTTPException(status_code=422, detail="classification_mode must be 'simple' or 'expanded'")
+
+    if "embedding_batch_size" in updates:
+        v = updates["embedding_batch_size"]
+        if not isinstance(v, int) or v < 1 or v > 200:
+            raise HTTPException(status_code=422, detail="embedding_batch_size must be between 1 and 200")
+
+    if "embedding_concurrency" in updates:
+        v = updates["embedding_concurrency"]
+        if not isinstance(v, int) or v < 1 or v > 10:
+            raise HTTPException(status_code=422, detail="embedding_concurrency must be between 1 and 10")
+
+    if "entity_cache_ttl_minutes" in updates:
+        v = updates["entity_cache_ttl_minutes"]
+        if not isinstance(v, int) or v < 1 or v > 1440:
+            raise HTTPException(status_code=422, detail="entity_cache_ttl_minutes must be between 1 and 1440")
 
     current.update(updates)
 

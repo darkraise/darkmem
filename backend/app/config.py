@@ -82,4 +82,7 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     "pipeline_concurrency": 5,
     "classification_areas": ["general", "technical", "debugging", "infrastructure"],
     "classification_mode": "simple",
+    "embedding_batch_size": 20,
+    "embedding_concurrency": 1,
+    "entity_cache_ttl_minutes": 60,
 }
