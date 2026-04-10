@@ -17,7 +17,6 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -192,7 +191,12 @@ async def retry_all(
                 fid = UUID(f["id"])
                 if not retry_locks.try_acquire(fid):
                     continue
-                entry = await _build_memory_entry(UUID(f["entity_id"]))
+                try:
+                    entry = await _build_memory_entry(UUID(f["entity_id"]))
+                except Exception:
+                    logger.exception("Failed to build memory entry for %s", f["entity_id"])
+                    retry_locks.release(fid)
+                    continue
                 if entry is None:
                     retry_locks.release(fid)
                     continue
@@ -260,24 +264,7 @@ async def forget_failure(
     session: AsyncSession = Depends(get_session),
 ):
     svc = PipelineFailureService(session, broadcast=event_manager.broadcast)
-    failure = await svc.get(failure_id)
-    if not failure:
+    deleted = await svc.forget_by_id(failure_id)
+    if deleted is None:
         raise HTTPException(status_code=404, detail="Failure not found")
-    await session.execute(
-        sa_text("DELETE FROM pipeline_failures WHERE id = CAST(:id AS uuid)"),
-        {"id": str(failure_id)},
-    )
-    try:
-        await event_manager.broadcast("pipeline.failure.updated", {
-            "failure_id": str(failure_id),
-            "entity_type": failure["entity_type"],
-            "entity_id": failure["entity_id"],
-            "pipeline_name": failure["pipeline_name"],
-            "state": "forgotten",
-            "failed_step": None,
-            "attempts": 0,
-            "error_message": None,
-        })
-    except Exception as e:
-        logger.warning("forgotten broadcast failed: %s", e)
     return {"ok": True}

@@ -283,6 +283,45 @@ class PipelineFailureService:
                     logger.warning("failure.updated broadcast failed: %s", e)
         return len(rows)
 
+    async def forget_by_id(self, failure_id: UUID) -> dict | None:
+        """Hard-delete a specific failure row by primary key.
+
+        Returns the deleted row's payload (for broadcasting) or None if
+        no row was found.
+        """
+        result = await self.session.execute(
+            text("""
+                DELETE FROM pipeline_failures
+                WHERE id = CAST(:id AS uuid)
+                RETURNING id, entity_type, entity_id, pipeline_name
+            """),
+            {"id": str(failure_id)},
+        )
+        row = result.mappings().first()
+        if not row:
+            return None
+        payload = {
+            "id": str(row["id"]),
+            "entity_type": row["entity_type"],
+            "entity_id": str(row["entity_id"]),
+            "pipeline_name": row["pipeline_name"],
+        }
+        if self._broadcast:
+            try:
+                await self._broadcast("pipeline.failure.updated", {
+                    "failure_id": payload["id"],
+                    "entity_type": payload["entity_type"],
+                    "entity_id": payload["entity_id"],
+                    "pipeline_name": payload["pipeline_name"],
+                    "state": "forgotten",
+                    "failed_step": None,
+                    "attempts": 0,
+                    "error_message": None,
+                })
+            except Exception as e:
+                logger.warning("failure.updated broadcast failed: %s", e)
+        return payload
+
     async def forget_all_for_repo(self, repo_id: UUID) -> int:
         """Delete all failures tied to a code repository."""
         return await self.forget("code_repo", repo_id)
