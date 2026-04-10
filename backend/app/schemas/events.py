@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -64,7 +66,7 @@ class PipelineFailureUpdated(BaseModel):
     entity_type: str
     entity_id: str
     pipeline_name: str
-    state: str  # "recorded" | "resolved" | "forgotten"
+    state: Literal["recorded", "resolved", "forgotten"]
     failed_step: str | None
     attempts: int
     error_message: str | None
@@ -78,7 +80,7 @@ class PipelineRetryBatchProgress(BaseModel):
     errors: int
     entity_type: str | None
     entity_id: str | None
-    state: str  # "started" | "progress" | "done"
+    state: Literal["started", "progress", "done"]
 
 
 EVENT_SCHEMAS: dict[str, type[BaseModel]] = {

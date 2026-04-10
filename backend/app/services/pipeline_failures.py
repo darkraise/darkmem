@@ -174,7 +174,16 @@ class PipelineFailureService:
                 "metadata": meta_json,
             },
         )
-        row = result.mappings().one()
+        row_raw = result.mappings().one_or_none()
+        if row_raw is None:
+            logger.error(
+                "PipelineFailureService.record returned no row for (%s, %s, %s)",
+                entity_type, entity_id, pipeline_name,
+            )
+            raise RuntimeError(
+                f"Failed to upsert pipeline failure for {entity_type}/{entity_id}/{pipeline_name}"
+            )
+        row = row_raw
         out = {
             "id": str(row["id"]),
             "entity_type": row["entity_type"],
@@ -287,20 +296,18 @@ class PipelineFailureService:
                 DELETE FROM pipeline_failures
                 WHERE entity_type = 'memory'
                   AND NOT EXISTS (SELECT 1 FROM memories WHERE memories.id = pipeline_failures.entity_id)
-                RETURNING id
             """)
         )
-        counts["memory"] = len(mem_del.fetchall())
+        counts["memory"] = mem_del.rowcount or 0
 
         repo_del = await self.session.execute(
             text("""
                 DELETE FROM pipeline_failures
                 WHERE entity_type = 'code_repo'
                   AND NOT EXISTS (SELECT 1 FROM repositories WHERE repositories.id = pipeline_failures.entity_id)
-                RETURNING id
             """)
         )
-        counts["code_repo"] = len(repo_del.fetchall())
+        counts["code_repo"] = repo_del.rowcount or 0
 
         return counts
 
@@ -311,11 +318,10 @@ class PipelineFailureService:
                 DELETE FROM pipeline_failures
                 WHERE resolved_at IS NOT NULL
                   AND resolved_at < NOW() - make_interval(days => :days)
-                RETURNING id
             """),
             {"days": days},
         )
-        return len(result.fetchall())
+        return result.rowcount or 0
 
     async def list_unresolved(
         self,
