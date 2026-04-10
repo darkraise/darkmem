@@ -35,56 +35,34 @@ class AnalyticsService:
 
         return await self._reprocess_batch(memories)
 
-    async def reprocess_failed(self) -> dict:
-        if not self.pipeline:
-            return {"error": "Pipeline not available", "processed": 0}
-
-        stmt = (
-            select(AuditLog.memory_id)
-            .where(AuditLog.action == "pipeline")
-            .where(AuditLog.details["error"].as_string() != "null")
-            .where(AuditLog.memory_id.isnot(None))
-            .distinct()
-        )
-        result = await self.session.execute(stmt)
-        failed_ids = [r[0] for r in result.all()]
-
-        if not failed_ids:
-            return {"processed": 0, "errors": 0, "total": 0}
-
-        memories = []
-        for mid in failed_ids:
-            mem_result = await self.session.execute(
-                select(Memory).options(selectinload(Memory.tags)).where(Memory.id == mid)
-            )
-            memory = mem_result.scalar_one_or_none()
-            if memory and not memory.is_archived:
-                memories.append(memory)
-
-        return await self._reprocess_batch(memories)
-
     async def _reprocess_batch(self, memories: list[Memory]) -> dict:
+        batch_entries = [
+            {
+                "memory_id": m.id,
+                "content": m.content,
+                "source": m.source,
+                "tags": [t.name for t in m.tags],
+                "memory_type": m.memory_type,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in memories
+        ]
+
+        statuses = await self.pipeline.process_batch(batch_entries)
+
         processed = 0
         errors = 0
-        for memory in memories:
-            try:
-                status = await self.pipeline.process_memory(
-                    memory_id=memory.id,
-                    content=memory.content,
-                    source=memory.source,
-                    tags=[t.name for t in memory.tags],
-                    memory_type=memory.memory_type,
-                    created_at=memory.created_at.isoformat(),
-                )
-                await self.audit_repo.log("pipeline", memory.id, None, status)
-                if status.get("error"):
-                    errors += 1
-                else:
-                    processed += 1
-                logger.info(f"Reprocessed {memory.id}")
-            except Exception as e:
+        for status in statuses:
+            mid = status.get("memory_id")
+            if status.get("error"):
                 errors += 1
-                logger.error(f"Reprocess failed for {memory.id}: {e}")
+            else:
+                processed += 1
+            try:
+                from uuid import UUID
+                await self.audit_repo.log("pipeline", UUID(mid) if mid else None, None, status)
+            except Exception as e:
+                logger.warning("Audit log failed: %s", e)
 
         return {"processed": processed, "errors": errors, "total": len(memories)}
 
@@ -100,80 +78,73 @@ class AnalyticsService:
         async for event in self._reprocess_batch_stream(memories):
             yield event
 
-    async def reprocess_failed_stream(self):
-        if not self.pipeline:
-            yield {"type": "error", "message": "Pipeline not available"}
-            return
-
-        stmt = (
-            select(AuditLog.memory_id)
-            .where(AuditLog.action == "pipeline")
-            .where(AuditLog.details["error"].as_string() != "null")
-            .where(AuditLog.memory_id.isnot(None))
-            .distinct()
-        )
-        result = await self.session.execute(stmt)
-        failed_ids = [r[0] for r in result.all()]
-
-        if not failed_ids:
-            yield {"type": "done", "processed": 0, "errors": 0, "total": 0}
-            return
-
-        memories = []
-        for mid in failed_ids:
-            mem_result = await self.session.execute(
-                select(Memory).options(selectinload(Memory.tags)).where(Memory.id == mid)
-            )
-            memory = mem_result.scalar_one_or_none()
-            if memory and not memory.is_archived:
-                memories.append(memory)
-
-        async for event in self._reprocess_batch_stream(memories):
-            yield event
-
     async def _reprocess_batch_stream(self, memories: list[Memory]):
+        import asyncio
+        from app.services.pipeline import _get_feature_flags
+
         total = len(memories)
         if total == 0:
             yield {"type": "done", "processed": 0, "errors": 0, "total": 0}
             return
 
-        processed = 0
-        errors = 0
+        flags = await _get_feature_flags(self.pipeline.session_factory)
+        concurrency = flags.get("pipeline_concurrency", 5)
+        semaphore = asyncio.Semaphore(concurrency)
+
         yield {"type": "start", "total": total}
 
-        for i, memory in enumerate(memories):
-            status_label = "ok"
-            try:
-                status = await self.pipeline.process_memory(
-                    memory_id=memory.id,
-                    content=memory.content,
-                    source=memory.source,
-                    tags=[t.name for t in memory.tags],
-                    memory_type=memory.memory_type,
-                    created_at=memory.created_at.isoformat(),
-                )
-                await self.audit_repo.log("pipeline", memory.id, None, status)
-                if status.get("error"):
-                    errors += 1
+        processed = 0
+        errors = 0
+        completed_count = 0
+        results_queue: asyncio.Queue = asyncio.Queue()
+
+        async def _process_one(memory: Memory):
+            async with semaphore:
+                status_label = "ok"
+                status = {}
+                try:
+                    status = await self.pipeline.process_memory(
+                        memory_id=memory.id,
+                        content=memory.content,
+                        source=memory.source,
+                        tags=[t.name for t in memory.tags],
+                        memory_type=memory.memory_type,
+                        created_at=memory.created_at.isoformat(),
+                    )
+                    if status.get("error"):
+                        status_label = "error"
+                except Exception as e:
                     status_label = "error"
-                else:
-                    processed += 1
-                logger.info(f"Reprocessed {memory.id}")
-            except Exception as e:
+                    logger.error(f"Reprocess failed for {memory.id}: {e}")
+                finally:
+                    await results_queue.put((memory.id, status_label, status))
+
+        tasks = [asyncio.create_task(_process_one(m)) for m in memories]
+
+        while completed_count < total:
+            memory_id, status_label, status = await results_queue.get()
+            completed_count += 1
+            if status_label == "error":
                 errors += 1
-                status_label = "error"
-                logger.error(f"Reprocess failed for {memory.id}: {e}")
+            else:
+                processed += 1
+
+            try:
+                await self.audit_repo.log("pipeline", memory_id, None, status if isinstance(status, dict) else {})
+            except Exception as e:
+                logger.warning("Audit log failed: %s", e)
 
             yield {
                 "type": "progress",
-                "current": i + 1,
+                "current": completed_count,
                 "total": total,
-                "memory_id": str(memory.id),
+                "memory_id": str(memory_id),
                 "status": status_label,
                 "processed": processed,
                 "errors": errors,
             }
 
+        await asyncio.gather(*tasks, return_exceptions=True)
         yield {"type": "done", "processed": processed, "errors": errors, "total": total}
 
     async def get_overview(self, days: int = 7) -> dict:

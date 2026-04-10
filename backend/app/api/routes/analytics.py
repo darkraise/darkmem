@@ -1,7 +1,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from app.api.deps import get_analytics_service
 from app.database import get_session
 from app.models.audit import AuditLog
 from app.models.memory import Memory, Tag
+from app.repositories.graph import PostgresGraphRepository
 from app.schemas.config import StatsResponse
 from app.services.analytics import AnalyticsService
 
@@ -32,14 +33,13 @@ async def get_stats(
 
     entity_count = None
     rel_count = None
-    graph_repo = getattr(request.app.state, "graph_repo", None) if request else None
-    if graph_repo:
-        try:
-            stats = await graph_repo.get_stats()
-            entity_count = stats["entity_count"]
-            rel_count = stats["relationship_count"]
-        except Exception:
-            logger.debug("Graph stats unavailable")
+    try:
+        graph_repo = PostgresGraphRepository(session)
+        stats = await graph_repo.get_stats()
+        entity_count = stats["entity_count"]
+        rel_count = stats["relationship_count"]
+    except Exception:
+        logger.debug("Graph stats unavailable")
 
     return StatsResponse(
         memories=memory_count, tags=tag_count,
@@ -52,20 +52,16 @@ async def reprocess_all_memories(
     _user=Depends(require_auth),
     service: AnalyticsService = Depends(get_analytics_service),
 ):
-    return await service.reprocess_all()
-
-
-@router.post("/reprocess-failed")
-async def reprocess_failed_memories(
-    _user=Depends(require_auth),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    return await service.reprocess_failed()
+    result = await service.reprocess_all()
+    if "error" in result:
+        raise HTTPException(status_code=503, detail=result["error"])
+    return result
 
 
 async def _sse_generator(stream):
     async for event in stream:
         yield f"data: {json.dumps(event)}\n\n"
+    yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
 
 @router.post("/reprocess/stream")
@@ -80,21 +76,9 @@ async def reprocess_all_stream(
     )
 
 
-@router.post("/reprocess-failed/stream")
-async def reprocess_failed_stream(
-    _user=Depends(require_auth),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    return StreamingResponse(
-        _sse_generator(service.reprocess_failed_stream()),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
 @router.get("/pipeline-logs")
 async def get_pipeline_logs(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=500),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
