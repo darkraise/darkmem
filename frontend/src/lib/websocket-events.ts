@@ -78,12 +78,24 @@ export interface PipelineRetryBatchProgress {
   state: "started" | "progress" | "done"
 }
 
+export interface PipelineReembedBatchProgress {
+  batch_id: string
+  category: "memories" | "code_chunks" | "entities"
+  current: number
+  total: number
+  processed: number
+  errors: number
+  state: "started" | "progress" | "done"
+  error_message: string | null
+}
+
 export type WebSocketEventMap = {
   "pipeline.completed": PipelineStatus
   "pipeline.partial": PipelineStatus
   "pipeline.failed": PipelineStatus
   "pipeline.failure.updated": PipelineFailureUpdated
   "pipeline.retry_batch.progress": PipelineRetryBatchProgress
+  "pipeline.reembed_batch.progress": PipelineReembedBatchProgress
   "memory.deleted": MemoryDeleted
   "repo.clone_started": RepoCloneStarted
   "repo.clone_completed": RepoCloneCompleted
