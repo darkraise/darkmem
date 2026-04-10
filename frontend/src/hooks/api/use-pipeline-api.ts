@@ -75,7 +75,7 @@ export function usePipelineLogs(limit = 10) {
   });
 }
 
-export function useReprocessStream(endpoint: "/analytics/reprocess/stream" | "/analytics/reprocess-failed/stream") {
+export function useReprocessStream(endpoint: "/analytics/reprocess/stream") {
   const qc = useQueryClient();
   const [isPending, setIsPending] = useState(false);
   const [progress, setProgress] = useState<ReprocessProgress | null>(null);
