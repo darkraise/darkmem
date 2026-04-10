@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, getAuthToken } from "@/lib/api";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 
 export interface Stats {
   memories: number;
@@ -13,7 +13,7 @@ export interface Stats {
 export interface HealthStatus {
   status: string;
   pipeline: boolean;
-  services: { qdrant: boolean; neo4j: boolean; llm: boolean };
+  services: { pgvector: boolean; llm: boolean };
 }
 
 export interface PipelineLog {
@@ -30,6 +30,26 @@ export interface ReprocessProgress {
   errors: number;
   memoryId?: string;
   status?: string;
+}
+
+export interface PipelineFailure {
+  id: string
+  entity_type: string
+  entity_id: string
+  pipeline_name: string
+  failed_step: string
+  error_message: string | null
+  attempts: number
+  first_failed_at: string
+  last_attempt_at: string
+  resolved_at: string | null
+  metadata: Record<string, unknown>
+  entity_preview: string | null
+}
+
+export interface PipelineFailureListResponse {
+  items: PipelineFailure[]
+  total: number
 }
 
 export function useStats() {
@@ -70,13 +90,10 @@ export function useReprocessStream(endpoint: "/analytics/reprocess/stream" | "/a
     abortRef.current = controller;
 
     try {
-      const token = getAuthToken();
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
       const res = await fetch(`/api/v1${endpoint}`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         signal: controller.signal,
       });
 
@@ -163,4 +180,71 @@ export function useOverview(days: number = 7) {
     queryKey: ["overview", days],
     queryFn: () => apiFetch(`/analytics/overview?days=${days}`),
   });
+}
+
+export function usePipelineFailures(filters?: { entity_type?: string; pipeline_name?: string }) {
+  const qs = new URLSearchParams()
+  if (filters?.entity_type) qs.set("entity_type", filters.entity_type)
+  if (filters?.pipeline_name) qs.set("pipeline_name", filters.pipeline_name)
+  const url = `/pipeline-failures${qs.toString() ? `?${qs}` : ""}`
+  return useQuery<PipelineFailureListResponse>({
+    queryKey: ["pipelineFailures", filters ?? {}],
+    queryFn: () => apiFetch<PipelineFailureListResponse>(url),
+  })
+}
+
+export function usePipelineFailureCounts() {
+  return useQuery<Record<string, number>>({
+    queryKey: ["pipelineFailureCounts"],
+    queryFn: () => apiFetch<Record<string, number>>("/pipeline-failures/counts"),
+  })
+}
+
+export function useRetryFailure() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ accepted: boolean; failure_id: string }>(
+        `/pipeline-failures/${id}/retry`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+    },
+  })
+}
+
+export function useForgetFailure() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/pipeline-failures/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+      qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+    },
+  })
+}
+
+export function useRetryAllFailures() {
+  return useMutation({
+    mutationFn: (filters?: { entity_type?: string; pipeline_name?: string }) => {
+      const qs = new URLSearchParams()
+      if (filters?.entity_type) qs.set("entity_type", filters.entity_type)
+      if (filters?.pipeline_name) qs.set("pipeline_name", filters.pipeline_name)
+      const url = `/pipeline-failures/retry-all${qs.toString() ? `?${qs}` : ""}`
+      return apiFetch<{ accepted: boolean; batch_id: string; total: number }>(url, {
+        method: "POST",
+      })
+    },
+  })
+}
+
+export function useRetryBatchProgress(batchId: string | null) {
+  return useQuery<import("@/lib/websocket-events").PipelineRetryBatchProgress | undefined>({
+    queryKey: ["retryBatchProgress", batchId],
+    queryFn: () => undefined,
+    enabled: false,
+    staleTime: Infinity,
+  })
 }
