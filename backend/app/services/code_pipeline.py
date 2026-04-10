@@ -228,6 +228,37 @@ class CodePipeline:
                 self._stats["files_deleted"], self._stats["symbols_indexed"],
                 len(self._stats["errors"]),
             )
+
+            # Feature 2: record code indexing failure state
+            try:
+                from app.services.pipeline_failures import (
+                    PipelineFailureService, derive_code_failed_step,
+                )
+                failure_svc = PipelineFailureService(
+                    self.session, broadcast=event_manager.broadcast,
+                )
+                errors = self._stats.get("errors", [])
+                if errors:
+                    failed_step = derive_code_failed_step(errors)
+                    error_message = "\n".join(errors[:10])
+                    await failure_svc.record(
+                        entity_type="code_repo",
+                        entity_id=repo_id,
+                        pipeline_name="code_index",
+                        failed_step=failed_step,
+                        error_message=error_message,
+                        metadata={"error_count": len(errors)},
+                    )
+                else:
+                    await failure_svc.resolve(
+                        entity_type="code_repo",
+                        entity_id=repo_id,
+                        pipeline_name="code_index",
+                    )
+                await self.session.commit()
+            except Exception as e:
+                logger.warning("Failed to record code indexing failure state: %s", e)
+
             return self._stats
 
         except Exception as exc:
@@ -238,6 +269,24 @@ class CodePipeline:
             except Exception:
                 logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
             await self.session.commit()
+
+            # Feature 2: record the exception as an unresolved failure
+            try:
+                from app.services.pipeline_failures import PipelineFailureService
+                failure_svc = PipelineFailureService(
+                    self.session, broadcast=event_manager.broadcast,
+                )
+                await failure_svc.record(
+                    entity_type="code_repo",
+                    entity_id=repo_id,
+                    pipeline_name="code_index",
+                    failed_step="other",
+                    error_message=f"{type(exc).__name__}: {exc}"[:2000],
+                )
+                await self.session.commit()
+            except Exception as e2:
+                logger.warning("Failed to record pipeline exception as failure: %s", e2)
+
             raise
 
     async def _update_status(self, message: str, event_type: str, event_data: dict) -> None:
