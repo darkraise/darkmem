@@ -197,9 +197,11 @@ class MemoryService:
         if not semantic_results:
             return {"answer": "No relevant memories found to answer this question.", "sources": []}
 
-        # Step 2: Fetch full memory content
-        memory_ids = [r["memory_id"] for r in semantic_results]
-        score_by_id = {r["memory_id"]: r["score"] for r in semantic_results}
+        # Step 2: Fetch full memory content. Semantic search may return
+        # memory_id as either a UUID or a string (hybrid vs pure paths);
+        # normalize to UUID for consistent dict keys.
+        memory_ids = [UUID(r["memory_id"]) if isinstance(r["memory_id"], str) else r["memory_id"] for r in semantic_results]
+        score_by_id = {mid: r["score"] for mid, r in zip(memory_ids, semantic_results)}
         fetched = await self.memory_repo.get_many(memory_ids)
         fetched_by_id = {m.id: m for m in fetched}
 
