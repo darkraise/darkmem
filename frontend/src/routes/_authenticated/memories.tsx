@@ -97,6 +97,8 @@ interface WingSidebarProps {
   selectedWing: string
   selectedRoom: string
   totalCount: number
+  unfilteredCount: number
+  hasFilters: boolean
   onSelectAll: () => void
   onSelectWing: (wing: string) => void
   onSelectRoom: (wing: string, room: string) => void
@@ -109,6 +111,8 @@ function WingSidebar({
   selectedWing,
   selectedRoom,
   totalCount,
+  unfilteredCount,
+  hasFilters,
   onSelectAll,
   onSelectWing,
   onSelectRoom,
@@ -185,7 +189,7 @@ function WingSidebar({
             color: "rgba(34,211,238,0.6)",
           }}
         >
-          {totalCount}
+          {hasFilters ? `${totalCount} of ${unfilteredCount}` : totalCount}
         </span>
       </button>
 
@@ -362,12 +366,17 @@ function MemoriesPage() {
     limit: PAGE_SIZE,
     offset,
   })
+  const { data: unfilteredData } = usePaginatedSearch({ limit: 1, offset: 0 })
   const { data: tagsData } = useTags()
   const deleteMemory = useDeleteMemory()
   const qc = useQueryClient()
 
   const memories = data?.items ?? []
   const total = data?.total ?? 0
+  const unfilteredTotal = unfilteredData?.total ?? total
+  const hasFilters = Boolean(
+    query || tagFilter || sourceFilter || typeFilter || wingFilter || roomFilter || hallFilter,
+  )
   const pageStart = offset + 1
   const pageEnd = Math.min(offset + PAGE_SIZE, total)
 
@@ -506,6 +515,8 @@ function MemoriesPage() {
           selectedWing={wingFilter}
           selectedRoom={roomFilter}
           totalCount={total}
+          unfilteredCount={unfilteredTotal}
+          hasFilters={hasFilters}
           onSelectAll={handleSelectAll}
           onSelectWing={handleSelectWing}
           onSelectRoom={handleSelectRoom}
