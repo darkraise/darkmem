@@ -1,4 +1,5 @@
 import logging
+import re
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -195,6 +196,8 @@ class MemoryService:
         # Step 1a: Detect type/tag hints in the question so we can surface
         # memories whose content may not mention the literal category word
         # (e.g. "decisions" rarely appears inside a decision memory body).
+        # Use word-boundary matching so "artifact" does not trigger "fact"
+        # and "preferential" does not trigger "preference".
         KNOWN_TYPES = (
             "fact", "decision", "problem", "preference",
             "reference", "architecture", "milestone",
@@ -203,7 +206,7 @@ class MemoryService:
         type_hints: list[str] = []
         tag_hints: list[str] = []
         for t in KNOWN_TYPES:
-            if t in q_lower or f"{t}s" in q_lower:
+            if re.search(rf"\b{t}s?\b", q_lower):
                 type_hints.append(t)
                 tag_hints.append(f"project/{t}s")
 

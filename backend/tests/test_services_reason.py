@@ -20,6 +20,33 @@ class _StubPipeline:
         return {"status": "skipped", "reason": "stub"}
 
 
+async def test_reason_does_not_boost_on_substring_false_positive(session):
+    """A question about "artifacts" must not boost memory_type=fact rows."""
+    pipeline = _StubPipeline()
+    svc = MemoryService(session, pipeline=pipeline)
+
+    # A fact memory that MUST NOT leak into a question about artifacts.
+    await svc.create_memory(
+        MemoryCreate(
+            content="Water boils at 100 degrees Celsius at sea level",
+            memory_type="fact",
+            source="test",
+        ),
+        api_key_id=None,
+    )
+
+    result = await svc.reason("List the artifacts we shipped this week", limit=5)
+
+    # Semantic search is stubbed to return []. With loose substring matching,
+    # "fact" in "artifacts" fires and the decoy memory gets prepended. With
+    # word-boundary matching, no boost, no sources, clean miss.
+    contents = " ".join(s["content"] for s in result["sources"]).lower()
+    assert "water boils" not in contents, (
+        f"substring false positive: fact memory was boosted for 'artifacts' query; "
+        f"sources={result['sources']}"
+    )
+
+
 async def test_reason_finds_decision_memories_for_decisions_query(session):
     pipeline = _StubPipeline()
     svc = MemoryService(session, pipeline=pipeline)
