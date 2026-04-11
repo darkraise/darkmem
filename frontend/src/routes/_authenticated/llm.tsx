@@ -290,7 +290,7 @@ function LlmConfigPage() {
       />
       {isLoading && <p className="text-muted-foreground">Loading...</p>}
       {error && (
-        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 mb-4">
+        <div role="alert" aria-live="polite" className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 mb-4">
           <p className="text-destructive text-sm">Failed to load config. Make sure your API key has admin scope.</p>
           <p className="text-xs text-muted-foreground mt-1">{(error as Error).message}</p>
         </div>
