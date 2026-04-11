@@ -64,9 +64,7 @@ class PostgresVectorRepository:
     def _parse_vector(raw) -> list[float]:
         if isinstance(raw, str):
             return [float(x) for x in raw.strip("[]").split(",")]
-        if isinstance(raw, (list, tuple)):
-            return [float(x) for x in raw]
-        return list(raw)
+        return [float(x) for x in raw]
 
     async def get_all_vectors(self, limit: int = 500) -> list[dict]:
         result = await self.session.execute(
