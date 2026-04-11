@@ -14,8 +14,7 @@ import {
   Cpu,
   Settings,
 } from "lucide-react"
-import { SidebarLayout, TopNavLayout, StackedLayout, UserMenu } from "darkraise-ui/layout"
-import { useLayoutStore } from "darkraise-ui/layout"
+import { SidebarLayout, UserMenu } from "darkraise-ui/layout"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
 import type { NavGroup } from "darkraise-ui/layout"
@@ -59,7 +58,6 @@ const nav: NavGroup[] = [
 
 function AuthenticatedLayout() {
   useWebSocket()
-  const layout = useLayoutStore((s) => s.layout)
 
   const handleLogout = async () => {
     const { logout } = await import("@/lib/api")
@@ -67,17 +65,10 @@ function AuthenticatedLayout() {
     window.location.href = "/login"
   }
 
-  const Layout =
-    layout === "top-nav"
-      ? TopNavLayout
-      : layout === "stacked"
-        ? StackedLayout
-        : SidebarLayout
-
   return (
-    <Layout nav={nav} headerSlot={<UserMenu user={{ name: "Admin" }} onLogout={handleLogout} />}>
+    <SidebarLayout nav={nav} headerSlot={<UserMenu user={{ name: "Admin" }} onLogout={handleLogout} />}>
       <Outlet />
-    </Layout>
+    </SidebarLayout>
   )
 }
 
