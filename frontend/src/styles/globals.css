@@ -94,3 +94,17 @@
 .code-analysis-panel .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background-color: rgba(34, 211, 238, 0.15);
 }
+
+/*
+ * darkraise-ui 1.0.5 hardcodes a second, propless <UserMenu /> inside
+ * LayoutHeader (after NotificationBell), which renders a ghost "U" avatar
+ * with a broken "Log out" action. We already inject our own functional
+ * UserMenu via headerSlot, so the trailing hardcoded instance is purely
+ * duplicate UI. Hide it until the upstream library accepts user/onLogout
+ * props on the Layout component itself.
+ *
+ * See docs/e2e/runs/2026-04-11-ui-run.md U3.3 for the E2E finding.
+ */
+header > .ml-auto.flex > button.rounded-full:last-child {
+  display: none !important;
+}
