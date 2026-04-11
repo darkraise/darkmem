@@ -22,6 +22,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/component
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Progress } from "darkraise-ui/components/progress"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "darkraise-ui/components/alert-dialog"
 import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "sonner"
 
@@ -501,9 +512,26 @@ function PipelinePage() {
       <PageHeader title="Pipeline Logs" />
 
       <div className="flex items-center justify-end gap-2 mb-4">
-        <Button variant="outline" size="sm" onClick={handleReprocessAll} disabled={anyPending}>
-          {reprocessAll.isPending ? "Reprocessing..." : "Reprocess All"}
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm" disabled={anyPending}>
+              {reprocessAll.isPending ? "Reprocessing..." : "Reprocess All"}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reprocess all memories?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will re-run embedding, extraction, and graph steps for every memory
+                in the database. On large collections this can take several minutes.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleReprocessAll}>Reprocess</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <div className="mb-6">
