@@ -301,6 +301,7 @@ function CodeGraphPage() {
 
   return (
     <div className="code-graph-root flex flex-col h-full">
+      <h1 className="sr-only">Code Graph</h1>
       {/* ── Toolbar ─────────────────────────────────────────────── */}
       <div className="code-graph-toolbar flex items-center gap-3 px-4 py-2 border-b border-cyan-900/15 shrink-0">
         {/* Left: panel toggle + repo */}

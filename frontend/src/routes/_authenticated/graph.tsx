@@ -491,7 +491,7 @@ function KnowledgeGraphPage() {
     <div className="p-6 flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Knowledge Graph</h2>
+        <h1 className="text-xl font-semibold">Knowledge Graph</h1>
         {nodeCount > 0 && (
           <span className="text-sm text-muted-foreground">
             {nodeCount} entities, {edgeCount} relationships

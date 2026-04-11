@@ -399,21 +399,21 @@ function SettingsPage() {
       />
 
       <div className="mb-8">
-        <h3 className="mb-4 text-base font-semibold">Workers</h3>
+        <h2 className="mb-4 text-base font-semibold">Workers</h2>
         <div className="grid grid-cols-1 gap-4">
           <EnrichmentCard />
         </div>
       </div>
 
       <div className="mb-8">
-        <h3 className="mb-4 text-base font-semibold">Feature Flags</h3>
+        <h2 className="mb-4 text-base font-semibold">Feature Flags</h2>
         <div className="grid grid-cols-1 gap-4">
           <FeatureFlagsCard />
         </div>
       </div>
 
       <div>
-        <h3 className="mb-4 text-base font-semibold">Classification</h3>
+        <h2 className="mb-4 text-base font-semibold">Classification</h2>
         <div className="grid grid-cols-1 gap-4">
           <ClassificationAreasCard />
         </div>

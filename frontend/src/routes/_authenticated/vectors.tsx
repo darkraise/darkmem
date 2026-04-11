@@ -151,7 +151,7 @@ function VectorSpacePage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Vector Space</h2>
+        <h1 className="text-xl font-semibold">Vector Space</h1>
         {points.length > 0 && (
           <span className="text-sm text-muted-foreground">{points.length} memories projected (PCA 2D)</span>
         )}
