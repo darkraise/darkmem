@@ -16,7 +16,7 @@
     "@sigma/edge-curve": "^3.1.0",
     "@sigma/node-square": "^3.0.0",
     "@tanstack/react-query": "^5.96.2",
-    "darkraise-ui": "^1.0.5",
+    "darkraise-ui": "^1.0.6",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",

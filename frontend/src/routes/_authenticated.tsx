@@ -14,7 +14,7 @@ import {
   Cpu,
   Settings,
 } from "lucide-react"
-import { SidebarLayout, UserMenu } from "darkraise-ui/layout"
+import { SidebarLayout } from "darkraise-ui/layout"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
 import type { NavGroup } from "darkraise-ui/layout"
@@ -66,7 +66,11 @@ function AuthenticatedLayout() {
   }
 
   return (
-    <SidebarLayout nav={nav} headerSlot={<UserMenu user={{ name: "Admin" }} onLogout={handleLogout} />}>
+    <SidebarLayout
+      nav={nav}
+      user={{ name: "Admin", email: "" }}
+      onLogout={handleLogout}
+    >
       <Outlet />
     </SidebarLayout>
   )
