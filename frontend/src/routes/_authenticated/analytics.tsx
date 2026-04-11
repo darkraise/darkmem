@@ -39,7 +39,10 @@ function AnalyticsPage() {
 
   return (
     <div className="p-6">
-      <PageHeader title="Analytics" />
+      <PageHeader
+        title="Analytics"
+        description="Tag and source trends. Pipeline and extraction metrics live on the Pipeline page."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>

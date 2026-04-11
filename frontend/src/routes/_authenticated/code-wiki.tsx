@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import { useRepos } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
@@ -184,7 +184,17 @@ function CodeWikiPage() {
 
       {!selectedRepoId && !isLoading && (
         <p className="text-muted-foreground">
-          Select a repository to generate documentation.
+          {repos && repos.length === 0 ? (
+            <>
+              No repositories indexed yet.{" "}
+              <Link to="/repos" className="text-primary underline">
+                Add a repo
+              </Link>{" "}
+              to get started.
+            </>
+          ) : (
+            "Select a repository to generate documentation."
+          )}
         </p>
       )}
     </div>
