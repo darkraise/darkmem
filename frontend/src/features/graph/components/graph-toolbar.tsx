@@ -152,14 +152,17 @@ export function GraphToolbar({
           size="sm"
           pressed={showSettings}
           onPressedChange={onToggleSettings}
+          aria-label="Toggle graph settings"
           className="h-7 text-xs data-[pressed]:bg-primary/20 data-[pressed]:text-primary"
         >
           <Settings className="w-3.5 h-3.5" />
         </Toggle>
 
         <button
+          type="button"
           className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           onClick={onReset}
+          aria-label="Reset graph view"
         >
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
