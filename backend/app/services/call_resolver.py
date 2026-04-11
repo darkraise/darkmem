@@ -8,7 +8,12 @@ from app.services.symbol_table import CALLABLE_KINDS, SymbolEntry, SymbolTable
 
 logger = logging.getLogger(__name__)
 
-CONFIDENCE = {"same-file": 0.95, "import-scoped": 0.90, "global": 0.50}
+CONFIDENCE = {
+    "same-file": 0.95,
+    "import-scoped": 0.90,
+    "interface-dispatch": 0.70,
+    "global": 0.50,
+}
 
 BUILTIN_SKIP = {
     "print", "len", "range", "str", "int", "float", "bool", "list", "dict",
@@ -27,16 +32,32 @@ BUILTIN_SKIP = {
 
 
 class CallResolver:
-    def __init__(self, symbol_table: SymbolTable, import_map: dict[str, set[str]], type_envs=None, named_imports=None, wildcard_imports=None):
+    def __init__(
+        self,
+        symbol_table: SymbolTable,
+        import_map: dict[str, set[str]],
+        type_envs=None,
+        named_imports=None,
+        wildcard_imports=None,
+        named_import_map: dict[str, dict[str, tuple[str, str]]] | None = None,
+        wildcard_import_map: dict[str, set[str]] | None = None,
+        topological_order: list[str] | None = None,
+    ):
         self.symbols = symbol_table
         self.import_map = import_map
         self.type_envs = type_envs or {}
-        self.named_imports = named_imports or {}
-        self.wildcard_imports = wildcard_imports or {}
+        self.named_imports = named_import_map or named_imports or {}
+        self.wildcard_imports = wildcard_import_map or wildcard_imports or {}
+        self.topological_order = topological_order
+        self._cache: dict[tuple[str, str, str | None], tuple[str, float] | None] = {}
 
     def resolve(self, call: ExtractedCall, from_file: str) -> tuple[str, float] | None:
         if call.called_name in BUILTIN_SKIP:
             return None
+
+        cache_key = (from_file, call.called_name, getattr(call, "receiver_name", None))
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         if call.call_form == "member" and call.receiver_name and from_file in self.type_envs:
             env = self.type_envs[from_file]
@@ -45,19 +66,30 @@ class CallResolver:
                 owner_methods = self.symbols.lookup_by_owner(receiver_type, call.called_name)
                 filtered = self._filter(owner_methods, call)
                 if len(filtered) == 1:
-                    return (filtered[0].node_id, 0.92)
+                    result = (filtered[0].node_id, 0.92)
+                    self._cache[cache_key] = result
+                    return result
+                if len(filtered) > 1:
+                    interface_hit = self._try_interface_dispatch(filtered, call)
+                    if interface_hit:
+                        self._cache[cache_key] = interface_hit
+                        return interface_hit
 
         if call.call_form == "member" and call.receiver_name:
             receiver_methods = self.symbols.lookup_by_owner(call.receiver_name, call.called_name)
             filtered = self._filter(receiver_methods, call)
             if len(filtered) == 1:
-                return (filtered[0].node_id, 0.80)
+                result = (filtered[0].node_id, 0.80)
+                self._cache[cache_key] = result
+                return result
 
         locals_ = self.symbols.lookup_local(from_file, call.called_name)
         if locals_:
             filtered = self._filter(locals_, call)
             if len(filtered) == 1:
-                return (filtered[0].node_id, CONFIDENCE["same-file"])
+                result = (filtered[0].node_id, CONFIDENCE["same-file"])
+                self._cache[cache_key] = result
+                return result
 
         if call.called_name in self.named_imports.get(from_file, {}):
             source_file, exported_name = self.named_imports[from_file][call.called_name]
@@ -67,7 +99,9 @@ class CallResolver:
                 alias_candidates = [c for c in alias_candidates if c.file_path == source_file]
             filtered = self._filter(alias_candidates, call)
             if len(filtered) == 1:
-                return (filtered[0].node_id, 0.90)
+                result = (filtered[0].node_id, CONFIDENCE["import-scoped"])
+                self._cache[cache_key] = result
+                return result
 
         imported_files = self.import_map.get(from_file, set())
         candidates = self.symbols.lookup_global(call.called_name)
@@ -75,7 +109,9 @@ class CallResolver:
         if import_scoped:
             filtered = self._filter(import_scoped, call)
             if len(filtered) == 1:
-                return (filtered[0].node_id, CONFIDENCE["import-scoped"])
+                result = (filtered[0].node_id, CONFIDENCE["import-scoped"])
+                self._cache[cache_key] = result
+                return result
 
         if self.wildcard_imports and from_file in self.wildcard_imports:
             wildcard_files = self.wildcard_imports[from_file]
@@ -83,13 +119,30 @@ class CallResolver:
             if wildcard_candidates:
                 filtered = self._filter(wildcard_candidates, call)
                 if len(filtered) == 1:
-                    return (filtered[0].node_id, 0.85)
+                    result = (filtered[0].node_id, 0.85)
+                    self._cache[cache_key] = result
+                    return result
 
         if candidates:
             filtered = self._filter(candidates, call)
             if len(filtered) == 1:
-                return (filtered[0].node_id, CONFIDENCE["global"])
+                result = (filtered[0].node_id, CONFIDENCE["global"])
+                self._cache[cache_key] = result
+                return result
 
+        self._cache[cache_key] = None
+        return None
+
+    def _try_interface_dispatch(
+        self, candidates: list[SymbolEntry], call: ExtractedCall
+    ) -> tuple[str, float] | None:
+        """Pick the single interface/abstract declaration among ambiguous candidates."""
+        iface_hits = [
+            c for c in candidates
+            if c.kind in ("method", "function") and c.owner_id is None
+        ]
+        if len(iface_hits) == 1:
+            return (iface_hits[0].node_id, CONFIDENCE["interface-dispatch"])
         return None
 
     def _filter(self, candidates: list[SymbolEntry], call: ExtractedCall) -> list[SymbolEntry]:
@@ -101,9 +154,17 @@ class CallResolver:
             result = [c for c in candidates if c.kind in CALLABLE_KINDS or c.kind == "class"]
 
         if call.arg_count is not None and len(result) > 1:
-            arity_match = [c for c in result if c.param_count is None or c.param_count == call.arg_count]
-            if arity_match:
-                result = arity_match
+            exact_arity = [c for c in result if c.param_count == call.arg_count]
+            lenient_arity = [
+                c for c in result
+                if c.param_count is None
+                or c.param_count == call.arg_count
+                or abs((c.param_count or 0) - call.arg_count) <= 1
+            ]
+            if exact_arity:
+                result = exact_arity
+            elif lenient_arity:
+                result = lenient_arity
 
         return result
 

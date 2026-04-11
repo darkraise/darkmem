@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import UUID
 
@@ -6,10 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
-from app.repositories.graph import Neo4jGraphRepository
-from app.repositories.vector import QdrantVectorRepository
+from app.repositories.graph import PostgresGraphRepository
+from app.repositories.vector import PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
-from app.services.prompt import PromptService
+from app.services import prompt
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ class GraphService:
     def __init__(
         self,
         session: AsyncSession,
-        vector_repo: QdrantVectorRepository | None = None,
-        graph_repo: Neo4jGraphRepository | None = None,
+        vector_repo: PostgresVectorRepository | None = None,
+        graph_repo: PostgresGraphRepository | None = None,
         llm: LLMOrchestrator | None = None,
     ):
         self.session = session
@@ -114,7 +115,7 @@ class GraphService:
             return {}
 
     def _compute_similarity_edges(
-        self, clustered: list[dict], threshold: float
+        self, clustered: list[dict], threshold: float, max_edges: int = 1000
     ) -> list[dict]:
         if len(clustered) < 2:
             return []
@@ -135,6 +136,9 @@ class GraphService:
                         "target": ids[j],
                         "score": round(score, 3),
                     })
+        if len(edges) > max_edges:
+            edges.sort(key=lambda e: e["score"], reverse=True)
+            edges = edges[:max_edges]
         return edges
 
     async def _generate_cluster_names(
@@ -153,20 +157,29 @@ class GraphService:
             if cid >= 0:
                 content_by_cluster.setdefault(cid, []).append(m["content"][:100])
 
-        cluster_system_prompt = await PromptService.get("cluster_naming", self.session)
-        for cid, contents in content_by_cluster.items():
-            try:
-                sample = "\n".join(contents[:8])
-                name = await self.llm.chat_completion(
-                    "extraction",
-                    messages=[
-                        {"role": "system", "content": cluster_system_prompt},
-                        {"role": "user", "content": sample},
-                    ],
-                )
-                cluster_names[str(cid)] = name.strip().strip('"').strip("'")[:40]
-            except Exception:
-                cluster_names[str(cid)] = f"Cluster {cid}"
+        cluster_system_prompt = prompt.get("cluster_naming")
+        sem = asyncio.Semaphore(3)
+
+        async def _name_one(cid: int, contents: list[str]) -> tuple[int, str]:
+            async with sem:
+                try:
+                    sample = "\n".join(contents[:8])
+                    name = await self.llm.chat_completion(
+                        "extraction",
+                        messages=[
+                            {"role": "system", "content": cluster_system_prompt},
+                            {"role": "user", "content": sample},
+                        ],
+                    )
+                    return cid, name.strip().strip('"').strip("'")[:40]
+                except Exception:
+                    return cid, f"Cluster {cid}"
+
+        results = await asyncio.gather(
+            *[_name_one(cid, contents) for cid, contents in content_by_cluster.items()]
+        )
+        for cid, name in results:
+            cluster_names[str(cid)] = name
 
         return cluster_names
 
@@ -194,20 +207,22 @@ class GraphService:
             return [], []
 
     async def _fetch_neighbor_memories(self, memory_ids: list[str]) -> list[dict]:
-        neighbors = []
-        for mid in memory_ids:
-            try:
-                result = await self.session.execute(
-                    select(Memory).where(Memory.id == UUID(mid))
-                )
-                mem = result.scalar_one_or_none()
-                if mem:
-                    neighbors.append({
-                        "id": str(mem.id),
-                        "content": mem.content[:100],
-                        "source": mem.source,
-                        "memory_type": mem.memory_type,
-                    })
-            except Exception:
-                logger.warning(f"Failed to fetch neighbor memory {mid}")
-        return neighbors
+        if not memory_ids:
+            return []
+        try:
+            uuids = [UUID(mid) for mid in memory_ids]
+            result = await self.session.execute(
+                select(Memory).where(Memory.id.in_(uuids))
+            )
+            return [
+                {
+                    "id": str(mem.id),
+                    "content": mem.content[:100],
+                    "source": mem.source,
+                    "memory_type": mem.memory_type,
+                }
+                for mem in result.scalars().all()
+            ]
+        except Exception:
+            logger.warning("Failed to fetch neighbor memories")
+            return []

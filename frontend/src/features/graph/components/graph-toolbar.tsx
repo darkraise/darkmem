@@ -103,8 +103,9 @@ export function GraphToolbar({
     <div className="absolute top-3 left-0 right-0 z-20 flex flex-col items-center pointer-events-none">
       <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-md border border-border shadow-lg px-3 py-1.5 pointer-events-auto flex-wrap justify-center">
         <ToggleGroup
-          value={[viewMode]}
-          onValueChange={(v) => { if (v.length) onViewModeChange(v[0] as ViewMode); }}
+          type="single"
+          value={viewMode}
+          onValueChange={(v) => { if (v) onViewModeChange(v as ViewMode); }}
           className="gap-0"
         >
           <ToggleGroupItem value="2d" size="sm" variant="outline" className="h-7 text-xs px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">2D</ToggleGroupItem>
@@ -114,8 +115,9 @@ export function GraphToolbar({
         <div className="w-px h-4 bg-border" />
 
         <ToggleGroup
-          value={[colorMode]}
-          onValueChange={(v) => { if (v.length) onColorModeChange(v[0] as ColorMode); }}
+          type="single"
+          value={colorMode}
+          onValueChange={(v) => { if (v) onColorModeChange(v as ColorMode); }}
           className="gap-0"
         >
           <ToggleGroupItem value="type" size="sm" variant="outline" className="h-7 text-xs px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Type</ToggleGroupItem>
@@ -124,8 +126,9 @@ export function GraphToolbar({
         </ToggleGroup>
 
         <ToggleGroup
-          value={[hullMode]}
-          onValueChange={(v) => { if (v.length) onHullModeChange(v[0] as HullMode); }}
+          type="single"
+          value={hullMode}
+          onValueChange={(v) => { if (v) onHullModeChange(v as HullMode); }}
           className="gap-0"
         >
           <ToggleGroupItem value="none" size="sm" variant="outline" className="h-7 text-xs px-2.5 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">None</ToggleGroupItem>
@@ -176,8 +179,9 @@ export function GraphToolbar({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground w-14 text-right shrink-0">Size</span>
               <ToggleGroup
-                value={[sizeMode]}
-                onValueChange={(v) => { if (v.length) onSizeModeChange(v[0] as SizeMode); }}
+                type="single"
+                value={sizeMode}
+                onValueChange={(v) => { if (v) onSizeModeChange(v as SizeMode); }}
                 className="gap-0"
               >
                 <ToggleGroupItem value="connections" size="sm" variant="outline" className="h-7 text-xs px-2 data-[pressed]:bg-primary/20 data-[pressed]:text-primary">Connections</ToggleGroupItem>

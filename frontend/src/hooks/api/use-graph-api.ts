@@ -83,3 +83,39 @@ export function useReason() {
       apiFetch<{ answer: string; sources: unknown[] }>("/memories/reason", { method: "POST", body: JSON.stringify(data) }),
   });
 }
+
+// ── Knowledge Timeline ────────────────────────────────────────
+
+export interface KnowledgeEntity {
+  name: string;
+  entity_type: string;
+}
+
+export interface KnowledgeTriple {
+  id: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  confidence: number;
+}
+
+// TODO: wire up once GET /api/v1/graph/knowledge/entities is implemented in the backend
+export function useKnowledgeEntities() {
+  return useQuery<KnowledgeEntity[]>({
+    queryKey: ["knowledgeEntities"],
+    queryFn: () => Promise.resolve([] as KnowledgeEntity[]),
+    staleTime: 30_000,
+  });
+}
+
+// TODO: wire up once GET /api/v1/graph/knowledge/timeline is implemented in the backend
+export function useKnowledgeTimeline(_entity: string | null, _asOf?: string) {
+  return useQuery<KnowledgeTriple[]>({
+    queryKey: ["knowledgeTimeline"],
+    queryFn: () => Promise.resolve([] as KnowledgeTriple[]),
+    enabled: false,
+    staleTime: 30_000,
+  });
+}

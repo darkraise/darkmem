@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
+from sqlalchemy import select, text
 
 from app.database import async_session_factory
 from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
@@ -23,21 +24,13 @@ def set_pipeline(pipeline):
 
 @asynccontextmanager
 async def _memory_service_context():
-    session = async_session_factory()
-    try:
-        yield MemoryService(session, pipeline=_pipeline)
-        await session.commit()
-    except Exception:
+    async with async_session_factory() as session:
         try:
+            yield MemoryService(session, pipeline=_pipeline)
+            await session.commit()
+        except Exception:
             await session.rollback()
-        except Exception:
-            pass
-        raise
-    finally:
-        try:
-            await session.close()
-        except Exception:
-            pass
+            raise
 
 
 from app.utils.serialization import memory_to_dict as _memory_to_dict
@@ -55,7 +48,7 @@ def _validate_uuid(value: str) -> UUID:
 )
 async def memory_add(
     content: str,
-    tags: list[str] = [],
+    tags: list[str] | None = None,
     source: str = "mcp",
     source_agent: str | None = None,
     memory_type: str | None = None,
@@ -69,7 +62,7 @@ async def memory_add(
         memory_type: Classification: fact, decision, preference, debug, architecture, workflow, or session.
     """
     async with _memory_service_context() as service:
-        data = MemoryCreate(content=content, tags=tags, source=source, source_agent=source_agent, memory_type=memory_type)
+        data = MemoryCreate(content=content, tags=tags or [], source=source, source_agent=source_agent, memory_type=memory_type)
         memory = await service.create_memory(data, api_key_id=None)
         return json.dumps(_memory_to_dict(memory))
 
@@ -84,6 +77,8 @@ async def memory_search(
     memory_type: str | None = None,
     source: str | None = None,
     limit: int = 20,
+    offset: int = 0,
+    semantic_weight: float = 0.7,
 ) -> str:
     """
     Args:
@@ -93,9 +88,15 @@ async def memory_search(
         memory_type: Filter by type: fact, decision, preference, debug, architecture, workflow, session.
         source: Filter by origin (e.g., "claude-code", "mcp", "api").
         limit: Maximum number of results (default: 20).
+        offset: Pagination offset (default: 0).
+        semantic_weight: Balance between semantic (1.0) and keyword (0.0) search (default: 0.7).
     """
     async with _memory_service_context() as service:
-        params = MemorySearchRequest(query=query, tags_any=tags_any, tags_all=tags_all, memory_type=memory_type, source=source, limit=limit)
+        params = MemorySearchRequest(
+            query=query, tags_any=tags_any, tags_all=tags_all,
+            memory_type=memory_type, source=source,
+            limit=limit, offset=offset, semantic_weight=semantic_weight,
+        )
         memories = await service.search_memories(params)
         return json.dumps([_memory_to_dict(m) for m in memories])
 
@@ -158,7 +159,7 @@ async def memory_delete(memory_id: str) -> str:
 
 
 @mcp.tool(
-    description="Create multiple memories in a single operation. Each entry follows the same format as memory_add."
+    description="Create multiple memories in a single operation with parallel pipeline processing. Each entry follows the same format as memory_add. Concurrency is controlled by the pipeline_concurrency setting."
 )
 async def memory_batch_add(entries: list[dict]) -> str:
     """
@@ -167,13 +168,38 @@ async def memory_batch_add(entries: list[dict]) -> str:
     """
     if not entries:
         raise ValueError("entries list cannot be empty")
+
+    # Step 1: Create all memory rows WITHOUT pipeline processing
+    results = []
+    batch_entries = []
     async with _memory_service_context() as service:
-        results = []
         for entry in entries:
             data = MemoryCreate(**entry)
-            memory = await service.create_memory(data, api_key_id=None)
+            memory = await service.memory_repo.create(
+                content=data.content, source=data.source, source_agent=data.source_agent,
+                memory_type=data.memory_type, importance=data.importance,
+                metadata=data.metadata, expires_at=data.expires_at,
+            )
+            if data.tags:
+                await service.memory_repo.set_tags(memory.id, data.tags)
+                await service.session.refresh(memory, ["tags"])
+            await service.audit_repo.log("create", memory.id, None, {"source": data.source})
             results.append(_memory_to_dict(memory))
-        return json.dumps(results)
+            batch_entries.append({
+                "memory_id": memory.id,
+                "content": memory.content,
+                "source": memory.source,
+                "tags": [t.name for t in memory.tags],
+                "memory_type": memory.memory_type,
+                "created_at": str(memory.created_at),
+            })
+        await service.session.commit()
+
+    # Step 2: Batch pipeline — one embed_batch call + concurrent extraction
+    if _pipeline and batch_entries:
+        await _pipeline.process_batch(batch_entries)
+
+    return json.dumps(results)
 
 
 @mcp.tool(
@@ -209,7 +235,7 @@ async def memory_find_duplicates(memory_id: str, threshold: float = 0.9) -> str:
     description="Get statistics about the memory system: total memories, tags, active sources."
 )
 async def memory_stats() -> str:
-    from sqlalchemy import func, select
+    from sqlalchemy import func
 
     from app.models.memory import Memory, Tag
 
@@ -241,21 +267,13 @@ async def memory_tags() -> str:
 
 @asynccontextmanager
 async def _code_service_context():
-    session = async_session_factory()
-    try:
-        yield session
-        await session.commit()
-    except Exception:
+    async with async_session_factory() as session:
         try:
+            yield session
+            await session.commit()
+        except Exception:
             await session.rollback()
-        except Exception:
-            pass
-        raise
-    finally:
-        try:
-            await session.close()
-        except Exception:
-            pass
+            raise
 
 
 @mcp.tool(
@@ -297,48 +315,44 @@ async def code_search(
         language: Optional language filter (e.g., "python", "typescript").
         limit: Maximum number of results (default: 10).
     """
-    if not _pipeline or not _pipeline.llm or not _pipeline.vector_repo:
-        return json.dumps({"error": "Pipeline not initialized"})
-
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    from sqlalchemy import select
+    if not _pipeline or not _pipeline.llm:
+        raise ValueError("Pipeline not initialized")
 
     from app.models.code import Repository
+    from app.repositories.vector import PostgresVectorRepository
 
     query_vector = await _pipeline.llm.embed(query)
 
-    conditions = []
+    repo_id: UUID | None = None
     if repo_name:
         async with _code_service_context() as session:
             repo = (await session.execute(
                 select(Repository).where(Repository.name == repo_name)
             )).scalar_one_or_none()
             if not repo:
-                return json.dumps({"error": f"Repository not found: {repo_name}"})
-            conditions.append(FieldCondition(key="repo_id", match=MatchValue(value=str(repo.id))))
-    if language:
-        conditions.append(FieldCondition(key="language", match=MatchValue(value=language)))
+                raise ValueError(f"Repository not found: {repo_name}")
+            repo_id = repo.id
 
-    query_filter = Filter(must=conditions) if conditions else None
-
-    results = await _pipeline.vector_repo.client.query_points(
-        collection_name="code_chunks",
-        query=query_vector,
-        query_filter=query_filter,
-        limit=limit,
-    )
+    async with _code_service_context() as session:
+        vector_repo = PostgresVectorRepository(session)
+        results = await vector_repo.search_code_chunks(
+            query_vector,
+            limit=limit,
+            repo_id=repo_id,
+            language=language,
+        )
 
     return json.dumps([
         {
-            "file_path": p.payload.get("file_path", ""),
-            "symbol_name": p.payload.get("symbol_name"),
-            "chunk_content": p.payload.get("chunk_content", ""),
-            "language": p.payload.get("language"),
-            "line_start": p.payload.get("line_start", 0),
-            "line_end": p.payload.get("line_end", 0),
-            "score": p.score,
+            "file_path": r["file_path"],
+            "symbol_name": r["symbol_name"],
+            "chunk_content": r["chunk_content"],
+            "language": r["language"],
+            "line_start": r["line_start"],
+            "line_end": r["line_end"],
+            "score": r["score"],
         }
-        for p in results.points
+        for r in results
     ])
 
 
@@ -354,8 +368,6 @@ async def code_symbol(
         name: The symbol name to look up (function, class, method, etc.).
         repo_name: Optional repository name to narrow the search.
     """
-    from sqlalchemy import select
-
     from app.models.code import CodeFile, CodeSymbol, Repository
 
     async with _code_service_context() as session:
@@ -366,7 +378,7 @@ async def code_symbol(
         rows = (await session.execute(query)).scalars().all()
 
         if not rows:
-            return json.dumps({"error": f"Symbol not found: {name}"})
+            raise ValueError(f"Symbol not found: {name}")
 
         return json.dumps([
             {
@@ -398,8 +410,6 @@ async def code_file_symbols(
         repo_name: The repository name.
         file_path: The file path within the repository.
     """
-    from sqlalchemy import select
-
     from app.models.code import CodeFile, CodeSymbol, Repository
 
     async with _code_service_context() as session:
@@ -441,52 +451,84 @@ async def code_blast_radius(
         repo_name: Optional repository name to restrict the search.
         max_depth: Maximum call-chain depth to traverse (default: 10).
     """
-    if not _pipeline or not _pipeline.graph_repo:
-        return json.dumps({"error": "Graph service not initialized"})
-
-    from sqlalchemy import select
-
     from app.models.code import CodeFile, CodeSymbol, Repository
 
     async with _code_service_context() as session:
-        query = select(CodeSymbol).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+        query = select(CodeSymbol, CodeFile).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
         if repo_name:
             query = query.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
         query = query.where(CodeSymbol.name == symbol_name)
-        sym = (await session.execute(query)).scalars().first()
+        row = (await session.execute(query)).first()
 
-        if not sym:
-            return json.dumps({"error": f"Symbol not found: {symbol_name}"})
+        if not row:
+            raise ValueError(f"Symbol not found: {symbol_name}")
 
-        file = sym.file
-        repo_id = str(file.repo_id) if file else ""
+        sym, file = row
+        repo_id_str = str(file.repo_id)
+        symbol_key = f"{sym.name}::{file.file_path}"
+        depth = max(1, min(int(max_depth), 50))
 
-    depth = max(1, min(int(max_depth), 50))
-    async with _pipeline.graph_repo.driver.session() as neo:
-        result = await neo.run(
-            f"""
-            MATCH (start:CodeSymbol {{name: $name, repo_id: $repo_id}})
-            MATCH (caller:CodeSymbol)-[:CALLS*1..{depth}]->(start)
-            WHERE caller <> start AND caller.repo_id = $repo_id
-            RETURN DISTINCT caller.name AS name, caller.kind AS kind, caller.file_path AS file_path
-            """,
-            name=sym.name,
-            repo_id=repo_id,
-        )
-        records = [r async for r in result]
+        rows = (await session.execute(
+            text("""
+                WITH RECURSIVE callers AS (
+                    SELECT source_key AS name, source_kind AS kind, 1 AS distance
+                    FROM code_edges
+                    WHERE repo_id = :repo_id
+                      AND target_key = :symbol_key
+                      AND edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
+                    UNION
+                    SELECT e.source_key, e.source_kind, c.distance + 1
+                    FROM callers c
+                    JOIN code_edges e
+                        ON e.target_key = c.name
+                        AND e.repo_id = :repo_id
+                        AND e.edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
+                    WHERE c.distance < :max_depth
+                )
+                SELECT DISTINCT name, kind, MIN(distance) AS distance
+                FROM callers
+                GROUP BY name, kind
+                ORDER BY distance
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key, "max_depth": depth},
+        )).mappings().all()
 
-    affected = [
-        {"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]}
-        for r in records
-    ]
+    by_depth: dict[str, list] = {"1": [], "2": [], "3+": []}
+    affected = []
+    for r in rows:
+        name_val = r["name"]
+        dist = r["distance"]
+        file_path_val = None
+        if "::" in (name_val or ""):
+            parts = name_val.split("::", 1)
+            name_val, file_path_val = parts[0], parts[1]
+        entry = {"name": name_val, "kind": r["kind"], "file_path": file_path_val, "distance": dist}
+        affected.append(entry)
+        if dist == 1:
+            by_depth["1"].append(entry)
+        elif dist == 2:
+            by_depth["2"].append(entry)
+        else:
+            by_depth["3+"].append(entry)
+
+    direct_callers = len(by_depth["1"])
+    risk = "LOW"
+    if direct_callers > 10:
+        risk = "CRITICAL"
+    elif direct_callers > 5:
+        risk = "HIGH"
+    elif direct_callers > 2:
+        risk = "MEDIUM"
 
     return json.dumps({
         "symbol": {
             "id": str(sym.id),
             "name": sym.name,
-            "file_path": file.file_path if file else "",
+            "file_path": file.file_path,
         },
         "affected": affected,
+        "by_depth": by_depth,
+        "risk": risk,
         "total": len(affected),
     })
 
@@ -503,11 +545,6 @@ async def code_dependencies(
         repo_name: The repository name.
         file_path: Optional file path to get dependencies for a single file.
     """
-    if not _pipeline or not _pipeline.graph_repo:
-        return json.dumps({"error": "Graph service not initialized"})
-
-    from sqlalchemy import select
-
     from app.models.code import Repository
 
     async with _code_service_context() as session:
@@ -515,33 +552,26 @@ async def code_dependencies(
             select(Repository).where(Repository.name == repo_name)
         )).scalar_one_or_none()
         if not repo:
-            return json.dumps({"error": f"Repository not found: {repo_name}"})
-        repo_id = str(repo.id)
+            raise ValueError(f"Repository not found: {repo_name}")
 
-    async with _pipeline.graph_repo.driver.session() as neo:
+        params: dict = {"repo_id": str(repo.id)}
+        extra_filter = ""
         if file_path:
-            result = await neo.run(
-                """
-                MATCH (f:CodeFile {repo_id: $repo_id, file_path: $file_path})-[r:IMPORTS]->(m:Module)
-                RETURN f.file_path AS file, m.name AS module, r.names AS names
-                """,
-                repo_id=repo_id,
-                file_path=file_path,
-            )
-        else:
-            result = await neo.run(
-                """
-                MATCH (f:CodeFile {repo_id: $repo_id})-[r:IMPORTS]->(m:Module)
-                RETURN f.file_path AS file, m.name AS module, r.names AS names
-                """,
-                repo_id=repo_id,
-            )
-        records = [r async for r in result]
+            extra_filter = " AND source_key = :file_path"
+            params["file_path"] = file_path
 
-    return json.dumps([
-        {"file": r["file"], "module": r["module"], "names": r["names"]}
-        for r in records
-    ])
+        rows = (await session.execute(
+            text(f"""
+                SELECT source_key AS file, target_key AS module
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type = 'imports'
+                  {extra_filter}
+            """),
+            params,
+        )).mappings().all()
+
+    return json.dumps([{"file": r["file"], "module": r["module"]} for r in rows])
 
 
 @mcp.tool(description="Get 360-degree context for a code symbol: callers, callees, heritage, accesses, processes, community.")
@@ -554,73 +584,132 @@ async def code_context(
         symbol_name: Name of the function, class, or method.
         repo_name: Optional repository name filter.
     """
-    async with _code_service_context() as session:
-        from sqlalchemy import select
-        from app.models.code import CodeSymbol, CodeFile, Repository
+    from app.models.code import CodeFile, CodeSymbol, Repository
 
+    async with _code_service_context() as session:
         stmt = select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(CodeSymbol.name == symbol_name)
         if repo_name:
             stmt = stmt.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
         row = (await session.execute(stmt.limit(1))).first()
         if not row:
-            return json.dumps({"error": f"Symbol '{symbol_name}' not found"})
+            raise ValueError(f"Symbol '{symbol_name}' not found")
 
         sym, file_path = row
         file = (await session.execute(select(CodeFile).where(CodeFile.id == sym.file_id))).scalar_one_or_none()
-        repo_id = str(file.repo_id) if file else ""
+        repo_id_str = str(file.repo_id) if file else ""
+        symbol_key = f"{sym.name}::{file_path}"
 
-    context = {
-        "symbol": {"name": sym.name, "kind": sym.kind, "file_path": file_path, "signature": sym.signature, "summary": sym.summary},
-        "callers": [], "callees": [], "heritage": [], "accesses": [], "processes": [], "community": None,
-    }
+        context: dict = {
+            "symbol": {
+                "name": sym.name,
+                "kind": sym.kind,
+                "file_path": file_path,
+                "signature": sym.signature,
+                "summary": sym.summary,
+            },
+            "callers": [],
+            "callees": [],
+            "heritage": {"extends": [], "extended_by": [], "implements": []},
+            "accesses": [],
+            "processes": [],
+            "community": None,
+        }
 
-    graph_repo = _pipeline.graph_repo if _pipeline else None
-    if not graph_repo:
-        return json.dumps(context)
+        # Callers: symbols with an edge targeting this symbol_key via calls
+        callers_rows = (await session.execute(
+            text("""
+                SELECT source_key
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND target_key = :symbol_key
+                  AND edge_type = 'calls'
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().all()
+        for r in callers_rows:
+            name_val = r["source_key"]
+            fp_val = None
+            if "::" in (name_val or ""):
+                name_val, fp_val = name_val.split("::", 1)
+            context["callers"].append({"name": name_val, "file_path": fp_val})
 
-    async with graph_repo.driver.session() as neo:
-        result = await neo.run(
-            "MATCH (caller:CodeSymbol {repo_id: $r})-[:CALLS]->(s:CodeSymbol {repo_id: $r, name: $name}) RETURN caller.name AS name, caller.kind AS kind, caller.file_path AS file_path",
-            r=repo_id, name=sym.name,
-        )
-        context["callers"] = [{"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]} async for r in result]
+        # Callees: symbols this symbol calls
+        callees_rows = (await session.execute(
+            text("""
+                SELECT target_key
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND source_key = :symbol_key
+                  AND edge_type = 'calls'
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().all()
+        for r in callees_rows:
+            name_val = r["target_key"]
+            fp_val = None
+            if "::" in (name_val or ""):
+                name_val, fp_val = name_val.split("::", 1)
+            context["callees"].append({"name": name_val, "file_path": fp_val})
 
-        result = await neo.run(
-            "MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:CALLS]->(callee:CodeSymbol {repo_id: $r}) RETURN callee.name AS name, callee.kind AS kind, callee.file_path AS file_path",
-            r=repo_id, name=sym.name,
-        )
-        context["callees"] = [{"name": r["name"], "kind": r["kind"], "file_path": r["file_path"]} async for r in result]
+        # Heritage: extends
+        extends_rows = (await session.execute(
+            text("""
+                SELECT target_key FROM code_edges
+                WHERE repo_id = :repo_id AND source_key = :symbol_key AND edge_type = 'extends'
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().all()
+        context["heritage"]["extends"] = [r["target_key"].split("::")[0] for r in extends_rows]
 
-        result = await neo.run(
-            """
-            OPTIONAL MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:EXTENDS]->(parent:CodeSymbol {repo_id: $r})
-            OPTIONAL MATCH (child:CodeSymbol {repo_id: $r})-[:EXTENDS]->(s2:CodeSymbol {repo_id: $r, name: $name})
-            OPTIONAL MATCH (s3:CodeSymbol {repo_id: $r, name: $name})-[:IMPLEMENTS]->(iface:CodeSymbol {repo_id: $r})
-            RETURN collect(DISTINCT parent.name) AS parents, collect(DISTINCT child.name) AS children, collect(DISTINCT iface.name) AS interfaces
-            """,
-            r=repo_id, name=sym.name,
-        )
-        record = await result.single()
-        if record:
-            context["heritage"] = {
-                "extends": [n for n in record["parents"] if n],
-                "extended_by": [n for n in record["children"] if n],
-                "implements": [n for n in record["interfaces"] if n],
-            }
+        extended_by_rows = (await session.execute(
+            text("""
+                SELECT source_key FROM code_edges
+                WHERE repo_id = :repo_id AND target_key = :symbol_key AND edge_type = 'extends'
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().all()
+        context["heritage"]["extended_by"] = [r["source_key"].split("::")[0] for r in extended_by_rows]
 
-        result = await neo.run(
-            "MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:MEMBER_OF]->(c:Community {repo_id: $r}) RETURN c.label AS label, c.community_id AS id",
-            r=repo_id, name=sym.name,
-        )
-        record = await result.single()
-        if record:
-            context["community"] = {"label": record["label"], "id": record["id"]}
+        implements_rows = (await session.execute(
+            text("""
+                SELECT target_key FROM code_edges
+                WHERE repo_id = :repo_id AND source_key = :symbol_key AND edge_type = 'implements'
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().all()
+        context["heritage"]["implements"] = [r["target_key"].split("::")[0] for r in implements_rows]
 
-        result = await neo.run(
-            "MATCH (s:CodeSymbol {repo_id: $r, name: $name})-[:STEP_IN_PROCESS]->(p:Process {repo_id: $r}) RETURN p.name AS name",
-            r=repo_id, name=sym.name,
-        )
-        context["processes"] = [r["name"] async for r in result]
+        # Community membership
+        community_row = (await session.execute(
+            text("""
+                SELECT n.key, n.label
+                FROM code_edges e
+                JOIN code_graph_nodes n ON n.key = e.target_key AND n.repo_id = e.repo_id
+                WHERE e.repo_id = :repo_id
+                  AND e.source_key = :symbol_key
+                  AND e.edge_type = 'member_of'
+                  AND n.kind = 'community'
+                LIMIT 1
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().first()
+        if community_row:
+            context["community"] = {"label": community_row["label"], "key": community_row["key"]}
+
+        # Processes
+        process_rows = (await session.execute(
+            text("""
+                SELECT n.label
+                FROM code_edges e
+                JOIN code_graph_nodes n ON n.key = e.target_key AND n.repo_id = e.repo_id
+                WHERE e.repo_id = :repo_id
+                  AND e.source_key = :symbol_key
+                  AND e.edge_type = 'step_in_process'
+                  AND n.kind = 'process'
+            """),
+            {"repo_id": repo_id_str, "symbol_key": symbol_key},
+        )).mappings().all()
+        context["processes"] = [r["label"] for r in process_rows]
 
     return json.dumps(context)
 
@@ -634,19 +723,18 @@ async def code_changes(
         repo_name: Repository name to analyze.
     """
     async with _code_service_context() as session:
-        from sqlalchemy import select
-        from app.models.code import Repository, CodeFile, CodeSymbol
+        from app.models.code import CodeFile, CodeSymbol, Repository
         from app.services.repo_manager import RepoManager
 
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+            raise ValueError(f"Repository '{repo_name}' not found")
 
         manager = RepoManager(session)
         work_dir = manager.repo_working_dir(repo)
 
         if not work_dir.exists():
-            return json.dumps({"error": "Repository working directory not found"})
+            raise ValueError("Repository working directory not found")
 
         try:
             diff_output = await RepoManager._run_git(work_dir, ["git", "diff", "--name-status", "HEAD"])
@@ -689,51 +777,75 @@ async def code_changes(
 
 @mcp.tool(description="List code communities detected via Leiden clustering for a repository.")
 async def code_communities(repo_name: str) -> str:
+    from app.models.code import Repository
+
     async with _code_service_context() as session:
-        from sqlalchemy import select
-        from app.models.code import Repository
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+            raise ValueError(f"Repository '{repo_name}' not found")
 
-        if not _pipeline or not _pipeline.graph_repo:
-            return json.dumps({"error": "Graph service not available"})
+        rows = (await session.execute(
+            text("""
+                SELECT key, label, properties
+                FROM code_graph_nodes
+                WHERE repo_id = :repo_id AND kind = 'community'
+                ORDER BY label
+            """),
+            {"repo_id": str(repo.id)},
+        )).mappings().all()
 
-        async with _pipeline.graph_repo.driver.session() as neo:
-            result = await neo.run(
-                "MATCH (c:Community {repo_id: $repo_id}) RETURN c.community_id AS id, c.label AS label, c.size AS size ORDER BY c.size DESC",
-                repo_id=str(repo.id),
-            )
-            communities = [{"id": r["id"], "label": r["label"], "size": r["size"]} async for r in result]
-
-        return json.dumps(communities)
+    communities = [
+        {
+            "key": r["key"],
+            "label": r["label"],
+            "size": (r["properties"] or {}).get("size") if r["properties"] else None,
+        }
+        for r in rows
+    ]
+    return json.dumps(communities)
 
 
 @mcp.tool(description="List execution flow processes traced from route and tool entry points.")
 async def code_processes(repo_name: str) -> str:
+    from app.models.code import Repository
+
     async with _code_service_context() as session:
-        from sqlalchemy import select
-        from app.models.code import Repository
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+            raise ValueError(f"Repository '{repo_name}' not found")
 
-        if not _pipeline or not _pipeline.graph_repo:
-            return json.dumps({"error": "Graph service not available"})
+        process_rows = (await session.execute(
+            text("""
+                SELECT n.key, n.label, n.properties
+                FROM code_graph_nodes n
+                WHERE n.repo_id = :repo_id AND n.kind = 'process'
+                ORDER BY n.label
+            """),
+            {"repo_id": str(repo.id)},
+        )).mappings().all()
 
-        async with _pipeline.graph_repo.driver.session() as neo:
-            result = await neo.run(
-                """
-                MATCH (p:Process {repo_id: $repo_id})
-                OPTIONAL MATCH (sym:CodeSymbol)-[:STEP_IN_PROCESS]->(p)
-                RETURN p.name AS name, p.entry_kind AS kind, p.entry_file AS file, collect(sym.name) AS steps
-                ORDER BY p.name
-                """,
-                repo_id=str(repo.id),
-            )
-            processes = [{"name": r["name"], "kind": r["kind"], "entry_file": r["file"], "steps": r["steps"]} async for r in result]
+        processes = []
+        for p in process_rows:
+            meta = p["properties"] or {}
+            step_rows = (await session.execute(
+                text("""
+                    SELECT source_key
+                    FROM code_edges
+                    WHERE repo_id = :repo_id
+                      AND target_key = :proc_key
+                      AND edge_type = 'step_in_process'
+                """),
+                {"repo_id": str(repo.id), "proc_key": p["key"]},
+            )).mappings().all()
+            steps = [r["source_key"].split("::")[0] for r in step_rows]
+            processes.append({
+                "name": p["label"] or p["key"],
+                "kind": meta.get("entry_kind"),
+                "entry_file": meta.get("entry_file"),
+                "steps": steps,
+            })
 
-        return json.dumps(processes)
+    return json.dumps(processes)
 
 
 @mcp.tool(description="Find all references to a symbol for cross-file rename. Returns locations and confidence.")
@@ -746,13 +858,12 @@ async def code_rename(
         symbol_name: Name of the symbol to rename.
         repo_name: Repository name.
     """
-    async with _code_service_context() as session:
-        from sqlalchemy import select
-        from app.models.code import Repository, CodeSymbol, CodeFile
+    from app.models.code import CodeFile, CodeSymbol, Repository
 
+    async with _code_service_context() as session:
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            return json.dumps({"error": f"Repository '{repo_name}' not found"})
+            raise ValueError(f"Repository '{repo_name}' not found")
 
         definitions = (await session.execute(
             select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(
@@ -762,10 +873,9 @@ async def code_rename(
         )).all()
 
         if not definitions:
-            return json.dumps({"error": f"Symbol '{symbol_name}' not found", "references": []})
+            raise ValueError(f"Symbol '{symbol_name}' not found")
 
         references = []
-
         for sym, fp in definitions:
             references.append({
                 "file_path": fp,
@@ -775,59 +885,86 @@ async def code_rename(
                 "confidence": 1.0,
             })
 
-        if _pipeline and _pipeline.graph_repo:
-            async with _pipeline.graph_repo.driver.session() as neo:
-                result = await neo.run(
-                    """
-                    MATCH (caller:CodeSymbol {repo_id: $repo_id})-[r:CALLS]->(target:CodeSymbol {repo_id: $repo_id, name: $name})
-                    RETURN caller.name AS caller_name, caller.file_path AS file_path, r.line AS line, r.confidence AS confidence
-                    """,
-                    repo_id=str(repo.id), name=symbol_name,
-                )
-                async for r in result:
-                    references.append({
-                        "file_path": r["file_path"],
-                        "line": r["line"],
-                        "kind": "call",
-                        "caller": r["caller_name"],
-                        "confidence": r["confidence"] or 0.5,
-                    })
+        repo_id_str = str(repo.id)
 
-                result = await neo.run(
-                    """
-                    MATCH (child:CodeSymbol {repo_id: $repo_id})-[:EXTENDS|IMPLEMENTS]->(target:CodeSymbol {repo_id: $repo_id, name: $name})
-                    RETURN child.name AS name, child.file_path AS file_path, child.line_start AS line
-                    """,
-                    repo_id=str(repo.id), name=symbol_name,
-                )
-                async for r in result:
-                    references.append({
-                        "file_path": r["file_path"],
-                        "line": r["line"],
-                        "kind": "heritage",
-                        "symbol": r["name"],
-                        "confidence": 0.95,
-                    })
+        # Call references
+        call_rows = (await session.execute(
+            text("""
+                SELECT source_key, properties
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type = 'calls'
+                  AND (target_key = :sym_name OR target_key LIKE :sym_prefix)
+            """),
+            {
+                "repo_id": repo_id_str,
+                "sym_name": symbol_name,
+                "sym_prefix": f"{symbol_name}::%",
+            },
+        )).mappings().all()
+        for r in call_rows:
+            src = r["source_key"]
+            caller_name = src.split("::")[0] if "::" in src else src
+            caller_fp = src.split("::", 1)[1] if "::" in src else None
+            props = r["properties"] or {}
+            references.append({
+                "file_path": caller_fp,
+                "line": props.get("line"),
+                "kind": "call",
+                "caller": caller_name,
+                "confidence": props.get("confidence", 0.5),
+            })
 
-                result = await neo.run(
-                    """
-                    MATCH (f:CodeFile {repo_id: $repo_id})-[:IMPORTS]->(m:Module {name: $name})
-                    RETURN f.file_path AS file_path
-                    """,
-                    repo_id=str(repo.id), name=symbol_name,
-                )
-                async for r in result:
-                    references.append({
-                        "file_path": r["file_path"],
-                        "line": 0,
-                        "kind": "import",
-                        "confidence": 0.8,
-                    })
+        # Heritage references (extends/implements)
+        heritage_rows = (await session.execute(
+            text("""
+                SELECT source_key, edge_type
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type IN ('extends', 'implements')
+                  AND (target_key = :sym_name OR target_key LIKE :sym_prefix)
+            """),
+            {
+                "repo_id": repo_id_str,
+                "sym_name": symbol_name,
+                "sym_prefix": f"{symbol_name}::%",
+            },
+        )).mappings().all()
+        for r in heritage_rows:
+            src = r["source_key"]
+            child_name = src.split("::")[0] if "::" in src else src
+            child_fp = src.split("::", 1)[1] if "::" in src else None
+            references.append({
+                "file_path": child_fp,
+                "line": None,
+                "kind": "heritage",
+                "symbol": child_name,
+                "confidence": 0.95,
+            })
 
-        references.sort(key=lambda x: (-x.get("confidence", 0), x.get("file_path", ""), x.get("line", 0)))
+        # Import references
+        import_rows = (await session.execute(
+            text("""
+                SELECT source_key
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type = 'imports'
+                  AND target_key = :sym_name
+            """),
+            {"repo_id": repo_id_str, "sym_name": symbol_name},
+        )).mappings().all()
+        for r in import_rows:
+            references.append({
+                "file_path": r["source_key"],
+                "line": 0,
+                "kind": "import",
+                "confidence": 0.8,
+            })
 
-        return json.dumps({
-            "symbol": symbol_name,
-            "total_references": len(references),
-            "references": references,
-        })
+    references.sort(key=lambda x: (-x.get("confidence", 0), x.get("file_path") or "", x.get("line") or 0))
+
+    return json.dumps({
+        "symbol": symbol_name,
+        "total_references": len(references),
+        "references": references,
+    })

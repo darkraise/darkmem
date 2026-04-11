@@ -13,4 +13,7 @@ RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
+RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app
+USER app
+
 CMD ["./entrypoint.sh"]

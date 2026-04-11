@@ -1,19 +1,23 @@
+import logging
 import re
 import uuid
 from collections.abc import AsyncGenerator
 from sqlalchemy import select, func as sa_func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+logger = logging.getLogger(__name__)
+
 from app.models.chat import Conversation, Message
 from app.services.llm import LLMOrchestrator
-from app.services.prompt import PromptService
-from app.repositories.vector import QdrantVectorRepository
-from app.repositories.graph import Neo4jGraphRepository
+from app.services import prompt
+from app.repositories.vector import PostgresVectorRepository
+from app.repositories.graph import PostgresGraphRepository
 
 MENTION_RE = re.compile(r"@([\w./-]+)")
 CLUSTER_RE = re.compile(r"@cluster:(\d+)")
 
 MAX_HISTORY_MESSAGES = 20
+MAX_PROMPT_CHARS = 24000
 
 
 class ChatService:
@@ -21,8 +25,8 @@ class ChatService:
         self,
         session: AsyncSession,
         llm: LLMOrchestrator,
-        vector_repo: QdrantVectorRepository | None = None,
-        graph_repo: Neo4jGraphRepository | None = None,
+        vector_repo: PostgresVectorRepository | None = None,
+        graph_repo: PostgresGraphRepository | None = None,
     ):
         self.session = session
         self.llm = llm
@@ -135,9 +139,14 @@ class ChatService:
 
         # Stream LLM response
         full_response = []
-        async for token in self.llm.chat_completion_stream("reasoning", llm_messages):
-            full_response.append(token)
-            yield {"type": "token", "content": token}
+        try:
+            async for token in self.llm.chat_completion_stream("reasoning", llm_messages):
+                full_response.append(token)
+                yield {"type": "token", "content": token}
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            yield {"type": "error", "message": f"Stream interrupted: {e}"}
+            return
 
         # Save assistant message
         assistant_content = "".join(full_response)
@@ -193,23 +202,28 @@ class ChatService:
     # ── Retrieval ─────────────────────────────────────────
 
     async def _retrieve(self, question: str, context: dict | None = None) -> dict:
-        import asyncio
-
         context = context or {}
         mentions = set(MENTION_RE.findall(question))
         if context.get("mentions"):
             mentions.update(context["mentions"])
 
-        memories_task = self._search_memories(question)
-
         entity_names = [m for m in mentions if not m.startswith("cluster:")]
-        graph_task = self._lookup_entities(
-            entity_names,
-            context.get("selected_entity_id"),
-            context.get("selected_node_id"),
-        )
 
-        raw_memories, entities = await asyncio.gather(memories_task, graph_task)
+        try:
+            raw_memories = await self._search_memories(question)
+        except Exception as e:
+            logger.warning("Memory search failed during retrieval: %s", e)
+            raw_memories = []
+
+        try:
+            entities = await self._lookup_entities(
+                entity_names,
+                context.get("selected_entity_id"),
+                context.get("selected_node_id"),
+            )
+        except Exception as e:
+            logger.warning("Graph lookup failed during retrieval: %s", e)
+            entities = []
 
         # Auto-discover entities from top retrieved memories
         if not entities and self.graph_repo and raw_memories:
@@ -267,8 +281,6 @@ class ChatService:
         return entities
 
     async def _entities_from_memories(self, memories: list[dict], max_entities: int = 10) -> list[dict]:
-        import asyncio
-
         mids = [
             str(m.get("memory_id", m.get("id", "")))
             for m in memories
@@ -277,13 +289,14 @@ class ChatService:
         if not mids:
             return []
 
-        results = await asyncio.gather(
-            *(self.graph_repo.get_entities_by_memory_id(mid) for mid in mids)
-        )
-
         seen_names: set[str] = set()
         entities: list[dict] = []
-        for linked in results:
+        for mid in mids:
+            try:
+                linked = await self.graph_repo.get_entities_by_memory_id(mid)
+            except Exception as e:
+                logger.warning("Entity lookup by memory_id failed: %s", e)
+                continue
             for e in linked:
                 name = e.get("name", "")
                 if name and name not in seen_names:
@@ -300,7 +313,7 @@ class ChatService:
     ) -> list[dict]:
         messages: list[dict] = []
 
-        system_prompt = await PromptService.get("chat", self.session)
+        system_prompt = prompt.get("chat")
         context_parts = [system_prompt, "", "## Retrieved Memories", ""]
         for m in retrieval["memories"]:
             context_parts.append(
@@ -322,7 +335,10 @@ class ChatService:
             for r in relations:
                 context_parts.append(f"- {r.get('source', '?')} --[{r.get('type', '?')}]--> {r.get('target', '?')}")
 
-        messages.append({"role": "system", "content": "\n".join(context_parts)})
+        system_content = "\n".join(context_parts)
+        if len(system_content) > MAX_PROMPT_CHARS // 2:
+            system_content = system_content[:MAX_PROMPT_CHARS // 2]
+        messages.append({"role": "system", "content": system_content})
 
         stmt = (
             select(Message)
@@ -332,8 +348,12 @@ class ChatService:
         )
         history = list(reversed((await self.session.execute(stmt)).scalars().all()))
 
+        budget = MAX_PROMPT_CHARS - len(system_content) - len(current_message)
         for msg in history[:-1]:
-            messages.append({"role": msg.role, "content": msg.content})
+            if budget <= 0:
+                break
+            messages.append({"role": msg.role, "content": msg.content[:budget]})
+            budget -= len(msg.content)
 
         messages.append({"role": "user", "content": current_message})
         return messages

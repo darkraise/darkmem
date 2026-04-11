@@ -26,6 +26,15 @@ def _to_response(memory: Memory) -> MemoryResponse:
         updated_at=memory.updated_at,
         expires_at=memory.expires_at,
         is_archived=memory.is_archived,
+        wing=memory.wing,
+        room=memory.room,
+        hall=memory.hall,
+        classified_type=memory.classified_type,
+        classified_confidence=memory.classified_confidence,
+        llm_classified_type=memory.llm_classified_type,
+        llm_summary=memory.llm_summary,
+        llm_emotions=memory.llm_emotions,
+        llm_flags=memory.llm_flags,
     )
 
 
@@ -58,7 +67,10 @@ async def get_memory(
     memory = await service.get_memory(memory_id)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
-    return _to_response(memory)
+    resp = _to_response(memory)
+    crossrefs = await service.get_crossrefs(memory_id)
+    resp.related_memories = crossrefs
+    return resp
 
 
 @router.put("/{memory_id}", response_model=MemoryResponse)

@@ -15,10 +15,27 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider
-        defaultAccent="indigo"
-        defaultMode="dark"
-        defaultSurfaceStyle="default"
-        defaultFont="modern"
+        config={{
+          defaults: {
+            accentColor: "lime",
+            surfaceColor: "purple",
+            surfaceStyle: "glassmorphism",
+            backgroundStyle: "gradient",
+            mode: "system",
+            fontFamily: "default",
+          },
+          switcher: {
+            enabled: true,
+            axes: {
+              accentColor: true,
+              surfaceColor: true,
+              surfaceStyle: true,
+              backgroundStyle: true,
+              mode: true,
+              fontFamily: false,
+            },
+          },
+        }}
       >
         {children}
         <Toaster position="bottom-right" richColors />

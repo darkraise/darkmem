@@ -1,26 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.repositories.vector import QdrantVectorRepository
+from app.database import get_session
+from app.repositories.vector import PostgresVectorRepository
 from app.utils.math import pca_2d
 
 router = APIRouter(prefix="/api/v1/vectors", tags=["vectors"])
 
 
-def _get_vector_repo(request: Request) -> QdrantVectorRepository:
-    repo = getattr(request.app.state, "vector_repo", None)
-    if not repo:
-        raise HTTPException(status_code=503, detail="Vector service not available")
-    return repo
-
-
 @router.get("/projection")
 async def get_vector_projection(
-    limit: int = Query(500),
+    limit: int = Query(500, ge=1, le=5000),
     _user=Depends(require_auth),
     request: Request = None,
+    session: AsyncSession = Depends(get_session),
 ):
-    repo = _get_vector_repo(request)
+    repo = PostgresVectorRepository(session)
     points = await repo.get_all_vectors(limit=limit)
 
     if len(points) < 2:

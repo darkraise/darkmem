@@ -96,10 +96,7 @@ function PipelineHealth({ recentErrors }: { recentErrors: number }) {
         </span>
       </span>
       <span className="flex items-center gap-1.5 text-muted-foreground">
-        <ServiceDot ok={health.services.qdrant} /> Qdrant
-      </span>
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        <ServiceDot ok={health.services.neo4j} /> Neo4j
+        <ServiceDot ok={health.services.pgvector} /> pgvector
       </span>
       <span className="flex items-center gap-1.5 text-muted-foreground">
         <ServiceDot ok={health.services.llm} /> LLM

@@ -14,11 +14,12 @@ import {
   Cpu,
   Settings,
 } from "lucide-react"
-import { SidebarLayout, TopNavLayout, StackedLayout } from "darkraise-ui/layout"
+import { SidebarLayout, TopNavLayout, StackedLayout, UserMenu } from "darkraise-ui/layout"
 import { useLayoutStore } from "darkraise-ui/layout"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
 import type { NavGroup } from "darkraise-ui/layout"
+
 
 const nav: NavGroup[] = [
   {
@@ -60,6 +61,12 @@ function AuthenticatedLayout() {
   useWebSocket()
   const layout = useLayoutStore((s) => s.layout)
 
+  const handleLogout = async () => {
+    const { logout } = await import("@/lib/api")
+    await logout()
+    window.location.href = "/login"
+  }
+
   const Layout =
     layout === "top-nav"
       ? TopNavLayout
@@ -68,17 +75,24 @@ function AuthenticatedLayout() {
         : SidebarLayout
 
   return (
-    <Layout nav={nav}>
+    <Layout nav={nav} headerSlot={<UserMenu user={{ name: "Admin" }} onLogout={handleLogout} />}>
       <Outlet />
     </Layout>
   )
 }
 
 export const Route = createFileRoute("/_authenticated")({
-  beforeLoad: () => {
-    if (!useAuthStore.getState().isAuthenticated) {
-      throw redirect({ to: "/login" })
+  beforeLoad: async () => {
+    if (useAuthStore.getState().isAuthenticated) {
+      return
     }
+    const { checkAuth } = await import("@/lib/api")
+    const ok = await checkAuth()
+    if (ok) {
+      useAuthStore.getState().setAuthenticated(true)
+      return
+    }
+    throw redirect({ to: "/login" })
   },
   component: AuthenticatedLayout,
 })

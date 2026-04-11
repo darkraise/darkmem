@@ -4,7 +4,43 @@ import Sigma from "sigma";
 import EdgeCurveProgram, { indexParallelEdgesIndex } from "@sigma/edge-curve";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
-import { lightenHex } from "@/features/graph/lib/graph-colors";
+import noverlap from "graphology-layout-noverlap";
+
+// ── Color helpers (matching GitNexus) ─────────────────────────
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+    : { r: 100, g: 100, b: 100 };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return "#" + [r, g, b]
+    .map((x) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function dimColor(hex: string, amount: number): string {
+  const rgb = hexToRgb(hex);
+  const bg = { r: 18, g: 18, b: 28 };
+  return rgbToHex(
+    bg.r + (rgb.r - bg.r) * amount,
+    bg.g + (rgb.g - bg.g) * amount,
+    bg.b + (rgb.b - bg.b) * amount,
+  );
+}
+
+function brightenColor(hex: string, factor: number): string {
+  const rgb = hexToRgb(hex);
+  return rgbToHex(
+    rgb.r + ((255 - rgb.r) * (factor - 1)) / factor,
+    rgb.g + ((255 - rgb.g) * (factor - 1)) / factor,
+    rgb.b + ((255 - rgb.b) * (factor - 1)) / factor,
+  );
+}
+
+// ── Node constants ────────────────────────────────────────────
 
 const NODE_SIZES: Record<string, number> = {
   project: 20, package: 16, module: 13, folder: 10,
@@ -54,14 +90,18 @@ const EDGE_SIZE_MULTIPLIERS: Record<string, number> = {
 };
 const DEFAULT_EDGE_SIZE = 0.5;
 
+const HIERARCHY_EDGE_TYPES = new Set(["contains", "defines", "imports"]);
+const STRUCTURAL_TYPES = new Set(["project", "package", "module", "folder", "namespace"]);
+
+// ── Layout helpers ────────────────────────────────────────────
+
 function getNodeMass(kind: string, nodeCount: number): number {
   const m = nodeCount > 5000 ? 2 : nodeCount > 1000 ? 1.5 : 1;
   switch (kind) {
     case "project": return 50 * m;
     case "package": return 30 * m;
     case "module": return 20 * m;
-    case "folder": return 15 * m;
-    case "namespace": return 20 * m;
+    case "folder": case "namespace": return 15 * m;
     case "class": case "interface": return 5 * m;
     case "file": return 3 * m;
     case "function": case "method": return 2 * m;
@@ -80,6 +120,45 @@ function getScaledNodeSize(baseSize: number, nodeCount: number): number {
   if (nodeCount > 1000) return Math.max(2.5, baseSize * 0.8);
   return baseSize;
 }
+
+function getFA2Settings(nodeCount: number) {
+  const isSmall = nodeCount < 500;
+  const isMedium = nodeCount >= 500 && nodeCount < 2000;
+  const isLarge = nodeCount >= 2000 && nodeCount < 10000;
+
+  return {
+    gravity: isSmall ? 0.8 : isMedium ? 0.5 : isLarge ? 0.3 : 0.15,
+    scalingRatio: isSmall ? 15 : isMedium ? 30 : isLarge ? 60 : 100,
+    slowDown: isSmall ? 1 : isMedium ? 2 : isLarge ? 3 : 5,
+    barnesHutOptimize: nodeCount > 200,
+    barnesHutTheta: isLarge ? 0.8 : 0.6,
+    strongGravityMode: false,
+    outboundAttractionDistribution: true,
+    linLogMode: false,
+    adjustSizes: true,
+    edgeWeightInfluence: 1,
+  };
+}
+
+function getLayoutDuration(nodeCount: number): number {
+  if (nodeCount > 10000) return 45000;
+  if (nodeCount > 5000) return 35000;
+  if (nodeCount > 2000) return 30000;
+  if (nodeCount > 1000) return 30000;
+  if (nodeCount > 500) return 25000;
+  return 20000;
+}
+
+const NOVERLAP_SETTINGS = {
+  maxIterations: 20,
+  settings: {
+    ratio: 1.1,
+    margin: 10,
+    expansion: 1.05,
+  },
+};
+
+// ── Component ─────────────────────────────────────────────────
 
 interface CodeGraphRendererProps {
   nodes: Array<{ id: string; label: string; kind?: string; language?: string; file_path?: string }>;
@@ -102,53 +181,140 @@ export function CodeGraphRenderer({
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const fa2Ref = useRef<FA2Layout | null>(null);
+  const layoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedIdRef = useRef(selectedId);
   const hoveredNodeRef = useRef<string | null>(null);
   const highlightedIdsRef = useRef(highlightedIds);
   const visibleEdgeTypesRef = useRef(visibleEdgeTypes);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
-  const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
-  const edgesRef = useRef(edges);
-  edgesRef.current = edges;
 
   const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}`;
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return;
 
+    if (layoutTimeoutRef.current) { clearTimeout(layoutTimeoutRef.current); layoutTimeoutRef.current = null; }
     if (fa2Ref.current) { fa2Ref.current.kill(); fa2Ref.current = null; }
     if (sigmaRef.current) { sigmaRef.current.kill(); sigmaRef.current = null; graphRef.current = null; }
 
     const graph = new Graph();
     graphRef.current = graph;
 
-    const spread = Math.max(100, Math.sqrt(nodes.length) * 10);
-
     const nodeCount = nodes.length;
     const edgeBaseSize = nodeCount > 20000 ? 0.4 : nodeCount > 5000 ? 0.6 : 1.0;
 
-    for (const n of nodes) {
-      if (graph.hasNode(n.id)) continue;
-      const kind = n.kind?.toLowerCase() ?? "";
-      const color = NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR;
+    // ── Build parent-child hierarchy from edges ───────────────
+    const parentToChildren = new Map<string, string[]>();
+    const childToParent = new Map<string, string>();
+
+    for (const e of edges) {
+      const edgeType = e.type?.toLowerCase() ?? "";
+      if (HIERARCHY_EDGE_TYPES.has(edgeType)) {
+        if (!parentToChildren.has(e.source)) parentToChildren.set(e.source, []);
+        parentToChildren.get(e.source)!.push(e.target);
+        childToParent.set(e.target, e.source);
+      }
+    }
+
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const structuralNodes = nodes.filter((n) => STRUCTURAL_TYPES.has(n.kind?.toLowerCase() ?? ""));
+    const structuralSpread = Math.sqrt(nodeCount) * 40;
+    const childJitter = Math.sqrt(nodeCount) * 3;
+
+    // ── Position structural nodes in golden-angle spiral ──────
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const nodePositions = new Map<string, { x: number; y: number }>();
+
+    structuralNodes.forEach((node, index) => {
+      const angle = index * goldenAngle;
+      const radius = structuralSpread * Math.sqrt((index + 1) / Math.max(structuralNodes.length, 1));
+      const jitter = structuralSpread * 0.15;
+      const x = radius * Math.cos(angle) + (Math.random() - 0.5) * jitter;
+      const y = radius * Math.sin(angle) + (Math.random() - 0.5) * jitter;
+      nodePositions.set(node.id, { x, y });
+    });
+
+    // ── BFS to position children near parents ─────────────────
+    const addNode = (nodeId: string) => {
+      if (graph.hasNode(nodeId)) return;
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
+
+      let x: number, y: number;
+      const parentId = childToParent.get(nodeId);
+      const parentPos = parentId ? nodePositions.get(parentId) : null;
+
+      if (parentPos) {
+        x = parentPos.x + (Math.random() - 0.5) * childJitter;
+        y = parentPos.y + (Math.random() - 0.5) * childJitter;
+      } else {
+        x = (Math.random() - 0.5) * structuralSpread * 0.5;
+        y = (Math.random() - 0.5) * structuralSpread * 0.5;
+      }
+
+      nodePositions.set(nodeId, { x, y });
+
+      const kind = node.kind?.toLowerCase() ?? "";
       const baseSize = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
       const size = getScaledNodeSize(baseSize, nodeCount);
 
-      graph.addNode(n.id, {
-        x: (Math.random() - 0.5) * spread,
-        y: (Math.random() - 0.5) * spread,
-        label: n.label,
+      graph.addNode(nodeId, {
+        x, y,
+        label: node.label,
         size,
-        color,
+        color: NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR,
         mass: getNodeMass(kind, nodeCount),
-        _kind: n.kind,
-        _filePath: n.file_path,
+        _kind: node.kind,
+        _filePath: node.file_path,
+        _baseSize: size,
+      });
+    };
+
+    // Add structural nodes first
+    for (const node of structuralNodes) {
+      if (graph.hasNode(node.id)) continue;
+      const kind = node.kind?.toLowerCase() ?? "";
+      const baseSize = NODE_SIZES[kind] ?? DEFAULT_NODE_SIZE;
+      const size = getScaledNodeSize(baseSize, nodeCount);
+      const pos = nodePositions.get(node.id)!;
+
+      graph.addNode(node.id, {
+        x: pos.x, y: pos.y,
+        label: node.label,
+        size,
+        color: NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR,
+        mass: getNodeMass(kind, nodeCount),
+        _kind: node.kind,
+        _filePath: node.file_path,
         _baseSize: size,
       });
     }
 
+    // BFS from structural nodes
+    const queue = [...structuralNodes.map((n) => n.id)];
+    const visited = new Set(queue);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const children = parentToChildren.get(currentId) || [];
+      for (const childId of children) {
+        if (!visited.has(childId)) {
+          visited.add(childId);
+          addNode(childId);
+          queue.push(childId);
+        }
+      }
+    }
+
+    // Orphan nodes
+    for (const node of nodes) {
+      if (!graph.hasNode(node.id)) {
+        addNode(node.id);
+      }
+    }
+
+    // ── Add edges ─────────────────────────────────────────────
     for (const e of edges) {
       if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
       try {
@@ -168,11 +334,7 @@ export function CodeGraphRenderer({
       edgeMaxIndexAttribute: "parallelMaxIndex",
     });
 
-    const gravity = nodeCount < 500 ? 0.8 : nodeCount < 2000 ? 0.5 : nodeCount < 10000 ? 0.3 : 0.15;
-    const scalingRatio = nodeCount < 500 ? 15 : nodeCount < 2000 ? 30 : nodeCount < 10000 ? 60 : 100;
-    const slowDown = nodeCount < 500 ? 1 : nodeCount < 2000 ? 2 : nodeCount < 10000 ? 3 : 5;
-    const layoutTimeout = nodeCount < 500 ? 8000 : nodeCount < 2000 ? 20000 : 30000;
-
+    // ── Sigma instance ────────────────────────────────────────
     const sigma = new Sigma(graph, containerRef.current, {
       allowInvalidContainer: true,
       renderLabels: true,
@@ -183,6 +345,7 @@ export function CodeGraphRenderer({
       labelColor: { color: "#e4e4ed" },
       labelRenderedSizeThreshold: 8,
       labelDensity: 0.1,
+      labelGridCellSize: 70,
       defaultEdgeType: "curve",
       edgeProgramClasses: { curve: EdgeCurveProgram },
       stagePadding: 60,
@@ -192,63 +355,111 @@ export function CodeGraphRenderer({
       maxCameraRatio: 50,
       hideEdgesOnMove: true,
       zIndex: true,
+
+      // Custom hover: dark pill label + glow ring (matching GitNexus)
+      defaultDrawNodeHover: (context, data, settings) => {
+        const label = data.label;
+        if (!label) return;
+
+        const size = settings.labelSize || 11;
+        const font = settings.labelFont || "JetBrains Mono, monospace";
+        const weight = settings.labelWeight || "500";
+
+        context.font = `${weight} ${size}px ${font}`;
+        const textWidth = context.measureText(label).width;
+
+        const nodeSize = data.size || 8;
+        const x = data.x;
+        const y = data.y - nodeSize - 10;
+        const paddingX = 8;
+        const paddingY = 5;
+        const height = size + paddingY * 2;
+        const width = textWidth + paddingX * 2;
+        const radius = 4;
+
+        context.fillStyle = "#12121c";
+        context.beginPath();
+        context.roundRect(x - width / 2, y - height / 2, width, height, radius);
+        context.fill();
+
+        context.strokeStyle = data.color || "#6366f1";
+        context.lineWidth = 2;
+        context.stroke();
+
+        context.fillStyle = "#f5f5f7";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(label, x, y);
+
+        context.beginPath();
+        context.arc(data.x, data.y, nodeSize + 4, 0, Math.PI * 2);
+        context.strokeStyle = data.color || "#6366f1";
+        context.lineWidth = 2;
+        context.globalAlpha = 0.5;
+        context.stroke();
+        context.globalAlpha = 1;
+      },
+
       nodeReducer(node, data) {
         const res = { ...data };
         const baseSize = (data._baseSize as number) || DEFAULT_NODE_SIZE;
         const hl = highlightedIdsRef.current;
+        const hasHighlights = hl && hl.size > 0;
+        const sel = selectedIdRef.current;
+        const hov = hoveredNodeRef.current;
 
-        if (hl && hl.size > 0) {
+        if (hasHighlights && !sel) {
           if (hl.has(node)) {
             res.color = "#ef4444";
             res.size = baseSize * 1.8;
-            res.zIndex = 2;
+            res.zIndex = 3;
+            res.highlighted = true;
           } else {
-            res.color = "#333333";
-            res.size = baseSize * 0.3;
-            res.label = "";
+            res.color = dimColor(data.color || DEFAULT_NODE_COLOR, 0.15);
+            res.size = baseSize * 0.4;
             res.zIndex = 0;
           }
           return res;
         }
 
-        const hov = hoveredNodeRef.current;
-        const sel = selectedIdRef.current;
+        if (sel) {
+          const isSelected = node === sel;
+          const isNeighbor = graph.hasEdge(node, sel) || graph.hasEdge(sel, node);
 
-        if (hov === node) {
-          res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.4);
-          res.size = baseSize * 1.4;
-          res.zIndex = 2;
-          res.highlighted = true;
-        } else if (sel === node) {
-          res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.4);
-          res.size = baseSize * 1.4;
-          res.zIndex = 2;
-          res.highlighted = true;
-          res.borderColor = "#ffffff";
-          res.borderSize = 3;
-        } else if (hov && !sel) {
-          const isHovNeighbor = graph.hasEdge(hov, node) || graph.hasEdge(node, hov);
-          if (isHovNeighbor) {
-            res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.2);
-            res.size = baseSize * 1.2;
-            res.zIndex = 1;
-          }
-        } else if (sel) {
-          const isSelNeighbor = graph.hasEdge(sel, node) || graph.hasEdge(node, sel);
-          if (isSelNeighbor) {
-            res.color = lightenHex(data.color || DEFAULT_NODE_COLOR, 0.2);
-            res.size = baseSize * 1.2;
+          if (isSelected) {
+            res.color = data.color;
+            res.size = baseSize * 1.8;
+            res.zIndex = 2;
+            res.highlighted = true;
+          } else if (isNeighbor) {
+            res.color = data.color;
+            res.size = baseSize * 1.3;
             res.zIndex = 1;
           } else {
-            res.color = "#444444";
+            res.color = dimColor(data.color || DEFAULT_NODE_COLOR, 0.25);
             res.size = baseSize * 0.6;
-            res.label = "";
             res.zIndex = 0;
+          }
+          return res;
+        }
+
+        if (hov === node) {
+          res.color = brightenColor(data.color || DEFAULT_NODE_COLOR, 1.5);
+          res.size = baseSize * 1.4;
+          res.zIndex = 2;
+          res.highlighted = true;
+        } else if (hov) {
+          const isHovNeighbor = graph.hasEdge(hov, node) || graph.hasEdge(node, hov);
+          if (isHovNeighbor) {
+            res.color = data.color;
+            res.size = baseSize * 1.2;
+            res.zIndex = 1;
           }
         }
 
         return res;
       },
+
       edgeReducer(edge, data) {
         const res = { ...data };
         const edgeType = (graph.getEdgeAttribute(edge, "_relType") as string) || "";
@@ -259,40 +470,51 @@ export function CodeGraphRenderer({
         }
 
         const hl = highlightedIdsRef.current;
-        if (hl && hl.size > 0) {
-          const src = graph.source(edge);
-          const tgt = graph.target(edge);
-          if (!hl.has(src) || !hl.has(tgt)) {
-            res.hidden = true;
+        const hasHighlights = hl && hl.size > 0;
+        const sel = selectedIdRef.current;
+        const hov = hoveredNodeRef.current;
+        const [src, tgt] = graph.extremities(edge);
+
+        if (hasHighlights && !sel) {
+          const srcActive = hl.has(src);
+          const tgtActive = hl.has(tgt);
+
+          if (srcActive && tgtActive) {
+            res.color = "#ef4444";
+            res.size = Math.max(2, (data.size || 1) * 3);
+            res.zIndex = 2;
+          } else if (srcActive || tgtActive) {
+            res.color = dimColor("#06b6d4", 0.4);
+            res.size = 1;
+            res.zIndex = 1;
+          } else {
+            res.color = dimColor(data.color || DEFAULT_EDGE_COLOR, 0.08);
+            res.size = 0.2;
+            res.zIndex = 0;
           }
           return res;
         }
 
-        const hov = hoveredNodeRef.current;
-        const sel = selectedIdRef.current;
-        const src = graph.source(edge);
-        const tgt = graph.target(edge);
-
         if (sel) {
-          if (src === sel || tgt === sel) {
-            res.size = (data.size || DEFAULT_EDGE_SIZE) * 2;
-            const neighborNode = src === sel ? tgt : src;
-            res.color = lightenHex(
-              (graph.getNodeAttribute(neighborNode, "color") as string) || DEFAULT_NODE_COLOR,
-              0.3,
-            );
+          const isConnected = src === sel || tgt === sel;
+          if (isConnected) {
+            res.color = brightenColor(data.color || DEFAULT_EDGE_COLOR, 1.5);
+            res.size = Math.max(3, (data.size || 1) * 4);
+            res.zIndex = 2;
           } else {
-            res.color = "#1a1a24";
-            res.size = (data.size || DEFAULT_EDGE_SIZE) * 0.3;
+            res.color = dimColor(data.color || DEFAULT_EDGE_COLOR, 0.1);
+            res.size = 0.3;
+            res.zIndex = 0;
           }
+          return res;
         }
 
         if (hov && (src === hov || tgt === hov)) {
           res.size = (data.size || DEFAULT_EDGE_SIZE) * 2;
           const neighborNode = src === hov ? tgt : src;
-          res.color = lightenHex(
+          res.color = brightenColor(
             (graph.getNodeAttribute(neighborNode, "color") as string) || DEFAULT_NODE_COLOR,
-            0.3,
+            1.3,
           );
         }
 
@@ -302,12 +524,12 @@ export function CodeGraphRenderer({
 
     sigma.on("enterNode", ({ node }) => {
       hoveredNodeRef.current = node;
-      containerRef.current!.style.cursor = "pointer";
+      if (containerRef.current) containerRef.current.style.cursor = "pointer";
       sigma.refresh();
     });
     sigma.on("leaveNode", () => {
       hoveredNodeRef.current = null;
-      containerRef.current!.style.cursor = "default";
+      if (containerRef.current) containerRef.current.style.cursor = "grab";
       sigma.refresh();
     });
     sigma.on("clickNode", ({ node }) => {
@@ -322,8 +544,8 @@ export function CodeGraphRenderer({
       const nodePosition = sigma.getNodeDisplayData(node);
       if (nodePosition) {
         sigma.getCamera().animate(
-          { x: nodePosition.x, y: nodePosition.y, ratio: 0.3 },
-          { duration: 500 },
+          { x: nodePosition.x, y: nodePosition.y, ratio: 0.15 },
+          { duration: 400 },
         );
       }
     });
@@ -331,65 +553,26 @@ export function CodeGraphRenderer({
 
     sigmaRef.current = sigma;
 
+    // ── Layout: FA2 then noverlap cleanup ─────────────────────
+    const fa2Settings = getFA2Settings(nodeCount);
     const fa2 = new FA2Layout(graph, {
-      settings: {
-        ...inferSettings(graph),
-        linLogMode: false,
-        outboundAttractionDistribution: true,
-        strongGravityMode: false,
-        adjustSizes: true,
-        edgeWeightInfluence: 1,
-        barnesHutOptimize: nodeCount > 200,
-        barnesHutTheta: nodeCount >= 2000 ? 0.8 : 0.6,
-        gravity,
-        scalingRatio,
-        slowDown,
-      },
+      settings: { ...inferSettings(graph), ...fa2Settings },
     });
     fa2Ref.current = fa2;
     fa2.start();
-    setTimeout(() => {
-      if (fa2Ref.current) fa2Ref.current.stop();
 
-      if (graphRef.current && graphRef.current.order < 2000) {
-        const g = graphRef.current;
-        const ns = g.nodes();
-        for (let pass = 0; pass < 3; pass++) {
-          let moved = false;
-          for (let i = 0; i < ns.length; i++) {
-            const a = ns[i];
-            const ax = g.getNodeAttribute(a, "x");
-            const ay = g.getNodeAttribute(a, "y");
-            const aSize = g.getNodeAttribute(a, "size") || 3;
+    const duration = getLayoutDuration(nodeCount);
 
-            for (let j = i + 1; j < ns.length; j++) {
-              const b = ns[j];
-              const bx = g.getNodeAttribute(b, "x");
-              const by = g.getNodeAttribute(b, "y");
-              const bSize = g.getNodeAttribute(b, "size") || 3;
-
-              const dx = bx - ax;
-              const dy = by - ay;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              const minDist = (aSize + bSize) * 1.5;
-
-              if (dist < minDist && dist > 0) {
-                const overlap = (minDist - dist) / 2;
-                const nx = dx / dist;
-                const ny = dy / dist;
-                g.setNodeAttribute(a, "x", ax - nx * overlap);
-                g.setNodeAttribute(a, "y", ay - ny * overlap);
-                g.setNodeAttribute(b, "x", bx + nx * overlap);
-                g.setNodeAttribute(b, "y", by + ny * overlap);
-                moved = true;
-              }
-            }
-          }
-          if (!moved) break;
-        }
-        sigmaRef.current?.refresh();
+    layoutTimeoutRef.current = setTimeout(() => {
+      if (fa2Ref.current) {
+        fa2Ref.current.stop();
+        fa2Ref.current = null;
       }
-    }, layoutTimeout);
+      if (!graphRef.current || !sigmaRef.current) return;
+
+      noverlap.assign(graphRef.current, NOVERLAP_SETTINGS);
+      sigmaRef.current.refresh();
+    }, duration);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphKey]);
 
@@ -397,6 +580,7 @@ export function CodeGraphRenderer({
     const frame = requestAnimationFrame(() => buildGraph());
     return () => {
       cancelAnimationFrame(frame);
+      if (layoutTimeoutRef.current) { clearTimeout(layoutTimeoutRef.current); layoutTimeoutRef.current = null; }
       if (fa2Ref.current) { fa2Ref.current.kill(); fa2Ref.current = null; }
       if (sigmaRef.current) { sigmaRef.current.kill(); sigmaRef.current = null; graphRef.current = null; }
     };
@@ -412,14 +596,21 @@ export function CodeGraphRenderer({
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
-    sigmaRef.current?.refresh();
 
-    if (selectedId && sigmaRef.current && graphRef.current?.hasNode(selectedId)) {
-      const nodePosition = sigmaRef.current.getNodeDisplayData(selectedId);
+    const sigma = sigmaRef.current;
+    if (!sigma) return;
+
+    // Camera nudge to force edge re-render (Sigma edge caching workaround)
+    const camera = sigma.getCamera();
+    camera.animate({ ratio: camera.ratio * 1.0001 }, { duration: 50 });
+    sigma.refresh();
+
+    if (selectedId && graphRef.current?.hasNode(selectedId)) {
+      const nodePosition = sigma.getNodeDisplayData(selectedId);
       if (nodePosition) {
-        sigmaRef.current.getCamera().animate(
-          { x: nodePosition.x, y: nodePosition.y, ratio: 0.3 },
-          { duration: 500 },
+        sigma.getCamera().animate(
+          { x: nodePosition.x, y: nodePosition.y, ratio: 0.15 },
+          { duration: 400 },
         );
       }
     }
@@ -439,7 +630,10 @@ export function CodeGraphRenderer({
     <div
       ref={containerRef}
       className="absolute inset-0"
-      style={{ background: "linear-gradient(135deg, #06060a 0%, #0a0a10 50%, #0d0b1a 100%)" }}
+      style={{
+        cursor: "grab",
+        background: "radial-gradient(circle at 50% 50%, rgba(124,58,237,0.03) 0%, transparent 70%), linear-gradient(to bottom, #06060a, #0a0a10)",
+      }}
     />
   );
 }

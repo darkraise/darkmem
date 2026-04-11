@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -65,3 +65,37 @@ class CodeSymbol(Base):
     enrichment_priority: Mapped[int] = mapped_column(Integer, default=0)
 
     file: Mapped["CodeFile"] = relationship(back_populates="symbols")
+
+
+class CodeGraphNode(Base):
+    __tablename__ = "code_graph_nodes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(500))
+    properties: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    __table_args__ = (UniqueConstraint("repo_id", "kind", "key"),)
+
+
+class CodeEdge(Base):
+    __tablename__ = "code_edges"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False,
+    )
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    target_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    edge_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    properties: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    __table_args__ = (
+        UniqueConstraint("repo_id", "source_kind", "source_key", "target_kind", "target_key", "edge_type"),
+    )

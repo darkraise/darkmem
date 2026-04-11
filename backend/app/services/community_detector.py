@@ -1,14 +1,24 @@
+from __future__ import annotations
+
+import asyncio
+import json
 import logging
 from collections import Counter
+from uuid import uuid4
 
-from app.repositories.graph import Neo4jGraphRepository
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.utils.graph_keys import compose_key
 
 logger = logging.getLogger(__name__)
 
+_LARGE_GRAPH_THRESHOLD = 10_000
+
 
 class CommunityDetector:
-    def __init__(self, graph_repo: Neo4jGraphRepository, repo_id: str):
-        self.graph_repo = graph_repo
+    def __init__(self, session: AsyncSession, repo_id: str):
+        self.session = session
         self.repo_id = repo_id
 
     async def detect(self) -> int:
@@ -19,93 +29,211 @@ class CommunityDetector:
             logger.warning("igraph or leidenalg not installed, skipping community detection")
             return 0
 
-        async with self.graph_repo.driver.session() as neo:
-            nodes_result = await neo.run(
-                "MATCH (s:CodeSymbol {repo_id: $repo_id}) WHERE s.kind IN ['function', 'method', 'class', 'interface', 'struct', 'trait'] RETURN s.name + '::' + s.file_path AS id, s.file_path AS file_path",
-                repo_id=self.repo_id,
-            )
-            node_list = []
-            node_ids = {}
-            async for record in nodes_result:
-                idx = len(node_list)
-                node_list.append({"id": record["id"], "file_path": record["file_path"]})
-                node_ids[record["id"]] = idx
+        nodes_result = await self.session.execute(
+            text("""
+                SELECT key, properties->>'file_path' AS file_path
+                FROM code_graph_nodes
+                WHERE repo_id = :repo_id
+                  AND kind = 'symbol'
+                  AND properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+            """),
+            {"repo_id": self.repo_id},
+        )
+        node_list = []
+        node_ids: dict[str, int] = {}
+        for row in nodes_result.mappings():
+            idx = len(node_list)
+            node_list.append({"id": row["key"], "file_path": row["file_path"]})
+            node_ids[row["key"]] = idx
 
-            if len(node_list) < 3:
-                return 0
+        if len(node_list) < 3:
+            return 0
 
-            edges_result = await neo.run(
-                """
-                MATCH (s1:CodeSymbol {repo_id: $repo_id})-[r:CALLS|EXTENDS|IMPLEMENTS]->(s2:CodeSymbol {repo_id: $repo_id})
-                WHERE s1.kind IN ['function', 'method', 'class', 'interface', 'struct', 'trait']
-                AND s2.kind IN ['function', 'method', 'class', 'interface', 'struct', 'trait']
-                RETURN s1.name + '::' + s1.file_path AS source, s2.name + '::' + s2.file_path AS target
-                """,
-                repo_id=self.repo_id,
+        is_large = len(node_list) > _LARGE_GRAPH_THRESHOLD
+
+        if is_large:
+            edges_result = await self.session.execute(
+                text("""
+                    SELECT e.source_key, e.target_key
+                    FROM code_edges e
+                    JOIN code_graph_nodes src ON src.repo_id = e.repo_id AND src.key = e.source_key
+                    JOIN code_graph_nodes tgt ON tgt.repo_id = e.repo_id AND tgt.key = e.target_key
+                    WHERE e.repo_id = :repo_id
+                      AND e.edge_type IN ('calls', 'extends', 'implements')
+                      AND (e.properties->>'confidence')::float >= 0.5
+                      AND src.kind = 'symbol'
+                      AND src.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                      AND tgt.kind = 'symbol'
+                      AND tgt.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                """),
+                {"repo_id": self.repo_id},
             )
-            edge_list = []
-            async for record in edges_result:
-                src = node_ids.get(record["source"])
-                tgt = node_ids.get(record["target"])
-                if src is not None and tgt is not None:
-                    edge_list.append((src, tgt))
+        else:
+            edges_result = await self.session.execute(
+                text("""
+                    SELECT e.source_key, e.target_key
+                    FROM code_edges e
+                    JOIN code_graph_nodes src ON src.repo_id = e.repo_id AND src.key = e.source_key
+                    JOIN code_graph_nodes tgt ON tgt.repo_id = e.repo_id AND tgt.key = e.target_key
+                    WHERE e.repo_id = :repo_id
+                      AND e.edge_type IN ('calls', 'extends', 'implements')
+                      AND src.kind = 'symbol'
+                      AND src.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                      AND tgt.kind = 'symbol'
+                      AND tgt.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                """),
+                {"repo_id": self.repo_id},
+            )
+
+        edge_list = []
+        node_degree: dict[int, int] = {}
+        for row in edges_result.mappings():
+            src = node_ids.get(row["source_key"])
+            tgt = node_ids.get(row["target_key"])
+            if src is not None and tgt is not None:
+                edge_list.append((src, tgt))
+                node_degree[src] = node_degree.get(src, 0) + 1
+                node_degree[tgt] = node_degree.get(tgt, 0) + 1
 
         if not edge_list:
             return 0
 
+        if is_large:
+            active_nodes = {idx for idx, deg in node_degree.items() if deg >= 1}
+            filtered_edges = [(s, t) for s, t in edge_list if s in active_nodes and t in active_nodes]
+            if not filtered_edges:
+                filtered_edges = edge_list
+            edge_list = filtered_edges
+
         g = igraph.Graph(n=len(node_list), edges=edge_list, directed=False)
-        partition = leidenalg.find_partition(g, leidenalg.ModularityVertexPartition)
+
+        if is_large:
+            resolution = 2.0
+            max_iterations = 3
+        else:
+            resolution = 1.0
+            max_iterations = -1
+
+        try:
+            loop = asyncio.get_running_loop()
+            partition = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: leidenalg.find_partition(
+                        g,
+                        leidenalg.RBConfigurationVertexPartition,
+                        resolution_parameter=resolution,
+                        n_iterations=max_iterations,
+                    ),
+                ),
+                timeout=60.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Leiden timed out for repo %s (%d nodes), falling back to single community",
+                self.repo_id,
+                len(node_list),
+            )
+            partition = None
+
+        await self.session.execute(
+            text("DELETE FROM code_edges WHERE repo_id = :repo_id AND edge_type = 'member_of'"),
+            {"repo_id": self.repo_id},
+        )
+        await self.session.execute(
+            text("DELETE FROM code_graph_nodes WHERE repo_id = :repo_id AND kind = 'community'"),
+            {"repo_id": self.repo_id},
+        )
+
+        if partition is None:
+            return await self._store_single_community(node_list)
 
         communities: dict[int, list[int]] = {}
         for node_idx, comm_id in enumerate(partition.membership):
             communities.setdefault(comm_id, []).append(node_idx)
 
-        comm_labels = {}
+        comm_labels: dict[int, str] = {}
         for comm_id, members in communities.items():
             dirs = []
             for idx in members:
                 fp = node_list[idx]["file_path"]
                 if fp:
                     parts = fp.replace("\\", "/").split("/")
-                    if len(parts) > 1:
-                        dirs.append(parts[-2] if len(parts) > 1 else parts[0])
-                    else:
-                        dirs.append(parts[0])
+                    dirs.append(parts[-2] if len(parts) > 1 else parts[0])
             if dirs:
-                most_common = Counter(dirs).most_common(1)[0][0]
-                comm_labels[comm_id] = most_common
+                comm_labels[comm_id] = Counter(dirs).most_common(1)[0][0]
             else:
                 comm_labels[comm_id] = f"community_{comm_id}"
 
-        async with self.graph_repo.driver.session() as neo:
-            await neo.run(
-                "MATCH (c:Community {repo_id: $repo_id}) DETACH DELETE c",
-                repo_id=self.repo_id,
+        total_members = 0
+        for comm_id, members in communities.items():
+            if len(members) < 2:
+                continue
+
+            label = comm_labels.get(comm_id, f"community_{comm_id}")
+            comm_key = compose_key("community", label)
+            comm_props = json.dumps({"community_id": comm_id, "size": len(members)})
+
+            await self.session.execute(
+                text("""
+                    INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
+                    VALUES (:repo_id, 'community', :key, :key, CAST(:props AS jsonb))
+                    ON CONFLICT (repo_id, kind, key) DO UPDATE
+                        SET properties = EXCLUDED.properties
+                """),
+                {
+                    "repo_id": self.repo_id,
+                    "key": comm_key,
+                    "props": comm_props,
+                },
             )
 
-            for comm_id, members in communities.items():
-                if len(members) < 2:
-                    continue
-                label = comm_labels.get(comm_id, f"community_{comm_id}")
-                await neo.run(
-                    """
-                    CREATE (c:Community {repo_id: $repo_id, community_id: $comm_id, label: $label, size: $size})
-                    """,
-                    repo_id=self.repo_id, comm_id=comm_id, label=label, size=len(members),
-                )
+            member_rows = json.dumps([
+                {"member_key": node_list[idx]["id"]}
+                for idx in members
+            ])
+            await self.session.execute(
+                text("""
+                    INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
+                    SELECT :repo_id, 'symbol', d.member_key, 'community', :comm_key, 'member_of', '{}'
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(member_key text)
+                    ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
+                """),
+                {"repo_id": self.repo_id, "comm_key": comm_key, "rows": member_rows},
+            )
 
-                member_ids = [node_list[idx]["id"] for idx in members]
-                await neo.run(
-                    """
-                    UNWIND $member_ids AS mid
-                    MATCH (s:CodeSymbol {repo_id: $repo_id})
-                    WHERE s.name + '::' + s.file_path = mid
-                    MATCH (c:Community {repo_id: $repo_id, community_id: $comm_id})
-                    MERGE (s)-[:MEMBER_OF]->(c)
-                    """,
-                    repo_id=self.repo_id, comm_id=comm_id, member_ids=member_ids,
-                )
+            total_members += len(members)
 
-        total = sum(len(m) for m in communities.values() if len(m) >= 2)
-        logger.info("Detected %d communities with %d members for repo %s", len(communities), total, self.repo_id)
-        return total
+        await self.session.flush()
+        logger.info(
+            "Detected %d communities with %d members for repo %s",
+            len(communities), total_members, self.repo_id,
+        )
+        return total_members
+
+    async def _store_single_community(self, node_list: list[dict]) -> int:
+        if not node_list:
+            return 0
+        comm_key = compose_key("community", "all")
+        comm_props = json.dumps({"community_id": 0, "size": len(node_list)})
+        await self.session.execute(
+            text("""
+                INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
+                VALUES (:repo_id, 'community', :key, :key, CAST(:props AS jsonb))
+                ON CONFLICT (repo_id, kind, key) DO UPDATE
+                    SET properties = EXCLUDED.properties
+            """),
+            {"repo_id": self.repo_id, "key": comm_key, "props": comm_props},
+        )
+        member_rows = json.dumps([{"member_key": n["id"]} for n in node_list])
+        await self.session.execute(
+            text("""
+                INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
+                SELECT :repo_id, 'symbol', d.member_key, 'community', :comm_key, 'member_of', '{}'
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(member_key text)
+                ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
+            """),
+            {"repo_id": self.repo_id, "comm_key": comm_key, "rows": member_rows},
+        )
+        await self.session.flush()
+        return len(node_list)

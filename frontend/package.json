@@ -13,22 +13,25 @@
     "prepare": "cd .. && husky frontend/.husky"
   },
   "dependencies": {
-    "darkraise-ui": "^1.0.3",
-    "zustand": "^5.0.12",
-    "@tanstack/react-query": "^5.96.2",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-markdown": "^10.1.0",
-    "sigma": "^3.0.2",
     "@sigma/edge-curve": "^3.1.0",
     "@sigma/node-square": "^3.0.0",
+    "@tanstack/react-query": "^5.96.2",
+    "darkraise-ui": "^1.0.5",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
+    "graphology-layout-noverlap": "^0.4.2",
     "graphology-types": "^0.24.8",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "react-force-graph-3d": "^1.29.1",
-    "three": "^0.183.2"
+    "react-markdown": "^10.1.0",
+    "sigma": "^3.0.2",
+    "three": "^0.183.2",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^9.39.4",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
@@ -44,8 +47,6 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
-    "@commitlint/cli": "^20.5.0",
-    "@commitlint/config-conventional": "^20.5.0",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
@@ -54,7 +55,12 @@
     "vite": "^8.0.3"
   },
   "lint-staged": {
-    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-    "*.{json,css,md}": ["prettier --write"]
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
   }
 }

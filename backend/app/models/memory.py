@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
 
+from typing import Optional
+
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -30,6 +32,15 @@ class Memory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    wing: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    room: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    hall: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    classified_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    classified_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    llm_classified_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    llm_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    llm_emotions: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    llm_flags: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
 
     tags: Mapped[list["Tag"]] = relationship(secondary=memory_tags, back_populates="memories", lazy="selectin")
 
@@ -41,4 +52,4 @@ class Tag(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     category: Mapped[str | None] = mapped_column(String(50))
 
-    memories: Mapped[list["Memory"]] = relationship(secondary=memory_tags, back_populates="tags", lazy="selectin")
+    memories: Mapped[list["Memory"]] = relationship(secondary=memory_tags, back_populates="tags", lazy="noload")

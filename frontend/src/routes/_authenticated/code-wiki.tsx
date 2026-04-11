@@ -62,9 +62,9 @@ function CodeWikiPage() {
 
       <div className="flex items-center gap-4">
         <Select
-          value={selectedRepoId || ""}
+          value={selectedRepoId || "__none__"}
           onValueChange={(v) => {
-            setSelectedRepoId(v || null)
+            setSelectedRepoId(v === "__none__" ? null : v)
             setExpandedModule(null)
           }}
         >
@@ -72,7 +72,7 @@ function CodeWikiPage() {
             <SelectValue placeholder="Select a repo" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Select a repo</SelectItem>
+            <SelectItem value="__none__">Select a repo</SelectItem>
             {repos?.map((r) => (
               <SelectItem key={r.id} value={r.id}>
                 {r.name}

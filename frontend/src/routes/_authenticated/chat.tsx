@@ -1,8 +1,13 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { ChatSidebar } from "@/features/chat/components/chat-sidebar"
 import { ChatMessages } from "@/features/chat/components/chat-messages"
 import { ChatInput } from "@/features/chat/components/chat-input"
+import {
+  MemoryContextPanel,
+  WakeUpButton,
+  WingSelector,
+} from "@/features/chat/components/memory-context-panel"
 import { Input } from "darkraise-ui/components/input"
 import {
   useConversations,
@@ -10,6 +15,8 @@ import {
   useCreateConversation,
   useUpdateConversation,
   useDeleteConversation,
+  useMemoryLayers,
+  useMemoryWings,
 } from "@/hooks/api"
 import { useChatStream } from "@/features/chat/hooks/use-chat-stream"
 import { Sparkles } from "lucide-react"
@@ -26,6 +33,10 @@ function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(initialId ?? null)
   const [editingTitle, setEditingTitle] = useState(false)
 
+  const [selectedWing, setSelectedWing] = useState<string | undefined>(undefined)
+  const [layersEnabled, setLayersEnabled] = useState(false)
+  const [loadedLayers, setLoadedLayers] = useState<import("@/hooks/api").MemoryLayers | null>(null)
+
   const { data: convList } = useConversations()
   const { data: convDetail } = useConversation(activeId)
   const createConv = useCreateConversation()
@@ -33,8 +44,41 @@ function ChatPage() {
   const deleteConv = useDeleteConversation()
   const stream = useChatStream()
 
+  const { data: wings = [] } = useMemoryWings()
+  const layersQuery = useMemoryLayers(selectedWing, layersEnabled)
+
   const conversations = convList?.conversations ?? []
   const messages = convDetail?.messages ?? []
+
+  const prevLayersDataRef = useRef<import("@/hooks/api").MemoryLayers | undefined>(undefined)
+
+  useEffect(() => {
+    if (layersEnabled && layersQuery.data && layersQuery.data !== prevLayersDataRef.current) {
+      prevLayersDataRef.current = layersQuery.data
+      setLoadedLayers(layersQuery.data)
+    }
+  }, [layersEnabled, layersQuery.data])
+
+  const handleWakeUp = useCallback(() => {
+    if (layersQuery.data && !layersQuery.isFetching) {
+      setLoadedLayers(layersQuery.data)
+      return
+    }
+    setLayersEnabled(true)
+  }, [layersQuery.data, layersQuery.isFetching])
+
+  const handleClearLayers = useCallback(() => {
+    setLoadedLayers(null)
+    setLayersEnabled(false)
+  }, [])
+
+  const handleWingChange = useCallback((wing: string | undefined) => {
+    setSelectedWing(wing)
+    if (loadedLayers) {
+      setLoadedLayers(null)
+      setLayersEnabled(false)
+    }
+  }, [loadedLayers])
 
   const handleCreate = useCallback(async () => {
     const conv = await createConv.mutateAsync({})
@@ -51,12 +95,19 @@ function ChatPage() {
 
   const handleSend = useCallback(
     async (content: string) => {
-      const resultId = await stream.sendMessage(activeId, content)
+      const context = loadedLayers
+        ? {
+            system_prefix: [loadedLayers.l0, loadedLayers.l1].join("\n\n"),
+            memory_layers: { l0: loadedLayers.l0, l1: loadedLayers.l1 },
+          }
+        : undefined
+
+      const resultId = await stream.sendMessage(activeId, content, context)
       if (!activeId && resultId) {
         setActiveId(resultId)
       }
     },
-    [activeId, stream],
+    [activeId, stream, loadedLayers],
   )
 
   const handleTitleSubmit = useCallback(
@@ -68,6 +119,8 @@ function ChatPage() {
     },
     [activeId, updateConv],
   )
+
+  const isWakingUp = layersEnabled && layersQuery.isFetching
 
   return (
     <div className="flex h-full">
@@ -108,7 +161,29 @@ function ChatPage() {
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
                 </span>
               )}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <WingSelector
+                  wings={wings}
+                  selected={selectedWing}
+                  onChange={handleWingChange}
+                />
+                <WakeUpButton
+                  loading={isWakingUp}
+                  loaded={!!loadedLayers}
+                  wing={loadedLayers ? selectedWing : undefined}
+                  onWakeUp={handleWakeUp}
+                />
+              </div>
             </div>
+
+            {loadedLayers && (
+              <MemoryContextPanel
+                layers={loadedLayers}
+                wing={selectedWing}
+                onClear={handleClearLayers}
+              />
+            )}
+
             <ChatMessages
               messages={messages}
               streamingContent={stream.streamingContent}
@@ -120,6 +195,8 @@ function ChatPage() {
               onSend={handleSend}
               onStop={stream.abort}
               isStreaming={stream.isStreaming}
+              contextLabel={loadedLayers ? `Memory L0+L1 ~${loadedLayers.token_count}t` : null}
+              onClearContext={handleClearLayers}
             />
           </>
         ) : (
@@ -139,6 +216,31 @@ function ChatPage() {
                 and discover insights from your stored memories and entities.
               </p>
             </div>
+
+            <div className="flex items-center gap-2">
+              <WingSelector
+                wings={wings}
+                selected={selectedWing}
+                onChange={handleWingChange}
+              />
+              <WakeUpButton
+                loading={isWakingUp}
+                loaded={!!loadedLayers}
+                wing={loadedLayers ? selectedWing : undefined}
+                onWakeUp={handleWakeUp}
+              />
+            </div>
+
+            {loadedLayers && (
+              <div className="w-full max-w-lg">
+                <MemoryContextPanel
+                  layers={loadedLayers}
+                  wing={selectedWing}
+                  onClear={handleClearLayers}
+                />
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">
               {[
                 "What do I know about Docker?",
@@ -150,7 +252,13 @@ function ChatPage() {
                   key={prompt}
                   className="text-xs bg-[rgba(99,102,241,0.04)] border border-[rgba(99,102,241,0.1)] hover:bg-[rgba(99,102,241,0.1)] hover:border-[rgba(99,102,241,0.2)] hover:text-indigo-200 px-4 py-2 rounded-full text-slate-300 transition-all"
                   onClick={async () => {
-                    const resultId = await stream.sendMessage(null, prompt)
+                    const context = loadedLayers
+                      ? {
+                          system_prefix: [loadedLayers.l0, loadedLayers.l1].join("\n\n"),
+                          memory_layers: { l0: loadedLayers.l0, l1: loadedLayers.l1 },
+                        }
+                      : undefined
+                    const resultId = await stream.sendMessage(null, prompt, context)
                     if (resultId) setActiveId(resultId)
                   }}
                 >

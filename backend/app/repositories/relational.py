@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text as sa_text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -33,6 +34,14 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.id == memory_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_many(self, memory_ids: list) -> list[Memory]:
+        if not memory_ids:
+            return []
+        stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.id.in_(memory_ids))
+        result = await self.session.execute(stmt)
+        by_id = {m.id: m for m in result.scalars().all()}
+        return [by_id[mid] for mid in memory_ids if mid in by_id]
 
     async def update(self, memory_id, **fields):
         memory = await self.get(memory_id)
@@ -71,12 +80,13 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         result = await self.session.execute(stmt)
         return list(result.scalars().all()), total
 
-    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20):
+    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
 
         if query:
-            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            stmt = stmt.where(Memory.content.ilike(f"%{escaped}%"))
+            stmt = stmt.where(
+                sa_text("memories.search_vector @@ plainto_tsquery('english', :fts_query)").bindparams(fts_query=query)
+            )
 
         if tags_any:
             stmt = stmt.where(Memory.tags.any(Tag.name.in_(tags_any)))
@@ -91,16 +101,26 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         if source:
             stmt = stmt.where(Memory.source == source)
 
+        if wing is not None:
+            stmt = stmt.where(Memory.wing == wing)
+
+        if room is not None:
+            stmt = stmt.where(Memory.room == room)
+
+        if hall is not None:
+            stmt = stmt.where(Memory.hall == hall)
+
         stmt = stmt.order_by(Memory.created_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, offset=0):
+    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20, offset=0):
         base = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
 
         if query:
-            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            base = base.where(Memory.content.ilike(f"%{escaped}%"))
+            base = base.where(
+                sa_text("memories.search_vector @@ plainto_tsquery('english', :fts_query)").bindparams(fts_query=query)
+            )
         if tags_any:
             base = base.where(Memory.tags.any(Tag.name.in_(tags_any)))
         if tags_all:
@@ -110,6 +130,12 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             base = base.where(Memory.memory_type == memory_type)
         if source:
             base = base.where(Memory.source == source)
+        if wing is not None:
+            base = base.where(Memory.wing == wing)
+        if room is not None:
+            base = base.where(Memory.room == room)
+        if hall is not None:
+            base = base.where(Memory.hall == hall)
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total = (await self.session.execute(count_stmt)).scalar() or 0
@@ -118,23 +144,38 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         result = await self.session.execute(items_stmt)
         return list(result.scalars().all()), total
 
+    async def get_palace_room_data(self) -> list[dict]:
+        result = await self.session.execute(
+            sa_text("""
+                SELECT room, wing, hall, created_at::date AS date
+                FROM memories
+                WHERE room IS NOT NULL
+                  AND room <> 'general'
+                  AND wing IS NOT NULL
+                ORDER BY created_at
+            """)
+        )
+        return [dict(r) for r in result.mappings()]
+
     async def set_tags(self, memory_id, tag_names):
         memory = await self.get(memory_id)
         if not memory:
             return
+        if not tag_names:
+            memory.tags = []
+            await self.session.flush()
+            return
 
-        tags = []
         for name in tag_names:
             category = name.split("/")[0] if "/" in name else None
-            result = await self.session.execute(select(Tag).where(Tag.name == name))
-            tag = result.scalar_one_or_none()
-            if not tag:
-                tag = Tag(name=name, category=category)
-                self.session.add(tag)
-                await self.session.flush()
-            tags.append(tag)
-
-        memory.tags = tags
+            await self.session.execute(
+                insert(Tag)
+                .values(name=name, category=category)
+                .on_conflict_do_nothing(index_elements=["name"])
+            )
+        await self.session.flush()
+        result = await self.session.execute(select(Tag).where(Tag.name.in_(tag_names)))
+        memory.tags = list(result.scalars().all())
         await self.session.flush()
 
 
@@ -146,15 +187,14 @@ class PostgresTagRepository(TagRepositoryBase):
         if category is None and "/" in name:
             category = name.split("/")[0]
 
+        await self.session.execute(
+            insert(Tag)
+            .values(name=name, category=category)
+            .on_conflict_do_nothing(index_elements=["name"])
+        )
+        await self.session.flush()
         result = await self.session.execute(select(Tag).where(Tag.name == name))
-        tag = result.scalar_one_or_none()
-
-        if not tag:
-            tag = Tag(name=name, category=category)
-            self.session.add(tag)
-            await self.session.flush()
-
-        return tag
+        return result.scalar_one()
 
     async def list_all(self):
         result = await self.session.execute(select(Tag).order_by(Tag.name))

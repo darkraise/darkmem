@@ -7,7 +7,7 @@ export interface ChatConversation {
   created_at: string;
   updated_at: string;
   is_archived: boolean;
-  message_count: number;
+  message_count?: number;
 }
 
 export interface ChatMessage {

@@ -1,7 +1,7 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.api.auth import require_auth
@@ -24,8 +24,8 @@ router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 @router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     archived: bool = False,
     _user=Depends(require_auth),
     service: ChatService = Depends(get_chat_service),

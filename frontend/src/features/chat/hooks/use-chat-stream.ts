@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getAuthToken } from "@/lib/api";
 
 interface ChatSources {
   memories: { index: number; content: string; source: string; tags: string[]; score: number }[];
@@ -39,13 +38,10 @@ export function useChatStream() {
       setState({ isStreaming: true, streamingContent: "", sources: null, error: null, pendingUserMessage: content });
 
       try {
-        const token = getAuthToken();
         const res = await fetch("/api/v1/chat/completions", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             conversation_id: conversationId,
             content,

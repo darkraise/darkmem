@@ -1,5 +1,6 @@
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.api.auth import create_access_token, hash_password
@@ -23,14 +24,21 @@ async def setup_database():
 
 
 @pytest_asyncio.fixture
-async def session():
+async def session(setup_database):
     connection = await test_engine.connect()
     transaction = await connection.begin()
-    session = AsyncSession(bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint")
+    async_session = AsyncSession(bind=connection, expire_on_commit=False)
 
-    yield session
+    await connection.begin_nested()
 
-    await session.close()
+    @event.listens_for(async_session.sync_session, "after_transaction_end")
+    def restart_savepoint(session, trans):
+        if trans.nested and not trans._parent.nested:
+            session.begin_nested()
+
+    yield async_session
+
+    await async_session.close()
     await transaction.rollback()
     await connection.close()
 

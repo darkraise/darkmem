@@ -1,33 +1,19 @@
 import { create } from "zustand"
 
 interface AuthState {
-  token: string | null
   isAuthenticated: boolean
-  setToken: (token: string) => void
+  setAuthenticated: (value: boolean) => void
   logout: () => void
 }
 
-const STORAGE_KEY = "darkmem_token"
-
-const getStoredToken = () => {
-  try {
-    return localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
 export const useAuthStore = create<AuthState>((set) => ({
-  token: getStoredToken(),
-  isAuthenticated: !!getStoredToken(),
+  isAuthenticated: false,
 
-  setToken: (token: string) => {
-    localStorage.setItem(STORAGE_KEY, token)
-    set({ token, isAuthenticated: true })
+  setAuthenticated: (value: boolean) => {
+    set({ isAuthenticated: value })
   },
 
   logout: () => {
-    localStorage.removeItem(STORAGE_KEY)
-    set({ token: null, isAuthenticated: false })
+    set({ isAuthenticated: false })
   },
 }))

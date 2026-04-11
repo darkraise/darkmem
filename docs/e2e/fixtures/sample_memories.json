@@ -1,0 +1,22 @@
+[
+  {"content": "PostgreSQL uses MVCC (Multi-Version Concurrency Control) to allow readers and writers to operate without blocking each other.", "tags": ["e2e", "tech/databases"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Redis supports pub/sub messaging for simple fan-out scenarios without a dedicated message broker.", "tags": ["e2e", "tech/cache"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Kafka provides durable partitioned event logs with consumer groups for scalable event processing.", "tags": ["e2e", "tech/streaming"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Elasticsearch is a distributed search engine built on Lucene, designed for full-text search and analytics.", "tags": ["e2e", "tech/search"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "We decided to use pgvector instead of a dedicated vector database because our scale fits within Postgres and keeps operations simple.", "tags": ["e2e", "project/decisions"], "source": "e2e-fixtures", "memory_type": "decision"},
+  {"content": "The Raft consensus algorithm elects a leader among replicas and replicates log entries. Used by etcd and CockroachDB.", "tags": ["e2e", "tech/distributed"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Exponential backoff with jitter prevents thundering herd problems. AWS recommends full jitter: sleep = random(0, min(cap, base * 2^attempt)).", "tags": ["e2e", "tech/distributed"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "CRDTs allow concurrent updates on different replicas without coordination. G-Counters, OR-Sets, and LWW-Registers are common types.", "tags": ["e2e", "tech/distributed"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "The actor model encapsulates state within actors that communicate via asynchronous messages. Erlang/OTP and Akka implement it.", "tags": ["e2e", "tech/concurrency"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Circuit breakers prevent cascading failures by stopping requests to a failing service. States are closed, open, and half-open.", "tags": ["e2e", "tech/patterns"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Python's GIL prevents true parallel execution of Python bytecodes. Use multiprocessing or asyncio for parallelism.", "tags": ["e2e", "tech/python"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Rust's ownership system prevents data races at compile time without garbage collection.", "tags": ["e2e", "tech/rust"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Go channels provide typed conduits for goroutine communication. Unbuffered channels synchronize sender and receiver.", "tags": ["e2e", "tech/go"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "TypeScript discriminated unions use a shared literal property to narrow types.", "tags": ["e2e", "tech/typescript"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "React's useEffect runs after render. The dependency array controls when it re-runs.", "tags": ["e2e", "tech/react"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "FastAPI uses Pydantic for request validation and type hints for automatic OpenAPI schema generation.", "tags": ["e2e", "tech/python", "tech/fastapi"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Docker multi-stage builds reduce image size by separating build and runtime stages.", "tags": ["e2e", "tech/docker"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "Kubernetes liveness probes detect unhealthy pods. Readiness probes control traffic routing.", "tags": ["e2e", "tech/kubernetes"], "source": "e2e-fixtures", "memory_type": "fact"},
+  {"content": "We chose Docker Compose over Kubernetes for the MVP because the team is small and deployment complexity would slow us down.", "tags": ["e2e", "project/decisions"], "source": "e2e-fixtures", "memory_type": "decision"},
+  {"content": "N+1 query bug was caused by fetching tags one-by-one. Fixed by adding selectinload(Memory.tags).", "tags": ["e2e", "debug/root-cause"], "source": "e2e-fixtures", "memory_type": "debug"}
+]

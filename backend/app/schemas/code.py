@@ -80,3 +80,8 @@ class CodeSearchResult(BaseModel):
     line_start: int
     line_end: int
     score: float
+
+
+class BlastRadiusRequest(BaseModel):
+    symbol_id: str
+    max_depth: int = 10

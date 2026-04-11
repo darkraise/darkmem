@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -45,7 +46,10 @@ async def create_repo(
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
 ):
-    repo = await manager.create(body)
+    try:
+        repo = await manager.create(body)
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail=f"Repository '{body.name}' already exists")
     return _to_response(repo)
 
 
@@ -138,15 +142,19 @@ async def reindex_repo(
     await manager.session.flush()
     await manager.session.commit()
 
+    _embedding_dims = indexer.vector_repo.dimensions
+    _collection_name = indexer.vector_repo.collection_name
+    _llm = indexer.llm
+
     async def _run_index():
         try:
             async with async_session_factory() as session:
-                from app.api.deps import get_code_indexer as _make_indexer
+                from app.repositories.vector import PostgresVectorRepository
+                fresh_vector_repo = PostgresVectorRepository(session, _embedding_dims, _collection_name)
                 idx = CodeIndexer(
                     session,
-                    indexer.llm,
-                    indexer.vector_repo,
-                    indexer.graph_repo,
+                    _llm,
+                    fresh_vector_repo,
                 )
                 await idx.index_repo(repo_id, full=full)
         except Exception as e:
@@ -203,30 +211,3 @@ async def cancel_repo_task(
     return {"status": "cancelled", "task_id": task_id}
 
 
-@router.post("/webhook")
-async def webhook(
-    request: FastAPIRequest,
-    indexer: CodeIndexer = Depends(get_code_indexer),
-    manager: RepoManager = Depends(get_repo_manager),
-):
-    body = await request.json()
-    repo_url = None
-    if "repository" in body:
-        repo_url = (
-            body["repository"].get("clone_url")
-            or body["repository"].get("html_url")
-            or body["repository"].get("url")
-        )
-    if not repo_url:
-        return {"status": "ignored", "reason": "no repository URL found"}
-    repos_list = await manager.list_all()
-    matched = None
-    for item in repos_list:
-        r = item["repo"]
-        if r.url and repo_url.rstrip(".git").rstrip("/") in r.url.rstrip(".git").rstrip("/"):
-            matched = r
-            break
-    if not matched:
-        return {"status": "ignored", "reason": "no matching repository"}
-    result = await indexer.index_repo(matched.id)
-    return {"status": "indexed", "repo": matched.name, "result": result}

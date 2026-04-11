@@ -85,10 +85,8 @@ class WikiGenerator:
 
             if self.llm and file_descriptions:
                 try:
-                    from app.services.prompt import PromptService
-                    system_prompt = await PromptService.get("summarization", self.session)
-                    if not system_prompt:
-                        system_prompt = "You are a code documentation assistant."
+                    from app.services import prompt as prompt_mod
+                    system_prompt = prompt_mod.get("summarization")
 
                     prompt = (
                         f"Summarize what this code module does in 2-3 sentences "
