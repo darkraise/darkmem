@@ -1,12 +1,18 @@
 import { useState } from "react"
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Card, CardContent } from "darkraise-ui/components/card"
-import { setup } from "@/lib/api"
+import { checkSetupStatus, setup } from "@/lib/api"
 
 export const Route = createFileRoute("/_guest/setup")({
+  beforeLoad: async () => {
+    const { initialized } = await checkSetupStatus()
+    if (initialized) {
+      throw redirect({ to: "/login" })
+    }
+  },
   component: SetupPage,
 })
 
