@@ -86,6 +86,10 @@ class MemoryService:
         result = await self.memory_repo.delete(memory_id)
         if result:
             await self.audit_repo.log("delete", memory_id, api_key_id, {})
+            # Commit before pipeline cleanup: pipeline.delete_memory opens a
+            # fresh session and would otherwise deadlock against this
+            # transaction's row/CASCADE locks on the deleted memory.
+            await self.session.commit()
             if self.pipeline:
                 await self.pipeline.delete_memory(memory_id)
             else:
