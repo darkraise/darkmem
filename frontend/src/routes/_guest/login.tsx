@@ -19,6 +19,10 @@ function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    if (!password) {
+      setError("Password is required")
+      return
+    }
     setLoading(true)
     try {
       await login(password)
@@ -44,13 +48,18 @@ function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
                 autoFocus
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && (
+              <p role="alert" aria-live="assertive" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? "Signing in..." : "Sign In"}
             </Button>

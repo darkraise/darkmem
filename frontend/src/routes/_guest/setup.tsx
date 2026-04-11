@@ -56,13 +56,17 @@ function SetupPage() {
           <form onSubmit={handleSubmit} className="space-y-4" aria-label="Setup">
             <div className="space-y-1">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" autoFocus />
+              <Input id="password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" autoFocus />
             </div>
             <div className="space-y-1">
               <Label htmlFor="confirm">Confirm Password</Label>
-              <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Repeat password" />
+              <Input id="confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Repeat password" />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && (
+              <p role="alert" aria-live="assertive" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? "Setting up..." : "Set Password"}
             </Button>
