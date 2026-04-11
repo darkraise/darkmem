@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class MemoryCreate(BaseModel):
-    content: str
+    content: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
     source: str = "api"
     source_agent: str | None = None
