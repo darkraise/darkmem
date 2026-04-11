@@ -74,16 +74,15 @@ function AuthenticatedLayout() {
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
-    if (useAuthStore.getState().isAuthenticated) {
-      return
+    if (!useAuthStore.getState().isAuthenticated) {
+      throw redirect({ to: "/login" })
     }
     const { checkAuth } = await import("@/lib/api")
     const ok = await checkAuth()
-    if (ok) {
-      useAuthStore.getState().setAuthenticated(true)
-      return
+    if (!ok) {
+      useAuthStore.getState().logout()
+      throw redirect({ to: "/login" })
     }
-    throw redirect({ to: "/login" })
   },
   component: AuthenticatedLayout,
 })
