@@ -192,25 +192,76 @@ class MemoryService:
         if not self.pipeline:
             return {"answer": "Reasoning not available (no LLM pipeline configured)", "sources": []}
 
-        # Step 1: Semantic search for relevant memories
+        # Step 1a: Detect type/tag hints in the question so we can surface
+        # memories whose content may not mention the literal category word
+        # (e.g. "decisions" rarely appears inside a decision memory body).
+        KNOWN_TYPES = (
+            "fact", "decision", "problem", "preference",
+            "reference", "architecture", "milestone",
+        )
+        q_lower = question.lower()
+        type_hints: list[str] = []
+        tag_hints: list[str] = []
+        for t in KNOWN_TYPES:
+            if t in q_lower or f"{t}s" in q_lower:
+                type_hints.append(t)
+                tag_hints.append(f"project/{t}s")
+
+        # Step 1b: Type/tag-aware pass. Runs before the semantic early-return
+        # so a question like "summarize recent decisions" still finds matching
+        # rows even when vector similarity misses them entirely.
+        boosted: list[Memory] = []
+        seen: set[UUID] = set()
+        if type_hints or tag_hints:
+            for mt in type_hints:
+                rows = await self.memory_repo.search_by_tags(memory_type=mt, limit=limit)
+                for m in rows:
+                    if m.id in seen or m.is_archived:
+                        continue
+                    seen.add(m.id)
+                    boosted.append(m)
+            if tag_hints:
+                rows = await self.memory_repo.search_by_tags(tags_any=tag_hints, limit=limit)
+                for m in rows:
+                    if m.id in seen or m.is_archived:
+                        continue
+                    seen.add(m.id)
+                    boosted.append(m)
+
+        # Step 2: Semantic search for relevant memories
         semantic_results = await self.pipeline.semantic_search(question, limit=limit)
-        if not semantic_results:
+        if not semantic_results and not boosted:
             return {"answer": "No relevant memories found to answer this question.", "sources": []}
 
-        # Step 2: Fetch full memory content. Semantic search may return
+        # Step 3: Fetch full memory content. Semantic search may return
         # memory_id as either a UUID or a string (hybrid vs pure paths);
         # normalize to UUID for consistent dict keys.
         memory_ids = [UUID(r["memory_id"]) if isinstance(r["memory_id"], str) else r["memory_id"] for r in semantic_results]
         score_by_id = {mid: r["score"] for mid, r in zip(memory_ids, semantic_results)}
-        fetched = await self.memory_repo.get_many(memory_ids)
+        fetched = await self.memory_repo.get_many(memory_ids) if memory_ids else []
         fetched_by_id = {m.id: m for m in fetched}
 
         sources = []
         context_parts = []
-        for i, mid in enumerate(memory_ids):
+
+        # Prepend boosted rows at the top of the context so the LLM sees them
+        # first. Score 1.0 marks them as authoritative for this query.
+        for memory in boosted:
+            context_parts.append(f"[{len(context_parts)+1}] {memory.content}")
+            sources.append({
+                "memory_id": str(memory.id),
+                "content": memory.content[:200],
+                "score": 1.0,
+                "tags": [t.name for t in memory.tags],
+            })
+
+        for mid in memory_ids:
+            if mid in seen:
+                continue
             memory = fetched_by_id.get(mid)
             if memory and not memory.is_archived:
-                context_parts.append(f"[{i+1}] {memory.content}")
+                seen.add(mid)
+                context_parts.append(f"[{len(context_parts)+1}] {memory.content}")
                 sources.append({
                     "memory_id": str(memory.id),
                     "content": memory.content[:200],
