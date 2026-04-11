@@ -52,9 +52,12 @@ export function useMemory(id: string) {
 export function useCreateMemory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { content: string; tags?: string[]; source?: string }) =>
+    mutationFn: (data: { content: string; tags?: string[]; source?: string; memory_type?: string }) =>
       apiFetch<Memory>("/memories", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] });
+    },
   });
 }
 

@@ -30,8 +30,10 @@ import {
   PanelLeftOpen,
   Building2,
   DoorOpen,
+  Plus,
 } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
+import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
 
 export const Route = createFileRoute("/_authenticated/memories")({
   component: MemoriesPage,
@@ -347,6 +349,7 @@ function MemoriesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailMemory, setDetailMemory] = useState<Memory | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const { data, isLoading } = usePaginatedSearch({
     query: query || undefined,
@@ -487,9 +490,14 @@ function MemoriesPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-6 pt-6 pb-0 shrink-0">
+      <div className="px-6 pt-6 pb-0 shrink-0 flex items-center justify-between gap-4">
         <PageHeader title="Memories" />
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="size-4 mr-2" />
+          New Memory
+        </Button>
       </div>
+      <CreateMemoryDialog open={createOpen} onOpenChange={setCreateOpen} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Wing/Room sidebar */}
