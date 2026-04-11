@@ -38,10 +38,11 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
     async def get_many(self, memory_ids: list) -> list[Memory]:
         if not memory_ids:
             return []
-        stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.id.in_(memory_ids))
+        normalized = [UUID(m) if isinstance(m, str) else m for m in memory_ids]
+        stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.id.in_(normalized))
         result = await self.session.execute(stmt)
         by_id = {m.id: m for m in result.scalars().all()}
-        return [by_id[mid] for mid in memory_ids if mid in by_id]
+        return [by_id[mid] for mid in normalized if mid in by_id]
 
     async def update(self, memory_id, **fields):
         memory = await self.get(memory_id)
