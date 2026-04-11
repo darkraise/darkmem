@@ -1,22 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useVectorProjection } from "@/hooks/api";
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 
 export const Route = createFileRoute("/_authenticated/vectors")({
   component: VectorSpacePage,
 });
 
-const SOURCE_COLORS: Record<string, string> = {
-  "claude-code": "#58a6ff",
-  "mcp-test": "#3fb950",
-  api: "#d2a8ff",
-  "rest-test": "#ffa657",
-  dashboard: "#f778ba",
-};
-
-function getColor(source: string): string {
-  return SOURCE_COLORS[source] || "#8b949e";
-}
+const PALETTE = [
+  "#58a6ff",
+  "#3fb950",
+  "#d2a8ff",
+  "#ffa657",
+  "#f778ba",
+  "#a371f7",
+  "#f85149",
+  "#56d364",
+];
+const FALLBACK_COLOR = "#8b949e";
 
 interface VPoint {
   memory_id: string;
@@ -37,6 +37,22 @@ function VectorSpacePage() {
   const [hovered, setHovered] = useState<(VPoint & { screenX: number; screenY: number }) | null>(null);
 
   const points: VPoint[] = data?.points || [];
+
+  const sourceColors = useMemo(() => {
+    const uniqueSources = Array.from(
+      new Set(points.map((p) => p.source ?? "unknown"))
+    ).sort();
+    const map = new Map<string, string>();
+    uniqueSources.forEach((source, index) => {
+      map.set(source, PALETTE[index % PALETTE.length]);
+    });
+    return map;
+  }, [points]);
+
+  const getColor = useCallback(
+    (source: string): string => sourceColors.get(source) ?? FALLBACK_COLOR,
+    [sourceColors]
+  );
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -100,7 +116,7 @@ function VectorSpacePage() {
       ctx.lineWidth = 1;
       ctx.stroke();
     }
-  }, [points]);
+  }, [points, getColor]);
 
   useEffect(() => {
     draw();
@@ -178,9 +194,9 @@ function VectorSpacePage() {
           )}
         </div>
       )}
-      {points.length > 0 && (
+      {points.length > 0 && sourceColors.size > 0 && (
         <div className="mt-4 flex gap-3 flex-wrap">
-          {Object.entries(SOURCE_COLORS).map(([source, color]) => (
+          {Array.from(sourceColors.entries()).map(([source, color]) => (
             <div key={source} className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
               {source}
