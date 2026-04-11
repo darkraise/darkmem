@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { usePaginatedSearch, useDeleteMemory, useTags } from "@/hooks/api"
 import type { Memory } from "@/hooks/api"
@@ -35,7 +35,14 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
 
+interface MemoriesSearch {
+  focus?: string
+}
+
 export const Route = createFileRoute("/_authenticated/memories")({
+  validateSearch: (search: Record<string, unknown>): MemoriesSearch => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
   component: MemoriesPage,
 })
 
@@ -341,6 +348,8 @@ function HallFilter({ activeHall, onChange }: HallFilterProps) {
 // ── Main page ────────────────────────────────────────────────
 
 function MemoriesPage() {
+  const { focus: focusId } = Route.useSearch()
+  const navigate = Route.useNavigate()
   const [searchInput, setSearchInput] = useState("")
   const [query, setQuery] = useState("")
   const [sourceFilter, setSourceFilter] = useState("")
@@ -374,11 +383,25 @@ function MemoriesPage() {
   const memories = data?.items ?? []
   const total = data?.total ?? 0
   const unfilteredTotal = unfilteredData?.total ?? total
-  const hasFilters = Boolean(
-    query || tagFilter || sourceFilter || typeFilter || wingFilter || roomFilter || hallFilter,
-  )
   const pageStart = offset + 1
   const pageEnd = Math.min(offset + PAGE_SIZE, total)
+
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+
+  useEffect(() => {
+    if (!focusId || memories.length === 0) return
+    const target = memories.find((m) => m.id === focusId)
+    if (!target) return
+    const node = rowRefs.current.get(focusId)
+    if (node) {
+      node.scrollIntoView({ behavior: "smooth", block: "center" })
+      setHighlightId(focusId)
+      const timer = setTimeout(() => setHighlightId(null), 1500)
+      navigate({ search: (prev) => ({ ...prev, focus: undefined }), replace: true })
+      return () => clearTimeout(timer)
+    }
+  }, [focusId, memories, navigate])
 
   const wingTree = useMemo(() => buildWingTree(memories), [memories])
 
@@ -494,8 +517,9 @@ function MemoriesPage() {
       })
   }
 
-  const hasActiveFilter =
-    query || sourceFilter || tagFilter || typeFilter || wingFilter || roomFilter || hallFilter
+  const hasActiveFilter = Boolean(
+    query || sourceFilter || tagFilter || typeFilter || wingFilter || roomFilter || hallFilter,
+  )
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -516,7 +540,7 @@ function MemoriesPage() {
           selectedRoom={roomFilter}
           totalCount={total}
           unfilteredCount={unfilteredTotal}
-          hasFilters={hasFilters}
+          hasFilters={hasActiveFilter}
           onSelectAll={handleSelectAll}
           onSelectWing={handleSelectWing}
           onSelectRoom={handleSelectRoom}
@@ -647,9 +671,13 @@ function MemoriesPage() {
                   {memories.map((m) => (
                     <div
                       key={m.id}
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(m.id, el)
+                        else rowRefs.current.delete(m.id)
+                      }}
                       className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-accent/30 ${
                         selected.has(m.id) ? "bg-accent/20" : ""
-                      }`}
+                      } ${highlightId === m.id ? "ring-2 ring-primary bg-primary/10" : ""}`}
                       onClick={() => setDetailMemory(m)}
                     >
                       <Checkbox

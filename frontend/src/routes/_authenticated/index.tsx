@@ -334,7 +334,7 @@ function OverviewPage() {
                 <div
                   key={m.id}
                   className="flex items-center gap-3 p-2 border border-border rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-                  onClick={() => navigate({ to: "/memories" })}
+                  onClick={() => navigate({ to: "/memories", search: { focus: m.id } })}
                 >
                   <span className="text-sm truncate flex-1">{m.content}</span>
                   <Badge variant="secondary" className="text-xs shrink-0">
@@ -551,7 +551,7 @@ function OverviewPage() {
                 <div
                   key={m.id}
                   className="flex items-center gap-3 p-2 border border-border rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-                  onClick={() => navigate({ to: "/memories" })}
+                  onClick={() => navigate({ to: "/memories", search: { focus: m.id } })}
                 >
                   <span className="text-sm truncate flex-1">{m.content}</span>
                   <Badge variant="secondary" className="text-xs shrink-0">
