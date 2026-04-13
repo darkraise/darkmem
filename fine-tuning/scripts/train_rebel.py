@@ -59,7 +59,7 @@ def train(
     print(f"Device: {device}", flush=True)
     if device == "cuda":
         print(f"  GPU: {torch.cuda.get_device_name(0)}", flush=True)
-        print(f"  VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB", flush=True)
+        print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB", flush=True)
 
     print(f"\nLoading base model: {base_model}", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(base_model)

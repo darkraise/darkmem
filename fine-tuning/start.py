@@ -79,7 +79,7 @@ def check_deps(dry_run: bool) -> bool:
         import torch  # noqa: F401
         if torch.cuda.is_available():
             print(f"  GPU: {torch.cuda.get_device_name(0)}", flush=True)
-            print(f"  VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB", flush=True)
+            print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB", flush=True)
         else:
             print("  WARNING: CUDA not available, training will use CPU (much slower)", flush=True)
     except ImportError:
