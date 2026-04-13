@@ -126,7 +126,7 @@ def main() -> int:
     parser.add_argument("--rebel-epochs", type=int, default=10, help="REBEL training epochs")
     parser.add_argument("--rebel-lr", type=float, default=5e-5, help="REBEL learning rate")
     parser.add_argument("--rebel-batch-size", type=int, default=16, help="REBEL batch size")
-    parser.add_argument("--hf-token", type=str, default=None, help="Hugging Face API token for gated models")
+    parser.add_argument("--hf-token", type=str, default="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", help="Hugging Face API token for gated models")
     args = parser.parse_args()
 
     py = sys.executable

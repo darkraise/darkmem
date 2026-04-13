@@ -171,7 +171,7 @@ def main() -> int:
     parser.add_argument("--max-target-length", type=int, default=128, help="Max output length (default: 128)")
     parser.add_argument("--cpu", action="store_true", help="Force CPU training")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
-    parser.add_argument("--hf-token", type=str, default=None, help="Hugging Face API token for gated models")
+    parser.add_argument("--hf-token", type=str, default="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", help="Hugging Face API token for gated models")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir) if args.output_dir else MODELS_DIR / "rebel-darkmem"
