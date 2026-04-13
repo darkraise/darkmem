@@ -69,6 +69,8 @@ def train(
 
     print(f"\nLoading base model: {base_model}", flush=True)
     model = GLiNER.from_pretrained(base_model)
+    if device == "cuda":
+        model = model.to("cuda")
 
     print("Loading training data...", flush=True)
     train_path = SPLITS_DIR / "gliner_train.jsonl"
