@@ -26,7 +26,7 @@ from config.domains import ALL_ENTITY_TYPES
 
 SPLITS_DIR = ROOT / "data" / "splits"
 MODELS_DIR = ROOT / "models"
-DEFAULT_BASE = "urchade/gliner_multitask-large-v0.5"
+DEFAULT_BASE = "urchade/gliner_large-v2.1"
 
 
 def load_gliner_dataset(path: Path) -> list[dict]:
