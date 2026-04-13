@@ -126,11 +126,13 @@ def main() -> int:
     parser.add_argument("--rebel-epochs", type=int, default=10, help="REBEL training epochs")
     parser.add_argument("--rebel-lr", type=float, default=5e-5, help="REBEL learning rate")
     parser.add_argument("--rebel-batch-size", type=int, default=16, help="REBEL batch size")
+    parser.add_argument("--hf-token", type=str, default=None, help="Hugging Face API token for gated models")
     args = parser.parse_args()
 
     py = sys.executable
     steps_to_run = [args.step] if args.step else STEPS
     cpu_flag = ["--cpu"] if args.cpu else []
+    hf_flag = ["--hf-token", args.hf_token] if args.hf_token else []
     t_total = time.perf_counter()
 
     # --- deps ---
@@ -176,7 +178,7 @@ def main() -> int:
                     "--epochs", str(args.gliner_epochs),
                     "--lr", str(args.gliner_lr),
                     "--batch-size", str(args.gliner_batch_size),
-                    *cpu_flag,
+                    *cpu_flag, *hf_flag,
                 ],
                 dry_run=args.dry_run,
             )
@@ -195,7 +197,7 @@ def main() -> int:
                     "--epochs", str(args.rebel_epochs),
                     "--lr", str(args.rebel_lr),
                     "--batch-size", str(args.rebel_batch_size),
-                    *cpu_flag,
+                    *cpu_flag, *hf_flag,
                 ],
                 dry_run=args.dry_run,
             )

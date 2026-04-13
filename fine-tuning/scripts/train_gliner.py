@@ -40,6 +40,12 @@ def load_gliner_dataset(path: Path) -> list[dict]:
     return examples
 
 
+def _hf_login(token: str | None) -> None:
+    if token:
+        from huggingface_hub import login
+        login(token=token, add_to_git_credential=False)
+
+
 def train(
     base_model: str,
     epochs: int,
@@ -47,10 +53,13 @@ def train(
     batch_size: int,
     use_cpu: bool,
     output_dir: Path,
+    hf_token: str | None = None,
 ) -> None:
     import torch
     from gliner import GLiNER
     from gliner.training import Trainer, TrainingArguments
+
+    _hf_login(hf_token)
 
     device = "cpu" if use_cpu else ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}", flush=True)
@@ -132,6 +141,7 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size (default: 16)")
     parser.add_argument("--cpu", action="store_true", help="Force CPU training")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
+    parser.add_argument("--hf-token", type=str, default=None, help="Hugging Face API token for gated models")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir) if args.output_dir else MODELS_DIR / "gliner-darkmem"
@@ -143,6 +153,7 @@ def main() -> int:
         batch_size=args.batch_size,
         use_cpu=args.cpu,
         output_dir=output_dir,
+        hf_token=args.hf_token,
     )
     return 0
 
