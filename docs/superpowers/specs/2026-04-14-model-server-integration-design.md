@@ -36,7 +36,7 @@ Memory text
   -> Phases 3-5
 ```
 
-Both modes produce the same output shape. Everything downstream of Phase 2 is unchanged.
+Both modes produce the same output shape. Model mode omits `importance` (defaults to 0.7 in the backend) and hardcodes `memory_type` to `"fact"`. Everything downstream of Phase 2 is unchanged.
 
 ---
 
@@ -139,18 +139,28 @@ class ModelExtractionService:
         self.base_url = base_url
         self.client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
 
-    async def extract(self, content: str) -> dict:
-        """Call model server and return extraction result."""
+    async def extract(self, content: str, system_prompt: str | None = None) -> dict:
+        """Call model server and return extraction result.
+
+        system_prompt is accepted for interface compatibility with ExtractionService
+        but ignored — the model server uses its trained weights, not prompts.
+        """
         response = await self.client.post("/extract", json={
             "text": content,
             "entity_types": ENTITY_TYPES,
         })
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        result.setdefault("importance", 0.7)
+        return result
 
     async def health_check(self) -> bool:
         """Check if model server is reachable and models are loaded."""
-        ...
+        try:
+            r = await self.client.get("/health")
+            return r.status_code == 200
+        except httpx.HTTPError:
+            return False
 ```
 
 ### Pipeline Change: `backend/app/services/pipeline.py`
@@ -195,19 +205,29 @@ Fine-tuning data uses 35 entity types and 16 relationship types. The backend cur
 
 Expand the canonical type lists in `backend/app/services/extraction_tools.py`:
 
-**New entity types to add:**
-- `file`, `command`, `error`, `config`, `pattern`, `api`, `tool` (from ai_coding domain)
+**New entity types to add** (not already in `ENTITY_TYPES`):
+- `file`, `command`, `error`, `config`, `api`, `tool` (from ai_coding domain)
 - `place`, `event`, `date`, `food`, `activity`, `goal`, `emotion`, `hobby` (from personal domain)
-- `concept`, `theory`, `publication`, `method`, `finding`, `claim`, `field` (from knowledge domain)
+- `theory`, `publication`, `method`, `finding`, `claim`, `field` (from knowledge domain)
+
+Note: `concept` and `pattern` are already in the backend's `ENTITY_TYPES`. `claim` is currently in `_ENTITY_TYPE_MAP` as an alias for `concept` — promote it to a first-class type and remove the alias.
 
 **New relationship types to add:**
 - `FIXES`, `CAUSES` (from ai_coding domain)
 
 **Normalization map updates:**
-Add mappings for any aliases the models might produce (e.g., `"tech"` -> `"technology"`).
+- Remove `"claim" -> "concept"` mapping (now a first-class type)
+- Add `"tech" -> "technology"` and other aliases the models might produce
+
+### Entity type source for model server requests
+
+The backend sends `ENTITY_TYPES` from `extraction_tools.py` to the model server. After expansion, this list must be a superset of the types the model was trained on (defined in `fine-tuning/config/domains.py`). Any type the model produces that isn't in this list would be missed at inference time. The expanded backend list covers all fine-tuning types, so no mismatch.
 
 ### Entity types the backend already has that overlap:
 `person`, `organization`, `technology`, `service`, `project`, `concept`, `algorithm`, `pattern`, `protocol`, `language`, `framework`, `library`, `database`, `platform`, `infrastructure` — these need no changes.
+
+### Entity types in the backend but NOT in fine-tuning:
+`team`, `standard`, `specification` — the model won't produce these. They remain for LLM mode.
 
 ---
 
