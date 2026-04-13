@@ -81,3 +81,42 @@ def test_duplicate_entity_name_across_slots():
 
     assert len(ex["entities"]) == 1
     assert len(ex["relationships"]) == 0
+
+
+def test_all_templates_reference_declared_slots():
+    """Every slot in entity_slots must appear as {N} in the template string."""
+    import re
+    from config.templates import (
+        TECHNICAL_TEMPLATES, AI_CODING_TEMPLATES,
+        PERSONAL_TEMPLATES, KNOWLEDGE_TEMPLATES, CROSS_DOMAIN_TEMPLATES,
+    )
+
+    errors = []
+    all_groups = [
+        ("TECHNICAL", TECHNICAL_TEMPLATES),
+        ("AI_CODING", AI_CODING_TEMPLATES),
+        ("PERSONAL", PERSONAL_TEMPLATES),
+        ("KNOWLEDGE", KNOWLEDGE_TEMPLATES),
+    ]
+
+    for group_name, templates in all_groups:
+        for cat_name, cat_templates in templates.items():
+            for i, (tmpl_str, entity_slots, rel_specs, _) in enumerate(cat_templates):
+                format_slots = {int(m) for m in re.findall(r"\{(\d+)\}", tmpl_str)}
+                for slot_idx, etype in entity_slots:
+                    if slot_idx not in format_slots:
+                        errors.append(
+                            f"{group_name}/{cat_name}[{i}]: slot {slot_idx} ({etype}) "
+                            f"not in template string"
+                        )
+
+    for i, (tmpl_str, entity_slots, rel_specs, _) in enumerate(CROSS_DOMAIN_TEMPLATES):
+        format_slots = {int(m) for m in re.findall(r"\{(\d+)\}", tmpl_str)}
+        for slot_idx, etype in entity_slots:
+            if slot_idx not in format_slots:
+                errors.append(
+                    f"CROSS_DOMAIN[{i}]: slot {slot_idx} ({etype}) "
+                    f"not in template string"
+                )
+
+    assert not errors, "Templates with undeclared slots:\n" + "\n".join(errors)
