@@ -202,6 +202,11 @@ def split_data(
     for domain, domain_examples in by_domain.items():
         rng.shuffle(domain_examples)
         n = len(domain_examples)
+
+        if n <= 2:
+            train.extend(domain_examples)
+            continue
+
         n_val = max(1, round(n * VAL_RATIO))
         n_test = max(1, round(n * TEST_RATIO))
         n_train = n - n_val - n_test

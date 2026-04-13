@@ -83,3 +83,33 @@ def test_gliner_format_multiword_entity():
         assert s[1] - s[0] == 2, f"Expected 2-token span, got {s[1] - s[0]}"
     finally:
         path.unlink(missing_ok=True)
+
+
+from scripts.validate_data import split_data
+
+
+def test_split_single_example_domain():
+    """A domain with 1 example should place it in train, not leak to test."""
+    examples = [{"id": "solo-1", "domain": "tiny", "text": "hello"}]
+    train, val, test = split_data(examples, seed=42)
+
+    total = len(train) + len(val) + len(test)
+    assert total == 1, f"Expected 1 total, got {total}"
+    assert len(train) == 1
+    assert len(val) == 0
+    assert len(test) == 0
+
+
+def test_split_two_example_domain():
+    """A domain with 2 examples should not leak the same example into multiple splits."""
+    examples = [
+        {"id": "pair-1", "domain": "tiny", "text": "hello"},
+        {"id": "pair-2", "domain": "tiny", "text": "world"},
+    ]
+    train, val, test = split_data(examples, seed=42)
+
+    total = len(train) + len(val) + len(test)
+    assert total == 2, f"Expected 2 total, got {total}"
+
+    all_ids = [ex["id"] for ex in train + val + test]
+    assert len(all_ids) == len(set(all_ids)), f"Duplicate IDs across splits: {all_ids}"
