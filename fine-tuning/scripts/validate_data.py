@@ -230,6 +230,11 @@ def write_jsonl(examples: list[dict], path: Path) -> None:
             fh.write(json.dumps(cleaned, ensure_ascii=False) + "\n")
 
 
+import re as _re
+
+_WORD_TOKENIZE_RE = _re.compile(r"\.?\w+(?:['\-\.]\w+)*|[^\w\s]")
+
+
 def _char_spans_to_token_spans(
     text: str, char_entities: list[dict],
 ) -> tuple[list[str], list[list]]:
@@ -238,14 +243,9 @@ def _char_spans_to_token_spans(
     Returns (tokens, ner) where ner entries are [start_token, end_token, label].
     end_token is exclusive (GLiNER convention).
     """
-    tokens: list[str] = text.split()
-
-    token_char_starts: list[int] = []
-    pos = 0
-    for tok in tokens:
-        idx = text.index(tok, pos)
-        token_char_starts.append(idx)
-        pos = idx + len(tok)
+    token_matches = list(_WORD_TOKENIZE_RE.finditer(text))
+    tokens = [m.group() for m in token_matches]
+    token_char_starts = [m.start() for m in token_matches]
 
     ner: list[list] = []
     for ent in char_entities:

@@ -85,6 +85,68 @@ def test_gliner_format_multiword_entity():
         path.unlink(missing_ok=True)
 
 
+def test_gliner_format_entity_at_sentence_end():
+    """Entity at sentence end must not include trailing punctuation."""
+    examples = [
+        {
+            "text": "We chose pgvector for vector search after testing InfluxDB and JanusGraph.",
+            "entities": [
+                {"name": "pgvector", "type": "database", "start": 9, "end": 17},
+                {"name": "InfluxDB", "type": "database", "start": 50, "end": 58},
+                {"name": "JanusGraph", "type": "database", "start": 63, "end": 73},
+            ],
+        },
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+        path = Path(f.name)
+
+    try:
+        write_gliner_jsonl(examples, path)
+        with path.open() as fh:
+            record = json.loads(fh.readline())
+
+        tokens = record["tokenized_text"]
+        for span in record["ner"]:
+            entity_text = " ".join(tokens[span[0]:span[1]])
+            assert entity_text in ("pgvector", "InfluxDB", "JanusGraph"), (
+                f"Entity token span contains unexpected text: '{entity_text}'"
+            )
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_gliner_format_entity_with_comma():
+    """Entity followed by comma must not include the comma."""
+    examples = [
+        {
+            "text": "We use Flask, Django, and FastAPI for web apps.",
+            "entities": [
+                {"name": "Flask", "type": "framework", "start": 7, "end": 12},
+                {"name": "Django", "type": "framework", "start": 14, "end": 20},
+                {"name": "FastAPI", "type": "framework", "start": 26, "end": 33},
+            ],
+        },
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+        path = Path(f.name)
+
+    try:
+        write_gliner_jsonl(examples, path)
+        with path.open() as fh:
+            record = json.loads(fh.readline())
+
+        tokens = record["tokenized_text"]
+        for span in record["ner"]:
+            entity_text = " ".join(tokens[span[0]:span[1]])
+            assert entity_text in ("Flask", "Django", "FastAPI"), (
+                f"Entity token span contains unexpected text: '{entity_text}'"
+            )
+    finally:
+        path.unlink(missing_ok=True)
+
+
 from scripts.validate_data import split_data
 
 
