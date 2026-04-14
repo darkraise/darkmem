@@ -1,0 +1,129 @@
+{
+  "source": "data\\validated\\all.jsonl",
+  "kind": "extraction",
+  "total": 200,
+  "passed": 136,
+  "pass_rate": 0.68,
+  "failures_head": [
+    [
+      1,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      4,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      5,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      6,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      14,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      19,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      20,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      26,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      32,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      35,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      36,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      38,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      40,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      44,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      45,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      47,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      48,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      50,
+      [
+        "unknown memory_type: workflow"
+      ]
+    ],
+    [
+      52,
+      [
+        "unknown memory_type: debug"
+      ]
+    ],
+    [
+      55,
+      [
+        "unknown memory_type: debug"
+      ]
+    ]
+  ]
+}
