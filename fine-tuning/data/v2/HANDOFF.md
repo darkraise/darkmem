@@ -6,7 +6,7 @@ This document coordinates the v2 corpus generation across many Claude Code sessi
 
 | Corpus | File | Target | Completed | Next batch |
 |---|---|---:|---:|---|
-| Shared base | shared/shared.jsonl | 7,000 | 200 | batch-005 |
+| Shared base | shared/shared.jsonl | 7,000 | 250 | batch-006 |
 | Extraction top-up | extraction/topup.jsonl | 3,000 | 5,368 (absorbed) | batch-001 |
 | Classification top-up | classification/topup.jsonl | 3,000 | 0 | batch-001 |
 | Retrieval top-up | retrieval/topup.jsonl | 3,000 | 0 | batch-001 |
@@ -90,7 +90,8 @@ Direction rules:
 | batch-001 | shared | technical | 50 | 0 | `5175850` |
 | batch-002 | shared | ai_coding | 50 | 0 | `5b648de` |
 | batch-003 | shared | personal | 50 | 0 | `5720818` |
-| batch-004 | shared | knowledge | 50 | 0 | pending |
+| batch-004 | shared | knowledge | 50 | 0 | `3cb04a4` |
+| batch-005 | shared | cross | 50 | 0 | pending |
 
 ## Generation pattern
 
