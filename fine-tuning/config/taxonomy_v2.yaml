@@ -1,0 +1,106 @@
+# fine-tuning/config/taxonomy_v2.yaml
+# Version 2 taxonomy. Entity and relation lists kept broad to support KB expansion.
+
+memory_types:
+  - fact
+  - decision
+  - preference
+  - problem
+  - reference
+  - architecture
+  - milestone
+
+entity_types:
+  technical:
+    - technology
+    - service
+    - library
+    - database
+    - framework
+    - protocol
+    - algorithm
+    - project
+    - language
+    - platform
+    - infrastructure
+  ai_coding:
+    - file
+    - command
+    - error
+    - config
+    - pattern
+    - api
+  personal:
+    - person
+    - place
+    - organization
+    - event
+    - date
+    - food
+    - activity
+    - goal
+    - emotion
+    - hobby
+  knowledge:
+    - concept
+    - theory
+    - publication
+    - method
+    - finding
+    - claim
+    - field
+    - tool
+
+relation_types:
+  core:
+    - USES
+    - DEPENDS_ON
+    - REPLACES
+    - IMPROVES_ON
+    - IS_A
+    - HAS_PART
+    - COMMUNICATES_WITH
+    - KNOWS
+    - LOCATED_IN
+    - HAPPENED_ON
+    - CAUSES
+    - RELATED_TO
+  extended:
+    - DEPLOYED_ON
+    - PRODUCES
+    - IMPLEMENTS
+    - FIXES
+    - CONFIGURES
+    - EXTENDS
+    - LIVES_IN
+    - WORKS_AT
+    - VISITED
+    - FEELS_ABOUT
+    - PLANS_TO
+    - PREFERS
+    - SUPPORTS
+    - CONTRADICTS
+    - BUILDS_ON
+    - AUTHORED_BY
+    - PUBLISHED_IN
+    - APPLIES_TO
+
+document_types_stub:
+  - article
+  - paper
+  - tutorial
+  - reference_doc
+  - news
+  - recipe
+  - manual
+  - email
+  - code
+  - spec
+  - legal
+  - narrative
+
+validator:
+  max_query_similarity_to_source: 0.6   # normalized Levenshtein ratio
+  max_query_pair_similarity: 0.7        # between question-form and keyword-form
+  gliner_conversion_failure_threshold: 0.01   # 1% — above this blocks training
+  audit_absorb_threshold: 0.6           # 60% sample pass rate to absorb corpus
