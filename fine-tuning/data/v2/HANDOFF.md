@@ -6,10 +6,10 @@ This document coordinates the v2 corpus generation across many Claude Code sessi
 
 | Corpus | File | Target | Completed | Next batch |
 |---|---|---:|---:|---|
-| Shared base | shared/shared.jsonl | 7,000 | 0 | batch-001 |
-| Extraction top-up | extraction/topup.jsonl | 3,000 | <absorbed count> | batch-001 |
-| Classification top-up | classification/topup.jsonl | 3,000 | <absorbed count> | batch-001 |
-| Retrieval top-up | retrieval/topup.jsonl | 3,000 | <absorbed count> | batch-001 |
+| Shared base | shared/shared.jsonl | 7,000 | 50 | batch-002 |
+| Extraction top-up | extraction/topup.jsonl | 3,000 | 5,368 (absorbed) | batch-001 |
+| Classification top-up | classification/topup.jsonl | 3,000 | 0 | batch-001 |
+| Retrieval top-up | retrieval/topup.jsonl | 3,000 | 0 | batch-001 |
 | Document stub | documents/seed.jsonl | 200 | 0 | batch-001 |
 
 ## Rules for every session
@@ -86,7 +86,12 @@ Direction rules:
 
 | Batch ID | Corpus | Domain/mode | Rows written | Rows failed | Commit |
 |---|---|---|---:|---:|---|
-| | | | | | |
+| absorb-ext | extraction/topup | absorbed from data/validated/all.jsonl | 5,368 | 2,632 | `61c5eca` |
+| batch-001 | shared | technical | 50 | 0 | pending |
+
+## Generation pattern
+
+Batches are emitted by one-off scripts `scripts/_emit_shared_batch_NNN.py` that embed the entries as Python data (text + entity names + types + relationships + queries) and compute character offsets programmatically via `str.find()` so the offsets cannot drift. Pattern for future batches: copy the previous batch's emit script, swap `ENTRIES`, and re-run. The scripts are versioned alongside the data so the audit trail stays intact.
 
 ## Pending rewrites
 
