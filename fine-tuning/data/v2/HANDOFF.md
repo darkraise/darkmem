@@ -6,7 +6,7 @@ This document coordinates the v2 corpus generation across many Claude Code sessi
 
 | Corpus | File | Target | Completed | Next batch |
 |---|---|---:|---:|---|
-| Shared base | shared/shared.jsonl | 7,000 | 5098 | batch-103 |
+| Shared base | shared/shared.jsonl | 7,000 | 5848 | batch-118 |
 | Extraction top-up | extraction/topup.jsonl | 3,000 | 5,368 (absorbed) | batch-001 |
 | Classification top-up | classification/topup.jsonl | 3,000 | 0 | batch-001 |
 | Retrieval top-up | retrieval/topup.jsonl | 3,000 | 0 | batch-001 |
@@ -186,9 +186,24 @@ Direction rules:
 | batch-097 | shared | technical | 50 | 0 | pending |
 | batch-098 | shared | technical | 50 | 0 | pending |
 | batch-099 | shared | technical | 50 | 0 | pending |
-| batch-100 | shared | ai_coding | 50 | 0 | pending |
-| batch-101 | shared | ai_coding | 50 | 0 | pending |
-| batch-102 | shared | ai_coding | 50 | 0 | pending |
+| batch-100 | shared | ai_coding | 50 | 0 | `f1b376c` |
+| batch-101 | shared | ai_coding | 50 | 0 | `f1b376c` |
+| batch-102 | shared | ai_coding | 50 | 0 | `f1b376c` |
+| batch-103 | shared | personal | 50 | 0 | pending |
+| batch-104 | shared | personal | 50 | 0 | pending |
+| batch-105 | shared | personal | 50 | 0 | pending |
+| batch-106 | shared | knowledge | 50 | 0 | pending |
+| batch-107 | shared | knowledge | 50 | 0 | pending |
+| batch-108 | shared | knowledge | 50 | 0 | pending |
+| batch-109 | shared | cross | 50 | 0 | pending |
+| batch-110 | shared | cross | 50 | 0 | pending |
+| batch-111 | shared | cross | 50 | 0 | pending |
+| batch-112 | shared | technical | 50 | 0 | pending |
+| batch-113 | shared | technical | 50 | 0 | pending |
+| batch-114 | shared | technical | 50 | 0 | pending |
+| batch-115 | shared | ai_coding | 50 | 0 | pending |
+| batch-116 | shared | ai_coding | 50 | 0 | pending |
+| batch-117 | shared | ai_coding | 50 | 0 | pending |
 
 ## Generation pattern
 
