@@ -1,0 +1,114 @@
+{
+  "accuracy": 0.9179487179487179,
+  "macro_f1": 0.9183496500395305,
+  "reference_recall": 0.9285714285714286,
+  "confusion_matrix": {
+    "architecture": {
+      "architecture": 28,
+      "decision": 0,
+      "fact": 0,
+      "milestone": 0,
+      "preference": 0,
+      "problem": 0,
+      "reference": 0
+    },
+    "decision": {
+      "architecture": 0,
+      "decision": 22,
+      "fact": 2,
+      "milestone": 0,
+      "preference": 4,
+      "problem": 0,
+      "reference": 0
+    },
+    "fact": {
+      "architecture": 1,
+      "decision": 1,
+      "fact": 26,
+      "milestone": 0,
+      "preference": 0,
+      "problem": 0,
+      "reference": 0
+    },
+    "milestone": {
+      "architecture": 0,
+      "decision": 0,
+      "fact": 2,
+      "milestone": 26,
+      "preference": 0,
+      "problem": 0,
+      "reference": 0
+    },
+    "preference": {
+      "architecture": 0,
+      "decision": 1,
+      "fact": 2,
+      "milestone": 0,
+      "preference": 24,
+      "problem": 0,
+      "reference": 0
+    },
+    "problem": {
+      "architecture": 0,
+      "decision": 0,
+      "fact": 1,
+      "milestone": 0,
+      "preference": 0,
+      "problem": 27,
+      "reference": 0
+    },
+    "reference": {
+      "architecture": 0,
+      "decision": 0,
+      "fact": 0,
+      "milestone": 1,
+      "preference": 1,
+      "problem": 0,
+      "reference": 26
+    }
+  },
+  "per_type": {
+    "architecture": {
+      "precision": 0.9655172413793104,
+      "recall": 1.0,
+      "f1": 0.9824561403508771,
+      "support": 28
+    },
+    "decision": {
+      "precision": 0.9166666666666666,
+      "recall": 0.7857142857142857,
+      "f1": 0.8461538461538461,
+      "support": 28
+    },
+    "fact": {
+      "precision": 0.7878787878787878,
+      "recall": 0.9285714285714286,
+      "f1": 0.8524590163934426,
+      "support": 28
+    },
+    "milestone": {
+      "precision": 0.9629629629629629,
+      "recall": 0.9285714285714286,
+      "f1": 0.9454545454545454,
+      "support": 28
+    },
+    "preference": {
+      "precision": 0.8275862068965517,
+      "recall": 0.8888888888888888,
+      "f1": 0.8571428571428572,
+      "support": 27
+    },
+    "problem": {
+      "precision": 1.0,
+      "recall": 0.9642857142857143,
+      "f1": 0.9818181818181818,
+      "support": 28
+    },
+    "reference": {
+      "precision": 1.0,
+      "recall": 0.9285714285714286,
+      "f1": 0.962962962962963,
+      "support": 28
+    }
+  }
+}

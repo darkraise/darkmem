@@ -98,6 +98,19 @@ def main() -> int:
                         help="HuggingFace token for gated models")
     parser.add_argument("--trust-remote-code", action="store_true",
                         help="Enable trust_remote_code for custom model architectures")
+    parser.add_argument("--bf16", action="store_true",
+                        help="Enable bf16 mixed-precision training")
+    parser.add_argument("--gradient-checkpointing", action="store_true",
+                        help="Enable gradient checkpointing to save VRAM at ~20%% training cost")
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=1,
+                        help="Gradient accumulation steps (effective batch = batch_size * this)")
+    parser.add_argument("--class-weights", action="store_true",
+                        help="Weight cross-entropy loss by inverse class frequency")
+    parser.add_argument("--lr-scheduler-type", default="linear",
+                        choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
+                        help="LR schedule for the HF Trainer (default: linear)")
+    parser.add_argument("--label-smoothing", type=float, default=0.0,
+                        help="Label smoothing factor (0.0-0.3, default 0.0)")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -183,13 +196,39 @@ def main() -> int:
         logging_steps=10,
         report_to="none",
         seed=args.seed,
-        bf16=False,
+        bf16=args.bf16,
         fp16=False,
         max_grad_norm=1.0,
         dataloader_num_workers=0,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        gradient_checkpointing=args.gradient_checkpointing,
+        lr_scheduler_type=args.lr_scheduler_type,
+        label_smoothing_factor=args.label_smoothing,
     )
+    if args.gradient_checkpointing:
+        model.config.use_cache = False
 
-    trainer = Trainer(
+    # Optional inverse-frequency class weights for cross-entropy loss
+    class_weights_tensor = None
+    if args.class_weights:
+        counts = np.bincount(np.array(train_labels), minlength=len(LABELS))
+        weights = counts.sum() / (len(LABELS) * np.maximum(counts, 1))
+        class_weights_tensor = torch.tensor(weights, dtype=torch.float32)
+        print(f"  Class weights (inverse-frequency): {dict(zip(LABELS, [round(float(w), 3) for w in weights]))}")
+
+    class WeightedTrainer(Trainer):
+        def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+            labels = inputs.pop("labels")
+            outputs = model(**inputs)
+            logits = outputs.logits
+            loss_fct = torch.nn.CrossEntropyLoss(
+                weight=class_weights_tensor.to(logits.device) if class_weights_tensor is not None else None
+            )
+            loss = loss_fct(logits.view(-1, len(LABELS)), labels.view(-1))
+            return (loss, outputs) if return_outputs else loss
+
+    TrainerCls = WeightedTrainer if class_weights_tensor is not None else Trainer
+    trainer = TrainerCls(
         model=model,
         args=training_args,
         train_dataset=train_ds,
