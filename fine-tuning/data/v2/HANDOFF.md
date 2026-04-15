@@ -9,7 +9,7 @@ This document coordinates the v2 corpus generation across many Claude Code sessi
 | Shared base | shared/shared.jsonl | 7,000 | 7000 | — (complete) |
 | Extraction top-up | extraction/topup.jsonl | 3,000 | 5,368 (absorbed) | batch-001 |
 | Classification top-up | classification/topup.jsonl | 3,000 | 3000 | — (complete) |
-| Retrieval top-up | retrieval/topup.jsonl | 3,000 | 0 | batch-001 |
+| Retrieval top-up | retrieval/topup.jsonl | 3,000 | 1500 | batch-016 |
 | Document stub | documents/seed.jsonl | 200 | 0 | batch-001 |
 
 ## Rules for every session
