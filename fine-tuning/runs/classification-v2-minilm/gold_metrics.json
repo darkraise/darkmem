@@ -1,0 +1,249 @@
+{
+  "accuracy": 0.4256410256410256,
+  "macro_f1": 0.3331162234212725,
+  "reference_recall": 0.8235294117647058,
+  "confusion_matrix": {
+    "architecture": {
+      "architecture": 16,
+      "comparison": 0,
+      "decision": 0,
+      "fact": 1,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 0,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "comparison": {
+      "architecture": 3,
+      "comparison": 0,
+      "decision": 1,
+      "fact": 10,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 1,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "decision": {
+      "architecture": 1,
+      "comparison": 0,
+      "decision": 11,
+      "fact": 1,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 4,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "fact": {
+      "architecture": 2,
+      "comparison": 0,
+      "decision": 0,
+      "fact": 15,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 0,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "goal": {
+      "architecture": 5,
+      "comparison": 0,
+      "decision": 7,
+      "fact": 1,
+      "goal": 0,
+      "milestone": 2,
+      "observation": 0,
+      "preference": 0,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "milestone": {
+      "architecture": 4,
+      "comparison": 0,
+      "decision": 1,
+      "fact": 8,
+      "goal": 0,
+      "milestone": 4,
+      "observation": 0,
+      "preference": 0,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "observation": {
+      "architecture": 0,
+      "comparison": 0,
+      "decision": 0,
+      "fact": 11,
+      "goal": 0,
+      "milestone": 3,
+      "observation": 0,
+      "preference": 0,
+      "problem": 1,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "preference": {
+      "architecture": 1,
+      "comparison": 0,
+      "decision": 1,
+      "fact": 4,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 11,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "problem": {
+      "architecture": 2,
+      "comparison": 0,
+      "decision": 1,
+      "fact": 3,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 0,
+      "problem": 12,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "question": {
+      "architecture": 0,
+      "comparison": 0,
+      "decision": 3,
+      "fact": 12,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 0,
+      "problem": 0,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    },
+    "reference": {
+      "architecture": 0,
+      "comparison": 0,
+      "decision": 1,
+      "fact": 2,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 0,
+      "problem": 0,
+      "question": 0,
+      "reference": 14,
+      "workaround": 0
+    },
+    "workaround": {
+      "architecture": 4,
+      "comparison": 0,
+      "decision": 1,
+      "fact": 7,
+      "goal": 0,
+      "milestone": 0,
+      "observation": 0,
+      "preference": 2,
+      "problem": 1,
+      "question": 0,
+      "reference": 0,
+      "workaround": 0
+    }
+  },
+  "per_type": {
+    "architecture": {
+      "precision": 0.42105263157894735,
+      "recall": 0.9411764705882353,
+      "f1": 0.5818181818181818,
+      "support": 17
+    },
+    "comparison": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 15
+    },
+    "decision": {
+      "precision": 0.4074074074074074,
+      "recall": 0.6470588235294118,
+      "f1": 0.5,
+      "support": 17
+    },
+    "fact": {
+      "precision": 0.2,
+      "recall": 0.8823529411764706,
+      "f1": 0.3260869565217392,
+      "support": 17
+    },
+    "goal": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 15
+    },
+    "milestone": {
+      "precision": 0.4444444444444444,
+      "recall": 0.23529411764705882,
+      "f1": 0.30769230769230765,
+      "support": 17
+    },
+    "observation": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 15
+    },
+    "preference": {
+      "precision": 0.6111111111111112,
+      "recall": 0.6470588235294118,
+      "f1": 0.6285714285714287,
+      "support": 17
+    },
+    "problem": {
+      "precision": 0.8571428571428571,
+      "recall": 0.6666666666666666,
+      "f1": 0.75,
+      "support": 18
+    },
+    "question": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 15
+    },
+    "reference": {
+      "precision": 1.0,
+      "recall": 0.8235294117647058,
+      "f1": 0.9032258064516129,
+      "support": 17
+    },
+    "workaround": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 15
+    }
+  }
+}
