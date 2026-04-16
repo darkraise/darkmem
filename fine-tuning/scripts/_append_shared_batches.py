@@ -22,7 +22,7 @@ BATCH_DIR = ROOT / "data" / "v2" / "shared"
 SKIPS = ROOT / "data" / "v2" / "failed" / "append_skips_2026-04-16.jsonl"
 DROPS = ROOT / "data" / "v2" / "failed" / "invalid_offsets.jsonl"
 START = 142
-END = 237  # inclusive
+END = 281  # inclusive
 
 
 def main() -> int:
