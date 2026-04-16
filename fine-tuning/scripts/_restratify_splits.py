@@ -200,6 +200,16 @@ def main() -> int:
     write_jsonl(SPLITS_DIR / "gliner_val.jsonl", [to_gliner(r) for r in g_val])
     write_jsonl(SPLITS_DIR / "gliner_test.jsonl", [to_gliner(r) for r in g_test])
 
+    # Canonical-schema splits used by scripts.evaluate (Phase 4) and the
+    # Phase 3 head-level eval gold. Keep only the canonical keys so the
+    # schema matches scripts.validate_data.write_jsonl output.
+    canon_keys = {"id", "domain", "text", "memory_type", "entities", "relationships"}
+    def canon(r: dict) -> dict:
+        return {k: v for k, v in r.items() if k in canon_keys}
+    write_jsonl(SPLITS_DIR / "train.jsonl", [canon(r) for r in g_train])
+    write_jsonl(SPLITS_DIR / "val.jsonl", [canon(r) for r in g_val])
+    write_jsonl(SPLITS_DIR / "test.jsonl", [canon(r) for r in g_test])
+
     # REBEL: filter to rows with non-empty relationships
     rel_rows = [r for r in rows if r.get("relationships")]
     print(f"\nREBEL-eligible rows (non-empty relationships): {len(rel_rows)}")
@@ -217,6 +227,10 @@ def main() -> int:
     write_jsonl(SPLITS_DIR / "rebel_train.jsonl", [to_rebel(r) for r in r_train])
     write_jsonl(SPLITS_DIR / "rebel_val.jsonl", [to_rebel(r) for r in r_val])
     write_jsonl(SPLITS_DIR / "rebel_test.jsonl", [to_rebel(r) for r in r_test])
+
+    # REBEL gold in canonical schema for Phase 3 relation eval (eval_relation.py
+    # needs {id, relationships: [{source, target, type}]}).
+    write_jsonl(SPLITS_DIR / "rebel_test_gold.jsonl", [canon(r) for r in r_test])
 
     print("\nDone.")
     return 0
