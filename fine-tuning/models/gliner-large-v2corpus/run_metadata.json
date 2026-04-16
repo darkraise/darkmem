@@ -1,0 +1,21 @@
+{
+  "base_model": "urchade/gliner_large-v2.1",
+  "kind": "gliner",
+  "epochs_requested": 5,
+  "train_size": 10000,
+  "val_size": 2000,
+  "training_args": {
+    "lr": 1e-05,
+    "batch_size": 8
+  },
+  "parsed": {
+    "last_batch_loss": 18.73,
+    "final_train_loss_aggregate": 35.48,
+    "final_eval_loss": null,
+    "loss_samples": 125,
+    "eval_loss_samples": 0,
+    "final_epoch": 5.0,
+    "elapsed_seconds": 13062.0,
+    "elapsed_minutes": 217.7
+  }
+}
