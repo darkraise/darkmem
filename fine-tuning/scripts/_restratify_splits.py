@@ -12,17 +12,24 @@ corpus we have 10,065 such rows, so the split is 80/10/10 of that subset
 >=8000 floor; val/test sit at ~1000 each, which is below the plan's 1800
 aspiration but is forced by the data budget once Phase 1.1 was skipped.
 
-Output schema matches scripts.convert_to_gliner and scripts.convert_to_rebel
-verbatim so the existing trainers work unchanged.
+GLiNER output schema is the tokenized {tokenized_text, ner} form that
+train_gliner.py consumes (word tokens + token-index spans), produced via
+the same _char_spans_to_token_spans helper used by scripts/validate_data.py.
+REBEL output schema matches scripts.convert_to_rebel.
 """
 from __future__ import annotations
 
 import json
 import random
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.validate_data import _char_spans_to_token_spans
+
 SHARED = ROOT / "data" / "v2" / "shared" / "shared.jsonl"
 SPLITS_DIR = ROOT / "data" / "splits"
 
@@ -119,13 +126,14 @@ def split_group(
 
 def to_gliner(row: dict) -> dict:
     text = row["text"]
-    entities = []
+    char_ents: list[dict] = []
     for ent in row.get("entities", []) or []:
         start, end = ent["start"], ent["end"]
         if start < 0 or end > len(text) or end <= start:
             continue
-        entities.append({"start": start, "end": end, "label": ent["type"]})
-    return {"text": text, "entities": entities}
+        char_ents.append({"start": start, "end": end, "label": ent["type"]})
+    tokens, ner = _char_spans_to_token_spans(text, char_ents)
+    return {"tokenized_text": tokens, "ner": ner}
 
 
 def to_rebel(row: dict) -> dict:
