@@ -1,0 +1,5 @@
+{"line": 14, "errors": ["entity[1] unknown entity type: reference"]}
+{"line": 20, "errors": ["relationship[0] target endpoint not in entity list: deferred reference counting"]}
+{"line": 23, "errors": ["relationship[0] source endpoint not in entity list: async traits"]}
+{"line": 26, "errors": ["relationship[0] source endpoint not in entity list: Scala 3 inline"]}
+{"line": 27, "errors": ["relationship[0] source endpoint not in entity list: Swift macros"]}

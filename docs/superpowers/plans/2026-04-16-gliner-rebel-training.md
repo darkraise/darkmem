@@ -112,6 +112,108 @@ After aggregation, run `python -m scripts.validate_v2 --input data/v2/shared/sha
 ### Time-budget escape hatch
 If after **4 hours of Phase 1 wall-clock** the corpus is still below 12,000 rows, stop minting and proceed with what is there. Phase 2's split targets scale accordingly: `train = floor(corpus * 10000/14000)`, `val = test = floor(corpus * 2000/14000)`. Document the undershoot at the top of the Final Report.
 
+### Actual Phase 1 outcome (2026-04-16)
+Stopped at **11,800 rows** (7,000 existing + 4,800 new across 96 batches: 142-237). Opus 4.6 token budget made the last 2,400 rows (batches 238-281) uneconomical to continue. Phase 1.1 below bridges the gap with open-corpus data instead.
+
+## Phase 1.1 — Open-corpus top-up (NuNER + REBEL)
+
+### Motivation
+The 11,800 darkmem rows are in-distribution and irreplaceable but by themselves underserve the target 10k/2k/2k GLiNER split and 8k+/1.8k+/1.8k+ REBEL split. Open NER/RE corpora cover our taxonomy well enough to fill the gap at zero generation cost, and the GLiNER + REBEL papers both show domain-mix training helps generalization.
+
+### Target
+Expand the raw pool to **~50,000 rows** total by pulling and filtering from:
+- `numind/NuNER-v2` — ~370k synthetic NER rows, ~200 entity types. Filter to rows whose labels are all in our 35-type set (or can be remapped via the table below). Expected keep-rate 15-25% ⇒ 50-90k eligible rows; cap at **30,000**.
+- `Babelscape/rebel-dataset` — ~1M Wikipedia+DBpedia triplets with ~220 relation types. Filter to rows whose relations map onto our 30-set via the relation remap table. Expected keep-rate 30-40% ⇒ 300-400k eligible; cap at **10,000** to avoid drowning darkmem rows.
+
+### Remap tables (open → darkmem taxonomy)
+Entity type remap — only keep rows where every entity type maps cleanly:
+```
+PER / PERSON / PEOPLE       → person
+LOC / LOCATION / GPE        → place
+ORG / ORGANISATION          → organization
+DATE / TIME                 → date
+EVENT                       → event
+PRODUCT                     → tool
+LANGUAGE                    → language
+TECH / TECHNOLOGY           → technology
+LIBRARY / FRAMEWORK         → library
+DATABASE                    → database
+FRAMEWORK                   → framework
+PROTOCOL                    → protocol
+ALGORITHM                   → algorithm
+PROJECT                     → project
+PLATFORM                    → platform
+INFRASTRUCTURE              → infrastructure
+FILE / FILENAME / PATH      → file
+COMMAND / CLI               → command
+ERROR / EXCEPTION           → error
+CONFIG / SETTING            → config
+PATTERN / DESIGN_PATTERN    → pattern
+API / ENDPOINT              → api
+FOOD                        → food
+ACTIVITY                    → activity
+HOBBY                       → hobby
+CONCEPT / IDEA              → concept
+THEORY                      → theory
+PUBLICATION / BOOK / PAPER  → publication
+METHOD / TECHNIQUE          → method
+FINDING / RESULT            → finding
+CLAIM                       → claim
+FIELD / DISCIPLINE          → field
+TOOL / UTILITY              → tool
+WORK_OF_ART / LAW / NORP    → (drop row — no clean map)
+```
+
+Relation type remap — REBEL's Wikidata property codes:
+```
+P31  (instance of)          → IS_A
+P279 (subclass of)           → IS_A
+P527 (has part)              → HAS_PART
+P361 (part of)               → HAS_PART          (swap source/target)
+P17  (country)               → LOCATED_IN
+P131 (located in admin unit) → LOCATED_IN
+P276 (location)              → LOCATED_IN
+P50  / P57 / P170 (author/director/creator)
+                             → AUTHORED_BY       (swap source/target)
+P577 (publication date)      → HAPPENED_ON
+P585 (point in time)         → HAPPENED_ON
+P123 (publisher)             → PUBLISHED_IN      (swap)
+P156 (followed by)           → REPLACES          (swap)
+P155 (follows)               → REPLACES
+P180 (depicts)               → APPLIES_TO
+P176 (manufacturer)          → PRODUCES          (swap)
+P249 (ticker symbol)         → RELATED_TO
+P463 (member of)             → WORKS_AT          (swap)
+P108 (employer)              → WORKS_AT
+P800 (notable work)          → PRODUCES
+P138 (named after)           → RELATED_TO
+P710 (participant)           → RELATED_TO
+P179 (part of series)        → HAS_PART          (swap)
+P166 (award received)        → RELATED_TO
+P737 (influenced by)         → BUILDS_ON
+(all others)                 → drop row
+```
+
+### Steps
+1. Write `scripts/_pull_open_corpora.py`:
+   - Install/verify `datasets` library (Hugging Face `datasets`) is available. If not, `pip install datasets`.
+   - Stream-download `numind/NuNER-v2`. For each row, remap types; drop if any unmappable; drop if text > 280 chars or < 30 chars. Write to `data/v2/open/nuner_filtered.jsonl` until 30,000 kept rows.
+   - Stream-download `Babelscape/rebel-dataset` train split. For each row, parse the linearised triplet string into (source, target, wikidata_prop) tuples; remap props via the table; drop rows where any relation is unmappable or has <2 triplets. Recover entity spans from the source text (REBEL records character offsets in a separate field). Drop if text > 280 chars. Write to `data/v2/open/rebel_filtered.jsonl` until 10,000 kept rows.
+   - Convert both streams to darkmem shared-row schema (`id`, `domain="open"`, `text`, `memory_type` set to `fact` by default, `noise=False`, `entities`, `relationships`). Use id prefix `nuner-` for NuNER and `rebel-` for REBEL to keep provenance obvious.
+2. Run `python -m scripts.validate_v2 data/v2/open/nuner_filtered.jsonl --kind shared --failed-dir data/v2/open/_failures` and the same for REBEL. Drop any failing row.
+3. Append the two filtered files into a new pool file `data/v2/shared/shared_expanded.jsonl` that combines `shared.jsonl` (11,800) + NuNER kept + REBEL kept. Target size: ≥ 40,000 rows, cap 50,000.
+4. `shared.jsonl` stays at 11,800 untouched — Phase 1.5 draws from `shared_expanded.jsonl` instead. This keeps darkmem rows recoverable if we ever want a pure-darkmem retrain.
+
+### Acceptance
+- `data/v2/shared/shared_expanded.jsonl` has ≥ 40,000 rows, all passing `validate_v2 --kind shared`.
+- NuNER contribution ≥ 20,000 rows, all entities within the 35-type set.
+- REBEL contribution ≥ 6,000 rows, all relationships within the 30-type set.
+- Every kept row has text in the 30–280 char window.
+- Commit: `data(fine-tune): Phase 1.1 open-corpus top-up — NuNER + REBEL merged to 40k+ pool`. Include the two filtered files, the merged pool, and the puller script. The upstream raw downloads are NOT committed — they are multi-GB and easy to re-pull.
+
+### Wait-gate
+After Phase 1 commit, **pause for user confirmation** before executing Phase 1.1. Phase 1.1 changes the training-distribution mix, and the user wants to approve that shift explicitly before the splits are rebuilt.
+
 ## Phase 1.5 — Split re-stratification
 
 The trainers hardcode split paths, so the new splits must land at `data/splits/gliner_{train,val,test}.jsonl` and `data/splits/rebel_{train,val,test}.jsonl`. Back up the current splits first.
@@ -120,9 +222,10 @@ The trainers hardcode split paths, so the new splits must land at `data/splits/g
 1. `cp data/splits/gliner_train.jsonl data/splits/gliner_train.v1.jsonl` and the same for val, test, and REBEL counterparts.
 2. Write `scripts/_restratify_splits.py`:
    - Input: the expanded `data/v2/shared/shared.jsonl` (14k rows).
-   - Build GLiNER rows via the same transform as `scripts.convert_to_gliner` (char-span entity list), stratified by `memory_type`.
-   - Target GLiNER split: 10000 train / 2000 val / 2000 test; random seed 42; stratify so each memory_type contributes proportionally (no class gets less than 12% of its share in test/val).
-   - Build REBEL rows via `scripts.convert_to_rebel` (linearized triplets). Skip rows where `relationships` is empty. Target: train ≥ 8000, val ≥ 1800, test ≥ 1800. Accept smaller if relationship coverage falls short.
+   - Build GLiNER rows via the same transform as `scripts.convert_to_gliner` (char-span entity list), stratified by `memory_type` where present (open-corpus rows don't carry memory_type — bucket them as `fact`).
+   - Input: `data/v2/shared/shared_expanded.jsonl` from Phase 1.1 (40k+ rows).
+   - Target GLiNER split: 10000 train / 2000 val / 2000 test; random seed 42; stratify so each memory_type contributes proportionally (no class gets less than 12% of its share in test/val). Test + val rows must both come from the darkmem portion (prefixes `shared-*`), not the open-corpus portion, so held-out evaluation is in-distribution for the production use case. Train may mix darkmem + open to hit 10k.
+   - Build REBEL rows via `scripts.convert_to_rebel` (linearized triplets). Skip rows where `relationships` is empty. Target: train ≥ 8000, val ≥ 1800, test ≥ 1800. Test + val drawn from darkmem rows only; train may mix.
    - Write directly to `data/splits/gliner_{train,val,test}.jsonl` and `data/splits/rebel_{train,val,test}.jsonl`.
 
 Do not invoke `scripts.build_splits` or `scripts.convert_to_gliner`/`convert_to_rebel` separately — the restratify script inlines the conversion so everything runs in one pass.

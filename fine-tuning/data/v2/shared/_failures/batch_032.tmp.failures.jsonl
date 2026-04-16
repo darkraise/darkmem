@@ -1,0 +1,16 @@
+{"line": 13, "errors": ["entity[2] unknown entity type: award"]}
+{"line": 16, "errors": ["entity[0] unknown entity type: movement", "entity[1] unknown entity type: movement"]}
+{"line": 17, "errors": ["entity[0] unknown entity type: movement"]}
+{"line": 18, "errors": ["entity[0] unknown entity type: movement"]}
+{"line": 19, "errors": ["entity[0] unknown entity type: movement"]}
+{"line": 20, "errors": ["entity[0] unknown entity type: movement"]}
+{"line": 24, "errors": ["entity[0] unknown entity type: award", "entity[1] unknown entity type: award"]}
+{"line": 25, "errors": ["entity[0] unknown entity type: award"]}
+{"line": 26, "errors": ["entity[0] unknown entity type: award"]}
+{"line": 29, "errors": ["entity[1] unknown entity type: award"]}
+{"line": 30, "errors": ["relationship[1] unknown relation type: TRANSLATED_BY"]}
+{"line": 31, "errors": ["entity[0] unknown entity type: movement"]}
+{"line": 35, "errors": ["queries[1] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}
+{"line": 38, "errors": ["queries[1] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}
+{"line": 39, "errors": ["queries[1] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}
+{"line": 42, "errors": ["entity[0] unknown entity type: award"]}

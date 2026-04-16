@@ -1,0 +1,5 @@
+{"line": 1, "errors": ["entity[1] unknown entity type: reference"]}
+{"line": 16, "errors": ["queries[0] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}
+{"line": 29, "errors": ["entity[0] unknown entity type: reference"]}
+{"line": 42, "errors": ["entity[1] unknown entity type: reference"]}
+{"line": 47, "errors": ["entity[3] unknown entity type: reference"]}

@@ -1,0 +1,2 @@
+{"line": 19, "errors": ["queries[0] and queries[1] too similar \u2014 normalized ratio >= 0.7"]}
+{"line": 25, "errors": ["relationship[0] source endpoint not in entity list: hybrid search"]}

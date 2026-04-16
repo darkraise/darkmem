@@ -1,0 +1,5 @@
+{"line": 9, "errors": ["queries[0] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}
+{"line": 24, "errors": ["entity[2] unknown entity type: problem"]}
+{"line": 28, "errors": ["entity[2] unknown entity type: problem"]}
+{"line": 46, "errors": ["entity[0] unknown entity type: problem"]}
+{"line": 47, "errors": ["relationship[0] source endpoint not in entity list: feature store", "queries[0] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}
