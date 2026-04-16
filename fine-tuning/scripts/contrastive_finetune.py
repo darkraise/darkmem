@@ -20,10 +20,12 @@ from torch.utils.data import DataLoader
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--base", type=Path, required=True,
-                   help="Path to a Transformers encoder (local dir)")
+    p.add_argument("--base", type=str, required=True,
+                   help="Local path or HF repo id for a Transformers encoder")
     p.add_argument("--train", type=Path, required=True,
                    help="JSONL with {query, positive} per line")
+    p.add_argument("--triplets", type=Path, default=None,
+                   help="Optional JSONL with {query, positive, negative} triplets")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--epochs", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=32)
@@ -33,7 +35,7 @@ def main() -> int:
     a = p.parse_args()
 
     # Wrap a raw HF encoder with SentenceTransformer: word-embedding + mean-pool
-    word = st_models.Transformer(str(a.base), max_seq_length=a.max_length, model_args={"trust_remote_code": True})
+    word = st_models.Transformer(a.base, max_seq_length=a.max_length, model_args={"trust_remote_code": True})
     pool = st_models.Pooling(word.get_word_embedding_dimension(), pooling_mode="mean")
     model = SentenceTransformer(modules=[word, pool])
 
@@ -45,6 +47,17 @@ def main() -> int:
         r = json.loads(line)
         pairs.append(InputExample(texts=[r["query"], r["positive"]]))
     print(f"loaded {len(pairs)} training pairs")
+
+    if a.triplets:
+        n_tri = 0
+        for line in a.triplets.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            pairs.append(InputExample(texts=[r["query"], r["positive"], r["negative"]]))
+            n_tri += 1
+        print(f"loaded {n_tri} hard-negative triplets")
 
     loader = DataLoader(pairs, shuffle=True, batch_size=a.batch_size)
     loss = losses.MultipleNegativesRankingLoss(model)
