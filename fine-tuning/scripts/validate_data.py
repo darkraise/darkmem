@@ -241,7 +241,9 @@ def _char_spans_to_token_spans(
     """Word-tokenize text and convert character-level entity spans to token indices.
 
     Returns (tokens, ner) where ner entries are [start_token, end_token, label].
-    end_token is exclusive (GLiNER convention).
+    end_token is INCLUSIVE per GLiNER convention (a single-token entity is
+    [i, i, label]). A previous version emitted exclusive ends, which produced
+    off-by-one spans at training time and collapsed F1 to near zero.
     """
     token_matches = list(_WORD_TOKENIZE_RE.finditer(text))
     tokens = [m.group() for m in token_matches]
@@ -260,7 +262,7 @@ def _char_spans_to_token_spans(
             if start_tok is None and tcs <= char_start < tok_end:
                 start_tok = ti
             if start_tok is not None and char_end <= tok_end:
-                end_tok = ti + 1
+                end_tok = ti
                 break
 
         if start_tok is not None and end_tok is not None:

@@ -9,13 +9,13 @@
     "batch_size": 16
   },
   "parsed": {
-    "last_batch_loss": 87.51,
-    "final_train_loss_aggregate": 117.0,
+    "last_batch_loss": 82.44,
+    "final_train_loss_aggregate": 98.11,
     "final_eval_loss": null,
     "loss_samples": 62,
     "eval_loss_samples": 0,
     "final_epoch": 5.0,
-    "elapsed_seconds": 347.0,
+    "elapsed_seconds": 349.0,
     "elapsed_minutes": 5.8
   }
 }
