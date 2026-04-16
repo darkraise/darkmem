@@ -1,0 +1,15 @@
+# Training data (generated, large)
+data/raw/
+data/validated/
+data/splits/
+
+# Trained model checkpoints (large binaries)
+models/*
+!models/PRODUCTION.md
+
+# Evaluation output
+eval_results/
+
+# Python cache
+__pycache__/
+*.pyc
