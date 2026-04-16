@@ -1,0 +1,110 @@
+[
+  {
+    "batch_id": "aug_001",
+    "query_kind": "paraphrase",
+    "memory_type": "fact",
+    "n": 250,
+    "id_start": 3001,
+    "id_end": 3250,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_001.jsonl"
+  },
+  {
+    "batch_id": "aug_002",
+    "query_kind": "paraphrase",
+    "memory_type": "architecture",
+    "n": 150,
+    "id_start": 3251,
+    "id_end": 3400,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_002.jsonl"
+  },
+  {
+    "batch_id": "aug_003",
+    "query_kind": "paraphrase",
+    "memory_type": "problem",
+    "n": 150,
+    "id_start": 3401,
+    "id_end": 3550,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_003.jsonl"
+  },
+  {
+    "batch_id": "aug_004",
+    "query_kind": "paraphrase",
+    "memory_type": "reference",
+    "n": 100,
+    "id_start": 3551,
+    "id_end": 3650,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_004.jsonl"
+  },
+  {
+    "batch_id": "aug_005",
+    "query_kind": "typo",
+    "memory_type": "fact",
+    "n": 300,
+    "id_start": 3651,
+    "id_end": 3950,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_005.jsonl"
+  },
+  {
+    "batch_id": "aug_006",
+    "query_kind": "typo",
+    "memory_type": "reference",
+    "n": 200,
+    "id_start": 3951,
+    "id_end": 4150,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_006.jsonl"
+  },
+  {
+    "batch_id": "aug_007",
+    "query_kind": "typo",
+    "memory_type": "milestone",
+    "n": 150,
+    "id_start": 4151,
+    "id_end": 4300,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_007.jsonl"
+  },
+  {
+    "batch_id": "aug_008",
+    "query_kind": "typo",
+    "memory_type": "decision",
+    "n": 100,
+    "id_start": 4301,
+    "id_end": 4400,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_008.jsonl"
+  },
+  {
+    "batch_id": "aug_009",
+    "query_kind": "multi-sentence",
+    "memory_type": "fact",
+    "n": 200,
+    "id_start": 4401,
+    "id_end": 4600,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_009.jsonl"
+  },
+  {
+    "batch_id": "aug_010",
+    "query_kind": "multi-sentence",
+    "memory_type": "problem",
+    "n": 200,
+    "id_start": 4601,
+    "id_end": 4800,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_010.jsonl"
+  },
+  {
+    "batch_id": "aug_011",
+    "query_kind": "multi-sentence",
+    "memory_type": "architecture",
+    "n": 100,
+    "id_start": 4801,
+    "id_end": 4900,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_011.jsonl"
+  },
+  {
+    "batch_id": "aug_012",
+    "query_kind": "multi-sentence",
+    "memory_type": "milestone",
+    "n": 100,
+    "id_start": 4901,
+    "id_end": 5000,
+    "sources_path": "data\\v2\\retrieval\\aug_sources\\aug_012.jsonl"
+  }
+]
