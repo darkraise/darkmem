@@ -23,23 +23,17 @@ from typing import Any
 from app.config import ml_pipeline_settings
 from app.services.extraction import clean_extraction
 from app.services.ml_models import MLModels, get_ml_models
-from app.taxonomy import normalize_entity_type, normalize_relation_type
+from app.taxonomy import ENTITY_TYPES, normalize_entity_type, normalize_relation_type
 
 logger = logging.getLogger(__name__)
 
 
-_TYPER_LABELS_10 = [
-    "tool",
-    "service",
-    "database",
-    "language",
-    "protocol",
-    "project",
-    "algorithm",
-    "artifact",
-    "concept",
-    "entity",
-]
+_TYPER_LABELS_10 = list(ENTITY_TYPES)
+
+assert set(_TYPER_LABELS_10) == set(ENTITY_TYPES), (
+    "_TYPER_LABELS_10 and app.taxonomy.ENTITY_TYPES must agree; "
+    "update both if the taxonomy changes."
+)
 
 _MAX_CONTENT_CHARS = 6000
 

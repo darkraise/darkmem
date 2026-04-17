@@ -22,6 +22,7 @@ sys.path.insert(0, str(BACKEND))
 
 from sqlalchemy import text
 
+from app.config import ml_pipeline_settings
 from app.database import async_session_factory
 from app.repositories.graph import PostgresGraphRepository
 from app.services.ml_models import load_ml_models
@@ -81,12 +82,13 @@ async def main(dry_run: bool, batch_size: int) -> int:
         return 0
 
     done = 0
+    prefix = ml_pipeline_settings.retriever_query_prefix
+    log_every = max(1, total_stale // 50) if total_stale else 1
     while True:
         pairs = await fetch_batch(fingerprint, batch_size)
         if not pairs:
             break
         names = [name for _eid, name in pairs]
-        prefix = "Represent this sentence for searching relevant passages: "
         prefixed = [prefix + n for n in names]
         encoded = await asyncio.to_thread(
             lambda: ml.retriever.encode(
@@ -98,7 +100,8 @@ async def main(dry_run: bool, batch_size: int) -> int:
         )
         await write_embeddings(pairs, encoded, fingerprint)
         done += len(pairs)
-        logger.info("wrote %d/%d", done, total_stale)
+        if done % log_every < batch_size or done >= total_stale:
+            logger.info("wrote %d/%d (%.0f%%)", done, total_stale, 100 * done / max(1, total_stale))
 
     logger.info("reembed_all done: %d entities", done)
     return 0

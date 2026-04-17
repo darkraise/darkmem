@@ -36,28 +36,50 @@ async def _get_feature_flags(session_factory) -> dict:
 _FLAG_CACHE_TTL = 5.0
 _flag_cache: dict[str, object] = {"value": None, "at": 0.0}
 _flag_cache_lock = asyncio.Lock()
+_flag_refresh_task: asyncio.Task | None = None
+
+
+async def _refresh_flag_cache(session_factory) -> dict:
+    flags = await _get_feature_flags(session_factory)
+    _flag_cache["value"] = flags
+    _flag_cache["at"] = time.monotonic()
+    return flags
 
 
 async def _get_feature_flags_cached(session_factory) -> dict:
     """Read feature flags with a short in-process TTL so per-call dispatching
-    does not hammer the DB. A 5-second TTL keeps the flag-flip semantics
-    snappy while cutting per-request reads under load."""
+    does not hammer the DB.
+
+    Single-flight: when the cache expires and N coroutines race to refresh, the
+    first one spawns a task and the rest await that same task. The DB call
+    happens outside any lock so the critical section is tiny.
+    """
     now = time.monotonic()
+    value = _flag_cache.get("value")
+    at = float(_flag_cache.get("at") or 0.0)
+    if value is not None and now - at < _FLAG_CACHE_TTL:
+        return value  # type: ignore[return-value]
+
+    global _flag_refresh_task
     async with _flag_cache_lock:
+        # Re-check under lock; another coroutine may have just refreshed.
         value = _flag_cache.get("value")
         at = float(_flag_cache.get("at") or 0.0)
         if value is not None and now - at < _FLAG_CACHE_TTL:
             return value  # type: ignore[return-value]
-        flags = await _get_feature_flags(session_factory)
-        _flag_cache["value"] = flags
-        _flag_cache["at"] = now
-        return flags
+        if _flag_refresh_task is None or _flag_refresh_task.done():
+            _flag_refresh_task = asyncio.create_task(_refresh_flag_cache(session_factory))
+        task = _flag_refresh_task
+
+    return await task
 
 
 def _flag_cache_reset() -> None:
     """Test hook: drop the cached flag value so the next read hits the DB."""
+    global _flag_refresh_task
     _flag_cache["value"] = None
     _flag_cache["at"] = 0.0
+    _flag_refresh_task = None
 
 
 class _ExtractionDispatcher:

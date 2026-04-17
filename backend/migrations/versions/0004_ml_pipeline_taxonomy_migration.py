@@ -91,6 +91,18 @@ def _rename_entities(conn, old: str, new: str) -> tuple[int, int]:
 
     Merge strategy: union memory_ids into the surviving row, drop the old one,
     then rename whatever is left. Returns ``(merged, renamed)`` row counts.
+
+    The first statement is a data-modifying CTE: the UPDATE unions memory_ids
+    into the winning (name, :new) rows and returns the ids of their losing
+    twins, and the outer DELETE removes exactly those losers. Postgres runs
+    every CTE against the same snapshot (see the docs on data-modifying CTEs),
+    so the DELETE consumes the RETURNING rowset rather than observing the
+    UPDATE's row changes directly — which is what we want here: the UPDATE
+    has already transferred state, the DELETE only has to retire the row.
+
+    The subsequent plain UPDATE then renames all remaining rows with
+    entity_type = :old, which are guaranteed to have no collision on
+    (name, :new) because the merge CTE just removed every such pair.
     """
     merge_result = conn.execute(
         text(
@@ -138,7 +150,9 @@ def _rename_relations(conn, old: str, new: str) -> tuple[int, int]:
     """Rename ``entity_relations.rel_type`` from ``old`` to ``new`` while
     merging collisions on ``(source_entity_id, target_entity_id, rel_type)``.
 
-    Winning row takes the max weight and the union of memory_ids.
+    Winning row takes the max weight and the union of memory_ids. Uses the
+    same data-modifying-CTE pattern as :func:`_rename_entities`; see that
+    docstring for the snapshot semantics.
     """
     merge_result = conn.execute(
         text(

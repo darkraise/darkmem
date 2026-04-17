@@ -165,6 +165,26 @@ class MLModels:
                     logger.debug("cuda.empty_cache failed after partial load", exc_info=True)
             raise RuntimeError(f"MLModels.load_all failed: {exc}") from exc
 
+        try:
+            probe = staged["retriever"].encode(
+                ml_pipeline_settings.retriever_query_prefix + "dimension probe",
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+            embedding_dims = int(probe.shape[-1])
+        except Exception as exc:
+            for key, value in list(staged.items()):
+                try:
+                    del value
+                except Exception:
+                    logger.debug("Could not free staged model %s", key, exc_info=True)
+            if device == "cuda":
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    logger.debug("cuda.empty_cache failed after probe failure", exc_info=True)
+            raise RuntimeError(f"MLModels.load_all probe failed: {exc}") from exc
+
         self.span = staged["span"]
         self.typer_tok = staged["typer_tok"]
         self.typer = staged["typer"]
@@ -173,22 +193,11 @@ class MLModels:
         self.classifier_tok = staged["classifier_tok"]
         self.classifier = staged["classifier"]
         self.retriever = staged["retriever"]
-
-        try:
-            probe = staged["retriever"].encode(
-                ml_pipeline_settings.retriever_query_prefix + "dimension probe",
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            )
-            self.embedding_dims = int(probe.shape[-1])
-        except Exception:
-            logger.warning("Could not probe retriever embedding dims", exc_info=True)
-            self.embedding_dims = None
-
-        self.fingerprint = f"darkmem-retriever-v1|{self.embedding_dims or 'unknown'}"
+        self.embedding_dims = embedding_dims
+        self.fingerprint = f"darkmem-retriever-v1|{embedding_dims}"
         logger.info(
-            "MLModels.load_all complete: device=%s embedding_dims=%s fingerprint=%s",
-            device, self.embedding_dims, self.fingerprint,
+            "MLModels.load_all complete: device=%s embedding_dims=%d fingerprint=%s",
+            device, embedding_dims, self.fingerprint,
         )
 
 
