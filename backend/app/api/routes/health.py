@@ -37,6 +37,21 @@ def _head_status(instance) -> dict[str, bool]:
     }
 
 
+def _head_sources(instance) -> dict[str, dict[str, str | None]]:
+    """Return each head's source (kind=local|hub, location, revision)."""
+    empty = {"kind": None, "location": None, "revision": None}
+    if instance is None or not getattr(instance, "sources", None):
+        return {name: dict(empty) for name in ("span", "typer", "relation", "classifier", "retriever")}
+    return {
+        name: {
+            "kind": src.kind,
+            "location": src.location,
+            "revision": src.revision,
+        }
+        for name, src in instance.sources.items()
+    }
+
+
 @router.get("/api/health/ml_models")
 async def ml_models_health() -> dict:
     status: dict = {
@@ -45,6 +60,7 @@ async def ml_models_health() -> dict:
         "models_dir": str(ml_pipeline_settings.models_dir),
         "loaded": False,
         "heads": _head_status(None),
+        "sources": _head_sources(None),
         "embedding_dims": None,
         "fingerprint": None,
         "vram_allocated_mb": None,
@@ -62,6 +78,7 @@ async def ml_models_health() -> dict:
     status["loaded"] = models_available()
     status["device"] = instance.device
     status["heads"] = _head_status(instance)
+    status["sources"] = _head_sources(instance)
     status["embedding_dims"] = instance.embedding_dims
     status["fingerprint"] = instance.fingerprint
 

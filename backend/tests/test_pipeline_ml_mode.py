@@ -218,3 +218,9 @@ async def test_health_endpoint_responds_when_models_not_loaded(client, monkeypat
     assert set(body["heads"].keys()) == {
         "span", "typer", "relation", "classifier", "retriever",
     }
+    assert "sources" in body
+    assert set(body["sources"].keys()) == {
+        "span", "typer", "relation", "classifier", "retriever",
+    }
+    for entry in body["sources"].values():
+        assert entry == {"kind": None, "location": None, "revision": None}

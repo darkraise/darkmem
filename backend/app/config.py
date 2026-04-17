@@ -83,6 +83,12 @@ class MLPipelineSettings(BaseSettings):
     Feature flags in the DB (ml_extraction, ml_classification, ml_retrieval)
     decide whether the ML path is used per request; these settings decide
     how the models are loaded and where they live.
+
+    Each head can be sourced either from a local directory (``models_dir``)
+    or from a HuggingFace Hub repo (``hub_*_repo``). When a ``hub_*_repo`` is
+    set, the Hub wins and the model is fetched via ``from_pretrained`` with
+    ``cache_dir`` pointing at ``hub_cache_dir`` (HF default when None). Leave
+    every ``hub_*_repo`` unset to stay on local files (dev default).
     """
 
     model_config = SettingsConfigDict(env_prefix="ML_PIPELINE_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -91,6 +97,19 @@ class MLPipelineSettings(BaseSettings):
     device: str = "auto"
     models_dir: Path = _DEFAULT_MODELS_DIR
     cpu_fallback: bool = True
+
+    hub_token: str | None = None
+    hub_cache_dir: Path | None = None
+    hub_span_repo: str | None = None
+    hub_span_revision: str = "main"
+    hub_typer_repo: str | None = None
+    hub_typer_revision: str = "main"
+    hub_relation_repo: str | None = None
+    hub_relation_revision: str = "main"
+    hub_classifier_repo: str | None = None
+    hub_classifier_revision: str = "main"
+    hub_retriever_repo: str | None = None
+    hub_retriever_revision: str = "main"
 
     span_threshold: float = 0.4
     span_nms_iou: float = 0.3
