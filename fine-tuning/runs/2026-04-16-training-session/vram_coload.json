@@ -1,0 +1,83 @@
+{
+  "device": "cuda",
+  "torch_version": "2.11.0+cu128",
+  "cuda_available": true,
+  "timestamp": "2026-04-17 08:02:41",
+  "ollama": {
+    "docker_ps": "error: Command '['docker', 'ps', '--filter', 'name=ollama', '--format', '{{.Names}} {{.Status}}']' returned non-zero exit status 1.",
+    "tags": "error: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+  },
+  "variants": {
+    "with_gliner_small": {
+      "per_step": [
+        {
+          "model": "classifier",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\classifier-v3aug2-modernbert-base\\best",
+          "torch_allocated_delta_mb": 619.08736,
+          "torch_allocated_cumulative_mb": 619.08736,
+          "nvidia_smi_used_mb": 1306
+        },
+        {
+          "model": "retriever",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\retriever-bge-base-7500clean-hn-ep5-b64",
+          "torch_allocated_delta_mb": 439.069696,
+          "torch_allocated_cumulative_mb": 1058.157056,
+          "nvidia_smi_used_mb": 1756
+        },
+        {
+          "model": "gliner",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\gliner-small-v2corpus\\best",
+          "torch_allocated_delta_mb": 613.1916799999999,
+          "torch_allocated_cumulative_mb": 1671.348736,
+          "nvidia_smi_used_mb": 2378
+        },
+        {
+          "model": "rebel",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\rebel-large-v2corpus\\best",
+          "torch_allocated_delta_mb": 1625.395712,
+          "torch_allocated_cumulative_mb": 3296.744448,
+          "nvidia_smi_used_mb": 3932
+        }
+      ],
+      "torch_total_allocated_mb": 3296.744448,
+      "nvidia_smi_used_mb_final": 3932
+    },
+    "with_gliner_large": {
+      "per_step": [
+        {
+          "model": "classifier",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\classifier-v3aug2-modernbert-base\\best",
+          "torch_allocated_delta_mb": 619.08736,
+          "torch_allocated_cumulative_mb": 1058.157056,
+          "nvidia_smi_used_mb": 1780
+        },
+        {
+          "model": "retriever",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\retriever-bge-base-7500clean-hn-ep5-b64",
+          "torch_allocated_delta_mb": 439.069696,
+          "torch_allocated_cumulative_mb": 1497.226752,
+          "nvidia_smi_used_mb": 2230
+        },
+        {
+          "model": "gliner",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\gliner-large-v2corpus\\best",
+          "torch_allocated_delta_mb": 1782.1183999999998,
+          "torch_allocated_cumulative_mb": 3279.345152,
+          "nvidia_smi_used_mb": 3928
+        },
+        {
+          "model": "rebel",
+          "path": "D:\\Repositories\\_local_projects\\darkmem\\fine-tuning\\models\\rebel-large-v2corpus\\best",
+          "torch_allocated_delta_mb": 1625.3957120000005,
+          "torch_allocated_cumulative_mb": 4904.740864,
+          "nvidia_smi_used_mb": 5486
+        }
+      ],
+      "torch_total_allocated_mb": 4904.740864,
+      "nvidia_smi_used_mb_final": 5486
+    }
+  },
+  "gpu_name": "NVIDIA GeForce RTX 5060",
+  "gpu_total_mb": 8546.484224,
+  "baseline_nvidia_smi_mb": 597
+}
