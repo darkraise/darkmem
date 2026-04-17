@@ -10,9 +10,9 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, graph, memories, pipeline_failures, reembed, repos, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, graph, health, memories, pipeline_failures, reembed, repos, tags, vectors
 from app.api.websocket import websocket_endpoint
-from app.config import settings
+from app.config import ml_pipeline_settings, settings
 from app.services.llm import LLMOrchestrator
 from app.services.pipeline import ProcessingPipeline
 
@@ -25,6 +25,18 @@ async def lifespan(app: FastAPI):
 
     pipeline = None
     llm = None
+
+    if ml_pipeline_settings.enabled:
+        try:
+            from app.services.ml_models import load_ml_models
+            logger.info(
+                "Warm-loading ML pipeline from %s on device=%s",
+                ml_pipeline_settings.models_dir, ml_pipeline_settings.device,
+            )
+            await asyncio.to_thread(load_ml_models)
+            logger.info("ML pipeline loaded")
+        except Exception:
+            logger.exception("ML pipeline warm-load failed; ml_* flags will fall back to LLM path")
 
     try:
         from app.services.config import get_llm_config
@@ -245,6 +257,7 @@ app.include_router(repos.router)
 app.include_router(code.router)
 app.include_router(pipeline_failures.router)
 app.include_router(reembed.router)
+app.include_router(health.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)

@@ -1,46 +1,29 @@
 """Canonical entity/relationship type definitions and tool schemas for extraction.
 
 Single source of truth — imported by extraction.py (JSON validation),
-prompt.py (prompt generation), and tool call schemas.
+prompt.py (prompt generation), and tool call schemas. Types are re-exported
+from ``app.taxonomy`` so the LLM and ML extraction heads stay in lock-step.
 """
 
-ENTITY_TYPES: list[str] = [
-    "person", "organization", "team",
-    "technology", "service", "project",
-    "concept", "algorithm", "pattern",
-    "protocol", "standard", "specification",
-    "language", "framework", "library",
-    "database", "platform", "infrastructure",
+from app.taxonomy import (
+    ENTITY_TYPES,
+    RELATIONSHIP_TYPES,
+    normalize_entity_type,
+    normalize_relation_type,
+)
+
+
+__all__ = [
+    "ENTITY_TYPES",
+    "RELATIONSHIP_TYPES",
+    "normalize_entity_type",
+    "normalize_relation_type",
+    "build_extraction_schema",
+    "FLAT_ENTITY_TOOL",
+    "FLAT_RELATIONSHIP_TOOL",
+    "NESTED_EXTRACT_TOOL",
+    "tools_for_mode",
 ]
-
-RELATIONSHIP_TYPES: list[str] = [
-    "USES", "DEPENDS_ON", "IS_A", "HAS_PART",
-    "IMPLEMENTS", "REPLACES", "IMPROVES_ON",
-    "EXTENDS", "CONFIGURES", "PRODUCES",
-    "COMMUNICATES_WITH", "DEPLOYED_ON",
-    "ALTERNATIVE_TO", "RELATED_TO",
-]
-
-_ENTITY_TYPE_SET: frozenset[str] = frozenset(ENTITY_TYPES)
-
-_ENTITY_TYPE_MAP: dict[str, str] = {
-    "tool": "technology",
-    "system": "service",
-    "company": "organization",
-    "data structure": "concept",
-    "approach": "concept",
-    "claim": "concept",
-    "constant": "concept",
-    "index type": "technology",
-    "search algorithm": "algorithm",
-}
-
-
-def normalize_entity_type(raw_type: str) -> str:
-    t = raw_type.lower().strip()
-    if t in _ENTITY_TYPE_SET:
-        return t
-    return _ENTITY_TYPE_MAP.get(t, "concept")
 
 
 def build_extraction_schema() -> str:
@@ -50,7 +33,7 @@ def build_extraction_schema() -> str:
         "{\n"
         f'  "entities": [{{"name": "string", "type": "{entity_types}", "properties": {{}}}}],\n'
         f'  "relationships": [{{"source": "entity_name", "target": "entity_name", "type": "{rel_types}", "properties": {{}}, "weight": 0.8}}],\n'
-        '  "memory_type": "fact|decision|preference|debug|session|architecture|workflow",\n'
+        '  "memory_type": "fact|decision|preference|problem|reference|architecture|milestone",\n'
         '  "importance": 0.7\n'
         "}"
     )

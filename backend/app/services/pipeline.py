@@ -10,9 +10,12 @@ from app.models.config import Config
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import PostgresVectorRepository
 from app.services.classification_llm import ClassificationService
+from app.services.classification_ml import ClassificationMLService
 from app.services.extraction import ExtractionService
+from app.services.extraction_ml import ExtractionMLService
 from app.services.llm import LLMOrchestrator
 from app.services.memory_classifier import classify as regex_classify
+from app.services.ml_models import models_available
 from app.services import prompt
 
 logger = logging.getLogger(__name__)
@@ -30,11 +33,90 @@ async def _get_feature_flags(session_factory) -> dict:
         return merged
 
 
+_FLAG_CACHE_TTL = 5.0
+_flag_cache: dict[str, object] = {"value": None, "at": 0.0}
+_flag_cache_lock = asyncio.Lock()
+
+
+async def _get_feature_flags_cached(session_factory) -> dict:
+    """Read feature flags with a short in-process TTL so per-call dispatching
+    does not hammer the DB. A 5-second TTL keeps the flag-flip semantics
+    snappy while cutting per-request reads under load."""
+    now = time.monotonic()
+    async with _flag_cache_lock:
+        value = _flag_cache.get("value")
+        at = float(_flag_cache.get("at") or 0.0)
+        if value is not None and now - at < _FLAG_CACHE_TTL:
+            return value  # type: ignore[return-value]
+        flags = await _get_feature_flags(session_factory)
+        _flag_cache["value"] = flags
+        _flag_cache["at"] = now
+        return flags
+
+
+def _flag_cache_reset() -> None:
+    """Test hook: drop the cached flag value so the next read hits the DB."""
+    _flag_cache["value"] = None
+    _flag_cache["at"] = 0.0
+
+
+class _ExtractionDispatcher:
+    """Routes extraction to ML or LLM based on the live ``ml_extraction`` flag.
+
+    Falls back to the LLM path if the flag is set but the ML models aren't
+    loaded, emitting a one-time warning per process.
+    """
+
+    def __init__(self, pipeline: "ProcessingPipeline"):
+        self._p = pipeline
+        self._warned_unavailable = False
+
+    async def extract(self, content: str, system_prompt: str | None = None) -> dict:
+        flags = await _get_feature_flags_cached(self._p.session_factory)
+        if flags.get("ml_extraction", False):
+            if models_available():
+                return await self._p._extraction_ml.extract(content, system_prompt)
+            if not self._warned_unavailable:
+                logger.warning("ml_extraction flag is on but MLModels are not loaded; using LLM path")
+                self._warned_unavailable = True
+        return await self._p._extraction_llm.extract(content, system_prompt)
+
+
+class _ClassificationDispatcher:
+    def __init__(self, pipeline: "ProcessingPipeline"):
+        self._p = pipeline
+        self._warned_unavailable = False
+
+    async def classify(
+        self,
+        content: str,
+        enabled_areas: list[str],
+        system_prompt: str,
+        mode: str = "simple",
+    ) -> dict:
+        flags = await _get_feature_flags_cached(self._p.session_factory)
+        if flags.get("ml_classification", False):
+            if models_available():
+                return await self._p._classification_ml.classify(
+                    content, enabled_areas, system_prompt, mode=mode,
+                )
+            if not self._warned_unavailable:
+                logger.warning("ml_classification flag is on but MLModels are not loaded; using LLM path")
+                self._warned_unavailable = True
+        return await self._p._classification_llm.classify(
+            content, enabled_areas, system_prompt, mode=mode,
+        )
+
+
 class ProcessingPipeline:
     def __init__(self, llm: LLMOrchestrator, session_factory, embedding_dims: int, broadcast=None):
         self.llm = llm
-        self.extraction = ExtractionService(llm)
-        self.classification = ClassificationService(llm)
+        self._extraction_llm = ExtractionService(llm)
+        self._extraction_ml = ExtractionMLService()
+        self._classification_llm = ClassificationService(llm)
+        self._classification_ml = ClassificationMLService()
+        self.extraction = _ExtractionDispatcher(self)
+        self.classification = _ClassificationDispatcher(self)
         self.session_factory = session_factory
         self.embedding_dims = embedding_dims
         self._broadcast = broadcast

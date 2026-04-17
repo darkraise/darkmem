@@ -7,6 +7,7 @@ from app.services import prompt as prompt_constants
 from app.services.extraction_tools import (
     build_extraction_schema,
     normalize_entity_type,
+    normalize_relation_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,7 +124,12 @@ def _remap_relationships(
         src = name_remap.get(r.get("source", ""), r.get("source", ""))
         tgt = name_remap.get(r.get("target", ""), r.get("target", ""))
         if src in valid_names and tgt in valid_names and src != tgt:
-            out.append({**r, "source": src, "target": tgt})
+            out.append({
+                **r,
+                "source": src,
+                "target": tgt,
+                "type": normalize_relation_type(r.get("type", "")),
+            })
     return out
 
 

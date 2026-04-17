@@ -1,17 +1,74 @@
 import asyncio
 import json
+import logging
 
 import httpx
 
-from app.config import LLMPurposeConfig
+from app.config import LLMPurposeConfig, ml_pipeline_settings
+
+logger = logging.getLogger(__name__)
 
 
 class LLMOrchestrator:
     def __init__(self, config: dict[str, LLMPurposeConfig]):
         self.config = config
         self._client = httpx.AsyncClient(timeout=300.0)
+        self._warned_ml_unavailable = False
+
+    async def _is_ml_retrieval_enabled(self) -> bool:
+        """Check the cached ``ml_retrieval`` feature flag without holding a session."""
+        from app.database import async_session_factory  # noqa: PLC0415
+        from app.services.pipeline import _get_feature_flags_cached  # noqa: PLC0415
+        flags = await _get_feature_flags_cached(async_session_factory)
+        return bool(flags.get("ml_retrieval", False))
+
+    async def _embed_ml(self, text: str) -> list[float]:
+        from app.services.ml_models import get_ml_models  # noqa: PLC0415
+        ml = get_ml_models()
+        prefixed = ml_pipeline_settings.retriever_query_prefix + text
+
+        def _encode() -> list[float]:
+            vec = ml.retriever.encode(
+                prefixed,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+            return vec.tolist()
+
+        return await asyncio.to_thread(_encode)
+
+    async def _embed_batch_ml(self, texts: list[str]) -> list[list[float]]:
+        from app.services.ml_models import get_ml_models  # noqa: PLC0415
+        ml = get_ml_models()
+        prefix = ml_pipeline_settings.retriever_query_prefix
+        prefixed = [prefix + t for t in texts]
+        batch = ml_pipeline_settings.retriever_batch_size
+
+        def _encode() -> list[list[float]]:
+            mat = ml.retriever.encode(
+                prefixed,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                batch_size=batch,
+            )
+            return mat.tolist()
+
+        return await asyncio.to_thread(_encode)
+
+    async def _ml_available(self) -> bool:
+        """Return True iff the ML singleton is loaded. Emits a single warning
+        the first time the flag is on but the models are missing."""
+        from app.services.ml_models import models_available  # noqa: PLC0415
+        if models_available():
+            return True
+        if not self._warned_ml_unavailable:
+            logger.warning("ml_retrieval flag is on but MLModels are not loaded; using LLM embedder")
+            self._warned_ml_unavailable = True
+        return False
 
     async def embed(self, text: str) -> list[float]:
+        if await self._is_ml_retrieval_enabled() and await self._ml_available():
+            return await self._embed_ml(text)
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
         response = await self._client.post(
@@ -28,6 +85,8 @@ class LLMOrchestrator:
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
+        if await self._is_ml_retrieval_enabled() and await self._ml_available():
+            return await self._embed_batch_ml(texts)
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
         response = await self._client.post(

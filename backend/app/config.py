@@ -1,10 +1,13 @@
 import logging
 import os
+from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _config_logger = logging.getLogger(__name__)
+
+_DEFAULT_MODELS_DIR = Path(__file__).resolve().parents[2] / "fine-tuning" / "models"
 
 
 class LLMPurposeConfig(BaseModel):
@@ -73,7 +76,43 @@ class Settings(BaseSettings):
     )
 
 
+class MLPipelineSettings(BaseSettings):
+    """Settings for the local ML extraction/classification/retrieval pipeline.
+
+    These govern the fine-tuned head loader at startup and runtime inference.
+    Feature flags in the DB (ml_extraction, ml_classification, ml_retrieval)
+    decide whether the ML path is used per request; these settings decide
+    how the models are loaded and where they live.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="ML_PIPELINE_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    enabled: bool = True
+    device: str = "auto"
+    models_dir: Path = _DEFAULT_MODELS_DIR
+    cpu_fallback: bool = True
+
+    span_threshold: float = 0.4
+    span_nms_iou: float = 0.3
+    span_max_length: int = 384
+
+    typer_batch_size: int = 16
+    typer_max_length: int = 256
+    typer_abstain_margin: float = 0.0
+
+    relation_num_beams: int = 4
+    relation_max_source_length: int = 256
+    relation_max_target_length: int = 128
+
+    classifier_max_length: int = 256
+
+    retriever_batch_size: int = 32
+    retriever_max_length: int = 256
+    retriever_query_prefix: str = "Represent this sentence for searching relevant passages: "
+
+
 settings = Settings()
+ml_pipeline_settings = MLPipelineSettings()
 
 FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     "llm_enrichment_enabled": False,
@@ -85,4 +124,8 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     "embedding_batch_size": 20,
     "embedding_concurrency": 1,
     "entity_cache_ttl_minutes": 60,
+    "ml_extraction": False,
+    "ml_classification": False,
+    "ml_retrieval": False,
+    "ml_shadow_mode": False,
 }
