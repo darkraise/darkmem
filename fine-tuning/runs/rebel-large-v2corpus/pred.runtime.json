@@ -1,0 +1,12 @@
+{
+  "model": "models\\rebel-large-v2corpus\\best",
+  "gold": "data\\splits\\rebel_test_gold.jsonl",
+  "rows": 1007,
+  "latency_ms_per_row_mean": 229.17690575978463,
+  "latency_ms_per_row_p50": 222.1916999988025,
+  "latency_ms_per_row_p95": 400.98000000580214,
+  "peak_vram_mb": 1720.47104,
+  "num_beams": 4,
+  "max_source_length": 512,
+  "max_target_length": 128
+}

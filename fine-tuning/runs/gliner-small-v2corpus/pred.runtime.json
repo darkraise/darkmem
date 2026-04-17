@@ -1,0 +1,10 @@
+{
+  "model": "models\\gliner-small-v2corpus\\best",
+  "gold": "data\\splits\\test.jsonl",
+  "rows": 2000,
+  "latency_ms_per_row_mean": 11.982827750030992,
+  "latency_ms_per_row_p50": 11.314300005324185,
+  "latency_ms_per_row_p95": 14.927399999578483,
+  "peak_vram_mb": 646.80704,
+  "threshold": 0.5
+}

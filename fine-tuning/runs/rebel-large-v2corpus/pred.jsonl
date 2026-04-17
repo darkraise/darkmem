@@ -1,0 +1,1007 @@
+{"id": "shared-11653", "relationships": [{"source": "Principia", "target": "Newton", "type": "AUTHORED_BY"}]}
+{"id": "shared-08536", "relationships": [{"source": "sliding-window", "target": "fixed-window", "type": "REPLACES"}]}
+{"id": "shared-08938", "relationships": [{"source": "Quantifying the Performance of Garbage Collection vs. Explicit Memory Management", "target": "JVM", "type": "APPLIES_TO"}]}
+{"id": "shared-02109", "relationships": [{"source": "Dr Hamid", "target": "Riverside Clinic", "type": "WORKS_AT"}]}
+{"id": "shared-13535", "relationships": [{"source": "Spanner", "target": "orders table", "type": "USES"}]}
+{"id": "shared-13537", "relationships": [{"source": "FoundationDB", "target": "serializable isolation", "type": "USES"}]}
+{"id": "shared-07632", "relationships": [{"source": "DaemonSet", "target": "OpenTelemetry", "type": "REPLACES"}, {"source": "Prometheus", "target": "OTLP", "type": "USES"}]}
+{"id": "shared-06288", "relationships": [{"source": "Bazarr", "target": "Shokugeki no Soma", "type": "REPLACES"}]}
+{"id": "shared-10617", "relationships": [{"source": "YNAB", "target": "conscious spending", "type": "REPLACES"}]}
+{"id": "shared-06442", "relationships": [{"source": "Dgraph", "target": "Apollo", "type": "REPLACES"}]}
+{"id": "shared-03666", "relationships": [{"source": "CDLP", "target": "white tees", "type": "REPLACES"}]}
+{"id": "shared-07489", "relationships": [{"source": "GPUDirect RDMA", "target": "H100", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09868", "relationships": [{"source": "unRAID", "target": "parity", "type": "USES"}, {"source": "unRAID", "target": "cache pool", "type": "USES"}]}
+{"id": "shared-09324", "relationships": [{"source": "Storage buffers", "target": "compute shaders", "type": "APPLIES_TO"}]}
+{"id": "shared-05454", "relationships": [{"source": "Fujifilm X-T5", "target": "Sony A7 III", "type": "REPLACES"}]}
+{"id": "shared-07930", "relationships": [{"source": "Dataset", "target": "ExternalTaskSensor", "type": "REPLACES"}]}
+{"id": "shared-09311", "relationships": [{"source": "Bind groups", "target": "per-frame", "type": "HAS_PART"}]}
+{"id": "shared-08557", "relationships": [{"source": "DPoP", "target": "mTLS", "type": "PREFERS"}]}
+{"id": "shared-11932", "relationships": [{"source": "embed.FS", "target": "migrator", "type": "DEPLOYED_ON"}]}
+{"id": "shared-11035", "relationships": [{"source": "Caddy", "target": "Mainsail", "type": "REPLACES"}, {"source": "Caddy", "target": "Fluidd", "type": "REPLACES"}]}
+{"id": "shared-05159", "relationships": [{"source": "Sunday", "target": "Saturday", "type": "PREFERS"}]}
+{"id": "shared-04071", "relationships": [{"source": "Caffeine", "target": "Redis", "type": "BUILDS_ON"}]}
+{"id": "shared-10516", "relationships": [{"source": "Logseq", "target": "morning pages", "type": "APPLIES_TO"}, {"source": "Obsidian", "target": "morning pages", "type": "APPLIES_TO"}]}
+{"id": "shared-01448", "relationships": [{"source": "acupuncture", "target": "TENS unit", "type": "IMPROVES_ON"}]}
+{"id": "shared-10703", "relationships": [{"source": "Kodak Portra 400", "target": "Portra 800", "type": "PREFERS"}]}
+{"id": "shared-04614", "relationships": [{"source": "Feminism Unmodified", "target": "Catharine MacKinnon", "type": "AUTHORED_BY"}, {"source": "Feminist jurisprudence", "target": "formal sameness", "type": "REPLACES"}]}
+{"id": "shared-03452", "relationships": [{"source": "SugaredLogger", "target": "Logger", "type": "USES"}]}
+{"id": "shared-09255", "relationships": [{"source": "YIN", "target": "de Cheveigne", "type": "AUTHORED_BY"}, {"source": "YIN", "target": "Kawahara", "type": "AUTHORED_BY"}]}
+{"id": "shared-12970", "relationships": [{"source": "Ortovox Diract Voice", "target": "Pieps Micro", "type": "REPLACES"}]}
+{"id": "shared-07129", "relationships": [{"source": "external-secrets operator", "target": "kubelet", "type": "USES"}]}
+{"id": "shared-12827", "relationships": [{"source": "Memory Graph debugger", "target": ".sink", "type": "USES"}]}
+{"id": "shared-05200", "relationships": [{"source": "relationship audit", "target": "Clara", "type": "RELATED_TO"}]}
+{"id": "shared-03411", "relationships": [{"source": "HNSW", "target": "LSH", "type": "REPLACES"}]}
+{"id": "shared-13541", "relationships": [{"source": "wal_keep_size", "target": "Neon Postgres", "type": "CONFIGURES"}]}
+{"id": "shared-12903", "relationships": [{"source": "OCaml 5.1", "target": "multicore", "type": "REPLACES"}]}
+{"id": "shared-11556", "relationships": [{"source": "Time to Build", "target": "Kydland", "type": "AUTHORED_BY"}, {"source": "Time to Build", "target": "Prescott", "type": "AUTHORED_BY"}]}
+{"id": "shared-11636", "relationships": [{"source": "Erdős number", "target": "Erdős", "type": "AUTHORED_BY"}]}
+{"id": "shared-08852", "relationships": [{"source": "tcmalloc", "target": "per-thread cache", "type": "USES"}]}
+{"id": "shared-11933", "relationships": [{"source": "build tags", "target": "runtime.GOOS", "type": "REPLACES"}]}
+{"id": "shared-10779", "relationships": [{"source": "Rev", "target": "Otter.ai", "type": "REPLACES"}]}
+{"id": "shared-06458", "relationships": [{"source": "Turborepo", "target": "lerna", "type": "REPLACES"}]}
+{"id": "shared-13930", "relationships": [{"source": "Demaree", "target": "swarm cue", "type": "APPLIES_TO"}]}
+{"id": "shared-07582", "relationships": [{"source": "AES-GCM-SIV", "target": "AES-GCM", "type": "REPLACES"}]}
+{"id": "shared-10395", "relationships": [{"source": "GP5000 S TR", "target": "Pirelli P Zero Race TLR", "type": "RELATED_TO"}, {"source": "Schwalbe G-One R", "target": "Maxxis Rekon", "type": "RELATED_TO"}]}
+{"id": "shared-09483", "relationships": [{"source": "dynamic grid", "target": "quadtree", "type": "REPLACES"}]}
+{"id": "shared-13215", "relationships": [{"source": "principle of utility", "target": "Bentham", "type": "AUTHORED_BY"}]}
+{"id": "shared-03690", "relationships": [{"source": "Sony", "target": "Bose", "type": "REPLACES"}]}
+{"id": "shared-13674", "relationships": [{"source": "Vogue Patterns 1756", "target": "welt pocket", "type": "USES"}]}
+{"id": "shared-02870", "relationships": [{"source": "cat-flap", "target": "Sureflap", "type": "USES"}]}
+{"id": "shared-00964", "relationships": [{"source": "Lattice", "target": "paper logbook", "type": "REPLACES"}]}
+{"id": "shared-06263", "relationships": [{"source": "Crunchyroll", "target": "Chromecast", "type": "REPLACES"}]}
+{"id": "shared-13882", "relationships": [{"source": "freestyle", "target": "Greco-Roman", "type": "PREFERS"}]}
+{"id": "shared-11954", "relationships": [{"source": "AsyncLocalStorage", "target": "continuation-local-storage", "type": "REPLACES"}]}
+{"id": "shared-06142", "relationships": [{"source": "Acta Mathematica", "target": "Gosta Mittag-Leffler", "type": "AUTHORED_BY"}, {"source": "Acta Mathematica", "target": "Institut Mittag-Leffler", "type": "PUBLISHED_IN"}]}
+{"id": "shared-07401", "relationships": [{"source": "Valkey 8", "target": "Redis 6", "type": "REPLACES"}]}
+{"id": "shared-08867", "relationships": [{"source": "mmap", "target": "glibc", "type": "USES"}, {"source": "munmap", "target": "mmap", "type": "USES"}]}
+{"id": "shared-11367", "relationships": [{"source": "default effects", "target": "Eric Johnson", "type": "AUTHORED_BY"}, {"source": "default effects", "target": "Daniel Goldstein", "type": "AUTHORED_BY"}]}
+{"id": "shared-11437", "relationships": [{"source": "Leipzig Glossing Rules", "target": "interlinear gloss", "type": "BUILDS_ON"}]}
+{"id": "shared-08752", "relationships": [{"source": "k6", "target": "closed-model", "type": "REPLACES"}]}
+{"id": "shared-05135", "relationships": [{"source": "inventory", "target": "Warriston", "type": "LOCATED_IN"}]}
+{"id": "shared-02240", "relationships": [{"source": "Google Sheet", "target": "paper volunteer rota", "type": "REPLACES"}]}
+{"id": "shared-11239", "relationships": [{"source": "Mediation analysis", "target": "Baron-Kenny", "type": "REPLACES"}, {"source": "Mediation analysis", "target": "Imai", "type": "AUTHORED_BY"}]}
+{"id": "shared-08638", "relationships": [{"source": "SOPS", "target": "age", "type": "USES"}]}
+{"id": "shared-10917", "relationships": [{"source": "Tormach 1100M", "target": "Haimer 3D Taster", "type": "USES"}, {"source": "probe macro", "target": "Tormach 1100M", "type": "APPLIES_TO"}]}
+{"id": "shared-05054", "relationships": [{"source": "Kotlin Multiplatform", "target": "XCFramework", "type": "USES"}]}
+{"id": "shared-13920", "relationships": [{"source": "Nicot", "target": "bee-space", "type": "APPLIES_TO"}]}
+{"id": "shared-09520", "relationships": [{"source": "Google Home", "target": "Home Assistant", "type": "USES"}, {"source": "Amazon Alexa", "target": "Home Assistant", "type": "USES"}]}
+{"id": "shared-13607", "relationships": [{"source": "CoreDNS", "target": "NodeLocalDNSCache", "type": "REPLACES"}]}
+{"id": "shared-08404", "relationships": [{"source": "oneof", "target": "Event", "type": "APPLIES_TO"}]}
+{"id": "shared-02315", "relationships": [{"source": "Science Based Targets initiative", "target": "corporate emissions", "type": "APPLIES_TO"}]}
+{"id": "shared-08874", "relationships": [{"source": "memcheck", "target": "audio decoder", "type": "APPLIES_TO"}]}
+{"id": "shared-11662", "relationships": [{"source": "Eddington", "target": "general relativity", "type": "PRODUCES"}]}
+{"id": "shared-03930", "relationships": [{"source": "Fidelity", "target": "Vanguard", "type": "PREFERS"}]}
+{"id": "shared-08858", "relationships": [{"source": "Arena allocator", "target": "malloc", "type": "REPLACES"}]}
+{"id": "shared-03442", "relationships": [{"source": "Quickwit", "target": "tantivy", "type": "USES"}]}
+{"id": "shared-03080", "relationships": [{"source": "The Origins of Alliances", "target": "Stephen Walt", "type": "AUTHORED_BY"}, {"source": "balance-of-power theory", "target": "balance-of-threat theory", "type": "IMPROVES_ON"}]}
+{"id": "shared-09513", "relationships": [{"source": "WLED", "target": "MQTT", "type": "REPLACES"}, {"source": "WLED", "target": "Home Assistant", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-07780", "relationships": [{"source": "Trino", "target": "cost-based optimizer", "type": "USES"}, {"source": "Trino", "target": "Iceberg", "type": "USES"}]}
+{"id": "shared-12769", "relationships": [{"source": "View Transitions", "target": "Astro", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07559", "relationships": [{"source": "PBKDF2-HMAC-SHA256", "target": "Argon2id", "type": "REPLACES"}]}
+{"id": "shared-05986", "relationships": [{"source": "rice", "target": "German", "type": "PREFERS"}]}
+{"id": "shared-13790", "relationships": [{"source": "Oak duff", "target": "Cantharellus cibarius", "type": "USES"}]}
+{"id": "shared-11745", "relationships": [{"source": "fluid mosaic model", "target": "Gorter-Grendel", "type": "REPLACES"}]}
+{"id": "shared-08352", "relationships": [{"source": "Server-Sent Events", "target": "long-polling", "type": "REPLACES"}]}
+{"id": "shared-09023", "relationships": [{"source": "BPE", "target": "whitespace splitter", "type": "REPLACES"}]}
+{"id": "shared-07134", "relationships": [{"source": "Kata Containers", "target": "firecracker", "type": "USES"}]}
+{"id": "shared-04088", "relationships": [{"source": "Redis", "target": "Hazelcast", "type": "REPLACES"}]}
+{"id": "shared-03940", "relationships": [{"source": "SankeyMATIC", "target": "Sankey", "type": "DEPENDS_ON"}]}
+{"id": "shared-12385", "relationships": [{"source": "Metolius Sentinel", "target": "El Capitan", "type": "APPLIES_TO"}, {"source": "portaledge", "target": "El Capitan", "type": "APPLIES_TO"}]}
+{"id": "shared-04361", "relationships": [{"source": "wedding anniversary", "target": "Cornish inn", "type": "LOCATED_IN"}]}
+{"id": "shared-05102", "relationships": [{"source": "Rettie & Co", "target": "Leith Walk", "type": "LOCATED_IN"}]}
+{"id": "shared-14024", "relationships": [{"source": "CMIP6", "target": "AR6", "type": "APPLIES_TO"}]}
+{"id": "shared-09772", "relationships": [{"source": "pg_basebackup", "target": "Postgres", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08723", "relationships": [{"source": "availability SLI", "target": "Page-flood", "type": "FIXES"}]}
+{"id": "shared-12478", "relationships": [{"source": "Second species", "target": "passing tone", "type": "DEPENDS_ON"}]}
+{"id": "shared-08558", "relationships": [{"source": "Token exchange", "target": "JWT", "type": "USES"}]}
+{"id": "shared-09140", "relationships": [{"source": "software watchdog", "target": "IWDG", "type": "DEPLOYED_ON"}]}
+{"id": "shared-04726", "relationships": [{"source": "ReefPi", "target": "Seneye", "type": "REPLACES"}, {"source": "ReefPi", "target": "Raspberry Pi", "type": "DEPLOYED_ON"}]}
+{"id": "shared-02148", "relationships": [{"source": "SIMS parent portal", "target": "text message service", "type": "PREFERS"}]}
+{"id": "shared-06594", "relationships": [{"source": "LangFuse", "target": "Helicone", "type": "REPLACES"}]}
+{"id": "shared-07653", "relationships": [{"source": "TigerGraph", "target": "GSQL", "type": "USES"}, {"source": "TigerGraph", "target": "Cypher", "type": "IMPROVES_ON"}]}
+{"id": "shared-03732", "relationships": [{"source": "walk", "target": "gym slot", "type": "REPLACES"}]}
+{"id": "shared-04005", "relationships": [{"source": "Discord", "target": "Helldivers 2", "type": "REPLACES"}]}
+{"id": "shared-05840", "relationships": [{"source": "structuralSharing", "target": "Reselect", "type": "REPLACES"}]}
+{"id": "shared-04856", "relationships": [{"source": "Arrow Flight", "target": "REST", "type": "REPLACES"}]}
+{"id": "shared-02878", "relationships": [{"source": "Bravecto Plus", "target": "Stronghold", "type": "REPLACES"}]}
+{"id": "shared-05365", "relationships": [{"source": "rational emotive behaviour therapy", "target": "Albert Ellis", "type": "AUTHORED_BY"}, {"source": "rational emotive behaviour therapy", "target": "CBT", "type": "BUILDS_ON"}]}
+{"id": "shared-08872", "relationships": [{"source": "purge", "target": "Fragmentation", "type": "FIXES"}]}
+{"id": "shared-01135", "relationships": [{"source": "Pomerium", "target": "VPN", "type": "REPLACES"}]}
+{"id": "shared-06818", "relationships": [{"source": "750words", "target": "Ghost", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-08271", "relationships": [{"source": "Pydantic", "target": "Output schemas", "type": "USES"}]}
+{"id": "shared-12712", "relationships": [{"source": "Next.js 14", "target": "pages/", "type": "REPLACES"}]}
+{"id": "shared-08064", "relationships": [{"source": "attention-score-weighted", "target": "LRU", "type": "REPLACES"}]}
+{"id": "shared-13362", "relationships": [{"source": "InvalidationSet", "target": "Style invalidation", "type": "REPLACES"}]}
+{"id": "shared-10309", "relationships": [{"source": "Hiker Micro Crew", "target": "Pacific Crest Trail", "type": "APPLIES_TO"}]}
+{"id": "shared-07514", "relationships": [{"source": "ICMP Fragmentation Needed", "target": "Path MTU discovery", "type": "APPLIES_TO"}]}
+{"id": "shared-10044", "relationships": [{"source": "Bulgarian yogurt", "target": "mesophilic", "type": "PREFERS"}]}
+{"id": "shared-03048", "relationships": [{"source": "financial instability hypothesis", "target": "Hyman Minsky", "type": "AUTHORED_BY"}]}
+{"id": "shared-12936", "relationships": [{"source": "Pekko", "target": "Persistence", "type": "USES"}]}
+{"id": "shared-07721", "relationships": [{"source": "Sonic", "target": "chat-history drawer", "type": "APPLIES_TO"}]}
+{"id": "shared-11434", "relationships": [{"source": "Optimality Theory", "target": "GEN", "type": "HAS_PART"}, {"source": "Optimality Theory", "target": "EVAL", "type": "HAS_PART"}]}
+{"id": "shared-12948", "relationships": [{"source": "Scala Native", "target": "offline reconciler", "type": "USES"}]}
+{"id": "shared-08859", "relationships": [{"source": "jemalloc", "target": "tcache", "type": "USES"}]}
+{"id": "shared-12955", "relationships": [{"source": "Candide Thovex", "target": "Faction Dictator", "type": "APPLIES_TO"}]}
+{"id": "shared-13516", "relationships": [{"source": "FoundationDB", "target": "Record Layer", "type": "USES"}, {"source": "FoundationDB", "target": "Document Layer", "type": "USES"}]}
+{"id": "shared-05396", "relationships": [{"source": "five-factor model", "target": "Paul Costa", "type": "AUTHORED_BY"}, {"source": "five-factor model", "target": "Robert McCrae", "type": "AUTHORED_BY"}]}
+{"id": "shared-09295", "relationships": [{"source": "Griffin-Lim", "target": "magnitude-only resynthesis", "type": "APPLIES_TO"}]}
+{"id": "shared-12670", "relationships": [{"source": "RETURNING clause", "target": "last_insert_rowid", "type": "REPLACES"}]}
+{"id": "shared-02484", "relationships": [{"source": "canvass", "target": "Pandoc", "type": "USES"}]}
+{"id": "shared-10858", "relationships": [{"source": "mortise chisel", "target": "hardware-store set", "type": "REPLACES"}]}
+{"id": "shared-12099", "relationships": [{"source": "NOT VALID", "target": "foreign-key", "type": "FIXES"}]}
+{"id": "shared-01059", "relationships": [{"source": "Kinesis Data Streams", "target": "provisioned setup", "type": "REPLACES"}]}
+{"id": "shared-08525", "relationships": [{"source": "/payments", "target": "Idempotency-Key", "type": "USES"}, {"source": "/payments", "target": "Postgres", "type": "USES"}]}
+{"id": "shared-09681", "relationships": [{"source": "Cluster API", "target": "KubeadmControlPlane", "type": "USES"}, {"source": "Cluster API", "target": "MachineDeployment", "type": "USES"}]}
+{"id": "shared-13949", "relationships": [{"source": "alcohol-wash", "target": "Winter loss", "type": "APPLIES_TO"}]}
+{"id": "shared-08075", "relationships": [{"source": "Cold-start", "target": "Modal", "type": "APPLIES_TO"}]}
+{"id": "shared-11669", "relationships": [{"source": "Anderson", "target": "positron", "type": "PRODUCES"}, {"source": "positron", "target": "Dirac", "type": "AUTHORED_BY"}]}
+{"id": "shared-13372", "relationships": [{"source": "Back/forward cache", "target": "IndexedDB", "type": "APPLIES_TO"}]}
+{"id": "shared-06082", "relationships": [{"source": "The Population Ecology of Organizations", "target": "Michael Hannan", "type": "AUTHORED_BY"}, {"source": "The Population Ecology of Organizations", "target": "John Freeman", "type": "AUTHORED_BY"}, {"source": "organisational ecology", "target": "density-dependent selection", "type": "DEPENDS_ON"}]}
+{"id": "shared-12730", "relationships": [{"source": "React Hook Form", "target": "Zod", "type": "USES"}]}
+{"id": "shared-07795", "relationships": [{"source": "MetricFlow", "target": "semantic layer", "type": "APPLIES_TO"}]}
+{"id": "shared-10121", "relationships": [{"source": "yixing", "target": "Jingdezhen", "type": "PREFERS"}]}
+{"id": "shared-02400", "relationships": [{"source": "Imagining Religion", "target": "J. Z. Smith", "type": "AUTHORED_BY"}]}
+{"id": "shared-00562", "relationships": [{"source": "Playwright", "target": "JSDOM", "type": "REPLACES"}]}
+{"id": "shared-02933", "relationships": [{"source": "WhatsApp", "target": "Lordship Lane", "type": "LOCATED_IN"}]}
+{"id": "shared-08463", "relationships": [{"source": "Automatic persisted queries", "target": "web client", "type": "APPLIES_TO"}]}
+{"id": "shared-12458", "relationships": [{"source": "melodic minor", "target": "jazz minor", "type": "APPLIES_TO"}]}
+{"id": "shared-07982", "relationships": [{"source": "Feast", "target": "gRPC", "type": "USES"}]}
+{"id": "shared-12377", "relationships": [{"source": "half ropes", "target": "Bugaboos", "type": "APPLIES_TO"}]}
+{"id": "shared-09165", "relationships": [{"source": "Ignition Fortress", "target": "Gazebo classic", "type": "REPLACES"}]}
+{"id": "shared-01363", "relationships": [{"source": "fully remote", "target": "hybrid mandate", "type": "PREFERS"}]}
+{"id": "shared-11372", "relationships": [{"source": "fast-and-frugal heuristics", "target": "Gerd Gigerenzer", "type": "AUTHORED_BY"}, {"source": "Simple Heuristics That Make Us Smart", "target": "Gerd Gigerenzer", "type": "AUTHORED_BY"}]}
+{"id": "shared-11100", "relationships": [{"source": "History of Science and Its Rational Reconstructions", "target": "Lakatos", "type": "AUTHORED_BY"}, {"source": "Representing and Intervening", "target": "Hacking", "type": "AUTHORED_BY"}]}
+{"id": "shared-11696", "relationships": [{"source": "Copenhagen interpretation", "target": "many-worlds", "type": "PREFERS"}]}
+{"id": "shared-08932", "relationships": [{"source": "mark-compact", "target": "mark-sweep", "type": "PREFERS"}]}
+{"id": "shared-03391", "relationships": [{"source": "S3 access points", "target": "bucket policies", "type": "REPLACES"}]}
+{"id": "shared-06343", "relationships": [{"source": "Datadog", "target": "S3", "type": "REPLACES"}, {"source": "Datadog", "target": "Athena", "type": "REPLACES"}]}
+{"id": "shared-04731", "relationships": [{"source": "Dogo", "target": "Pixel 9", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12203", "relationships": [{"source": "Playwright", "target": "Selenium", "type": "USES"}]}
+{"id": "shared-10698", "relationships": [{"source": "pre-trip checklist", "target": "award space", "type": "APPLIES_TO"}]}
+{"id": "shared-06971", "relationships": [{"source": "HFSM", "target": "flat flag list", "type": "REPLACES"}]}
+{"id": "shared-08363", "relationships": [{"source": "PubNub", "target": "collaborative editor", "type": "APPLIES_TO"}]}
+{"id": "shared-13613", "relationships": [{"source": "Topology Aware Hints", "target": "ClusterIP", "type": "USES"}]}
+{"id": "shared-12429", "relationships": [{"source": "NGC 7293", "target": "Helix Nebula", "type": "APPLIES_TO"}, {"source": "ASI2600MM Pro", "target": "OSC", "type": "REPLACES"}]}
+{"id": "shared-13981", "relationships": [{"source": "Berlin Wall", "target": "East Germany", "type": "APPLIES_TO"}, {"source": "Berlin Wall", "target": "West Berlin", "type": "APPLIES_TO"}]}
+{"id": "shared-13589", "relationships": [{"source": "Eloquent", "target": "Guzzle", "type": "USES"}]}
+{"id": "shared-10945", "relationships": [{"source": "Starrett 436", "target": "2A", "type": "APPLIES_TO"}]}
+{"id": "shared-08651", "relationships": [{"source": "Tailscale", "target": "OpenVPN", "type": "REPLACES"}]}
+{"id": "shared-11315", "relationships": [{"source": "cost function", "target": "Shephard's lemma", "type": "DEPENDS_ON"}]}
+{"id": "shared-08246", "relationships": [{"source": "tool_use", "target": "OpenAI function calls", "type": "PREFERS"}]}
+{"id": "shared-03847", "relationships": [{"source": "rocky-intertidal experiments", "target": "Jane Lubchenco", "type": "AUTHORED_BY"}]}
+{"id": "shared-04466", "relationships": [{"source": "Yom Kippur", "target": "Kehillat Or Chadash", "type": "LOCATED_IN"}]}
+{"id": "shared-12632", "relationships": [{"source": "branch protection", "target": "GitHub", "type": "APPLIES_TO"}]}
+{"id": "shared-00481", "relationships": [{"source": "Notion Calendar", "target": "Fantastical", "type": "REPLACES"}]}
+{"id": "shared-11783", "relationships": [{"source": "bioorthogonal", "target": "Carolyn Bertozzi", "type": "AUTHORED_BY"}]}
+{"id": "shared-09551", "relationships": [{"source": "Immich", "target": "PhotoPrism", "type": "PREFERS"}]}
+{"id": "shared-00771", "relationships": [{"source": "BCA assay", "target": "Bradford", "type": "PREFERS"}]}
+{"id": "shared-06305", "relationships": [{"source": "BubbleUp", "target": "Datadog", "type": "REPLACES"}]}
+{"id": "shared-02900", "relationships": [{"source": "hedgehog highway", "target": "slug pellets", "type": "REPLACES"}]}
+{"id": "shared-05123", "relationships": [{"source": "inventory snag list", "target": "Hopewell Lettings", "type": "LOCATED_IN"}]}
+{"id": "shared-03767", "relationships": [{"source": "John Snow", "target": "cholera deaths", "type": "PRODUCES"}]}
+{"id": "shared-09362", "relationships": [{"source": "The Forge", "target": "research branch", "type": "APPLIES_TO"}]}
+{"id": "shared-02538", "relationships": [{"source": "Julian", "target": "Go", "type": "USES"}, {"source": "Plum Guide", "target": "Hetzner", "type": "DEPLOYED_ON"}, {"source": "Vrbo", "target": "Hetzner", "type": "DEPLOYED_ON"}]}
+{"id": "shared-10677", "relationships": [{"source": "Venture X", "target": "Citi Prestige", "type": "REPLACES"}]}
+{"id": "shared-13063", "relationships": [{"source": "fork", "target": "ChessTempo", "type": "APPLIES_TO"}]}
+{"id": "shared-02191", "relationships": [{"source": "Schwab Bank", "target": "Wells Fargo", "type": "REPLACES"}]}
+{"id": "shared-06886", "relationships": [{"source": "Envoy at Home", "target": "Amazon Show 15", "type": "REPLACES"}]}
+{"id": "shared-05587", "relationships": [{"source": "Kustomize", "target": "Helm", "type": "PREFERS"}]}
+{"id": "shared-12046", "relationships": [{"source": "uv run", "target": "venv", "type": "PREFERS"}]}
+{"id": "shared-09522", "relationships": [{"source": "Aqara", "target": "Bermuda", "type": "APPLIES_TO"}, {"source": "ecobee", "target": "Bermuda", "type": "APPLIES_TO"}]}
+{"id": "shared-04822", "relationships": [{"source": "Ably", "target": "Pusher Channels", "type": "REPLACES"}]}
+{"id": "shared-06732", "relationships": [{"source": "What We Owe to Each Other", "target": "T. M. Scanlon", "type": "AUTHORED_BY"}]}
+{"id": "shared-11829", "relationships": [{"source": "Knuth-Morris-Pratt", "target": "failure-function", "type": "USES"}]}
+{"id": "shared-13620", "relationships": [{"source": "GCE CNI", "target": "Calico", "type": "PREFERS"}]}
+{"id": "shared-09978", "relationships": [{"source": "marble slab", "target": "wooden board", "type": "REPLACES"}]}
+{"id": "shared-05333", "relationships": [{"source": "Quantum Field Theory and the Jones Polynomial", "target": "Edward Witten", "type": "AUTHORED_BY"}, {"source": "Communications in Mathematical Physics", "target": "Edward Witten", "type": "AUTHORED_BY"}]}
+{"id": "shared-05967", "relationships": [{"source": "S-Bahn", "target": "Friedrichstraße", "type": "REPLACES"}]}
+{"id": "shared-10790", "relationships": [{"source": "Pro Tools", "target": "Rec. 2020", "type": "REPLACES"}]}
+{"id": "shared-09704", "relationships": [{"source": "Pulumi", "target": "CDKTF", "type": "PREFERS"}]}
+{"id": "shared-08164", "relationships": [{"source": "bge-reranker-large", "target": "cross-encoder", "type": "REPLACES"}]}
+{"id": "shared-09108", "relationships": [{"source": "Ring buffer", "target": "SPSC", "type": "USES"}]}
+{"id": "shared-13255", "relationships": [{"source": "Primavera", "target": "Botticelli", "type": "AUTHORED_BY"}, {"source": "Primavera", "target": "Neoplatonic", "type": "DEPENDS_ON"}]}
+{"id": "shared-02809", "relationships": [{"source": "pathlib", "target": "os.path.normpath", "type": "REPLACES"}]}
+{"id": "shared-11323", "relationships": [{"source": "Journal des Savants", "target": "Joseph Bertrand", "type": "AUTHORED_BY"}]}
+{"id": "shared-09265", "relationships": [{"source": "REAPER", "target": "Ableton", "type": "PREFERS"}, {"source": "REAPER", "target": "Logic Pro", "type": "PREFERS"}]}
+{"id": "shared-05579", "relationships": [{"source": "Bitbucket Pipelines", "target": "Atlassian Bamboo", "type": "REPLACES"}]}
+{"id": "shared-08186", "relationships": [{"source": "Qdrant", "target": "smart client", "type": "USES"}]}
+{"id": "shared-09503", "relationships": [{"source": "ESPHome", "target": "Tasmota", "type": "REPLACES"}, {"source": "ESPHome", "target": "Home Assistant API", "type": "USES"}]}
+{"id": "shared-05838", "relationships": [{"source": "Zustand", "target": "Redux DevTools", "type": "USES"}]}
+{"id": "shared-07083", "relationships": [{"source": "Subgraph", "target": "per-event rollup", "type": "REPLACES"}]}
+{"id": "shared-11744", "relationships": [{"source": "Dolly", "target": "Roslin Institute", "type": "DEPENDS_ON"}, {"source": "Dolly", "target": "Ian Wilmut", "type": "AUTHORED_BY"}]}
+{"id": "shared-08562", "relationships": [{"source": "ES256", "target": "JWS", "type": "APPLIES_TO"}]}
+{"id": "shared-12967", "relationships": [{"source": "Pomoca", "target": "Black Diamond Ascension", "type": "PREFERS"}]}
+{"id": "shared-10373", "relationships": [{"source": "The Bicycle Wheel", "target": "Jobst Brandt", "type": "AUTHORED_BY"}]}
+{"id": "shared-05344", "relationships": [{"source": "Nuovo Cimento", "target": "Gabriele Veneziano", "type": "AUTHORED_BY"}, {"source": "string theory", "target": "Gabriele Veneziano", "type": "AUTHORED_BY"}]}
+{"id": "shared-11308", "relationships": [{"source": "Weak Axiom of Revealed Preference", "target": "Paul Samuelson", "type": "AUTHORED_BY"}]}
+{"id": "shared-10050", "relationships": [{"source": "The Fermentation Journal", "target": "Sandor Katz", "type": "AUTHORED_BY"}]}
+{"id": "shared-12078", "relationships": [{"source": "MATERIALIZED", "target": "CTE", "type": "APPLIES_TO"}]}
+{"id": "shared-09994", "relationships": [{"source": "Tight crumb", "target": "rye blend loaf", "type": "APPLIES_TO"}]}
+{"id": "shared-09771", "relationships": [{"source": "S3", "target": "object-lock", "type": "USES"}, {"source": "borg", "target": "LTO-9", "type": "USES"}]}
+{"id": "shared-10895", "relationships": [{"source": "Glide", "target": "Benchcrafted", "type": "USES"}]}
+{"id": "shared-12989", "relationships": [{"source": "beacon-probe-shovel", "target": "avalanche course", "type": "APPLIES_TO"}]}
+{"id": "shared-12800", "relationships": [{"source": "Cells", "target": "code review", "type": "APPLIES_TO"}]}
+{"id": "shared-06602", "relationships": [{"source": "One Sec", "target": "Freedom", "type": "PREFERS"}]}
+{"id": "shared-03255", "relationships": [{"source": "Scrivener", "target": "iA Writer", "type": "PREFERS"}]}
+{"id": "shared-09700", "relationships": [{"source": "v2.0", "target": "Subscription", "type": "USES"}, {"source": "v2.1", "target": "Subscription", "type": "USES"}]}
+{"id": "shared-07087", "relationships": [{"source": "Rage-quit", "target": "Moloch v3", "type": "USES"}]}
+{"id": "shared-03091", "relationships": [{"source": "Social Origins of Dictatorship and Democracy", "target": "Barrington Moore", "type": "AUTHORED_BY"}]}
+{"id": "shared-06128", "relationships": [{"source": "adelic harmonic analysis", "target": "John Tate", "type": "AUTHORED_BY"}]}
+{"id": "shared-03957", "relationships": [{"source": "Aqara U100", "target": "August Wi-Fi Smart Lock", "type": "REPLACES"}, {"source": "Aqara U100", "target": "Apple Home", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-04644", "relationships": [{"source": "The Faces of Justice and State Authority", "target": "Mirjan Damaska", "type": "AUTHORED_BY"}]}
+{"id": "shared-11531", "relationships": [{"source": "Blue Brain Project", "target": "Henry Markram", "type": "AUTHORED_BY"}]}
+{"id": "shared-05897", "relationships": [{"source": "ICAEW ACA", "target": "BDO", "type": "RELATED_TO"}]}
+{"id": "shared-08341", "relationships": [{"source": "bitsandbytes", "target": "AdamW", "type": "REPLACES"}]}
+{"id": "shared-09077", "relationships": [{"source": "textDocument/diagnostic", "target": "textDocument/publishDiagnostics", "type": "REPLACES"}]}
+{"id": "shared-13389", "relationships": [{"source": "renderer process", "target": "Chromium", "type": "APPLIES_TO"}]}
+{"id": "shared-03493", "relationships": [{"source": "span.SetAttributes", "target": "trace.WithAttributes", "type": "REPLACES"}]}
+{"id": "shared-13833", "relationships": [{"source": "heliox", "target": "trimix", "type": "PREFERS"}]}
+{"id": "shared-01805", "relationships": [{"source": "EndpointSlices", "target": "Endpoints", "type": "REPLACES"}]}
+{"id": "shared-08261", "relationships": [{"source": "Cohere rerank-3", "target": "bi-encoder", "type": "REPLACES"}]}
+{"id": "shared-11044", "relationships": [{"source": "Mainsail", "target": "Fluidd", "type": "PREFERS"}]}
+{"id": "shared-13378", "relationships": [{"source": "WebGPU", "target": "WebGL", "type": "REPLACES"}]}
+{"id": "shared-02892", "relationships": [{"source": "home boarding", "target": "kennels", "type": "PREFERS"}]}
+{"id": "shared-10211", "relationships": [{"source": "Valpolicella", "target": "Chianti Classico", "type": "RELATED_TO"}, {"source": "Chianti Classico", "target": "Barolo", "type": "RELATED_TO"}]}
+{"id": "shared-06351", "relationships": [{"source": "dbt Core", "target": "ELT scripts", "type": "REPLACES"}]}
+{"id": "shared-03985", "relationships": [{"source": "Aqara TVOC Air Quality Monitor", "target": "Apple Home", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-04600", "relationships": [{"source": "InSAR interferometry", "target": "GPS campaigns", "type": "REPLACES"}]}
+{"id": "shared-09005", "relationships": [{"source": "Flex", "target": "hand-coded scanner", "type": "REPLACES"}]}
+{"id": "shared-12057", "relationships": [{"source": "pg_stat_statements", "target": "queryid", "type": "USES"}]}
+{"id": "shared-11738", "relationships": [{"source": "Wonderful Life", "target": "Stephen Jay Gould", "type": "AUTHORED_BY"}]}
+{"id": "shared-03279", "relationships": [{"source": "Mastering Assistant", "target": "iZotope Ozone 11", "type": "REPLACES"}]}
+{"id": "shared-00788", "relationships": [{"source": "Density functional theory", "target": "wavefunction methods", "type": "REPLACES"}]}
+{"id": "shared-13273", "relationships": [{"source": "Liberty Leading the People", "target": "Delacroix", "type": "AUTHORED_BY"}]}
+{"id": "shared-11470", "relationships": [{"source": "Bayesian inference", "target": "Joshua Tenenbaum", "type": "AUTHORED_BY"}, {"source": "number-game", "target": "hierarchical priors", "type": "DEPENDS_ON"}]}
+{"id": "shared-13524", "relationships": [{"source": "Valkey", "target": "Redis", "type": "REPLACES"}]}
+{"id": "shared-06812", "relationships": [{"source": "Cloudflare", "target": "Google Domains", "type": "REPLACES"}]}
+{"id": "shared-08273", "relationships": [{"source": "Prompt injection", "target": "guard-LLM", "type": "USES"}]}
+{"id": "shared-13807", "relationships": [{"source": "BARE Sentry Pro", "target": "Santi E.Lite", "type": "PREFERS"}]}
+{"id": "shared-07678", "relationships": [{"source": "Nebula Graph", "target": "composite indexes", "type": "USES"}]}
+{"id": "shared-05488", "relationships": [{"source": "PhotoRec", "target": "Sony A7 IV", "type": "DEPLOYED_ON"}]}
+{"id": "shared-10785", "relationships": [{"source": "MP3", "target": "WAV", "type": "USES"}]}
+{"id": "shared-03370", "relationships": [{"source": "EC:8+3", "target": "RF3", "type": "PREFERS"}]}
+{"id": "shared-13394", "relationships": [{"source": "Safari", "target": "Chromium", "type": "PREFERS"}]}
+{"id": "shared-02605", "relationships": [{"source": "lld", "target": "mold 2.4", "type": "REPLACES"}]}
+{"id": "shared-10581", "relationships": [{"source": "Sailor Pro Gear Slim", "target": "14k music nib", "type": "USES"}]}
+{"id": "shared-09969", "relationships": [{"source": "T65", "target": "T55", "type": "PREFERS"}]}
+{"id": "shared-12192", "relationships": [{"source": "Service Discovery", "target": "Docker", "type": "USES"}, {"source": "Service Discovery", "target": "Consul", "type": "USES"}]}
+{"id": "shared-04666", "relationships": [{"source": "PoshWholesale", "target": "ClosetBundle", "type": "REPLACES"}]}
+{"id": "shared-11904", "relationships": [{"source": "context.WithDeadline", "target": "gateway", "type": "APPLIES_TO"}]}
+{"id": "shared-06120", "relationships": [{"source": "pointwise ergodic theorem", "target": "George David Birkhoff", "type": "AUTHORED_BY"}, {"source": "pointwise ergodic theorem", "target": "von Neumann's earlier mean-ergodic statement", "type": "REPLACES"}]}
+{"id": "shared-04454", "relationships": [{"source": "Ramadan", "target": "Masjid Al-Noor", "type": "LOCATED_IN"}]}
+{"id": "shared-06431", "relationships": [{"source": "ArangoDB", "target": "OrientDB", "type": "PREFERS"}]}
+{"id": "shared-05655", "relationships": [{"source": "Firecracker", "target": "AWS Lambda", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13848", "relationships": [{"source": "trimix", "target": "USS Oriskany", "type": "APPLIES_TO"}]}
+{"id": "shared-13062", "relationships": [{"source": "Réti endgame study", "target": "kings", "type": "APPLIES_TO"}]}
+{"id": "shared-05729", "relationships": [{"source": "formatjs extract", "target": "Puppeteer", "type": "USES"}, {"source": "Puppeteer", "target": "Crowdin", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-06829", "relationships": [{"source": "hugo-coder", "target": "Hugo", "type": "USES"}]}
+{"id": "shared-11581", "relationships": [{"source": "Kydland", "target": "inflation bias", "type": "PRODUCES"}, {"source": "Prescott", "target": "inflation bias", "type": "PRODUCES"}]}
+{"id": "shared-08502", "relationships": [{"source": "invoices", "target": "PATCH", "type": "REPLACES"}]}
+{"id": "shared-11115", "relationships": [{"source": "constructivist", "target": "moral realism", "type": "REPLACES"}, {"source": "constructivist", "target": "Sharon Street", "type": "AUTHORED_BY"}]}
+{"id": "shared-03128", "relationships": [{"source": "Sgr A*", "target": "Milky Way", "type": "APPLIES_TO"}, {"source": "Sgr A*", "target": "Keck", "type": "DEPENDS_ON"}, {"source": "Sgr A*", "target": "VLT", "type": "DEPENDS_ON"}]}
+{"id": "shared-11835", "relationships": [{"source": "Manacher", "target": "expand-around-centre", "type": "REPLACES"}]}
+{"id": "shared-13127", "relationships": [{"source": "Vampire the Masquerade V5", "target": "Discord", "type": "USES"}]}
+{"id": "shared-09822", "relationships": [{"source": "Route53", "target": "CloudFront", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-06746", "relationships": [{"source": "Moral Realism: A Defence", "target": "Russ Shafer-Landau", "type": "AUTHORED_BY"}]}
+{"id": "shared-08323", "relationships": [{"source": "Hugging Face Trainer", "target": "TrainerCallback", "type": "USES"}]}
+{"id": "shared-11168", "relationships": [{"source": "Variance", "target": "covariance", "type": "DEPENDS_ON"}]}
+{"id": "shared-12565", "relationships": [{"source": "Swarovski NL Pure 8x42", "target": "Nikon Monarch", "type": "REPLACES"}]}
+{"id": "shared-07068", "relationships": [{"source": "Polygon CDK", "target": "zkSync", "type": "PREFERS"}]}
+{"id": "shared-07833", "relationships": [{"source": "compaction", "target": "Parquet", "type": "APPLIES_TO"}]}
+{"id": "shared-13970", "relationships": [{"source": "United Nations", "target": "League of Nations", "type": "REPLACES"}]}
+{"id": "shared-05500", "relationships": [{"source": "Pixieset", "target": "Santorini", "type": "APPLIES_TO"}]}
+{"id": "shared-13899", "relationships": [{"source": "Craig Jones", "target": "heel-hook", "type": "APPLIES_TO"}]}
+{"id": "shared-03148", "relationships": [{"source": "Reinhard Genzel", "target": "2020 Nobel Prize in Physics", "type": "PRODUCES"}, {"source": "Andrea Ghez", "target": "2020 Nobel Prize in Physics", "type": "PRODUCES"}, {"source": "Roger Penrose", "target": "2020 Nobel Prize in Physics", "type": "PRODUCES"}]}
+{"id": "shared-01464", "relationships": [{"source": "closeboard", "target": "chain-link fence", "type": "REPLACES"}]}
+{"id": "shared-08582", "relationships": [{"source": "HTTP-POST binding", "target": "SAML 2.0", "type": "APPLIES_TO"}]}
+{"id": "shared-02753", "relationships": [{"source": "accepted", "target": "proposed", "type": "REPLACES"}]}
+{"id": "shared-04562", "relationships": [{"source": "2011 Tohoku earthquake", "target": "Fukushima Daiichi", "type": "CAUSES"}]}
+{"id": "shared-09620", "relationships": [{"source": "crosvm", "target": "QEMU", "type": "PREFERS"}]}
+{"id": "shared-05689", "relationships": [{"source": "KVM", "target": "AWS EC2", "type": "REPLACES"}]}
+{"id": "shared-03283", "relationships": [{"source": "Cherry MX Brown", "target": "Magic Keyboard", "type": "REPLACES"}]}
+{"id": "shared-01232", "relationships": [{"source": "blue/green", "target": "canary", "type": "REPLACES"}]}
+{"id": "shared-09844", "relationships": [{"source": "account key", "target": "Let's Encrypt", "type": "USES"}]}
+{"id": "shared-05630", "relationships": [{"source": "cosign", "target": "GPG", "type": "REPLACES"}]}
+{"id": "shared-01970", "relationships": [{"source": "Symfony", "target": "Nginx", "type": "DEPLOYED_ON"}]}
+{"id": "shared-06754", "relationships": [{"source": "Reynolds number", "target": "Osborne Reynolds", "type": "AUTHORED_BY"}]}
+{"id": "shared-02386", "relationships": [{"source": "lived religion", "target": "Robert Orsi", "type": "AUTHORED_BY"}]}
+{"id": "shared-06115", "relationships": [{"source": "Woodin cardinals", "target": "W. Hugh Woodin", "type": "AUTHORED_BY"}, {"source": "Woodin cardinals", "target": "inner model theory", "type": "IMPROVES_ON"}]}
+{"id": "shared-02277", "relationships": [{"source": "embedded-processes model", "target": "Baddeley", "type": "IMPROVES_ON"}]}
+{"id": "shared-05917", "relationships": [{"source": "living with", "target": "Parkinson's", "type": "APPLIES_TO"}]}
+{"id": "shared-09489", "relationships": [{"source": "collision filter", "target": "group-and-subgroup", "type": "REPLACES"}]}
+{"id": "shared-08465", "relationships": [{"source": "Query cost analysis", "target": "resolver", "type": "APPLIES_TO"}]}
+{"id": "shared-11807", "relationships": [{"source": "AVL trees", "target": "red-black trees", "type": "IMPROVES_ON"}]}
+{"id": "shared-07802", "relationships": [{"source": "Delta Lake", "target": "Parquet", "type": "REPLACES"}, {"source": "Delta Lake", "target": "Databricks", "type": "DEPLOYED_ON"}]}
+{"id": "shared-11841", "relationships": [{"source": "Cook-Levin theorem", "target": "SAT", "type": "APPLIES_TO"}]}
+{"id": "shared-06177", "relationships": [{"source": "Logseq Sync", "target": "Logseq", "type": "REPLACES"}]}
+{"id": "shared-13642", "relationships": [{"source": "NodePort", "target": "kube-proxy", "type": "USES"}]}
+{"id": "shared-05948", "relationships": [{"source": "carrying with", "target": "moving on", "type": "REPLACES"}]}
+{"id": "shared-05766", "relationships": [{"source": "flag-as-circuit-breaker", "target": "address-lookup", "type": "APPLIES_TO"}]}
+{"id": "shared-06032", "relationships": [{"source": "Making News", "target": "Gaye Tuchman", "type": "AUTHORED_BY"}, {"source": "Making News", "target": "Free Press", "type": "PUBLISHED_IN"}]}
+{"id": "shared-12507", "relationships": [{"source": "Fractal Axe-Fx III", "target": "DAW", "type": "USES"}, {"source": "Helix LT", "target": "DAW", "type": "USES"}]}
+{"id": "shared-08799", "relationships": [{"source": "Ramp-down", "target": "ramp-up", "type": "RELATED_TO"}]}
+{"id": "shared-11985", "relationships": [{"source": "tsx", "target": "ts-node", "type": "PREFERS"}]}
+{"id": "shared-10545", "relationships": [{"source": "50-minute blocks", "target": "25-minute blocks", "type": "REPLACES"}]}
+{"id": "shared-04212", "relationships": [{"source": "Zed AI", "target": "VS Code", "type": "REPLACES"}]}
+{"id": "shared-11063", "relationships": [{"source": "Two Dogmas of Empiricism", "target": "Quine", "type": "AUTHORED_BY"}, {"source": "holistic confirmation", "target": "analytic-synthetic distinction", "type": "REPLACES"}]}
+{"id": "shared-11112", "relationships": [{"source": "experience-machine", "target": "Nozick", "type": "AUTHORED_BY"}, {"source": "preference-utilitarianism", "target": "hedonic act-utilitarianism", "type": "IMPROVES_ON"}]}
+{"id": "shared-03572", "relationships": [{"source": "Cats Effect 3", "target": "Future", "type": "REPLACES"}]}
+{"id": "shared-13897", "relationships": [{"source": "taegeuk poomsae", "target": "daughter", "type": "APPLIES_TO"}]}
+{"id": "shared-00528", "relationships": [{"source": "modules", "target": "precompiled headers", "type": "REPLACES"}]}
+{"id": "shared-02151", "relationships": [{"source": "Wealthfront Cash", "target": "Marcus", "type": "REPLACES"}]}
+{"id": "shared-09964", "relationships": [{"source": "Lodge Combo Cooker", "target": "Dutch oven", "type": "REPLACES"}]}
+{"id": "shared-07540", "relationships": [{"source": "QUIC", "target": "draft-29", "type": "APPLIES_TO"}]}
+{"id": "shared-13794", "relationships": [{"source": "Cortinarius", "target": "Cantharellus cibarius", "type": "RELATED_TO"}]}
+{"id": "shared-08629", "relationships": [{"source": "Workload Identity", "target": "node-metadata", "type": "REPLACES"}]}
+{"id": "shared-06950", "relationships": [{"source": "Grafana Mimir", "target": "Prometheus", "type": "REPLACES"}]}
+{"id": "shared-04794", "relationships": [{"source": "Floriss", "target": "Planta", "type": "PREFERS"}, {"source": "Floriss", "target": "MiFlora", "type": "USES"}]}
+{"id": "shared-07175", "relationships": [{"source": "Tail-based sampling", "target": "head-based sampler", "type": "REPLACES"}]}
+{"id": "shared-10415", "relationships": [{"source": "pause squat", "target": "dead-stop", "type": "REPLACES"}]}
+{"id": "shared-13371", "relationships": [{"source": "View Transitions API", "target": "FLIP", "type": "REPLACES"}]}
+{"id": "shared-08923", "relationships": [{"source": "ZGC", "target": "colored pointers", "type": "USES"}]}
+{"id": "shared-08694", "relationships": [{"source": "Teleport", "target": "SSH", "type": "REPLACES"}]}
+{"id": "shared-07702", "relationships": [{"source": "BM25", "target": "TF-IDF", "type": "REPLACES"}]}
+{"id": "shared-04543", "relationships": [{"source": "self-assembled monolayers", "target": "George Whitesides", "type": "AUTHORED_BY"}, {"source": "self-assembled monolayers", "target": "Chemical Reviews", "type": "PUBLISHED_IN"}]}
+{"id": "shared-11526", "relationships": [{"source": "cerebellum", "target": "mossy-fibre", "type": "USES"}, {"source": "cerebellum", "target": "Purkinje cells", "type": "USES"}]}
+{"id": "shared-11917", "relationships": [{"source": "net/http", "target": "gin", "type": "REPLACES"}, {"source": "net/http", "target": "fiber", "type": "REPLACES"}]}
+{"id": "shared-02262", "relationships": [{"source": "connectome", "target": "White", "type": "AUTHORED_BY"}]}
+{"id": "shared-08249", "relationships": [{"source": "Outlines", "target": "Guidance", "type": "PREFERS"}]}
+{"id": "shared-08688", "relationships": [{"source": "Cloudflare Zero Trust", "target": "Access", "type": "APPLIES_TO"}, {"source": "Cloudflare Zero Trust", "target": "Tunnel", "type": "APPLIES_TO"}]}
+{"id": "shared-09320", "relationships": [{"source": "luma.gl", "target": "Deck.gl", "type": "REPLACES"}]}
+{"id": "shared-10235", "relationships": [{"source": "CMS", "target": "deductive tasting", "type": "USES"}]}
+{"id": "shared-01529", "relationships": [{"source": "Discipline and Punish", "target": "Foucault", "type": "AUTHORED_BY"}]}
+{"id": "shared-05595", "relationships": [{"source": "Argo CD", "target": "HashiCorp Waypoint", "type": "PREFERS"}]}
+{"id": "shared-03074", "relationships": [{"source": "Subaltern studies", "target": "modernization-theory", "type": "REPLACES"}]}
+{"id": "shared-12350", "relationships": [{"source": "mathlib", "target": "Coq", "type": "USES"}]}
+{"id": "shared-12464", "relationships": [{"source": "Sus chords", "target": "Csus4", "type": "DEPENDS_ON"}]}
+{"id": "shared-11232", "relationships": [{"source": "Cox proportional hazards", "target": "Kaplan-Meier", "type": "REPLACES"}]}
+{"id": "shared-13427", "relationships": [{"source": "checkov", "target": "Terraform", "type": "USES"}, {"source": "checkov", "target": "GitHub", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-00828", "relationships": [{"source": "difference-in-differences", "target": "before-after comparisons", "type": "PREFERS"}]}
+{"id": "shared-14047", "relationships": [{"source": "GISTEMP", "target": "HadCRUT5", "type": "DEPENDS_ON"}, {"source": "GISTEMP", "target": "ERA5", "type": "DEPENDS_ON"}]}
+{"id": "shared-08452", "relationships": [{"source": "Apollo Server", "target": "persisted-queries", "type": "USES"}]}
+{"id": "shared-06908", "relationships": [{"source": "QuestDB", "target": "InfluxDB", "type": "REPLACES"}]}
+{"id": "shared-05481", "relationships": [{"source": "Moment T-Series", "target": "Sony RX100 VII", "type": "REPLACES"}]}
+{"id": "shared-11171", "relationships": [{"source": "Markov", "target": "concentration theory", "type": "APPLIES_TO"}, {"source": "Chebyshev", "target": "concentration theory", "type": "APPLIES_TO"}]}
+{"id": "shared-03315", "relationships": [{"source": "Pub/Sub Lite", "target": "Pub/Sub", "type": "PREFERS"}]}
+{"id": "shared-12841", "relationships": [{"source": "project-generation.yml", "target": "XcodeGen", "type": "REPLACES"}]}
+{"id": "shared-11894", "relationships": [{"source": "tracing", "target": "tokio", "type": "USES"}]}
+{"id": "shared-12588", "relationships": [{"source": "Birding on Borrowed Time", "target": "Phoebe Snetsinger", "type": "AUTHORED_BY"}]}
+{"id": "shared-13485", "relationships": [{"source": "Kyverno", "target": "cosign", "type": "USES"}, {"source": "admission", "target": "Rekor", "type": "USES"}]}
+{"id": "shared-10747", "relationships": [{"source": "Street Photographer", "target": "Vivian Maier", "type": "AUTHORED_BY"}]}
+{"id": "shared-13518", "relationships": [{"source": "LSI", "target": "GSI", "type": "REPLACES"}]}
+{"id": "shared-08287", "relationships": [{"source": "Instruction hierarchy", "target": "jailbreak", "type": "APPLIES_TO"}]}
+{"id": "shared-07066", "relationships": [{"source": "account-subscribe", "target": "Drift", "type": "APPLIES_TO"}]}
+{"id": "shared-05614", "relationships": [{"source": "SOPS-flux", "target": "Sealed Secrets", "type": "REPLACES"}]}
+{"id": "shared-08151", "relationships": [{"source": "Qdrant", "target": "Pinecone", "type": "REPLACES"}]}
+{"id": "shared-02479", "relationships": [{"source": "Beehiiv", "target": "Mailchimp", "type": "REPLACES"}]}
+{"id": "shared-11884", "relationships": [{"source": "dioxus", "target": "mobile companion", "type": "APPLIES_TO"}]}
+{"id": "shared-11864", "relationships": [{"source": "criterion", "target": "main", "type": "DEPENDS_ON"}]}
+{"id": "shared-06761", "relationships": [{"source": "Eurocode", "target": "national structural codes", "type": "REPLACES"}]}
+{"id": "shared-04597", "relationships": [{"source": "Richter scale", "target": "Charles Richter", "type": "AUTHORED_BY"}]}
+{"id": "shared-04146", "relationships": [{"source": "Envoy", "target": "HAProxy", "type": "REPLACES"}]}
+{"id": "shared-05209", "relationships": [{"source": "IRMAA", "target": "Medicare Part B", "type": "APPLIES_TO"}]}
+{"id": "shared-10835", "relationships": [{"source": "gyuto", "target": "Micarta", "type": "USES"}, {"source": "petty", "target": "Micarta", "type": "USES"}, {"source": "honesuki", "target": "Micarta", "type": "USES"}, {"source": "bunka", "target": "Micarta", "type": "USES"}]}
+{"id": "shared-02346", "relationships": [{"source": "net-zero pathway", "target": "single-year target framing", "type": "IMPROVES_ON"}]}
+{"id": "shared-12088", "relationships": [{"source": "synchronous_commit", "target": "remote_apply", "type": "REPLACES"}]}
+{"id": "shared-06685", "relationships": [{"source": "beeswax candles", "target": "paraffin", "type": "PREFERS"}]}
+{"id": "shared-05099", "relationships": [{"source": "Play Asset Delivery", "target": "OBB", "type": "REPLACES"}]}
+{"id": "shared-08486", "relationships": [{"source": "SpectaQL", "target": "partner API", "type": "APPLIES_TO"}]}
+{"id": "shared-05817", "relationships": [{"source": "TanStack Query", "target": "Redux", "type": "REPLACES"}]}
+{"id": "shared-03024", "relationships": [{"source": "regression discontinuity", "target": "Donald Thistlethwaite", "type": "AUTHORED_BY"}, {"source": "regression discontinuity", "target": "Donald Campbell", "type": "AUTHORED_BY"}]}
+{"id": "shared-02461", "relationships": [{"source": "Mapbox", "target": "OpenStreetMap", "type": "DEPLOYED_ON"}]}
+{"id": "shared-06093", "relationships": [{"source": "Stakeholder theory", "target": "shareholder-primacy doctrine", "type": "IMPROVES_ON"}]}
+{"id": "shared-08614", "relationships": [{"source": "CSI Secrets Store", "target": "tmpfs", "type": "USES"}]}
+{"id": "shared-10077", "relationships": [{"source": "syphon", "target": "Matt Winton", "type": "AUTHORED_BY"}]}
+{"id": "shared-07891", "relationships": [{"source": "Snowflake", "target": "Airbyte", "type": "REPLACES"}, {"source": "dbt", "target": "raw_<source>", "type": "USES"}]}
+{"id": "shared-13727", "relationships": [{"source": "kintsugi", "target": "urushi", "type": "APPLIES_TO"}]}
+{"id": "shared-10215", "relationships": [{"source": "Amarone", "target": "Corvina", "type": "USES"}, {"source": "Amarone", "target": "Rondinella", "type": "USES"}, {"source": "appassimento", "target": "Valpolicella", "type": "APPLIES_TO"}]}
+{"id": "shared-06102", "relationships": [{"source": "Taniyama-Shimura conjecture", "target": "Richard Taylor", "type": "AUTHORED_BY"}, {"source": "Taniyama-Shimura conjecture", "target": "Andrew Wiles", "type": "AUTHORED_BY"}]}
+{"id": "shared-05376", "relationships": [{"source": "Journal of Personality and Social Psychology", "target": "Patrick Forscher", "type": "AUTHORED_BY"}, {"source": "IAT", "target": "Greenwald", "type": "CONTRADICTS"}]}
+{"id": "shared-05197", "relationships": [{"source": "mental-load list", "target": "Notion", "type": "USES"}]}
+{"id": "shared-06887", "relationships": [{"source": "Lively Mobile2", "target": "LifeAlert", "type": "PREFERS"}]}
+{"id": "shared-06530", "relationships": [{"source": "Style Dictionary", "target": "Theo", "type": "REPLACES"}]}
+{"id": "shared-12281", "relationships": [{"source": "Shopify Functions", "target": "Shopify Scripts", "type": "REPLACES"}]}
+{"id": "shared-01758", "relationships": [{"source": "Plausible", "target": "Google Analytics", "type": "REPLACES"}]}
+{"id": "shared-10649", "relationships": [{"source": "stock series", "target": "JL Collins", "type": "AUTHORED_BY"}]}
+{"id": "shared-11094", "relationships": [{"source": "Open Science Framework", "target": "pre-registration", "type": "USES"}]}
+{"id": "shared-07067", "relationships": [{"source": "Arbitrum", "target": "timelock", "type": "USES"}, {"source": "Optimism", "target": "timelock", "type": "USES"}, {"source": "Base", "target": "timelock", "type": "USES"}]}
+{"id": "shared-07758", "relationships": [{"source": "Pinot", "target": "Elasticsearch", "type": "REPLACES"}]}
+{"id": "shared-02677", "relationships": [{"source": "Lambda SnapStart", "target": "CloudWatch Events", "type": "REPLACES"}]}
+{"id": "shared-12995", "relationships": [{"source": "Fritschi Xenic", "target": "Alta", "type": "APPLIES_TO"}]}
+{"id": "shared-09366", "relationships": [{"source": "render thread", "target": "secondary command buffer", "type": "USES"}]}
+{"id": "shared-13646", "relationships": [{"source": "global Services", "target": "Cilium ClusterMesh", "type": "REPLACES"}]}
+{"id": "shared-06815", "relationships": [{"source": "Hugo", "target": "Eleventy", "type": "PREFERS"}]}
+{"id": "shared-10256", "relationships": [{"source": "Bokashi", "target": "worm bin", "type": "PREFERS"}]}
+{"id": "shared-06016", "relationships": [{"source": "It's Complicated", "target": "danah boyd", "type": "AUTHORED_BY"}, {"source": "It's Complicated", "target": "Yale University Press", "type": "PUBLISHED_IN"}]}
+{"id": "shared-11416", "relationships": [{"source": "Dependency grammar", "target": "treebank", "type": "APPLIES_TO"}]}
+{"id": "shared-13505", "relationships": [{"source": "TiDB", "target": "TiKV", "type": "USES"}, {"source": "TiDB", "target": "TiFlash", "type": "USES"}]}
+{"id": "shared-08775", "relationships": [{"source": "k6", "target": "Open workload models", "type": "USES"}]}
+{"id": "shared-13592", "relationships": [{"source": "Prisma Accelerate", "target": "Postgres", "type": "REPLACES"}]}
+{"id": "shared-05478", "relationships": [{"source": "Sony A7 IV", "target": "Capture One", "type": "USES"}, {"source": "Cascable Studio", "target": "Imaging Edge", "type": "PREFERS"}]}
+{"id": "shared-07062", "relationships": [{"source": "central limit order book", "target": "constant-function AMM", "type": "REPLACES"}]}
+{"id": "shared-03593", "relationships": [{"source": "virtual threads", "target": "Quasar", "type": "REPLACES"}]}
+{"id": "shared-13853", "relationships": [{"source": "Rickson Gracie", "target": "closed guard", "type": "APPLIES_TO"}]}
+{"id": "shared-10141", "relationships": [{"source": "Shou Mei", "target": "Bai Hao Yinzhen", "type": "IMPROVES_ON"}]}
+{"id": "shared-04556", "relationships": [{"source": "plate tectonics", "target": "geosyncline theory", "type": "REPLACES"}]}
+{"id": "shared-07352", "relationships": [{"source": "Kong Gateway", "target": "kong.yml", "type": "USES"}]}
+{"id": "shared-03999", "relationships": [{"source": "Home Assistant Energy", "target": "Enphase", "type": "USES"}, {"source": "Home Assistant Energy", "target": "Mysa", "type": "USES"}]}
+{"id": "shared-13753", "relationships": [{"source": "Cantharellus californicus", "target": "coast live oak", "type": "LOCATED_IN"}]}
+{"id": "shared-10561", "relationships": [{"source": "Leuchtturm1917", "target": "Rhodia Webnotebook", "type": "REPLACES"}, {"source": "Leuchtturm1917", "target": "Moleskine", "type": "REPLACES"}]}
+{"id": "shared-03875", "relationships": [{"source": "iterated amplification", "target": "Paul Christiano", "type": "AUTHORED_BY"}]}
+{"id": "shared-11608", "relationships": [{"source": "Leibniz", "target": "dy/dx", "type": "USES"}, {"source": "Leibniz", "target": "integral sign", "type": "USES"}]}
+{"id": "shared-12820", "relationships": [{"source": "CryptoKit", "target": "CommonCrypto", "type": "REPLACES"}]}
+{"id": "shared-13781", "relationships": [{"source": "Shiitake", "target": "plug spawn", "type": "USES"}]}
+{"id": "shared-06978", "relationships": [{"source": "SPSC ring", "target": "global bus", "type": "REPLACES"}]}
+{"id": "shared-09823", "relationships": [{"source": "Google Cloud DNS", "target": "Cloudflare DNS", "type": "DEPENDS_ON"}, {"source": "health-check failover", "target": "NS set", "type": "APPLIES_TO"}]}
+{"id": "shared-13627", "relationships": [{"source": "CoreDNS", "target": "kube-dns", "type": "REPLACES"}]}
+{"id": "shared-04561", "relationships": [{"source": "1960 Valdivia earthquake", "target": "Chile", "type": "LOCATED_IN"}]}
+{"id": "shared-05539", "relationships": [{"source": "Syncthing", "target": "Bleep", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-04902", "relationships": [{"source": "Metal 3", "target": "MoltenVK", "type": "REPLACES"}]}
+{"id": "shared-04469", "relationships": [{"source": "Taizé chant", "target": "St Alban's", "type": "LOCATED_IN"}]}
+{"id": "shared-00848", "relationships": [{"source": "mobility tables", "target": "Duncan", "type": "AUTHORED_BY"}]}
+{"id": "shared-13031", "relationships": [{"source": "MLF", "target": "Flanders Red", "type": "APPLIES_TO"}]}
+{"id": "shared-05802", "relationships": [{"source": "Redux Toolkit", "target": "createSlice", "type": "USES"}]}
+{"id": "shared-04375", "relationships": [{"source": "Easter Monday", "target": "Good Friday", "type": "PREFERS"}]}
+{"id": "shared-13714", "relationships": [{"source": "deflocculated dip", "target": "bisque", "type": "REPLACES"}]}
+{"id": "shared-01102", "relationships": [{"source": "smallstep", "target": "HashiCorp Boundary", "type": "REPLACES"}]}
+{"id": "shared-08005", "relationships": [{"source": "Megatron-LM", "target": "sequence parallelism", "type": "USES"}]}
+{"id": "shared-09687", "relationships": [{"source": "coordination.k8s.io", "target": "endpoints", "type": "REPLACES"}]}
+{"id": "shared-05151", "relationships": [{"source": "pub quiz", "target": "Shoreditch", "type": "LOCATED_IN"}]}
+{"id": "shared-09377", "relationships": [{"source": "VkImageMemoryBarrier", "target": "GPU crash", "type": "FIXES"}]}
+{"id": "shared-06722", "relationships": [{"source": "deep ecology", "target": "Arne Naess", "type": "AUTHORED_BY"}, {"source": "deep ecology", "target": "shallow reform environmentalism", "type": "IMPROVES_ON"}]}
+{"id": "shared-04529", "relationships": [{"source": "ruthenium alkylidene catalyst", "target": "Robert Grubbs", "type": "AUTHORED_BY"}, {"source": "ruthenium alkylidene catalyst", "target": "molybdenum systems", "type": "REPLACES"}]}
+{"id": "shared-06147", "relationships": [{"source": "elementary theory of the category of sets", "target": "William Lawvere", "type": "AUTHORED_BY"}, {"source": "elementary theory of the category of sets", "target": "ZFC-style set theory", "type": "IMPROVES_ON"}]}
+{"id": "shared-08259", "relationships": [{"source": "BGE reranker v2-m3", "target": "bi-encoder", "type": "IMPROVES_ON"}]}
+{"id": "shared-12848", "relationships": [{"source": "event bus", "target": "NotificationCenter", "type": "REPLACES"}]}
+{"id": "shared-07940", "relationships": [{"source": "SecretsManagerBackend", "target": "Variables", "type": "REPLACES"}]}
+{"id": "shared-07768", "relationships": [{"source": "Snowflake", "target": "Zero-copy clones", "type": "USES"}]}
+{"id": "shared-12080", "relationships": [{"source": "pg_basebackup", "target": "pg_dump", "type": "REPLACES"}]}
+{"id": "shared-02169", "relationships": [{"source": "Splitwise", "target": "Chase", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-06045", "relationships": [{"source": "Bourdieu and the Journalistic Field", "target": "Rodney Benson", "type": "AUTHORED_BY"}, {"source": "Bourdieu and the Journalistic Field", "target": "Polity", "type": "PUBLISHED_IN"}, {"source": "Bourdieu and the Journalistic Field", "target": "newsroom-sociology accounts", "type": "REPLACES"}]}
+{"id": "shared-06271", "relationships": [{"source": "Readarr", "target": "Calibre", "type": "REPLACES"}, {"source": "Readarr", "target": "MyAnonamouse", "type": "USES"}, {"source": "Readarr", "target": "Audiobookshelf", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-07290", "relationships": [{"source": "SnapStart", "target": "Lambda", "type": "USES"}, {"source": "SnapStart", "target": ".NET", "type": "DEPLOYED_ON"}]}
+{"id": "shared-04640", "relationships": [{"source": "The Province of Jurisprudence Determined", "target": "John Austin", "type": "AUTHORED_BY"}, {"source": "Hart's rule-based model", "target": "John Austin", "type": "IMPROVES_ON"}]}
+{"id": "shared-13823", "relationships": [{"source": "Doubles", "target": "manifold", "type": "APPLIES_TO"}]}
+{"id": "shared-02834", "relationships": [{"source": "TOCTOU", "target": "stat", "type": "USES"}, {"source": "TOCTOU", "target": "fstat", "type": "USES"}]}
+{"id": "shared-13972", "relationships": [{"source": "Gandhi", "target": "India", "type": "WORKS_AT"}, {"source": "Nehru", "target": "India", "type": "WORKS_AT"}, {"source": "Jinnah", "target": "India", "type": "WORKS_AT"}]}
+{"id": "shared-08485", "relationships": [{"source": "Relay", "target": "connection spec", "type": "USES"}]}
+{"id": "shared-11019", "relationships": [{"source": "ASA", "target": "ABS", "type": "PREFERS"}]}
+{"id": "shared-10174", "relationships": [{"source": "Stirring", "target": "Kold-Draft", "type": "PREFERS"}]}
+{"id": "shared-10431", "relationships": [{"source": "Coan/Philippi", "target": "Ed Coan", "type": "AUTHORED_BY"}, {"source": "Coan/Philippi", "target": "Mark Philippi", "type": "AUTHORED_BY"}]}
+{"id": "shared-08226", "relationships": [{"source": "Streaming", "target": "tool_call_id", "type": "USES"}]}
+{"id": "shared-08282", "relationships": [{"source": "LangChain", "target": "ConversationalRetrievalChain", "type": "USES"}]}
+{"id": "shared-10929", "relationships": [{"source": "MIG", "target": "short-circuit transfer", "type": "USES"}]}
+{"id": "shared-10322", "relationships": [{"source": "Western States", "target": "canyon sections", "type": "LOCATED_IN"}]}
+{"id": "shared-00983", "relationships": [{"source": "FastAPI", "target": "Fly.io", "type": "DEPLOYED_ON"}, {"source": "SolidJS", "target": "Fly.io", "type": "DEPLOYED_ON"}]}
+{"id": "shared-11709", "relationships": [{"source": "central dogma", "target": "Crick", "type": "AUTHORED_BY"}]}
+{"id": "shared-03324", "relationships": [{"source": "Debezium", "target": "Postgres", "type": "REPLACES"}]}
+{"id": "shared-07095", "relationships": [{"source": "Solana", "target": "Jito", "type": "USES"}, {"source": "Solana", "target": "Agave", "type": "USES"}]}
+{"id": "shared-08837", "relationships": [{"source": "execsnoop", "target": "auditd", "type": "PREFERS"}]}
+{"id": "shared-09053", "relationships": [{"source": "rust-analyzer", "target": "RLS", "type": "REPLACES"}]}
+{"id": "shared-01009", "relationships": [{"source": "Linux kernel Development", "target": "Robert Love", "type": "AUTHORED_BY"}, {"source": "Linux kernel Development", "target": "Bovet", "type": "REPLACES"}]}
+{"id": "shared-08789", "relationships": [{"source": "RUM", "target": "marketing site", "type": "APPLIES_TO"}]}
+{"id": "shared-09226", "relationships": [{"source": "YOLO CLI", "target": "PyTorch", "type": "PREFERS"}]}
+{"id": "shared-06728", "relationships": [{"source": "A Defense of Abortion", "target": "Judith Jarvis Thomson", "type": "AUTHORED_BY"}, {"source": "violinist thought experiment", "target": "Judith Jarvis Thomson", "type": "AUTHORED_BY"}]}
+{"id": "shared-10297", "relationships": [{"source": "neem oil", "target": "Mikado", "type": "APPLIES_TO"}]}
+{"id": "shared-09043", "relationships": [{"source": "Lark", "target": "LALR", "type": "USES"}]}
+{"id": "shared-07167", "relationships": [{"source": "Pyroscope", "target": "payment workers", "type": "DEPLOYED_ON"}]}
+{"id": "shared-00017", "relationships": [{"source": "Protobuf", "target": "JSON", "type": "REPLACES"}]}
+{"id": "shared-13865", "relationships": [{"source": "Kodokan", "target": "Jigoro Kano", "type": "AUTHORED_BY"}]}
+{"id": "shared-03070", "relationships": [{"source": "Long Telegram", "target": "George Kennan", "type": "AUTHORED_BY"}, {"source": "X Article", "target": "George Kennan", "type": "AUTHORED_BY"}]}
+{"id": "shared-06031", "relationships": [{"source": "Deciding What's News", "target": "Herbert Gans", "type": "AUTHORED_BY"}]}
+{"id": "shared-12339", "relationships": [{"source": "hs-to-coq", "target": "Coq", "type": "USES"}]}
+{"id": "shared-10072", "relationships": [{"source": "Third Wave Water", "target": "Volvic", "type": "REPLACES"}]}
+{"id": "shared-06122", "relationships": [{"source": "Fields Medal", "target": "Jean-Pierre Serre", "type": "AUTHORED_BY"}, {"source": "sheaf-cohomological reworking", "target": "Leray's earlier spectral-sequence machinery", "type": "IMPROVES_ON"}]}
+{"id": "shared-06012", "relationships": [{"source": "Mediating the Message", "target": "Pamela Shoemaker", "type": "AUTHORED_BY"}, {"source": "hierarchy of influences", "target": "gatekeeping", "type": "REPLACES"}]}
+{"id": "shared-05890", "relationships": [{"source": "Frontend Masters", "target": "Codecademy Pro", "type": "REPLACES"}]}
+{"id": "shared-00956", "relationships": [{"source": "GQRX", "target": "HackRF One", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07506", "relationships": [{"source": "BBR", "target": "CUBIC", "type": "REPLACES"}]}
+{"id": "shared-06209", "relationships": [{"source": "Tesla Sentry Mode", "target": "TeslaCam Viewer", "type": "REPLACES"}]}
+{"id": "shared-04488", "relationships": [{"source": "Ignatian imaginative-Gospel contemplation", "target": "Lectio Divina", "type": "PREFERS"}]}
+{"id": "shared-06135", "relationships": [{"source": "Journal of Differential Geometry", "target": "Michael Freedman", "type": "AUTHORED_BY"}]}
+{"id": "shared-11872", "relationships": [{"source": "sqlx", "target": "diesel", "type": "REPLACES"}]}
+{"id": "shared-03594", "relationships": [{"source": "Ractor", "target": "GVL", "type": "REPLACES"}, {"source": "Ractor", "target": "parallel test runner", "type": "DEPLOYED_ON"}]}
+{"id": "shared-10285", "relationships": [{"source": "Provider", "target": "Contender", "type": "PREFERS"}]}
+{"id": "shared-08768", "relationships": [{"source": "INP", "target": "FID", "type": "REPLACES"}]}
+{"id": "shared-13849", "relationships": [{"source": "Mask squeeze", "target": "freediving", "type": "APPLIES_TO"}]}
+{"id": "shared-04929", "relationships": [{"source": "RDNA 4", "target": "RDNA 3", "type": "IMPROVES_ON"}]}
+{"id": "shared-10413", "relationships": [{"source": "SBD", "target": "Rehband", "type": "PREFERS"}]}
+{"id": "shared-00512", "relationships": [{"source": "Kustomize", "target": "Helm", "type": "REPLACES"}]}
+{"id": "shared-04039", "relationships": [{"source": "Steam Family Sharing", "target": "Steam", "type": "REPLACES"}]}
+{"id": "shared-02309", "relationships": [{"source": "CMIP6", "target": "IPCC", "type": "APPLIES_TO"}]}
+{"id": "shared-07268", "relationships": [{"source": "AWS Lambda", "target": "Firecracker", "type": "DEPLOYED_ON"}]}
+{"id": "shared-01742", "relationships": [{"source": "SoundID Reference", "target": "Focal Solo6 Be", "type": "APPLIES_TO"}]}
+{"id": "shared-10704", "relationships": [{"source": "Early Color", "target": "Saul Leiter", "type": "AUTHORED_BY"}]}
+{"id": "shared-07218", "relationships": [{"source": "Apache Beam", "target": "Dataflow", "type": "USES"}, {"source": "Apache Beam", "target": "Flink", "type": "USES"}]}
+{"id": "shared-08538", "relationships": [{"source": "contract-test harness", "target": "OpenAPI", "type": "USES"}]}
+{"id": "shared-04730", "relationships": [{"source": "Kasa", "target": "Apex Fusion", "type": "USES"}, {"source": "Kasa", "target": "IFTTT", "type": "USES"}]}
+{"id": "shared-13184", "relationships": [{"source": "Cambridge McDonald Institute", "target": "Bayesian modelling", "type": "PREFERS"}]}
+{"id": "shared-11037", "relationships": [{"source": "Home Assistant", "target": "SQLite", "type": "USES"}]}
+{"id": "shared-07388", "relationships": [{"source": "Emissary", "target": "Host", "type": "USES"}]}
+{"id": "shared-05289", "relationships": [{"source": "Self-Determination Theory", "target": "Edward Deci", "type": "AUTHORED_BY"}, {"source": "Self-Determination Theory", "target": "Richard Ryan", "type": "AUTHORED_BY"}]}
+{"id": "shared-09229", "relationships": [{"source": "YOLOv10", "target": "Viola-Jones", "type": "REPLACES"}]}
+{"id": "shared-03286", "relationships": [{"source": "Apple ProRes 422", "target": "Synology DS923+", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07465", "relationships": [{"source": "BF16", "target": "FP16", "type": "PREFERS"}]}
+{"id": "shared-12250", "relationships": [{"source": "AddressSanitizer", "target": "UndefinedBehaviorSanitizer", "type": "USES"}, {"source": "MemorySanitizer", "target": "ThreadSanitizer", "type": "USES"}]}
+{"id": "shared-12680", "relationships": [{"source": "Room", "target": "SQLite", "type": "USES"}]}
+{"id": "shared-13884", "relationships": [{"source": "chain wrestling", "target": "Khabib Nurmagomedov", "type": "AUTHORED_BY"}]}
+{"id": "shared-13902", "relationships": [{"source": "foundationless", "target": "Warre", "type": "REPLACES"}]}
+{"id": "shared-01674", "relationships": [{"source": "Jellyfin", "target": "Game Grumps", "type": "USES"}]}
+{"id": "shared-11335", "relationships": [{"source": "Job Market Signaling", "target": "Michael Spence", "type": "AUTHORED_BY"}, {"source": "Job Market Signaling", "target": "Quarterly Journal of Economics", "type": "PUBLISHED_IN"}]}
+{"id": "shared-12371", "relationships": [{"source": "Tenaya Oasi", "target": "Evolv Shaman", "type": "PREFERS"}]}
+{"id": "shared-04256", "relationships": [{"source": "Graphite", "target": "stacked-PR", "type": "REPLACES"}]}
+{"id": "shared-09949", "relationships": [{"source": "semolina pasta", "target": "fresh egg pasta", "type": "PREFERS"}]}
+{"id": "shared-04723", "relationships": [{"source": "Home Assistant", "target": "Zigbee2MQTT", "type": "USES"}]}
+{"id": "shared-08094", "relationships": [{"source": "BentoML", "target": "Ray Serve", "type": "REPLACES"}]}
+{"id": "shared-09154", "relationships": [{"source": "Cartographer", "target": "branch-and-bound", "type": "USES"}]}
+{"id": "shared-03513", "relationships": [{"source": "resilience4j", "target": "Hystrix", "type": "REPLACES"}]}
+{"id": "shared-06721", "relationships": [{"source": "A Sand County Almanac", "target": "Aldo Leopold", "type": "AUTHORED_BY"}, {"source": "land ethic", "target": "Aldo Leopold", "type": "AUTHORED_BY"}]}
+{"id": "shared-10776", "relationships": [{"source": "DNxHR LB", "target": "Blackmagic RAW", "type": "REPLACES"}]}
+{"id": "shared-02186", "relationships": [{"source": "Chase Ultimate Rewards", "target": "AmEx Membership Rewards", "type": "REPLACES"}]}
+{"id": "shared-03574", "relationships": [{"source": "Trio", "target": "asyncio", "type": "IMPROVES_ON"}]}
+{"id": "shared-12750", "relationships": [{"source": "Server Actions", "target": "ReadableStream", "type": "USES"}]}
+{"id": "shared-12803", "relationships": [{"source": "@Observable", "target": "@ObservableObject", "type": "REPLACES"}]}
+{"id": "shared-02336", "relationships": [{"source": "Global Assessment", "target": "IPBES", "type": "AUTHORED_BY"}]}
+{"id": "shared-04049", "relationships": [{"source": "DexerTo", "target": "Marvel Rivals", "type": "APPLIES_TO"}, {"source": "Cheat Engine", "target": "EasyAntiCheat", "type": "USES"}]}
+{"id": "shared-04476", "relationships": [{"source": "chanting practice", "target": "Chithurst Buddhist Monastery", "type": "LOCATED_IN"}]}
+{"id": "shared-12957", "relationships": [{"source": "Fritschi Xenic", "target": "Marker Kingpin", "type": "REPLACES"}]}
+{"id": "shared-10984", "relationships": [{"source": "MakeSupply", "target": "oak-tag", "type": "USES"}, {"source": "MakeSupply", "target": "mylar acetate", "type": "USES"}]}
+{"id": "shared-07284", "relationships": [{"source": "Compute@Edge", "target": "WebAssembly System Interface", "type": "USES"}]}
+{"id": "shared-01521", "relationships": [{"source": "Post-war decolonisation", "target": "European colonial administration", "type": "REPLACES"}]}
+{"id": "shared-02868", "relationships": [{"source": "Petlog", "target": "Hugo", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-08929", "relationships": [{"source": "Shenandoah", "target": "ZGC", "type": "PREFERS"}]}
+{"id": "shared-07123", "relationships": [{"source": "cosign", "target": "Fulcio", "type": "USES"}]}
+{"id": "shared-06803", "relationships": [{"source": "Astro", "target": "Gatsby", "type": "REPLACES"}]}
+{"id": "shared-10359", "relationships": [{"source": "Zipp 303 Firecrest", "target": "GP5000 S TR", "type": "USES"}]}
+{"id": "shared-10314", "relationships": [{"source": "Garmin inReach Mini 2", "target": "MapShare", "type": "USES"}]}
+{"id": "shared-04082", "relationships": [{"source": "W-TinyLFU", "target": "LRU", "type": "REPLACES"}]}
+{"id": "shared-03992", "relationships": [{"source": "HACS", "target": "Powercalc", "type": "REPLACES"}]}
+{"id": "shared-07639", "relationships": [{"source": "Pinot", "target": "star-tree", "type": "USES"}]}
+{"id": "shared-02058", "relationships": [{"source": "SSE", "target": "WebSocket", "type": "REPLACES"}]}
+{"id": "shared-13041", "relationships": [{"source": "roast barley", "target": "Imperial Stout", "type": "APPLIES_TO"}]}
+{"id": "shared-12364", "relationships": [{"source": "Petzl Reverso", "target": "ATC Guide", "type": "REPLACES"}]}
+{"id": "shared-09731", "relationships": [{"source": "rolling replace", "target": "AMI", "type": "REPLACES"}]}
+{"id": "shared-12968", "relationships": [{"source": "Moment Wildcat", "target": "Nordica Enforcer", "type": "REPLACES"}]}
+{"id": "shared-10694", "relationships": [{"source": "ExpertFlyer", "target": "exit-row", "type": "USES"}]}
+{"id": "shared-03883", "relationships": [{"source": "Mila", "target": "Yoshua Bengio", "type": "AUTHORED_BY"}]}
+{"id": "shared-11747", "relationships": [{"source": "Lynn Margulis", "target": "Gaia hypothesis", "type": "PRODUCES"}, {"source": "Gaia hypothesis", "target": "James Lovelock", "type": "AUTHORED_BY"}]}
+{"id": "shared-09074", "relationships": [{"source": "rename", "target": "LSP 3.17 Specification", "type": "BUILDS_ON"}]}
+{"id": "shared-10662", "relationships": [{"source": "NEXUS", "target": "Global Entry", "type": "RELATED_TO"}]}
+{"id": "shared-11009", "relationships": [{"source": "Rat Rig V-Core", "target": "RepRapFirmware", "type": "USES"}, {"source": "Mainsail", "target": "Raspberry Pi", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13501", "relationships": [{"source": "CockroachDB", "target": "Google Spanner", "type": "PREFERS"}]}
+{"id": "shared-03503", "relationships": [{"source": "recover", "target": "fmt.Errorf", "type": "REPLACES"}]}
+{"id": "shared-08297", "relationships": [{"source": "pgvector", "target": "halfvec", "type": "USES"}]}
+{"id": "shared-13780", "relationships": [{"source": "cultivation kit", "target": "Lion's mane", "type": "APPLIES_TO"}]}
+{"id": "shared-07477", "relationships": [{"source": "H100", "target": "Gaudi2", "type": "REPLACES"}]}
+{"id": "shared-08549", "relationships": [{"source": "API style guide", "target": "Spectral", "type": "USES"}]}
+{"id": "shared-07570", "relationships": [{"source": "libsodium", "target": "OpenSSL", "type": "REPLACES"}]}
+{"id": "shared-08665", "relationships": [{"source": "Google Identity-Aware Proxy", "target": "Looker", "type": "DEPLOYED_ON"}]}
+{"id": "shared-03870", "relationships": [{"source": "double descent", "target": "Belkin", "type": "AUTHORED_BY"}, {"source": "double descent", "target": "PNAS", "type": "PUBLISHED_IN"}]}
+{"id": "shared-10508", "relationships": [{"source": "Obsidian", "target": "Roam Research", "type": "REPLACES"}, {"source": "Obsidian", "target": "dataview", "type": "USES"}]}
+{"id": "shared-01467", "relationships": [{"source": "Honda HRX", "target": "Gravelly Hill Motors", "type": "LOCATED_IN"}]}
+{"id": "shared-09299", "relationships": [{"source": "PipeWire", "target": "LV2", "type": "USES"}, {"source": "Ardour", "target": "Linux", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13576", "relationships": [{"source": "Doctrine", "target": "DQL", "type": "USES"}, {"source": "Doctrine", "target": "MariaDB", "type": "REPLACES"}]}
+{"id": "shared-03154", "relationships": [{"source": "Zwift", "target": "Wahoo Kickr Core", "type": "DEPLOYED_ON"}]}
+{"id": "shared-11397", "relationships": [{"source": "reflection effect", "target": "Daniel Kahneman", "type": "AUTHORED_BY"}, {"source": "reflection effect", "target": "Amos Tversky", "type": "AUTHORED_BY"}, {"source": "Prospect Theory", "target": "S-shaped value function", "type": "DEPENDS_ON"}]}
+{"id": "shared-12159", "relationships": [{"source": "Backend-For-Frontend", "target": "mobile app", "type": "DEPLOYED_ON"}]}
+{"id": "shared-00426", "relationships": [{"source": "Zotero", "target": "Mendeley", "type": "PREFERS"}]}
+{"id": "shared-10668", "relationships": [{"source": "Airbnb", "target": "beach house", "type": "APPLIES_TO"}, {"source": "Vrbo", "target": "beach house", "type": "APPLIES_TO"}]}
+{"id": "shared-10611", "relationships": [{"source": "mega backdoor Roth", "target": "after-tax contributions", "type": "USES"}]}
+{"id": "shared-06473", "relationships": [{"source": "trusted publishing", "target": "API tokens", "type": "REPLACES"}]}
+{"id": "shared-08332", "relationships": [{"source": "lm-evaluation-harness", "target": "HELM", "type": "PREFERS"}]}
+{"id": "shared-04482", "relationships": [{"source": "King James Psalms", "target": "NRSV", "type": "PREFERS"}]}
+{"id": "shared-04651", "relationships": [{"source": "CamelCamelCamel", "target": "Amazon", "type": "REPLACES"}]}
+{"id": "shared-07512", "relationships": [{"source": "WireGuard", "target": "OpenVPN", "type": "REPLACES"}]}
+{"id": "shared-11342", "relationships": [{"source": "First Welfare Theorem", "target": "Pareto efficient", "type": "DEPENDS_ON"}]}
+{"id": "shared-06259", "relationships": [{"source": "Netflix", "target": "LG C2", "type": "DEPLOYED_ON"}, {"source": "Harmony", "target": "Kodi", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-08595", "relationships": [{"source": "JOSE", "target": "at+jwt", "type": "USES"}, {"source": "JOSE", "target": "logout+jwt", "type": "USES"}]}
+{"id": "shared-08734", "relationships": [{"source": "Jira", "target": "incident.io", "type": "USES"}]}
+{"id": "shared-00097", "relationships": [{"source": "uv", "target": "poetry.lock", "type": "REPLACES"}]}
+{"id": "shared-05987", "relationships": [{"source": "Noa", "target": "creche", "type": "VISITED"}]}
+{"id": "shared-07469", "relationships": [{"source": "oneAPI", "target": "SYCL", "type": "REPLACES"}, {"source": "oneAPI", "target": "Intel Max", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07569", "relationships": [{"source": "SPHINCS+", "target": "firmware release", "type": "APPLIES_TO"}]}
+{"id": "shared-10509", "relationships": [{"source": "Evergreen notes", "target": "Andy Matuschak", "type": "AUTHORED_BY"}]}
+{"id": "shared-11282", "relationships": [{"source": "Vickrey-Clarke-Groves", "target": "second-price rule", "type": "BUILDS_ON"}]}
+{"id": "shared-03609", "relationships": [{"source": "What Does It All Mean?", "target": "Nagel", "type": "AUTHORED_BY"}]}
+{"id": "shared-06149", "relationships": [{"source": "motivic cohomology", "target": "Vladimir Voevodsky", "type": "AUTHORED_BY"}, {"source": "Milnor conjecture", "target": "Vladimir Voevodsky", "type": "AUTHORED_BY"}]}
+{"id": "shared-08794", "relationships": [{"source": "image-resize worker", "target": "S3", "type": "USES"}]}
+{"id": "shared-11585", "relationships": [{"source": "search-and-matching", "target": "Diamond", "type": "AUTHORED_BY"}, {"source": "search-and-matching", "target": "Mortensen", "type": "AUTHORED_BY"}, {"source": "search-and-matching", "target": "Pissarides", "type": "AUTHORED_BY"}]}
+{"id": "shared-03250", "relationships": [{"source": "Eric Kim", "target": "NYT Cooking", "type": "USES"}, {"source": "NYT Cooking", "target": "Maangchi", "type": "PREFERS"}]}
+{"id": "shared-00408", "relationships": [{"source": "incompleteness theorem", "target": "Godel", "type": "AUTHORED_BY"}]}
+{"id": "shared-07223", "relationships": [{"source": "Kafka Streams", "target": "ksqlDB", "type": "REPLACES"}]}
+{"id": "shared-10368", "relationships": [{"source": "Colorado Trail Race", "target": "Tumbleweed Prospector", "type": "APPLIES_TO"}]}
+{"id": "shared-08217", "relationships": [{"source": "eval harness", "target": "Chain-of-Thought", "type": "REPLACES"}]}
+{"id": "shared-05429", "relationships": [{"source": "calibre", "target": "Readwise", "type": "REPLACES"}]}
+{"id": "shared-07168", "relationships": [{"source": "VictoriaMetrics", "target": "Thanos", "type": "REPLACES"}]}
+{"id": "shared-08571", "relationships": [{"source": "FusionAuth", "target": "Auth0", "type": "REPLACES"}]}
+{"id": "shared-05257", "relationships": [{"source": "Cognitive Theory of Multimedia Learning", "target": "Richard Mayer", "type": "AUTHORED_BY"}]}
+{"id": "shared-12908", "relationships": [{"source": "Fable", "target": "F#", "type": "USES"}, {"source": "Fable", "target": "React", "type": "DEPLOYED_ON"}]}
+{"id": "shared-02212", "relationships": [{"source": "cat room", "target": "dog kennels", "type": "PREFERS"}]}
+{"id": "shared-10579", "relationships": [{"source": "Taccia Jet Black", "target": "Sailor Kiwa-Guro", "type": "PREFERS"}]}
+{"id": "shared-05517", "relationships": [{"source": "Echo Studio", "target": "Alexa", "type": "REPLACES"}, {"source": "Echo Studio", "target": "Spotify Connect", "type": "USES"}]}
+{"id": "shared-09647", "relationships": [{"source": "-cpu Skylake-Server-v4", "target": "QEMU", "type": "REPLACES"}]}
+{"id": "shared-13836", "relationships": [{"source": "Silfra", "target": "Silfra", "type": "LOCATED_IN"}]}
+{"id": "shared-06814", "relationships": [{"source": "GitHub Actions", "target": "Jekyll", "type": "REPLACES"}]}
+{"id": "shared-00732", "relationships": [{"source": "Bruno", "target": "Tbilisi", "type": "LIVES_IN"}]}
+{"id": "shared-09597", "relationships": [{"source": "Woodpecker", "target": "Gitlab Runner", "type": "REPLACES"}]}
+{"id": "shared-12245", "relationships": [{"source": "Stryker", "target": "payments module", "type": "APPLIES_TO"}]}
+{"id": "shared-11876", "relationships": [{"source": "rayon", "target": "thread pool", "type": "REPLACES"}]}
+{"id": "shared-10851", "relationships": [{"source": "Lie-Nielsen No. 4", "target": "Stanley #4", "type": "REPLACES"}]}
+{"id": "shared-06118", "relationships": [{"source": "primes", "target": "Ben Green", "type": "AUTHORED_BY"}, {"source": "primes", "target": "Terence Tao", "type": "AUTHORED_BY"}]}
+{"id": "shared-05676", "relationships": [{"source": "Distroless", "target": "Debian slim", "type": "REPLACES"}]}
+{"id": "shared-10098", "relationships": [{"source": "boiler hammer", "target": "Lelit Bianca", "type": "APPLIES_TO"}]}
+{"id": "shared-13818", "relationships": [{"source": "Shearwater Petrel 3", "target": "Hollis DC1", "type": "PREFERS"}]}
+{"id": "shared-03289", "relationships": [{"source": "TouchDesigner", "target": "Notch", "type": "PREFERS"}]}
+{"id": "shared-09925", "relationships": [{"source": "pesto alla Genovese", "target": "Ligurian basil", "type": "USES"}, {"source": "pesto alla Genovese", "target": "pine nut", "type": "USES"}, {"source": "pesto alla Genovese", "target": "pecorino", "type": "USES"}]}
+{"id": "shared-13946", "relationships": [{"source": "uncapping fork", "target": "freezer", "type": "LOCATED_IN"}]}
+{"id": "shared-09277", "relationships": [{"source": "SWIPE", "target": "YIN", "type": "REPLACES"}]}
+{"id": "shared-09281", "relationships": [{"source": "spectral editor", "target": "STFT", "type": "USES"}]}
+{"id": "shared-07329", "relationships": [{"source": "Buildkite", "target": "JSON schema", "type": "USES"}]}
+{"id": "shared-01450", "relationships": [{"source": "morning daylight walk", "target": "lightbox", "type": "PREFERS"}]}
+{"id": "shared-04366", "relationships": [{"source": "Nani", "target": "silver lota", "type": "USES"}]}
+{"id": "shared-06146", "relationships": [{"source": "Springer Lecture Notes", "target": "Daniel Quillen", "type": "AUTHORED_BY"}, {"source": "homotopical algebra", "target": "simplicial-set-only treatments", "type": "IMPROVES_ON"}]}
+{"id": "shared-07097", "relationships": [{"source": "peg-defence bot", "target": "Starknet", "type": "DEPLOYED_ON"}]}
+{"id": "shared-04697", "relationships": [{"source": "Amazon", "target": "Dyson V15", "type": "DEPLOYED_ON"}]}
+{"id": "shared-10627", "relationships": [{"source": "VWRA", "target": "short duration treasuries", "type": "APPLIES_TO"}]}
+{"id": "shared-10238", "relationships": [{"source": "disgorgement", "target": "Vintage Champagne", "type": "APPLIES_TO"}]}
+{"id": "shared-12587", "relationships": [{"source": "eBird", "target": "Citizen-science", "type": "APPLIES_TO"}, {"source": "Project FeederWatch", "target": "Citizen-science", "type": "APPLIES_TO"}, {"source": "Breeding Bird Survey", "target": "Citizen-science", "type": "APPLIES_TO"}]}
+{"id": "shared-10450", "relationships": [{"source": "taper", "target": "Issurin", "type": "AUTHORED_BY"}]}
+{"id": "shared-05388", "relationships": [{"source": "In a Different Voice", "target": "Carol Gilligan", "type": "AUTHORED_BY"}, {"source": "In a Different Voice", "target": "Piaget", "type": "BUILDS_ON"}]}
+{"id": "shared-09852", "relationships": [{"source": "OpenZFS on Linux", "target": "Btrfs", "type": "PREFERS"}]}
+{"id": "shared-13070", "relationships": [{"source": "Obsidian", "target": "TCEC", "type": "APPLIES_TO"}]}
+{"id": "shared-04554", "relationships": [{"source": "transform fault", "target": "J. Tuzo Wilson", "type": "AUTHORED_BY"}, {"source": "transform fault", "target": "Nature", "type": "PUBLISHED_IN"}]}
+{"id": "shared-13423", "relationships": [{"source": "yamllint", "target": "pre-commit", "type": "USES"}, {"source": "yamllint", "target": "Flux", "type": "USES"}]}
+{"id": "shared-13251", "relationships": [{"source": "Scrovegni Chapel", "target": "Giotto", "type": "AUTHORED_BY"}]}
+{"id": "shared-06403", "relationships": [{"source": "APOC", "target": "Neo4j", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13408", "relationships": [{"source": "Error Prone", "target": "FindBugs", "type": "REPLACES"}]}
+{"id": "shared-08622", "relationships": [{"source": "rotation policy", "target": "scheduler hook", "type": "USES"}]}
+{"id": "shared-04525", "relationships": [{"source": "ammonia synthesis", "target": "Fritz Haber", "type": "AUTHORED_BY"}, {"source": "ammonia synthesis", "target": "Birkeland-Eyde arc process", "type": "REPLACES"}]}
+{"id": "shared-05929", "relationships": [{"source": "Christmas", "target": "church", "type": "LOCATED_IN"}]}
+{"id": "shared-06522", "relationships": [{"source": "Mantine", "target": "Chakra UI", "type": "REPLACES"}]}
+{"id": "shared-04685", "relationships": [{"source": "Gelato", "target": "Shopify", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09358", "relationships": [{"source": "argument buffers", "target": "Apple Silicon", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08305", "relationships": [{"source": "LoRA+", "target": "LoRA", "type": "REPLACES"}]}
+{"id": "shared-09278", "relationships": [{"source": "parameter automation", "target": "dsp module", "type": "DEPENDS_ON"}]}
+{"id": "shared-14012", "relationships": [{"source": "Amazon dieback", "target": "savanna", "type": "APPLIES_TO"}]}
+{"id": "shared-07852", "relationships": [{"source": "dbt Core", "target": "Snowflake", "type": "USES"}, {"source": "dbt Core", "target": "GitHub Actions", "type": "USES"}]}
+{"id": "shared-07415", "relationships": [{"source": "hash-slot", "target": "Redis Cluster", "type": "APPLIES_TO"}]}
+{"id": "shared-05616", "relationships": [{"source": "YubiHSM 2", "target": "software-only key store", "type": "REPLACES"}]}
+{"id": "shared-05163", "relationships": [{"source": "Dr Anjali", "target": "Relate", "type": "REPLACES"}]}
+{"id": "shared-08391", "relationships": [{"source": "tsung", "target": "WebSocket", "type": "USES"}]}
+{"id": "shared-03114", "relationships": [{"source": "LambdaCDM", "target": "Einstein-de Sitter", "type": "IMPROVES_ON"}]}
+{"id": "shared-01002", "relationships": [{"source": "Bayesian statistics", "target": "Allen Downey", "type": "AUTHORED_BY"}]}
+{"id": "shared-01405", "relationships": [{"source": "EMDR", "target": "CBT", "type": "PREFERS"}]}
+{"id": "shared-12155", "relationships": [{"source": "Event Sourcing", "target": "ledger service", "type": "APPLIES_TO"}]}
+{"id": "shared-01754", "relationships": [{"source": "iA Writer", "target": "Scrivener", "type": "REPLACES"}]}
+{"id": "shared-07787", "relationships": [{"source": "Redshift Spectrum", "target": "S3", "type": "USES"}]}
+{"id": "shared-11026", "relationships": [{"source": "Prusa XL", "target": "Voron 2.4", "type": "PREFERS"}]}
+{"id": "shared-05168", "relationships": [{"source": "Marcus", "target": "London", "type": "VISITED"}]}
+{"id": "shared-13146", "relationships": [{"source": "side-based initiative", "target": "rolled initiative", "type": "REPLACES"}]}
+{"id": "shared-03876", "relationships": [{"source": "Generative Adversarial Networks", "target": "Ian Goodfellow", "type": "AUTHORED_BY"}, {"source": "Generative Adversarial Networks", "target": "NeurIPS", "type": "PUBLISHED_IN"}]}
+{"id": "shared-02816", "relationships": [{"source": "hmac.compare_digest", "target": "webhook", "type": "APPLIES_TO"}]}
+{"id": "shared-06590", "relationships": [{"source": "tiktoken", "target": "Anthropic", "type": "USES"}, {"source": "count_tokens", "target": "Claude", "type": "APPLIES_TO"}]}
+{"id": "shared-06881", "relationships": [{"source": "Papa Pals", "target": "Home Instead", "type": "PREFERS"}]}
+{"id": "shared-13887", "relationships": [{"source": "Islam Makhachev", "target": "no-gi", "type": "APPLIES_TO"}]}
+{"id": "shared-09973", "relationships": [{"source": "The Bread Baker's Apprentice", "target": "Peter Reinhart", "type": "AUTHORED_BY"}]}
+{"id": "shared-10672", "relationships": [{"source": "Barbados Welcome Stamp", "target": "Spain digital nomad", "type": "APPLIES_TO"}]}
+{"id": "shared-02499", "relationships": [{"source": "uMap", "target": "Google My Maps", "type": "PREFERS"}, {"source": "uMap", "target": "GeoJSON", "type": "USES"}]}
+{"id": "shared-05138", "relationships": [{"source": "mortgage in principle", "target": "Halifax", "type": "RELATED_TO"}]}
+{"id": "shared-06152", "relationships": [{"source": "Logseq", "target": "Notion", "type": "PREFERS"}]}
+{"id": "shared-12654", "relationships": [{"source": "PRAGMA cache_size", "target": "page cache", "type": "USES"}]}
+{"id": "shared-04014", "relationships": [{"source": "Skyrim Special Edition", "target": "Mod Organizer 2", "type": "REPLACES"}]}
+{"id": "shared-02788", "relationships": [{"source": "improves-on", "target": "ADR", "type": "APPLIES_TO"}]}
+{"id": "shared-11392", "relationships": [{"source": "Simpler: The Future of Government", "target": "Cass Sunstein", "type": "AUTHORED_BY"}]}
+{"id": "shared-04639", "relationships": [{"source": "Of Laws in General", "target": "Jeremy Bentham", "type": "AUTHORED_BY"}]}
+{"id": "shared-08127", "relationships": [{"source": "static per-channel", "target": "dynamic per-tensor", "type": "PREFERS"}]}
+{"id": "shared-04652", "relationships": [{"source": "Vinted", "target": "eBay", "type": "PREFERS"}]}
+{"id": "shared-06041", "relationships": [{"source": "Informing the News", "target": "Thomas Patterson", "type": "AUTHORED_BY"}, {"source": "knowledge-based journalism", "target": "objectivity-plus-balance", "type": "REPLACES"}]}
+{"id": "shared-02663", "relationships": [{"source": "Netlify Edge Functions", "target": "Express", "type": "REPLACES"}]}
+{"id": "shared-09757", "relationships": [{"source": "ZFS", "target": "tank pool", "type": "APPLIES_TO"}, {"source": "ZFS", "target": "DR box", "type": "DEPLOYED_ON"}]}
+{"id": "shared-10051", "relationships": [{"source": "DF64", "target": "Niche Zero", "type": "REPLACES"}]}
+{"id": "shared-02812", "relationships": [{"source": "Object.create", "target": "lodash", "type": "REPLACES"}]}
+{"id": "shared-04008", "relationships": [{"source": "RTX 4070 Super", "target": "3060 Ti", "type": "REPLACES"}]}
+{"id": "shared-12499", "relationships": [{"source": "Dorico", "target": "Sibelius", "type": "REPLACES"}]}
+{"id": "shared-09787", "relationships": [{"source": "SqlWriter", "target": "VSS", "type": "REPLACES"}]}
+{"id": "shared-07091", "relationships": [{"source": "MEV-Boost", "target": "validator client", "type": "DEPLOYED_ON"}]}
+{"id": "shared-06677", "relationships": [{"source": "washing-up", "target": "kitchen", "type": "LOCATED_IN"}]}
+{"id": "shared-08829", "relationships": [{"source": "hotspot", "target": "perf report", "type": "PREFERS"}]}
+{"id": "shared-04648", "relationships": [{"source": "Legal Process school", "target": "Henry Hart", "type": "AUTHORED_BY"}, {"source": "Legal Process school", "target": "Albert Sacks", "type": "AUTHORED_BY"}]}
+{"id": "shared-13741", "relationships": [{"source": "ash glaze", "target": "anagama wood kiln", "type": "APPLIES_TO"}]}
+{"id": "shared-12309", "relationships": [{"source": "Lean", "target": "Curry-Howard correspondence", "type": "USES"}, {"source": "Coq", "target": "Curry-Howard correspondence", "type": "USES"}, {"source": "Agda", "target": "Curry-Howard correspondence", "type": "USES"}]}
+{"id": "shared-08317", "relationships": [{"source": "TRL", "target": "SFTTrainer", "type": "HAS_PART"}, {"source": "TRL", "target": "DPOTrainer", "type": "HAS_PART"}, {"source": "TRL", "target": "PPOTrainer", "type": "HAS_PART"}]}
+{"id": "shared-12802", "relationships": [{"source": "actor", "target": "image cache", "type": "REPLACES"}]}
+{"id": "shared-01757", "relationships": [{"source": "Giscus", "target": "GitHub Discussions", "type": "USES"}]}
+{"id": "shared-13106", "relationships": [{"source": "Pathbuilder", "target": "D&D Beyond", "type": "REPLACES"}]}
+{"id": "shared-04452", "relationships": [{"source": "Temple Beth Shalom", "target": "Kehillat Or Chadash", "type": "REPLACES"}]}
+{"id": "shared-06842", "relationships": [{"source": "Astro", "target": "Hugo", "type": "PREFERS"}]}
+{"id": "shared-00778", "relationships": [{"source": "ice-core isotope proxies", "target": "tree-ring width", "type": "PREFERS"}]}
+{"id": "shared-10102", "relationships": [{"source": "sheng pu'erh", "target": "cedar cabinet", "type": "USES"}, {"source": "shou pu'erh", "target": "cedar cabinet", "type": "USES"}]}
+{"id": "shared-06170", "relationships": [{"source": "reMarkable 2", "target": "rmapi", "type": "USES"}, {"source": "cron", "target": "reMarkable 2", "type": "USES"}]}
+{"id": "shared-10046", "relationships": [{"source": "hatcho miso", "target": "tamari", "type": "USES"}]}
+{"id": "shared-01472", "relationships": [{"source": "triple-glazed casements", "target": "double", "type": "PREFERS"}]}
+{"id": "shared-13092", "relationships": [{"source": "Prophylaxis", "target": "Dvoretsky", "type": "BUILDS_ON"}, {"source": "Prophylaxis", "target": "Petrosian", "type": "BUILDS_ON"}]}
+{"id": "shared-01439", "relationships": [{"source": "Waking Up", "target": "Calm", "type": "REPLACES"}]}
+{"id": "shared-09701", "relationships": [{"source": "OpenTofu", "target": "Terraform", "type": "REPLACES"}]}
+{"id": "shared-11406", "relationships": [{"source": "Autosegmental phonology", "target": "Obligatory Contour Principle", "type": "USES"}]}
+{"id": "shared-12854", "relationships": [{"source": "SharedFlow", "target": "LiveData", "type": "REPLACES"}]}
+{"id": "shared-06659", "relationships": [{"source": "Airbnb", "target": "loft", "type": "LOCATED_IN"}]}
+{"id": "shared-12173", "relationships": [{"source": "Sidecar", "target": "Envoy", "type": "USES"}]}
+{"id": "shared-08824", "relationships": [{"source": "Nsight Systems", "target": "NVTX", "type": "USES"}]}
+{"id": "shared-08229", "relationships": [{"source": "query engine", "target": "LlamaIndex", "type": "USES"}]}
+{"id": "shared-09610", "relationships": [{"source": "Parallels Desktop", "target": "CrossOver", "type": "PREFERS"}, {"source": "Parallels Desktop", "target": "UTM", "type": "PREFERS"}]}
+{"id": "shared-01036", "relationships": [{"source": "Rust Programming Language", "target": "Programming Rust", "type": "REPLACES"}]}
+{"id": "shared-11791", "relationships": [{"source": "Sumio Iijima", "target": "multi-walled carbon nanotubes", "type": "PRODUCES"}]}
+{"id": "shared-11065", "relationships": [{"source": "coherentism", "target": "foundationalism", "type": "CONTRADICTS"}]}
+{"id": "shared-08975", "relationships": [{"source": "inlinehint", "target": "interpreter dispatch", "type": "APPLIES_TO"}]}
+{"id": "shared-05704", "relationships": [{"source": "Crowdin", "target": "spreadsheet", "type": "REPLACES"}]}
+{"id": "shared-07051", "relationships": [{"source": "Base", "target": "Arbitrum", "type": "REPLACES"}]}
+{"id": "shared-05525", "relationships": [{"source": "Navidrome", "target": "Jellyfin", "type": "PREFERS"}, {"source": "Navidrome", "target": "Substreamer", "type": "USES"}]}
+{"id": "shared-11212", "relationships": [{"source": "Stan", "target": "JAGS", "type": "REPLACES"}]}
+{"id": "shared-05716", "relationships": [{"source": "Flutter", "target": "intl", "type": "USES"}, {"source": "Flutter", "target": "intl_utils", "type": "USES"}]}
+{"id": "shared-10765", "relationships": [{"source": "Sennheiser MKH416", "target": "Schoeps CMIT 5U", "type": "PREFERS"}]}
+{"id": "shared-13738", "relationships": [{"source": "Skutt", "target": "Paragon", "type": "PREFERS"}]}
+{"id": "shared-11568", "relationships": [{"source": "Taylor rule", "target": "John Taylor", "type": "AUTHORED_BY"}]}
+{"id": "shared-09527", "relationships": [{"source": "Frigate", "target": "Intel N100", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12323", "relationships": [{"source": "Fiat Cryptography", "target": "Coq", "type": "USES"}]}
+{"id": "shared-11143", "relationships": [{"source": "no-aggregation rule", "target": "Contractualism", "type": "APPLIES_TO"}]}
+{"id": "shared-12352", "relationships": [{"source": "quickdraws", "target": "Petzl Spirit", "type": "USES"}, {"source": "bail biner", "target": "quickdraws", "type": "APPLIES_TO"}]}
+{"id": "shared-03764", "relationships": [{"source": "messenger RNA vaccines", "target": "inactivated", "type": "REPLACES"}]}
+{"id": "shared-07948", "relationships": [{"source": "Dagster", "target": "asset checks", "type": "USES"}]}
+{"id": "shared-13004", "relationships": [{"source": "Gose", "target": "Saaz", "type": "USES"}]}
+{"id": "shared-01086", "relationships": [{"source": "ZSTD", "target": "Snappy", "type": "PREFERS"}]}
+{"id": "shared-01028", "relationships": [{"source": "Calibre", "target": "Dummit and Foote", "type": "REPLACES"}]}
+{"id": "shared-12518", "relationships": [{"source": "scales and arpeggios", "target": "F-sharp minor", "type": "REPLACES"}]}
+{"id": "shared-03827", "relationships": [{"source": "Mechanism of Mendelian Heredity", "target": "Thomas Hunt Morgan", "type": "AUTHORED_BY"}]}
+{"id": "shared-07612", "relationships": [{"source": "hash-bucket", "target": "stripe_session_id", "type": "REPLACES"}]}
+{"id": "shared-13187", "relationships": [{"source": "Hugo Winckler", "target": "Hattusa", "type": "APPLIES_TO"}, {"source": "Boğazköy Archive", "target": "Hattusa", "type": "APPLIES_TO"}]}
+{"id": "shared-13084", "relationships": [{"source": "Capablanca", "target": "José Raúl Capablanca", "type": "RELATED_TO"}]}
+{"id": "shared-07865", "relationships": [{"source": "Matillion", "target": "Snowflake", "type": "APPLIES_TO"}]}
+{"id": "shared-12586", "relationships": [{"source": "BTO", "target": "USGS", "type": "REPLACES"}]}
+{"id": "shared-05664", "relationships": [{"source": "cgroups v2", "target": "cgroups v1", "type": "REPLACES"}]}
+{"id": "shared-12515", "relationships": [{"source": "Gibson ES-335", "target": "Les Paul", "type": "PREFERS"}]}
+{"id": "shared-07695", "relationships": [{"source": "federated queries", "target": "Neo4j Fabric", "type": "USES"}]}
+{"id": "shared-01828", "relationships": [{"source": "Tempo", "target": "Jaeger", "type": "REPLACES"}]}
+{"id": "shared-13640", "relationships": [{"source": "Antrea", "target": "Open vSwitch", "type": "PREFERS"}]}
+{"id": "shared-05453", "relationships": [{"source": "Negative Lab Pro", "target": "ColorPerfect", "type": "IMPROVES_ON"}]}
+{"id": "shared-08599", "relationships": [{"source": "Keycloak", "target": "Infinispan", "type": "USES"}, {"source": "Infinispan", "target": "HAProxy", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09180", "relationships": [{"source": "LIO-SAM", "target": "Jetson Orin NX", "type": "DEPLOYED_ON"}, {"source": "Cartographer", "target": "industrial PC", "type": "DEPLOYED_ON"}]}
+{"id": "shared-03607", "relationships": [{"source": "calligraphy kit", "target": "bureau", "type": "LOCATED_IN"}]}
+{"id": "shared-05214", "relationships": [{"source": "Grandpa", "target": "Alderbrook Hospice", "type": "VISITED"}]}
+{"id": "shared-14005", "relationships": [{"source": "ECS", "target": "CO2", "type": "DEPENDS_ON"}, {"source": "TCR", "target": "CO2", "type": "DEPENDS_ON"}]}
+{"id": "shared-05461", "relationships": [{"source": "Synology DS923+", "target": "DSM Photos", "type": "USES"}, {"source": "Hyper Backup", "target": "Backblaze B2", "type": "DEPENDS_ON"}]}
+{"id": "shared-06399", "relationships": [{"source": "dbt Semantic Layer", "target": "dbt_metrics", "type": "PREFERS"}]}
+{"id": "shared-14002", "relationships": [{"source": "Charles David Keeling", "target": "Mauna Loa", "type": "APPLIES_TO"}]}
+{"id": "shared-06451", "relationships": [{"source": "uv", "target": "pip", "type": "REPLACES"}]}
+{"id": "shared-10222", "relationships": [{"source": "grower-producer", "target": "Montagne de Reims", "type": "APPLIES_TO"}]}
+{"id": "shared-01974", "relationships": [{"source": "Redis", "target": "Memcached", "type": "REPLACES"}]}
+{"id": "shared-01670", "relationships": [{"source": "ROG Ally", "target": "Steam Deck", "type": "PREFERS"}]}
+{"id": "shared-10132", "relationships": [{"source": "Liu Bao", "target": "cedar cabinet", "type": "USES"}]}
+{"id": "shared-10059", "relationships": [{"source": "Difluid R2", "target": "TDS", "type": "USES"}]}
+{"id": "shared-05425", "relationships": [{"source": "Reader", "target": "Instapaper", "type": "REPLACES"}, {"source": "Reader", "target": "Matter", "type": "REPLACES"}, {"source": "Reader", "target": "Pocket", "type": "REPLACES"}]}
+{"id": "shared-07128", "relationships": [{"source": "livenessProbe", "target": "readinessProbe", "type": "PREFERS"}]}
+{"id": "shared-11313", "relationships": [{"source": "CES", "target": "Cobb-Douglas", "type": "HAS_PART"}, {"source": "CES", "target": "Leontief", "type": "HAS_PART"}, {"source": "CES", "target": "linear technologies", "type": "HAS_PART"}]}
+{"id": "shared-02603", "relationships": [{"source": "Buck2", "target": "Bazel", "type": "REPLACES"}]}
+{"id": "shared-02644", "relationships": [{"source": "rules_rust", "target": "rustc_binary", "type": "REPLACES"}]}
+{"id": "shared-10378", "relationships": [{"source": "Rouvy", "target": "FulGaz", "type": "PREFERS"}]}
+{"id": "shared-12098", "relationships": [{"source": "autovacuum_work_mem", "target": "autovacuum", "type": "CONFIGURES"}]}
+{"id": "shared-03769", "relationships": [{"source": "Penicillium notatum", "target": "Alexander Fleming", "type": "AUTHORED_BY"}, {"source": "antibiotic chemotherapy", "target": "Alexander Fleming", "type": "AUTHORED_BY"}]}
+{"id": "shared-01656", "relationships": [{"source": "Lichess", "target": "Stockfish", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-13294", "relationships": [{"source": "Jackson Pollock", "target": "drip paintings", "type": "PRODUCES"}, {"source": "drip paintings", "target": "Springs", "type": "LOCATED_IN"}]}
+{"id": "shared-07070", "relationships": [{"source": "eth_signTypedData_v4", "target": "eth_signTypedData_v3", "type": "REPLACES"}]}
+{"id": "shared-04788", "relationships": [{"source": "Hortisketch", "target": "SARE", "type": "USES"}]}
+{"id": "shared-12502", "relationships": [{"source": "Gibson Les Paul Standard", "target": "Klon Centaur", "type": "USES"}, {"source": "Gibson Les Paul Standard", "target": "Ibanez Tube Screamer", "type": "USES"}, {"source": "Gibson Les Paul Standard", "target": "Fender Twin Reverb", "type": "USES"}]}
+{"id": "shared-01120", "relationships": [{"source": "transit engine", "target": "HashiCorp Vault", "type": "REPLACES"}]}
+{"id": "shared-09812", "relationships": [{"source": "RFC 8555", "target": "ACME", "type": "APPLIES_TO"}]}
+{"id": "shared-12887", "relationships": [{"source": "Firebase App Distribution", "target": "QA", "type": "REPLACES"}]}
+{"id": "shared-08974", "relationships": [{"source": "LoopUnrollPass", "target": "LLVM", "type": "USES"}]}
+{"id": "shared-13299", "relationships": [{"source": "SAMO", "target": "Jean-Michel Basquiat", "type": "AUTHORED_BY"}]}
+{"id": "shared-02906", "relationships": [{"source": "Theo", "target": "Café Lila", "type": "VISITED"}]}
+{"id": "shared-13401", "relationships": [{"source": "semgrep", "target": "CodeQL", "type": "REPLACES"}]}
+{"id": "shared-04758", "relationships": [{"source": "GrowVeg", "target": "Obsidian", "type": "APPLIES_TO"}]}
+{"id": "shared-05654", "relationships": [{"source": "Incus", "target": "LXD", "type": "REPLACES"}]}
+{"id": "shared-08627", "relationships": [{"source": "Short-lived credentials", "target": "access-key-on-laptop", "type": "REPLACES"}]}
+{"id": "shared-07997", "relationships": [{"source": "feature store", "target": "OpenTelemetry", "type": "USES"}]}
+{"id": "shared-07334", "relationships": [{"source": "composite actions", "target": "Docker container actions", "type": "PREFERS"}]}
+{"id": "shared-11647", "relationships": [{"source": "Terence Tao", "target": "Analysis I", "type": "PREFERS"}, {"source": "Terence Tao", "target": "Analysis II", "type": "PREFERS"}]}
+{"id": "shared-12258", "relationships": [{"source": "GC proposal", "target": "bump allocator", "type": "REPLACES"}]}
+{"id": "shared-09257", "relationships": [{"source": "partitioned-block FFT convolver", "target": "direct FIR convolution", "type": "REPLACES"}]}
+{"id": "shared-10986", "relationships": [{"source": "Das Werkbuch", "target": "Keith Smith", "type": "AUTHORED_BY"}]}
+{"id": "shared-12600", "relationships": [{"source": "USGS Bird Banding Lab", "target": "eBird", "type": "APPLIES_TO"}]}
+{"id": "shared-12022", "relationships": [{"source": "pyright", "target": "lib/", "type": "REPLACES"}]}
+{"id": "shared-03825", "relationships": [{"source": "Caenorhabditis elegans", "target": "Science", "type": "PUBLISHED_IN"}]}
+{"id": "shared-07825", "relationships": [{"source": "AWS Lake Formation", "target": "Glue", "type": "USES"}, {"source": "AWS Lake Formation", "target": "Unity Catalog", "type": "USES"}, {"source": "AWS Lake Formation", "target": "Polaris", "type": "USES"}]}
+{"id": "shared-11838", "relationships": [{"source": "Interior-point", "target": "Karmarkar", "type": "AUTHORED_BY"}, {"source": "Interior-point", "target": "simplex", "type": "IMPROVES_ON"}]}
+{"id": "shared-12320", "relationships": [{"source": "Cryptol", "target": "block cipher", "type": "APPLIES_TO"}, {"source": "SAW", "target": "block cipher", "type": "APPLIES_TO"}]}
+{"id": "shared-05420", "relationships": [{"source": "Hoopla", "target": "Libby", "type": "PREFERS"}]}
+{"id": "shared-09363", "relationships": [{"source": "Diligent Engine", "target": "GL", "type": "REPLACES"}]}
+{"id": "shared-06650", "relationships": [{"source": "Deep Focus", "target": "Opal", "type": "APPLIES_TO"}]}
+{"id": "shared-11088", "relationships": [{"source": "foundationalism", "target": "sceptical regress", "type": "APPLIES_TO"}]}
+{"id": "shared-12381", "relationships": [{"source": "Tindeq", "target": "6c+", "type": "APPLIES_TO"}, {"source": "Jul2", "target": "6c+", "type": "APPLIES_TO"}]}
+{"id": "shared-01325", "relationships": [{"source": "//go:build", "target": "// +build", "type": "REPLACES"}]}
+{"id": "shared-09368", "relationships": [{"source": "Subpass", "target": "input attachment", "type": "APPLIES_TO"}]}
+{"id": "shared-11098", "relationships": [{"source": "garden of forking paths", "target": "p-hacking", "type": "IMPROVES_ON"}]}
+{"id": "shared-07375", "relationships": [{"source": "HTTP/2", "target": "HTTP/1.1", "type": "REPLACES"}]}
+{"id": "shared-12376", "relationships": [{"source": "Midnight Lightning", "target": "Columbia Boulder", "type": "APPLIES_TO"}, {"source": "Midnight Lightning", "target": "Yosemite", "type": "APPLIES_TO"}]}
+{"id": "shared-00123", "relationships": [{"source": "reformer pilates", "target": "yoga", "type": "REPLACES"}]}
+{"id": "shared-12940", "relationships": [{"source": "computation expressions", "target": "Saturn", "type": "APPLIES_TO"}]}
+{"id": "shared-00158", "relationships": [{"source": "General relativity", "target": "gravity", "type": "DEPENDS_ON"}]}
+{"id": "shared-02019", "relationships": [{"source": "chezmoi", "target": "YADM", "type": "REPLACES"}, {"source": "chezmoi", "target": "bare-git", "type": "REPLACES"}]}
+{"id": "shared-05947", "relationships": [{"source": "memory-box", "target": "airing cupboard", "type": "LOCATED_IN"}]}
+{"id": "shared-07102", "relationships": [{"source": "containerd", "target": "dockershim", "type": "REPLACES"}, {"source": "containerd", "target": "Kubernetes", "type": "DEPLOYED_ON"}]}
+{"id": "shared-11379", "relationships": [{"source": "preregistration", "target": "many-labs", "type": "APPLIES_TO"}]}
+{"id": "shared-08990", "relationships": [{"source": "GlobalISel", "target": "LLVM", "type": "DEPLOYED_ON"}]}
+{"id": "shared-11661", "relationships": [{"source": "general relativity", "target": "Einstein", "type": "AUTHORED_BY"}]}
+{"id": "shared-11815", "relationships": [{"source": "Cuckoo hashing", "target": "rehash", "type": "USES"}]}
+{"id": "shared-08431", "relationships": [{"source": "Buf breaking", "target": "Backward compatibility", "type": "APPLIES_TO"}]}
+{"id": "shared-03028", "relationships": [{"source": "ARCH model", "target": "Robert Engle", "type": "AUTHORED_BY"}]}
+{"id": "shared-02469", "relationships": [{"source": "Zoom", "target": "Otter.ai", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-02408", "relationships": [{"source": "Khan Academy Kids", "target": "Prodigy Math", "type": "PREFERS"}]}
+{"id": "shared-02053", "relationships": [{"source": "RateLimit-*", "target": "X-RateLimit", "type": "REPLACES"}]}
+{"id": "shared-04489", "relationships": [{"source": "Ash Wednesday service", "target": "St Alban's", "type": "LOCATED_IN"}]}
+{"id": "shared-09134", "relationships": [{"source": "idle hook", "target": "FreeRTOS", "type": "APPLIES_TO"}]}
+{"id": "shared-12589", "relationships": [{"source": "Kingbird Highway", "target": "Kenn Kaufman", "type": "AUTHORED_BY"}]}
+{"id": "shared-03087", "relationships": [{"source": "Varieties of Democracy", "target": "Polity-style scores", "type": "IMPROVES_ON"}]}
+{"id": "shared-10387", "relationships": [{"source": "Bikepacking Scotland", "target": "Ryan Le Garrec", "type": "AUTHORED_BY"}, {"source": "Bikepacking.com", "target": "Cass Gilbert", "type": "AUTHORED_BY"}]}
+{"id": "shared-06137", "relationships": [{"source": "Szemeredi's theorem", "target": "Timothy Gowers", "type": "AUTHORED_BY"}, {"source": "Szemeredi's theorem", "target": "Geometric and Functional Analysis", "type": "PUBLISHED_IN"}]}
+{"id": "shared-03364", "relationships": [{"source": "MinIO", "target": "HDFS", "type": "REPLACES"}]}
+{"id": "shared-01278", "relationships": [{"source": "MessagePack", "target": "Marshal.load", "type": "REPLACES"}]}
+{"id": "shared-10761", "relationships": [{"source": "SquadCast", "target": "Zencastr", "type": "REPLACES"}]}
+{"id": "shared-12109", "relationships": [{"source": "HLC", "target": "CockroachDB", "type": "APPLIES_TO"}]}
+{"id": "shared-00997", "relationships": [{"source": "Google Sheets", "target": "FanGraphs", "type": "USES"}]}
+{"id": "shared-10582", "relationships": [{"source": "Tim Ferriss", "target": "Five-Minute Journal", "type": "PRODUCES"}]}
+{"id": "shared-00996", "relationships": [{"source": "Troutbitten", "target": "Orvis", "type": "PREFERS"}]}
+{"id": "shared-09345", "relationships": [{"source": "WebGPU explainer", "target": "bind-group", "type": "USES"}]}
+{"id": "shared-12830", "relationships": [{"source": "Logger", "target": "os_log", "type": "REPLACES"}]}
+{"id": "shared-02507", "relationships": [{"source": "Citymapper", "target": "Google Maps", "type": "REPLACES"}]}
+{"id": "shared-07665", "relationships": [{"source": "Gremlin", "target": "gremlin-python", "type": "USES"}]}
+{"id": "shared-02332", "relationships": [{"source": "Argo", "target": "ocean heat content", "type": "APPLIES_TO"}]}
+{"id": "shared-10633", "relationships": [{"source": "wash-sale", "target": "401(k)", "type": "APPLIES_TO"}]}
+{"id": "shared-11273", "relationships": [{"source": "Repeated games", "target": "trigger strategies", "type": "USES"}]}
+{"id": "shared-09880", "relationships": [{"source": "CRUSH map", "target": "PG_BACKFILL_FULL", "type": "REPLACES"}]}
+{"id": "shared-13318", "relationships": [{"source": "Wong Kar-wai", "target": "step-printing", "type": "USES"}, {"source": "Christopher Doyle", "target": "step-printing", "type": "USES"}]}
+{"id": "shared-05623", "relationships": [{"source": "smallstep PKI", "target": "EJBCA", "type": "PREFERS"}]}
+{"id": "shared-06291", "relationships": [{"source": "Kodi", "target": "Jellyfin Media Player", "type": "PREFERS"}, {"source": "Kodi", "target": "fanart-tv", "type": "USES"}]}
+{"id": "shared-11402", "relationships": [{"source": "Praat", "target": "vowel space", "type": "APPLIES_TO"}]}
+{"id": "shared-10903", "relationships": [{"source": "Haas TM-1", "target": "Tormach 1100M", "type": "PREFERS"}]}
+{"id": "shared-00470", "relationships": [{"source": "Twilio", "target": "Lyft", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-06643", "relationships": [{"source": "phone-free", "target": "detox", "type": "PREFERS"}]}
+{"id": "shared-08020", "relationships": [{"source": "ZeRO stage 2", "target": "ZeRO stage 3", "type": "PREFERS"}]}
+{"id": "shared-08823", "relationships": [{"source": "async-profiler", "target": "JMC", "type": "REPLACES"}]}
+{"id": "shared-09955", "relationships": [{"source": "Flour Water Salt Yeast", "target": "Ken Forkish", "type": "AUTHORED_BY"}]}
+{"id": "shared-05895", "relationships": [{"source": "hiring decision", "target": "four-year college", "type": "REPLACES"}]}
+{"id": "shared-01032", "relationships": [{"source": "zero-to-hero", "target": "Karpathy", "type": "AUTHORED_BY"}]}
+{"id": "shared-02998", "relationships": [{"source": "paper", "target": "Daylio", "type": "PREFERS"}]}
+{"id": "shared-12726", "relationships": [{"source": "Jotai", "target": "atomFamily", "type": "USES"}]}
+{"id": "shared-01443", "relationships": [{"source": "nose-breathing tape", "target": "mouth guard", "type": "PREFERS"}]}
+{"id": "shared-13279", "relationships": [{"source": "Mary Cassatt", "target": "Impressionist", "type": "APPLIES_TO"}, {"source": "Degas", "target": "Mary Cassatt", "type": "BUILDS_ON"}, {"source": "Manet", "target": "Mary Cassatt", "type": "BUILDS_ON"}]}
+{"id": "shared-10276", "relationships": [{"source": "Epipremnum aureum", "target": "moss pole", "type": "USES"}]}
+{"id": "shared-03664", "relationships": [{"source": "Tide Free and Gentle", "target": "Eucalan", "type": "PREFERS"}]}
+{"id": "shared-13996", "relationships": [{"source": "Partial Test Ban Treaty", "target": "Cuban Missile Crisis", "type": "FIXES"}]}
+{"id": "shared-12486", "relationships": [{"source": "Polyrhythm", "target": "triplet", "type": "REPLACES"}]}
+{"id": "shared-10961", "relationships": [{"source": "round knife", "target": "Dixon", "type": "PREFERS"}]}
+{"id": "shared-05343", "relationships": [{"source": "Seiberg-Witten solution", "target": "moduli space", "type": "IMPROVES_ON"}]}
+{"id": "shared-09628", "relationships": [{"source": "virtio-balloon", "target": "Postgres", "type": "APPLIES_TO"}]}
+{"id": "shared-10183", "relationships": [{"source": "Sasha Petraske", "target": "Milk & Honey", "type": "USES"}, {"source": "Sam Ross", "target": "Milk & Honey", "type": "USES"}, {"source": "Michael McIlroy", "target": "Milk & Honey", "type": "USES"}]}
+{"id": "shared-02249", "relationships": [{"source": "charity 5k", "target": "rugby clubhouse", "type": "LOCATED_IN"}]}
+{"id": "shared-13437", "relationships": [{"source": "CodeQL", "target": "semgrep", "type": "PREFERS"}]}
+{"id": "shared-08897", "relationships": [{"source": "SLUB", "target": "per-cpu partial-list", "type": "REPLACES"}]}
+{"id": "shared-11361", "relationships": [{"source": "Save More Tomorrow", "target": "Richard Thaler", "type": "AUTHORED_BY"}, {"source": "Save More Tomorrow", "target": "Shlomo Benartzi", "type": "AUTHORED_BY"}]}
+{"id": "shared-13094", "relationships": [{"source": "morning", "target": "coffee", "type": "PREFERS"}]}
+{"id": "shared-07950", "relationships": [{"source": "Datadog", "target": "Airflow", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-13671", "relationships": [{"source": "Merchant and Mills", "target": "Trapeze", "type": "APPLIES_TO"}]}
+{"id": "shared-11788", "relationships": [{"source": "metal-organic framework", "target": "Omar Yaghi", "type": "AUTHORED_BY"}]}
+{"id": "shared-10921", "relationships": [{"source": "parallels", "target": "Kurt DX6", "type": "APPLIES_TO"}]}
+{"id": "shared-13645", "relationships": [{"source": "Envoy", "target": "JWT", "type": "USES"}]}
+{"id": "shared-07184", "relationships": [{"source": "VictoriaLogs", "target": "Loki", "type": "REPLACES"}]}
+{"id": "shared-02518", "relationships": [{"source": "Navigo Easy", "target": "Apple Wallet", "type": "DEPLOYED_ON"}]}
+{"id": "shared-10655", "relationships": [{"source": "Award Wallet", "target": "Alaska Mileage Plan", "type": "APPLIES_TO"}]}
+{"id": "shared-01607", "relationships": [{"source": "wall drawings", "target": "Sol LeWitt", "type": "AUTHORED_BY"}]}
+{"id": "shared-12679", "relationships": [{"source": "Core Data", "target": "SQLite", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09251", "relationships": [{"source": "JUCE", "target": "iPlug2", "type": "PREFERS"}]}
+{"id": "shared-09755", "relationships": [{"source": "rsync", "target": "photo-library", "type": "APPLIES_TO"}]}
+{"id": "shared-01537", "relationships": [{"source": "The Dawn of Everything", "target": "Graeber", "type": "AUTHORED_BY"}, {"source": "The Dawn of Everything", "target": "Wengrow", "type": "AUTHORED_BY"}]}
+{"id": "shared-06076", "relationships": [{"source": "The Lean Startup", "target": "Eric Ries", "type": "AUTHORED_BY"}]}
+{"id": "shared-13850", "relationships": [{"source": "monofin", "target": "DYN", "type": "APPLIES_TO"}]}
+{"id": "shared-02104", "relationships": [{"source": "Montessori floor bed", "target": "crib", "type": "PREFERS"}]}
+{"id": "shared-06839", "relationships": [{"source": "Hugo", "target": "Buttondown", "type": "REPLACES"}]}
+{"id": "shared-11892", "relationships": [{"source": "simd-json", "target": "serde_json", "type": "REPLACES"}]}
+{"id": "shared-10577", "relationships": [{"source": "decision journal", "target": "Leuchtturm1917", "type": "USES"}]}
+{"id": "shared-10717", "relationships": [{"source": "C-41", "target": "Portra 400", "type": "REPLACES"}]}
+{"id": "shared-05254", "relationships": [{"source": "Taxonomy of Educational Objectives", "target": "Benjamin Bloom", "type": "AUTHORED_BY"}]}
+{"id": "shared-01623", "relationships": [{"source": "Atmospheres", "target": "Gyorgy Ligeti", "type": "AUTHORED_BY"}]}
+{"id": "shared-05952", "relationships": [{"source": "Rewe", "target": "Duolingo", "type": "REPLACES"}]}
+{"id": "shared-11999", "relationships": [{"source": "Fastify", "target": "ajv", "type": "USES"}]}
+{"id": "shared-07142", "relationships": [{"source": "garbage collection", "target": "manifest-list", "type": "USES"}]}
+{"id": "shared-06642", "relationships": [{"source": "read-only mode", "target": "Instagram", "type": "APPLIES_TO"}]}
+{"id": "shared-00738", "relationships": [{"source": "island ferry", "target": "catamaran", "type": "PREFERS"}]}
+{"id": "shared-07803", "relationships": [{"source": "Apache Hudi", "target": "merge-on-read", "type": "USES"}]}
+{"id": "shared-10999", "relationships": [{"source": "shop notebook", "target": "Horween", "type": "USES"}, {"source": "shop notebook", "target": "Tärnsjö", "type": "USES"}]}
+{"id": "shared-09538", "relationships": [{"source": "Unifi UDM Pro", "target": "VLAN 30", "type": "DEPENDS_ON"}, {"source": "Tasmota", "target": "MQTT", "type": "USES"}]}
+{"id": "shared-13805", "relationships": [{"source": "EAN32", "target": "MOD", "type": "APPLIES_TO"}]}
+{"id": "shared-09222", "relationships": [{"source": "Zip-NeRF", "target": "NeRF", "type": "REPLACES"}]}
+{"id": "shared-13046", "relationships": [{"source": "Pilsner", "target": "Saison", "type": "APPLIES_TO"}, {"source": "Omega Hothead", "target": "Saison", "type": "APPLIES_TO"}]}
+{"id": "shared-02378", "relationships": [{"source": "Mahabharata", "target": "Vyasa", "type": "AUTHORED_BY"}]}
+{"id": "shared-08828", "relationships": [{"source": "On-CPU", "target": "incident review template", "type": "APPLIES_TO"}, {"source": "off-CPU flamegraphs", "target": "incident review template", "type": "APPLIES_TO"}]}
+{"id": "shared-06553", "relationships": [{"source": "BAML", "target": "LangChain", "type": "REPLACES"}]}
+{"id": "shared-00959", "relationships": [{"source": "Ecowitt GW2000", "target": "Weewx", "type": "COMMUNICATES_WITH"}]}
+{"id": "shared-13234", "relationships": [{"source": "After Virtue", "target": "MacIntyre", "type": "AUTHORED_BY"}, {"source": "Sources of the Self", "target": "Taylor", "type": "AUTHORED_BY"}]}
+{"id": "shared-02995", "relationships": [{"source": "self-compassion break", "target": "Kristin Neff", "type": "AUTHORED_BY"}]}
+{"id": "shared-12053", "relationships": [{"source": "HOT", "target": "heap page", "type": "APPLIES_TO"}]}
+{"id": "shared-11502", "relationships": [{"source": "dendritic spikes", "target": "axon", "type": "APPLIES_TO"}]}
+{"id": "shared-11877", "relationships": [{"source": "crossbeam", "target": "std::sync::mpsc", "type": "REPLACES"}]}
+{"id": "shared-07657", "relationships": [{"source": "Azure Cosmos Graph", "target": "Gremlin", "type": "USES"}]}
+{"id": "shared-01515", "relationships": [{"source": "Carolingian renaissance", "target": "Aachen", "type": "LOCATED_IN"}]}
+{"id": "shared-01138", "relationships": [{"source": "Tailscale", "target": "WireGuard", "type": "IMPROVES_ON"}]}
+{"id": "shared-09234", "relationships": [{"source": "Kornia", "target": "OpenCV", "type": "REPLACES"}]}
+{"id": "shared-13731", "relationships": [{"source": "nerikomi", "target": "porcelain", "type": "USES"}]}
+{"id": "shared-02530", "relationships": [{"source": "Wahoo Bolt", "target": "iPhone", "type": "REPLACES"}]}
+{"id": "shared-00927", "relationships": [{"source": "Cozi Gold", "target": "Google Calendar", "type": "PREFERS"}]}
+{"id": "shared-09221", "relationships": [{"source": "cv2.calibrateCamera", "target": "re-projection error", "type": "FIXES"}, {"source": "Kornia", "target": "re-projection error", "type": "FIXES"}]}
+{"id": "shared-11246", "relationships": [{"source": "What If", "target": "Hernan", "type": "AUTHORED_BY"}, {"source": "g-methods", "target": "What If", "type": "DEPENDS_ON"}]}
+{"id": "shared-04994", "relationships": [{"source": "saga", "target": "IDDD", "type": "BUILDS_ON"}]}
+{"id": "shared-11582", "relationships": [{"source": "Calvo pricing", "target": "Guillermo Calvo", "type": "AUTHORED_BY"}, {"source": "Calvo pricing", "target": "DSGE", "type": "DEPENDS_ON"}]}
+{"id": "shared-03952", "relationships": [{"source": "Ecobee SmartThermostat Premium", "target": "Nest Learning", "type": "REPLACES"}]}
+{"id": "shared-11958", "relationships": [{"source": "Bun.spawn", "target": "child_process.spawn", "type": "REPLACES"}]}
+{"id": "shared-07073", "relationships": [{"source": "Curve", "target": "Balancer", "type": "REPLACES"}]}
+{"id": "shared-07385", "relationships": [{"source": "Envoy", "target": "lua filter", "type": "USES"}]}
+{"id": "shared-04790", "relationships": [{"source": "TrolMaster", "target": "Inkbird", "type": "REPLACES"}]}
+{"id": "shared-09206", "relationships": [{"source": "Camera calibration", "target": "AR headset", "type": "APPLIES_TO"}]}
+{"id": "shared-09308", "relationships": [{"source": "twgl", "target": "WebGL2RenderingContext", "type": "APPLIES_TO"}]}
+{"id": "shared-05306", "relationships": [{"source": "ATLAS", "target": "Higgs boson", "type": "PRODUCES"}, {"source": "CMS", "target": "Higgs boson", "type": "PRODUCES"}]}
+{"id": "shared-05877", "relationships": [{"source": "product manager", "target": "secondary-school teacher", "type": "REPLACES"}]}
+{"id": "shared-09344", "relationships": [{"source": "ACES Filmic", "target": "Reinhard", "type": "REPLACES"}]}
+{"id": "shared-08887", "relationships": [{"source": "per-thread arena", "target": "global arena", "type": "REPLACES"}]}
+{"id": "shared-02894", "relationships": [{"source": "Sasha", "target": "kitchen drawer", "type": "VISITED"}]}
+{"id": "shared-11420", "relationships": [{"source": "compositional interpretation", "target": "lambda calculus", "type": "USES"}]}
+{"id": "shared-12648", "relationships": [{"source": "git notes", "target": "build provenance", "type": "USES"}]}
+{"id": "shared-10861", "relationships": [{"source": "1000", "target": "Shapton Glass", "type": "APPLIES_TO"}, {"source": "6000", "target": "Shapton Glass", "type": "APPLIES_TO"}]}
+{"id": "shared-11086", "relationships": [{"source": "incommensurability thesis", "target": "Kuhn", "type": "AUTHORED_BY"}]}
+{"id": "shared-10884", "relationships": [{"source": "Osmo Polyx", "target": "dining table", "type": "APPLIES_TO"}]}
+{"id": "shared-06018", "relationships": [{"source": "The Filter Bubble", "target": "Eli Pariser", "type": "AUTHORED_BY"}, {"source": "filter-bubble critique", "target": "Eli Pariser", "type": "AUTHORED_BY"}]}
+{"id": "shared-12354", "relationships": [{"source": "Petzl NEOX", "target": "Petzl GriGri", "type": "REPLACES"}]}
+{"id": "shared-12809", "relationships": [{"source": "AsyncSequence", "target": "Combine", "type": "REPLACES"}]}
+{"id": "shared-01826", "relationships": [{"source": "Grafana Alloy", "target": "Grafana Agent", "type": "REPLACES"}]}
+{"id": "shared-07058", "relationships": [{"source": "Solidity", "target": "Foundry", "type": "USES"}, {"source": "Solidity", "target": "Hardhat", "type": "REPLACES"}]}
+{"id": "shared-09351", "relationships": [{"source": "Vulkan", "target": "OpenGL", "type": "REPLACES"}]}
+{"id": "shared-08080", "relationships": [{"source": "chunked prefill", "target": "vLLM", "type": "USES"}]}
+{"id": "shared-11363", "relationships": [{"source": "beta-delta model", "target": "David Laibson", "type": "AUTHORED_BY"}, {"source": "beta-delta model", "target": "hyperbolic discounting", "type": "IMPROVES_ON"}]}
+{"id": "shared-07417", "relationships": [{"source": "Valkey", "target": "KeyDB", "type": "REPLACES"}]}
+{"id": "shared-11287", "relationships": [{"source": "revenue equivalence", "target": "expected revenue", "type": "APPLIES_TO"}]}
+{"id": "shared-04305", "relationships": [{"source": "pyright", "target": "mypy", "type": "REPLACES"}]}
+{"id": "shared-04754", "relationships": [{"source": "AC Infinity Controller 69", "target": "Hydro-X", "type": "PREFERS"}]}
+{"id": "shared-08262", "relationships": [{"source": "ColBERT-v2", "target": "single-vector index", "type": "REPLACES"}]}
+{"id": "shared-04767", "relationships": [{"source": "TrolMaster", "target": "Bluelab Guardian", "type": "USES"}]}
+{"id": "shared-04691", "relationships": [{"source": "Wyze Cam", "target": "PackageBot", "type": "COMMUNICATES_WITH"}, {"source": "PackageBot", "target": "Amazon", "type": "USES"}]}
+{"id": "shared-04805", "relationships": [{"source": "LiveKit", "target": "mediasoup", "type": "IMPROVES_ON"}]}
+{"id": "shared-09501", "relationships": [{"source": "Home Assistant", "target": "Domoticz", "type": "REPLACES"}]}
+{"id": "shared-08157", "relationships": [{"source": "LanceDB", "target": "Chroma", "type": "PREFERS"}]}
+{"id": "shared-09913", "relationships": [{"source": "tortellini", "target": "capon broth", "type": "USES"}]}
+{"id": "shared-08054", "relationships": [{"source": "Ollama", "target": "Docker", "type": "REPLACES"}, {"source": "Ollama", "target": "vLLM", "type": "USES"}]}
+{"id": "shared-04377", "relationships": [{"source": "60th birthday", "target": "Wheatley Hall", "type": "LOCATED_IN"}]}
+{"id": "shared-14014", "relationships": [{"source": "marine-ice-sheet instability", "target": "WAIS", "type": "APPLIES_TO"}]}
+{"id": "shared-08009", "relationships": [{"source": "SOAP", "target": "AdamW", "type": "REPLACES"}]}
+{"id": "shared-08274", "relationships": [{"source": "Hypothetical answer retrieval", "target": "HyDE", "type": "IMPROVES_ON"}]}
+{"id": "shared-05950", "relationships": [{"source": "anniversary-of-loss", "target": "chapel", "type": "LOCATED_IN"}]}
+{"id": "shared-13938", "relationships": [{"source": "Varroa guide", "target": "Honey Bee Health Coalition", "type": "AUTHORED_BY"}]}
+{"id": "shared-03200", "relationships": [{"source": "Grafana", "target": "Coros", "type": "USES"}]}
+{"id": "shared-11078", "relationships": [{"source": "maximum entropy principle", "target": "Jaynes", "type": "AUTHORED_BY"}]}
+{"id": "shared-11046", "relationships": [{"source": "MZV", "target": "Voron Trident", "type": "APPLIES_TO"}]}
+{"id": "shared-03031", "relationships": [{"source": "Schooling, Experience and Earnings", "target": "Jacob Mincer", "type": "AUTHORED_BY"}, {"source": "log-earnings regression", "target": "Jacob Mincer", "type": "AUTHORED_BY"}]}
+{"id": "shared-13150", "relationships": [{"source": "D&D 2024", "target": "Discord", "type": "USES"}, {"source": "D&D 2024", "target": "Foundry VTT", "type": "USES"}]}
+{"id": "shared-01688", "relationships": [{"source": "Sery_Bot", "target": "Twitch", "type": "USES"}]}
+{"id": "shared-13873", "relationships": [{"source": "Teofimo Lopez", "target": "Lomachenko", "type": "RELATED_TO"}]}
+{"id": "shared-10528", "relationships": [{"source": "FSRS-4.5", "target": "SM-2", "type": "IMPROVES_ON"}]}
+{"id": "shared-06713", "relationships": [{"source": "Principles of Biomedical Ethics", "target": "Tom Beauchamp", "type": "AUTHORED_BY"}, {"source": "Four Principles", "target": "bioethics", "type": "APPLIES_TO"}]}
+{"id": "shared-06764", "relationships": [{"source": "alternating current system", "target": "direct current grid", "type": "PREFERS"}]}
+{"id": "shared-03483", "relationships": [{"source": "zap", "target": "printf", "type": "REPLACES"}]}
+{"id": "shared-00479", "relationships": [{"source": "Greenlight", "target": "paper envelopes", "type": "REPLACES"}]}
+{"id": "shared-05349", "relationships": [{"source": "Communications in Mathematical Physics", "target": "Osterwalder", "type": "AUTHORED_BY"}, {"source": "Schwinger functions", "target": "Wightman theories", "type": "IMPROVES_ON"}]}
+{"id": "shared-13591", "relationships": [{"source": "Core", "target": "SQLAlchemy", "type": "USES"}, {"source": "ORM", "target": "SQLAlchemy", "type": "USES"}]}
+{"id": "shared-11650", "relationships": [{"source": "A History of Mathematics", "target": "Katz", "type": "AUTHORED_BY"}, {"source": "A History of Mathematics", "target": "Boyer", "type": "PREFERS"}, {"source": "A History of Mathematics", "target": "Merzbach", "type": "PREFERS"}]}
+{"id": "shared-04735", "relationships": [{"source": "Petlibro Polar", "target": "Petlibro Granary", "type": "REPLACES"}]}
+{"id": "shared-03251", "relationships": [{"source": "Procreate", "target": "Photoshop", "type": "REPLACES"}]}
+{"id": "shared-03338", "relationships": [{"source": "Azure Service Bus", "target": "AWS SQS", "type": "REPLACES"}]}
+{"id": "shared-06506", "relationships": [{"source": "Radix Primitives", "target": "Headless UI", "type": "REPLACES"}]}
+{"id": "shared-09738", "relationships": [{"source": "Pulumi", "target": "Pulumi", "type": "PREFERS"}]}
+{"id": "shared-07572", "relationships": [{"source": "BoringSSL", "target": "OpenSSL", "type": "REPLACES"}]}
+{"id": "shared-04922", "relationships": [{"source": "Lumen", "target": "baked lightmap", "type": "REPLACES"}]}
