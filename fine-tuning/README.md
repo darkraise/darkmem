@@ -247,7 +247,7 @@ python3 -m scripts.eval_entity_pair \
     --out <metrics.json>
 ```
 
-`eval_entity_pair.py` reads the `entities` key, NOT `expected_entities`. The 90-gold at `docs/e2e/scripts/extraction_eval/corpus/gold.jsonl` uses `expected_entities` in the 35-type taxonomy; remap it via `scripts._build_coding10_splits.TYPE_MAP` before scoring. Drops `food`, `emotion`, `hobby`, `activity`, `goal` (these map to `None`) and `standard` / `specification` (not in the 35-type map).
+`eval_entity_pair.py` reads the `entities` key, NOT `expected_entities`. The 90-gold at `docs/e2e/scripts/extraction_eval/corpus/gold.jsonl` was deleted during the 2026-04-19 cleanup and is not recoverable from git or HF. The metrics in `PRODUCTION.md` (name recall 0.972, type accuracy given name 0.83) are historical figures on that corpus; reproducing them now requires re-curating an entity-extraction gold. If you do, the format was `expected_entities` in the 35-type taxonomy; remap via `scripts._build_coding10_splits.TYPE_MAP` before scoring and drop `food`/`emotion`/`hobby`/`activity`/`goal` (map to `None`) and `standard`/`specification` (not in the 35-type map).
 
 ### 6.2 Relation extraction (rebel seq2seq)
 
