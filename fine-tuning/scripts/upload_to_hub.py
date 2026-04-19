@@ -105,18 +105,18 @@ SPECS: list[HeadSpec] = [
     ),
     HeadSpec(
         key="relation",
-        repo_suffix="darkmem-relation-v1",
-        folder=MODELS_DIR / "darkmem-relation-v1" / "best",
-        base_model="Babelscape/rebel-large",
+        repo_suffix="darkmem-relation-base-v1",
+        folder=MODELS_DIR / "darkmem-relation-base-v1" / "best",
+        base_model="Babelscape/rebel-base",
         library="transformers",
         pipeline_tag="text2text-generation",
         summary=(
-            "Seq2seq relation extractor. Output format: "
+            "Seq2seq relation extractor (rebel-base, 139M params). Output format: "
             "`<triplet> source <subj> target <obj> type`. Emits the native REBEL 30-type "
-            "set; collapse to 10 at inference via the REL_MAP in "
-            "`scripts/_build_rebel_coding10_splits.py`."
+            "set; collapse to 10 at inference via REL_MAP, then to the 5-type schema-v2 "
+            "set via REL_MAP_5. See `backend/app/services/extraction.clean_extraction`."
         ),
-        metric_line="F1 0.638 (after REL_MAP 30->10) on coding10 test.",
+        metric_line="F1 0.602 (10-type) / 0.618 (5-type rescored); 606 MB peak VRAM, 426 ms/row.",
         tags=("text2text-generation", "relation-extraction", "rebel", "darkmem"),
     ),
 ]
