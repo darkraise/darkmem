@@ -32,6 +32,7 @@ class MemoryUpdate(BaseModel):
     status: MemoryStatus | None = None
 
 
+
 class MemoryResponse(BaseModel):
     id: uuid.UUID
     content: str
@@ -45,9 +46,6 @@ class MemoryResponse(BaseModel):
     updated_at: datetime
     expires_at: datetime | None
     is_archived: bool
-    wing: str | None = None
-    room: str | None = None
-    hall: str | None = None
     classified_type: str | None = None
     classified_confidence: float | None = None
     llm_classified_type: str | None = None
@@ -75,9 +73,6 @@ class MemorySearchRequest(BaseModel):
     tags_all: list[str] | None = None
     memory_type: str | None = None
     source: str | None = None
-    wing: str | None = None
-    room: str | None = None
-    hall: str | None = None
     limit: int = Field(default=20, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
     semantic_weight: float = Field(default=0.7, ge=0.0, le=1.0)

@@ -92,9 +92,6 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         tags_all=None,
         memory_type=None,
         source=None,
-        wing=None,
-        room=None,
-        hall=None,
         project=None,
         status=None,
         technologies_any=None,
@@ -112,12 +109,6 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             stmt = stmt.where(Memory.memory_type == memory_type)
         if source:
             stmt = stmt.where(Memory.source == source)
-        if wing is not None:
-            stmt = stmt.where(Memory.wing == wing)
-        if room is not None:
-            stmt = stmt.where(Memory.room == room)
-        if hall is not None:
-            stmt = stmt.where(Memory.hall == hall)
         if project is not None:
             stmt = stmt.where(Memory.project == project)
         if status:
@@ -126,26 +117,24 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             stmt = stmt.where(Memory.technologies.overlap(list(technologies_any)))
         return stmt
 
-    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20, project=None, status=None, technologies_any=None):
+    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, project=None, status=None, technologies_any=None):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
         stmt = self._apply_filters(
             stmt,
             query=query, tags_any=tags_any, tags_all=tags_all,
             memory_type=memory_type, source=source,
-            wing=wing, room=room, hall=hall,
             project=project, status=status, technologies_any=technologies_any,
         )
         stmt = stmt.order_by(Memory.created_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20, offset=0, project=None, status=None, technologies_any=None):
+    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, offset=0, project=None, status=None, technologies_any=None):
         base = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
         base = self._apply_filters(
             base,
             query=query, tags_any=tags_any, tags_all=tags_all,
             memory_type=memory_type, source=source,
-            wing=wing, room=room, hall=hall,
             project=project, status=status, technologies_any=technologies_any,
         )
 
@@ -155,19 +144,6 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         items_stmt = base.order_by(Memory.created_at.desc()).offset(offset).limit(limit)
         result = await self.session.execute(items_stmt)
         return list(result.scalars().all()), total
-
-    async def get_palace_room_data(self) -> list[dict]:
-        result = await self.session.execute(
-            sa_text("""
-                SELECT room, wing, hall, created_at::date AS date
-                FROM memories
-                WHERE room IS NOT NULL
-                  AND room <> 'general'
-                  AND wing IS NOT NULL
-                ORDER BY created_at
-            """)
-        )
-        return [dict(r) for r in result.mappings()]
 
     async def set_tags(self, memory_id, tag_names):
         memory = await self.get(memory_id)

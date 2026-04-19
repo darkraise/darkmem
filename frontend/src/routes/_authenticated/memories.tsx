@@ -22,16 +22,7 @@ import {
   SheetTitle,
 } from "darkraise-ui/components/sheet"
 import { PageHeader } from "darkraise-ui/layout"
-import {
-  X,
-  ChevronRight,
-  ChevronDown,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Building2,
-  DoorOpen,
-  Plus,
-} from "lucide-react"
+import { X, Plus } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
 
@@ -47,17 +38,6 @@ export const Route = createFileRoute("/_authenticated/memories")({
 })
 
 const PAGE_SIZE = 50
-
-const HALLS = ["facts", "events", "discoveries", "preferences", "advice"] as const
-type Hall = (typeof HALLS)[number]
-
-const HALL_COLORS: Record<Hall, { bg: string; text: string; border: string }> = {
-  facts:        { bg: "rgba(34,211,238,0.08)",  text: "#22d3ee", border: "rgba(34,211,238,0.25)" },
-  events:       { bg: "rgba(167,139,250,0.08)", text: "#a78bfa", border: "rgba(167,139,250,0.25)" },
-  discoveries:  { bg: "rgba(52,211,153,0.08)",  text: "#34d399", border: "rgba(52,211,153,0.25)" },
-  preferences:  { bg: "rgba(251,191,36,0.08)",  text: "#fbbf24", border: "rgba(251,191,36,0.25)" },
-  advice:       { bg: "rgba(248,113,113,0.08)", text: "#f87171", border: "rgba(248,113,113,0.25)" },
-}
 
 const SOURCE_COLORS: Record<string, string> = {
   "claude-code": "#58a6ff",
@@ -78,272 +58,10 @@ function relativeTime(iso: string): string {
   return `${days}d ago`
 }
 
-interface WingTree {
-  [wing: string]: {
-    count: number
-    rooms: { [room: string]: number }
-  }
-}
 
-function buildWingTree(memories: Memory[]): WingTree {
-  const tree: WingTree = {}
-  for (const m of memories) {
-    const wing = m.wing ?? "(unassigned)"
-    const room = m.room ?? "(unassigned)"
-    if (!tree[wing]) tree[wing] = { count: 0, rooms: {} }
-    tree[wing].count++
-    tree[wing].rooms[room] = (tree[wing].rooms[room] ?? 0) + 1
-  }
-  return tree
-}
 
-// ── Wing/Room sidebar ────────────────────────────────────────
 
-interface WingSidebarProps {
-  tree: WingTree
-  selectedWing: string
-  selectedRoom: string
-  totalCount: number
-  unfilteredCount: number
-  hasFilters: boolean
-  onSelectAll: () => void
-  onSelectWing: (wing: string) => void
-  onSelectRoom: (wing: string, room: string) => void
-  collapsed: boolean
-  onToggleCollapse: () => void
-}
 
-function WingSidebar({
-  tree,
-  selectedWing,
-  selectedRoom,
-  totalCount,
-  unfilteredCount,
-  hasFilters,
-  onSelectAll,
-  onSelectWing,
-  onSelectRoom,
-  collapsed,
-  onToggleCollapse,
-}: WingSidebarProps) {
-  const [expandedWings, setExpandedWings] = useState<Set<string>>(new Set())
-
-  const toggleWingExpand = (wing: string) => {
-    setExpandedWings((prev) => {
-      const next = new Set(prev)
-      if (next.has(wing)) next.delete(wing)
-      else next.add(wing)
-      return next
-    })
-  }
-
-  if (collapsed) {
-    return (
-      <div
-        className="flex flex-col items-center pt-3 gap-2 border-r border-[rgba(34,211,238,0.08)]"
-        style={{ width: 36, minWidth: 36, background: "rgba(8,8,14,0.7)" }}
-      >
-        <button
-          onClick={onToggleCollapse}
-          className="text-[rgba(34,211,238,0.5)] hover:text-[#22d3ee] transition-colors"
-          title="Expand navigation"
-        >
-          <PanelLeftOpen className="w-4 h-4" />
-        </button>
-      </div>
-    )
-  }
-
-  const wings = Object.keys(tree).sort()
-
-  return (
-    <div
-      className="flex flex-col border-r border-[rgba(34,211,238,0.08)] shrink-0 overflow-hidden"
-      style={{ width: 220, minWidth: 220, background: "rgba(8,8,14,0.7)" }}
-    >
-      {/* header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[rgba(34,211,238,0.08)]">
-        <span
-          className="text-[10px] uppercase tracking-widest font-mono"
-          style={{ color: "rgba(34,211,238,0.5)" }}
-        >
-          Navigation
-        </span>
-        <button
-          onClick={onToggleCollapse}
-          className="text-[rgba(34,211,238,0.4)] hover:text-[#22d3ee] transition-colors"
-          title="Collapse navigation"
-        >
-          <PanelLeftClose className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* all memories */}
-      <button
-        onClick={onSelectAll}
-        className={`flex items-center justify-between px-3 py-2 text-xs font-mono transition-colors hover:bg-[rgba(34,211,238,0.04)] ${
-          !selectedWing ? "text-[#22d3ee] bg-[rgba(34,211,238,0.06)]" : "text-muted-foreground"
-        }`}
-      >
-        <span className="flex items-center gap-1.5">
-          <Building2 className="w-3 h-3 shrink-0" />
-          All memories
-        </span>
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded font-mono"
-          style={{
-            background: "rgba(34,211,238,0.08)",
-            color: "rgba(34,211,238,0.6)",
-          }}
-        >
-          {hasFilters ? `${totalCount} of ${unfilteredCount}` : totalCount}
-        </span>
-      </button>
-
-      {/* wing list */}
-      <div className="overflow-y-auto flex-1 scrollbar-thin">
-        {wings.map((wing) => {
-          const wingData = tree[wing]
-          const isWingSelected = selectedWing === wing
-          const isExpanded = expandedWings.has(wing)
-          const rooms = Object.keys(wingData.rooms).sort()
-
-          return (
-            <div key={wing}>
-              {/* wing row */}
-              <div
-                className={`flex items-center gap-1 px-2 py-1.5 text-xs font-mono transition-colors hover:bg-[rgba(34,211,238,0.04)] ${
-                  isWingSelected && !selectedRoom
-                    ? "text-[#22d3ee] bg-[rgba(34,211,238,0.06)]"
-                    : "text-muted-foreground"
-                }`}
-              >
-                <button
-                  onClick={() => toggleWingExpand(wing)}
-                  className="shrink-0 text-[rgba(34,211,238,0.4)] hover:text-[#22d3ee] transition-colors"
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="w-3 h-3" />
-                  ) : (
-                    <ChevronRight className="w-3 h-3" />
-                  )}
-                </button>
-                <button
-                  onClick={() => onSelectWing(wing)}
-                  className="flex items-center justify-between flex-1 min-w-0 gap-1"
-                >
-                  <span className="truncate">{wing}</span>
-                  <span
-                    className="text-[10px] px-1 py-0.5 rounded shrink-0"
-                    style={{
-                      background: "rgba(34,211,238,0.08)",
-                      color: "rgba(34,211,238,0.6)",
-                    }}
-                  >
-                    {wingData.count}
-                  </span>
-                </button>
-              </div>
-
-              {/* room rows */}
-              {isExpanded &&
-                rooms.map((room) => (
-                  <button
-                    key={room}
-                    onClick={() => onSelectRoom(wing, room)}
-                    className={`w-full flex items-center justify-between pl-8 pr-2 py-1.5 text-xs font-mono transition-colors hover:bg-[rgba(34,211,238,0.04)] ${
-                      isWingSelected && selectedRoom === room
-                        ? "text-[#22d3ee] bg-[rgba(34,211,238,0.06)]"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      <DoorOpen className="w-3 h-3 shrink-0 opacity-60" />
-                      <span className="truncate">{room}</span>
-                    </span>
-                    <span
-                      className="text-[10px] px-1 py-0.5 rounded shrink-0 ml-1"
-                      style={{
-                        background: "rgba(34,211,238,0.05)",
-                        color: "rgba(34,211,238,0.5)",
-                      }}
-                    >
-                      {wingData.rooms[room]}
-                    </span>
-                  </button>
-                ))}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Hall filter chips ────────────────────────────────────────
-
-interface HallFilterProps {
-  activeHall: string
-  onChange: (hall: string) => void
-}
-
-function HallFilter({ activeHall, onChange }: HallFilterProps) {
-  return (
-    <div className="flex items-center gap-2 flex-wrap mb-3">
-      <span
-        className="text-[10px] uppercase tracking-widest font-mono shrink-0"
-        style={{ color: "rgba(34,211,238,0.4)" }}
-      >
-        Hall
-      </span>
-      <button
-        onClick={() => onChange("")}
-        className="text-xs font-mono px-2.5 py-0.5 rounded border transition-colors"
-        style={
-          !activeHall
-            ? {
-                background: "rgba(34,211,238,0.12)",
-                color: "#22d3ee",
-                border: "1px solid rgba(34,211,238,0.35)",
-              }
-            : {
-                background: "transparent",
-                color: "rgba(255,255,255,0.35)",
-                border: "1px solid rgba(255,255,255,0.08)",
-              }
-        }
-      >
-        all
-      </button>
-      {HALLS.map((hall) => {
-        const colors = HALL_COLORS[hall]
-        const isActive = activeHall === hall
-        return (
-          <button
-            key={hall}
-            onClick={() => onChange(isActive ? "" : hall)}
-            className="text-xs font-mono px-2.5 py-0.5 rounded border transition-colors"
-            style={
-              isActive
-                ? {
-                    background: colors.bg,
-                    color: colors.text,
-                    border: `1px solid ${colors.border}`,
-                  }
-                : {
-                    background: "transparent",
-                    color: "rgba(255,255,255,0.35)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }
-            }
-          >
-            {hall}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 // ── Main page ────────────────────────────────────────────────
 
@@ -355,13 +73,9 @@ function MemoriesPage() {
   const [sourceFilter, setSourceFilter] = useState("")
   const [tagFilter, setTagFilter] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
-  const [wingFilter, setWingFilter] = useState("")
-  const [roomFilter, setRoomFilter] = useState("")
-  const [hallFilter, setHallFilter] = useState("")
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailMemory, setDetailMemory] = useState<Memory | null>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
 
   const { data, isLoading } = usePaginatedSearch({
@@ -369,9 +83,6 @@ function MemoriesPage() {
     tags_any: tagFilter ? [tagFilter] : undefined,
     source: sourceFilter || undefined,
     memory_type: typeFilter || undefined,
-    wing: wingFilter || undefined,
-    room: roomFilter || undefined,
-    hall: hallFilter || undefined,
     limit: PAGE_SIZE,
     offset,
   })
@@ -403,8 +114,6 @@ function MemoriesPage() {
     }
   }, [focusId, memories, navigate])
 
-  const wingTree = useMemo(() => buildWingTree(memories), [memories])
-
   const distinctSources = useMemo(() => {
     const set = new Set(memories.map((m) => m.source))
     return Array.from(set).sort()
@@ -428,29 +137,6 @@ function MemoriesPage() {
 
   const handleFilterChange = (setter: (v: string) => void) => (v: string) => {
     setter(v)
-    resetPagination()
-  }
-
-  const handleSelectWing = (wing: string) => {
-    setWingFilter(wing)
-    setRoomFilter("")
-    resetPagination()
-  }
-
-  const handleSelectRoom = (wing: string, room: string) => {
-    setWingFilter(wing)
-    setRoomFilter(room)
-    resetPagination()
-  }
-
-  const handleSelectAll = () => {
-    setWingFilter("")
-    setRoomFilter("")
-    resetPagination()
-  }
-
-  const handleHallChange = (hall: string) => {
-    setHallFilter(hall)
     resetPagination()
   }
 
@@ -518,7 +204,7 @@ function MemoriesPage() {
   }
 
   const hasActiveFilter = Boolean(
-    query || sourceFilter || tagFilter || typeFilter || wingFilter || roomFilter || hallFilter,
+    query || sourceFilter || tagFilter || typeFilter,
   )
 
   return (
@@ -533,21 +219,6 @@ function MemoriesPage() {
       <CreateMemoryDialog open={createOpen} onOpenChange={setCreateOpen} />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Wing/Room sidebar */}
-        <WingSidebar
-          tree={wingTree}
-          selectedWing={wingFilter}
-          selectedRoom={roomFilter}
-          totalCount={total}
-          unfilteredCount={unfilteredTotal}
-          hasFilters={hasActiveFilter}
-          onSelectAll={handleSelectAll}
-          onSelectWing={handleSelectWing}
-          onSelectRoom={handleSelectRoom}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-        />
-
         {/* Main content area */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden p-4 pl-5">
           {/* Search + filters */}
@@ -619,30 +290,6 @@ function MemoriesPage() {
             </div>
           </form>
 
-          {/* Hall filter chips */}
-          <HallFilter activeHall={hallFilter} onChange={handleHallChange} />
-
-          {/* Active location breadcrumb */}
-          {(wingFilter || roomFilter) && (
-            <div className="flex items-center gap-1.5 mb-3 text-xs font-mono shrink-0">
-              <span style={{ color: "rgba(34,211,238,0.4)" }}>loc:</span>
-              <span style={{ color: "#22d3ee" }}>{wingFilter}</span>
-              {roomFilter && (
-                <>
-                  <span style={{ color: "rgba(34,211,238,0.3)" }}>/</span>
-                  <span style={{ color: "#22d3ee" }}>{roomFilter}</span>
-                </>
-              )}
-              <button
-                onClick={handleSelectAll}
-                className="ml-1 text-[rgba(34,211,238,0.4)] hover:text-[#22d3ee] transition-colors"
-                title="Clear location filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-
           {isLoading && (
             <p className="text-muted-foreground text-sm">Loading...</p>
           )}
@@ -702,31 +349,6 @@ function MemoriesPage() {
                           </button>
                         </div>
                         <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground flex-wrap">
-                          {m.hall && HALL_COLORS[m.hall as Hall] && (
-                            <span
-                              className="text-[10px] px-1.5 py-0 rounded font-mono"
-                              style={{
-                                color: HALL_COLORS[m.hall as Hall].text,
-                                background: HALL_COLORS[m.hall as Hall].bg,
-                                border: `1px solid ${HALL_COLORS[m.hall as Hall].border}`,
-                              }}
-                            >
-                              {m.hall}
-                            </span>
-                          )}
-                          {m.wing && (
-                            <span
-                              className="text-[10px] px-1.5 py-0 rounded font-mono"
-                              style={{
-                                color: "rgba(34,211,238,0.7)",
-                                background: "rgba(34,211,238,0.05)",
-                                border: "1px solid rgba(34,211,238,0.12)",
-                              }}
-                            >
-                              {m.wing}
-                              {m.room ? `/${m.room}` : ""}
-                            </span>
-                          )}
                           {m.tags.map((tag) => (
                             <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0">
                               {tag}
@@ -829,34 +451,6 @@ function MemoriesPage() {
                         {tag}
                       </Badge>
                     ))}
-                  </div>
-                </div>
-              )}
-              {(detailMemory.wing || detailMemory.room || detailMemory.hall) && (
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">
-                    Location
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap text-xs font-mono">
-                    {detailMemory.wing && (
-                      <span style={{ color: "#22d3ee" }}>
-                        wing: {detailMemory.wing}
-                      </span>
-                    )}
-                    {detailMemory.room && (
-                      <span style={{ color: "rgba(34,211,238,0.7)" }}>
-                        room: {detailMemory.room}
-                      </span>
-                    )}
-                    {detailMemory.hall && (
-                      <span
-                        style={{
-                          color: HALL_COLORS[detailMemory.hall as Hall]?.text ?? "#c9d1d9",
-                        }}
-                      >
-                        hall: {detailMemory.hall}
-                      </span>
-                    )}
                   </div>
                 </div>
               )}

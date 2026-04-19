@@ -110,12 +110,6 @@ class MemoryService:
             return False
         if params.source and memory.source != params.source:
             return False
-        if params.wing is not None and memory.wing != params.wing:
-            return False
-        if params.room is not None and memory.room != params.room:
-            return False
-        if params.hall is not None and memory.hall != params.hall:
-            return False
         if params.project is not None and memory.project != params.project:
             return False
         if params.status and memory.status not in params.status:
@@ -149,8 +143,7 @@ class MemoryService:
         return await self.memory_repo.search_by_tags(
             query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
             memory_type=params.memory_type, source=params.source,
-            wing=params.wing, room=params.room, hall=params.hall,
-            limit=params.limit,
+limit=params.limit,
             project=params.project, status=list(params.status) if params.status else None,
             technologies_any=params.technologies_any,
         )
@@ -174,8 +167,7 @@ class MemoryService:
         items, total = await self.memory_repo.search_by_tags_paginated(
             query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
             memory_type=params.memory_type, source=params.source,
-            wing=params.wing, room=params.room, hall=params.hall,
-            limit=params.limit, offset=params.offset,
+limit=params.limit, offset=params.offset,
             project=params.project, status=list(params.status) if params.status else None,
             technologies_any=params.technologies_any,
         )

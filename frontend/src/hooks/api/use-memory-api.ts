@@ -14,9 +14,6 @@ export interface Memory {
   updated_at: string;
   expires_at: string | null;
   is_archived: boolean;
-  wing: string | null;
-  room: string | null;
-  hall: string | null;
   classified_type?: string | null;
   classified_confidence?: number | null;
   llm_classified_type?: string | null;
@@ -85,9 +82,6 @@ export interface PaginatedSearchParams {
   tags_any?: string[];
   source?: string;
   memory_type?: string;
-  wing?: string;
-  room?: string;
-  hall?: string;
   limit?: number;
   offset?: number;
   semantic_weight?: number;
@@ -111,9 +105,6 @@ export function usePaginatedSearch(params: PaginatedSearchParams) {
           tags_any: params.tags_any?.length ? params.tags_any : undefined,
           source: params.source || undefined,
           memory_type: params.memory_type || undefined,
-          wing: params.wing || undefined,
-          room: params.room || undefined,
-          hall: params.hall || undefined,
           limit: params.limit ?? 50,
           offset: params.offset ?? 0,
           semantic_weight: params.semantic_weight,
@@ -122,29 +113,3 @@ export function usePaginatedSearch(params: PaginatedSearchParams) {
   });
 }
 
-export interface MemoryLayers {
-  l0: string;
-  l1: string;
-  l2_hint: string;
-  token_count: number;
-}
-
-// TODO: wire up once GET /api/v1/memories/layers is implemented in the backend
-export function useMemoryLayers(_wing?: string, enabled = false) {
-  return useQuery<MemoryLayers>({
-    queryKey: ["memoryLayers"],
-    queryFn: () => Promise.reject(new Error("GET /api/v1/memories/layers not yet implemented")),
-    enabled: false,
-    staleTime: 60_000,
-  });
-}
-
-// TODO: wire up once GET /api/v1/memories/wings is implemented in the backend
-export function useMemoryWings() {
-  return useQuery<string[]>({
-    queryKey: ["memoryWings"],
-    queryFn: () => Promise.resolve([] as string[]),
-    enabled: true,
-    staleTime: 120_000,
-  });
-}
