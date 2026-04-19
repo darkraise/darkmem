@@ -63,7 +63,8 @@ def make_pair_label(rel_map: dict, label2id: dict[str, int]):
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--pred", required=True, type=Path)
-    p.add_argument("--gold", required=True, type=Path)
+    p.add_argument("--gold", type=Path, default=None,
+                   help="Local gold JSONL path (or pass --hf-gold-repo to pull from Hub).")
     p.add_argument("--out", required=True, type=Path)
     p.add_argument(
         "--schema",
@@ -71,7 +72,29 @@ def main() -> int:
         default="10type",
         help="Relation map + label set to score under. Default 10type (backward compatible).",
     )
+    p.add_argument("--hf-token", default=None,
+                   help="HuggingFace token for private dataset repos (env HF_TOKEN otherwise).")
+    p.add_argument("--hf-gold-repo", default=None,
+                   help="HF dataset repo (e.g. darkraise/darkmem-relation-dataset) to pull gold from.")
+    p.add_argument("--hf-gold-file", default=None,
+                   help="Filename inside the repo (default depends on --schema: "
+                        "test_gold_10type.jsonl for 10type, test_gold_5type.jsonl for 5type).")
     args = p.parse_args()
+
+    # Resolve gold path: local > HF repo + explicit file > HF repo + schema-derived default.
+    if args.gold is None and not args.hf_gold_repo:
+        p.error("--gold (local path) or --hf-gold-repo is required.")
+    if args.hf_gold_repo and args.gold is None:
+        from scripts._hf_dataset_loader import resolve_dataset_path
+        filename = args.hf_gold_file or (
+            "test_gold_5type.jsonl" if args.schema == "5type" else "test_gold_10type.jsonl"
+        )
+        args.gold = resolve_dataset_path(
+            local=None,
+            repo=args.hf_gold_repo,
+            filename=filename,
+            token=args.hf_token,
+        )
 
     rel_map, LABELS = SCHEMAS[args.schema]
     LABEL2ID = {l: i for i, l in enumerate(LABELS)}

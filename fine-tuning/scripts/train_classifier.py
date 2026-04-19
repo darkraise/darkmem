@@ -111,7 +111,18 @@ def main() -> int:
                         help="LR schedule for the HF Trainer (default: linear)")
     parser.add_argument("--label-smoothing", type=float, default=0.0,
                         help="Label smoothing factor (0.0-0.3, default 0.0)")
+    from scripts._hf_dataset_loader import add_hf_args, resolve_dataset_path
+    add_hf_args(parser, purpose="train")
     args = parser.parse_args()
+
+    # Allow either the local --data path or an HF dataset repo pull.
+    if args.hf_train_repo:
+        args.data = resolve_dataset_path(
+            local=args.data if args.data and args.data != DATA_PATH else None,
+            repo=args.hf_train_repo,
+            filename=args.hf_train_file,
+            token=args.hf_token,
+        )
 
     set_seed(args.seed)
 

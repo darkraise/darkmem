@@ -188,6 +188,67 @@ SPECS: list[DatasetSpec] = [
 ]
 
 
+def _build_corpus_spec() -> DatasetSpec:
+    """Corpus spec is assembled dynamically — the relaug survivors and noisy
+    batches are open-ended directories, so glob them at build time rather
+    than hand-listing every file."""
+    files: list[FilePlan] = []
+
+    # Canonical source + schema-v2 derivatives.
+    canon_files = [
+        ("data/v2/shared/shared_coding10_clean.jsonl", "shared/shared_coding10_clean.jsonl"),
+        ("data/splits/coding10clean_train_canon.jsonl", "coding10clean/train_canon.jsonl"),
+        ("data/splits/coding10clean_val_canon.jsonl", "coding10clean/val_canon.jsonl"),
+        ("data/splits/coding10clean_test_canon.jsonl", "coding10clean/test_canon.jsonl"),
+        ("data/splits/coding10clean_train_canon.pre-relaug.jsonl", "coding10clean/train_canon.pre-relaug.jsonl"),
+        ("data/splits/coding10clean_val_canon.pre-relaug.jsonl", "coding10clean/val_canon.pre-relaug.jsonl"),
+        ("data/splits/coding10clean_test_canon.pre-relaug.jsonl", "coding10clean/test_canon.pre-relaug.jsonl"),
+        ("data/splits/coding5clean_train_canon.jsonl", "coding5clean/train_canon.jsonl"),
+        ("data/splits/coding5clean_val_canon.jsonl", "coding5clean/val_canon.jsonl"),
+        ("data/splits/coding5clean_test_canon.jsonl", "coding5clean/test_canon.jsonl"),
+    ]
+    for src_rel, tgt in canon_files:
+        src = ROOT / src_rel
+        if src.exists():
+            files.append(FilePlan(source=src, target=tgt))
+
+    # Phase-2 relaug survivors (~54 files).
+    for src in sorted((ROOT / "data" / "v2" / "relaug" / "survivors").glob("*.jsonl")):
+        files.append(FilePlan(source=src, target=f"relaug_survivors/{src.name}"))
+
+    # Phase-3 noisy-batch augmentation (~10 files).
+    for src in sorted((ROOT / "data" / "v2" / "noisy").glob("*.jsonl")):
+        files.append(FilePlan(source=src, target=f"noisy/{src.name}"))
+
+    return DatasetSpec(
+        key="corpus",
+        repo_suffix="darkmem-corpus",
+        model_repo_suffix="darkmem-classifier-v1",  # arbitrary — README crosslinks all heads
+        summary=(
+            "Canonical training corpus for darkmem. The raw shared corpus, the "
+            "10-type and 5-type canonical splits, the frozen pre-relaug val/test "
+            "gold, the Phase-2 synth-relation augmentation survivors, and the "
+            "Phase-3 noisy-batch augmentation. Feed this into the data-build "
+            "pipeline (fine-tuning/scripts/_build_*_splits.py) to regenerate "
+            "every head-specific training file."
+        ),
+        files=tuple(files),
+        format_notes=(
+            "Layout: `shared/` is the raw 14k-row clean corpus, `coding10clean/` "
+            "and `coding5clean/` are the remapped canonicals, `relaug_survivors/` "
+            "holds validator-accepted synth rows (per-class), `noisy/` is the "
+            "noisy-batch augmentation. Every file is JSONL with the shared "
+            "`{id, text, entities, relationships, memory_type, domain, source}` "
+            "schema used throughout the darkmem fine-tuning pipeline. "
+            "Entities use inclusive-end char offsets matching GLiNER's internal "
+            "convention."
+        ),
+    )
+
+
+SPECS.append(_build_corpus_spec())
+
+
 def _render_readme(spec: DatasetSpec, repo_id: str, hf_user: str) -> str:
     file_rows = "\n".join(
         f"| `{fp.target}` | {_bytes_fmt(fp.source)} | {_line_count(fp.source)} rows |"
@@ -290,6 +351,7 @@ def upload_one(
         staging_path = Path(staging)
         for fp in spec.files:
             dst = staging_path / fp.target
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(fp.source, dst)
         (staging_path / "README.md").write_text(
             _render_readme(spec, repo_id, hf_user), encoding="utf-8"

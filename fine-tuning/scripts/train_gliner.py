@@ -54,6 +54,8 @@ def train(
     use_cpu: bool,
     output_dir: Path,
     hf_token: str | None = None,
+    train_path_override: Path | None = None,
+    val_path_override: Path | None = None,
 ) -> None:
     import torch
     from gliner import GLiNER
@@ -73,8 +75,8 @@ def train(
         model = model.to("cuda")
 
     print("Loading training data...", flush=True)
-    train_path = SPLITS_DIR / "gliner_train.jsonl"
-    val_path = SPLITS_DIR / "gliner_val.jsonl"
+    train_path = train_path_override or (SPLITS_DIR / "gliner_train.jsonl")
+    val_path = val_path_override or (SPLITS_DIR / "gliner_val.jsonl")
 
     if not train_path.exists():
         print(f"ERROR: {train_path} not found. Run validate_data.py first.", file=sys.stderr)
@@ -143,10 +145,28 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size (default: 16)")
     parser.add_argument("--cpu", action="store_true", help="Force CPU training")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
-    parser.add_argument("--hf-token", type=str, default="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", help="Hugging Face API token for gated models")
+    parser.add_argument("--train-path", type=str, default=None, help="Training JSONL (defaults to data/splits/gliner_train.jsonl)")
+    parser.add_argument("--val-path", type=str, default=None, help="Validation JSONL (defaults to data/splits/gliner_val.jsonl)")
+    parser.add_argument("--hf-token", type=str, default=None, help="HuggingFace API token (env HF_TOKEN otherwise). Required for private dataset repos and gated base models.")
+    from scripts._hf_dataset_loader import add_hf_args, resolve_dataset_path
+    add_hf_args(parser, purpose="train")
+    add_hf_args(parser, purpose="val")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir) if args.output_dir else MODELS_DIR / "gliner-darkmem"
+
+    train_path_resolved = resolve_dataset_path(
+        local=Path(args.train_path) if args.train_path else None,
+        repo=args.hf_train_repo,
+        filename=args.hf_train_file,
+        token=args.hf_token,
+    ) if (args.train_path or args.hf_train_repo) else None
+    val_path_resolved = resolve_dataset_path(
+        local=Path(args.val_path) if args.val_path else None,
+        repo=args.hf_val_repo,
+        filename=args.hf_val_file,
+        token=args.hf_token,
+    ) if (args.val_path or args.hf_val_repo) else None
 
     train(
         base_model=args.base_model,
@@ -156,6 +176,8 @@ def main() -> int:
         use_cpu=args.cpu,
         output_dir=output_dir,
         hf_token=args.hf_token,
+        train_path_override=train_path_resolved,
+        val_path_override=val_path_resolved,
     )
     return 0
 
