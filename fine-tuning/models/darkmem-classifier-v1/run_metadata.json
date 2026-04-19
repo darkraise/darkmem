@@ -1,0 +1,35 @@
+{
+  "base_model": "answerdotai/ModernBERT-base",
+  "epochs_run": 9.0,
+  "best_metric": 0.8121594777136741,
+  "best_checkpoint": "models\\classifier-v3aug2-modernbert-base\\checkpoints\\checkpoint-3606",
+  "train_size": 9605,
+  "val_size": 1695,
+  "labels": [
+    "fact",
+    "decision",
+    "preference",
+    "problem",
+    "reference",
+    "architecture",
+    "milestone"
+  ],
+  "training_args": {
+    "lr": 3e-05,
+    "batch_size": 16,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "max_length": 256
+  },
+  "final_metrics": {
+    "eval_loss": 1.3438938856124878,
+    "eval_accuracy": 0.8153392330383481,
+    "eval_macro_f1": 0.8121594777136741,
+    "eval_macro_precision": 0.8159549432473918,
+    "eval_macro_recall": 0.8091681365160361,
+    "eval_runtime": 3.4049,
+    "eval_samples_per_second": 497.816,
+    "eval_steps_per_second": 15.566,
+    "epoch": 9.0
+  }
+}

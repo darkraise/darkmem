@@ -1,2 +1,0 @@
-{"line": 8, "errors": ["relationship[0] target endpoint not in entity list: malloc"]}
-{"line": 44, "errors": ["queries[0] too similar to source (verbatim quote) \u2014 normalized ratio >= 0.6"]}

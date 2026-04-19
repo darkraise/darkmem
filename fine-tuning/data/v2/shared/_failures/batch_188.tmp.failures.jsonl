@@ -1,8 +1,0 @@
-{"line": 13, "errors": ["entity[3] unknown entity type: component"]}
-{"line": 17, "errors": ["entity[3] unknown entity type: component"]}
-{"line": 21, "errors": ["entity[2] unknown entity type: component"]}
-{"line": 22, "errors": ["entity[2] unknown entity type: feature"]}
-{"line": 28, "errors": ["entity[4] unknown entity type: component"]}
-{"line": 39, "errors": ["entity[3] unknown entity type: document"]}
-{"line": 41, "errors": ["entity[3] unknown entity type: component"]}
-{"line": 42, "errors": ["entity[2] unknown entity type: component"]}

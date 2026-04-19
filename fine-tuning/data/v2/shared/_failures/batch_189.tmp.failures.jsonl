@@ -1,8 +1,0 @@
-{"line": 24, "errors": ["relationship[0] unknown relation type: ALIAS_OF"]}
-{"line": 28, "errors": ["entity[0] unknown entity type: software", "entity[1] unknown entity type: software"]}
-{"line": 29, "errors": ["entity[0] unknown entity type: software", "entity[1] unknown entity type: software"]}
-{"line": 30, "errors": ["relationship[0] unknown relation type: PART_OF"]}
-{"line": 39, "errors": ["entity[0] unknown entity type: software", "entity[1] unknown entity type: software"]}
-{"line": 44, "errors": ["relationship[0] unknown relation type: ALIAS_OF"]}
-{"line": 46, "errors": ["entity[0] unknown entity type: software"]}
-{"line": 50, "errors": ["entity[0] unknown entity type: architecture", "entity[1] unknown entity type: architecture"]}

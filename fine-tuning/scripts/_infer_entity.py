@@ -104,7 +104,14 @@ def main() -> int:
     p.add_argument("--gold", type=Path, required=True)
     p.add_argument("--pred", type=Path, required=True)
     p.add_argument("--threshold", type=float, default=GLINER_THRESHOLD)
+    p.add_argument("--labels", type=str, default=None,
+                   help="Comma-separated entity type list to restrict predictions to. "
+                   "Default: ALL_ENTITY_TYPES (the 35-type taxonomy).")
     a = p.parse_args()
+    global ALL_ENTITY_TYPES
+    if a.labels:
+        ALL_ENTITY_TYPES = [s.strip() for s in a.labels.split(",") if s.strip()]
+        print(f"Using custom label set ({len(ALL_ENTITY_TYPES)} types): {ALL_ENTITY_TYPES}", flush=True)
     run(a.model, a.gold, a.pred, a.threshold)
     return 0
 

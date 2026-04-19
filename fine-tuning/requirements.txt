@@ -1,0 +1,13 @@
+# GLiNER fine-tuning
+gliner>=0.2.5
+
+# REBEL fine-tuning
+transformers>=4.45.0
+datasets>=2.14.0
+
+# Training infrastructure
+torch>=2.4.0
+accelerate>=0.30.0
+
+# Evaluation (reuses extraction_eval from docs/e2e/scripts/)
+# No additional deps — metrics.py only needs the backend app on sys.path

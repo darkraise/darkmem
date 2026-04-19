@@ -1,0 +1,88 @@
+{
+  "pos_micro_precision": 0.6808510638297872,
+  "pos_micro_recall": 0.540084388185654,
+  "pos_micro_f1": 0.6023529411764705,
+  "accuracy": 0.9333848531684699,
+  "n_rows": 6470,
+  "n_gold_pos": 711,
+  "n_pred_pos": 564,
+  "per_class": {
+    "NONE": {
+      "precision": 0.9575008465966813,
+      "recall": 0.981941309255079,
+      "f1": 0.9695670810115731,
+      "support": 5759,
+      "n_pred": 5906
+    },
+    "USES": {
+      "precision": 0.6118721461187214,
+      "recall": 0.4336569579288026,
+      "f1": 0.5075757575757576,
+      "support": 309,
+      "n_pred": 219
+    },
+    "DEPENDS_ON": {
+      "precision": 0.3333333333333333,
+      "recall": 0.11764705882352941,
+      "f1": 0.1739130434782609,
+      "support": 17,
+      "n_pred": 6
+    },
+    "REPLACES": {
+      "precision": 0.7741935483870968,
+      "recall": 0.7850467289719626,
+      "f1": 0.7795823665893272,
+      "support": 214,
+      "n_pred": 217
+    },
+    "IS_A": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 6,
+      "n_pred": 0
+    },
+    "HAS_PART": {
+      "precision": 0.3333333333333333,
+      "recall": 0.15384615384615385,
+      "f1": 0.21052631578947367,
+      "support": 13,
+      "n_pred": 6
+    },
+    "DEPLOYED_ON": {
+      "precision": 0.5714285714285714,
+      "recall": 0.375,
+      "f1": 0.4528301886792453,
+      "support": 32,
+      "n_pred": 21
+    },
+    "CAUSES": {
+      "precision": 0.4666666666666667,
+      "recall": 0.2413793103448276,
+      "f1": 0.3181818181818182,
+      "support": 29,
+      "n_pred": 15
+    },
+    "AUTHORED_BY": {
+      "precision": 0.5,
+      "recall": 0.6,
+      "f1": 0.5454545454545454,
+      "support": 5,
+      "n_pred": 6
+    },
+    "HAPPENED_ON": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 2,
+      "n_pred": 0
+    },
+    "RELATED_TO": {
+      "precision": 0.7567567567567568,
+      "recall": 0.6666666666666666,
+      "f1": 0.7088607594936708,
+      "support": 84,
+      "n_pred": 74
+    }
+  }
+}
