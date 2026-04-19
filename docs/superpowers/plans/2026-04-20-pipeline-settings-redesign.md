@@ -41,7 +41,10 @@ Expected: two version strings printed. `pynvml` imports successfully even on mac
 - [ ] **Step 4: Commit**
 
 ```bash
-git add backend/pyproject.toml backend/uv.lock  # or the appropriate lock file
+git add backend/pyproject.toml
+# Also stage whichever lock file the project uses (uv.lock, poetry.lock, or none).
+[ -f backend/uv.lock ] && git add backend/uv.lock
+[ -f backend/poetry.lock ] && git add backend/poetry.lock
 git commit -m "chore(deps): add psutil and pynvml for pipeline metrics"
 ```
 
@@ -210,8 +213,8 @@ from app.services.pipeline_aggregator import build_pipeline_state
 
 
 @pytest.mark.asyncio
-async def test_aggregator_empty_db_yields_llm_mode(async_session: AsyncSession):
-    state = await build_pipeline_state(async_session)
+async def test_aggregator_empty_db_yields_llm_mode(session: AsyncSession):
+    state = await build_pipeline_state(session)
     assert state["mode"] == "llm"
     assert state["stages"] == {
         "extraction": "llm",
@@ -230,7 +233,7 @@ async def test_aggregator_empty_db_yields_llm_mode(async_session: AsyncSession):
     assert "groups" not in state["ml"]  # groups live in /metrics, not aggregator
 ```
 
-The `async_session` fixture already exists in the test suite — check `backend/tests/conftest.py` for its name if it differs.
+The conftest fixture name is `session` (see `backend/tests/conftest.py` — it's an `AsyncSession` bound to a savepoint-wrapped connection).
 
 - [ ] **Step 2: Run failing test**
 
@@ -330,34 +333,34 @@ Append to `backend/tests/test_pipeline_aggregator.py`:
 
 ```python
 @pytest.mark.asyncio
-async def test_aggregator_mode_derives_ml(async_session):
+async def test_aggregator_mode_derives_ml(session):
     from app.models.config import Config
-    async_session.add(Config(key="feature_flags", value={
+    session.add(Config(key="feature_flags", value={
         "ml_extraction": True, "ml_classification": True, "ml_retrieval": True,
     }))
-    await async_session.flush()
-    state = await build_pipeline_state(async_session)
+    await session.flush()
+    state = await build_pipeline_state(session)
     assert state["mode"] == "ml"
     assert state["stages"]["extraction"] == "ml"
 
 
 @pytest.mark.asyncio
-async def test_aggregator_mode_derives_mixed(async_session):
+async def test_aggregator_mode_derives_mixed(session):
     from app.models.config import Config
-    async_session.add(Config(key="feature_flags", value={
+    session.add(Config(key="feature_flags", value={
         "ml_extraction": True, "ml_classification": False, "ml_retrieval": True,
     }))
-    await async_session.flush()
-    state = await build_pipeline_state(async_session)
+    await session.flush()
+    state = await build_pipeline_state(session)
     assert state["mode"] == "mixed"
 
 
 @pytest.mark.asyncio
-async def test_aggregator_persistence_persistent(async_session):
+async def test_aggregator_persistence_persistent(session):
     from app.models.config import Config
-    async_session.add(Config(key="feature_flags", value={"ml_idle_ttl_minutes": 0}))
-    await async_session.flush()
-    state = await build_pipeline_state(async_session)
+    session.add(Config(key="feature_flags", value={"ml_idle_ttl_minutes": 0}))
+    await session.flush()
+    state = await build_pipeline_state(session)
     assert state["ml"]["persistence"] == "persistent"
 ```
 
@@ -396,8 +399,8 @@ async def test_get_pipeline_requires_auth(client):
 
 
 @pytest.mark.asyncio
-async def test_get_pipeline_returns_aggregator(auth_client):
-    resp = await auth_client.get("/api/v1/pipeline")
+async def test_get_pipeline_returns_aggregator(client, auth_headers):
+    resp = await client.get("/api/v1/pipeline", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["mode"] in ("ml", "llm", "mixed")
@@ -407,7 +410,7 @@ async def test_get_pipeline_returns_aggregator(auth_client):
     }
 ```
 
-(If fixtures are named differently — `async_client`, `authenticated_client` — adjust to match `backend/tests/conftest.py`.)
+Fixture contract (from `backend/tests/conftest.py`): `client` is an unauthenticated `httpx.AsyncClient` with the `get_session` dependency overridden to use the test's savepoint session; `auth_headers` returns `{"Authorization": "Bearer ..."}` with the admin password seeded. Every authenticated test call passes `headers=auth_headers`.
 
 - [ ] **Step 2: Run failing test**
 
@@ -437,13 +440,7 @@ from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
 from app.services import pipeline_aggregator, system_metrics
-from app.services.ml_models import (
-    group_status,
-    models_available,
-    unload_classification,
-    unload_extraction,
-    unload_retriever,
-)
+from app.services.ml_models import group_status, models_available
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
@@ -501,11 +498,11 @@ Append to `backend/tests/test_pipeline_routes.py`:
 
 ```python
 @pytest.mark.asyncio
-async def test_set_mode_ml_flips_all_three_flags(auth_client, async_session):
+async def test_set_mode_ml_flips_all_three_flags(client, auth_headers, session):
     from app.models.config import Config
     from sqlalchemy import select
 
-    resp = await auth_client.post("/api/v1/pipeline/mode", json={"mode": "ml"})
+    resp = await client.post("/api/v1/pipeline/mode", json={"mode": "ml"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["mode"] == "ml"
@@ -513,7 +510,7 @@ async def test_set_mode_ml_flips_all_three_flags(auth_client, async_session):
         "extraction": "ml", "classification": "ml", "retrieval": "ml",
     }
 
-    row = (await async_session.execute(
+    row = (await session.execute(
         select(Config).where(Config.key == "feature_flags")
     )).scalar_one()
     assert row.value["ml_extraction"] is True
@@ -522,33 +519,35 @@ async def test_set_mode_ml_flips_all_three_flags(auth_client, async_session):
 
 
 @pytest.mark.asyncio
-async def test_set_mode_llm_flips_all_three_flags(auth_client):
-    resp = await auth_client.post("/api/v1/pipeline/mode", json={"mode": "llm"})
+async def test_set_mode_llm_flips_all_three_flags(client, auth_headers):
+    resp = await client.post("/api/v1/pipeline/mode", json={"mode": "llm"}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["mode"] == "llm"
 
 
 @pytest.mark.asyncio
-async def test_set_mode_rejects_invalid_value(auth_client):
-    resp = await auth_client.post("/api/v1/pipeline/mode", json={"mode": "auto"})
+async def test_set_mode_rejects_invalid_value(client, auth_headers):
+    resp = await client.post("/api/v1/pipeline/mode", json={"mode": "auto"}, headers=auth_headers)
     assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_set_mode_preserves_unrelated_flags(auth_client, async_session):
+async def test_set_mode_preserves_unrelated_flags(client, auth_headers, session):
     from app.models.config import Config
-    async_session.add(Config(key="feature_flags", value={
+    from sqlalchemy import select
+
+    session.add(Config(key="feature_flags", value={
         "hybrid_search_enabled": True,
         "ml_extraction": False,
         "ml_classification": False,
         "ml_retrieval": False,
     }))
-    await async_session.flush()
+    await session.flush()
 
-    resp = await auth_client.post("/api/v1/pipeline/mode", json={"mode": "ml"})
+    resp = await client.post("/api/v1/pipeline/mode", json={"mode": "ml"}, headers=auth_headers)
     assert resp.status_code == 200
 
-    row = (await async_session.execute(
+    row = (await session.execute(
         select(Config).where(Config.key == "feature_flags")
     )).scalar_one()
     assert row.value["hybrid_search_enabled"] is True
@@ -636,26 +635,28 @@ Append to `backend/tests/test_pipeline_routes.py`:
 
 ```python
 @pytest.mark.asyncio
-async def test_unload_invalid_group_returns_422(auth_client):
-    resp = await auth_client.post("/api/v1/pipeline/unload?group=bogus")
+async def test_unload_invalid_group_returns_422(client, auth_headers):
+    resp = await client.post("/api/v1/pipeline/unload?group=bogus", headers=auth_headers)
     assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_unload_when_nothing_loaded_returns_empty(auth_client, monkeypatch):
+async def test_unload_when_nothing_loaded_returns_empty(client, auth_headers, monkeypatch):
     from app.services import ml_models as mm
     monkeypatch.setattr(mm, "_INSTANCE", None)
-    resp = await auth_client.post("/api/v1/pipeline/unload")
+    resp = await client.post("/api/v1/pipeline/unload", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["unloaded"] == []
 
 
 @pytest.mark.asyncio
-async def test_unload_group_calls_unload_function(auth_client, monkeypatch):
+async def test_unload_group_calls_unload_function(client, auth_headers, monkeypatch):
     from app.services import ml_models as mm
     calls = []
     def fake_unload():
         calls.append("extraction")
+    # The endpoint looks up the unload fn by name via getattr(mm, ...)
+    # so monkeypatching mm.unload_extraction here is observed.
     monkeypatch.setattr(mm, "unload_extraction", fake_unload)
 
     fake_instance = type("Fake", (), {
@@ -665,7 +666,7 @@ async def test_unload_group_calls_unload_function(auth_client, monkeypatch):
     })()
     monkeypatch.setattr(mm, "_INSTANCE", fake_instance)
 
-    resp = await auth_client.post("/api/v1/pipeline/unload?group=extraction")
+    resp = await client.post("/api/v1/pipeline/unload?group=extraction", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert "extraction" in body["unloaded"]
@@ -679,13 +680,13 @@ Expected: new tests FAIL (endpoint not implemented).
 
 - [ ] **Step 3: Implement endpoint**
 
-Add to `backend/app/api/routes/pipeline.py`:
+Add to `backend/app/api/routes/pipeline.py`. **Important:** look up `unload_*` functions via `getattr(mm, fn_name)` at call time rather than capturing them at import. Module-level captures would defeat `monkeypatch.setattr(mm, "unload_extraction", ...)` in the tests. Remove the earlier top-of-file imports of `unload_classification`, `unload_extraction`, `unload_retriever` — they're not referenced directly anymore.
 
 ```python
-_UNLOAD_FNS = {
-    "extraction": unload_extraction,
-    "classification": unload_classification,
-    "retriever": unload_retriever,
+_UNLOAD_FN_NAMES = {
+    "extraction": "unload_extraction",
+    "classification": "unload_classification",
+    "retriever": "unload_retriever",
 }
 _LOADED_ATTRS = {
     "extraction": "extraction_loaded",
@@ -701,16 +702,19 @@ async def unload_pipeline(
 ):
     from app.services import ml_models as mm
 
-    targets = [group] if group else list(_UNLOAD_FNS.keys())
+    targets = [group] if group else list(_UNLOAD_FN_NAMES.keys())
     unloaded: list[str] = []
     if mm._INSTANCE is not None:
         for name in targets:
             if getattr(mm._INSTANCE, _LOADED_ATTRS[name], False):
-                await asyncio.to_thread(_UNLOAD_FNS[name])
+                fn = getattr(mm, _UNLOAD_FN_NAMES[name])
+                await asyncio.to_thread(fn)
                 unloaded.append(name)
 
     return {"unloaded": unloaded, "groups": group_status()}
 ```
+
+Also update the top-of-file imports from the earlier tasks: drop `unload_classification, unload_extraction, unload_retriever` — only `group_status` and `models_available` are still needed by direct reference. Keep the `from app.services.ml_models import ...` line but remove the three now-unused names.
 
 - [ ] **Step 4: Run tests**
 
@@ -744,7 +748,7 @@ async def test_metrics_requires_auth(client):
 
 
 @pytest.mark.asyncio
-async def test_metrics_returns_expected_keys(auth_client, monkeypatch):
+async def test_metrics_returns_expected_keys(client, auth_headers, monkeypatch):
     from app.services import system_metrics as sm
     monkeypatch.setattr(sm, "snapshot", lambda: {
         "cpu_percent": 12.0,
@@ -754,7 +758,7 @@ async def test_metrics_returns_expected_keys(auth_client, monkeypatch):
         "vram_used_mb": 3072,
         "vram_total_mb": 12288,
     })
-    resp = await auth_client.get("/api/v1/pipeline/metrics")
+    resp = await client.get("/api/v1/pipeline/metrics", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["cpu_percent"] == 12.0
@@ -763,13 +767,13 @@ async def test_metrics_returns_expected_keys(auth_client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_metrics_graceful_null_fields(auth_client, monkeypatch):
+async def test_metrics_graceful_null_fields(client, auth_headers, monkeypatch):
     from app.services import system_metrics as sm
     monkeypatch.setattr(sm, "snapshot", lambda: {
         "cpu_percent": None, "ram_used_mb": None, "ram_total_mb": None,
         "gpu_util_percent": None, "vram_used_mb": None, "vram_total_mb": None,
     })
-    resp = await auth_client.get("/api/v1/pipeline/metrics")
+    resp = await client.get("/api/v1/pipeline/metrics", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["cpu_percent"] is None
 ```
@@ -2045,9 +2049,10 @@ interface Props {
   purpose: LLMPurpose
   config: LlmPurposeConfig
   prompts: PipelineState["prompts"]
+  onObsoleteDetected?: (counts: { memories: number; code_chunks: number; entities: number }) => void
 }
 
-export function LLMPurposeCard({ purpose, config, prompts }: Props) {
+export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }: Props) {
   const update = useUpdateLlmConfig()
   const [open, setOpen] = useState(purpose === "extraction")
   const [draft, setDraft] = useState<LlmPurposeConfig>(config)
@@ -2085,9 +2090,14 @@ export function LLMPurposeCard({ purpose, config, prompts }: Props) {
       }
     }
     update.mutate({ [purpose]: payload }, {
-      onSuccess: () => {
-        toast.success(`${purpose} updated`)
+      onSuccess: (data) => {
         setDirty(false)
+        const obs = data.obsolete_after_change
+        if (obs && (obs.memories > 0 || obs.code_chunks > 0 || obs.entities > 0)) {
+          onObsoleteDetected?.(obs)
+        } else {
+          toast.success(`${purpose} updated`)
+        }
       },
       onError: (err) => toast.error(`Save failed: ${err.message}`),
     })
@@ -2238,9 +2248,20 @@ git commit -m "feat(frontend): LLM purpose card with integrated prompt editor"
 Create `frontend/src/components/pipeline/LLMPanel.tsx`:
 
 ```typescript
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
-import { type PipelineState } from "@/hooks/api"
+import { Button } from "darkraise-ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "darkraise-ui/components/dialog"
+import { useNavigate } from "@tanstack/react-router"
+import { toast } from "sonner"
+import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
 import type { LLMPurpose } from "./prompt-map"
 
@@ -2253,8 +2274,25 @@ interface Props {
 }
 
 export function LLMPanel({ state }: Props) {
+  const navigate = useNavigate()
+  const reembedAll = useReembedAll()
+  const [obsolete, setObsolete] = useState<
+    { memories: number; code_chunks: number; entities: number } | null
+  >(null)
+
   const llmStages = Object.values(state.stages).filter((v) => v === "llm").length
   const status = llmStages === 3 ? "active" : llmStages === 0 ? "inactive" : "mixed"
+
+  const startReembed = () => {
+    reembedAll.mutate(undefined, {
+      onSuccess: () => {
+        toast.info("Re-embed started — progress on /reindex")
+        setObsolete(null)
+        navigate({ to: "/reindex" })
+      },
+      onError: (err) => toast.error(`Re-embed failed: ${(err as Error).message}`),
+    })
+  }
 
   return (
     <Card className={status === "inactive" ? "opacity-60" : ""}>
@@ -2274,13 +2312,43 @@ export function LLMPanel({ state }: Props) {
             purpose={p}
             config={state.llm[p]}
             prompts={state.prompts}
+            onObsoleteDetected={setObsolete}
           />
         ))}
       </CardContent>
+
+      <Dialog open={obsolete !== null} onOpenChange={(v) => !v && setObsolete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Embedding model changed</DialogTitle>
+          </DialogHeader>
+          {obsolete && (
+            <div className="text-sm space-y-3 py-2">
+              <p>The embedding changed. Existing vectors are now from the old model:</p>
+              <ul className="text-sm space-y-1 pl-4 list-disc">
+                {obsolete.memories > 0 && <li>{obsolete.memories} memories</li>}
+                {obsolete.entities > 0 && <li>{obsolete.entities} entities</li>}
+                {obsolete.code_chunks > 0 && <li>{obsolete.code_chunks} code chunks</li>}
+              </ul>
+              <p className="text-[11px] text-muted-foreground">
+                Re-embedding recomputes vectors only; extraction and classification stay as-is.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setObsolete(null)}>Later</Button>
+            <Button onClick={startReembed} disabled={reembedAll.isPending}>
+              {reembedAll.isPending ? "Starting…" : "Re-embed now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
 ```
+
+Note: `useReembedAll` is the existing hook already used by `/llm.tsx` today — it lives in `frontend/src/hooks/api/use-config-api.ts` or `use-reembed-api.ts`; use whichever file currently exports it. No changes to that hook.
 
 - [ ] **Step 2: Typecheck**
 
@@ -2403,13 +2471,16 @@ Create `frontend/tests/pipeline.spec.ts` (adjust path if the project has another
 import { test, expect } from "@playwright/test"
 
 test.beforeEach(async ({ page }) => {
+  // Serve an evolving aggregator state so the "flip mode" test sees the new
+  // state after invalidation rather than the pre-flip mock.
+  let aggregatorStages: "llm" | "ml" = "llm"
   await page.route("**/api/v1/pipeline", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        mode: "llm",
-        stages: { extraction: "llm", classification: "llm", retrieval: "llm" },
+        mode: aggregatorStages,
+        stages: { extraction: aggregatorStages, classification: aggregatorStages, retrieval: aggregatorStages },
         shadow_mode: false,
         ml: {
           device: "auto",
@@ -2455,16 +2526,22 @@ test.beforeEach(async ({ page }) => {
       }),
     }),
   )
-  await page.route("**/api/v1/pipeline/mode", (route) =>
-    route.fulfill({
+  await page.route("**/api/v1/pipeline/mode", async (route, req) => {
+    const body = JSON.parse(req.postData() || "{}")
+    aggregatorStages = body.mode === "ml" ? "ml" : "llm"
+    await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        mode: "ml",
-        stages: { extraction: "ml", classification: "ml", retrieval: "ml" },
+        mode: aggregatorStages,
+        stages: {
+          extraction: aggregatorStages,
+          classification: aggregatorStages,
+          retrieval: aggregatorStages,
+        },
       }),
-    }),
-  )
+    })
+  })
 })
 
 test("pipeline page flips mode and exposes advanced switches", async ({ page }) => {
@@ -2882,22 +2959,85 @@ Create `frontend/tests/reindex-link.spec.ts`:
 ```typescript
 import { test, expect } from "@playwright/test"
 
+const AGGREGATOR_STUB = {
+  mode: "llm",
+  stages: { extraction: "llm", classification: "llm", retrieval: "llm" },
+  shadow_mode: false,
+  ml: {
+    device: "auto", effective_device: null, cuda_index: 0,
+    persistence: "ttl", idle_ttl_minutes: 30, eviction_check_interval_seconds: 60,
+    cpu_fallback: true,
+    available_devices: [{ id: "cpu", label: "CPU", kind: "cpu", index: null }],
+  },
+  llm: {
+    embedding: { provider: "ollama", base_url: "", model: "old-embed", api_key: null, dimensions: 768, reasoning: false, tool_call_mode: "json", params: {} },
+    extraction: { provider: "ollama", base_url: "", model: "x", api_key: null, dimensions: null, reasoning: false, tool_call_mode: "json", params: {} },
+    classification: { provider: "ollama", base_url: "", model: "x", api_key: null, dimensions: null, reasoning: false, tool_call_mode: "json", params: {} },
+    reasoning: { provider: "ollama", base_url: "", model: "x", api_key: null, dimensions: null, reasoning: false, tool_call_mode: "json", params: {} },
+    summarization: { provider: "ollama", base_url: "", model: "x", api_key: null, dimensions: null, reasoning: false, tool_call_mode: "json", params: {} },
+    reranker: { provider: "ollama", base_url: "", model: "x", api_key: null, dimensions: null, reasoning: false, tool_call_mode: "json", params: {} },
+  },
+  prompts: {
+    extraction: { default: "d", override: "", effective: "d" },
+    extraction_entities: { default: "d", override: "", effective: "d" },
+    extraction_relationships: { default: "d", override: "", effective: "d" },
+    classification: { default: "d", override: "", effective: "d" },
+    reasoning: { default: "d", override: "", effective: "d" },
+    summarization: { default: "d", override: "", effective: "d" },
+  },
+}
+
 test("Re-embed dialog on /pipeline navigates to /reindex", async ({ page }) => {
-  // Stub the aggregator so the page renders.
   await page.route("**/api/v1/pipeline", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(AGGREGATOR_STUB),
+    }),
   )
+  await page.route("**/api/v1/pipeline/metrics", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        cpu_percent: null, ram_used_mb: null, ram_total_mb: null,
+        gpu_util_percent: null, vram_used_mb: null, vram_total_mb: null,
+        groups: {
+          extraction: { loaded: false, idle_seconds: null },
+          classification: { loaded: false, idle_seconds: null },
+          retriever: { loaded: false, idle_seconds: null },
+        },
+      }),
+    }),
+  )
+  // Force the obsolete-counts dialog to open by returning non-zero counts
+  // from POST /config/llm.
+  await page.route("**/api/v1/config/llm", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...AGGREGATOR_STUB.llm,
+        obsolete_after_change: { memories: 12, code_chunks: 0, entities: 4 },
+      }),
+    }),
+  )
+  // Intercept the re-embed start so we don't need a real backend.
+  await page.route("**/api/v1/reembed/start", (route) =>
+    route.fulfill({
+      status: 200, contentType: "application/json", body: "{}",
+    }),
+  )
+
   await page.goto("/pipeline")
-  // The "Re-embed now" button lives inside the embedding card's save dialog;
-  // trigger a dimension change, submit, then click the CTA. (Implementation
-  // left to the running backend OR stub the POST /config/llm response with
-  // obsolete_after_change.memories > 0 to force the dialog.)
-  // Minimum assertion: the navigation happens to /reindex, not /pipeline.
-  // Detailed coverage: see the LLM card save flow in PR 2.
+  await page.getByText("▸ Embedding", { exact: false }).click()
+  await page.getByLabel("Model").fill("new-embed-model")
+  await page.getByRole("button", { name: "Save" }).click()
+  await expect(page.getByText("Embedding model changed")).toBeVisible()
+  await page.getByRole("button", { name: "Re-embed now" }).click()
+  await expect(page).toHaveURL(/\/reindex$/)
 })
 ```
-
-If the dialog is complex to reach in a smoke test, stub the `POST /api/v1/config/llm` response to force the obsolete-counts dialog open, then click `Re-embed now`, then assert `page.url()` contains `/reindex`.
 
 - [ ] **Step 2: Run**
 
