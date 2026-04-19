@@ -427,7 +427,36 @@ async def test_aggregator_persistence_persistent(session):
 Run: `cd backend && pytest tests/test_pipeline_aggregator.py -v`
 Expected: all four tests pass.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Add a pin test against the prompts inventory**
+
+`_STAGE_PROMPT_KEYS` in the aggregator and `PROMPT_PURPOSE_MAP` in `frontend/src/components/pipeline/prompt-map.ts` must stay in sync. When someone adds a new stage-bound prompt to one side, the other silently stops rendering it. This test fails loudly when they drift.
+
+Append to `backend/tests/test_pipeline_aggregator.py`:
+
+```python
+def test_stage_prompt_keys_exhaust_prompts_module():
+    """Every key in _STAGE_PROMPT_KEYS must exist in services.prompt.PROMPTS,
+    and every non-orphan PROMPTS key must be in _STAGE_PROMPT_KEYS.
+
+    The orphan allowlist mirrors ORPHAN_PROMPTS in the frontend prompt-map.ts.
+    When either side changes, this test is the first thing that fails.
+    """
+    from app.services import prompt as _prompt_mod
+    from app.services.pipeline_aggregator import _STAGE_PROMPT_KEYS
+
+    ORPHANS = {"chat", "cluster_naming", "agent_instructions"}
+    defaults = set(_prompt_mod.PROMPTS.keys())
+    stage = set(_STAGE_PROMPT_KEYS)
+
+    assert stage.issubset(defaults), f"aggregator references unknown prompts: {stage - defaults}"
+    uncovered = defaults - stage - ORPHANS
+    assert not uncovered, f"PROMPTS has keys not in stage list or orphans: {uncovered}"
+```
+
+Run: `cd backend && pytest tests/test_pipeline_aggregator.py -v`
+Expected: all five tests pass (four from Steps 1+4 plus this pin).
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add backend/app/services/pipeline_aggregator.py backend/tests/test_pipeline_aggregator.py
@@ -927,8 +956,10 @@ Expected: packages install; `frontend/package.json` gains the new devDependencie
 
 - [ ] **Step 2: Install Playwright**
 
-Run: `cd frontend && npm install --save-dev @playwright/test && npx playwright install --with-deps chromium`
-Expected: Playwright installs, Chromium downloads.
+Run: `cd frontend && npm install --save-dev @playwright/test && npx playwright install chromium`
+Expected: Playwright installs, Chromium binary downloads to the Playwright cache.
+
+Note: `--with-deps` is intentionally omitted — on Linux it apt-installs system libraries and requires sudo, which trips CI and developer laptops without passwordless sudo. On a Linux CI runner that lacks the system libs, add `--with-deps` there only.
 
 - [ ] **Step 3: Add test scripts to `package.json`**
 
@@ -971,7 +1002,7 @@ import { defineConfig, devices } from "@playwright/test"
 export default defineConfig({
   testDir: "./tests",
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:3636",
     trace: "on-first-retry",
   },
   projects: [
@@ -979,7 +1010,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev",
-    url: "http://localhost:5173",
+    url: "http://localhost:3636",
     reuseExistingServer: !process.env.CI,
   },
 })
@@ -1312,7 +1343,7 @@ describe("prompt-map", () => {
 - [ ] **Step 3: Run tests**
 
 Run: `cd frontend && npx vitest run src/components/pipeline/__tests__/prompt-map.test.ts`
-Expected: all three tests pass. (If vitest isn't the project's frontend test runner, substitute the command the project uses. If there is no unit test runner at all, skip this step — the typecheck in Step 4 still catches the type layer.)
+Expected: all three tests pass. Vitest is installed by Task 8A earlier in this phase, so no fallback is needed.
 
 - [ ] **Step 4: Typecheck**
 
@@ -2952,9 +2983,27 @@ git commit -m "refactor(frontend): /llm redirects to /pipeline; nav updated"
 **Files:**
 - Modify: `frontend/src/routes/_authenticated/settings.tsx`
 
-- [ ] **Step 1: Update the tabs constant and the tab router**
+> **Step order matters.** Step 1 below creates the `settings-tab.ts` helper. Later steps import from it. Do them in the order shown.
 
-In `frontend/src/routes/_authenticated/settings.tsx`, delete any existing `type SettingsTabValue = ...` line and import the type from the new `settings-tab.ts` helper (created in Step 6). Replace `SETTINGS_TABS`:
+- [ ] **Step 1: Create the shared tab-resolution helper**
+
+Create `frontend/src/routes/_authenticated/settings-tab.ts`:
+
+```typescript
+export type SettingsTabValue = "flags" | "classification" | "workers" | "assistant"
+const LEGACY: Record<string, SettingsTabValue> = { ml: "flags", prompts: "assistant" }
+const KNOWN: SettingsTabValue[] = ["flags", "classification", "workers", "assistant"]
+
+export function resolveStoredTab(stored: string | null): SettingsTabValue {
+  if (stored && LEGACY[stored]) return LEGACY[stored]
+  if (stored && (KNOWN as string[]).includes(stored)) return stored as SettingsTabValue
+  return "flags"
+}
+```
+
+- [ ] **Step 2: Update the tabs constant and the tab router**
+
+In `frontend/src/routes/_authenticated/settings.tsx`, delete any existing `type SettingsTabValue = ...` line and import the type from the helper. Replace `SETTINGS_TABS`:
 
 ```typescript
 import { resolveStoredTab, type SettingsTabValue } from "./settings-tab"
@@ -2969,7 +3018,7 @@ const SETTINGS_TABS = [
 
 The `as const satisfies` lock-step means any mismatch between the tab union in `settings-tab.ts` and the UI labels here fails typecheck.
 
-- [ ] **Step 2: Migrate the persisted tab key**
+- [ ] **Step 3: Migrate the persisted tab key**
 
 Replace the `useState` initializer for `tab`:
 
@@ -2982,7 +3031,7 @@ const [tab, setTab] = useState<SettingsTabValue>(() => {
 
 Uses the shared helper from Step 6, so migration logic lives in exactly one place.
 
-- [ ] **Step 3: Remove the `ml` and `prompts` TabsContents, add `assistant`**
+- [ ] **Step 4: Remove the `ml` and `prompts` TabsContents, add `assistant`**
 
 In the `<Tabs>` body, delete the `<TabsContent value="ml">` block containing `MLDeviceCard` and the `<TabsContent value="prompts">` block containing `SystemPromptsCard`. Add:
 
@@ -2992,7 +3041,7 @@ In the `<Tabs>` body, delete the `<TabsContent value="ml">` block containing `ML
 </TabsContent>
 ```
 
-- [ ] **Step 4: Trim `FeatureFlagsCard`**
+- [ ] **Step 5: Trim `FeatureFlagsCard`**
 
 Replace the body of `FeatureFlagsCard` with this concrete version. Keeps `hybrid_search_enabled`, `llm_enrichment_enabled`, `reranker_enabled`, `pipeline_concurrency`, `embedding_batch_size`, `embedding_concurrency`, `entity_cache_ttl_minutes`, and `confidence_rank_gamma` per Section 3.3. Drops every `ml_*` flag plus the two eviction knobs (they live on the Pipeline page now).
 
@@ -3085,9 +3134,13 @@ function FeatureFlagsCard() {
 }
 ```
 
-Then remove the now-unused `MLDeviceCard`, `SystemPromptsCard`, `_PROMPT_LABELS` / `PROMPT_LABELS`, `useMLDevices`, `useApplyMLDevice`, `useMLModelsHealth`, `useSystemPrompts`, `useUpdateSystemPrompts` imports from the top of `settings.tsx` (anything only used by the deleted ML Pipeline / System Prompts tabs). Keep imports the new `AssistantPromptsCard` still needs: `useSystemPrompts`, `useUpdateSystemPrompts`, `Badge`, `ToggleGroup`, `ToggleGroupItem`, `Textarea`.
+Then clean up `settings.tsx`:
 
-- [ ] **Step 5: Add `AssistantPromptsCard`**
+- **Delete** the `MLDeviceCard` component definition, the `SystemPromptsCard` component definition, and the `PROMPT_LABELS` (or `_PROMPT_LABELS`) constant.
+- **Delete** the top-of-file imports that only those two components needed: `useMLDevices`, `useApplyMLDevice`, `useMLModelsHealth`.
+- **Keep** `useSystemPrompts`, `useUpdateSystemPrompts`, `Badge`, `ToggleGroup`, `ToggleGroupItem`, `Textarea` — the new `AssistantPromptsCard` (Step 6) reuses them.
+
+- [ ] **Step 6: Add `AssistantPromptsCard`**
 
 Append near the bottom of `settings.tsx`:
 
@@ -3172,67 +3225,44 @@ function AssistantPromptsCard() {
 }
 ```
 
-- [ ] **Step 6: Migration unit test**
+- [ ] **Step 7: Migration unit test**
 
-Create `frontend/src/routes/_authenticated/__tests__/settings-tab-migration.test.ts`:
+Create `frontend/src/routes/_authenticated/__tests__/settings-tab-migration.test.ts` (imports from the helper created in Step 1):
 
 ```typescript
-import { describe, it, expect, beforeEach } from "vitest"
-
-// Pure function extracted from the tab initializer for testability.
-function resolveStoredTab(stored: string | null, known: string[]): string {
-  const LEGACY: Record<string, string> = { ml: "flags", prompts: "assistant" }
-  if (stored && LEGACY[stored]) return LEGACY[stored]
-  if (stored && known.includes(stored)) return stored
-  return "flags"
-}
-
-const KNOWN = ["flags", "classification", "workers", "assistant"]
+import { describe, it, expect } from "vitest"
+import { resolveStoredTab } from "../settings-tab"
 
 describe("settings tab migration", () => {
   it("migrates ml -> flags", () => {
-    expect(resolveStoredTab("ml", KNOWN)).toBe("flags")
+    expect(resolveStoredTab("ml")).toBe("flags")
   })
   it("migrates prompts -> assistant", () => {
-    expect(resolveStoredTab("prompts", KNOWN)).toBe("assistant")
+    expect(resolveStoredTab("prompts")).toBe("assistant")
   })
   it("keeps assistant idempotently", () => {
-    expect(resolveStoredTab("assistant", KNOWN)).toBe("assistant")
+    expect(resolveStoredTab("assistant")).toBe("assistant")
   })
   it("falls back when unknown", () => {
-    expect(resolveStoredTab("bogus", KNOWN)).toBe("flags")
+    expect(resolveStoredTab("bogus")).toBe("flags")
+  })
+  it("falls back when null", () => {
+    expect(resolveStoredTab(null)).toBe("flags")
   })
 })
 ```
 
-Extract the actual `resolveStoredTab` function from `settings.tsx` into a small module `frontend/src/routes/_authenticated/settings-tab.ts` so the test imports the production code rather than a copy:
-
-```typescript
-// settings-tab.ts
-export type SettingsTabValue = "flags" | "classification" | "workers" | "assistant"
-const LEGACY: Record<string, SettingsTabValue> = { ml: "flags", prompts: "assistant" }
-const KNOWN: SettingsTabValue[] = ["flags", "classification", "workers", "assistant"]
-
-export function resolveStoredTab(stored: string | null): SettingsTabValue {
-  if (stored && LEGACY[stored]) return LEGACY[stored]
-  if (stored && (KNOWN as string[]).includes(stored)) return stored as SettingsTabValue
-  return "flags"
-}
-```
-
-Then in `settings.tsx`, import and use `resolveStoredTab`. Update the test to import from the shared module.
-
-- [ ] **Step 7: Run tests**
+- [ ] **Step 8: Run tests**
 
 Run: `cd frontend && npx vitest run src/routes/_authenticated/__tests__/settings-tab-migration.test.ts`
-Expected: all four cases pass.
+Expected: all five cases pass.
 
-- [ ] **Step 8: Typecheck**
+- [ ] **Step 9: Typecheck**
 
 Run: `cd frontend && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add frontend/src/routes/_authenticated/settings.tsx frontend/src/routes/_authenticated/settings-tab.ts frontend/src/routes/_authenticated/__tests__/settings-tab-migration.test.ts
