@@ -62,6 +62,10 @@ class Settings(BaseSettings):
         provider="ollama", base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
+    llm_classification: LLMPurposeConfig = LLMPurposeConfig(
+        provider="ollama", base_url="http://localhost:11434/v1",
+        model="qwen2.5:3b", params={"temperature": 0},
+    )
     llm_reasoning: LLMPurposeConfig = LLMPurposeConfig(
         provider="ollama", base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0.7},
@@ -147,4 +151,12 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     "ml_classification": False,
     "ml_retrieval": False,
     "ml_shadow_mode": False,
+    "confidence_rank_gamma": 0.0,
+    "ml_device": "auto",  # one of: "auto", "cpu", "cuda"
+    "ml_cuda_index": 0,   # applied when ml_device in {"auto", "cuda"} and CUDA is available
+    # Minutes of inactivity after which a loaded ML group is evicted from
+    # memory. 0 disables eviction (keep loaded forever). Groups are loaded
+    # lazily on first use; this knob only controls how long they stay hot.
+    "ml_idle_ttl_minutes": 30,
+    "ml_eviction_check_interval_seconds": 60,
 }

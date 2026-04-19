@@ -6,7 +6,11 @@ from app.models.config import Config
 from app.schemas.config import LLMPurposeConfigSchema
 
 LLM_CONFIG_KEY = "llm_config"
-PURPOSES = ["embedding", "extraction", "reasoning", "summarization", "reranker"]
+# `classification` is new in schema-v2. The field defaults to the same Ollama
+# config as `extraction` so existing deployments keep working without a DB
+# update; callers that want a different classification model can edit it in
+# the UI.
+PURPOSES = ["embedding", "extraction", "classification", "reasoning", "summarization", "reranker"]
 
 
 def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeConfigSchema:
@@ -26,6 +30,7 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
     defaults = {
         "embedding": settings.llm_embedding,
         "extraction": settings.llm_extraction,
+        "classification": settings.llm_classification,
         "reasoning": settings.llm_reasoning,
         "summarization": settings.llm_summarization,
         "reranker": settings.llm_reranker,

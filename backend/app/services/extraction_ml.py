@@ -22,7 +22,7 @@ from typing import Any
 
 from app.config import ml_pipeline_settings
 from app.services.extraction import clean_extraction
-from app.services.ml_models import MLModels, get_ml_models
+from app.services.ml_models import MLModels, ensure_extraction_loaded
 from app.taxonomy import ENTITY_TYPES, normalize_entity_type, normalize_relation_type
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ def _typer_id2label(model: Any) -> dict[int, str]:
     return {i: l for i, l in enumerate(_TYPER_LABELS_10)}
 
 
-def _run_span_and_type(ml: MLModels, content: str) -> list[dict]:
+def _run_span_and_type(ml: "MLModels", content: str) -> list[dict]:
     """Synchronous Stage 1 + Stage 2: detect spans then classify each.
 
     Runs inside :func:`asyncio.to_thread` from the async ``extract`` entrypoint.
@@ -140,8 +140,8 @@ def _run_span_and_type(ml: MLModels, content: str) -> list[dict]:
     for j in range(0, len(marked), batch):
         chunk = marked[j : j + batch]
         enc = ml.typer_tok(chunk, return_tensors="pt", truncation=True, max_length=max_len, padding=True)
-        if ml.device == "cuda":
-            enc = {k: v.to("cuda") for k, v in enc.items()}
+        if ml.device.startswith("cuda"):
+            enc = {k: v.to(ml.device) for k, v in enc.items()}
         with torch.no_grad():
             logits = ml.typer(**enc).logits
         probs = F.softmax(logits, dim=-1)
@@ -182,8 +182,8 @@ def _run_relations(ml: MLModels, content: str, entities: list[dict]) -> list[dic
             max_length=ml_pipeline_settings.relation_max_source_length,
             truncation=True,
         )
-        if ml.device == "cuda":
-            tokens = {k: v.to("cuda") for k, v in tokens.items()}
+        if ml.device.startswith("cuda"):
+            tokens = {k: v.to(ml.device) for k, v in tokens.items()}
         with torch.no_grad():
             out = ml.relation.generate(
                 **tokens,
@@ -209,11 +209,16 @@ def _run_relations(ml: MLModels, content: str, entities: list[dict]) -> list[dic
             "properties": {},
             "weight": 0.6,
         })
+    # REL_MAP_5 (10 -> 5) collapse lives in `clean_extraction`, the shared
+    # downstream helper both this path and the LLM path go through.
     return rels_out
 
 
 def _extract_sync(content: str) -> dict:
-    ml = get_ml_models()
+    # Lazy-load the extraction group (span + typer + relation) and bump its
+    # last-access timestamp so the idle eviction task does not reclaim it
+    # while we are still inferring.
+    ml = ensure_extraction_loaded()
     entities = _run_span_and_type(ml, content)
     relationships = _run_relations(ml, content, entities)
     return {

@@ -1,7 +1,11 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+MemoryStatus = Literal["active", "deprecated", "superseded"]
 
 
 class MemoryCreate(BaseModel):
@@ -13,6 +17,7 @@ class MemoryCreate(BaseModel):
     importance: float = 0.5
     metadata: dict = Field(default_factory=dict)
     expires_at: datetime | None = None
+    project: str | None = None
 
 
 class MemoryUpdate(BaseModel):
@@ -23,6 +28,8 @@ class MemoryUpdate(BaseModel):
     metadata: dict | None = None
     expires_at: datetime | None = None
     is_archived: bool | None = None
+    project: str | None = None
+    status: MemoryStatus | None = None
 
 
 class MemoryResponse(BaseModel):
@@ -48,6 +55,11 @@ class MemoryResponse(BaseModel):
     llm_emotions: list[str] | None = None
     llm_flags: list[str] | None = None
     related_memories: list[dict] | None = None
+    project: str = "default"
+    status: MemoryStatus = "active"
+    superseded_by: uuid.UUID | None = None
+    technologies: list[str] = Field(default_factory=list)
+    confidence: float = 0.75
 
 
 class PaginatedMemoryResponse(BaseModel):
@@ -69,6 +81,9 @@ class MemorySearchRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
     semantic_weight: float = Field(default=0.7, ge=0.0, le=1.0)
+    project: str | None = None
+    status: list[MemoryStatus] = Field(default_factory=lambda: ["active"])
+    technologies_any: list[str] | None = None
 
 
 class MemoryBatchCreate(BaseModel):

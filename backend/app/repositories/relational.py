@@ -15,8 +15,8 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, content, source, source_agent, memory_type, importance, metadata, expires_at=None):
-        memory = Memory(
+    async def create(self, content, source, source_agent, memory_type, importance, metadata, expires_at=None, project=None):
+        kwargs = dict(
             content=content,
             source=source,
             source_agent=source_agent,
@@ -25,6 +25,9 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             metadata_=metadata,
             expires_at=expires_at,
         )
+        if project is not None:
+            kwargs["project"] = project
+        memory = Memory(**kwargs)
         self.session.add(memory)
         await self.session.flush()
         await self.session.refresh(memory, ["tags"])
@@ -81,62 +84,70 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         result = await self.session.execute(stmt)
         return list(result.scalars().all()), total
 
-    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20):
-        stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
-
+    def _apply_filters(
+        self,
+        stmt,
+        query=None,
+        tags_any=None,
+        tags_all=None,
+        memory_type=None,
+        source=None,
+        wing=None,
+        room=None,
+        hall=None,
+        project=None,
+        status=None,
+        technologies_any=None,
+    ):
         if query:
             stmt = stmt.where(
                 sa_text("memories.search_vector @@ plainto_tsquery('english', :fts_query)").bindparams(fts_query=query)
             )
-
         if tags_any:
             stmt = stmt.where(Memory.tags.any(Tag.name.in_(tags_any)))
-
         if tags_all:
             for tag_name in tags_all:
                 stmt = stmt.where(Memory.tags.any(Tag.name == tag_name))
-
         if memory_type:
             stmt = stmt.where(Memory.memory_type == memory_type)
-
         if source:
             stmt = stmt.where(Memory.source == source)
-
         if wing is not None:
             stmt = stmt.where(Memory.wing == wing)
-
         if room is not None:
             stmt = stmt.where(Memory.room == room)
-
         if hall is not None:
             stmt = stmt.where(Memory.hall == hall)
+        if project is not None:
+            stmt = stmt.where(Memory.project == project)
+        if status:
+            stmt = stmt.where(Memory.status.in_(status))
+        if technologies_any:
+            stmt = stmt.where(Memory.technologies.overlap(list(technologies_any)))
+        return stmt
 
+    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20, project=None, status=None, technologies_any=None):
+        stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
+        stmt = self._apply_filters(
+            stmt,
+            query=query, tags_any=tags_any, tags_all=tags_all,
+            memory_type=memory_type, source=source,
+            wing=wing, room=room, hall=hall,
+            project=project, status=status, technologies_any=technologies_any,
+        )
         stmt = stmt.order_by(Memory.created_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20, offset=0):
+    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, wing=None, room=None, hall=None, limit=20, offset=0, project=None, status=None, technologies_any=None):
         base = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
-
-        if query:
-            base = base.where(
-                sa_text("memories.search_vector @@ plainto_tsquery('english', :fts_query)").bindparams(fts_query=query)
-            )
-        if tags_any:
-            base = base.where(Memory.tags.any(Tag.name.in_(tags_any)))
-        if tags_all:
-            for tag_name in tags_all:
-                base = base.where(Memory.tags.any(Tag.name == tag_name))
-        if memory_type:
-            base = base.where(Memory.memory_type == memory_type)
-        if source:
-            base = base.where(Memory.source == source)
-        if wing is not None:
-            base = base.where(Memory.wing == wing)
-        if room is not None:
-            base = base.where(Memory.room == room)
-        if hall is not None:
-            base = base.where(Memory.hall == hall)
+        base = self._apply_filters(
+            base,
+            query=query, tags_any=tags_any, tags_all=tags_all,
+            memory_type=memory_type, source=source,
+            wing=wing, room=room, hall=hall,
+            project=project, status=status, technologies_any=technologies_any,
+        )
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total = (await self.session.execute(count_stmt)).scalar() or 0

@@ -155,7 +155,6 @@ async def test_extraction_dispatcher_routes_ml_when_flag_on(session, monkeypatch
 
 async def test_extraction_dispatcher_falls_back_if_models_missing(session, monkeypatch):
     _flag_cache_reset()
-    monkeypatch.setattr("app.services.pipeline.models_available", lambda: False)
 
     def factory():
         class _Ctx:
@@ -170,10 +169,18 @@ async def test_extraction_dispatcher_falls_back_if_models_missing(session, monke
     pipeline = _FakePipeline(factory)
     await _set_flag(session, "ml_extraction", True)
 
+    # Lazy-load world: the dispatcher attempts the ML path first. Simulate a
+    # load failure by making the ML service raise; the dispatcher must catch
+    # and fall through to the LLM path.
+    async def _raise(*_args, **_kwargs):
+        raise RuntimeError("simulated ensure_extraction_loaded failure")
+
+    pipeline._extraction_ml.extract = _raise  # type: ignore[method-assign]
+
     dispatcher = _ExtractionDispatcher(pipeline)
     result = await dispatcher.extract("hello")
     assert result["_path"] == "llm"
-    assert pipeline._extraction_ml.calls == 0
+    assert pipeline._extraction_llm.calls == 1
 
 
 async def test_classification_dispatcher_routes_by_flag(session, monkeypatch):

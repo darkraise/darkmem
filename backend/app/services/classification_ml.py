@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from app.config import ml_pipeline_settings
-from app.services.ml_models import MLModels, get_ml_models
+from app.services.ml_models import MLModels, ensure_classification_loaded
 from app.taxonomy import MEMORY_TYPES
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def _classifier_id2label(model: Any) -> dict[int, str]:
 def _classify_sync(content: str) -> str:
     import torch  # noqa: PLC0415
 
-    ml: MLModels = get_ml_models()
+    ml: MLModels = ensure_classification_loaded()
     enc = ml.classifier_tok(
         content,
         return_tensors="pt",
@@ -46,8 +46,8 @@ def _classify_sync(content: str) -> str:
         max_length=ml_pipeline_settings.classifier_max_length,
         padding=False,
     )
-    if ml.device == "cuda":
-        enc = {k: v.to("cuda") for k, v in enc.items()}
+    if ml.device.startswith("cuda"):
+        enc = {k: v.to(ml.device) for k, v in enc.items()}
     with torch.no_grad():
         logits = ml.classifier(**enc).logits
     top = int(logits[0].argmax().item())

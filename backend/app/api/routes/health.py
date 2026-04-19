@@ -12,7 +12,7 @@ from fastapi import APIRouter
 
 from app.config import ml_pipeline_settings
 from app.services import ml_models as _ml_module
-from app.services.ml_models import models_available
+from app.services.ml_models import any_group_available, group_status, models_available
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,11 @@ async def ml_models_health() -> dict:
         return status
 
     status["loaded"] = models_available()
+    status["any_loaded"] = any_group_available()
     status["device"] = instance.device
     status["heads"] = _head_status(instance)
     status["sources"] = _head_sources(instance)
+    status["groups"] = group_status()
     status["embedding_dims"] = instance.embedding_dims
     status["fingerprint"] = instance.fingerprint
 

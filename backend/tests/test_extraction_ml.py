@@ -84,7 +84,15 @@ async def test_extract_whitespace_only():
 
 
 async def test_extract_falls_back_when_models_missing(monkeypatch):
-    """If MLModels aren't loaded, the service should return an error-tagged empty result."""
+    """If the lazy ML load fails, ExtractionMLService returns an error-tagged empty result."""
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("ensure_extraction_loaded: simulated missing weights")
+
+    # The ML path calls ensure_extraction_loaded inside the synchronous helper;
+    # force it to fail to exercise the error branch without touching the real
+    # models on disk.
+    monkeypatch.setattr("app.services.extraction_ml.ensure_extraction_loaded", _raise)
+
     svc = ExtractionMLService()
     result = await svc.extract("darkmem uses PostgreSQL 17")
     assert result["entities"] == []

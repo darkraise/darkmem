@@ -26,17 +26,92 @@ async def lifespan(app: FastAPI):
     pipeline = None
     llm = None
 
+    # Load UI-editable system prompts from the DB before anything else needs
+    # them (ML/LLM dispatchers both call `prompt.get()` synchronously).
+    try:
+        from app.services import prompt as _prompt_mod
+        async with async_session_factory() as _s:
+            await _prompt_mod.refresh_from_db(_s)
+        logger.info("Loaded %d system prompt overrides from DB", len(_prompt_mod.get_overrides()))
+    except Exception:
+        logger.exception("Could not load system_prompts overrides; falling back to in-code defaults")
+
+    ml_eviction_task = None
     if ml_pipeline_settings.enabled:
+        # Lazy-load ML groups on first use. We still read the device
+        # preference at startup so ``_instance_shell`` picks the right GPU
+        # for the deferred first load (the shell is created without any
+        # weights — no VRAM cost yet).
         try:
-            from app.services.ml_models import load_ml_models
-            logger.info(
-                "Warm-loading ML pipeline from %s on device=%s",
-                ml_pipeline_settings.models_dir, ml_pipeline_settings.device,
+            from app.services.ml_models import (
+                _instance_shell as _ml_instance_shell,
+                evict_idle as _ml_evict_idle,
             )
-            await asyncio.to_thread(load_ml_models)
-            logger.info("ML pipeline loaded")
+            device_pref = ml_pipeline_settings.device
+            cuda_index_pref: int | None = None
+            check_interval = 60.0
+            idle_ttl_minutes = 30
+            try:
+                from sqlalchemy import select as _sa_select
+                from app.models.config import Config as _Config
+                async with async_session_factory() as _s:
+                    row = (
+                        await _s.execute(_sa_select(_Config).where(_Config.key == "feature_flags"))
+                    ).scalar_one_or_none()
+                    if row and isinstance(row.value, dict):
+                        stored_device = row.value.get("ml_device")
+                        if stored_device in ("auto", "cpu", "cuda"):
+                            device_pref = stored_device
+                        stored_index = row.value.get("ml_cuda_index")
+                        if isinstance(stored_index, int) and 0 <= stored_index <= 15:
+                            cuda_index_pref = stored_index
+                        stored_ttl = row.value.get("ml_idle_ttl_minutes")
+                        if isinstance(stored_ttl, int) and stored_ttl >= 0:
+                            idle_ttl_minutes = stored_ttl
+                        stored_check = row.value.get("ml_eviction_check_interval_seconds")
+                        if isinstance(stored_check, int) and stored_check >= 10:
+                            check_interval = float(stored_check)
+            except Exception:
+                logger.exception("Could not read ml_device from feature_flags; using env defaults")
+
+            # Prime the shell on the chosen device without loading any heads.
+            # The first ensure_*_loaded call will populate it.
+            from app.services import ml_models as _mm
+            from app.services.ml_models import _resolve_device
+            with _mm._LOCK:
+                if _mm._INSTANCE is None:
+                    resolved = _resolve_device(device_pref, cuda_index_pref)
+                    _mm._INSTANCE = _mm.MLModels(
+                        device=resolved,
+                        models_dir=ml_pipeline_settings.models_dir,
+                    )
+            logger.info(
+                "ML pipeline enabled (lazy): device=%s idle_ttl_minutes=%d check_interval_s=%.0f",
+                _mm._INSTANCE.device if _mm._INSTANCE else device_pref,
+                idle_ttl_minutes, check_interval,
+            )
+
+            async def _ml_eviction_loop():
+                from app.services.pipeline import _get_feature_flags_cached
+                while True:
+                    try:
+                        flags = await _get_feature_flags_cached(async_session_factory)
+                        ttl_minutes = int(flags.get("ml_idle_ttl_minutes", idle_ttl_minutes) or 0)
+                        interval = float(flags.get("ml_eviction_check_interval_seconds", check_interval) or check_interval)
+                        if ttl_minutes > 0:
+                            evicted = await asyncio.to_thread(_ml_evict_idle, ttl_minutes * 60)
+                            if evicted:
+                                logger.info("ML idle eviction: released groups=%s", evicted)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.exception("ML eviction loop iteration failed")
+                        interval = check_interval
+                    await asyncio.sleep(max(10.0, interval))
+
+            ml_eviction_task = asyncio.create_task(_ml_eviction_loop())
         except Exception:
-            logger.exception("ML pipeline warm-load failed; ml_* flags will fall back to LLM path")
+            logger.exception("ML pipeline lazy setup failed")
 
     try:
         from app.services.config import get_llm_config
@@ -227,6 +302,8 @@ async def lifespan(app: FastAPI):
         enrichment_worker.stop()
     if enrichment_task:
         enrichment_task.cancel()
+    if ml_eviction_task:
+        ml_eviction_task.cancel()
 
     from app.services.task_registry import TaskRegistry
     TaskRegistry.cancel_all()

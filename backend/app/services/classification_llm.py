@@ -43,9 +43,15 @@ class ClassificationService:
             f"The 'type' field MUST be one of: {', '.join(valid_names)}"
         )
 
+        # Prefer the dedicated `classification` purpose so operators can pick
+        # a different model (or different params) for classification without
+        # also changing extraction. Falls back to `extraction` if the
+        # orchestrator does not have a `classification` entry (pre-schema-v2
+        # deployments whose DB row was written before the purpose existed).
+        purpose = "classification" if "classification" in self.llm.config else "extraction"
         try:
             response = await self.llm.chat_completion(
-                "extraction",
+                purpose,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

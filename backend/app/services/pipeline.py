@@ -14,8 +14,11 @@ from app.services.classification_ml import ClassificationMLService
 from app.services.extraction import ExtractionService
 from app.services.extraction_ml import ExtractionMLService
 from app.services.llm import LLMOrchestrator
+from app.services.confidence import estimate_confidence, rank_fusion_factor
 from app.services.memory_classifier import classify as regex_classify
-from app.services.ml_models import models_available
+from app.services.ml_models import models_available  # noqa: F401 — kept for external imports
+from app.services.relations import TECH_TYPES
+from app.services.supersession import detect_supersessions
 from app.services import prompt
 
 logger = logging.getLogger(__name__)
@@ -85,8 +88,10 @@ def _flag_cache_reset() -> None:
 class _ExtractionDispatcher:
     """Routes extraction to ML or LLM based on the live ``ml_extraction`` flag.
 
-    Falls back to the LLM path if the flag is set but the ML models aren't
-    loaded, emitting a one-time warning per process.
+    With lazy loading, the first ML call triggers the group load. If the
+    load fails (OOM, missing checkpoint) the call raises and we fall back
+    to the LLM path for this and subsequent requests until a one-time
+    per-process warning is cleared by a successful reload.
     """
 
     def __init__(self, pipeline: "ProcessingPipeline"):
@@ -96,11 +101,15 @@ class _ExtractionDispatcher:
     async def extract(self, content: str, system_prompt: str | None = None) -> dict:
         flags = await _get_feature_flags_cached(self._p.session_factory)
         if flags.get("ml_extraction", False):
-            if models_available():
+            try:
                 return await self._p._extraction_ml.extract(content, system_prompt)
-            if not self._warned_unavailable:
-                logger.warning("ml_extraction flag is on but MLModels are not loaded; using LLM path")
-                self._warned_unavailable = True
+            except Exception as exc:
+                if not self._warned_unavailable:
+                    logger.warning(
+                        "ml_extraction enabled but ML path failed (%s); falling back to LLM",
+                        exc,
+                    )
+                    self._warned_unavailable = True
         return await self._p._extraction_llm.extract(content, system_prompt)
 
 
@@ -118,13 +127,17 @@ class _ClassificationDispatcher:
     ) -> dict:
         flags = await _get_feature_flags_cached(self._p.session_factory)
         if flags.get("ml_classification", False):
-            if models_available():
+            try:
                 return await self._p._classification_ml.classify(
                     content, enabled_areas, system_prompt, mode=mode,
                 )
-            if not self._warned_unavailable:
-                logger.warning("ml_classification flag is on but MLModels are not loaded; using LLM path")
-                self._warned_unavailable = True
+            except Exception as exc:
+                if not self._warned_unavailable:
+                    logger.warning(
+                        "ml_classification enabled but ML path failed (%s); falling back to LLM",
+                        exc,
+                    )
+                    self._warned_unavailable = True
         return await self._p._classification_llm.classify(
             content, enabled_areas, system_prompt, mode=mode,
         )
@@ -318,7 +331,19 @@ class ProcessingPipeline:
                                 mem_record.llm_emotions = llm_classification.get("emotions") or None
                                 mem_record.llm_flags = llm_classification.get("flags") or None
 
+                            resolved_memory_type = (
+                                memory_type
+                                or (extraction.get("memory_type") if isinstance(extraction, dict) else None)
+                            )
+                            mem_record.confidence = estimate_confidence(content, resolved_memory_type)
+
                         if status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
+                            # Technologies are denormalised to the memory row so the
+                            # GIN index on `memories.technologies` can answer retrieval
+                            # filters without joining. Store lowercase so case drift in
+                            # canonical_map (e.g., "pgvector" vs "PgVector") does not
+                            # cause the supersession detector or search filter to miss.
+                            tech_names: set[str] = set()
                             for entity in extraction.get("entities", []):
                                 created = await graph_repo.create_entity(
                                     name=entity["name"], entity_type=entity["type"],
@@ -329,12 +354,29 @@ class ProcessingPipeline:
                                     await graph_repo.upsert_entity_embedding(
                                         created["id"], emb, model_fingerprint=self.embedding_fingerprint,
                                     )
+                                if entity.get("type") in TECH_TYPES:
+                                    canon = entity.get("name")
+                                    if canon:
+                                        tech_names.add(canon.lower())
                             for rel in extraction.get("relationships", []):
                                 await graph_repo.create_relationship(
                                     source_name=rel["source"], target_name=rel["target"],
                                     rel_type=rel["type"], properties=rel.get("properties", {}),
                                     weight=rel.get("weight", 0.5), memory_id=memory_id,
                                 )
+
+                            if mem_record is not None:
+                                mem_record.technologies = sorted(tech_names)
+                                if mem_record.technologies:
+                                    await session.flush([mem_record])
+                                    await detect_supersessions(
+                                        session,
+                                        new_memory_id=memory_id,
+                                        new_memory_text=content,
+                                        project=mem_record.project,
+                                        new_relations=extraction.get("relationships", []),
+                                    )
+
                             status["graph"] = "ok"
                         else:
                             status["graph"] = "skipped"
@@ -613,15 +655,55 @@ class ProcessingPipeline:
                         reranker = RerankerService(self.llm)
                         results = await reranker.rerank(query, results, top_k=limit)
 
+                    results = await self._apply_confidence_weighting(session, results, flags)
                     return results
             else:
                 vector = await self.llm.embed(query)
                 async with self.session_factory() as session:
                     vector_repo = PostgresVectorRepository(session, self.embedding_dims)
-                    return await vector_repo.search(vector, limit=limit)
+                    results = await vector_repo.search(vector, limit=limit)
+                    results = await self._apply_confidence_weighting(session, results, flags)
+                    return results
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
             raise
+
+    async def _apply_confidence_weighting(
+        self,
+        session,
+        results: list[dict],
+        flags: dict,
+    ) -> list[dict]:
+        """Rescale retrieval scores by memory confidence, multiplicatively.
+
+        ``final = base * (1 + gamma * (confidence - 0.75))``. With ``gamma=0``
+        (the default) the call is a no-op, so this stays behind the
+        ``confidence_rank_gamma`` flag until we have evidence that the signal
+        improves MRR.
+        """
+        gamma = float(flags.get("confidence_rank_gamma", 0.0) or 0.0)
+        if gamma == 0.0 or not results:
+            return results
+
+        memory_ids = [r.get("memory_id") or r.get("id") for r in results if (r.get("memory_id") or r.get("id"))]
+        if not memory_ids:
+            return results
+
+        from sqlalchemy import text as sa_text
+        row_result = await session.execute(
+            sa_text("SELECT id, confidence FROM memories WHERE id = ANY(:ids)"),
+            {"ids": [str(mid) for mid in memory_ids]},
+        )
+        conf_map: dict[str, float] = {str(row[0]): float(row[1]) for row in row_result}
+
+        score_key = "rrf_score" if results and "rrf_score" in results[0] else "score"
+        for r in results:
+            mid = str(r.get("memory_id") or r.get("id") or "")
+            conf = conf_map.get(mid, 0.75)
+            base = float(r.get(score_key, 0.0) or 0.0)
+            r[score_key] = base * rank_fusion_factor(conf, gamma)
+
+        return sorted(results, key=lambda r: float(r.get(score_key, 0.0) or 0.0), reverse=True)
 
     async def find_duplicates(self, memory_id: UUID, threshold: float = 0.9) -> list[dict]:
         try:

@@ -23,11 +23,12 @@ class LLMOrchestrator:
         return bool(flags.get("ml_retrieval", False))
 
     async def _embed_ml(self, text: str) -> list[float]:
-        from app.services.ml_models import get_ml_models  # noqa: PLC0415
-        ml = get_ml_models()
-        prefixed = ml_pipeline_settings.retriever_query_prefix + text
-
-        def _encode() -> list[float]:
+        # Lazy-load the retriever group. First call blocks while the model
+        # warms up; subsequent calls are cheap and just bump the access time.
+        def _load_then_encode() -> list[float]:
+            from app.services.ml_models import ensure_retriever_loaded  # noqa: PLC0415
+            ml = ensure_retriever_loaded()
+            prefixed = ml_pipeline_settings.retriever_query_prefix + text
             vec = ml.retriever.encode(
                 prefixed,
                 convert_to_numpy=True,
@@ -35,16 +36,15 @@ class LLMOrchestrator:
             )
             return vec.tolist()
 
-        return await asyncio.to_thread(_encode)
+        return await asyncio.to_thread(_load_then_encode)
 
     async def _embed_batch_ml(self, texts: list[str]) -> list[list[float]]:
-        from app.services.ml_models import get_ml_models  # noqa: PLC0415
-        ml = get_ml_models()
-        prefix = ml_pipeline_settings.retriever_query_prefix
-        prefixed = [prefix + t for t in texts]
-        batch = ml_pipeline_settings.retriever_batch_size
-
-        def _encode() -> list[list[float]]:
+        def _load_then_encode() -> list[list[float]]:
+            from app.services.ml_models import ensure_retriever_loaded  # noqa: PLC0415
+            ml = ensure_retriever_loaded()
+            prefix = ml_pipeline_settings.retriever_query_prefix
+            prefixed = [prefix + t for t in texts]
+            batch = ml_pipeline_settings.retriever_batch_size
             mat = ml.retriever.encode(
                 prefixed,
                 convert_to_numpy=True,
@@ -53,22 +53,17 @@ class LLMOrchestrator:
             )
             return mat.tolist()
 
-        return await asyncio.to_thread(_encode)
-
-    async def _ml_available(self) -> bool:
-        """Return True iff the ML singleton is loaded. Emits a single warning
-        the first time the flag is on but the models are missing."""
-        from app.services.ml_models import models_available  # noqa: PLC0415
-        if models_available():
-            return True
-        if not self._warned_ml_unavailable:
-            logger.warning("ml_retrieval flag is on but MLModels are not loaded; using LLM embedder")
-            self._warned_ml_unavailable = True
-        return False
+        return await asyncio.to_thread(_load_then_encode)
 
     async def embed(self, text: str) -> list[float]:
-        if await self._is_ml_retrieval_enabled() and await self._ml_available():
-            return await self._embed_ml(text)
+        if await self._is_ml_retrieval_enabled():
+            try:
+                return await self._embed_ml(text)
+            except Exception as exc:
+                if not self._warned_ml_unavailable:
+                    logger.warning("ml_retrieval enabled but load failed: %s", exc)
+                    self._warned_ml_unavailable = True
+                # Fall through to the Ollama embedder.
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
         response = await self._client.post(
@@ -85,8 +80,13 @@ class LLMOrchestrator:
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        if await self._is_ml_retrieval_enabled() and await self._ml_available():
-            return await self._embed_batch_ml(texts)
+        if await self._is_ml_retrieval_enabled():
+            try:
+                return await self._embed_batch_ml(texts)
+            except Exception as exc:
+                if not self._warned_ml_unavailable:
+                    logger.warning("ml_retrieval batch path failed, using LLM embedder: %s", exc)
+                    self._warned_ml_unavailable = True
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
         response = await self._client.post(

@@ -1,0 +1,495 @@
+{"id": "shared-07735", "relationships": [{"source": "bilingual search", "target": "language-detect", "type": "USES"}]}
+{"id": "shared-00077", "relationships": [{"source": "pyright", "target": "mypy", "type": "REPLACES"}]}
+{"id": "shared-13457", "relationships": [{"source": "in-toto", "target": "Sigstore bundle", "type": "USES"}]}
+{"id": "shared-12687", "relationships": [{"source": "better-sqlite3", "target": "Node.js", "type": "USES"}]}
+{"id": "shared-08395", "relationships": [{"source": "mediasoup", "target": "Worker", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07716", "relationships": [{"source": "Term vectors", "target": "positions", "type": "USES"}, {"source": "Term vectors", "target": "offsets", "type": "USES"}]}
+{"id": "shared-05524", "relationships": [{"source": "Topping D90SE", "target": "RME ADI-2", "type": "REPLACES"}]}
+{"id": "shared-08203", "relationships": [{"source": "CrewAI", "target": "producer-critic", "type": "USES"}, {"source": "CrewAI", "target": "manager agent", "type": "USES"}]}
+{"id": "shared-07079", "relationships": [{"source": "Hermes", "target": "IBC", "type": "CAUSES"}]}
+{"id": "shared-12671", "relationships": [{"source": "ON CONFLICT", "target": "SQLite", "type": "REPLACES"}]}
+{"id": "shared-07189", "relationships": [{"source": "GlitchTip", "target": "Sentry", "type": "REPLACES"}]}
+{"id": "shared-08101", "relationships": [{"source": "AWQ", "target": "Llama-3 70B", "type": "REPLACES"}]}
+{"id": "shared-07869", "relationships": [{"source": "Informatica PowerCenter", "target": "Teradata", "type": "USES"}]}
+{"id": "shared-06379", "relationships": [{"source": "Marquez", "target": "Neo4j", "type": "REPLACES"}]}
+{"id": "shared-13635", "relationships": [{"source": "Istio", "target": "mTLS", "type": "USES"}]}
+{"id": "shared-09079", "relationships": [{"source": "WASM", "target": "wasm32", "type": "DEPLOYED_ON"}, {"source": "TreeSitter", "target": "wasm32", "type": "DEPLOYED_ON"}]}
+{"id": "shared-02541", "relationships": [{"source": "Seat Alerts", "target": "ExpertFlyer", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07862", "relationships": [{"source": "dbt", "target": "PagerDuty", "type": "USES"}]}
+{"id": "shared-08679", "relationships": [{"source": "carrier NAT", "target": "UDP hole punching", "type": "CAUSES"}, {"source": "TURN", "target": "UDP hole punching", "type": "CAUSES"}]}
+{"id": "shared-09130", "relationships": [{"source": "CMSIS-RTOS2", "target": "Cortex-M", "type": "DEPLOYED_ON"}]}
+{"id": "shared-05698", "relationships": [{"source": "Podman", "target": "systemd", "type": "REPLACES"}]}
+{"id": "shared-12648", "relationships": [{"source": "git notes", "target": "build provenance", "type": "USES"}]}
+{"id": "shared-08672", "relationships": [{"source": "self-hosted controller", "target": "global earth controller", "type": "REPLACES"}]}
+{"id": "shared-08355", "relationships": [{"source": "STOMP", "target": "WebSocket", "type": "REPLACES"}]}
+{"id": "shared-09293", "relationships": [{"source": "CMajor", "target": "Pure Data", "type": "REPLACES"}]}
+{"id": "shared-00209", "relationships": [{"source": "Spotify", "target": "Apple Music", "type": "REPLACES"}]}
+{"id": "shared-05579", "relationships": [{"source": "Bitbucket Pipelines", "target": "Atlassian Bamboo", "type": "REPLACES"}]}
+{"id": "shared-06262", "relationships": [{"source": "Max", "target": "HBO Max", "type": "REPLACES"}]}
+{"id": "shared-06859", "relationships": [{"source": "Teladoc", "target": "Babylon", "type": "REPLACES"}]}
+{"id": "shared-06870", "relationships": [{"source": "Alexa Together", "target": "Papillon", "type": "USES"}]}
+{"id": "shared-09031", "relationships": [{"source": "web editor", "target": "WASM", "type": "REPLACES"}]}
+{"id": "shared-08605", "relationships": [{"source": "Doppler", "target": "Doppler UI", "type": "USES"}]}
+{"id": "shared-09029", "relationships": [{"source": "Error recovery", "target": "synchronising token", "type": "USES"}]}
+{"id": "shared-04990", "relationships": [{"source": "Invariants", "target": "saga", "type": "USES"}, {"source": "Invariants", "target": "distributed transaction", "type": "USES"}]}
+{"id": "shared-12616", "relationships": [{"source": "Sparse-checkout", "target": "cone mode", "type": "USES"}]}
+{"id": "shared-07292", "relationships": [{"source": "Node function", "target": "Vercel Edge Middleware", "type": "REPLACES"}]}
+{"id": "shared-07991", "relationships": [{"source": "Feast", "target": "registry", "type": "REPLACES"}]}
+{"id": "shared-04669", "relationships": [{"source": "Stockpile", "target": "Starbucks", "type": "REPLACES"}]}
+{"id": "shared-09512", "relationships": [{"source": "ESPresence", "target": "BLE", "type": "USES"}]}
+{"id": "shared-02736", "relationships": [{"source": "tutorials", "target": "getting-started", "type": "REPLACES"}]}
+{"id": "shared-00488", "relationships": [{"source": "Teslamate", "target": "Proxmox", "type": "DEPLOYED_ON"}]}
+{"id": "shared-04976", "relationships": [{"source": "upcasters", "target": "Event schema", "type": "IS_A"}]}
+{"id": "shared-00957", "relationships": [{"source": "BGStats", "target": "Supabase", "type": "USES"}]}
+{"id": "shared-11937", "relationships": [{"source": "go.work", "target": "types module", "type": "USES"}]}
+{"id": "shared-01856", "relationships": [{"source": "Project Panama", "target": "JNI", "type": "REPLACES"}]}
+{"id": "shared-07218", "relationships": [{"source": "Apache Beam", "target": "Dataflow", "type": "USES"}, {"source": "Apache Beam", "target": "Flink", "type": "USES"}]}
+{"id": "shared-02558", "relationships": [{"source": "BRIN", "target": "GIN", "type": "REPLACES"}]}
+{"id": "shared-09599", "relationships": [{"source": "Nextcloud", "target": "Collabora", "type": "USES"}]}
+{"id": "shared-09225", "relationships": [{"source": "Gaussian Splatting", "target": "WebGPU", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12155", "relationships": [{"source": "Event Sourcing", "target": "ledger service", "type": "USES"}]}
+{"id": "shared-04729", "relationships": [{"source": "Pawlicy Advisor", "target": "Spruce Pets", "type": "REPLACES"}]}
+{"id": "shared-12655", "relationships": [{"source": "PRAGMA mmap_size", "target": "SQLite", "type": "USES"}, {"source": "PRAGMA mmap_size", "target": "kernel page cache", "type": "USES"}]}
+{"id": "shared-08051", "relationships": [{"source": "vLLM", "target": "TGI", "type": "REPLACES"}]}
+{"id": "shared-12877", "relationships": [{"source": "DebugTree", "target": "CrashlyticsTree", "type": "USES"}]}
+{"id": "shared-09361", "relationships": [{"source": "bgfx", "target": "GLES", "type": "USES"}, {"source": "bgfx", "target": "Vulkan", "type": "USES"}, {"source": "bgfx", "target": "Metal", "type": "USES"}]}
+{"id": "shared-04268", "relationships": [{"source": "Gerrit", "target": "email patches", "type": "REPLACES"}]}
+{"id": "shared-08632", "relationships": [{"source": "incident channel", "target": "Vault", "type": "USES"}, {"source": "incident channel", "target": "AWS IAM", "type": "USES"}, {"source": "incident channel", "target": "GitHub deploy keys", "type": "USES"}]}
+{"id": "shared-07155", "relationships": [{"source": "Alertmanager", "target": "PagerDuty", "type": "USES"}, {"source": "Alertmanager", "target": "Slack", "type": "USES"}]}
+{"id": "shared-04727", "relationships": [{"source": "Whisker", "target": "Litter-Robot 4", "type": "USES"}]}
+{"id": "shared-07517", "relationships": [{"source": "ECMP", "target": "asymmetric hash", "type": "USES"}]}
+{"id": "shared-09809", "relationships": [{"source": "dnsmasq", "target": "ISC DHCP", "type": "REPLACES"}]}
+{"id": "shared-09651", "relationships": [{"source": "Kubebuilder", "target": "Operator SDK", "type": "REPLACES"}]}
+{"id": "shared-06875", "relationships": [{"source": "Sonos Era 100", "target": "Amazon Echo Dot", "type": "REPLACES"}]}
+{"id": "shared-08878", "relationships": [{"source": "Valgrind", "target": "packet-replay", "type": "USES"}]}
+{"id": "shared-03534", "relationships": [{"source": "FailsafeExecutor", "target": "ScheduledExecutorService", "type": "REPLACES"}]}
+{"id": "shared-09095", "relationships": [{"source": "WebSocket", "target": "stdio", "type": "REPLACES"}]}
+{"id": "shared-11959", "relationships": [{"source": "bun test", "target": "jest", "type": "REPLACES"}]}
+{"id": "shared-08777", "relationships": [{"source": "Soak tests", "target": "inventory service", "type": "USES"}]}
+{"id": "shared-07727", "relationships": [{"source": "Synonym graph", "target": "file-watcher rebuild", "type": "REPLACES"}]}
+{"id": "shared-07097", "relationships": [{"source": "peg-defence bot", "target": "Cairo 1", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07608", "relationships": [{"source": "VictoriaMetrics", "target": "vmstorage", "type": "USES"}, {"source": "VictoriaMetrics", "target": "vmselect", "type": "USES"}, {"source": "VictoriaMetrics", "target": "vminsert", "type": "USES"}]}
+{"id": "shared-07773", "relationships": [{"source": "Apache Arrow", "target": "pandas", "type": "REPLACES"}]}
+{"id": "shared-04758", "relationships": [{"source": "Obsidian", "target": "GrowVeg", "type": "USES"}]}
+{"id": "shared-09378", "relationships": [{"source": "WebGPU", "target": "wgpu", "type": "USES"}]}
+{"id": "shared-01824", "relationships": [{"source": "TSDB shipper", "target": "BoltDB shipper", "type": "REPLACES"}]}
+{"id": "shared-09769", "relationships": [{"source": "Pull-mode", "target": "push-from-server", "type": "REPLACES"}]}
+{"id": "shared-08067", "relationships": [{"source": "Autoscaling", "target": "Modal", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07438", "relationships": [{"source": "Redis", "target": "RDB", "type": "USES"}, {"source": "Redis", "target": "AOF", "type": "USES"}]}
+{"id": "shared-08885", "relationships": [{"source": "mimalloc", "target": "free-list sharding", "type": "USES"}, {"source": "mimalloc", "target": "deferred free", "type": "USES"}]}
+{"id": "shared-01656", "relationships": [{"source": "Stockfish", "target": "depth 22", "type": "USES"}]}
+{"id": "shared-07550", "relationships": [{"source": "MSS clamp", "target": "1360", "type": "USES"}, {"source": "MSS clamp", "target": "1340", "type": "USES"}]}
+{"id": "shared-07114", "relationships": [{"source": "CRI-O", "target": "dockerd", "type": "REPLACES"}]}
+{"id": "shared-01754", "relationships": [{"source": "iA Writer", "target": "Scrivener", "type": "REPLACES"}]}
+{"id": "shared-05557", "relationships": [{"source": "Flux v2", "target": "Argo CD", "type": "REPLACES"}]}
+{"id": "shared-01937", "relationships": [{"source": "Yocto Project", "target": "Buildroot", "type": "REPLACES"}]}
+{"id": "shared-06533", "relationships": [{"source": "Playwright", "target": "trace viewer", "type": "USES"}]}
+{"id": "shared-12284", "relationships": [{"source": "Emscripten", "target": "FS shim", "type": "USES"}, {"source": "Emscripten", "target": "SDL2", "type": "USES"}]}
+{"id": "shared-04992", "relationships": [{"source": "ItemQuantityAdjusted", "target": "CartRowUpdated", "type": "REPLACES"}]}
+{"id": "shared-06338", "relationships": [{"source": "Mimir", "target": "Cortex", "type": "REPLACES"}]}
+{"id": "shared-09067", "relationships": [{"source": "IntelliJ Platform", "target": "rust-analyzer", "type": "USES"}]}
+{"id": "shared-12622", "relationships": [{"source": ".gitignore", "target": "glob", "type": "USES"}]}
+{"id": "shared-08316", "relationships": [{"source": "axolotl", "target": "TRL", "type": "USES"}, {"source": "axolotl", "target": "DeepSpeed", "type": "USES"}]}
+{"id": "shared-09217", "relationships": [{"source": "RANSAC", "target": "Viola-Jones", "type": "REPLACES"}]}
+{"id": "shared-09656", "relationships": [{"source": "Subscription", "target": "/validate-v1-subscription", "type": "USES"}]}
+{"id": "shared-13375", "relationships": [{"source": "Service Worker", "target": "Vary", "type": "USES"}]}
+{"id": "shared-08408", "relationships": [{"source": "Length-delimited", "target": "parse error", "type": "IS_A"}]}
+{"id": "shared-00590", "relationships": [{"source": "Rolldown", "target": "Oxc", "type": "REPLACES"}]}
+{"id": "shared-02414", "relationships": [{"source": "Minecraft Education Edition", "target": "iPad", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09815", "relationships": [{"source": "step-ca", "target": "ACME", "type": "USES"}]}
+{"id": "shared-03447", "relationships": [{"source": "noisy-channel", "target": "trie", "type": "REPLACES"}]}
+{"id": "shared-08984", "relationships": [{"source": "-fno-semantic-interposition", "target": "PLT", "type": "REPLACES"}]}
+{"id": "shared-08553", "relationships": [{"source": "authorization server", "target": "device code flow", "type": "USES"}]}
+{"id": "shared-07434", "relationships": [{"source": "Request coalescing", "target": "Redis", "type": "USES"}]}
+{"id": "shared-09676", "relationships": [{"source": "Metrics Server", "target": "heapster", "type": "REPLACES"}]}
+{"id": "shared-04673", "relationships": [{"source": "Keepa", "target": "CamelCamelCamel", "type": "USES"}]}
+{"id": "shared-00947", "relationships": [{"source": "Quad9", "target": "iPad", "type": "CAUSES"}]}
+{"id": "shared-13430", "relationships": [{"source": "Falco", "target": "Tracee", "type": "REPLACES"}]}
+{"id": "shared-00912", "relationships": [{"source": "Fastmail", "target": "CalDAV", "type": "USES"}]}
+{"id": "shared-09763", "relationships": [{"source": "restic", "target": "AES-256", "type": "USES"}]}
+{"id": "shared-05499", "relationships": [{"source": "Voigtländer 50 APO-Lanthar", "target": "Leica M11", "type": "USES"}]}
+{"id": "shared-03572", "relationships": [{"source": "Cats Effect 3", "target": "Future", "type": "REPLACES"}]}
+{"id": "shared-04038", "relationships": [{"source": "Mare Synchronos", "target": "Eorzea Collection", "type": "USES"}]}
+{"id": "shared-04212", "relationships": [{"source": "Zed AI", "target": "VS Code", "type": "REPLACES"}]}
+{"id": "shared-06898", "relationships": [{"source": "ModelTalker", "target": "Voice Memos", "type": "REPLACES"}]}
+{"id": "shared-08575", "relationships": [{"source": "ORY Kratos", "target": "OAuth", "type": "USES"}, {"source": "ORY Hydra", "target": "Postgres", "type": "USES"}]}
+{"id": "shared-04661", "relationships": [{"source": "Mercari", "target": "Craigslist", "type": "REPLACES"}]}
+{"id": "shared-09521", "relationships": [{"source": "Blueprints", "target": "YAML", "type": "REPLACES"}]}
+{"id": "shared-05001", "relationships": [{"source": "ul", "target": "nav", "type": "REPLACES"}]}
+{"id": "shared-03981", "relationships": [{"source": "Reolink CX810", "target": "Ubiquiti G4 Pro", "type": "REPLACES"}]}
+{"id": "shared-03388", "relationships": [{"source": "Garage", "target": "MinIO", "type": "REPLACES"}]}
+{"id": "shared-06832", "relationships": [{"source": "Astro", "target": "Pelican", "type": "REPLACES"}]}
+{"id": "shared-09238", "relationships": [{"source": "SAM 2", "target": "Segment Anything", "type": "REPLACES"}]}
+{"id": "shared-11923", "relationships": [{"source": "connect-go", "target": "http/1.1", "type": "USES"}, {"source": "grpc-go", "target": "http/1.1", "type": "USES"}]}
+{"id": "shared-13432", "relationships": [{"source": "Terraform", "target": "Snyk IaC", "type": "USES"}]}
+{"id": "shared-08978", "relationships": [{"source": "name mangling", "target": "Itanium ABI", "type": "USES"}]}
+{"id": "shared-06836", "relationships": [{"source": "Ghost", "target": "Stripe", "type": "USES"}]}
+{"id": "shared-08465", "relationships": [{"source": "Query cost analysis", "target": "pagination", "type": "USES"}]}
+{"id": "shared-12785", "relationships": [{"source": "Redwood", "target": "GraphQL", "type": "USES"}]}
+{"id": "shared-05625", "relationships": [{"source": "SPIFFE", "target": "SVID", "type": "REPLACES"}]}
+{"id": "shared-12154", "relationships": [{"source": "CQRS", "target": "Postgres", "type": "REPLACES"}]}
+{"id": "shared-07464", "relationships": [{"source": "FP16", "target": "NCCL", "type": "REPLACES"}]}
+{"id": "shared-01663", "relationships": [{"source": "EmulationStation", "target": "ScreenScraper", "type": "REPLACES"}]}
+{"id": "shared-11858", "relationships": [{"source": "serde", "target": "derive", "type": "USES"}]}
+{"id": "shared-07074", "relationships": [{"source": "Maker", "target": "Gnosis Safe", "type": "USES"}, {"source": "Ethena", "target": "Gnosis Safe", "type": "USES"}]}
+{"id": "shared-07911", "relationships": [{"source": "Google Cloud Workflows", "target": "Cloud Run", "type": "USES"}, {"source": "Google Cloud Workflows", "target": "Pub/Sub", "type": "USES"}]}
+{"id": "shared-08224", "relationships": [{"source": "JSON Schema", "target": "Pydantic", "type": "USES"}, {"source": "JSON Schema", "target": "OpenAI tools array", "type": "USES"}]}
+{"id": "shared-11907", "relationships": [{"source": "errors.As", "target": "type assertion", "type": "USES"}]}
+{"id": "shared-06535", "relationships": [{"source": "Stitches", "target": "styled-components", "type": "REPLACES"}]}
+{"id": "shared-03543", "relationships": [{"source": "Arrow", "target": "Either", "type": "REPLACES"}]}
+{"id": "shared-06463", "relationships": [{"source": "JFrog Artifactory", "target": "Nexus", "type": "REPLACES"}]}
+{"id": "shared-09781", "relationships": [{"source": "ZFS", "target": "Immutable repositories", "type": "USES"}, {"source": "cron", "target": "Immutable repositories", "type": "USES"}]}
+{"id": "shared-09373", "relationships": [{"source": "DirectStorage", "target": "NVMe", "type": "USES"}, {"source": "DirectStorage", "target": "CPU staging buffer", "type": "REPLACES"}]}
+{"id": "shared-01741", "relationships": [{"source": "Flask", "target": "Plex", "type": "USES"}]}
+{"id": "shared-06556", "relationships": [{"source": "LangFuse", "target": "Helicone", "type": "REPLACES"}]}
+{"id": "shared-12206", "relationships": [{"source": "QuickCheck", "target": "Haskell", "type": "USES"}]}
+{"id": "shared-03553", "relationships": [{"source": "virtual threads", "target": "order-matching engine", "type": "REPLACES"}]}
+{"id": "shared-12749", "relationships": [{"source": "Turbopack", "target": "Next.js 15.1", "type": "USES"}]}
+{"id": "shared-07199", "relationships": [{"source": "mobile client", "target": "tail-based", "type": "IS_A"}]}
+{"id": "shared-13614", "relationships": [{"source": "ExternalName", "target": "ClusterIP", "type": "REPLACES"}]}
+{"id": "shared-03442", "relationships": [{"source": "Quickwit", "target": "tantivy", "type": "USES"}]}
+{"id": "shared-08526", "relationships": [{"source": "v4+json", "target": "RFC 9457", "type": "USES"}]}
+{"id": "shared-08687", "relationships": [{"source": "Teleport", "target": "SSH", "type": "USES"}]}
+{"id": "shared-05840", "relationships": [{"source": "RTK Query 2", "target": "Reselect", "type": "REPLACES"}]}
+{"id": "shared-11840", "relationships": [{"source": "LP duality", "target": "primal simplex", "type": "REPLACES"}]}
+{"id": "shared-09720", "relationships": [{"source": "NixOps", "target": "nixops deploy", "type": "USES"}]}
+{"id": "shared-05563", "relationships": [{"source": "Nix", "target": "CI", "type": "REPLACES"}]}
+{"id": "shared-09629", "relationships": [{"source": "swtpm", "target": "vTPM 2.0", "type": "USES"}]}
+{"id": "shared-12620", "relationships": [{"source": "gitsign", "target": "OIDC", "type": "USES"}, {"source": "gitsign", "target": "Fulcio", "type": "USES"}]}
+{"id": "shared-12789", "relationships": [{"source": "Astro", "target": "Zod", "type": "USES"}]}
+{"id": "shared-03432", "relationships": [{"source": "DPR", "target": "BM25", "type": "REPLACES"}]}
+{"id": "shared-01783", "relationships": [{"source": "VoiceOver", "target": "Astro", "type": "REPLACES"}]}
+{"id": "shared-09274", "relationships": [{"source": "IPlug2", "target": "Faust", "type": "REPLACES"}]}
+{"id": "shared-04879", "relationships": [{"source": "Parquet", "target": "Bloom filter", "type": "IS_A"}]}
+{"id": "shared-09276", "relationships": [{"source": "JACK", "target": "PipeWire", "type": "USES"}, {"source": "PipeWire", "target": "pro build", "type": "USES"}]}
+{"id": "shared-09734", "relationships": [{"source": "Terragrunt", "target": "run-all", "type": "USES"}]}
+{"id": "shared-05468", "relationships": [{"source": "Sony A7 IV", "target": "Capture One", "type": "CAUSES"}]}
+{"id": "shared-01064", "relationships": [{"source": "Apache Doris", "target": "lambda pipeline", "type": "REPLACES"}]}
+{"id": "shared-09072", "relationships": [{"source": "codeActionKind", "target": "quickfix", "type": "USES"}, {"source": "codeActionKind", "target": "refactor", "type": "USES"}]}
+{"id": "shared-09271", "relationships": [{"source": "Ableton", "target": "FFTW", "type": "REPLACES"}]}
+{"id": "shared-01953", "relationships": [{"source": "Adyen", "target": "Stripe", "type": "REPLACES"}]}
+{"id": "shared-08975", "relationships": [{"source": "interpreter dispatch", "target": "inlinehint", "type": "REPLACES"}]}
+{"id": "shared-07528", "relationships": [{"source": "ARP", "target": "STP", "type": "REPLACES"}]}
+{"id": "shared-09557", "relationships": [{"source": "KeePass", "target": "Backblaze B2", "type": "USES"}]}
+{"id": "shared-08850", "relationships": [{"source": "Parca", "target": "Kubernetes", "type": "USES"}, {"source": "Parca", "target": "RBAC", "type": "USES"}]}
+{"id": "shared-07867", "relationships": [{"source": "Glue Data Catalog", "target": "S3", "type": "USES"}, {"source": "Glue Data Catalog", "target": "Iceberg", "type": "USES"}]}
+{"id": "shared-08580", "relationships": [{"source": "authorization code flow", "target": "code lifetime", "type": "USES"}, {"source": "authorization code flow", "target": "single-use enforcement", "type": "USES"}]}
+{"id": "shared-03391", "relationships": [{"source": "S3 access points", "target": "bucket policies", "type": "REPLACES"}]}
+{"id": "shared-02501", "relationships": [{"source": "Kiwi.com", "target": "Google Flights", "type": "REPLACES"}]}
+{"id": "shared-06817", "relationships": [{"source": "Vercel", "target": "Cloudflare Pages", "type": "REPLACES"}]}
+{"id": "shared-05778", "relationships": [{"source": "Unleash", "target": "in-house flag system", "type": "REPLACES"}]}
+{"id": "shared-04991", "relationships": [{"source": "unit-of-work", "target": "cascade-save", "type": "REPLACES"}]}
+{"id": "shared-08221", "relationships": [{"source": "plan phase", "target": "step objects", "type": "USES"}, {"source": "act phase", "target": "JSON schema", "type": "USES"}]}
+{"id": "shared-00466", "relationships": [{"source": "Ableton Live", "target": "mini PC", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12006", "relationships": [{"source": "cibuildwheel", "target": "CPython", "type": "USES"}]}
+{"id": "shared-01908", "relationships": [{"source": "LoRaWAN", "target": "The Things Network", "type": "REPLACES"}]}
+{"id": "shared-07341", "relationships": [{"source": "External Secrets Operator", "target": "AWS Secrets Manager", "type": "USES"}]}
+{"id": "shared-06956", "relationships": [{"source": "GGPO", "target": "lockstep", "type": "REPLACES"}]}
+{"id": "shared-09315", "relationships": [{"source": "MRT", "target": "RGBA16F", "type": "USES"}]}
+{"id": "shared-07274", "relationships": [{"source": "SnapStart", "target": "payment service", "type": "CAUSES"}]}
+{"id": "shared-06217", "relationships": [{"source": "HPI Check", "target": "Gov.uk", "type": "REPLACES"}]}
+{"id": "shared-07180", "relationships": [{"source": "Terraform", "target": "Alertmanager", "type": "USES"}]}
+{"id": "shared-08239", "relationships": [{"source": "Tool schemas", "target": "user confirmation", "type": "USES"}]}
+{"id": "shared-08727", "relationships": [{"source": "Error budget policy", "target": "SRE council", "type": "USES"}]}
+{"id": "shared-01828", "relationships": [{"source": "Tempo", "target": "Jaeger", "type": "REPLACES"}]}
+{"id": "shared-07545", "relationships": [{"source": "Tailscale", "target": "ACL", "type": "USES"}]}
+{"id": "shared-12636", "relationships": [{"source": "git clone --depth 1", "target": "git-describe", "type": "USES"}]}
+{"id": "shared-08631", "relationships": [{"source": "gitleaks", "target": "pre-commit", "type": "USES"}, {"source": "gitleaks", "target": "CI gate", "type": "USES"}]}
+{"id": "shared-04671", "relationships": [{"source": "PayPal Honey", "target": "eBay", "type": "USES"}]}
+{"id": "shared-05513", "relationships": [{"source": "Bluesound Node", "target": "Raspberry Pi 4", "type": "REPLACES"}]}
+{"id": "shared-06933", "relationships": [{"source": "Grafana Alerting", "target": "Kapacitor", "type": "REPLACES"}]}
+{"id": "shared-03558", "relationships": [{"source": "GenServer", "target": "EventEmitter", "type": "REPLACES"}]}
+{"id": "shared-04104", "relationships": [{"source": "Cilium", "target": "kube-proxy", "type": "REPLACES"}]}
+{"id": "shared-09075", "relationships": [{"source": "textDocument/didChange", "target": "full-buffer resync", "type": "REPLACES"}]}
+{"id": "shared-13558", "relationships": [{"source": "drizzle-kit", "target": "SQL", "type": "USES"}, {"source": "drizzle-migrate", "target": "SQL", "type": "USES"}]}
+{"id": "shared-07103", "relationships": [{"source": "crun", "target": "runc", "type": "REPLACES"}]}
+{"id": "shared-02487", "relationships": [{"source": "Nextcloud", "target": "Python", "type": "USES"}]}
+{"id": "shared-12885", "relationships": [{"source": "UiAutomator", "target": "Espresso", "type": "REPLACES"}]}
+{"id": "shared-12659", "relationships": [{"source": "FTS5", "target": "BM25", "type": "USES"}]}
+{"id": "shared-07198", "relationships": [{"source": "Grafana", "target": "LogQL", "type": "USES"}, {"source": "Grafana", "target": "PromQL", "type": "USES"}]}
+{"id": "shared-03220", "relationships": [{"source": "TP-Link Kasa", "target": "EC", "type": "USES"}]}
+{"id": "shared-07513", "relationships": [{"source": "BGP", "target": "no-export", "type": "USES"}]}
+{"id": "shared-05096", "relationships": [{"source": "Swift Testing", "target": "XCTest", "type": "REPLACES"}]}
+{"id": "shared-04805", "relationships": [{"source": "LiveKit", "target": "mediasoup", "type": "REPLACES"}]}
+{"id": "shared-11941", "relationships": [{"source": "done channel", "target": "work channel", "type": "USES"}]}
+{"id": "shared-08778", "relationships": [{"source": "Spike tests", "target": "Redis", "type": "USES"}]}
+{"id": "shared-04914", "relationships": [{"source": "Shader Model 6.6", "target": "HLSL SM 5.1", "type": "REPLACES"}]}
+{"id": "shared-03264", "relationships": [{"source": "p5.js", "target": "fxhash", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07556", "relationships": [{"source": "BLS", "target": "BLS12-381", "type": "IS_A"}]}
+{"id": "shared-09080", "relationships": [{"source": "rust-analyzer", "target": "tokio", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13409", "relationships": [{"source": "Infer", "target": "Objective-C", "type": "USES"}, {"source": "Infer", "target": "Java", "type": "USES"}]}
+{"id": "shared-08669", "relationships": [{"source": "Istio", "target": "mTLS", "type": "USES"}]}
+{"id": "shared-06873", "relationships": [{"source": "Ring Stick Up Cam", "target": "Rapid Ring", "type": "USES"}]}
+{"id": "shared-08500", "relationships": [{"source": "@inaccessible", "target": "Federation", "type": "CAUSES"}]}
+{"id": "shared-11990", "relationships": [{"source": "Import attributes", "target": "assert", "type": "REPLACES"}]}
+{"id": "shared-09411", "relationships": [{"source": "SVGF", "target": "contact shadows", "type": "USES"}, {"source": "a-trous filter", "target": "contact shadows", "type": "USES"}]}
+{"id": "shared-04699", "relationships": [{"source": "Costco Citi Visa", "target": "Amex BlueCash Preferred", "type": "REPLACES"}]}
+{"id": "shared-09381", "relationships": [{"source": "SM6.6", "target": "HLSL", "type": "USES"}]}
+{"id": "shared-09404", "relationships": [{"source": "DirectX Raytracing", "target": "callable-shader", "type": "REPLACES"}]}
+{"id": "shared-13406", "relationships": [{"source": "PMD", "target": "tools/pmd/ruleset.xml", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09556", "relationships": [{"source": "Forgejo", "target": "Gitlab CE", "type": "REPLACES"}]}
+{"id": "shared-12802", "relationships": [{"source": "actor", "target": "image cache", "type": "USES"}, {"source": "actor", "target": "session metadata store", "type": "USES"}, {"source": "actor", "target": "feed prefetcher", "type": "USES"}]}
+{"id": "shared-04715", "relationships": [{"source": "Pupford", "target": "Dogo", "type": "REPLACES"}]}
+{"id": "shared-13455", "relationships": [{"source": "SigStore client-go", "target": "cosign", "type": "REPLACES"}]}
+{"id": "shared-07551", "relationships": [{"source": "AES-GCM", "target": "AES-SHA256", "type": "REPLACES"}]}
+{"id": "shared-07078", "relationships": [{"source": "Monorepo", "target": "Ethers v5", "type": "REPLACES"}, {"source": "Monorepo", "target": "viem", "type": "USES"}]}
+{"id": "shared-09713", "relationships": [{"source": "Bicep", "target": "ARM templates", "type": "REPLACES"}]}
+{"id": "shared-06230", "relationships": [{"source": "Jellyfin", "target": "BlackVue DR970X", "type": "USES"}]}
+{"id": "shared-09736", "relationships": [{"source": "two-step plan", "target": "Taint", "type": "REPLACES"}]}
+{"id": "shared-07361", "relationships": [{"source": "Tyk Gateway", "target": "Redis", "type": "USES"}]}
+{"id": "shared-07083", "relationships": [{"source": "Subgraph", "target": "per-event rollup", "type": "REPLACES"}]}
+{"id": "shared-09389", "relationships": [{"source": "render graph", "target": "vkCmdPipelineBarrier", "type": "REPLACES"}]}
+{"id": "shared-07830", "relationships": [{"source": "Flight", "target": "gRPC", "type": "USES"}]}
+{"id": "shared-12675", "relationships": [{"source": "LiteFS", "target": "Fly.io", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12923", "relationships": [{"source": "Nerves", "target": "OTA", "type": "USES"}, {"source": "Nerves", "target": "fwup", "type": "USES"}]}
+{"id": "shared-09504", "relationships": [{"source": "Frigate NVR", "target": "Coral TPU", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08068", "relationships": [{"source": "Together AI", "target": "Replicate", "type": "REPLACES"}]}
+{"id": "shared-00966", "relationships": [{"source": "Lichess", "target": "Stockfish 16", "type": "USES"}]}
+{"id": "shared-09319", "relationships": [{"source": "Dawn", "target": "Electron", "type": "USES"}]}
+{"id": "shared-07205", "relationships": [{"source": "Flink", "target": "two-phase commit", "type": "CAUSES"}]}
+{"id": "shared-08366", "relationships": [{"source": "SimplePeer", "target": "RTCPeerConnection", "type": "USES"}]}
+{"id": "shared-06473", "relationships": [{"source": "PyPI", "target": "API tokens", "type": "REPLACES"}]}
+{"id": "shared-09586", "relationships": [{"source": "OpenWebUI", "target": "Ollama", "type": "USES"}, {"source": "OpenWebUI", "target": "llama3.1", "type": "USES"}]}
+{"id": "shared-07412", "relationships": [{"source": "Fastly", "target": "VCL", "type": "USES"}]}
+{"id": "shared-08877", "relationships": [{"source": "heaptrack", "target": "search backend", "type": "USES"}]}
+{"id": "shared-09735", "relationships": [{"source": "ignore_changes", "target": "lifecycle", "type": "USES"}, {"source": "ignore_changes", "target": "autoscaler", "type": "USES"}]}
+{"id": "shared-09634", "relationships": [{"source": "Pure Storage FlashArray", "target": "VAAI", "type": "REPLACES"}]}
+{"id": "shared-09212", "relationships": [{"source": "RAFT", "target": "Jetson", "type": "CAUSES"}]}
+{"id": "shared-11992", "relationships": [{"source": "bun:ffi", "target": "napi", "type": "REPLACES"}]}
+{"id": "shared-04750", "relationships": [{"source": "Pupford", "target": "Dogo", "type": "REPLACES"}]}
+{"id": "shared-07236", "relationships": [{"source": "Debezium", "target": "S3", "type": "USES"}]}
+{"id": "shared-05424", "relationships": [{"source": "Gravity's Rainbow", "target": "Zoom", "type": "USES"}]}
+{"id": "shared-03297", "relationships": [{"source": "LDtk", "target": "Aseprite", "type": "REPLACES"}]}
+{"id": "shared-07107", "relationships": [{"source": "Rootless Podman", "target": "subuid", "type": "USES"}]}
+{"id": "shared-00986", "relationships": [{"source": "YOLO-v8", "target": "Jetson Nano", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08458", "relationships": [{"source": "PostGraphile", "target": "Postgres", "type": "USES"}]}
+{"id": "shared-04704", "relationships": [{"source": "Tractive LTE", "target": "Whistle Go Explore", "type": "REPLACES"}]}
+{"id": "shared-07896", "relationships": [{"source": "Meltano", "target": "Airbyte", "type": "USES"}, {"source": "Meltano", "target": "Fivetran", "type": "USES"}]}
+{"id": "shared-13554", "relationships": [{"source": "Kysely", "target": "TypeScript", "type": "USES"}]}
+{"id": "shared-03580", "relationships": [{"source": "OpenMP", "target": "pthread", "type": "REPLACES"}]}
+{"id": "shared-07557", "relationships": [{"source": "Argon2id", "target": "bcrypt", "type": "REPLACES"}]}
+{"id": "shared-12844", "relationships": [{"source": "isolated", "target": "Swift", "type": "USES"}]}
+{"id": "shared-12295", "relationships": [{"source": "Cranelift", "target": "Spin", "type": "REPLACES"}]}
+{"id": "shared-12882", "relationships": [{"source": "Macrobenchmark", "target": "Baseline Profiles", "type": "REPLACES"}]}
+{"id": "shared-06275", "relationships": [{"source": "Overseerr", "target": "WhatsApp", "type": "REPLACES"}]}
+{"id": "shared-05500", "relationships": [{"source": "Pixieset", "target": "Santorini", "type": "USES"}, {"source": "Printique", "target": "Fujiflex", "type": "USES"}]}
+{"id": "shared-13549", "relationships": [{"source": "Accord", "target": "lightweight-transaction", "type": "REPLACES"}]}
+{"id": "shared-11940", "relationships": [{"source": "gopls", "target": "staticcheck", "type": "USES"}]}
+{"id": "shared-08923", "relationships": [{"source": "ZGC", "target": "colored pointers", "type": "USES"}]}
+{"id": "shared-03348", "relationships": [{"source": "Benthos", "target": "Logstash", "type": "REPLACES"}]}
+{"id": "shared-08974", "relationships": [{"source": "LoopUnrollPass", "target": "LLVM", "type": "USES"}]}
+{"id": "shared-09269", "relationships": [{"source": "SoundPipe", "target": "JUCE", "type": "USES"}]}
+{"id": "shared-07065", "relationships": [{"source": "CCTP", "target": "lock-and-mint", "type": "REPLACES"}]}
+{"id": "shared-07350", "relationships": [{"source": "timeout-minutes", "target": "self-hosted", "type": "DEPLOYED_ON"}]}
+{"id": "shared-04108", "relationships": [{"source": "Tyk", "target": "Kong", "type": "REPLACES"}]}
+{"id": "shared-08351", "relationships": [{"source": "WebSockets", "target": "RFC 6455", "type": "USES"}, {"source": "WebSockets", "target": "send queue", "type": "USES"}]}
+{"id": "shared-09252", "relationships": [{"source": "RtAudio", "target": "callback abstraction", "type": "USES"}]}
+{"id": "shared-12733", "relationships": [{"source": "Mantine", "target": "admin CMS", "type": "USES"}]}
+{"id": "shared-12924", "relationships": [{"source": "EXLA", "target": "Nx", "type": "USES"}, {"source": "Livebook", "target": "Nx", "type": "USES"}]}
+{"id": "shared-09222", "relationships": [{"source": "Zip-NeRF", "target": "NeRF", "type": "REPLACES"}]}
+{"id": "shared-07732", "relationships": [{"source": "KNN pre-filter", "target": "Vespa", "type": "USES"}]}
+{"id": "shared-11814", "relationships": [{"source": "linear probing", "target": "quadratic probing", "type": "REPLACES"}]}
+{"id": "shared-12832", "relationships": [{"source": "VisionOS", "target": "RealityView", "type": "USES"}]}
+{"id": "shared-01902", "relationships": [{"source": "ESP-IDF", "target": "Arduino-ESP32", "type": "REPLACES"}]}
+{"id": "shared-09311", "relationships": [{"source": "Bind groups", "target": "per-frame", "type": "USES"}, {"source": "Bind groups", "target": "per-material", "type": "USES"}, {"source": "Bind groups", "target": "per-draw", "type": "USES"}]}
+{"id": "shared-09323", "relationships": [{"source": "WebGL 1.0", "target": "OES_texture_float", "type": "USES"}]}
+{"id": "shared-04747", "relationships": [{"source": "Whisker", "target": "Litter-Robot", "type": "USES"}]}
+{"id": "shared-05814", "relationships": [{"source": "Pinia", "target": "Vuex", "type": "REPLACES"}]}
+{"id": "shared-07379", "relationships": [{"source": "Linkerd", "target": "Envoy", "type": "REPLACES"}]}
+{"id": "shared-05833", "relationships": [{"source": "use-context-selector", "target": "useContext", "type": "REPLACES"}]}
+{"id": "shared-06337", "relationships": [{"source": "Tempo", "target": "Prometheus", "type": "REPLACES"}]}
+{"id": "shared-07217", "relationships": [{"source": "manual", "target": "auto-commit", "type": "REPLACES"}]}
+{"id": "shared-12721", "relationships": [{"source": "TanStack Router", "target": "React Router", "type": "REPLACES"}]}
+{"id": "shared-07859", "relationships": [{"source": "Airbyte", "target": "dbt", "type": "USES"}]}
+{"id": "shared-06154", "relationships": [{"source": "Templater", "target": "Obsidian", "type": "REPLACES"}]}
+{"id": "shared-01696", "relationships": [{"source": "OBS Studio", "target": "Streamlabs", "type": "REPLACES"}]}
+{"id": "shared-01694", "relationships": [{"source": "Shadow of the Colossus", "target": "Plex", "type": "CAUSES"}, {"source": "Tdarr", "target": "Plex", "type": "USES"}]}
+{"id": "shared-01027", "relationships": [{"source": "ChessBase", "target": "Lichess", "type": "USES"}]}
+{"id": "shared-09791", "relationships": [{"source": "Deduplication", "target": "security boundary", "type": "USES"}]}
+{"id": "shared-09332", "relationships": [{"source": "WebGPURenderer", "target": "Safari", "type": "USES"}]}
+{"id": "shared-07504", "relationships": [{"source": "VXLAN", "target": "head-end replication", "type": "REPLACES"}]}
+{"id": "shared-08891", "relationships": [{"source": "OOM killer", "target": "kswapd", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13534", "relationships": [{"source": "DynamoDB", "target": "GSI", "type": "REPLACES"}]}
+{"id": "shared-04721", "relationships": [{"source": "GroomIt", "target": "Rover", "type": "REPLACES"}]}
+{"id": "shared-08074", "relationships": [{"source": "vLLM", "target": "priority queue", "type": "USES"}]}
+{"id": "shared-05083", "relationships": [{"source": "@MainActor", "target": "DispatchQueue", "type": "REPLACES"}]}
+{"id": "shared-06272", "relationships": [{"source": "Plex", "target": "Roku", "type": "DEPLOYED_ON"}]}
+{"id": "shared-07154", "relationships": [{"source": "simple scalable mode", "target": "microservices mode", "type": "REPLACES"}]}
+{"id": "shared-12750", "relationships": [{"source": "Server Actions", "target": "POST-then-poll", "type": "REPLACES"}]}
+{"id": "shared-05423", "relationships": [{"source": "DeDRM 10.0.9", "target": "calibre", "type": "USES"}]}
+{"id": "shared-01307", "relationships": [{"source": "SWC", "target": "Babel", "type": "REPLACES"}]}
+{"id": "shared-02548", "relationships": [{"source": "Obsidian", "target": "Google Docs", "type": "REPLACES"}]}
+{"id": "shared-08769", "relationships": [{"source": "RUM", "target": "web-vitals", "type": "USES"}]}
+{"id": "shared-02404", "relationships": [{"source": "Circle Home Plus", "target": "YouTube", "type": "USES"}]}
+{"id": "shared-01091", "relationships": [{"source": "Arrow Flight SQL", "target": "ODBC", "type": "REPLACES"}]}
+{"id": "shared-04700", "relationships": [{"source": "Aftership", "target": "Shein", "type": "USES"}]}
+{"id": "shared-07958", "relationships": [{"source": "Delta Lake", "target": "DynamoDB", "type": "USES"}]}
+{"id": "shared-07185", "relationships": [{"source": "Grafana Alloy", "target": "Cilium", "type": "REPLACES"}]}
+{"id": "shared-08250", "relationships": [{"source": "CrewAI", "target": "LangGraph", "type": "REPLACES"}, {"source": "CrewAI", "target": "Instructor", "type": "USES"}]}
+{"id": "shared-01042", "relationships": [{"source": "nbgrader", "target": "Docker", "type": "USES"}]}
+{"id": "shared-13607", "relationships": [{"source": "kubelet", "target": "NodeLocalDNSCache", "type": "REPLACES"}]}
+{"id": "shared-12169", "relationships": [{"source": "Exactly-once processing", "target": "Kafka Streams", "type": "USES"}]}
+{"id": "shared-02657", "relationships": [{"source": "Fastly Compute@Edge", "target": "WASM", "type": "REPLACES"}]}
+{"id": "shared-12735", "relationships": [{"source": "Material UI", "target": "MUI X", "type": "USES"}]}
+{"id": "shared-12215", "relationships": [{"source": "go-fuzz", "target": "protobuf", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09183", "relationships": [{"source": "ZED 2i", "target": "DLA", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12780", "relationships": [{"source": "Shopify", "target": "Hydrogen", "type": "DEPLOYED_ON"}, {"source": "Oxygen", "target": "Hydrogen", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12289", "relationships": [{"source": "Memory64", "target": "linear-memory", "type": "USES"}]}
+{"id": "shared-09203", "relationships": [{"source": "DINOv2", "target": "ResNet-50", "type": "REPLACES"}]}
+{"id": "shared-09837", "relationships": [{"source": "DNS-01", "target": "IAM policy", "type": "USES"}]}
+{"id": "shared-04794", "relationships": [{"source": "Floriss", "target": "MiFlora", "type": "USES"}]}
+{"id": "shared-04017", "relationships": [{"source": "Moonlight", "target": "Steam Link", "type": "REPLACES"}]}
+{"id": "shared-00951", "relationships": [{"source": "Polar H10", "target": "InfluxDB", "type": "USES"}]}
+{"id": "shared-08697", "relationships": [{"source": "Teleport", "target": "tbot", "type": "USES"}]}
+{"id": "shared-12772", "relationships": [{"source": "Stencil", "target": "custom elements", "type": "USES"}]}
+{"id": "shared-01705", "relationships": [{"source": "Last.fm", "target": "Tidal", "type": "USES"}]}
+{"id": "shared-09258", "relationships": [{"source": "windowed-sinc filter", "target": "linear interpolation", "type": "REPLACES"}]}
+{"id": "shared-12314", "relationships": [{"source": "Isabelle/HOL", "target": "Coq", "type": "REPLACES"}]}
+{"id": "shared-03291", "relationships": [{"source": "Adobe Creative Cloud", "target": "iPhone 15 Pro", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08930", "relationships": [{"source": "Go", "target": "Java", "type": "REPLACES"}]}
+{"id": "shared-13468", "relationships": [{"source": "Maven Central", "target": "GPG", "type": "USES"}, {"source": "Maven Central", "target": "namespace verification", "type": "USES"}]}
+{"id": "shared-02697", "relationships": [{"source": "AWS Lambda", "target": "API Gateway", "type": "REPLACES"}]}
+{"id": "shared-06419", "relationships": [{"source": "EdgeDB", "target": "Postgres", "type": "REPLACES"}]}
+{"id": "shared-08409", "relationships": [{"source": "live-trading", "target": "Bidirectional streaming", "type": "USES"}]}
+{"id": "shared-06987", "relationships": [{"source": "swept capsule", "target": "raycast", "type": "REPLACES"}]}
+{"id": "shared-12679", "relationships": [{"source": "FMDB", "target": "SQLite", "type": "REPLACES"}]}
+{"id": "shared-02596", "relationships": [{"source": "Vitess", "target": "MySQL", "type": "REPLACES"}]}
+{"id": "shared-00093", "relationships": [{"source": "pydantic-settings", "target": ".env", "type": "USES"}]}
+{"id": "shared-00228", "relationships": [{"source": "Fastmail", "target": "Gmail", "type": "REPLACES"}]}
+{"id": "shared-01033", "relationships": [{"source": "Raycast", "target": "Open Library", "type": "REPLACES"}]}
+{"id": "shared-13471", "relationships": [{"source": "go.golang.sum", "target": "GOSUMDB", "type": "USES"}]}
+{"id": "shared-07814", "relationships": [{"source": "hours(ts)", "target": "days(ts)", "type": "REPLACES"}]}
+{"id": "shared-08164", "relationships": [{"source": "bge-reranker-large", "target": "cross-encoder", "type": "USES"}]}
+{"id": "shared-03230", "relationships": [{"source": "Inkbird IBT-26S", "target": "FireBoard 2", "type": "REPLACES"}]}
+{"id": "shared-07961", "relationships": [{"source": "Bytewax", "target": "Flink", "type": "REPLACES"}]}
+{"id": "shared-03938", "relationships": [{"source": "Stock Slices", "target": "Robinhood", "type": "REPLACES"}]}
+{"id": "shared-03969", "relationships": [{"source": "Grafana", "target": "Enphase Envoy", "type": "USES"}]}
+{"id": "shared-04023", "relationships": [{"source": "Foundry VTT", "target": "Levels", "type": "USES"}]}
+{"id": "shared-13563", "relationships": [{"source": "jOOQ", "target": "Java", "type": "USES"}]}
+{"id": "shared-07505", "relationships": [{"source": "HTTP/3", "target": "QUIC", "type": "REPLACES"}]}
+{"id": "shared-08209", "relationships": [{"source": "Guidance", "target": "SQL writer", "type": "USES"}, {"source": "Guidance", "target": "regex mask", "type": "USES"}]}
+{"id": "shared-08303", "relationships": [{"source": "DoRA", "target": "LoRA", "type": "REPLACES"}]}
+{"id": "shared-03222", "relationships": [{"source": "WiFire", "target": "Inkbird", "type": "REPLACES"}]}
+{"id": "shared-03276", "relationships": [{"source": "Davinci", "target": "Magic Mask", "type": "USES"}]}
+{"id": "shared-12830", "relationships": [{"source": "Logger", "target": "os_log", "type": "REPLACES"}]}
+{"id": "shared-07201", "relationships": [{"source": "Redpanda", "target": "Apache Kafka", "type": "REPLACES"}]}
+{"id": "shared-07511", "relationships": [{"source": "Tailscale", "target": "WireGuard", "type": "USES"}]}
+{"id": "shared-12670", "relationships": [{"source": "RETURNING clause", "target": "last_insert_rowid()", "type": "REPLACES"}]}
+{"id": "shared-13487", "relationships": [{"source": "Dockerfile linter", "target": "curl-pipe", "type": "USES"}]}
+{"id": "shared-08861", "relationships": [{"source": "Size-class", "target": "internal fragmentation", "type": "REPLACES"}]}
+{"id": "shared-09762", "relationships": [{"source": "Time Machine", "target": "Synology", "type": "USES"}, {"source": "Time Machine", "target": "APFS", "type": "USES"}]}
+{"id": "shared-07366", "relationships": [{"source": "Circuit breaker", "target": "outlier-detection", "type": "IS_A"}]}
+{"id": "shared-08750", "relationships": [{"source": "DR drill", "target": "S3", "type": "USES"}]}
+{"id": "shared-12266", "relationships": [{"source": "analytics widget", "target": "wasm-pack", "type": "USES"}]}
+{"id": "shared-04713", "relationships": [{"source": "Pet Notebook", "target": "iOS", "type": "USES"}]}
+{"id": "shared-09441", "relationships": [{"source": "path-tracing tier", "target": "RTX 40", "type": "USES"}]}
+{"id": "shared-05801", "relationships": [{"source": "Zustand", "target": "Redux", "type": "REPLACES"}]}
+{"id": "shared-07678", "relationships": [{"source": "Nebula Graph", "target": "composite indexes", "type": "USES"}]}
+{"id": "shared-00913", "relationships": [{"source": "Kobo", "target": "Kindle", "type": "REPLACES"}]}
+{"id": "shared-07320", "relationships": [{"source": "GitHub Actions", "target": "branch-protection", "type": "REPLACES"}]}
+{"id": "shared-08635", "relationships": [{"source": "Vault", "target": "audit webhook", "type": "USES"}]}
+{"id": "shared-02662", "relationships": [{"source": "CloudFront Functions", "target": "Lambda@Edge", "type": "REPLACES"}]}
+{"id": "shared-08789", "relationships": [{"source": "RUM", "target": "marketing site", "type": "USES"}]}
+{"id": "shared-13428", "relationships": [{"source": "trivy", "target": "grype", "type": "REPLACES"}]}
+{"id": "shared-01747", "relationships": [{"source": "Ardour", "target": "Debian", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09363", "relationships": [{"source": "editor viewport", "target": "Diligent Engine", "type": "USES"}]}
+{"id": "shared-09163", "relationships": [{"source": "robot_localization", "target": "UKF", "type": "USES"}, {"source": "robot_localization", "target": "EKF", "type": "USES"}, {"source": "robot_localization", "target": "Xsens IMU", "type": "USES"}, {"source": "robot_localization", "target": "GPS", "type": "USES"}]}
+{"id": "shared-08606", "relationships": [{"source": "Infisical", "target": "secret proxy", "type": "REPLACES"}]}
+{"id": "shared-08570", "relationships": [{"source": "JWE", "target": "JWS", "type": "REPLACES"}]}
+{"id": "shared-12233", "relationships": [{"source": "mutmut", "target": "payment validator", "type": "USES"}]}
+{"id": "shared-00492", "relationships": [{"source": "Sonoff", "target": "MQTT", "type": "USES"}]}
+{"id": "shared-09641", "relationships": [{"source": "QEMU", "target": "NVMe", "type": "DEPLOYED_ON"}]}
+{"id": "shared-00958", "relationships": [{"source": "Jupyter", "target": "Sleeper", "type": "USES"}]}
+{"id": "shared-07130", "relationships": [{"source": "OverlayFS", "target": "copy-up", "type": "USES"}]}
+{"id": "shared-12061", "relationships": [{"source": "Patroni", "target": "etcd", "type": "DEPLOYED_ON"}, {"source": "Patroni", "target": "synchronous_standby_names", "type": "USES"}]}
+{"id": "shared-08659", "relationships": [{"source": "StrongSwan", "target": "IPsec", "type": "USES"}]}
+{"id": "shared-00048", "relationships": [{"source": "Debezium", "target": "Kafka", "type": "USES"}]}
+{"id": "shared-01761", "relationships": [{"source": "Eleventy", "target": "Netlify", "type": "USES"}, {"source": "Decap CMS", "target": "Netlify", "type": "USES"}]}
+{"id": "shared-04731", "relationships": [{"source": "Android 15", "target": "Dogo", "type": "REPLACES"}]}
+{"id": "shared-03273", "relationships": [{"source": "Ardour", "target": "Reaper", "type": "REPLACES"}]}
+{"id": "shared-06999", "relationships": [{"source": "CRDT", "target": "match lobby", "type": "USES"}]}
+{"id": "shared-07954", "relationships": [{"source": "Michelangelo", "target": "feature catalog", "type": "USES"}]}
+{"id": "shared-02413", "relationships": [{"source": "Scratch Jr", "target": "iMac", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08786", "relationships": [{"source": "SpeedCurve LUX", "target": "RUM", "type": "USES"}, {"source": "Calibre", "target": "RUM", "type": "USES"}]}
+{"id": "shared-07365", "relationships": [{"source": "SPIFFE", "target": "PKI", "type": "REPLACES"}]}
+{"id": "shared-13639", "relationships": [{"source": "Gateway", "target": "HTTPRoute", "type": "USES"}]}
+{"id": "shared-00255", "relationships": [{"source": "Bun", "target": "Node.js", "type": "REPLACES"}]}
+{"id": "shared-12922", "relationships": [{"source": "Broadway", "target": "ConsumerSupervisor", "type": "REPLACES"}]}
+{"id": "shared-12126", "relationships": [{"source": "Saga pattern", "target": "2PC", "type": "REPLACES"}]}
+{"id": "shared-12931", "relationships": [{"source": "deps.edn", "target": "Leiningen", "type": "REPLACES"}]}
+{"id": "shared-08745", "relationships": [{"source": "AWS Fault Injection Simulator", "target": "fault-injection script", "type": "REPLACES"}]}
+{"id": "shared-09879", "relationships": [{"source": "NFSv4.2", "target": "server-side copy", "type": "USES"}]}
+{"id": "shared-07091", "relationships": [{"source": "MEV-Boost", "target": "relay", "type": "USES"}]}
+{"id": "shared-12764", "relationships": [{"source": "Qwik", "target": "$ boundaries", "type": "USES"}]}
+{"id": "shared-07086", "relationships": [{"source": "aggregator", "target": "CoW Swap", "type": "USES"}, {"source": "aggregator", "target": "1inch", "type": "USES"}, {"source": "aggregator", "target": "LI.FI", "type": "USES"}]}
+{"id": "shared-08708", "relationships": [{"source": "Jeli", "target": "pattern report", "type": "USES"}]}
+{"id": "shared-11803", "relationships": [{"source": "Mergesort", "target": "introsort", "type": "REPLACES"}]}
+{"id": "shared-00067", "relationships": [{"source": "argparse", "target": "click", "type": "USES"}]}
+{"id": "shared-04152", "relationships": [{"source": "Prefect 2", "target": "Airflow", "type": "REPLACES"}]}
+{"id": "shared-08438", "relationships": [{"source": "gzip", "target": "chat-history", "type": "USES"}]}
+{"id": "shared-06290", "relationships": [{"source": "Apple VideoToolbox", "target": "M2 Mac mini", "type": "DEPLOYED_ON"}]}
+{"id": "shared-12152", "relationships": [{"source": "order service", "target": "SAP", "type": "USES"}]}
+{"id": "shared-06236", "relationships": [{"source": "Android Automotive", "target": "Polestar 2", "type": "USES"}]}
+{"id": "shared-11854", "relationships": [{"source": "rustfmt", "target": "rustfmt.toml", "type": "REPLACES"}]}
+{"id": "shared-03502", "relationships": [{"source": "resilience4j", "target": "circuit breaker", "type": "USES"}]}
+{"id": "shared-13415", "relationships": [{"source": "Ruff", "target": "pyproject.toml", "type": "DEPLOYED_ON"}]}
+{"id": "shared-13453", "relationships": [{"source": "SLSA", "target": "in-toto", "type": "USES"}]}
+{"id": "shared-03304", "relationships": [{"source": "NATS JetStream", "target": "RabbitMQ", "type": "REPLACES"}]}
+{"id": "shared-01102", "relationships": [{"source": "smallstep", "target": "HashiCorp Boundary", "type": "REPLACES"}]}
+{"id": "shared-12682", "relationships": [{"source": "libmdbx", "target": "SQLite", "type": "REPLACES"}]}
+{"id": "shared-01006", "relationships": [{"source": "SM-17", "target": "FSRS", "type": "REPLACES"}]}
+{"id": "shared-04032", "relationships": [{"source": "Mumble", "target": "Discord", "type": "REPLACES"}]}
+{"id": "shared-04267", "relationships": [{"source": "small-CL norm", "target": "PR size", "type": "USES"}]}
+{"id": "shared-12161", "relationships": [{"source": "API Gateway", "target": "JWT", "type": "REPLACES"}]}
+{"id": "shared-09199", "relationships": [{"source": "Nav2", "target": "bump-stop", "type": "REPLACES"}]}
+{"id": "shared-01855", "relationships": [{"source": "Project Loom", "target": "Netty", "type": "REPLACES"}]}
+{"id": "shared-09001", "relationships": [{"source": "tree-sitter", "target": "regex tokeniser", "type": "REPLACES"}]}
+{"id": "shared-04797", "relationships": [{"source": "Theengs Gateway", "target": "BLE", "type": "USES"}]}
+{"id": "shared-12819", "relationships": [{"source": "JWT", "target": "JWKS", "type": "REPLACES"}]}
+{"id": "shared-04751", "relationships": [{"source": "PlantNet", "target": "PictureThis", "type": "REPLACES"}]}
+{"id": "shared-07617", "relationships": [{"source": "ClickHouse", "target": "OpenTSDB", "type": "REPLACES"}]}
+{"id": "shared-12870", "relationships": [{"source": "Compose Multiplatform", "target": "Android", "type": "USES"}, {"source": "Compose Multiplatform", "target": "iOS", "type": "USES"}, {"source": "Compose Multiplatform", "target": "Wasm", "type": "USES"}]}
+{"id": "shared-12807", "relationships": [{"source": "UITableView", "target": "UIKit", "type": "CAUSES"}]}
+{"id": "shared-09708", "relationships": [{"source": "Kustomize", "target": "Helm", "type": "REPLACES"}]}
+{"id": "shared-07232", "relationships": [{"source": "Processing-time", "target": "event-time", "type": "REPLACES"}]}
+{"id": "shared-08333", "relationships": [{"source": "MMLU", "target": "catastrophic forgetting", "type": "CAUSES"}, {"source": "replay buffer", "target": "catastrophic forgetting", "type": "CAUSES"}]}
+{"id": "shared-07689", "relationships": [{"source": "A*", "target": "Dijkstra", "type": "REPLACES"}]}
+{"id": "shared-07173", "relationships": [{"source": "Grafana", "target": "JSON", "type": "USES"}]}
+{"id": "shared-07799", "relationships": [{"source": "Trino", "target": "slot-scheduler", "type": "CAUSES"}, {"source": "TRino", "target": "query-wall timeout", "type": "CAUSES"}]}
+{"id": "shared-12941", "relationships": [{"source": "ZIO Streams", "target": "FS2", "type": "REPLACES"}]}
+{"id": "shared-06515", "relationships": [{"source": "Chromatic", "target": "design-system", "type": "USES"}]}
+{"id": "shared-02002", "relationships": [{"source": "basedpyright", "target": "pyright", "type": "REPLACES"}]}
+{"id": "shared-01956", "relationships": [{"source": "Citus", "target": "Postgres", "type": "REPLACES"}]}
+{"id": "shared-11870", "relationships": [{"source": "cargo-watch", "target": "cargo check", "type": "USES"}]}
+{"id": "shared-06241", "relationships": [{"source": "Autotrader", "target": "Craigslist", "type": "USES"}]}
+{"id": "shared-08016", "relationships": [{"source": "MLX", "target": "Apple Silicon", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08219", "relationships": [{"source": "OpenAI Assistants API", "target": "code-interpreter", "type": "USES"}, {"source": "OpenAI Assistants API", "target": "tool schema", "type": "USES"}]}
+{"id": "shared-08267", "relationships": [{"source": "LightRAG", "target": "GraphRAG", "type": "REPLACES"}]}
+{"id": "shared-01654", "relationships": [{"source": "Minecraft", "target": "Raspberry Pi 5", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08870", "relationships": [{"source": "THP", "target": "Transparent huge pages", "type": "IS_A"}]}
+{"id": "shared-08189", "relationships": [{"source": "OpenAI", "target": "Qdrant", "type": "REPLACES"}]}
+{"id": "shared-08754", "relationships": [{"source": "Gatling", "target": "Scala", "type": "REPLACES"}]}
+{"id": "shared-04924", "relationships": [{"source": "SVT", "target": "megatexture", "type": "REPLACES"}]}
+{"id": "shared-01703", "relationships": [{"source": "Plexamp", "target": "iPad", "type": "DEPLOYED_ON"}]}
+{"id": "shared-08151", "relationships": [{"source": "Qdrant", "target": "Pinecone", "type": "REPLACES"}]}
+{"id": "shared-12673", "relationships": [{"source": "SQLCipher", "target": "AES-256", "type": "REPLACES"}]}
+{"id": "shared-06450", "relationships": [{"source": "FalkorDB", "target": "Neo4j", "type": "REPLACES"}]}
+{"id": "shared-08448", "relationships": [{"source": "buf.build", "target": "vendored tree", "type": "REPLACES"}]}
+{"id": "shared-03223", "relationships": [{"source": "Tandoor Recipes", "target": "LXC", "type": "DEPLOYED_ON"}]}
+{"id": "shared-06861", "relationships": [{"source": "Trust & Will", "target": "LegalZoom", "type": "REPLACES"}]}
+{"id": "shared-07595", "relationships": [{"source": "getrandom(2)", "target": "/dev/urandom", "type": "REPLACES"}]}
+{"id": "shared-01328", "relationships": [{"source": "Kotlin DSL", "target": "Groovy DSL", "type": "REPLACES"}]}
+{"id": "shared-03157", "relationships": [{"source": "Grafana", "target": "Raspberry Pi 5", "type": "DEPLOYED_ON"}]}
+{"id": "shared-09147", "relationships": [{"source": "Zephyr", "target": "Device Driver Model", "type": "USES"}]}
+{"id": "shared-09407", "relationships": [{"source": "RTXDI", "target": "uniform sampler", "type": "IS_A"}]}
+{"id": "shared-13631", "relationships": [{"source": "Hubble", "target": "eBPF", "type": "USES"}]}
+{"id": "shared-12322", "relationships": [{"source": "Coq", "target": "CertiKOS", "type": "CAUSES"}, {"source": "deep specification", "target": "CertiKOS", "type": "CAUSES"}]}
+{"id": "shared-07356", "relationships": [{"source": "Cilium Service Mesh", "target": "Istio", "type": "REPLACES"}]}
+{"id": "shared-08938", "relationships": [{"source": "Quantifying the Performance of Garbage Collection", "target": "JVM", "type": "USES"}]}
+{"id": "shared-00983", "relationships": [{"source": "Strava", "target": "FastAPI", "type": "USES"}, {"source": "Strava", "target": "SolidJS", "type": "USES"}]}
+{"id": "shared-04102", "relationships": [{"source": "Istio", "target": "Envoy", "type": "USES"}, {"source": "Istio", "target": "istio-proxy", "type": "USES"}]}
+{"id": "shared-02517", "relationships": [{"source": "Amex Travel", "target": "Chase Ultimate Rewards", "type": "REPLACES"}]}
+{"id": "shared-02546", "relationships": [{"source": "Airdata UAV", "target": "DJI Mini 4 Pro", "type": "USES"}]}
+{"id": "shared-08586", "relationships": [{"source": "Keycloak", "target": "Cognito", "type": "REPLACES"}]}
+{"id": "shared-08676", "relationships": [{"source": "Consul", "target": "service:payments", "type": "USES"}]}
+{"id": "shared-08035", "relationships": [{"source": "FlashAttention v2", "target": "online softmax", "type": "USES"}]}

@@ -9,6 +9,7 @@ from app.services.extraction_tools import (
     normalize_entity_type,
     normalize_relation_type,
 )
+from app.services.relations import REL_MAP_5
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,27 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
 
 # ── Main cleanup orchestrator ────────────────────────────────────────
 
+
+def _collapse_to_five_type(relationships: list[dict]) -> list[dict]:
+    """Apply REL_MAP_5 (10 -> 5) and drop anything that collapses to None.
+
+    Both the LLM and ML extraction paths produce 10-type labels (the LLM
+    path via the prompt taxonomy, the ML path via REL_MAP). The schema-v2
+    invariant is that rows in `entity_relations` are in the 5-type set, so
+    this step is the single source of truth for the 10 -> 5 collapse.
+    """
+    out: list[dict] = []
+    for rel in relationships:
+        rtype = rel.get("type")
+        if rtype is None:
+            continue
+        five = REL_MAP_5.get(rtype, rtype)
+        if not five:
+            continue
+        out.append({**rel, "type": five})
+    return out
+
+
 def clean_extraction(result: dict, content: str = "", is_tool_call: bool = False) -> dict:
     entities = result.get("entities", [])
     relationships = result.get("relationships", [])
@@ -217,6 +239,7 @@ def clean_extraction(result: dict, content: str = "", is_tool_call: bool = False
     name_remap = _build_name_remap(result.get("entities", []), valid_names)
     relationships = _remap_relationships(relationships, name_remap, valid_names)
     relationships = _validate_directions(relationships, content)
+    relationships = _collapse_to_five_type(relationships)
 
     return {
         **result,

@@ -35,6 +35,11 @@ def _to_response(memory: Memory) -> MemoryResponse:
         llm_summary=memory.llm_summary,
         llm_emotions=memory.llm_emotions,
         llm_flags=memory.llm_flags,
+        project=memory.project,
+        status=memory.status,
+        superseded_by=memory.superseded_by,
+        technologies=list(memory.technologies or []),
+        confidence=memory.confidence,
     )
 
 

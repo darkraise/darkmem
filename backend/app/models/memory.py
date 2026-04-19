@@ -3,12 +3,28 @@ from datetime import datetime
 
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Table, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import (
+    REAL,
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .base import Base
+
+
+MEMORY_STATUS_VALUES = ("active", "deprecated", "superseded")
 
 memory_tags = Table(
     "memory_tags",
@@ -41,6 +57,29 @@ class Memory(Base):
     llm_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     llm_emotions: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     llm_flags: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+
+    project: Mapped[str] = mapped_column(Text, nullable=False, server_default="default")
+    status: Mapped[str] = mapped_column(
+        Enum(*MEMORY_STATUS_VALUES, name="memory_status", create_type=False),
+        nullable=False,
+        server_default="active",
+    )
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("memories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    technologies: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    confidence: Mapped[float] = mapped_column(REAL, nullable=False, server_default="0.75")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status != 'superseded' OR superseded_by IS NOT NULL",
+            name="chk_superseded_has_pointer",
+        ),
+    )
 
     tags: Mapped[list["Tag"]] = relationship(secondary=memory_tags, back_populates="memories", lazy="selectin")
 

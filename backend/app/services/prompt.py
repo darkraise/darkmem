@@ -1,4 +1,13 @@
-"""System prompts for LLM purposes. Constants, not user-editable."""
+"""System prompts for LLM purposes.
+
+The dict ``PROMPTS`` holds the in-code defaults. A process-level override
+table (``_OVERRIDES``) is refreshed from the DB ``Config`` row keyed
+``system_prompts`` at startup and after UI edits. Lookups via :func:`get`
+prefer the override, fall back to the default. ``get()`` stays synchronous
+so it is safe to call from anywhere in the hot path.
+"""
+
+from __future__ import annotations
 
 PROMPTS: dict[str, str] = {
     "extraction": (
@@ -127,25 +136,47 @@ PROMPTS: dict[str, str] = {
         "\n"
         "Decision process:\n"
         "1. Read the full text. Identify the primary intent: is the author stating a fact, "
-        "making a choice, reporting a problem, celebrating an achievement, or expressing a preference?\n"
+        "making a choice, reporting a problem, celebrating an achievement, expressing a preference, "
+        "citing a standard, or describing system structure?\n"
         "2. Match that intent to the closest ALLOWED TYPE. When unsure, default to 'fact'.\n"
         "3. The 'type' field in your JSON MUST be one of the exact strings from the ALLOWED TYPES list.\n"
         "\n"
         "Classification guidance:\n"
-        "- 'fact': text describes how something works, what something is, or states neutral information. "
+        "- 'fact': text describes how something works, what something is, or states neutral information "
+        "WITHOUT citing a named standard and WITHOUT describing how multiple components interact. "
         "This is the default when no other type clearly fits.\n"
-        "- 'decision': text contains an explicit choice ('we decided', 'we chose', 'instead of'). "
+        "- 'decision': text contains an explicit choice with reasoning — 'we decided', 'we chose', "
+        "'instead of', 'better to', 'should X because'. A choice requires both an option AND a reason. "
         "Simply mentioning a technology or configuration is NOT a decision.\n"
-        "- 'problem': text describes a bug, error, or failure that was actually encountered. "
+        "- 'preference': text states a recurring personal rule or habit — 'I prefer', 'always use', "
+        "'never do', 'my rule is'. Preferences are ongoing habits; decisions are one-time choices.\n"
+        "- 'problem': text describes a bug, error, failure, root cause, or fix that was actually encountered. "
+        "If the text says 'the fix was' or 'the root cause was', it is a problem, even if a solution is given. "
         "Mentioning error handling or error formats is NOT a problem.\n"
-        "- 'milestone': text celebrates completing something ('it works', 'shipped', 'finally'). "
+        "- 'milestone': text celebrates completing something ('it works', 'shipped', 'finally', 'v2.0'). "
         "Describing a tool or feature is NOT a milestone.\n"
-        "- 'reference': text points to documentation, specs, standards, or protocols.\n"
-        "- 'architecture': text describes how system components CONNECT and INTERACT. "
+        "- 'reference': text CITES or ATTRIBUTES information to a named standard, specification, "
+        "RFC, PEP, methodology, or official document. Key signal: the text names a specific document "
+        "(e.g., 'RFC 7519', 'PEP 484', 'OWASP Top 10', 'HTTP/2 specification', 'Twelve-Factor App'). "
+        "If the text says 'according to X', 'X specifies', 'X requires', or 'X recommends' where X is "
+        "a named standard, it is 'reference', NOT 'fact'.\n"
+        "- 'architecture': text describes how MULTIPLE system components CONNECT, INTERACT, or FLOW. "
+        "Key signals: named components with verbs like 'handles', 'sends to', 'receives from', 'flows through', "
+        "'connects to'. A pipeline with stages, a multi-layer system, or a request flow between services is architecture. "
         "An algorithm's internal logic (e.g., how C3 linearization works) is 'fact', not 'architecture'.\n"
         "- 'configuration'/'networking'/'deployment': text is specifically about infra settings, "
         "network topology, or deployment procedures.\n"
         "- 'root_cause'/'workaround'/'gotcha': text identifies a specific debugging insight.\n"
+        "\n"
+        "Boundary examples (these are CRITICAL for correct classification):\n"
+        "- 'PEP 484 introduced type hints to Python 3.5' -> 'reference' (cites PEP 484)\n"
+        "- 'Python supports type hints since version 3.5' -> 'fact' (no named standard cited)\n"
+        "- 'The frontend sends API calls through a generated client to the backend' -> 'architecture' (component interaction)\n"
+        "- 'TanStack Query is a server state management library' -> 'fact' (describes what something is)\n"
+        "- 'Better to batch embeddings in groups of 20 — round-trip overhead dominates' -> 'decision' (choice + reasoning)\n"
+        "- 'Embedding batches are processed in groups of 20' -> 'fact' (no choice expressed)\n"
+        "- 'The fix was adding a COALESCE wrapper for NULL values' -> 'problem' (describes a fix to a bug)\n"
+        "- 'COALESCE returns the first non-null argument' -> 'fact' (describes how something works)\n"
         "\n"
         "Output ONLY valid JSON. No markdown, no explanation."
     ),
@@ -217,5 +248,69 @@ PROMPTS: dict[str, str] = {
 }
 
 
+_OVERRIDES: dict[str, str] = {}
+
+SYSTEM_PROMPTS_KEY = "system_prompts"
+
+
 def get(purpose: str) -> str:
+    """Return the active system prompt for ``purpose``.
+
+    Override wins; in-code default is the fallback. Empty string if neither
+    is present, matching the previous contract.
+    """
+    if purpose in _OVERRIDES:
+        return _OVERRIDES[purpose]
     return PROMPTS.get(purpose, "")
+
+
+def set_overrides(overrides: dict[str, str]) -> None:
+    """Replace the in-process override table. Call after loading from the DB.
+
+    A key mapped to an empty string clears that override and falls back to
+    the in-code default; ``None`` values are ignored.
+    """
+    _OVERRIDES.clear()
+    for key, value in (overrides or {}).items():
+        if value is None:
+            continue
+        if not isinstance(key, str) or not isinstance(value, str):
+            continue
+        if value == "":
+            continue
+        _OVERRIDES[key] = value
+
+
+def get_overrides() -> dict[str, str]:
+    """Return a copy of the current override table (for introspection/tests)."""
+    return dict(_OVERRIDES)
+
+
+def list_purposes() -> list[str]:
+    """Return the stable list of prompt purposes the UI can edit.
+
+    Matches the keys of :data:`PROMPTS`. Sorted for stable ordering in the
+    UI dropdown.
+    """
+    return sorted(PROMPTS.keys())
+
+
+async def refresh_from_db(session) -> dict[str, str]:
+    """Load overrides from the DB Config row and install them.
+
+    Safe to call multiple times; the override table is replaced atomically.
+    Returns the effective override map.
+    """
+    from sqlalchemy import select  # noqa: PLC0415
+    from app.models.config import Config  # noqa: PLC0415
+
+    row = (
+        await session.execute(select(Config).where(Config.key == SYSTEM_PROMPTS_KEY))
+    ).scalar_one_or_none()
+    overrides: dict[str, str] = {}
+    if row and isinstance(row.value, dict):
+        for k, v in row.value.items():
+            if isinstance(k, str) and isinstance(v, str) and v:
+                overrides[k] = v
+    set_overrides(overrides)
+    return overrides

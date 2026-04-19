@@ -26,6 +26,7 @@ class LLMPurposeConfigUpdate(BaseModel):
 class LLMConfigResponse(BaseModel):
     embedding: LLMPurposeConfigSchema
     extraction: LLMPurposeConfigSchema
+    classification: LLMPurposeConfigSchema
     reasoning: LLMPurposeConfigSchema
     summarization: LLMPurposeConfigSchema
     reranker: LLMPurposeConfigSchema
@@ -40,6 +41,7 @@ class LLMConfigUpdateResponse(LLMConfigResponse):
 class LLMConfigUpdate(BaseModel):
     embedding: LLMPurposeConfigUpdate | None = None
     extraction: LLMPurposeConfigUpdate | None = None
+    classification: LLMPurposeConfigUpdate | None = None
     reasoning: LLMPurposeConfigUpdate | None = None
     summarization: LLMPurposeConfigUpdate | None = None
     reranker: LLMPurposeConfigUpdate | None = None

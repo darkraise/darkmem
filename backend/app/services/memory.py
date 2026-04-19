@@ -26,6 +26,7 @@ class MemoryService:
             content=data.content, source=data.source, source_agent=data.source_agent,
             memory_type=data.memory_type, importance=data.importance,
             metadata=data.metadata, expires_at=data.expires_at,
+            project=data.project,
         )
         if data.tags:
             await self.memory_repo.set_tags(memory.id, data.tags)
@@ -99,6 +100,36 @@ class MemoryService:
                 )
         return result
 
+    def _matches_schema_v2_filters(self, memory: Memory, params: MemorySearchRequest) -> bool:
+        """Schema-v2 filters applied in-memory after semantic search returns IDs.
+
+        Mirrors the SQL predicates in `_apply_filters`; used when the semantic
+        path has already fetched rows by id.
+        """
+        if params.memory_type and memory.memory_type != params.memory_type:
+            return False
+        if params.source and memory.source != params.source:
+            return False
+        if params.wing is not None and memory.wing != params.wing:
+            return False
+        if params.room is not None and memory.room != params.room:
+            return False
+        if params.hall is not None and memory.hall != params.hall:
+            return False
+        if params.project is not None and memory.project != params.project:
+            return False
+        if params.status and memory.status not in params.status:
+            return False
+        if params.technologies_any:
+            tech = set(memory.technologies or [])
+            if not (tech & set(params.technologies_any)):
+                return False
+        if params.tags_any:
+            tag_names = [t.name for t in memory.tags]
+            if not any(t in tag_names for t in params.tags_any):
+                return False
+        return True
+
     async def search_memories(self, params: MemorySearchRequest) -> list[Memory]:
         # If we have a query and pipeline, try semantic search first
         if params.query and self.pipeline:
@@ -108,25 +139,10 @@ class MemoryService:
             if semantic_results:
                 memory_ids = [r["memory_id"] for r in semantic_results]
                 all_memories = await self.memory_repo.get_many(memory_ids)
-                memories = []
-                for m in all_memories:
-                    if m.is_archived:
-                        continue
-                    if params.memory_type and m.memory_type != params.memory_type:
-                        continue
-                    if params.source and m.source != params.source:
-                        continue
-                    if params.wing is not None and m.wing != params.wing:
-                        continue
-                    if params.room is not None and m.room != params.room:
-                        continue
-                    if params.hall is not None and m.hall != params.hall:
-                        continue
-                    if params.tags_any:
-                        tag_names = [t.name for t in m.tags]
-                        if not any(t in tag_names for t in params.tags_any):
-                            continue
-                    memories.append(m)
+                memories = [
+                    m for m in all_memories
+                    if not m.is_archived and self._matches_schema_v2_filters(m, params)
+                ]
                 return memories[:params.limit]
 
         # Fallback: Postgres text/tag search
@@ -135,6 +151,8 @@ class MemoryService:
             memory_type=params.memory_type, source=params.source,
             wing=params.wing, room=params.room, hall=params.hall,
             limit=params.limit,
+            project=params.project, status=list(params.status) if params.status else None,
+            technologies_any=params.technologies_any,
         )
 
     async def search_memories_paginated(self, params: MemorySearchRequest) -> dict:
@@ -145,25 +163,10 @@ class MemoryService:
             if semantic_results:
                 memory_ids = [r["memory_id"] for r in semantic_results]
                 all_memories = await self.memory_repo.get_many(memory_ids)
-                memories = []
-                for m in all_memories:
-                    if m.is_archived:
-                        continue
-                    if params.memory_type and m.memory_type != params.memory_type:
-                        continue
-                    if params.source and m.source != params.source:
-                        continue
-                    if params.wing is not None and m.wing != params.wing:
-                        continue
-                    if params.room is not None and m.room != params.room:
-                        continue
-                    if params.hall is not None and m.hall != params.hall:
-                        continue
-                    if params.tags_any:
-                        tag_names = [t.name for t in m.tags]
-                        if not any(t in tag_names for t in params.tags_any):
-                            continue
-                    memories.append(m)
+                memories = [
+                    m for m in all_memories
+                    if not m.is_archived and self._matches_schema_v2_filters(m, params)
+                ]
                 total = len(memories)
                 page = memories[params.offset:params.offset + params.limit]
                 return {"items": page, "total": total, "limit": params.limit, "offset": params.offset}
@@ -173,6 +176,8 @@ class MemoryService:
             memory_type=params.memory_type, source=params.source,
             wing=params.wing, room=params.room, hall=params.hall,
             limit=params.limit, offset=params.offset,
+            project=params.project, status=list(params.status) if params.status else None,
+            technologies_any=params.technologies_any,
         )
         return {"items": items, "total": total, "limit": params.limit, "offset": params.offset}
 
