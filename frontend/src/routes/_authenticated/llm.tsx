@@ -80,12 +80,13 @@ function PurposeCard({
       try {
         data.params = JSON.parse(form.params)
       } catch {
-        alert("Invalid JSON in params")
+        toast.error("Invalid JSON in params")
         return
       }
-    } else {
-      data.params = {}
     }
+    // Omit `params` when the textarea is empty so the server preserves any
+    // existing values instead of clobbering them with `{}`. To clear params
+    // explicitly, type `{}` in the textarea.
     onSave(title.toLowerCase(), data)
     setEditing(false)
   }

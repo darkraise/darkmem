@@ -237,7 +237,7 @@ function ClassificationAreasCard() {
                     </p>
                   </div>
                   <Switch
-                    checked={area.key === "general" || enabled.has(area.key)}
+                    checked={enabled.has(area.key)}
                     onCheckedChange={() => toggleArea(area.key)}
                     disabled={area.key === "general" || updateFlags.isPending}
                   />
@@ -500,6 +500,7 @@ function MLDeviceCard() {
       : `cuda:${devices.current.ml_cuda_index}`
 
   const handlePick = (id: string) => {
+    if (id === currentId) return
     if (id === "cpu") {
       applyDevice.mutate(
         { ml_device: "cpu", ml_cuda_index: 0 },
@@ -614,7 +615,7 @@ function MLDeviceCard() {
   )
 }
 
-const _PROMPT_LABELS: Record<string, string> = {
+const PROMPT_LABELS: Record<string, string> = {
   extraction: "Extraction (JSON entities + relations)",
   extraction_entities: "Extraction — entities tool-call",
   extraction_relationships: "Extraction — relationships tool-call",
@@ -691,7 +692,7 @@ function SystemPromptsCard() {
             const overridden = Boolean(data.overrides[p])
             return (
               <ToggleGroupItem key={p} value={p} className="text-xs gap-1.5">
-                <span>{_PROMPT_LABELS[p] ?? p}</span>
+                <span>{PROMPT_LABELS[p] ?? p}</span>
                 {overridden && (
                   <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
                     custom
