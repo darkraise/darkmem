@@ -17,7 +17,7 @@ Rework the settings surface so the core choice a user makes when adding memories
 
 ## 3. Information architecture
 
-### 3.1 New route map
+### 3.1 New route map and file renames
 
 | Route | Today | After |
 |---|---|---|
@@ -25,6 +25,12 @@ Rework the settings surface so the core choice a user makes when adding memories
 | `/reindex` | — | Renamed from the old `/pipeline` re-embed progress page |
 | `/llm` | LLM purpose config page | Redirects to `/pipeline` |
 | `/settings` | Five tabs | Four tabs (see 3.3) |
+
+**File-level renames and additions.**
+
+- `frontend/src/routes/_authenticated/pipeline.tsx` → `reindex.tsx` with `createFileRoute("/_authenticated/reindex")`. The file move must happen *before* the new Pipeline page file is created, otherwise TanStack Router auto-generates conflicting route entries.
+- A new file `frontend/src/routes/_authenticated/pipeline.tsx` holds the new Pipeline page (same pathname, entirely different component).
+- The existing `frontend/src/hooks/api/use-pipeline-api.ts` contains heterogeneous hooks (stats, health, pipeline logs, reprocess stream, failures) — **do not rename or split it**. The new aggregator/mode/unload/metrics hooks go in a new file `frontend/src/hooks/api/use-pipeline-config.ts` to avoid re-exporting `usePipeline` from a file that already exports adjacent names.
 
 The `Dialog` on the LLM purpose save flow currently links "Re-embed now" to `/pipeline`; that target updates to `/reindex`. Before shipping, audit all internal callers of `/pipeline` (TanStack Router `<Link>`, programmatic `navigate({ to: ... })`, toast links) and update them — grep `navigate.*pipeline` and `to=.*pipeline` across `frontend/src`.
 
@@ -75,14 +81,16 @@ Single card with five stacked regions (device picker, persistence toggle, metric
 
 ### 5.3 Metrics dashboard
 
-Two tiles rendered based on the effective device from `/api/health/ml_models`:
+Two tiles rendered based on the effective device reported by `GET /api/v1/pipeline` and `GET /api/v1/pipeline/metrics`:
 
 | Device | Tile 1 | Tile 2 |
 |---|---|---|
 | `cpu` | CPU LOAD % | RAM used / total GB |
 | `cuda:*` | GPU LOAD % | VRAM used / total GB |
 
-Each tile is a label + large number + thin progress bar. Polled at 5s via `useMLModelsHealth`. This halves the current 10s `refetchInterval` — doubling the health endpoint's request rate per connected client. The endpoint is cheap (no DB, in-process reads) so this is acceptable, but worth noting if telemetry shows the new cadence matters under many tabs open.
+When `effective_device` is `null` (no ML group has ever been loaded in this process) the tiles fall back to **host-level** CPU/RAM — the dashboard stays informative before the first lazy load.
+
+Each tile is a label + large number + thin progress bar. Polled at **5s** via a new `useMLMetrics()` hook against the new auth-gated `/api/v1/pipeline/metrics` endpoint. The existing `useMLModelsHealth` hook continues to poll `/api/health/ml_models` at 10s for the model-loaded status indicators — we do not raise its cadence.
 
 ### 5.4 Loaded-groups row
 
@@ -90,12 +98,13 @@ Three chips (`extraction`, `classification`, `retriever`):
 - Loaded: green with idle-seconds (`extraction · 42s`).
 - Idle/not loaded: dimmed.
 
-Reuses the existing `groups` field from `/api/health/ml_models`.
+Reads the `groups` field from `GET /api/v1/pipeline/metrics` (auth-gated, 5s cadence). The unauthenticated `/api/health/ml_models` endpoint continues to carry the same `groups` field for external monitoring consumers but the Pipeline UI does not depend on it.
 
 ### 5.5 Unload controls
 
-- Primary CTA `Unload all models` (destructive style) — calls `POST /api/v1/pipeline/unload` with no `group` parameter.
-- `Advanced — per-group unload` disclosure reveals three buttons (`Unload extraction`, `Unload classification`, `Unload retriever`), each disabled when its group is not currently loaded. Calls `POST /api/v1/pipeline/unload?group=<name>`.
+- **Primary CTA `Unload all models`** (destructive style) — opens a confirmation dialog before firing the request: *"Unload all ML models? In-flight requests finish on the currently-loaded models; the next request reloads from disk (5–30s depending on device)."*. On confirm, calls `POST /api/v1/pipeline/unload` with no `group` parameter. Explicit confirmation is required because a misclick during heavy ingestion cascades into reloads on every subsequent request.
+- **`Advanced — per-group unload` disclosure** reveals three buttons (`Unload extraction`, `Unload classification`, `Unload retriever`), each disabled when its group is not currently loaded. These are surgical enough to skip the confirmation dialog — one click, one group.
+- **Shadow mode interaction.** When `ml_shadow_mode=true` and the *effective* path for a stage is LLM, the ML group for that stage still loads lazily to run shadow predictions. Unloading it is permitted but triggers a silent reload on the next shadow path. The confirmation dialog includes an extra line when shadow mode is on: *"Shadow mode is enabled — shadow predictions will trigger reloads after this."*
 
 ## 6. LLM panel specification
 
@@ -107,7 +116,9 @@ Header row only: purpose name on the left, one-line config summary on the right 
 
 ### 6.2 Expanded card — Model region
 
-Replaces today's `/llm` click-Edit-then-Save flow with always-editable inline inputs and autosave-on-blur. Each blur emits one `POST /api/v1/config/llm` request carrying only the purpose and field that changed — e.g. `{"extraction": {"model": "qwen2.5:7b"}}` — relying on the endpoint's existing merge logic (the 2026-04-19 fix that made empty `params` preserve the stored value). Debounce is one request per blur event, no timer-based coalescing.
+Replaces today's `/llm` click-Edit-then-Save flow with always-editable inline inputs **and a per-card `Save` button** enabled only while the card is dirty. One click sends one `POST /api/v1/config/llm` with every changed field on that purpose batched — e.g. `{"extraction": {"provider": "openai", "model": "gpt-4o-mini", "base_url": "https://api.openai.com/v1"}}`. Autosave-on-blur was considered but rejected: each `POST /api/v1/config/llm` rebuilds the `LLMOrchestrator` (cheap) and, when the embedding purpose is changed without an explicit `dimensions` value, probes the embedder (can take 500ms–2s). Batching per card keeps that cost to one rebuild/probe per user-initiated save.
+
+Editing a card without saving then navigating away prompts a "Discard unsaved changes?" dialog (TanStack Router's block-on-navigation hook).
 
 Common fields: provider, base_url, model, api_key (shown as `***` placeholder, sent verbatim preserves the stored key).
 
@@ -136,6 +147,8 @@ Rendered only for purposes that own prompts. The mapping lives in one place — 
 
 Any prompt key in `/api/v1/config/system-prompts` not listed in this map (today: `chat`, `cluster_naming`, `agent_instructions`) is treated as an orphan and rendered on Settings → Assistant Prompts instead.
 
+**Exhaustiveness guard.** On app boot the frontend asserts `new Set(PROMPTS.keys()) === new Set([...prompt_map.values().flat(), ...ORPHAN_PROMPTS])` (logged as a warning if it fails) so a new stage-bound prompt added to `PROMPTS` without a corresponding `prompt-map.ts` entry doesn't silently land on Settings.
+
 For the multi-prompt case (extraction), pills display which `tool_call_mode` uses each prompt. The currently-overridden prompt shows a `custom` badge on its pill. Below the textarea: character count / 20,000, `Load default` button, `Save override` button (calls existing `PUT /api/v1/config/system-prompts` with empty string to clear).
 
 ### 6.4 Dimension-change dialog
@@ -145,6 +158,8 @@ The existing obsolete-counts dialog triggered by embedding model or dimensions c
 ## 7. Backend changes
 
 ### 7.1 New endpoints
+
+All new endpoints use `Depends(require_auth)` — same contract as every existing `/api/v1/config/*` route.
 
 **`GET /api/v1/pipeline`** — aggregator returning the whole page state in one payload:
 
@@ -185,20 +200,15 @@ The existing obsolete-counts dialog triggered by embedding model or dimensions c
 
 Composed from existing services (`fetch_llm_config`, `get_feature_flags_dict`, `list_available_devices`, `prompt.get_overrides`). No new DB access patterns; no schema changes. The `persistence` string and the top-level `mode` are derived — `persistence` is `"persistent"` when `ml_idle_ttl_minutes == 0` else `"ttl"`; `mode` is `"ml"` when all three stage flags are true, `"llm"` when all three are false, else `"mixed"`.
 
-**`POST /api/v1/pipeline/mode`** — preset writer. Body `{"mode": "ml" | "llm"}`. Writes all three stage flags atomically. Returns `{mode, stages}`.
+**`POST /api/v1/pipeline/mode`** — preset writer. Body `{"mode": "ml" | "llm"}`. Writes all three stage flags in a single DB transaction, then calls `app.services.pipeline._refresh_flag_cache(session_factory)` so the 5-second `_FLAG_CACHE_TTL` doesn't stall propagation to the running pipeline. Response is intentionally thin — `{mode, stages}` only; the frontend invalidates its `["pipeline"]` query on success to pull the full aggregator state, rather than the endpoint duplicating the aggregator's payload.
 
-**`POST /api/v1/pipeline/unload`** — optional query param `group=extraction|classification|retriever`, omit for all. Body empty. Returns `{unloaded: [...], groups: {...}}`. Calls the existing `unload_*` functions in `services/ml_models.py` under the appropriate `_GROUP_LOCKS` entry.
+**`POST /api/v1/pipeline/unload`** — takes a `group` query param validated as `Literal["extraction","classification","retriever"] | None` via FastAPI's `Query(None)`; unknown values return 422 automatically. Omit for all groups. Body empty. Returns `{unloaded: [...], groups: {...}}`. Calling with nothing loaded is a no-op that returns `{unloaded: [], groups: {...}}` with status 200. Calls the existing `unload_*` functions in `services/ml_models.py` under the appropriate `_GROUP_LOCKS["<group>"]` entry, wrapped in `asyncio.to_thread` because those locks are `threading.Lock` rather than `asyncio.Lock`.
 
-### 7.2 Health endpoint extension
+**`GET /api/v1/pipeline/metrics`** — auth-gated host telemetry endpoint. Returns `{cpu_percent, ram_used_mb, ram_total_mb, gpu_util_percent, vram_used_mb, vram_total_mb, groups}` — the per-request host and GPU numbers plus the loaded-groups snapshot. This is a new endpoint *on purpose* rather than extending `/api/health/ml_models` (see 7.2 below).
 
-`GET /api/health/ml_models` gains additive fields:
+### 7.2 Health endpoint — unchanged
 
-- `cpu_percent: float | null` — system-wide from `psutil.cpu_percent()`.
-- `ram_used_mb: int | null`, `ram_total_mb: int | null` — from `psutil.virtual_memory()`.
-- `gpu_util_percent: float | null` — from `pynvml.nvmlDeviceGetUtilizationRates(handle).gpu`.
-- `vram_total_mb: int | null` — from `pynvml.nvmlDeviceGetMemoryInfo(handle).total / 1e6`.
-
-Fields are `null` when the corresponding library is unavailable or the host doesn't support them. No existing consumers break.
+`GET /api/health/ml_models` stays as-is: unauthenticated, model-loaded status only. The host-level telemetry (`cpu_percent`, `ram_used_mb`, `ram_total_mb`, `gpu_util_percent`, `vram_total_mb`, `vram_used_mb`) moves to the new auth-gated `GET /api/v1/pipeline/metrics` in 7.1 so we don't leak host fingerprinting to unauthenticated callers. `vram_allocated_mb` continues to ship in `/api/health/ml_models` since it's a model-process statistic and existing consumers depend on it.
 
 ### 7.3 Dependencies
 
@@ -218,20 +228,26 @@ New components under `frontend/src/components/pipeline/`:
 | Component | Responsibility |
 |---|---|
 | `PipelineModeToggle` | Segmented preset + shadow switch + Advanced disclosure with three stage switches |
-| `MLPanel` | Composition root for the ML stack side |
-| `MLDeviceSection` | Device picker + persistence toggle |
+| `MLPanel` | Composition root for the ML stack side; renders loading overlay while device-apply is pending |
+| `MLDeviceSection` | Device picker (disabled during `applyDevice.isPending`) |
+| `PersistenceModeToggle` | `[ Persistent | Idle TTL ]` segmented + minutes input; writes `ml_idle_ttl_minutes` |
 | `SysMetricsDashboard` | Two tiles (CPU+RAM or GPU+VRAM) + loaded-groups row |
 | `UnloadControls` | `Unload all` CTA + per-group Advanced disclosure |
+| `UnloadConfirmDialog` | Confirmation shell used only by the `Unload all` CTA |
 | `LLMPanel` | Composition root for the LLM side |
-| `LLMPurposeCard` | Collapsible card with Model region + integrated System prompts |
+| `LLMPurposeCard` | Collapsible card with Model region + integrated System prompts + per-card Save |
 | `LLMPurposePromptEditor` | Pills + textarea + save/load controls |
 
-Hooks under `frontend/src/hooks/api/`:
+A small `frontend/src/components/pipeline/prompt-map.ts` constant holds the purpose → prompts mapping described in Section 6.3. The Pipeline page root owns the dim-when-inactive logic and passes a `status: "active" | "mixed" | "inactive"` prop down to each panel.
 
-- `usePipeline()` — new `GET /api/v1/pipeline` query with `staleTime: 15s`, so cross-tab edits reconcile without hammering the endpoint.
-- `useSetPipelineMode()` — new `POST /api/v1/pipeline/mode` mutation.
-- `useUnloadPipeline()` — new `POST /api/v1/pipeline/unload` mutation.
-- Existing `useLlmConfig`, `useUpdateLlmConfig`, `useFeatureFlags`, `useUpdateFeatureFlags`, `useSystemPrompts`, `useUpdateSystemPrompts`, `useMLDevices`, `useApplyMLDevice`, `useMLModelsHealth` all stay. The Pipeline page invalidates the aggregator query on every mutation that touches its fields.
+Hooks in **new** file `frontend/src/hooks/api/use-pipeline-config.ts`:
+
+- `usePipeline()` — `GET /api/v1/pipeline` query with `staleTime: 0` and `refetchOnWindowFocus: true` so cross-tab edits reconcile when the tab regains focus.
+- `useSetPipelineMode()` — `POST /api/v1/pipeline/mode` mutation. `onSuccess` invalidates `["pipeline"]` to pull full fresh state.
+- `useUnloadPipeline()` — `POST /api/v1/pipeline/unload` mutation. `onSuccess` invalidates `["pipeline"]` and `["mlMetrics"]`.
+- `useMLMetrics()` — `GET /api/v1/pipeline/metrics` query with `refetchInterval: 5_000`.
+
+Existing hooks (`useLlmConfig`, `useUpdateLlmConfig`, `useFeatureFlags`, `useUpdateFeatureFlags`, `useSystemPrompts`, `useUpdateSystemPrompts`, `useMLDevices`, `useApplyMLDevice`, `useMLModelsHealth`) all stay. **Each of the `useUpdate*` / `useApply*` mutations must add `qc.invalidateQueries({ queryKey: ["pipeline"] })` to its `onSuccess`** so the Pipeline page sees individual-endpoint edits immediately. This is the only required change to the existing hooks.
 
 The Settings page's existing cards that survive (`FeatureFlagsCard` trimmed, `ClassificationAreasCard`, `EnrichmentCard`, and a new `AssistantPromptsCard` scoped to the three orphans) remain self-contained; no cross-page state sharing beyond React Query's cache.
 
@@ -241,17 +257,21 @@ The Settings page's existing cards that survive (`FeatureFlagsCard` trimmed, `Cl
 |---|---|
 | `GET /api/v1/pipeline` | Full-page error card with status, message, retry button. Page does not become interactive until the aggregator succeeds. |
 | `POST /pipeline/mode` | Segmented control reverts to derived state from the last-known flags. Toast the error. |
-| `POST /pipeline/unload` | Toast. Next poll of `/api/health/ml_models` reconciles the groups row. |
-| `POST /config/ml-device/apply` returning `reload_error` | Toast with the error text. Segmented device selection reverts to `effective_device`. |
-| `/api/health/ml_models` failure | Individual tiles render `—` with tooltip "metrics unavailable". Loaded-groups row is independent and keeps its last known state. |
-| `pynvml` unavailable | `gpu_util_percent` is `null`; tile shows `—` with tooltip "driver didn't report utilization". VRAM allocated continues to render via `torch.cuda.memory_allocated`. |
-| `psutil` unavailable | CPU and RAM tiles show `—`. Treated as install-broken; health endpoint should log a warning once at startup. |
+| `POST /pipeline/unload` | Toast. Next poll of `/api/v1/pipeline/metrics` reconciles the groups row. |
+| `POST /config/ml-device/apply` returning `reload_error` | Toast with the error text. Segmented device selection reverts to `effective_device`. Spinner state clears. |
+| `GET /api/v1/pipeline/metrics` failure | Individual tiles render `—` with tooltip "metrics unavailable". Loaded-groups row keeps its last known state. |
+| `GET /api/health/ml_models` failure | Loaded-groups row dims to last known state; no cascade to other UI (tiles drive off the metrics endpoint, not health). |
+| `pynvml` unavailable | `gpu_util_percent` and `vram_total_mb` are `null`; GPU tile shows `—` with tooltip "driver didn't report utilization". VRAM allocated still renders via `torch.cuda.memory_allocated` in `/api/health/ml_models`. |
+| `psutil` unavailable | CPU and RAM tiles show `—`. Treated as install-broken; the metrics endpoint should log a warning once at startup. |
 
 ## 10. Loading and empty states
 
 - **Page-level.** Skeleton with the four bands outlined while the aggregator resolves. No partial rendering.
-- **Metrics dashboard.** Tiles show `—` until the first health response lands. No spinner — 5s cadence.
-- **Optimistic mutations.** Device apply, mode preset, per-group unload flip the UI immediately and reconcile on server echo. LLM config saves and prompt saves stay non-optimistic because the obsolete-counts dialog depends on server-computed fields.
+- **Metrics dashboard.** Tiles show `—` until the first `/api/v1/pipeline/metrics` response lands. No spinner — 5s cadence.
+- **Mode preset.** Optimistic — segmented control flips, reverts on failure.
+- **Per-group unload.** Optimistic on the chip state.
+- **Device apply.** *Not optimistic* — `reload_ml_models()` can block for 5–30 seconds loading CUDA weights. Device picker shows a spinner via `applyDevice.isPending`; the rest of the ML panel disables while pending; a success toast fires on completion with the effective device. A failure toast restores the picker to the prior selection.
+- **LLM config saves.** Non-optimistic — the obsolete-counts dialog depends on server-computed fields.
 - **No CUDA devices.** Device picker shows only "CPU" with a small note.
 - **Fresh install, no LLM config row.** Aggregator composes from `settings.llm_*` env defaults in `backend/app/config.py`; the six purpose cards render with those defaults.
 - **Pipeline init failed at startup.** Aggregator still returns; embedding card's summary shows `(dimensions unknown)` and the obsolete-counts dialog is skipped on save.
@@ -261,23 +281,25 @@ The Settings page's existing cards that survive (`FeatureFlagsCard` trimmed, `Cl
 ### 11.1 Backend (`backend/tests/`)
 
 - `test_pipeline_aggregator.py` — shape; defaults when DB rows are missing; composition correctness against the four underlying services; `mode` derivation across all-true / all-false / mixed; `persistence` derivation across `ml_idle_ttl_minutes == 0` vs positive.
-- `test_pipeline_mode.py` — POST with `"ml"` flips all three stage flags in one transaction; `"llm"` flips them back; unknown value returns 422; existing non-ML feature-flag keys are preserved.
-- `test_pipeline_unload.py` — POST without `group` unloads everything; `group=extraction` unloads only that group; `group=bogus` returns 422; response `groups` payload matches the new state.
-- `test_ml_health_metrics.py` — monkey-patch `psutil` and `pynvml` to return fixed values; assert new fields populate; assert graceful degradation when either import fails.
-- Extend `test_ml_device_config.py` and `test_ml_lazy_load.py` for the extended health payload.
+- `test_pipeline_mode.py` — POST with `"ml"` flips all three stage flags in one transaction; `"llm"` flips them back; unknown value returns 422; existing non-ML feature-flag keys are preserved; `_refresh_flag_cache` is invoked exactly once per successful mode flip.
+- `test_pipeline_unload.py` — POST without `group` unloads everything; `group=extraction` unloads only that group; `group=bogus` returns 422 via the FastAPI `Literal` + `Query` validation; calling unload when nothing is loaded returns 200 with `unloaded: []`.
+- `test_pipeline_metrics.py` — new endpoint; monkey-patch `psutil` and `pynvml` to return fixed values; assert fields populate; assert `require_auth` is enforced (no-token request returns 401); assert graceful degradation (`null` fields) when either library fails to import or `pynvml` init raises.
+- Confirm `test_ml_health_metrics.py` does NOT regress — the health endpoint payload is intentionally unchanged.
 
 ### 11.2 Frontend
 
 - `npx tsc --noEmit` must stay green.
-- One Playwright smoke test: navigate to `/pipeline`, click `Darkmem ML stack`, expand Advanced, verify the three stage switches read `true`. The test stubs `/api/v1/pipeline` and `/api/health/ml_models` so it runs without a live backend.
-- Unit test for the `localStorage["darkmem.settings.tab"]` migration: seed `"ml"` and assert it resolves to `"flags"`; seed `"prompts"` and assert `"assistant"`.
+- Playwright smoke test: navigate to `/pipeline`, click `Darkmem ML stack`, expand Advanced, verify the three stage switches read `true`. Stubs `/api/v1/pipeline` and `/api/v1/pipeline/metrics` so the test runs without a live backend.
+- Playwright test for the `Unload all` confirmation dialog: click the button, verify the dialog appears, click cancel, verify no request fires; re-open, click confirm, verify the request fires with no `group` param.
+- Unit test for the `localStorage["darkmem.settings.tab"]` migration: seed `"ml"` → resolves to `"flags"`; seed `"prompts"` → resolves to `"assistant"`; seed `"assistant"` → stays at `"assistant"` (idempotent under React strict-mode double-render).
+- Unit test for the exhaustiveness guard on `prompt-map.ts` — fake a new prompt key and assert the boot-time warning fires.
 - Existing settings tests keep passing after the tab migration.
 
 ### 11.3 Manual QA checklist
 
 - Switch mode ML↔LLM with no in-flight memory-add; verify the three flags in DB flip.
 - Start from a fresh container without `pynvml`; confirm `gpu_util_percent` degrades to `—` without crashing the page.
-- Open two browser tabs, change the LLM extraction model in one, verify the other picks up the new config on next aggregator poll (aggregator is `staleTime: 15s`).
+- Open two browser tabs, change the LLM extraction model in one, verify the other picks up the new config on next window-focus (aggregator has `staleTime: 0` + `refetchOnWindowFocus: true`).
 - Exercise `Unload all` while a memory-add is in flight; verify the in-flight request completes on the old model group and the next request triggers a fresh lazy-load.
 
 ## 12. Open questions / deferred items
@@ -288,14 +310,26 @@ The Settings page's existing cards that survive (`FeatureFlagsCard` trimmed, `Cl
 
 ## 13. Rollout
 
-Single-PR rollout against `master` is feasible — the feature is self-contained, existing endpoints are unchanged, and the DB schema is untouched. The `/llm` redirect and the `/pipeline` rename to `/reindex` are the only URL-facing breaking changes; both are announced in the PR description and covered by route tests.
+Three sequential PRs against `master`. Each merges green independently; each is small enough to review in one sitting.
+
+**PR 1 — Backend.** Aggregator + mode + unload + metrics endpoints; `psutil` + `pynvml` dependencies; all new backend tests (`test_pipeline_aggregator.py`, `test_pipeline_mode.py`, `test_pipeline_unload.py`, `test_ml_health_metrics.py`). No frontend changes. The endpoints are dormant until PR 2 wires a UI.
+
+**PR 2 — Pipeline page.** New `pipeline.tsx` route, new `use-pipeline-config.ts` hook file, all components under `frontend/src/components/pipeline/`. Adds invalidation calls on existing `useUpdate*` / `useApply*` mutations. Does NOT yet rename the old `/pipeline` — that ships in PR 3. In this PR the new page lives temporarily at `/pipeline-v2` behind a route alias; existing `/pipeline` keeps pointing at the re-embed page.
+
+**PR 3 — Settings migration + route rename.** Rename `frontend/src/routes/_authenticated/pipeline.tsx` → `reindex.tsx`; move `/pipeline-v2` to `/pipeline`; add `/llm` redirect; run the internal-link audit and update targets. Split Settings tabs per Section 3.3. Ships the `localStorage["darkmem.settings.tab"]` migration shim.
+
+The PR boundaries are chosen so that URL-facing breakage happens in exactly one PR (PR 3), which can be released together with a changelog note. Anyone reviewing PR 3 can verify the redirect is in place just by diffing the route files.
 
 ## 14. Risks and mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| `pynvml` init fails silently on non-Nvidia hosts, leaving the dashboard empty | Medium | Low (tiles show `—`) | Log once at startup; document in the health endpoint's docstring that pynvml is optional. |
-| Tab-migration shim runs twice in dev (React strict-mode double-render) and re-maps already-migrated keys | Low | Low (idempotent map) | Shim compares the stored key to the current `SETTINGS_TABS` set; only remaps unknown keys. |
-| Cross-tab edits on LLM config diverge within the 15s aggregator `staleTime` window | Medium | Low (one tab shows stale data for up to 15s) | The aggregator re-fetches on window focus (React Query default); users who switch tabs see fresh state immediately. |
-| Autosave-on-blur fires with an invalid JSON `params` payload and shows a toast while the field is still focused downstream | Low | Low | The existing client-side JSON parse guard toasts and aborts the save; field stays in edit mode. |
-| `/pipeline` route collision with an unreviewed internal `<Link to="/pipeline">` missed in the audit | Medium | Medium (broken link lands on Pipeline page instead of reindex) | Covered by the audit sub-task above; add a route-integration test that asserts `<Link to="/reindex">` resolves on the re-embed dialog and obsolete-count dialog. |
+| `pynvml` init fails silently on non-Nvidia hosts, leaving the GPU tile empty | Medium | Low (tiles show `—`) | Log once at startup; document in `/api/v1/pipeline/metrics` endpoint docstring that pynvml is optional. |
+| Tab-migration shim runs twice in dev (React strict-mode double-render) and re-maps already-migrated keys | Low | Low (shim is idempotent) | Shim compares the stored key to the current `SETTINGS_TABS` set; only remaps known-legacy keys. |
+| `/pipeline` route collision with an unreviewed internal `<Link to="/pipeline">` missed in the audit | Medium | Medium (broken link lands on new Pipeline page instead of reindex) | Internal-link audit during PR 3; route-integration test that asserts `<Link to="/reindex">` resolves on the re-embed dialog and obsolete-count dialog. |
+| Device apply UI appears successful while 5–30s CUDA load still in progress | Medium | Medium (users ingest memories on old device) | Device picker disabled during `applyDevice.isPending`; spinner on the card; success/failure toast on completion. Non-optimistic by design. |
+| `Unload all` misclick during ingestion cascades reloads | Medium | Medium (seconds of latency per request until models re-warm) | Confirmation dialog (Section 5.5). |
+| Extending `/api/health/ml_models` would leak host telemetry | — | — | **Avoided in this spec** — metrics live on the auth-gated `/api/v1/pipeline/metrics` endpoint instead. |
+| Aggregator cached response goes stale after individual-endpoint writes | Medium | Medium (Pipeline page shows outdated config) | Every existing `useUpdate*` / `useApply*` mutation invalidates `["pipeline"]` on success (Section 8). |
+| Mode flip doesn't reach the running pipeline for ~5s due to `_FLAG_CACHE_TTL` | Medium | Low (next extraction still uses old path) | `POST /pipeline/mode` invalidates the cache via `_refresh_flag_cache` (Section 7.1). |
+| New stage-bound prompt added to `PROMPTS` without updating `prompt-map.ts` | Low | Medium (prompt silently lands on Settings) | Boot-time exhaustiveness guard logs a warning (Section 6.3) + unit test (Section 11.2). |
