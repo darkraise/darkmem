@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ThemeProvider } from "darkraise-ui/theme"
 import { Toaster } from "darkraise-ui/components/sonner"
+import { RouterAdapterProvider } from "darkraise-ui/router"
+import { tanstackRouterAdapter } from "./router-adapter"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,8 +39,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           },
         }}
       >
-        {children}
-        <Toaster position="bottom-right" richColors />
+        <RouterAdapterProvider value={tanstackRouterAdapter}>
+          {children}
+          <Toaster position="bottom-right" richColors />
+        </RouterAdapterProvider>
       </ThemeProvider>
     </QueryClientProvider>
   )

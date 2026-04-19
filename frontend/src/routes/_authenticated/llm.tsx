@@ -298,6 +298,7 @@ function LlmConfigPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <PurposeCard title="Embedding" config={data?.embedding} onSave={handleSave} saving={updateConfig.isPending} />
         <PurposeCard title="Extraction" config={data?.extraction} onSave={handleSave} saving={updateConfig.isPending} />
+        <PurposeCard title="Classification" config={data?.classification} onSave={handleSave} saving={updateConfig.isPending} />
         <PurposeCard title="Reasoning" config={data?.reasoning} onSave={handleSave} saving={updateConfig.isPending} />
         <PurposeCard title="Summarization" config={data?.summarization} onSave={handleSave} saving={updateConfig.isPending} />
         <PurposeCard title="Reranker" config={data?.reranker} onSave={handleSave} saving={updateConfig.isPending} />
