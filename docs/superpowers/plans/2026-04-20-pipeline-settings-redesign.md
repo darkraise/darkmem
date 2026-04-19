@@ -50,6 +50,64 @@ git commit -m "chore(deps): add psutil and pynvml for pipeline metrics"
 
 ---
 
+### Task 1A: Extract `feature_flags` helpers into the service layer
+
+**Files:**
+- Create: `backend/app/services/feature_flags.py`
+- Modify: `backend/app/api/routes/config.py`
+
+Services must not import from route modules. Today `FEATURE_FLAGS_KEY` and `get_feature_flags_dict` live in `backend/app/api/routes/config.py` (lines 160 and 163). The new `pipeline_aggregator` (Task 3) would inherit the backwards dependency. Extract both into a service module first so Tasks 3 and 5 can import from `app.services.feature_flags`.
+
+- [ ] **Step 1: Create the service module**
+
+Create `backend/app/services/feature_flags.py`:
+
+```python
+"""Read helpers for the feature_flags Config row. Shared by routes + services."""
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import FEATURE_FLAGS_DEFAULTS
+from app.models.config import Config
+
+FEATURE_FLAGS_KEY = "feature_flags"
+
+
+async def get_feature_flags_dict(session: AsyncSession) -> dict:
+    """Return feature flags merged with defaults. DB values win on conflict."""
+    result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
+    row = result.scalar_one_or_none()
+    if not row:
+        return dict(FEATURE_FLAGS_DEFAULTS)
+    merged = dict(FEATURE_FLAGS_DEFAULTS)
+    merged.update(row.value)
+    return merged
+```
+
+- [ ] **Step 2: Delete the originals and re-export from the route**
+
+In `backend/app/api/routes/config.py`, delete the `FEATURE_FLAGS_KEY = "feature_flags"` line and the whole `async def get_feature_flags_dict(...)` body. Add re-export at the top so existing imports from `app.api.routes.config` keep working:
+
+```python
+from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict  # noqa: F401
+```
+
+- [ ] **Step 3: Run the full backend suite to confirm nothing broke**
+
+Run: `cd backend && pytest -q`
+Expected: all tests still pass. The re-export keeps `from app.api.routes.config import FEATURE_FLAGS_KEY` intact for any caller that already relies on it.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add backend/app/services/feature_flags.py backend/app/api/routes/config.py
+git commit -m "refactor(backend): move feature_flags helpers to service layer"
+```
+
+---
+
 ### Task 2: `system_metrics` service with graceful degrade
 
 **Files:**
@@ -254,10 +312,10 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.config import FEATURE_FLAGS_KEY, get_feature_flags_dict
 from app.config import ml_pipeline_settings
 from app.services.config import get_llm_config as fetch_llm_config
 from app.services.config import cfg_to_schema
+from app.services.feature_flags import get_feature_flags_dict
 from app.services import prompt as _prompt_mod
 
 # Which prompt keys are stage-bound (shown on the Pipeline LLM panel).
@@ -435,11 +493,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.routes.config import FEATURE_FLAGS_KEY, get_feature_flags_dict
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
 from app.services import pipeline_aggregator, system_metrics
+from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict
 from app.services.ml_models import group_status, models_available
 
 logger = logging.getLogger(__name__)
@@ -854,6 +912,92 @@ gh pr create --title "feat(backend): pipeline aggregator + mode + unload + metri
 ---
 
 ## Phase 2 — Pipeline page (PR 2, new branch off `master` after PR 1 merges)
+
+### Task 8A: Install vitest + Playwright
+
+**Files:**
+- Modify: `frontend/package.json`
+
+The frontend currently has no unit-test or E2E runner; subsequent tasks add tests that assume both. Install them first.
+
+- [ ] **Step 1: Install vitest (with React Testing Library)**
+
+Run: `cd frontend && npm install --save-dev vitest @vitest/ui @testing-library/react @testing-library/jest-dom jsdom`
+Expected: packages install; `frontend/package.json` gains the new devDependencies.
+
+- [ ] **Step 2: Install Playwright**
+
+Run: `cd frontend && npm install --save-dev @playwright/test && npx playwright install --with-deps chromium`
+Expected: Playwright installs, Chromium downloads.
+
+- [ ] **Step 3: Add test scripts to `package.json`**
+
+In the `scripts` block, add:
+
+```json
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+```
+
+- [ ] **Step 4: Minimal `vitest.config.ts`**
+
+Create `frontend/vitest.config.ts`:
+
+```typescript
+import { defineConfig } from "vitest/config"
+import react from "@vitejs/plugin-react"
+import path from "path"
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: { "@": path.resolve(__dirname, "./src") },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+  },
+})
+```
+
+- [ ] **Step 5: Minimal `playwright.config.ts`**
+
+Create `frontend/playwright.config.ts`:
+
+```typescript
+import { defineConfig, devices } from "@playwright/test"
+
+export default defineConfig({
+  testDir: "./tests",
+  use: {
+    baseURL: "http://localhost:5173",
+    trace: "on-first-retry",
+  },
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+  ],
+  webServer: {
+    command: "npm run dev",
+    url: "http://localhost:5173",
+    reuseExistingServer: !process.env.CI,
+  },
+})
+```
+
+- [ ] **Step 6: Smoke-run both**
+
+Run: `cd frontend && npm run test -- --run && npx playwright test --list`
+Expected: vitest reports "no tests" (clean), Playwright reports an empty test list. Both runners exit 0.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add frontend/package.json frontend/package-lock.json frontend/vitest.config.ts frontend/playwright.config.ts
+git commit -m "chore(frontend): install vitest + Playwright test runners"
+```
+
+---
 
 ### Task 9: TypeScript models + the new hooks file
 
@@ -1332,7 +1476,7 @@ git commit -m "feat(frontend): PipelineModeToggle with derived mode + advanced s
 Create `frontend/src/components/pipeline/PersistenceModeToggle.tsx`:
 
 ```typescript
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Button } from "darkraise-ui/components/button"
@@ -1350,6 +1494,14 @@ export function PersistenceModeToggle({ ml }: Props) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [minutes, setMinutes] = useState<number>(ml.idle_ttl_minutes || readLastTtl() || 30)
   const [checkInterval, setCheckInterval] = useState<number>(ml.eviction_check_interval_seconds)
+
+  // Sync local state when server-side values change (e.g., another tab edits).
+  useEffect(() => {
+    if (ml.idle_ttl_minutes > 0) setMinutes(ml.idle_ttl_minutes)
+  }, [ml.idle_ttl_minutes])
+  useEffect(() => {
+    setCheckInterval(ml.eviction_check_interval_seconds)
+  }, [ml.eviction_check_interval_seconds])
 
   const pickPersistent = () => {
     if (ml.persistence === "persistent") return
@@ -2062,12 +2214,14 @@ export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }:
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
+    // Don't stomp in-progress edits when the aggregator refetches (e.g. after
+    // window-focus invalidation). Sync only when the card is clean.
+    if (dirty) return
     setDraft(config)
     setParamsText(
       Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
     )
-    setDirty(false)
-  }, [config])
+  }, [config, dirty])
 
   const promptKeys = PROMPT_PURPOSE_MAP[purpose]
 
@@ -2263,6 +2417,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
+import { REEMBED_ROUTE } from "./routes"
 import type { LLMPurpose } from "./prompt-map"
 
 const ORDER: LLMPurpose[] = [
@@ -2286,9 +2441,9 @@ export function LLMPanel({ state }: Props) {
   const startReembed = () => {
     reembedAll.mutate(undefined, {
       onSuccess: () => {
-        toast.info("Re-embed started — progress on /reindex")
+        toast.info(`Re-embed started — progress on ${REEMBED_ROUTE}`)
         setObsolete(null)
-        navigate({ to: "/reindex" })
+        navigate({ to: REEMBED_ROUTE })
       },
       onError: (err) => toast.error(`Re-embed failed: ${(err as Error).message}`),
     })
@@ -2348,7 +2503,18 @@ export function LLMPanel({ state }: Props) {
 }
 ```
 
-Note: `useReembedAll` is the existing hook already used by `/llm.tsx` today — it lives in `frontend/src/hooks/api/use-config-api.ts` or `use-reembed-api.ts`; use whichever file currently exports it. No changes to that hook.
+Also create the route constant module `frontend/src/components/pipeline/routes.ts`:
+
+```typescript
+/**
+ * Where the re-embed progress page lives. During Phase 2 (PR 2) the old
+ * `/pipeline` re-embed page is still at `/pipeline`, so we navigate there.
+ * Phase 3 (PR 3, Task 24) flips this to `/reindex` once the rename happens.
+ */
+export const REEMBED_ROUTE = "/pipeline" as const
+```
+
+Note: `useReembedAll` is the existing hook already exported by `@/hooks/api` (lives in `use-pipeline-api.ts`). No changes to that hook.
 
 - [ ] **Step 2: Typecheck**
 
@@ -2463,14 +2629,44 @@ git commit -m "feat(frontend): Pipeline page under /pipeline-v2 alias"
 **Files:**
 - Create: `frontend/tests/pipeline.spec.ts`
 
-- [ ] **Step 1: Write the smoke test**
+- [ ] **Step 1: Shared auth stub helper**
 
-Create `frontend/tests/pipeline.spec.ts` (adjust path if the project has another Playwright location):
+Create `frontend/tests/helpers/auth.ts`:
+
+```typescript
+import type { Page } from "@playwright/test"
+
+/** Seed auth state so /_authenticated routes don't redirect to /login. */
+export async function seedAuth(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "darkmem-auth",
+      JSON.stringify({ state: { isAuthenticated: true }, version: 0 }),
+    )
+  })
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  )
+  await page.route("**/api/v1/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ initialized: true }),
+    }),
+  )
+}
+```
+
+- [ ] **Step 2: Write the smoke test**
+
+Create `frontend/tests/pipeline.spec.ts`:
 
 ```typescript
 import { test, expect } from "@playwright/test"
+import { seedAuth } from "./helpers/auth"
 
 test.beforeEach(async ({ page }) => {
+  await seedAuth(page)
   // Serve an evolving aggregator state so the "flip mode" test sees the new
   // state after invalidation rather than the pre-flip mock.
   let aggregatorStages: "llm" | "ml" = "llm"
@@ -2550,7 +2746,9 @@ test("pipeline page flips mode and exposes advanced switches", async ({ page }) 
   await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
   await page.getByRole("button", { name: /Advanced/ }).click()
   for (const stage of ["extraction", "classification", "retrieval"]) {
-    await expect(page.getByLabel(stage)).toHaveAttribute("data-state", /checked/)
+    await expect(
+      page.getByRole("switch", { name: new RegExp(stage, "i") }),
+    ).toHaveAttribute("data-state", "checked")
   }
 })
 
@@ -2706,6 +2904,16 @@ cd frontend/src && grep -rn "to=\"/pipeline\"" . && grep -rn "navigate.*\"/pipel
 
 Expected output: any hits that need updating. The `Re-embed now` dialog in the old `/llm` page (now behind the redirect) was written to navigate to `/pipeline`; its new target is `/reindex`. Check every hit — if the link refers to the re-embed page, change it to `/reindex`; if it's meant to land on the new Pipeline page, leave it.
 
+- [ ] **Step 2b: Flip the re-embed route constant**
+
+In `frontend/src/components/pipeline/routes.ts`, change:
+
+```typescript
+export const REEMBED_ROUTE = "/reindex" as const
+```
+
+This swaps every place the LLMPanel's obsolete-counts dialog navigates to. The constant is the single source of truth.
+
 - [ ] **Step 3: Update nav**
 
 In `frontend/src/routes/_authenticated.tsx`, change the System group:
@@ -2746,16 +2954,20 @@ git commit -m "refactor(frontend): /llm redirects to /pipeline; nav updated"
 
 - [ ] **Step 1: Update the tabs constant and the tab router**
 
-In `frontend/src/routes/_authenticated/settings.tsx`, replace `SETTINGS_TABS`:
+In `frontend/src/routes/_authenticated/settings.tsx`, delete any existing `type SettingsTabValue = ...` line and import the type from the new `settings-tab.ts` helper (created in Step 6). Replace `SETTINGS_TABS`:
 
 ```typescript
+import { resolveStoredTab, type SettingsTabValue } from "./settings-tab"
+
 const SETTINGS_TABS = [
   { value: "flags", label: "Feature Flags" },
   { value: "classification", label: "Classification" },
   { value: "workers", label: "Workers" },
   { value: "assistant", label: "Assistant Prompts" },
-] as const
+] as const satisfies readonly { value: SettingsTabValue; label: string }[]
 ```
+
+The `as const satisfies` lock-step means any mismatch between the tab union in `settings-tab.ts` and the UI labels here fails typecheck.
 
 - [ ] **Step 2: Migrate the persisted tab key**
 
@@ -2764,18 +2976,11 @@ Replace the `useState` initializer for `tab`:
 ```typescript
 const [tab, setTab] = useState<SettingsTabValue>(() => {
   if (typeof window === "undefined") return "flags"
-  const stored = window.localStorage.getItem("darkmem.settings.tab")
-  const LEGACY: Record<string, SettingsTabValue> = {
-    ml: "flags",
-    prompts: "assistant",
-  }
-  if (stored && LEGACY[stored]) return LEGACY[stored]
-  if (stored && SETTINGS_TABS.some((t) => t.value === stored)) {
-    return stored as SettingsTabValue
-  }
-  return "flags"
+  return resolveStoredTab(window.localStorage.getItem("darkmem.settings.tab"))
 })
 ```
+
+Uses the shared helper from Step 6, so migration logic lives in exactly one place.
 
 - [ ] **Step 3: Remove the `ml` and `prompts` TabsContents, add `assistant`**
 
@@ -2789,9 +2994,98 @@ In the `<Tabs>` body, delete the `<TabsContent value="ml">` block containing `ML
 
 - [ ] **Step 4: Trim `FeatureFlagsCard`**
 
-In the same file, inside `FeatureFlagsCard`, remove the following rows from the `items` array and their separate `<Input>` blocks:
-- `ml_extraction`, `ml_classification`, `ml_retrieval`, `ml_shadow_mode` (these are on Pipeline now)
-- The `ML Idle TTL`, `Eviction Check Interval`, `Pipeline Concurrency` numeric rows — keep `pipeline_concurrency`, `embedding_batch_size`, `embedding_concurrency`, `entity_cache_ttl_minutes`, `confidence_rank_gamma`, `llm_enrichment_enabled`, `hybrid_search_enabled`, `reranker_enabled` per the spec's Settings tab table.
+Replace the body of `FeatureFlagsCard` with this concrete version. Keeps `hybrid_search_enabled`, `llm_enrichment_enabled`, `reranker_enabled`, `pipeline_concurrency`, `embedding_batch_size`, `embedding_concurrency`, `entity_cache_ttl_minutes`, and `confidence_rank_gamma` per Section 3.3. Drops every `ml_*` flag plus the two eviction knobs (they live on the Pipeline page now).
+
+```tsx
+function FeatureFlagsCard() {
+  const { data: flags, isLoading } = useFeatureFlags()
+  const updateFlags = useUpdateFeatureFlags()
+
+  if (isLoading || !flags) return null
+
+  const toggles = [
+    { label: "Hybrid Search (BM25 + RRF)", key: "hybrid_search_enabled" as const, description: "Combines vector similarity with full-text search via Reciprocal Rank Fusion" },
+    { label: "LLM Enrichment", key: "llm_enrichment_enabled" as const, description: "Run LLM classification alongside regex for A/B comparison" },
+    { label: "Reranker", key: "reranker_enabled" as const, description: "Re-score search results using LLM relevance scoring" },
+  ]
+
+  const handleToggle = (key: keyof typeof flags, value: boolean) => {
+    updateFlags.mutate(
+      { [key]: value },
+      {
+        onSuccess: () => toast.success(`${key.replace(/_/g, " ")} ${value ? "enabled" : "disabled"}`),
+        onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+      },
+    )
+  }
+
+  const NumericRow = ({
+    label, description, flagKey, min, max, step, defaultValue, width = "w-16",
+  }: {
+    label: string; description: string; flagKey: keyof typeof flags;
+    min: number; max: number; step?: number; defaultValue: number; width?: string
+  }) => (
+    <div className="flex items-center justify-between pt-2 border-t border-border">
+      <div>
+        <Label className="text-sm">{label}</Label>
+        <p className="text-muted-foreground text-xs">{description}</p>
+      </div>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={(flags[flagKey] as number) ?? defaultValue}
+        onChange={(e) => {
+          const v = Math.max(min, Math.min(max, Number(e.target.value) || defaultValue))
+          updateFlags.mutate(
+            { [flagKey]: v },
+            {
+              onSuccess: () => toast.success(`${label} set to ${v}`),
+              onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+            },
+          )
+        }}
+        className={`${width} h-8 text-sm text-center`}
+        disabled={updateFlags.isPending}
+      />
+    </div>
+  )
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Feature Flags</CardTitle>
+        <p className="text-muted-foreground text-xs">
+          Toggle pipeline features. Changes take effect on the next operation.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {toggles.map((item) => (
+          <div key={item.key} className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">{item.label}</Label>
+              <p className="text-muted-foreground text-xs">{item.description}</p>
+            </div>
+            <Switch
+              checked={flags[item.key]}
+              onCheckedChange={(v) => handleToggle(item.key, v)}
+              disabled={updateFlags.isPending}
+            />
+          </div>
+        ))}
+        <NumericRow label="Pipeline Concurrency" description="Max parallel LLM calls during batch processing" flagKey="pipeline_concurrency" min={1} max={20} defaultValue={5} />
+        <NumericRow label="Embedding Batch Size" description="Texts per embed call" flagKey="embedding_batch_size" min={1} max={200} defaultValue={20} />
+        <NumericRow label="Embedding Concurrency" description="Parallel embed calls" flagKey="embedding_concurrency" min={1} max={10} defaultValue={1} />
+        <NumericRow label="Entity Cache TTL (minutes)" description="How long entity lookups are cached during extraction" flagKey="entity_cache_ttl_minutes" min={1} max={1440} defaultValue={60} />
+        <NumericRow label="Confidence Rank γ" description="Multiplicative weight of memory confidence in retrieval rank fusion. 0 disables. Try 0.2–0.5." flagKey="confidence_rank_gamma" min={0} max={5} step={0.1} defaultValue={0} width="w-20" />
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+Then remove the now-unused `MLDeviceCard`, `SystemPromptsCard`, `_PROMPT_LABELS` / `PROMPT_LABELS`, `useMLDevices`, `useApplyMLDevice`, `useMLModelsHealth`, `useSystemPrompts`, `useUpdateSystemPrompts` imports from the top of `settings.tsx` (anything only used by the deleted ML Pipeline / System Prompts tabs). Keep imports the new `AssistantPromptsCard` still needs: `useSystemPrompts`, `useUpdateSystemPrompts`, `Badge`, `ToggleGroup`, `ToggleGroupItem`, `Textarea`.
 
 - [ ] **Step 5: Add `AssistantPromptsCard`**
 
@@ -2958,6 +3252,7 @@ Create `frontend/tests/reindex-link.spec.ts`:
 
 ```typescript
 import { test, expect } from "@playwright/test"
+import { seedAuth } from "./helpers/auth"
 
 const AGGREGATOR_STUB = {
   mode: "llm",
@@ -2988,6 +3283,7 @@ const AGGREGATOR_STUB = {
 }
 
 test("Re-embed dialog on /pipeline navigates to /reindex", async ({ page }) => {
+  await seedAuth(page)
   await page.route("**/api/v1/pipeline", (route) =>
     route.fulfill({
       status: 200,
