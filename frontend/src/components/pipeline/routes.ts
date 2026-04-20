@@ -1,6 +1,7 @@
 /**
- * Where the re-embed progress page lives. During Phase 2 (PR 2) the old
- * `/pipeline` re-embed page is still at `/pipeline`, so we navigate there.
- * Phase 3 (PR 3, Task 24) flips this to `/reindex` once the rename happens.
+ * Where the re-embed progress page lives. The old LLM-page flow used to
+ * navigate to `/pipeline`; Phase 3 moved that page to `/reindex` and repurposed
+ * `/pipeline` for the new pipeline UI, so this constant now points to
+ * `/reindex`.
  */
-export const REEMBED_ROUTE = "/pipeline" as const
+export const REEMBED_ROUTE = "/reindex" as const

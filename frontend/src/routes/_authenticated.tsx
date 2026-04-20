@@ -49,8 +49,8 @@ const nav: NavGroup[] = [
     label: "System",
     items: [
       { label: "Analytics", href: "/analytics", icon: BarChart3 },
-      { label: "Pipeline", href: "/pipeline", icon: Activity },
-      { label: "LLM Config", href: "/llm", icon: Cpu },
+      { label: "Pipeline", href: "/pipeline", icon: Cpu },
+      { label: "Reindex", href: "/reindex", icon: Activity },
       { label: "Settings", href: "/settings", icon: Settings },
     ],
   },
