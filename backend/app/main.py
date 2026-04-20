@@ -115,26 +115,36 @@ async def lifespan(app: FastAPI):
 
     try:
         from app.services.config import get_llm_config
+        from app.services.feature_flags import get_feature_flags_dict
         async with async_session_factory() as session:
             llm_config = await get_llm_config(session)
+            _flags_snapshot = await get_feature_flags_dict(session)
         llm = LLMOrchestrator(llm_config)
 
         embedding_dims = llm_config["embedding"].dimensions or settings.embedding_dimensions
-        try:
-            test_vec = await llm.embed("dimension probe")
-            embedding_dims = len(test_vec)
-            logger.info(f"Detected embedding dimensions: {embedding_dims}")
-            if embedding_dims != settings.embedding_dimensions:
-                logger.error(
-                    f"Embedding model returns {embedding_dims} dimensions but "
-                    f"settings.embedding_dimensions is {settings.embedding_dimensions}. "
-                    f"Update EMBEDDING_DIMENSIONS env var or change the model."
-                )
-                raise SystemExit(1)
-        except SystemExit:
-            raise
-        except Exception as e:
-            logger.warning(f"Could not auto-detect embedding dimensions: {e}")
+        ml_retrieval_on = bool(_flags_snapshot.get("ml_retrieval", False))
+        if ml_retrieval_on:
+            # ML retrieval is lazy-loaded on first request. Probing here would
+            # pull the retriever weights into memory at boot, defeating the
+            # point. Trust the configured dims; the retriever checkpoint is
+            # pinned in fine-tuning/PRODUCTION.md.
+            logger.info("ML retrieval enabled; skipping startup dim probe (dims=%d)", embedding_dims)
+        else:
+            try:
+                test_vec = await llm.embed("dimension probe")
+                embedding_dims = len(test_vec)
+                logger.info(f"Detected embedding dimensions: {embedding_dims}")
+                if embedding_dims != settings.embedding_dimensions:
+                    logger.error(
+                        f"Embedding model returns {embedding_dims} dimensions but "
+                        f"settings.embedding_dimensions is {settings.embedding_dimensions}. "
+                        f"Update EMBEDDING_DIMENSIONS env var or change the model."
+                    )
+                    raise SystemExit(1)
+            except SystemExit:
+                raise
+            except Exception as e:
+                logger.warning(f"Could not auto-detect embedding dimensions: {e}")
 
         from app.api.websocket import event_manager
         pipeline = ProcessingPipeline(llm, async_session_factory, embedding_dims, broadcast=event_manager.broadcast)
