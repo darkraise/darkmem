@@ -5,6 +5,7 @@ import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
+import { Badge } from "darkraise-ui/components/badge"
 import { toast } from "sonner"
 import { useUpdateLlmConfig, type LlmPurposeConfig, type PipelineState } from "@/hooks/api"
 import { PROMPT_PURPOSE_MAP, type LLMPurpose } from "./prompt-map"
@@ -14,12 +15,13 @@ interface Props {
   purpose: LLMPurpose
   config: LlmPurposeConfig
   prompts: PipelineState["prompts"]
+  overridden?: boolean
   onObsoleteDetected?: (counts: { memories: number; code_chunks: number; entities: number }) => void
 }
 
-export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }: Props) {
+export function LLMPurposeCard({ purpose, config, prompts, overridden = false, onObsoleteDetected }: Props) {
   const update = useUpdateLlmConfig()
-  const [open, setOpen] = useState(purpose === "extraction")
+  const [open, setOpen] = useState(purpose === "extraction" && !overridden)
   const [draft, setDraft] = useState<LlmPurposeConfig>(config)
   const [paramsText, setParamsText] = useState(
     Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
@@ -79,20 +81,30 @@ export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }:
   }
 
   return (
-    <Card className={`${open ? "border-primary" : ""}`}>
+    <Card className={`${open && !overridden ? "border-primary" : ""} ${overridden ? "opacity-60" : ""}`}>
       <button
         type="button"
-        className="w-full text-left p-2 flex justify-between items-center"
+        className="w-full text-left p-2 flex justify-between items-center gap-2"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="text-xs font-semibold capitalize">{open ? "▾" : "▸"} {purpose}</span>
-        <span className="text-[10px] text-muted-foreground font-mono">
+        <span className="text-xs font-semibold capitalize flex items-center gap-2">
+          {open ? "▾" : "▸"} {purpose}
+          {overridden && (
+            <Badge variant="secondary" className="text-[9px]">overridden by Darkmem ML</Badge>
+          )}
+        </span>
+        <span className="text-[10px] text-muted-foreground font-mono truncate">
           {config.model}{config.dimensions ? ` · ${config.dimensions}d` : ""} · {config.provider}
         </span>
       </button>
       {open && (
-        <CardContent className="space-y-3 pt-0">
+        <CardContent className="p-0">
+        <fieldset
+          disabled={overridden}
+          className="space-y-3 pt-0 p-4 border-0 m-0 disabled:opacity-70"
+          aria-label={`${purpose} LLM configuration`}
+        >
           <div className="grid grid-cols-2 gap-2">
             <Field label="Provider" value={draft.provider} onChange={(v) => patch({ provider: v })} />
             <Field label="Model" mono value={draft.model} onChange={(v) => patch({ model: v })} />
@@ -153,6 +165,7 @@ export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }:
           )}
 
           <LLMPurposePromptEditor keys={promptKeys} prompts={prompts} />
+        </fieldset>
         </CardContent>
       )}
     </Card>

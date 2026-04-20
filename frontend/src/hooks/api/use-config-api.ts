@@ -241,6 +241,12 @@ export function useApplyMLDevice() {
 
 // -- ML models health (per-group load + idle state) -------------------------
 
+export interface MLHeadSource {
+  kind: "local" | "hub" | null;
+  location: string | null;
+  revision: string | null;
+}
+
 export interface MLModelsHealthResponse {
   enabled: boolean;
   device: string;
@@ -248,6 +254,7 @@ export interface MLModelsHealthResponse {
   loaded: boolean;
   any_loaded?: boolean;
   heads: Record<string, boolean>;
+  sources?: Record<string, MLHeadSource>;
   groups?: Record<string, { loaded: boolean; idle_seconds: number | null }>;
   embedding_dims: number | null;
   fingerprint: string | null;

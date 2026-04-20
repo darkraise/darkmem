@@ -3,6 +3,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { useApplyMLDevice, type PipelineState } from "@/hooks/api"
 import { MLDeviceSection } from "./MLDeviceSection"
 import { PersistenceModeToggle } from "./PersistenceModeToggle"
+import { StageStatusCards } from "./StageStatusCards"
 import { SysMetricsDashboard } from "./SysMetricsDashboard"
 import { UnloadControls } from "./UnloadControls"
 
@@ -38,6 +39,7 @@ export function MLPanel({ state }: Props) {
           {switching ? <MLPanelSkeleton /> : (
             <>
               <PersistenceModeToggle ml={state.ml} />
+              <StageStatusCards stages={state.stages} active={active} />
               <SysMetricsDashboard ml={state.ml} active={active} />
               <UnloadControls state={state} active={active} />
             </>

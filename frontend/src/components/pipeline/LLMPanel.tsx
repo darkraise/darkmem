@@ -19,6 +19,23 @@ const ORDER: LLMPurpose[] = [
   "embedding", "extraction", "classification", "reasoning", "summarization", "reranker",
 ]
 
+// Each LLM purpose maps to at most one stage whose "ml" setting overrides it.
+// reasoning/summarization/reranker have no ML counterpart, so they're always
+// editable.
+const PURPOSE_TO_STAGE: Partial<Record<LLMPurpose, keyof PipelineState["stages"]>> = {
+  embedding: "retrieval",
+  extraction: "extraction",
+  classification: "classification",
+}
+
+function isPurposeOverridden(
+  purpose: LLMPurpose,
+  stages: PipelineState["stages"],
+): boolean {
+  const stage = PURPOSE_TO_STAGE[purpose]
+  return stage !== undefined && stages[stage] === "ml"
+}
+
 interface Props {
   state: PipelineState
 }
@@ -68,6 +85,7 @@ export function LLMPanel({ state }: Props) {
               purpose={p}
               config={state.llm[p]}
               prompts={state.prompts}
+              overridden={isPurposeOverridden(p, state.stages)}
               onObsoleteDetected={setObsolete}
             />
           ))}

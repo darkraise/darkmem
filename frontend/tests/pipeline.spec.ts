@@ -157,3 +157,15 @@ test("ML panel controls are disabled when no stage is ML", async ({ page }) => {
   const cpuToggle = mlFieldset.getByRole("radio", { name: "CPU" })
   await expect(cpuToggle).toBeDisabled()
 })
+
+test("LLM purpose cards are marked overridden when their stage runs on ML", async ({ page }) => {
+  await page.goto("/pipeline")
+  // Start ML mode so extraction/classification/retrieval are all "ml".
+  await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
+  // Extraction, classification, and embedding (retrieval) should each show
+  // the overridden badge. reasoning/summarization/reranker have no ML
+  // counterpart so they should not.
+  await expect(page.getByText("overridden by Darkmem ML").first()).toBeVisible()
+  const overriddenCount = await page.getByText("overridden by Darkmem ML").count()
+  expect(overriddenCount).toBe(3)
+})
