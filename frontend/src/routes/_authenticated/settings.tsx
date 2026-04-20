@@ -7,9 +7,6 @@ import {
   useFeatureFlags,
   useUpdateFeatureFlags,
   useClassificationAreas,
-  useMLDevices,
-  useApplyMLDevice,
-  useMLModelsHealth,
   useSystemPrompts,
   useUpdateSystemPrompts,
   type ClassificationAreaInfo,
@@ -35,6 +32,7 @@ import {
 } from "darkraise-ui/components/tabs"
 import { toast } from "sonner"
 import { PageHeader } from "darkraise-ui/layout"
+import { resolveStoredTab, type SettingsTabValue } from "./settings-tab"
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -257,14 +255,10 @@ function FeatureFlagsCard() {
 
   if (isLoading || !flags) return null
 
-  const items = [
+  const toggles = [
     { label: "Hybrid Search (BM25 + RRF)", key: "hybrid_search_enabled" as const, description: "Combines vector similarity with full-text search via Reciprocal Rank Fusion" },
     { label: "LLM Enrichment", key: "llm_enrichment_enabled" as const, description: "Run LLM classification alongside regex for A/B comparison" },
     { label: "Reranker", key: "reranker_enabled" as const, description: "Re-score search results using LLM relevance scoring" },
-    { label: "ML Extraction", key: "ml_extraction" as const, description: "Use fine-tuned GLiNER + ModernBERT + REBEL heads for entity + relation extraction. LLM path is the fallback." },
-    { label: "ML Classification", key: "ml_classification" as const, description: "Use the fine-tuned memory-type classifier instead of the LLM." },
-    { label: "ML Retrieval", key: "ml_retrieval" as const, description: "Use the fine-tuned bge retriever for query embeddings. Falls back to the embedding LLM if the head is unavailable." },
-    { label: "ML Shadow Mode", key: "ml_shadow_mode" as const, description: "Run ML heads in shadow mode alongside LLM for logging/comparison without affecting user-facing output." },
   ]
 
   const handleToggle = (key: keyof typeof flags, value: boolean) => {
@@ -277,6 +271,39 @@ function FeatureFlagsCard() {
     )
   }
 
+  const NumericRow = ({
+    label, description, flagKey, min, max, step, defaultValue, width = "w-16",
+  }: {
+    label: string; description: string; flagKey: keyof typeof flags;
+    min: number; max: number; step?: number; defaultValue: number; width?: string
+  }) => (
+    <div className="flex items-center justify-between pt-2 border-t border-border">
+      <div>
+        <Label className="text-sm">{label}</Label>
+        <p className="text-muted-foreground text-xs">{description}</p>
+      </div>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={(flags[flagKey] as number) ?? defaultValue}
+        onChange={(e) => {
+          const v = Math.max(min, Math.min(max, Number(e.target.value) || defaultValue))
+          updateFlags.mutate(
+            { [flagKey]: v },
+            {
+              onSuccess: () => toast.success(`${label} set to ${v}`),
+              onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
+            },
+          )
+        }}
+        className={`${width} h-8 text-sm text-center`}
+        disabled={updateFlags.isPending}
+      />
+    </div>
+  )
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -286,7 +313,7 @@ function FeatureFlagsCard() {
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {items.map((item) => (
+        {toggles.map((item) => (
           <div key={item.key} className="flex items-center justify-between">
             <div>
               <Label className="text-sm">{item.label}</Label>
@@ -299,386 +326,56 @@ function FeatureFlagsCard() {
             />
           </div>
         ))}
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">Pipeline Concurrency</Label>
-            <p className="text-muted-foreground text-xs">Max parallel LLM calls during batch processing</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={20}
-              value={flags.pipeline_concurrency}
-              onChange={(e) => {
-                const v = Math.max(1, Math.min(20, Number(e.target.value) || 5))
-                updateFlags.mutate(
-                  { pipeline_concurrency: v },
-                  {
-                    onSuccess: () => toast.success(`Pipeline concurrency set to ${v}`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-16 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">Embedding Batch Size</Label>
-            <p className="text-muted-foreground text-xs">Texts per embed call to the embedding model</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={200}
-              value={flags.embedding_batch_size ?? 20}
-              onChange={(e) => {
-                const v = Math.max(1, Math.min(200, Number(e.target.value) || 20))
-                updateFlags.mutate(
-                  { embedding_batch_size: v },
-                  {
-                    onSuccess: () => toast.success(`Embedding batch size set to ${v}`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-16 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">Embedding Concurrency</Label>
-            <p className="text-muted-foreground text-xs">Parallel embed calls when chunked batching</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={flags.embedding_concurrency ?? 1}
-              onChange={(e) => {
-                const v = Math.max(1, Math.min(10, Number(e.target.value) || 1))
-                updateFlags.mutate(
-                  { embedding_concurrency: v },
-                  {
-                    onSuccess: () => toast.success(`Embedding concurrency set to ${v}`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-16 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">Entity Cache TTL (minutes)</Label>
-            <p className="text-muted-foreground text-xs">How long entity lookups are cached during extraction</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={1440}
-              value={flags.entity_cache_ttl_minutes ?? 60}
-              onChange={(e) => {
-                const v = Math.max(1, Math.min(1440, Number(e.target.value) || 60))
-                updateFlags.mutate(
-                  { entity_cache_ttl_minutes: v },
-                  {
-                    onSuccess: () => toast.success(`Entity cache TTL set to ${v} minutes`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-16 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">Confidence Rank γ</Label>
-            <p className="text-muted-foreground text-xs">Multiplicative weight of memory confidence in retrieval rank fusion. 0 disables. Try 0.2–0.5.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={5}
-              step={0.1}
-              value={flags.confidence_rank_gamma ?? 0}
-              onChange={(e) => {
-                const v = Math.max(0, Math.min(5, Number(e.target.value) || 0))
-                updateFlags.mutate(
-                  { confidence_rank_gamma: v },
-                  {
-                    onSuccess: () => toast.success(`Confidence γ set to ${v}`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-20 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">ML Idle TTL (minutes)</Label>
-            <p className="text-muted-foreground text-xs">How long a loaded ML group stays resident after idle. 0 = never evict.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={1440}
-              value={flags.ml_idle_ttl_minutes ?? 30}
-              onChange={(e) => {
-                const v = Math.max(0, Math.min(1440, Number(e.target.value) || 0))
-                updateFlags.mutate(
-                  { ml_idle_ttl_minutes: v },
-                  {
-                    onSuccess: () => toast.success(`ML idle TTL set to ${v} min`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-16 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <div>
-            <Label className="text-sm">Eviction Check Interval (seconds)</Label>
-            <p className="text-muted-foreground text-xs">How often the background loop polls for idle ML groups.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={10}
-              max={3600}
-              value={flags.ml_eviction_check_interval_seconds ?? 60}
-              onChange={(e) => {
-                const v = Math.max(10, Math.min(3600, Number(e.target.value) || 60))
-                updateFlags.mutate(
-                  { ml_eviction_check_interval_seconds: v },
-                  {
-                    onSuccess: () => toast.success(`Eviction check set to ${v}s`),
-                    onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-                  },
-                )
-              }}
-              className="w-16 h-8 text-sm text-center"
-              disabled={updateFlags.isPending}
-            />
-          </div>
-        </div>
+        <NumericRow label="Pipeline Concurrency" description="Max parallel LLM calls during batch processing" flagKey="pipeline_concurrency" min={1} max={20} defaultValue={5} />
+        <NumericRow label="Embedding Batch Size" description="Texts per embed call" flagKey="embedding_batch_size" min={1} max={200} defaultValue={20} />
+        <NumericRow label="Embedding Concurrency" description="Parallel embed calls" flagKey="embedding_concurrency" min={1} max={10} defaultValue={1} />
+        <NumericRow label="Entity Cache TTL (minutes)" description="How long entity lookups are cached during extraction" flagKey="entity_cache_ttl_minutes" min={1} max={1440} defaultValue={60} />
+        <NumericRow label="Confidence Rank γ" description="Multiplicative weight of memory confidence in retrieval rank fusion. 0 disables. Try 0.2–0.5." flagKey="confidence_rank_gamma" min={0} max={5} step={0.1} defaultValue={0} width="w-20" />
       </CardContent>
     </Card>
   )
 }
 
-function MLDeviceCard() {
-  const { data: devices, isLoading } = useMLDevices()
-  const { data: health } = useMLModelsHealth()
-  const applyDevice = useApplyMLDevice()
-
-  if (isLoading || !devices) return null
-
-  const currentId =
-    devices.current.ml_device === "cpu"
-      ? "cpu"
-      : `cuda:${devices.current.ml_cuda_index}`
-
-  const handlePick = (id: string) => {
-    if (id === currentId) return
-    if (id === "cpu") {
-      applyDevice.mutate(
-        { ml_device: "cpu", ml_cuda_index: 0 },
-        {
-          onSuccess: (r) =>
-            toast.success(
-              `Loaded on ${r.effective_device}${r.reloaded ? "" : " (reload deferred)"}`,
-            ),
-          onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-        },
-      )
-      return
-    }
-    const idx = Number(id.replace(/^cuda:/, "")) || 0
-    applyDevice.mutate(
-      { ml_device: "cuda", ml_cuda_index: idx },
-      {
-        onSuccess: (r) =>
-          toast.success(
-            `Loaded on ${r.effective_device}${r.reloaded ? "" : " (reload deferred)"}`,
-          ),
-        onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
-      },
-    )
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">ML Pipeline Device</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          Pick the device the fine-tuned ML heads run on. Changes take effect immediately and reload every loaded group.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-sm">Device</Label>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            value={currentId}
-            onValueChange={(id) => {
-              if (!id) return
-              handlePick(id)
-            }}
-            disabled={applyDevice.isPending}
-            className="flex-wrap justify-start"
-          >
-            {devices.available.map((d) => (
-              <ToggleGroupItem key={d.id} value={d.id} className="text-xs">
-                {d.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border text-xs">
-          <div>
-            <Label className="text-xs text-muted-foreground">Persisted Setting</Label>
-            <p className="mt-1 font-mono">
-              {devices.current.ml_device}
-              {devices.current.ml_device === "cuda" ? `:${devices.current.ml_cuda_index}` : ""}
-            </p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Effective</Label>
-            <p className="mt-1 font-mono">
-              {devices.current.effective_device ?? "(not loaded)"}
-            </p>
-          </div>
-        </div>
-
-        {health?.groups && (
-          <div className="space-y-1 pt-2 border-t border-border">
-            <Label className="text-xs text-muted-foreground">Group State</Label>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              {(["extraction", "classification", "retriever"] as const).map((g) => {
-                const row = health.groups?.[g]
-                const loaded = row?.loaded ?? false
-                const idle = row?.idle_seconds
-                return (
-                  <div
-                    key={g}
-                    className="rounded-md border border-border p-2 space-y-0.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <Label className="font-medium capitalize text-xs">{g}</Label>
-                      <Badge variant={loaded ? "default" : "outline"} className="text-[10px] py-0 px-1.5">
-                        {loaded ? "loaded" : "idle"}
-                      </Badge>
-                    </div>
-                    <p className="text-muted-foreground">
-                      {loaded ? `idle ${idle ?? 0}s` : "not loaded"}
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-            {typeof health.vram_allocated_mb === "number" && (
-              <p className="text-muted-foreground text-xs pt-1">
-                VRAM allocated: {health.vram_allocated_mb.toFixed(0)} MB
-              </p>
-            )}
-          </div>
-        )}
-
-        <p className="text-muted-foreground text-xs pt-1">
-          CPU fallback: {devices.current.cpu_fallback ? "on" : "off"}. If a CUDA load fails the heads reload on CPU.
-        </p>
-      </CardContent>
-    </Card>
-  )
-}
-
-const PROMPT_LABELS: Record<string, string> = {
-  extraction: "Extraction (JSON entities + relations)",
-  extraction_entities: "Extraction — entities tool-call",
-  extraction_relationships: "Extraction — relationships tool-call",
-  classification: "Memory-type classification",
-  reasoning: "Reasoning / Q&A over memories",
-  summarization: "Code summarization",
-  chat: "Chat assistant",
-  cluster_naming: "Cluster naming",
-  agent_instructions: "Agent tool instructions",
-}
-
-function SystemPromptsCard() {
+function AssistantPromptsCard() {
   const { data, isLoading } = useSystemPrompts()
   const update = useUpdateSystemPrompts()
-  const [selected, setSelected] = useState<string>("extraction")
-  const [draft, setDraft] = useState<string>("")
+  const ORPHANS = ["chat", "cluster_naming", "agent_instructions"]
+  const [selected, setSelected] = useState<string>(ORPHANS[0])
+  const [draft, setDraft] = useState("")
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
     if (!data) return
-    const override = data.overrides[selected] ?? ""
-    const fallback = data.defaults[selected] ?? ""
-    setDraft(override || fallback)
+    setDraft(data.overrides[selected] ?? data.defaults[selected] ?? "")
     setDirty(false)
   }, [data, selected])
 
   if (isLoading || !data) return null
-
-  const purposes = Object.keys(data.defaults).sort()
   const isOverridden = Boolean(data.overrides[selected])
   const isDefault = (data.defaults[selected] ?? "") === draft
 
-  const handleSave = () => {
+  const save = () => {
     const body = isDefault
-      ? { overrides: { [selected]: "" } } // empty = clear override
+      ? { overrides: { [selected]: "" } }
       : { overrides: { [selected]: draft } }
     update.mutate(body, {
       onSuccess: () =>
-        toast.success(
-          isDefault
-            ? `Reverted ${selected} to the default prompt`
-            : `Saved override for ${selected}`,
-        ),
+        toast.success(isDefault ? `Reverted ${selected}` : `Saved override for ${selected}`),
       onError: (err) => toast.error(`Failed: ${(err as Error).message}`),
     })
     setDirty(false)
   }
 
-  const handleRevert = () => {
-    const fallback = data.defaults[selected] ?? ""
-    setDraft(fallback)
-    setDirty(true)
-  }
-
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">System Prompts</CardTitle>
+        <CardTitle className="text-sm">Assistant Prompts</CardTitle>
         <p className="text-muted-foreground text-xs">
-          Override the built-in system prompts used for LLM extraction, classification, reasoning, and more. Leave empty to fall back to the default.
+          Override the system prompts used by chat, cluster naming, and agent instructions.
+          Leave empty to fall back to the default.
         </p>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         <ToggleGroup
           type="single"
           variant="outline"
@@ -688,57 +385,30 @@ function SystemPromptsCard() {
           }}
           className="flex-wrap justify-start"
         >
-          {purposes.map((p) => {
-            const overridden = Boolean(data.overrides[p])
-            return (
-              <ToggleGroupItem key={p} value={p} className="text-xs gap-1.5">
-                <span>{PROMPT_LABELS[p] ?? p}</span>
-                {overridden && (
-                  <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
-                    custom
-                  </Badge>
-                )}
-              </ToggleGroupItem>
-            )
-          })}
+          {ORPHANS.map((p) => (
+            <ToggleGroupItem key={p} value={p} className="text-xs">
+              {p}
+              {data.overrides[p] && (
+                <Badge variant="secondary" className="ml-1 text-[10px]">custom</Badge>
+              )}
+            </ToggleGroupItem>
+          ))}
         </ToggleGroup>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-muted-foreground">
-              {isOverridden ? "Overridden" : "Using built-in default"}
-            </Label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleRevert}
-                disabled={update.isPending}
-              >
-                Load default
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSave}
-                disabled={update.isPending || !dirty}
-              >
-                {isDefault ? "Clear override" : "Save override"}
-              </Button>
-            </div>
-          </div>
-          <Textarea
-            className="min-h-[220px] font-mono text-xs"
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value)
-              setDirty(true)
-            }}
-          />
-          <p className="text-muted-foreground text-xs">
-            {draft.length.toLocaleString()} / 20,000 characters
-          </p>
+        <Textarea
+          className="min-h-[200px] font-mono text-xs"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setDirty(true)
+          }}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground">
+            {draft.length.toLocaleString()} / 20,000 · {isOverridden ? "overridden" : "using default"}
+          </span>
+          <Button size="sm" onClick={save} disabled={update.isPending || !dirty}>
+            {isDefault ? "Clear override" : "Save override"}
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -747,24 +417,15 @@ function SystemPromptsCard() {
 
 const SETTINGS_TABS = [
   { value: "flags", label: "Feature Flags" },
-  { value: "ml", label: "ML Pipeline" },
-  { value: "prompts", label: "System Prompts" },
   { value: "classification", label: "Classification" },
   { value: "workers", label: "Workers" },
-] as const
-
-type SettingsTabValue = (typeof SETTINGS_TABS)[number]["value"]
+  { value: "assistant", label: "Assistant Prompts" },
+] as const satisfies readonly { value: SettingsTabValue; label: string }[]
 
 function SettingsPage() {
-  // Persist the active tab across reloads so deep-links from error toasts and
-  // admin workflows stay on the relevant pane.
   const [tab, setTab] = useState<SettingsTabValue>(() => {
     if (typeof window === "undefined") return "flags"
-    const stored = window.localStorage.getItem("darkmem.settings.tab")
-    if (stored && SETTINGS_TABS.some((t) => t.value === stored)) {
-      return stored as SettingsTabValue
-    }
-    return "flags"
+    return resolveStoredTab(window.localStorage.getItem("darkmem.settings.tab"))
   })
 
   const handleTabChange = (next: string) => {
@@ -780,7 +441,7 @@ function SettingsPage() {
     <div className="p-6">
       <PageHeader
         title="Settings"
-        description="Configure workers, feature flags, ML pipeline, prompts, and classification."
+        description="Configure workers, feature flags, prompts, and classification."
       />
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-4">
@@ -796,20 +457,16 @@ function SettingsPage() {
           <FeatureFlagsCard />
         </TabsContent>
 
-        <TabsContent value="ml" className="mt-4">
-          <MLDeviceCard />
-        </TabsContent>
-
-        <TabsContent value="prompts" className="mt-4">
-          <SystemPromptsCard />
-        </TabsContent>
-
         <TabsContent value="classification" className="mt-4">
           <ClassificationAreasCard />
         </TabsContent>
 
         <TabsContent value="workers" className="mt-4">
           <EnrichmentCard />
+        </TabsContent>
+
+        <TabsContent value="assistant" className="mt-4">
+          <AssistantPromptsCard />
         </TabsContent>
       </Tabs>
     </div>
