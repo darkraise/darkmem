@@ -14,6 +14,7 @@ from app.models.config import Config
 from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMConfigUpdateResponse
 from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema
 from app.services.config import get_llm_config as fetch_llm_config
+from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict  # noqa: F401
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
@@ -155,19 +156,6 @@ class FeatureFlagsUpdate(BaseModel):
     confidence_rank_gamma: float | None = Field(default=None, ge=0, le=5)
     ml_idle_ttl_minutes: int | None = Field(default=None, ge=0, le=1440)
     ml_eviction_check_interval_seconds: int | None = Field(default=None, ge=10, le=3600)
-
-
-FEATURE_FLAGS_KEY = "feature_flags"
-
-
-async def get_feature_flags_dict(session: AsyncSession) -> dict:
-    result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
-    config = result.scalar_one_or_none()
-    if not config:
-        return dict(FEATURE_FLAGS_DEFAULTS)
-    merged = dict(FEATURE_FLAGS_DEFAULTS)
-    merged.update(config.value)
-    return merged
 
 
 @router.get("/feature-flags", response_model=FeatureFlagsResponse)
