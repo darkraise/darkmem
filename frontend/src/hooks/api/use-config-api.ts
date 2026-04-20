@@ -214,6 +214,7 @@ export interface MLDeviceApplyResponse {
   effective_device: string;
   loaded: boolean;
   reloaded: boolean;
+  reload_error: string | null;
 }
 
 export function useApplyMLDevice() {

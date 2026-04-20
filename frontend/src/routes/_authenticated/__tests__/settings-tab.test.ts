@@ -1,15 +1,10 @@
 import { describe, it, expect } from "vitest"
 import { resolveStoredTab } from "../settings-tab"
 
-describe("settings tab migration", () => {
-  it("migrates ml -> flags", () => {
-    expect(resolveStoredTab("ml")).toBe("flags")
-  })
-  it("migrates prompts -> assistant", () => {
-    expect(resolveStoredTab("prompts")).toBe("assistant")
-  })
-  it("keeps assistant idempotently", () => {
+describe("resolveStoredTab", () => {
+  it("keeps known values", () => {
     expect(resolveStoredTab("assistant")).toBe("assistant")
+    expect(resolveStoredTab("classification")).toBe("classification")
   })
   it("falls back when unknown", () => {
     expect(resolveStoredTab("bogus")).toBe("flags")

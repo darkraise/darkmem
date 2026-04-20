@@ -13,11 +13,6 @@ from app.services.config import cfg_to_schema
 from app.services.feature_flags import get_feature_flags_dict
 from app.services import prompt as _prompt_mod
 
-# Which prompt keys are stage-bound (shown on the Pipeline LLM panel).
-# Orphans (chat, cluster_naming, agent_instructions) still come back in
-# the `prompts` dict — the frontend decides which ones to render where via
-# its own prompt-map.ts, but the aggregator returns them all so Settings's
-# Assistant-Prompts tab can also read from this endpoint if it wants.
 _STAGE_PROMPT_KEYS = [
     "extraction",
     "extraction_entities",
@@ -26,6 +21,10 @@ _STAGE_PROMPT_KEYS = [
     "reasoning",
     "summarization",
 ]
+
+# Must stay in sync with ORPHAN_PROMPTS in frontend prompt-map.ts; the
+# pin test in test_pipeline_aggregator.py guards the invariant.
+ORPHAN_PROMPT_KEYS = frozenset({"chat", "cluster_naming", "agent_instructions"})
 
 
 async def build_pipeline_state(session: AsyncSession) -> dict:

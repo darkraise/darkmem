@@ -58,19 +58,13 @@ async def test_aggregator_persistence_persistent(session):
 
 
 def test_stage_prompt_keys_exhaust_prompts_module():
-    """Every key in _STAGE_PROMPT_KEYS must exist in services.prompt.PROMPTS,
-    and every non-orphan PROMPTS key must be in _STAGE_PROMPT_KEYS.
-
-    The orphan allowlist mirrors ORPHAN_PROMPTS in the frontend prompt-map.ts.
-    When either side changes, this test is the first thing that fails.
-    """
+    """Every PROMPTS key is either stage-bound or orphan; nothing slips through."""
     from app.services import prompt as _prompt_mod
-    from app.services.pipeline_aggregator import _STAGE_PROMPT_KEYS
+    from app.services.pipeline_aggregator import _STAGE_PROMPT_KEYS, ORPHAN_PROMPT_KEYS
 
-    ORPHANS = {"chat", "cluster_naming", "agent_instructions"}
     defaults = set(_prompt_mod.PROMPTS.keys())
     stage = set(_STAGE_PROMPT_KEYS)
 
     assert stage.issubset(defaults), f"aggregator references unknown prompts: {stage - defaults}"
-    uncovered = defaults - stage - ORPHANS
+    uncovered = defaults - stage - ORPHAN_PROMPT_KEYS
     assert not uncovered, f"PROMPTS has keys not in stage list or orphans: {uncovered}"

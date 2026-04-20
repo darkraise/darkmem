@@ -94,11 +94,9 @@ async def test_unload_when_nothing_loaded_returns_empty(client, auth_headers, mo
 async def test_unload_group_calls_unload_function(client, auth_headers, monkeypatch):
     from app.services import ml_models as mm
     calls = []
-    def fake_unload():
-        calls.append("extraction")
-    # The endpoint looks up the unload fn by name via getattr(mm, ...)
-    # so monkeypatching mm.unload_extraction here is observed.
-    monkeypatch.setattr(mm, "unload_extraction", fake_unload)
+    def fake_unload(name: str):
+        calls.append(name)
+    monkeypatch.setattr(mm, "unload_group", fake_unload)
 
     fake_instance = type("Fake", (), {
         "extraction_loaded": True,

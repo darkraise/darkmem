@@ -14,7 +14,7 @@ from app.models.config import Config
 from app.schemas.config import LLMConfigResponse, LLMConfigUpdate, LLMConfigUpdateResponse
 from app.services.config import LLM_CONFIG_KEY, PURPOSES, cfg_to_schema
 from app.services.config import get_llm_config as fetch_llm_config
-from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict  # noqa: F401
+from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 

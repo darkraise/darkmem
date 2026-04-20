@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Button } from "darkraise-ui/components/button"
@@ -14,16 +14,6 @@ interface Props {
 export function PersistenceModeToggle({ ml }: Props) {
   const updateFlags = useUpdateFeatureFlags()
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [minutes, setMinutes] = useState<number>(ml.idle_ttl_minutes || readLastTtl() || 30)
-  const [checkInterval, setCheckInterval] = useState<number>(ml.eviction_check_interval_seconds)
-
-  // Sync local state when server-side values change (e.g., another tab edits).
-  useEffect(() => {
-    if (ml.idle_ttl_minutes > 0) setMinutes(ml.idle_ttl_minutes)
-  }, [ml.idle_ttl_minutes])
-  useEffect(() => {
-    setCheckInterval(ml.eviction_check_interval_seconds)
-  }, [ml.eviction_check_interval_seconds])
 
   const pickPersistent = () => {
     if (ml.persistence === "persistent") return
@@ -38,21 +28,20 @@ export function PersistenceModeToggle({ ml }: Props) {
   const pickTtl = () => {
     if (ml.persistence === "ttl") return
     const restored = readLastTtl() ?? 30
-    setMinutes(restored)
     updateFlags.mutate({ ml_idle_ttl_minutes: restored }, {
       onError: (err) => toast.error(`Failed: ${err.message}`),
     })
   }
 
-  const commitMinutes = () => {
-    const clamped = Math.max(1, Math.min(1440, minutes))
+  const commitMinutes = (raw: string) => {
+    const clamped = Math.max(1, Math.min(1440, Number(raw) || 0))
     if (clamped !== ml.idle_ttl_minutes) {
       updateFlags.mutate({ ml_idle_ttl_minutes: clamped })
     }
   }
 
-  const commitInterval = () => {
-    const clamped = Math.max(10, Math.min(3600, checkInterval))
+  const commitInterval = (raw: string) => {
+    const clamped = Math.max(10, Math.min(3600, Number(raw) || 0))
     if (clamped !== ml.eviction_check_interval_seconds) {
       updateFlags.mutate({ ml_eviction_check_interval_seconds: clamped })
     }
@@ -87,12 +76,12 @@ export function PersistenceModeToggle({ ml }: Props) {
         {ml.persistence === "ttl" && (
           <>
             <Input
+              key={ml.idle_ttl_minutes}
               type="number"
               min={1}
               max={1440}
-              value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value) || 0)}
-              onBlur={commitMinutes}
+              defaultValue={ml.idle_ttl_minutes}
+              onBlur={(e) => commitMinutes(e.target.value)}
               className="w-16 h-7 text-xs text-center"
               disabled={updateFlags.isPending}
             />
@@ -110,12 +99,12 @@ export function PersistenceModeToggle({ ml }: Props) {
             <div className="flex items-center gap-2 mt-1">
               <Label className="text-[10px] text-muted-foreground">Eviction check</Label>
               <Input
+                key={ml.eviction_check_interval_seconds}
                 type="number"
                 min={10}
                 max={3600}
-                value={checkInterval}
-                onChange={(e) => setCheckInterval(Number(e.target.value) || 0)}
-                onBlur={commitInterval}
+                defaultValue={ml.eviction_check_interval_seconds}
+                onBlur={(e) => commitInterval(e.target.value)}
                 className="w-16 h-6 text-[10px] text-center"
                 disabled={updateFlags.isPending}
               />

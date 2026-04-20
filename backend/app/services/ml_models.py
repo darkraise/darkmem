@@ -677,31 +677,13 @@ def reset_ml_models() -> None:
             _GROUP_LAST_ACCESS[g] = 0.0
 
 
-def unload_extraction() -> None:
+def unload_group(name: str) -> None:
+    if name not in GROUPS:
+        raise ValueError(f"unknown ml group: {name!r}")
     ml = _INSTANCE
     if ml is None:
         return
-    with _GROUP_LOCKS["extraction"]:
-        if ml.extraction_loaded:
-            ml.unload_extraction()
-        _GROUP_LAST_ACCESS["extraction"] = 0.0
-
-
-def unload_classification() -> None:
-    ml = _INSTANCE
-    if ml is None:
-        return
-    with _GROUP_LOCKS["classification"]:
-        if ml.classification_loaded:
-            ml.unload_classification()
-        _GROUP_LAST_ACCESS["classification"] = 0.0
-
-
-def unload_retriever() -> None:
-    ml = _INSTANCE
-    if ml is None:
-        return
-    with _GROUP_LOCKS["retriever"]:
-        if ml.retriever_loaded:
-            ml.unload_retriever()
-        _GROUP_LAST_ACCESS["retriever"] = 0.0
+    with _GROUP_LOCKS[name]:
+        if getattr(ml, f"{name}_loaded"):
+            getattr(ml, f"unload_{name}")()
+        _GROUP_LAST_ACCESS[name] = 0.0

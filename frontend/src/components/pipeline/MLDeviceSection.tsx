@@ -1,7 +1,7 @@
 import { Label } from "darkraise-ui/components/label"
 import { ToggleGroup, ToggleGroupItem } from "darkraise-ui/components/toggle-group"
 import { toast } from "sonner"
-import { useApplyMLDevice, type PipelineState } from "@/hooks/api"
+import { useApplyMLDevice, type MLDeviceApplyResponse, type PipelineState } from "@/hooks/api"
 
 interface Props {
   ml: PipelineState["ml"]
@@ -51,7 +51,7 @@ export function MLDeviceSection({ ml }: Props) {
 
   function callbacks() {
     return {
-      onSuccess: (r: { effective_device: string; reload_error?: string | null }) => {
+      onSuccess: (r: MLDeviceApplyResponse) => {
         if (r.reload_error) {
           toast.error(`Reload failed: ${r.reload_error}`)
         } else {

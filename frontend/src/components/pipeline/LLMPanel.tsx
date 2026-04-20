@@ -13,7 +13,6 @@ import { useNavigate } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
-import { REEMBED_ROUTE } from "./routes"
 import type { LLMPurpose } from "./prompt-map"
 
 const ORDER: LLMPurpose[] = [
@@ -37,9 +36,9 @@ export function LLMPanel({ state }: Props) {
   const startReembed = () => {
     reembedAll.mutate(undefined, {
       onSuccess: () => {
-        toast.info(`Re-embed started — progress on ${REEMBED_ROUTE}`)
+        toast.info("Re-embed started — progress on /reindex")
         setObsolete(null)
-        navigate({ to: REEMBED_ROUTE })
+        navigate({ to: "/reindex" })
       },
       onError: (err) => toast.error(`Re-embed failed: ${(err as Error).message}`),
     })

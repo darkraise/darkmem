@@ -11,6 +11,7 @@ import {
   useUpdateSystemPrompts,
   type ClassificationAreaInfo,
 } from "@/hooks/api"
+import { ORPHAN_PROMPTS } from "@/components/pipeline/prompt-map"
 import {
   Card,
   CardContent,
@@ -339,8 +340,7 @@ function FeatureFlagsCard() {
 function AssistantPromptsCard() {
   const { data, isLoading } = useSystemPrompts()
   const update = useUpdateSystemPrompts()
-  const ORPHANS = ["chat", "cluster_naming", "agent_instructions"]
-  const [selected, setSelected] = useState<string>(ORPHANS[0])
+  const [selected, setSelected] = useState<string>(ORPHAN_PROMPTS[0])
   const [draft, setDraft] = useState("")
   const [dirty, setDirty] = useState(false)
 
@@ -385,7 +385,7 @@ function AssistantPromptsCard() {
           }}
           className="flex-wrap justify-start"
         >
-          {ORPHANS.map((p) => (
+          {ORPHAN_PROMPTS.map((p) => (
             <ToggleGroupItem key={p} value={p} className="text-xs">
               {p}
               {data.overrides[p] && (

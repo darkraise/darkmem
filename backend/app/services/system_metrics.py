@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 try:
     import psutil as _PSUTIL
+    # psutil.cpu_percent's first non-blocking call always returns 0.0;
+    # prime it here so the first snapshot() reports a real number.
+    _PSUTIL.cpu_percent(interval=None)
 except Exception as exc:
     logger.warning("psutil unavailable: %s", exc)
     _PSUTIL = None
