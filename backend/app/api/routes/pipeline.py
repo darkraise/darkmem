@@ -112,3 +112,10 @@ async def unload_pipeline(
                 unloaded.append(name)
 
     return {"unloaded": unloaded, "groups": group_status()}
+
+
+@router.get("/metrics")
+async def get_metrics(_user=Depends(require_auth)):
+    snap = system_metrics.snapshot()
+    snap["groups"] = group_status()
+    return snap
