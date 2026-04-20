@@ -73,3 +73,42 @@ async def test_set_mode_preserves_unrelated_flags(client, auth_headers, session)
         select(Config).where(Config.key == "feature_flags")
     )).scalar_one()
     assert row.value["hybrid_search_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_unload_invalid_group_returns_422(client, auth_headers):
+    resp = await client.post("/api/v1/pipeline/unload?group=bogus", headers=auth_headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_unload_when_nothing_loaded_returns_empty(client, auth_headers, monkeypatch):
+    from app.services import ml_models as mm
+    monkeypatch.setattr(mm, "_INSTANCE", None)
+    resp = await client.post("/api/v1/pipeline/unload", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["unloaded"] == []
+
+
+@pytest.mark.asyncio
+async def test_unload_group_calls_unload_function(client, auth_headers, monkeypatch):
+    from app.services import ml_models as mm
+    calls = []
+    def fake_unload():
+        calls.append("extraction")
+    # The endpoint looks up the unload fn by name via getattr(mm, ...)
+    # so monkeypatching mm.unload_extraction here is observed.
+    monkeypatch.setattr(mm, "unload_extraction", fake_unload)
+
+    fake_instance = type("Fake", (), {
+        "extraction_loaded": True,
+        "classification_loaded": False,
+        "retriever_loaded": False,
+    })()
+    monkeypatch.setattr(mm, "_INSTANCE", fake_instance)
+
+    resp = await client.post("/api/v1/pipeline/unload?group=extraction", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "extraction" in body["unloaded"]
+    assert calls == ["extraction"]

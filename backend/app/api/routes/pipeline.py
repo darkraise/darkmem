@@ -81,3 +81,34 @@ async def set_mode(
             "retrieval": body.mode,
         },
     }
+
+
+_UNLOAD_FN_NAMES = {
+    "extraction": "unload_extraction",
+    "classification": "unload_classification",
+    "retriever": "unload_retriever",
+}
+_LOADED_ATTRS = {
+    "extraction": "extraction_loaded",
+    "classification": "classification_loaded",
+    "retriever": "retriever_loaded",
+}
+
+
+@router.post("/unload")
+async def unload_pipeline(
+    group: Literal["extraction", "classification", "retriever"] | None = Query(None),
+    _user=Depends(require_auth),
+):
+    from app.services import ml_models as mm
+
+    targets = [group] if group else list(_UNLOAD_FN_NAMES.keys())
+    unloaded: list[str] = []
+    if mm._INSTANCE is not None:
+        for name in targets:
+            if getattr(mm._INSTANCE, _LOADED_ATTRS[name], False):
+                fn = getattr(mm, _UNLOAD_FN_NAMES[name])
+                await asyncio.to_thread(fn)
+                unloaded.append(name)
+
+    return {"unloaded": unloaded, "groups": group_status()}

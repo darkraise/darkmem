@@ -569,7 +569,7 @@ def group_status() -> dict[str, dict]:
             idle = max(0, int(now - last))
         loaded = False
         if ml is not None:
-            loaded = ml.group_loaded(group)
+            loaded = bool(getattr(ml, f"{group}_loaded", False))
         out[group] = {"loaded": loaded, "idle_seconds": idle}
     return out
 
@@ -675,3 +675,33 @@ def reset_ml_models() -> None:
         _INSTANCE = None
         for g in GROUPS:
             _GROUP_LAST_ACCESS[g] = 0.0
+
+
+def unload_extraction() -> None:
+    ml = _INSTANCE
+    if ml is None:
+        return
+    with _GROUP_LOCKS["extraction"]:
+        if ml.extraction_loaded:
+            ml.unload_extraction()
+        _GROUP_LAST_ACCESS["extraction"] = 0.0
+
+
+def unload_classification() -> None:
+    ml = _INSTANCE
+    if ml is None:
+        return
+    with _GROUP_LOCKS["classification"]:
+        if ml.classification_loaded:
+            ml.unload_classification()
+        _GROUP_LAST_ACCESS["classification"] = 0.0
+
+
+def unload_retriever() -> None:
+    ml = _INSTANCE
+    if ml is None:
+        return
+    with _GROUP_LOCKS["retriever"]:
+        if ml.retriever_loaded:
+            ml.unload_retriever()
+        _GROUP_LAST_ACCESS["retriever"] = 0.0
