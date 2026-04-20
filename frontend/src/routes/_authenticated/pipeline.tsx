@@ -7,7 +7,7 @@ import { MLPanel } from "@/components/pipeline/MLPanel"
 import { LLMPanel } from "@/components/pipeline/LLMPanel"
 import { checkPromptExhaustiveness } from "@/components/pipeline/prompt-map"
 
-export const Route = createFileRoute("/_authenticated/pipeline-v2")({
+export const Route = createFileRoute("/_authenticated/pipeline")({
   component: PipelinePage,
 })
 

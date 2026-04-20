@@ -95,7 +95,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test("pipeline page flips mode and exposes advanced switches", async ({ page }) => {
-  await page.goto("/pipeline-v2")
+  await page.goto("/pipeline")
   await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible()
 
   await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
@@ -111,7 +111,7 @@ test("pipeline page flips mode and exposes advanced switches", async ({ page }) 
 })
 
 test("unload all shows confirmation dialog", async ({ page }) => {
-  await page.goto("/pipeline-v2")
+  await page.goto("/pipeline")
   await page.getByRole("button", { name: "Unload all models" }).click()
   await expect(page.getByText("Unload all ML models?")).toBeVisible()
   await page.getByRole("button", { name: "Cancel" }).click()

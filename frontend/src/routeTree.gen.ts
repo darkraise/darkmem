@@ -19,7 +19,7 @@ import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authent
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/repos'
 import { Route as AuthenticatedReindexRouteImport } from './routes/_authenticated/reindex'
-import { Route as AuthenticatedPipelineV2RouteImport } from './routes/_authenticated/pipeline-v2'
+import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated/pipeline'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedLlmRouteImport } from './routes/_authenticated/llm'
 import { Route as AuthenticatedGraphRouteImport } from './routes/_authenticated/graph'
@@ -77,9 +77,9 @@ const AuthenticatedReindexRoute = AuthenticatedReindexRouteImport.update({
   path: '/reindex',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedPipelineV2Route = AuthenticatedPipelineV2RouteImport.update({
-  id: '/pipeline-v2',
-  path: '/pipeline-v2',
+const AuthenticatedPipelineRoute = AuthenticatedPipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedMemoriesRoute = AuthenticatedMemoriesRouteImport.update({
@@ -127,7 +127,7 @@ export interface FileRoutesByFullPath {
   '/graph': typeof AuthenticatedGraphRoute
   '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
-  '/pipeline-v2': typeof AuthenticatedPipelineV2Route
+  '/pipeline': typeof AuthenticatedPipelineRoute
   '/reindex': typeof AuthenticatedReindexRoute
   '/repos': typeof AuthenticatedReposRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -145,7 +145,7 @@ export interface FileRoutesByTo {
   '/graph': typeof AuthenticatedGraphRoute
   '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
-  '/pipeline-v2': typeof AuthenticatedPipelineV2Route
+  '/pipeline': typeof AuthenticatedPipelineRoute
   '/reindex': typeof AuthenticatedReindexRoute
   '/repos': typeof AuthenticatedReposRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -165,7 +165,7 @@ export interface FileRoutesById {
   '/_authenticated/graph': typeof AuthenticatedGraphRoute
   '/_authenticated/llm': typeof AuthenticatedLlmRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
-  '/_authenticated/pipeline-v2': typeof AuthenticatedPipelineV2Route
+  '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
   '/_authenticated/reindex': typeof AuthenticatedReindexRoute
   '/_authenticated/repos': typeof AuthenticatedReposRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -186,7 +186,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/llm'
     | '/memories'
-    | '/pipeline-v2'
+    | '/pipeline'
     | '/reindex'
     | '/repos'
     | '/settings'
@@ -204,7 +204,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/llm'
     | '/memories'
-    | '/pipeline-v2'
+    | '/pipeline'
     | '/reindex'
     | '/repos'
     | '/settings'
@@ -223,7 +223,7 @@ export interface FileRouteTypes {
     | '/_authenticated/graph'
     | '/_authenticated/llm'
     | '/_authenticated/memories'
-    | '/_authenticated/pipeline-v2'
+    | '/_authenticated/pipeline'
     | '/_authenticated/reindex'
     | '/_authenticated/repos'
     | '/_authenticated/settings'
@@ -311,11 +311,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReindexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/pipeline-v2': {
-      id: '/_authenticated/pipeline-v2'
-      path: '/pipeline-v2'
-      fullPath: '/pipeline-v2'
-      preLoaderRoute: typeof AuthenticatedPipelineV2RouteImport
+    '/_authenticated/pipeline': {
+      id: '/_authenticated/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof AuthenticatedPipelineRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/memories': {
@@ -378,7 +378,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedGraphRoute: typeof AuthenticatedGraphRoute
   AuthenticatedLlmRoute: typeof AuthenticatedLlmRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
-  AuthenticatedPipelineV2Route: typeof AuthenticatedPipelineV2Route
+  AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
   AuthenticatedReindexRoute: typeof AuthenticatedReindexRoute
   AuthenticatedReposRoute: typeof AuthenticatedReposRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -395,7 +395,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedGraphRoute: AuthenticatedGraphRoute,
   AuthenticatedLlmRoute: AuthenticatedLlmRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
-  AuthenticatedPipelineV2Route: AuthenticatedPipelineV2Route,
+  AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
   AuthenticatedReindexRoute: AuthenticatedReindexRoute,
   AuthenticatedReposRoute: AuthenticatedReposRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
