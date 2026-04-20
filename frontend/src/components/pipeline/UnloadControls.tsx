@@ -6,11 +6,12 @@ import { UnloadConfirmDialog } from "./UnloadConfirmDialog"
 
 interface Props {
   state: PipelineState
+  active: boolean
 }
 
-export function UnloadControls({ state }: Props) {
+export function UnloadControls({ state, active }: Props) {
   const unload = useUnloadPipeline()
-  const { data: metrics } = useMLMetrics()
+  const { data: metrics } = useMLMetrics(active)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
 

@@ -255,7 +255,7 @@ export interface MLModelsHealthResponse {
   note?: string;
 }
 
-export function useMLModelsHealth() {
+export function useMLModelsHealth(enabled: boolean = true) {
   return useQuery<MLModelsHealthResponse>({
     queryKey: ["mlModelsHealth"],
     queryFn: async () => {
@@ -264,6 +264,7 @@ export function useMLModelsHealth() {
       if (!resp.ok) throw new Error(`ml_models health failed: ${resp.status}`);
       return (await resp.json()) as MLModelsHealthResponse;
     },
-    refetchInterval: 10_000,
+    refetchInterval: enabled ? 10_000 : false,
+    enabled,
   });
 }

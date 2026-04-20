@@ -112,6 +112,8 @@ test("pipeline page flips mode and exposes advanced switches", async ({ page }) 
 
 test("unload all shows confirmation dialog", async ({ page }) => {
   await page.goto("/pipeline")
+  // Flip to ML mode so metrics polling is on and the Unload CTA is enabled.
+  await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
   await page.getByRole("button", { name: "Unload all models" }).click()
   await expect(page.getByText("Unload all ML models?")).toBeVisible()
   await page.getByRole("button", { name: "Cancel" }).click()
@@ -136,5 +138,13 @@ test("unload all is disabled when no models are loaded", async ({ page }) => {
     }),
   )
   await page.goto("/pipeline")
+  // Enable ML mode so metrics polling is active; the button should still be
+  // disabled because every group reports loaded=false.
+  await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
   await expect(page.getByRole("button", { name: "Unload all models" })).toBeDisabled()
+})
+
+test("metrics dashboard shows paused placeholder when all stages are LLM", async ({ page }) => {
+  await page.goto("/pipeline")
+  await expect(page.getByText("Monitoring is off while the LLM stack is handling every stage.")).toBeVisible()
 })

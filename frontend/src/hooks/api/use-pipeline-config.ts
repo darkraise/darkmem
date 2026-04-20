@@ -104,10 +104,11 @@ export function useUnloadPipeline() {
   })
 }
 
-export function useMLMetrics() {
+export function useMLMetrics(enabled: boolean = true) {
   return useQuery<MetricsSnapshot>({
     queryKey: ["mlMetrics"],
     queryFn: () => apiFetch<MetricsSnapshot>("/pipeline/metrics"),
-    refetchInterval: 5_000,
+    refetchInterval: enabled ? 5_000 : false,
+    enabled,
   })
 }

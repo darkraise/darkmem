@@ -14,6 +14,7 @@ export function MLPanel({ state }: Props) {
   const applyDevice = useApplyMLDevice()
   const mlStages = Object.values(state.stages).filter((v) => v === "ml").length
   const status = mlStages === 3 ? "active" : mlStages === 0 ? "inactive" : "mixed"
+  const active = mlStages > 0
   const switching = applyDevice.isPending
 
   return (
@@ -32,8 +33,8 @@ export function MLPanel({ state }: Props) {
         {switching ? <MLPanelSkeleton /> : (
           <>
             <PersistenceModeToggle ml={state.ml} />
-            <SysMetricsDashboard ml={state.ml} />
-            <UnloadControls state={state} />
+            <SysMetricsDashboard ml={state.ml} active={active} />
+            <UnloadControls state={state} active={active} />
           </>
         )}
       </CardContent>

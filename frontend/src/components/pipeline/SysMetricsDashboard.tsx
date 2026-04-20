@@ -4,27 +4,37 @@ import { useMLMetrics, useMLModelsHealth, type PipelineState } from "@/hooks/api
 
 interface Props {
   ml: PipelineState["ml"]
+  active: boolean
 }
 
-export function SysMetricsDashboard({ ml }: Props) {
-  const { data: metrics } = useMLMetrics()
-  const { data: health } = useMLModelsHealth()
+export function SysMetricsDashboard({ ml, active }: Props) {
+  const { data: metrics } = useMLMetrics(active)
+  const { data: health } = useMLModelsHealth(active)
+
+  if (!active) {
+    return (
+      <div className="border-t border-border pt-3 mt-2 opacity-60">
+        <div className="flex justify-between text-[10px] text-muted-foreground mb-2">
+          <span>HARDWARE METRICS</span><span>paused</span>
+        </div>
+        <div className="bg-background rounded-md px-3 py-4 text-center">
+          <p className="text-xs text-muted-foreground">
+            Monitoring is off while the LLM stack is handling every stage.
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Enable any stage on the Darkmem ML stack to resume live CPU/GPU readings.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const effective = ml.effective_device
   const isGpu = effective ? effective.startsWith("cuda") : false
 
   const tile1 = isGpu
-    ? {
-        label: "GPU LOAD",
-        value: metrics?.gpu_util_percent,
-        unit: "%",
-        fallback: "—",
-      }
-    : {
-        label: "CPU LOAD",
-        value: metrics?.cpu_percent,
-        unit: "%",
-        fallback: "—",
-      }
+    ? { label: "GPU LOAD", value: metrics?.gpu_util_percent, unit: "%", fallback: "—" }
+    : { label: "CPU LOAD", value: metrics?.cpu_percent, unit: "%", fallback: "—" }
 
   const tile2 = isGpu
     ? {
