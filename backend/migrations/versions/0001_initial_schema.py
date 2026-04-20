@@ -1,18 +1,19 @@
-"""consolidated initial schema
+"""initial schema
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-04-08
+Create Date: 2026-04-20
 
-Merges all prior migrations into a single greenfield schema:
+Single greenfield schema. Includes:
   - Core tables (api_keys, memories, tags, config, audit_log)
   - Chat tables (conversations, messages)
-  - System prompt profiles
   - Code indexing (repositories, code_files, code_symbols)
-  - pgvector (memory_embeddings, code_chunk_embeddings)
+  - pgvector (memory_embeddings, code_chunk_embeddings, entity embeddings)
   - Knowledge graph (entities, entity_relations, code_graph_nodes, code_edges)
-  - Knowledge triples + memory organisation (wing/room/hall)
+  - Knowledge triples + memory crossrefs
   - Full-text search (tsvector + GIN + triggers)
+  - Pipeline operations (enrichment_queue, pipeline_failures, entity_embedding_cache)
+  - Auth + revocation (token_blocklist)
 """
 from collections.abc import Sequence
 from typing import Union
@@ -28,8 +29,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # -- Extensions --
+    # -- Extensions + types --
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    op.execute("CREATE TYPE memory_status AS ENUM ('active', 'deprecated', 'superseded')")
 
     # -- Core tables --
     op.create_table('api_keys',
@@ -81,16 +83,28 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('expires_at', sa.DateTime(timezone=True)),
         sa.Column('is_archived', sa.Boolean(), nullable=False),
-        sa.Column('wing', sa.String(100)),
-        sa.Column('room', sa.String(100)),
-        sa.Column('hall', sa.String(50)),
         sa.Column('classified_type', sa.String(50)),
         sa.Column('classified_confidence', sa.Float()),
         sa.Column('llm_classified_type', sa.String(50)),
         sa.Column('llm_summary', sa.Text()),
         sa.Column('llm_emotions', postgresql.JSONB()),
         sa.Column('llm_flags', postgresql.JSONB()),
+        sa.Column('project', sa.Text(), nullable=False, server_default='default'),
+        sa.Column(
+            'status',
+            postgresql.ENUM('active', 'deprecated', 'superseded', name='memory_status', create_type=False),
+            nullable=False,
+            server_default='active',
+        ),
+        sa.Column('superseded_by', postgresql.UUID(as_uuid=True)),
+        sa.Column('technologies', postgresql.ARRAY(sa.Text()), nullable=False, server_default='{}'),
+        sa.Column('confidence', sa.REAL(), nullable=False, server_default='0.75'),
         sa.PrimaryKeyConstraint('id'),
+        sa.ForeignKeyConstraint(['superseded_by'], ['memories.id'], name='fk_memories_superseded_by', ondelete='SET NULL'),
+        sa.CheckConstraint(
+            "status != 'superseded' OR superseded_by IS NOT NULL",
+            name='chk_superseded_has_pointer',
+        ),
     )
 
     op.create_table('memory_tags',
@@ -101,7 +115,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('memory_id', 'tag_id'),
     )
 
-    # -- Chat tables (timezone-aware from the start) --
+    # -- Chat tables --
     op.create_table('conversations',
         sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('title', sa.Text()),
@@ -122,7 +136,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
     )
 
-    # -- Code indexing tables --
+    # -- Code indexing --
     op.create_table('repositories',
         sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('name', sa.String(255), nullable=False),
@@ -179,6 +193,7 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column('memory_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('memories.id', ondelete='CASCADE'), unique=True, nullable=False),
         sa.Column('payload', postgresql.JSONB, server_default=sa.text("'{}'::jsonb")),
+        sa.Column('model_fingerprint', sa.String(100)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.execute("ALTER TABLE memory_embeddings ADD COLUMN embedding vector(1024)")
@@ -194,6 +209,7 @@ def upgrade() -> None:
         sa.Column('chunk_content', sa.Text),
         sa.Column('line_start', sa.Integer),
         sa.Column('line_end', sa.Integer),
+        sa.Column('model_fingerprint', sa.String(100)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.execute("ALTER TABLE code_chunk_embeddings ADD COLUMN embedding vector(1024)")
@@ -207,10 +223,13 @@ def upgrade() -> None:
         sa.Column('entity_type', sa.String(100), nullable=False),
         sa.Column('properties', postgresql.JSONB, server_default=sa.text("'{}'::jsonb")),
         sa.Column('memory_ids', postgresql.ARRAY(postgresql.UUID(as_uuid=True)), server_default=sa.text("'{}'::uuid[]")),
+        sa.Column('model_fingerprint', sa.String(100)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint('name', 'entity_type'),
     )
     op.execute("CREATE INDEX ix_entities_memory_ids ON entities USING gin (memory_ids)")
+    op.execute("ALTER TABLE entities ADD COLUMN embedding vector(1024)")
+    op.execute("CREATE INDEX ix_entities_embedding_hnsw ON entities USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128)")
 
     op.create_table('entity_relations',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
@@ -225,9 +244,21 @@ def upgrade() -> None:
     )
     op.execute("CREATE INDEX ix_entity_relations_memory_ids ON entity_relations USING gin (memory_ids)")
 
-    # -- Entity embeddings for dedup --
-    op.execute("ALTER TABLE entities ADD COLUMN embedding vector(1024)")
-    op.execute("CREATE INDEX ix_entities_embedding_hnsw ON entities USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128)")
+    # -- Entity embedding cache (dedup lookups keyed by lowercased name) --
+    op.execute(
+        """
+        CREATE TABLE entity_embedding_cache (
+            name_lower VARCHAR(255) NOT NULL,
+            model_fingerprint VARCHAR(100) NOT NULL,
+            embedding vector(1024) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            hit_count INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (name_lower, model_fingerprint)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_entity_embedding_cache_last_used ON entity_embedding_cache(last_used_at)")
 
     # -- Code graph (replaces Neo4j) --
     op.create_table('code_graph_nodes',
@@ -330,9 +361,46 @@ def upgrade() -> None:
         sa.UniqueConstraint('symbol_id'),
     )
 
-    # -- Additional indexes for performance --
+    # -- Pipeline failures (polymorphic retry tracking) --
+    op.execute(
+        """
+        CREATE TABLE pipeline_failures (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            entity_type VARCHAR(50) NOT NULL,
+            entity_id UUID NOT NULL,
+            pipeline_name VARCHAR(50) NOT NULL,
+            failed_step VARCHAR(100) NOT NULL,
+            error_message TEXT,
+            attempts INTEGER NOT NULL DEFAULT 1,
+            first_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            resolved_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX idx_pipeline_failures_unresolved "
+        "ON pipeline_failures(entity_type, entity_id, pipeline_name) "
+        "WHERE resolved_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_pipeline_failures_pipeline_name "
+        "ON pipeline_failures(pipeline_name) "
+        "WHERE resolved_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_pipeline_failures_resolved_at "
+        "ON pipeline_failures(resolved_at) "
+        "WHERE resolved_at IS NOT NULL"
+    )
+
+    # -- Memories: performance + schema-v2 retrieval indexes --
     op.create_index('ix_memories_created_at', 'memories', ['created_at'])
     op.create_index('ix_memories_is_archived', 'memories', ['is_archived'], postgresql_where=sa.text('is_archived = false'))
+    op.create_index('ix_memories_project', 'memories', ['project'])
+    op.create_index('ix_memories_status', 'memories', ['status'])
+    op.create_index('ix_memories_technologies', 'memories', ['technologies'], postgresql_using='gin')
 
     # -- Memory cross-references (similarity edges) --
     op.create_table('memory_crossrefs',
@@ -351,13 +419,18 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS memories_fts_trigger()")
 
     op.drop_table('memory_crossrefs')
+    op.drop_index('ix_memories_technologies', table_name='memories')
+    op.drop_index('ix_memories_status', table_name='memories')
+    op.drop_index('ix_memories_project', table_name='memories')
     op.drop_index('ix_memories_is_archived', table_name='memories')
     op.drop_index('ix_memories_created_at', table_name='memories')
+    op.execute("DROP TABLE IF EXISTS pipeline_failures CASCADE")
     op.drop_table('enrichment_queue')
     op.drop_table('token_blocklist')
     op.drop_table('knowledge_triples')
     op.drop_table('code_edges')
     op.drop_table('code_graph_nodes')
+    op.execute("DROP TABLE IF EXISTS entity_embedding_cache CASCADE")
     op.drop_table('entity_relations')
     op.drop_table('entities')
     op.drop_table('code_chunk_embeddings')
@@ -373,4 +446,5 @@ def downgrade() -> None:
     op.drop_table('audit_log')
     op.drop_table('config')
     op.drop_table('api_keys')
+    op.execute("DROP TYPE IF EXISTS memory_status")
     op.execute("DROP EXTENSION IF EXISTS vector")
