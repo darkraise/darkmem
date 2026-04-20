@@ -32,6 +32,7 @@ export function LLMPanel({ state }: Props) {
 
   const llmStages = Object.values(state.stages).filter((v) => v === "llm").length
   const status = llmStages === 3 ? "active" : llmStages === 0 ? "inactive" : "mixed"
+  const active = llmStages > 0
 
   const startReembed = () => {
     reembedAll.mutate(undefined, {
@@ -55,16 +56,22 @@ export function LLMPanel({ state }: Props) {
           {status} · {llmStages}/3
         </Badge>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {ORDER.map((p) => (
-          <LLMPurposeCard
-            key={p}
-            purpose={p}
-            config={state.llm[p]}
-            prompts={state.prompts}
-            onObsoleteDetected={setObsolete}
-          />
-        ))}
+      <CardContent className="p-0">
+        <fieldset
+          disabled={!active}
+          className="space-y-2 border-0 p-6 pt-0 m-0 disabled:opacity-60"
+          aria-label="LLM stack configuration"
+        >
+          {ORDER.map((p) => (
+            <LLMPurposeCard
+              key={p}
+              purpose={p}
+              config={state.llm[p]}
+              prompts={state.prompts}
+              onObsoleteDetected={setObsolete}
+            />
+          ))}
+        </fieldset>
       </CardContent>
 
       <Dialog open={obsolete !== null} onOpenChange={(v) => !v && setObsolete(null)}>

@@ -148,3 +148,12 @@ test("metrics dashboard shows paused placeholder when all stages are LLM", async
   await page.goto("/pipeline")
   await expect(page.getByText("Monitoring is off while the LLM stack is handling every stage.")).toBeVisible()
 })
+
+test("ML panel controls are disabled when no stage is ML", async ({ page }) => {
+  await page.goto("/pipeline")
+  const mlFieldset = page.getByRole("group", { name: "Darkmem ML stack configuration" })
+  await expect(mlFieldset).toHaveAttribute("disabled", "")
+  // Children inherit fieldset disabled state at the DOM level.
+  const cpuToggle = mlFieldset.getByRole("radio", { name: "CPU" })
+  await expect(cpuToggle).toBeDisabled()
+})

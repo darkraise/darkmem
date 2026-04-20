@@ -13,7 +13,7 @@ export function SysMetricsDashboard({ ml, active }: Props) {
 
   if (!active) {
     return (
-      <div className="border-t border-border pt-3 mt-2 opacity-60">
+      <div className="border-t border-border pt-3 mt-2">
         <div className="flex justify-between text-[10px] text-muted-foreground mb-2">
           <span>HARDWARE METRICS</span><span>paused</span>
         </div>

@@ -28,15 +28,21 @@ export function MLPanel({ state }: Props) {
           {status} · {mlStages}/3
         </Badge>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <MLDeviceSection ml={state.ml} />
-        {switching ? <MLPanelSkeleton /> : (
-          <>
-            <PersistenceModeToggle ml={state.ml} />
-            <SysMetricsDashboard ml={state.ml} active={active} />
-            <UnloadControls state={state} active={active} />
-          </>
-        )}
+      <CardContent className="p-0">
+        <fieldset
+          disabled={!active}
+          className="space-y-3 border-0 p-6 pt-0 m-0 disabled:opacity-60"
+          aria-label="Darkmem ML stack configuration"
+        >
+          <MLDeviceSection ml={state.ml} />
+          {switching ? <MLPanelSkeleton /> : (
+            <>
+              <PersistenceModeToggle ml={state.ml} />
+              <SysMetricsDashboard ml={state.ml} active={active} />
+              <UnloadControls state={state} active={active} />
+            </>
+          )}
+        </fieldset>
       </CardContent>
     </Card>
   )
