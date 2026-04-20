@@ -33,7 +33,7 @@ import {
 } from "darkraise-ui/components/tabs"
 import { toast } from "sonner"
 import { PageHeader } from "darkraise-ui/layout"
-import { resolveStoredTab, type SettingsTabValue } from "./settings-tab"
+import { resolveStoredTab, type SettingsTabValue } from "@/lib/settings-tab"
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
