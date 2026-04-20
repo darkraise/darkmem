@@ -36,7 +36,7 @@ import {
 import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/_authenticated/pipeline")({
+export const Route = createFileRoute("/_authenticated/reindex")({
   component: PipelinePage,
 })
 
