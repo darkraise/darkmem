@@ -43,6 +43,7 @@ export function useUpdateLlmConfig() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["llmConfig"] });
       qc.invalidateQueries({ queryKey: ["obsoleteCounts"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
     },
   });
 }
@@ -88,7 +89,10 @@ export function useUpdateFeatureFlags() {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["featureFlags"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["featureFlags"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
   });
 }
 
@@ -128,7 +132,10 @@ export function useUpdateEnrichmentConfig() {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["enrichmentConfig"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["enrichmentConfig"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
   });
 }
 
@@ -164,7 +171,10 @@ export function useUpdateSystemPrompts() {
         method: "PUT",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["systemPrompts"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["systemPrompts"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
   });
 }
 
@@ -222,6 +232,8 @@ export function useApplyMLDevice() {
       qc.invalidateQueries({ queryKey: ["mlDevices"] });
       qc.invalidateQueries({ queryKey: ["featureFlags"] });
       qc.invalidateQueries({ queryKey: ["mlModelsHealth"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+      qc.invalidateQueries({ queryKey: ["mlMetrics"] });
     },
   });
 }
