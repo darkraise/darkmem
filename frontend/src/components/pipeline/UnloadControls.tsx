@@ -14,6 +14,8 @@ export function UnloadControls({ state }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
+  const anyLoaded = Object.values(metrics?.groups ?? {}).some((g) => g?.loaded)
+
   const runUnload = (group?: "extraction" | "classification" | "retriever") => {
     unload.mutate(
       { group },
@@ -34,7 +36,7 @@ export function UnloadControls({ state }: Props) {
         variant="destructive"
         size="sm"
         onClick={() => setConfirmOpen(true)}
-        disabled={unload.isPending}
+        disabled={!anyLoaded || unload.isPending}
       >
         Unload all models
       </Button>

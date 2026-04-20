@@ -62,7 +62,7 @@ test.beforeEach(async ({ page }) => {
         vram_used_mb: null,
         vram_total_mb: null,
         groups: {
-          extraction: { loaded: false, idle_seconds: null },
+          extraction: { loaded: true, idle_seconds: 5 },
           classification: { loaded: false, idle_seconds: null },
           retriever: { loaded: false, idle_seconds: null },
         },
@@ -116,4 +116,25 @@ test("unload all shows confirmation dialog", async ({ page }) => {
   await expect(page.getByText("Unload all ML models?")).toBeVisible()
   await page.getByRole("button", { name: "Cancel" }).click()
   await expect(page.getByText("Unload all ML models?")).toBeHidden()
+})
+
+test("unload all is disabled when no models are loaded", async ({ page }) => {
+  await page.unroute("**/api/v1/pipeline/metrics")
+  await page.route("**/api/v1/pipeline/metrics", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        cpu_percent: 12, ram_used_mb: 1024, ram_total_mb: 16384,
+        gpu_util_percent: null, vram_used_mb: null, vram_total_mb: null,
+        groups: {
+          extraction: { loaded: false, idle_seconds: null },
+          classification: { loaded: false, idle_seconds: null },
+          retriever: { loaded: false, idle_seconds: null },
+        },
+      }),
+    }),
+  )
+  await page.goto("/pipeline")
+  await expect(page.getByRole("button", { name: "Unload all models" })).toBeDisabled()
 })
