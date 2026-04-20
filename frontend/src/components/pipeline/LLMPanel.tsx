@@ -15,25 +15,22 @@ import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
 import type { LLMPurpose } from "./prompt-map"
 
-const ORDER: LLMPurpose[] = [
-  "embedding", "extraction", "classification", "reasoning", "summarization", "reranker",
-]
+// The three stack-swappable purposes. reasoning/summarization/reranker
+// live on the separate Assistant Services panel since they run on LLM
+// regardless of the stack toggle.
+const ORDER: LLMPurpose[] = ["embedding", "extraction", "classification"]
 
-// Each LLM purpose maps to at most one stage whose "ml" setting overrides it.
-// reasoning/summarization/reranker have no ML counterpart, so they're always
-// editable.
-const PURPOSE_TO_STAGE: Partial<Record<LLMPurpose, keyof PipelineState["stages"]>> = {
+const PURPOSE_TO_STAGE: Record<(typeof ORDER)[number], keyof PipelineState["stages"]> = {
   embedding: "retrieval",
   extraction: "extraction",
   classification: "classification",
 }
 
 function isPurposeOverridden(
-  purpose: LLMPurpose,
+  purpose: (typeof ORDER)[number],
   stages: PipelineState["stages"],
 ): boolean {
-  const stage = PURPOSE_TO_STAGE[purpose]
-  return stage !== undefined && stages[stage] === "ml"
+  return stages[PURPOSE_TO_STAGE[purpose]] === "ml"
 }
 
 interface Props {
@@ -67,7 +64,7 @@ export function LLMPanel({ state }: Props) {
       <CardHeader className="pb-2 flex flex-row items-start justify-between">
         <div>
           <CardTitle className="text-sm">LLM stack</CardTitle>
-          <p className="text-muted-foreground text-xs">Per-purpose provider + model + prompts</p>
+          <p className="text-muted-foreground text-xs">Embedding, extraction, and classification when not handed to Darkmem ML</p>
         </div>
         <Badge variant={status === "active" ? "default" : "outline"} className="text-[10px]">
           {status} · {llmStages}/3

@@ -5,6 +5,7 @@ import { usePipeline, useSystemPrompts } from "@/hooks/api"
 import { PipelineModeToggle } from "@/components/pipeline/PipelineModeToggle"
 import { MLPanel } from "@/components/pipeline/MLPanel"
 import { LLMPanel } from "@/components/pipeline/LLMPanel"
+import { AssistantServicesPanel } from "@/components/pipeline/AssistantServicesPanel"
 import { checkPromptExhaustiveness } from "@/components/pipeline/prompt-map"
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
@@ -45,6 +46,7 @@ function PipelinePage() {
         <MLPanel state={state} />
         <LLMPanel state={state} />
       </div>
+      <AssistantServicesPanel state={state} />
     </div>
   )
 }

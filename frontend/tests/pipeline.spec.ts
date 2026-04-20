@@ -163,9 +163,23 @@ test("LLM purpose cards are marked overridden when their stage runs on ML", asyn
   // Start ML mode so extraction/classification/retrieval are all "ml".
   await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
   // Extraction, classification, and embedding (retrieval) should each show
-  // the overridden badge. reasoning/summarization/reranker have no ML
-  // counterpart so they should not.
+  // the overridden badge. reasoning/summarization/reranker live on the
+  // Assistant Services panel and stay editable.
   await expect(page.getByText("overridden by Darkmem ML").first()).toBeVisible()
   const overriddenCount = await page.getByText("overridden by Darkmem ML").count()
   expect(overriddenCount).toBe(3)
+})
+
+test("Assistant Services panel renders its three purposes independent of stack mode", async ({ page }) => {
+  await page.goto("/pipeline")
+  await expect(page.getByText("Assistant services", { exact: true })).toBeVisible()
+  // The three always-LLM purpose cards live here.
+  for (const label of ["reasoning", "summarization", "reranker"]) {
+    await expect(page.getByRole("button", { name: new RegExp(`▸ ${label}`, "i") })).toBeVisible()
+  }
+  // Flipping to ML does not add an overridden badge to these three.
+  await page.getByRole("radio", { name: "Darkmem ML stack" }).click()
+  await expect(page.getByText("overridden by Darkmem ML").first()).toBeVisible()
+  const overriddenCount = await page.getByText("overridden by Darkmem ML").count()
+  expect(overriddenCount).toBe(3) // only the three swappable LLM-stack cards
 })
