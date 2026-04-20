@@ -613,16 +613,14 @@ def load_ml_models(
         return _INSTANCE
 
 
-def reload_ml_models(
-    device: str | None = None,
-    cuda_index: int | None = None,
-) -> "MLModels":
-    """Force-reload the singleton on a specific device at runtime.
+def unload_ml_models() -> None:
+    """Drop the singleton and release its device memory.
 
-    Used by the ``PUT /config/ml-device`` endpoint after the UI switches
-    between CPU / CUDA or between GPUs. Releases the previous instance and
-    eagerly reloads every group on the new device so the reload is visible
-    to callers immediately.
+    Used by ``POST /config/ml-device/apply`` after the UI switches between
+    CPU / CUDA. The next ``ensure_<group>_loaded()`` call reloads lazily on
+    whichever device the feature-flags row currently names, so the eviction
+    here plus the new device flag together migrate the pipeline without
+    blocking the apply request on a 5–30 s weight load.
     """
     global _INSTANCE
     with _LOCK:
@@ -630,15 +628,10 @@ def reload_ml_models(
             try:
                 _INSTANCE.unload_all()
             except Exception:
-                logger.debug("unload_all failed during reload", exc_info=True)
+                logger.debug("unload_all failed during device switch", exc_info=True)
         _INSTANCE = None
         for g in GROUPS:
             _GROUP_LAST_ACCESS[g] = 0.0
-    return load_ml_models(
-        force=True,
-        device_override=device,
-        cuda_index_override=cuda_index,
-    )
 
 
 def get_ml_models() -> "MLModels":

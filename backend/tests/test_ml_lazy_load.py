@@ -139,17 +139,19 @@ def test_load_all_bumps_every_group(monkeypatch):
         assert mm._GROUP_LAST_ACCESS[g] > 0
 
 
-def test_reload_ml_models_resets_then_eagerly_loads(monkeypatch):
+def test_unload_ml_models_drops_instance_without_reloading(monkeypatch):
     calls = _install_stub_loaders(monkeypatch)
     mm.ensure_extraction_loaded()
     assert calls["extraction"] == 1
-    mm.reload_ml_models(device="cpu")
-    # After reload every group is loaded (reload does load_all eagerly).
-    ml = mm.get_ml_models()
-    assert ml.loaded is True
-    assert calls["extraction"] == 2
-    assert calls["classification"] == 1
-    assert calls["retriever"] == 1
+    assert mm._INSTANCE is not None
+
+    mm.unload_ml_models()
+
+    # Instance is gone; nothing has been reloaded; last-access timestamps reset.
+    assert mm._INSTANCE is None
+    assert calls["extraction"] == 1
+    for g in mm.GROUPS:
+        assert mm._GROUP_LAST_ACCESS[g] == 0.0
 
 
 # --- REST: feature flags expose the TTL knobs ----------------------------

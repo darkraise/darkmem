@@ -441,18 +441,17 @@ async def apply_ml_device(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    """Persist the device choice and reload the ML pipeline on it.
+    """Persist the device choice and unload any in-memory models.
 
-    Saves ``ml_device`` + ``ml_cuda_index`` into the feature-flags Config row,
-    then reloads the in-process ML singleton so the next extraction /
-    classification request honours the new device. If the underlying load
-    fails (e.g. CUDA OOM), :func:`reload_ml_models` still falls back to CPU
-    when ``cpu_fallback`` is true; the response reflects the effective device
-    actually in use plus any ``reload_error`` surfaced from the exception.
+    Saves ``ml_device`` + ``ml_cuda_index`` into the feature-flags Config row
+    and drops the ML singleton so its GPU/CPU memory is released. The next
+    extraction/classification request lazy-loads each group on the new
+    device via ``ensure_<group>_loaded()``, so this endpoint returns
+    quickly instead of blocking on a 5–30 s eager reload.
     """
     from app.services.ml_models import (  # noqa: PLC0415
         models_available,
-        reload_ml_models,
+        unload_ml_models,
     )
 
     flags = await get_feature_flags_dict(session)
@@ -478,24 +477,19 @@ async def apply_ml_device(
         session.add(Config(key=FEATURE_FLAGS_KEY, value=stored))
     await session.flush()
 
-    reloaded = False
-    effective = "cpu"
-    reload_error: str | None = None
-    try:
-        ml = reload_ml_models(device=device, cuda_index=cuda_index)
-        reloaded = True
-        effective = ml.device
-    except Exception as exc:
-        reload_error = f"{type(exc).__name__}: {exc}"
-        logger.warning("reload_ml_models failed during /ml-device/apply: %s", exc)
+    unload_ml_models()
+
+    effective = device if device == "auto" else (
+        f"cuda:{cuda_index}" if device == "cuda" else device
+    )
 
     return MLDeviceApplyResponse(
         ml_device=device,
         ml_cuda_index=cuda_index,
         effective_device=effective,
         loaded=models_available(),
-        reloaded=reloaded,
-        reload_error=reload_error,
+        reloaded=False,
+        reload_error=None,
     )
 
 

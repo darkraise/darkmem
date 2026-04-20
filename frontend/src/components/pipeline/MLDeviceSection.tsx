@@ -44,7 +44,7 @@ export function MLDeviceSection({ ml }: Props) {
         ))}
       </ToggleGroup>
       {applyDevice.isPending && (
-        <p className="text-[10px] text-muted-foreground mt-1">Reloading models on new device…</p>
+        <p className="text-[10px] text-muted-foreground mt-1">Unloading models on the old device…</p>
       )}
     </div>
   )
@@ -52,11 +52,7 @@ export function MLDeviceSection({ ml }: Props) {
   function callbacks() {
     return {
       onSuccess: (r: MLDeviceApplyResponse) => {
-        if (r.reload_error) {
-          toast.error(`Reload failed: ${r.reload_error}`)
-        } else {
-          toast.success(`Loaded on ${r.effective_device}`)
-        }
+        toast.success(`Device set to ${r.effective_device} — models will load on demand`)
       },
       onError: (err: Error) => toast.error(`Device apply failed: ${err.message}`),
     }

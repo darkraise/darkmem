@@ -196,21 +196,16 @@ async def test_feature_flags_rejects_bad_cuda_index(client, auth_headers):
 # --- REST surface: POST /api/v1/config/ml-device/apply --------------------
 
 @pytest.mark.asyncio
-async def test_apply_ml_device_persists_and_reports(client, auth_headers, monkeypatch):
-    # Stub reload so the test does not actually load 1.6 GB of models.
+async def test_apply_ml_device_persists_and_unloads(client, auth_headers, monkeypatch):
     from app.services import ml_models as mm
 
-    class _StubLoaded:
-        device = "cpu"
+    unload_calls = {"n": 0}
 
-    def _fake_reload(device=None, cuda_index=None):
-        return _StubLoaded()
+    def _fake_unload() -> None:
+        unload_calls["n"] += 1
 
-    def _fake_models_available():
-        return True
-
-    monkeypatch.setattr(mm, "reload_ml_models", _fake_reload)
-    monkeypatch.setattr(mm, "models_available", _fake_models_available)
+    monkeypatch.setattr(mm, "unload_ml_models", _fake_unload)
+    monkeypatch.setattr(mm, "models_available", lambda: False)
 
     resp = await client.post(
         "/api/v1/config/ml-device/apply",
@@ -222,13 +217,31 @@ async def test_apply_ml_device_persists_and_reports(client, auth_headers, monkey
     assert body["ml_device"] == "cpu"
     assert body["ml_cuda_index"] == 0
     assert body["effective_device"] == "cpu"
-    assert body["reloaded"] is True
+    assert body["reloaded"] is False
+    assert body["loaded"] is False
+    assert unload_calls["n"] == 1
 
     # The choice round-trips through feature-flags.
     follow = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
     assert follow.status_code == 200
     assert follow.json()["ml_device"] == "cpu"
     assert follow.json()["ml_cuda_index"] == 0
+
+
+@pytest.mark.asyncio
+async def test_apply_ml_device_cuda_reports_indexed_effective(client, auth_headers, monkeypatch):
+    from app.services import ml_models as mm
+
+    monkeypatch.setattr(mm, "unload_ml_models", lambda: None)
+    monkeypatch.setattr(mm, "models_available", lambda: False)
+
+    resp = await client.post(
+        "/api/v1/config/ml-device/apply",
+        headers=auth_headers,
+        json={"ml_device": "cuda", "ml_cuda_index": 2},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["effective_device"] == "cuda:2"
 
 
 @pytest.mark.asyncio
