@@ -5,6 +5,13 @@ import { Label } from "darkraise-ui/components/label"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { ToggleGroup, ToggleGroupItem } from "darkraise-ui/components/toggle-group"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "darkraise-ui/components/tooltip"
+import { CircleHelp } from "lucide-react"
 import { toast } from "sonner"
 import {
   useSetPipelineMode,
@@ -74,6 +81,25 @@ export function PipelineModeToggle({ state }: Props) {
 
           <div className="flex items-center gap-2 ml-auto">
             <Label className="text-xs">Shadow mode</Label>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="What is shadow mode?"
+                    className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-sm focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
+                  Runs the inactive ML stack alongside the active stack so its predictions can be
+                  logged and compared without affecting actual outputs. Useful for validating an ML
+                  head against the LLM before switching a stage over. Shadow predictions still load
+                  the ML models lazily, so they will trigger reloads after an unload.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Switch checked={state.shadow_mode} onCheckedChange={toggleShadow} />
           </div>
 
