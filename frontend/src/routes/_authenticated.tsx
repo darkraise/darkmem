@@ -12,6 +12,7 @@ import {
   BarChart3,
   Activity,
   Cpu,
+  Clock,
   Settings,
 } from "lucide-react"
 import { SidebarLayout } from "darkraise-ui/layout"
@@ -50,6 +51,7 @@ const nav: NavGroup[] = [
     items: [
       { label: "Analytics", href: "/analytics", icon: BarChart3 },
       { label: "Pipeline", href: "/pipeline", icon: Cpu },
+      { label: "Jobs", href: "/jobs", icon: Clock },
       { label: "Reindex", href: "/reindex", icon: Activity },
       { label: "Settings", href: "/settings", icon: Settings },
     ],

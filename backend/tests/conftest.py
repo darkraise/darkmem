@@ -84,8 +84,30 @@ async def client(session):
     # never enters it, so initialise here to match production state.
     if not getattr(app.state, "llm_config_lock", None):
         app.state.llm_config_lock = asyncio.Lock()
-    if not getattr(app.state, "repo_sync_wakeup", None):
-        app.state.repo_sync_wakeup = asyncio.Event()
+    # Stand up a minimal JobRegistry so handlers that read/write
+    # ``app.state.job_registry`` and the repo-sync wakeup event find
+    # something live. We register only the repo_sync job (with a no-op
+    # runner) because that is all the existing route handlers depend on.
+    if not getattr(app.state, "job_registry", None):
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from app.services.job_registry import Job, JobRegistry
+        test_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+        registry = JobRegistry(test_factory)
+        async def _noop():
+            return None
+        registry.register(Job(
+            key="repo_sync",
+            display_name="Repository Sync",
+            description="(test stub)",
+            default_interval_seconds=300,
+            min_interval_seconds=30,
+            runner=_noop,
+        ))
+        app.state.job_registry = registry
+        app.state.repo_sync_wakeup = registry.get("repo_sync").wakeup
+    elif not getattr(app.state, "repo_sync_wakeup", None):
+        repo_job = app.state.job_registry.get("repo_sync")
+        app.state.repo_sync_wakeup = repo_job.wakeup if repo_job else asyncio.Event()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()

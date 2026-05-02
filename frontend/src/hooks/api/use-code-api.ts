@@ -18,10 +18,9 @@ export interface Repo {
   default_branch: string;
   last_indexed_commit: string | null;
   last_indexed_at: string | null;
-  sync_interval_minutes: number;
   status: string;
   status_message: string | null;
-  is_active: boolean;
+  auto_sync: boolean;
   file_count: number;
   symbol_count: number;
   created_at: string;
@@ -35,15 +34,14 @@ export interface RepoCreateParams {
   provider?: string;
   default_branch?: string;
   auth_token?: string;
-  sync_interval_minutes?: number;
+  auto_sync?: boolean;
 }
 
 export interface RepoUpdateParams {
   name?: string;
   default_branch?: string;
-  sync_interval_minutes?: number;
   auth_token?: string;
-  is_active?: boolean;
+  auto_sync?: boolean;
 }
 
 export interface CodeGraphNode {

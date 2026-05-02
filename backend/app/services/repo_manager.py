@@ -149,7 +149,7 @@ class RepoManager:
             local_path=validated_local_path,
             provider=data.provider,
             default_branch=data.default_branch,
-            sync_interval_minutes=data.sync_interval_minutes,
+            auto_sync=data.auto_sync,
             status="cloning" if data.url else "ready",
             status_message="Cloning repository..." if data.url else None,
         )
@@ -292,7 +292,7 @@ class RepoManager:
 
         The row is updated to ``status='error'`` with the sanitized error
         in ``status_message`` (truncated to 500 chars) and
-        ``is_active=False`` so subsequent ticks skip it. The user can
+        ``auto_sync=False`` so subsequent ticks skip it. The user can
         re-enable from the Edit Repo dialog after fixing the underlying
         issue (auth, network, branch rename, etc.).
         """
@@ -302,7 +302,7 @@ class RepoManager:
         message = _sanitize_url(str(error))[:500]
         repo.status = "error"
         repo.status_message = message
-        repo.is_active = False
+        repo.auto_sync = False
         await self.session.commit()
         await self.session.refresh(repo)
         logger.warning(

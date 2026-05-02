@@ -10,7 +10,7 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, graph, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.services.llm import LLMOrchestrator
@@ -83,13 +83,10 @@ async def lifespan(app: FastAPI):
     # second store overwrote the first — neither serialized).
     app.state.llm_config_lock = asyncio.Lock()
 
-    # Wakeup signal for the periodic repo sync loop. Mutating
-    # ``sync_interval_minutes`` or ``is_active`` on a repo sets this
-    # event; the loop's interruptible wait then returns immediately and
-    # re-reads the repos table on the next iteration. Without this, an
-    # interval change would not take effect until the loop's next
-    # 5-minute tick.
-    app.state.repo_sync_wakeup = asyncio.Event()
+    # The repo_sync_wakeup event is owned by the JobRegistry below and
+    # exposed on app.state so route handlers (PUT /repos/{id}) can poke
+    # it without depending on the registry import.
+    app.state.repo_sync_wakeup = None  # set after registry init
 
     from app.services import prompt
     agent_instructions = prompt.get("agent_instructions")
@@ -139,151 +136,78 @@ async def lifespan(app: FastAPI):
                 await pipeline.run(repo_id)
                 await s.commit()
 
-    async def periodic_repo_sync():
-        wakeup: asyncio.Event = app.state.repo_sync_wakeup
-        while True:
-            try:
-                # Interruptible wait. Either the 5-minute timeout fires
-                # (the normal cadence) or a config change sets the event
-                # (PUT /api/v1/repos/{id} with sync_interval_minutes or
-                # is_active changed). Clearing happens AFTER the wait so a
-                # signal that arrives during processing is preserved and
-                # picked up on the next iteration.
-                try:
-                    await asyncio.wait_for(wakeup.wait(), timeout=300)
-                except asyncio.TimeoutError:
-                    pass
-                wakeup.clear()
+    # ── Job registry: replaces the previous four bare asyncio loops ──
+    from app.services.job_registry import Job, JobRegistry
+    from app.services.job_runners import (
+        make_repo_sync_runner,
+        make_code_enrichment_runner,
+        make_token_blocklist_cleanup_runner,
+        make_pipeline_failure_cleanup_runner,
+    )
 
-                from app.models.code import Repository
-                active_llm = getattr(app.state, "llm", None)
-                async with async_session_factory() as list_session:
-                    repos_result = (await list_session.execute(
-                        select(Repository).where(Repository.is_active == True)
-                    )).scalars().all()
-                    repos_to_sync = list(repos_result)
-                for repo in repos_to_sync:
-                    if repo.last_indexed_at:
-                        from datetime import datetime, timezone, timedelta
-                        next_sync = repo.last_indexed_at + timedelta(minutes=repo.sync_interval_minutes)
-                        if datetime.now(timezone.utc) < next_sync:
-                            continue
-                    async with async_session_factory() as repo_session:
-                        try:
-                            code_vector_repo = PostgresVectorRepository(repo_session, "code_chunks")
-                            pipeline = CodePipeline(
-                                session=repo_session, llm=active_llm,
-                                vector_repo=code_vector_repo,
-                                repo_manager=RepoManager(repo_session),
-                            )
-                            await pipeline.run(repo.id)
-                            await repo_session.commit()
-                        except Exception as e:
-                            await repo_session.rollback()
-                            logger.error(f"Periodic sync failed for {repo.name}: {e}")
-                            # Trip the auto-sync circuit breaker. A new session
-                            # is required because ``repo_session`` was just
-                            # rolled back; reusing it would block the next
-                            # write on the failed transaction's lock state.
-                            try:
-                                async with async_session_factory() as fail_session:
-                                    fail_manager = RepoManager(fail_session)
-                                    updated = await fail_manager.mark_periodic_sync_failure(
-                                        repo.id, e,
-                                    )
-                                if updated is not None:
-                                    from app.api.websocket import event_manager
-                                    await event_manager.broadcast(
-                                        "repo.auto_sync_disabled",
-                                        {
-                                            "repo_id": str(repo.id),
-                                            "name": updated.name,
-                                            "status_message": updated.status_message or "",
-                                        },
-                                    )
-                            except Exception as inner_e:
-                                logger.error(
-                                    "Failed to mark repo %s as errored: %s",
-                                    repo.id, inner_e,
-                                )
-            except Exception as e:
-                logger.error(f"Periodic sync loop error: {e}")
+    job_registry = JobRegistry(async_session_factory)
+    job_registry.register(Job(
+        key="repo_sync",
+        display_name="Repository Sync",
+        description=(
+            "Fetches every repo with auto-sync enabled and runs the code "
+            "indexing pipeline. The per-repo Reindex button bypasses this "
+            "loop and runs immediately."
+        ),
+        default_interval_seconds=300,
+        min_interval_seconds=30,
+        runner=make_repo_sync_runner(app, async_session_factory),
+    ))
+    job_registry.register(Job(
+        key="code_enrichment",
+        display_name="Code Symbol Enrichment",
+        description=(
+            "Runs one batch of LLM summarisation against pending code "
+            "symbols (function / class / method docs). Batch size comes "
+            "from the legacy enrichment_config row."
+        ),
+        default_interval_seconds=10,
+        min_interval_seconds=1,
+        runner=make_code_enrichment_runner(app, async_session_factory),
+    ))
+    job_registry.register(Job(
+        key="token_blocklist_cleanup",
+        display_name="Token Blocklist Cleanup",
+        description=(
+            "Deletes expired entries from the auth token blocklist. Safe "
+            "to leave on; disable only if you are debugging revocation."
+        ),
+        default_interval_seconds=3600,
+        min_interval_seconds=60,
+        runner=make_token_blocklist_cleanup_runner(async_session_factory),
+    ))
+    job_registry.register(Job(
+        key="pipeline_failure_cleanup",
+        display_name="Pipeline Failure Cleanup",
+        description=(
+            "Prunes orphaned pipeline-failure rows and resolved entries "
+            "older than 30 days. Safe to leave on."
+        ),
+        default_interval_seconds=3600,
+        min_interval_seconds=60,
+        runner=make_pipeline_failure_cleanup_runner(async_session_factory),
+    ))
 
-    async def periodic_blocklist_cleanup():
-        while True:
-            try:
-                await asyncio.sleep(3600)
-                from datetime import datetime, timezone
-                from sqlalchemy import delete
-                from app.models.token_blocklist import TokenBlocklist
-                async with async_session_factory() as cleanup_session:
-                    await cleanup_session.execute(
-                        delete(TokenBlocklist).where(TokenBlocklist.expires_at < datetime.now(timezone.utc))
-                    )
-                    await cleanup_session.commit()
-            except Exception as e:
-                logger.error(f"Blocklist cleanup error: {e}")
+    # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
+    # immediately when a repo's auto_sync flips. The registry owns the
+    # event; route handlers just call .set() on it.
+    repo_sync_job = job_registry.get("repo_sync")
+    if repo_sync_job is not None:
+        app.state.repo_sync_wakeup = repo_sync_job.wakeup
 
-    async def periodic_pipeline_failure_cleanup():
-        while True:
-            try:
-                await asyncio.sleep(3600)
-                from app.services.pipeline_failures import PipelineFailureService
-                async with async_session_factory() as cleanup_session:
-                    svc = PipelineFailureService(cleanup_session)
-                    orphaned = await svc.prune_orphans()
-                    resolved_pruned = await svc.prune_resolved_older_than(days=30)
-                    await cleanup_session.commit()
-                logger.info(
-                    "Pipeline failure cleanup: orphaned=%s, resolved_pruned=%d",
-                    orphaned, resolved_pruned,
-                )
-            except Exception as e:
-                logger.error(f"Pipeline failure cleanup error: {e}")
-
-    sync_task = asyncio.create_task(periodic_repo_sync())
-    cleanup_task = asyncio.create_task(periodic_blocklist_cleanup())
-    failure_cleanup_task = asyncio.create_task(periodic_pipeline_failure_cleanup())
-
-    enrichment_worker = None
-    enrichment_task = None
-    if llm:
-        from app.services.enrichment_worker import EnrichmentWorker
-        from app.models.config import Config as ConfigModel
-
-        try:
-            async with async_session_factory() as session:
-                result = await session.execute(
-                    select(ConfigModel).where(ConfigModel.key == "enrichment_config")
-                )
-                config = result.scalar_one_or_none()
-                enrichment_config = config.value if config else {"enabled": False}
-
-            enrichment_worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
-
-            if enrichment_config.get("enabled", False):
-                enrichment_worker.batch_size = enrichment_config.get("batch_size", 5)
-                enrichment_worker.interval = enrichment_config.get("interval_seconds", 10)
-                enrichment_task = asyncio.create_task(enrichment_worker.run_loop())
-                logger.info("Enrichment worker started")
-
-            app.state.enrichment_worker = enrichment_worker
-            app.state.enrichment_task = enrichment_task
-        except Exception as e:
-            logger.warning(f"Failed to start enrichment worker: {e}")
+    app.state.job_registry = job_registry
+    await job_registry.start_all()
 
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
         yield
 
-    sync_task.cancel()
-    cleanup_task.cancel()
-    failure_cleanup_task.cancel()
-
-    if enrichment_worker:
-        enrichment_worker.stop()
-    if enrichment_task:
-        enrichment_task.cancel()
+    await job_registry.stop_all()
 
     from app.services.task_registry import TaskRegistry
     TaskRegistry.cancel_all()
@@ -325,6 +249,7 @@ app.include_router(pipeline_failures.router)
 app.include_router(reembed.router)
 app.include_router(setup.router)
 app.include_router(system.router)
+app.include_router(jobs.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)

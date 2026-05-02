@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint  # noqa: F401
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -21,10 +21,9 @@ class Repository(Base):
     auth_token_ref: Mapped[str | None] = mapped_column(String(255))
     last_indexed_commit: Mapped[str | None] = mapped_column(String(64))
     last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     status_message: Mapped[str | None] = mapped_column(String(500))
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

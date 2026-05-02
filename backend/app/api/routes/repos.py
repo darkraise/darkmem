@@ -29,10 +29,9 @@ def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -
         default_branch=repo.default_branch,
         last_indexed_commit=repo.last_indexed_commit,
         last_indexed_at=repo.last_indexed_at,
-        sync_interval_minutes=repo.sync_interval_minutes,
         status=repo.status,
         status_message=repo.status_message,
-        is_active=repo.is_active,
+        auto_sync=repo.auto_sync,
         file_count=file_count,
         symbol_count=symbol_count,
         created_at=repo.created_at,
@@ -107,27 +106,21 @@ async def update_repo(
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
 ):
-    # Snapshot the current values BEFORE the update so we can detect
-    # whether the change actually flipped any polling-relevant field.
-    # Both ``sync_interval_minutes`` and ``is_active`` directly affect
-    # the periodic_repo_sync loop's "is this repo due now?" decision —
-    # changes to either should wake the worker so the new cadence
-    # takes effect immediately instead of after the next 5-minute tick.
+    # Snapshot ``auto_sync`` BEFORE the update so we can detect whether
+    # this PUT flipped the polling gate. The repo_sync background job
+    # filters by ``auto_sync=true``; a flip from off→on should wake the
+    # job immediately so the new repo joins the next iteration without
+    # waiting for the global tick.
     existing = await manager.get(repo_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Repository not found")
-    prev_interval = existing.sync_interval_minutes
-    prev_active = existing.is_active
+    prev_auto_sync = existing.auto_sync
 
     repo = await manager.update(repo_id, body)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    polling_relevant_changed = (
-        repo.sync_interval_minutes != prev_interval
-        or repo.is_active != prev_active
-    )
-    if polling_relevant_changed:
+    if repo.auto_sync != prev_auto_sync:
         wakeup = getattr(request.app.state, "repo_sync_wakeup", None)
         if wakeup is not None:
             wakeup.set()

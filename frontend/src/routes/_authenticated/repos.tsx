@@ -78,10 +78,10 @@ url: "",
 provider: "github",
 default_branch: "main",
 auth_token: "",
-sync_interval_minutes: 30,
+auto_sync: true,
 })
 
-const set = (field: keyof RepoCreateParams, value: string | number) =>
+const set = <K extends keyof RepoCreateParams>(field: K, value: RepoCreateParams[K]) =>
 setForm((prev) => ({ ...prev, [field]: value }))
 
 const handleSubmit = (e: React.FormEvent) => {
@@ -93,8 +93,7 @@ if (form.url) params.url = form.url
 if (form.provider) params.provider = form.provider
 if (form.default_branch) params.default_branch = form.default_branch
 if (form.auth_token) params.auth_token = form.auth_token
-if (form.sync_interval_minutes != null)
-params.sync_interval_minutes = form.sync_interval_minutes
+if (form.auto_sync != null) params.auto_sync = form.auto_sync
 
 createRepo.mutate(params, {
 onSuccess: () => {
@@ -132,23 +131,12 @@ placeholder="https://github.com/org/repo"
 </SelectContent>
 </Select>
 </div>
-<div className="grid grid-cols-2 gap-3">
 <div>
 <Label className="text-xs text-muted-foreground">Default branch</Label>
 <Input
 value={form.default_branch ?? "main"}
 onChange={(e) => set("default_branch", e.target.value)}
 />
-</div>
-<div>
-<Label className="text-xs text-muted-foreground">Sync interval (min)</Label>
-<Input
-type="number"
-value={form.sync_interval_minutes ?? 30}
-onChange={(e) => set("sync_interval_minutes", Number(e.target.value))}
-min={1}
-/>
-</div>
 </div>
 <div>
 <Label className="text-xs text-muted-foreground">Auth token</Label>
@@ -158,6 +146,20 @@ value={form.auth_token ?? ""}
 onChange={(e) => set("auth_token", e.target.value)}
 placeholder="Optional"
 />
+</div>
+<div className="flex items-start gap-2 rounded-md border px-3 py-2">
+<Switch
+className="mt-0.5"
+checked={form.auto_sync ?? true}
+onCheckedChange={(v) => set("auto_sync", v)}
+/>
+<div className="text-sm">
+<div>Auto-sync</div>
+<div className="text-xs text-muted-foreground">
+When on, the repo_sync background job fetches and re-indexes this repo on every
+tick. Manual reindex always works regardless of this toggle.
+</div>
+</div>
 </div>
 <Button type="submit" className="w-full" disabled={createRepo.isPending}>
 {createRepo.isPending ? "Adding..." : "Add Repository"}
@@ -171,9 +173,8 @@ const updateRepo = useUpdateRepo()
 const [form, setForm] = useState<RepoUpdateParams>({
 name: repo.name,
 default_branch: repo.default_branch,
-sync_interval_minutes: repo.sync_interval_minutes,
 auth_token: "",
-is_active: repo.is_active,
+auto_sync: repo.auto_sync,
 })
 
 const set = <K extends keyof RepoUpdateParams>(field: K, value: RepoUpdateParams[K]) =>
@@ -186,12 +187,7 @@ const payload: RepoUpdateParams = {}
 if (form.name && form.name !== repo.name) payload.name = form.name
 if (form.default_branch && form.default_branch !== repo.default_branch)
 payload.default_branch = form.default_branch
-if (
-form.sync_interval_minutes != null &&
-form.sync_interval_minutes !== repo.sync_interval_minutes
-)
-payload.sync_interval_minutes = form.sync_interval_minutes
-if (form.is_active !== repo.is_active) payload.is_active = form.is_active
+if (form.auto_sync !== repo.auto_sync) payload.auto_sync = form.auto_sync
 // Only send auth_token if user typed a new value; empty string is treated
 // as "clear the token" by the backend, which we expose explicitly.
 if (form.auth_token && form.auth_token.trim() !== "")
@@ -225,23 +221,12 @@ onChange={(e) => set("name", e.target.value)}
 required
 />
 </div>
-<div className="grid grid-cols-2 gap-3">
 <div>
 <Label className="text-xs text-muted-foreground">Default branch</Label>
 <Input
 value={form.default_branch ?? "main"}
 onChange={(e) => set("default_branch", e.target.value)}
 />
-</div>
-<div>
-<Label className="text-xs text-muted-foreground">Sync interval (min)</Label>
-<Input
-type="number"
-value={form.sync_interval_minutes ?? 30}
-onChange={(e) => set("sync_interval_minutes", Number(e.target.value))}
-min={1}
-/>
-</div>
 </div>
 <div>
 <Label className="text-xs text-muted-foreground">
@@ -259,14 +244,14 @@ placeholder="Paste a new token to rotate"
 </div>
 <div className="flex items-center justify-between rounded-md border px-3 py-2">
 <div>
-<div className="text-sm">Active (auto-sync enabled)</div>
+<div className="text-sm">Auto-sync</div>
 <div className="text-xs text-muted-foreground">
-When off, the periodic sync skips this repo. Manual reindex still works.
+When off, the repo_sync job skips this repo. Manual reindex still works.
 </div>
 </div>
 <Switch
-checked={form.is_active ?? true}
-onCheckedChange={(v) => set("is_active", v)}
+checked={form.auto_sync ?? true}
+onCheckedChange={(v) => set("auto_sync", v)}
 />
 </div>
 <Button type="submit" className="w-full" disabled={updateRepo.isPending}>
@@ -305,7 +290,7 @@ repo.status === "cloning"
 ? "bg-orange-500"
 : repo.status === "indexing"
 ? "bg-blue-500 animate-pulse"
-: repo.is_active
+: repo.auto_sync
 ? "bg-green-500"
 : "bg-muted-foreground"
 }`}

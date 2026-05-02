@@ -11,14 +11,13 @@ class RepoCreate(BaseModel):
     provider: str = "local"
     default_branch: str = "main"
     auth_token: str | None = None
-    sync_interval_minutes: int = 30
+    auto_sync: bool = True
 
 
 class RepoUpdate(BaseModel):
     name: str | None = None
-    sync_interval_minutes: int | None = None
+    auto_sync: bool | None = None
     auth_token: str | None = None
-    is_active: bool | None = None
     default_branch: str | None = None
 
 
@@ -31,10 +30,9 @@ class RepoResponse(BaseModel):
     default_branch: str
     last_indexed_commit: str | None
     last_indexed_at: datetime | None
-    sync_interval_minutes: int
     status: str = "pending"
     status_message: str | None = None
-    is_active: bool
+    auto_sync: bool
     file_count: int = 0
     symbol_count: int = 0
     created_at: datetime

@@ -10,7 +10,7 @@ async def test_create_repo_local(client, session, auth_headers, tmp_path):
     data = resp.json()
     assert data["name"] == "test-repo"
     assert data["provider"] == "local"
-    assert data["is_active"] is True
+    assert data["auto_sync"] is True
 
 
 async def test_list_repos(client, session, auth_headers, tmp_path):
@@ -72,9 +72,9 @@ async def test_repos_require_auth(client):
     assert resp.status_code in (401, 403)
 
 
-async def test_update_repo_interval_wakes_sync_loop(client, auth_headers, tmp_path):
-    """Updating sync_interval_minutes must signal the periodic loop so the
-    new cadence takes effect immediately instead of after the next tick."""
+async def test_update_repo_auto_sync_wakes_sync_loop(client, auth_headers, tmp_path):
+    """Toggling auto_sync must signal the repo_sync job's loop so the new
+    state takes effect immediately instead of after the next tick."""
     from app.main import app
 
     repo_dir = tmp_path / "wake-test-repo"
@@ -85,7 +85,6 @@ async def test_update_repo_interval_wakes_sync_loop(client, auth_headers, tmp_pa
             "name": "wake-test-repo",
             "local_path": str(repo_dir),
             "provider": "local",
-            "sync_interval_minutes": 30,
         },
         headers=auth_headers,
     )
@@ -103,27 +102,17 @@ async def test_update_repo_interval_wakes_sync_loop(client, auth_headers, tmp_pa
     )
     assert app.state.repo_sync_wakeup.is_set() is False
 
-    # Changing sync_interval_minutes MUST wake the loop.
+    # Toggling auto_sync MUST wake the loop.
     await client.put(
         f"/api/v1/repos/{repo_id}",
-        json={"sync_interval_minutes": 5},
-        headers=auth_headers,
-    )
-    assert app.state.repo_sync_wakeup.is_set() is True
-
-    app.state.repo_sync_wakeup.clear()
-
-    # Toggling is_active MUST also wake the loop.
-    await client.put(
-        f"/api/v1/repos/{repo_id}",
-        json={"is_active": False},
+        json={"auto_sync": False},
         headers=auth_headers,
     )
     assert app.state.repo_sync_wakeup.is_set() is True
 
 
 async def test_mark_periodic_sync_failure_disables_auto_sync(session, tmp_path):
-    """A failed periodic sync must record the error AND set is_active=False
+    """A failed periodic sync must record the error AND set auto_sync=False
     so the polling worker stops retrying every tick."""
     from app.services.repo_manager import RepoManager
     from app.schemas.code import RepoCreate
@@ -137,7 +126,7 @@ async def test_mark_periodic_sync_failure_disables_auto_sync(session, tmp_path):
         local_path=str(repo_dir),
         provider="local",
     ))
-    assert repo.is_active is True
+    assert repo.auto_sync is True
     assert repo.status == "ready"
 
     # Simulate a fetch failure with an error string that includes an
@@ -148,17 +137,17 @@ async def test_mark_periodic_sync_failure_disables_auto_sync(session, tmp_path):
     updated = await manager.mark_periodic_sync_failure(repo.id, err)
 
     assert updated is not None
-    assert updated.is_active is False
+    assert updated.auto_sync is False
     assert updated.status == "error"
     assert "git fetch failed" in (updated.status_message or "")
     assert "ghp_secret123" not in (updated.status_message or "")
     assert "x-access-token:***@" in (updated.status_message or "")
 
-    # Round-trip: the next loop iteration filters by is_active=True and
+    # Round-trip: the next loop iteration filters by auto_sync=True and
     # this repo must now be excluded.
     from sqlalchemy import select as sa_select
     fresh = (await session.execute(
-        sa_select(Repository).where(Repository.is_active == True)  # noqa: E712
+        sa_select(Repository).where(Repository.auto_sync == True)  # noqa: E712
     )).scalars().all()
     assert all(r.id != repo.id for r in fresh)
 
@@ -222,7 +211,7 @@ async def test_mark_periodic_sync_failure_returns_none_for_missing(session):
 
 
 async def test_update_repo_no_op_does_not_wake(client, auth_headers, tmp_path):
-    """Re-PUTing the same interval value must not flip the wake event."""
+    """Re-PUTing the same auto_sync value must not flip the wake event."""
     from app.main import app
 
     repo_dir = tmp_path / "noop-test-repo"
@@ -233,7 +222,6 @@ async def test_update_repo_no_op_does_not_wake(client, auth_headers, tmp_path):
             "name": "noop-test-repo",
             "local_path": str(repo_dir),
             "provider": "local",
-            "sync_interval_minutes": 15,
         },
         headers=auth_headers,
     )
@@ -243,7 +231,7 @@ async def test_update_repo_no_op_does_not_wake(client, auth_headers, tmp_path):
 
     await client.put(
         f"/api/v1/repos/{repo_id}",
-        json={"sync_interval_minutes": 15},
+        json={"auto_sync": True},
         headers=auth_headers,
     )
     assert app.state.repo_sync_wakeup.is_set() is False
