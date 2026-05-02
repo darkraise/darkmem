@@ -36,11 +36,16 @@ _HOME_SUBPATH_BLOCKLIST: tuple[str, ...] = (
 )
 
 
-def validate_local_path(raw: str) -> Path:
+def validate_local_path(raw: str, *, must_not_be_repo: bool = False) -> Path:
     """Resolve ``raw`` and reject it if the indexer shouldn't read from there.
 
     Raises ``ValueError`` with a single sentence explaining the reason.
     Returns the resolved ``Path`` so callers can use it directly.
+
+    When ``must_not_be_repo=True``, also rejects paths whose immediate
+    contents include a ``.git`` directory — used by the setup wizard's
+    "Use this folder" guard so the chosen base path is never itself a
+    repository (which would clash with detect-children-as-repos logic).
     """
     if not raw or not raw.strip():
         raise ValueError("local_path must not be empty")
@@ -61,6 +66,8 @@ def validate_local_path(raw: str) -> Path:
             raise ValueError(
                 f"local_path is inside a blocked credential tree: ~/{first}"
             )
+    if must_not_be_repo and (resolved / ".git").is_dir():
+        raise ValueError(f"local_path is itself a git repository: {resolved}")
     return resolved
 
 

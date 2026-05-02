@@ -70,3 +70,33 @@ def test_validate_local_path_rejects_missing(tmp_path):
 async def test_repos_require_auth(client):
     resp = await client.get("/api/v1/repos")
     assert resp.status_code in (401, 403)
+
+
+def test_validate_local_path_rejects_git_repo_when_must_not_be_repo(tmp_path):
+    """``must_not_be_repo`` blocks the chosen path itself being a repo."""
+    import pytest
+    from app.services.repo_manager import validate_local_path
+
+    repo_dir = tmp_path / "myrepo"
+    repo_dir.mkdir()
+    (repo_dir / ".git").mkdir()
+
+    # Default behaviour still accepts repo paths (existing callers rely on it).
+    result = validate_local_path(str(repo_dir))
+    assert result == repo_dir.resolve()
+
+    with pytest.raises(ValueError, match="is itself a git repository"):
+        validate_local_path(str(repo_dir), must_not_be_repo=True)
+
+
+def test_validate_local_path_accepts_parent_of_repos_when_must_not_be_repo(tmp_path):
+    """``must_not_be_repo`` allows parents that contain child repos."""
+    from app.services.repo_manager import validate_local_path
+
+    parent = tmp_path / "workspace"
+    parent.mkdir()
+    (parent / "child-repo").mkdir()
+    (parent / "child-repo" / ".git").mkdir()
+
+    result = validate_local_path(str(parent), must_not_be_repo=True)
+    assert result == parent.resolve()

@@ -11,7 +11,7 @@ export async function seedAuth(page: Page): Promise<void> {
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
   )
-  await page.route("**/api/v1/auth/status", (route) =>
+  await page.route("**/api/v1/setup/status", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

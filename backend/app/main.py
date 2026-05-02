@@ -10,7 +10,7 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, graph, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, graph, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.services.llm import LLMOrchestrator
@@ -278,6 +278,8 @@ app.include_router(repos.router)
 app.include_router(code.router)
 app.include_router(pipeline_failures.router)
 app.include_router(reembed.router)
+app.include_router(setup.router)
+app.include_router(system.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)

@@ -100,3 +100,24 @@ async def require_auth(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
     return token_data
+
+
+async def require_uninitialized(
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    """Gate wizard-only endpoints to a fresh-install state.
+
+    Raises 403 once the admin password row exists in ``config``. The
+    setup wizard is the only legitimate caller; once setup completes,
+    these endpoints stay locked even though they are unauthenticated.
+    """
+    from app.models.config import Config
+
+    result = await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Setup already completed",
+        )

@@ -15,7 +15,6 @@ from app.api.auth import (
     set_auth_cookie,
     verify_password,
 )
-from app.config import settings
 from app.database import get_session
 from app.models.audit import AuditLog
 from app.models.config import Config
@@ -30,52 +29,13 @@ class PasswordRequest(BaseModel):
     password: str = Field(max_length=128)
 
 
-class SetupRequest(BaseModel):
-    password: str = Field(min_length=8, max_length=128)
-    setup_secret: str | None = None
-
-
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
 
 
-class StatusResponse(BaseModel):
-    initialized: bool
-
-
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
-
-
-@router.get("/status", response_model=StatusResponse)
-async def auth_status(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Config).where(Config.key == ADMIN_PASSWORD_KEY))
-    config = result.scalar_one_or_none()
-    return StatusResponse(initialized=config is not None)
-
-
-@router.post("/setup")
-async def auth_setup(
-    body: SetupRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    if settings.setup_secret and body.setup_secret != settings.setup_secret:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid setup secret")
-
-    result = await session.execute(select(Config).where(Config.key == ADMIN_PASSWORD_KEY))
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin password already set")
-
-    hashed = hash_password(body.password)
-    session.add(Config(key=ADMIN_PASSWORD_KEY, value={"hash": hashed}))
-    session.add(AuditLog(action="auth_setup", details={"ip": _client_ip(request)}))
-    await session.flush()
-
-    token = create_access_token({"sub": "admin"})
-    response = JSONResponse(content={"ok": True})
-    return set_auth_cookie(response, token)
 
 
 @router.post("/login")

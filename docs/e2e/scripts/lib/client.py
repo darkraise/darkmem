@@ -74,13 +74,13 @@ class DarkmemClient:
     # ---------- auth ----------
 
     async def auth_status(self) -> dict:
-        r = await self._client.get(f"{self.base_url}/api/v1/auth/status")
+        r = await self._client.get(f"{self.base_url}/api/v1/setup/status")
         r.raise_for_status()
         return r.json()
 
     async def setup(self) -> None:
         r = await self._client.post(
-            f"{self.base_url}/api/v1/auth/setup",
+            f"{self.base_url}/api/v1/setup",
             json={"password": self.password},
         )
         if r.status_code not in (200, 201):

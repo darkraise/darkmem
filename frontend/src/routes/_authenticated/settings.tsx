@@ -14,6 +14,8 @@ type ClassificationAreaInfo,
 import { ORPHAN_PROMPTS } from "@/components/pipeline/prompt-map"
 import { LLMProvidersPanel } from "@/components/pipeline/LLMProvidersPanel"
 import { LLMProfilesPanel } from "@/components/pipeline/LLMProfilesPanel"
+import { ServerPathBrowser } from "@/components/setup/ServerPathBrowser"
+import { useReposPath, useUpdateReposPath } from "@/hooks/api/use-setup-api"
 import {
 Card,
 CardContent,
@@ -363,6 +365,46 @@ disabled={updateFlags.isPending}
 )
 }
 
+function ReposPathCard() {
+const { data, isLoading } = useReposPath()
+const update = useUpdateReposPath()
+const [draft, setDraft] = useState<string>("")
+
+useEffect(() => {
+if (data?.path) setDraft(data.path)
+}, [data?.path])
+
+const handleSave = async (path: string) => {
+try {
+await update.mutateAsync({ path })
+setDraft(path)
+toast.success("Default code repo path saved")
+} catch (e) {
+toast.error(`Save failed: ${(e as Error).message}`)
+}
+}
+
+return (
+<Card>
+<CardHeader>
+<CardTitle>Default code repo path</CardTitle>
+</CardHeader>
+<CardContent>
+{isLoading ? (
+<div className="h-32 bg-muted rounded animate-pulse" />
+) : (
+<ServerPathBrowser
+apiBase="/system"
+value={draft}
+onChange={setDraft}
+onConfirm={handleSave}
+/>
+)}
+</CardContent>
+</Card>
+)
+}
+
 function AssistantPromptsCard() {
 const { data, isLoading } = useSystemPrompts()
 const update = useUpdateSystemPrompts()
@@ -493,8 +535,9 @@ description="Configure workers, feature flags, prompts, and classification."
 ))}
 </TabsList>
 
-<TabsContent value="flags" className="mt-4">
+<TabsContent value="flags" className="mt-4 space-y-4">
 <FeatureFlagsCard />
+<ReposPathCard />
 </TabsContent>
 
 <TabsContent value="classification" className="mt-4">

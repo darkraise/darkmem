@@ -944,6 +944,51 @@ async def update_system_prompts(
     return SystemPromptsResponse(defaults=defaults, overrides=overrides, effective=effective)
 
 
+class ReposPathResponse(BaseModel):
+    path: str | None
+
+
+class ReposPathUpdate(BaseModel):
+    path: str
+
+
+@router.get("/repos-path", response_model=ReposPathResponse)
+async def get_repos_path(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    row = (await session.execute(
+        select(Config).where(Config.key == "repos_default_local_path")
+    )).scalar_one_or_none()
+    if row is None or not isinstance(row.value, dict):
+        return ReposPathResponse(path=None)
+    return ReposPathResponse(path=row.value.get("path"))
+
+
+@router.put("/repos-path", response_model=ReposPathResponse)
+async def update_repos_path(
+    body: ReposPathUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.services.repo_manager import validate_local_path
+
+    try:
+        resolved = validate_local_path(body.path, must_not_be_repo=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    row = (await session.execute(
+        select(Config).where(Config.key == "repos_default_local_path")
+    )).scalar_one_or_none()
+    if row is None:
+        session.add(Config(key="repos_default_local_path", value={"path": str(resolved)}))
+    else:
+        row.value = {"path": str(resolved)}
+    await session.flush()
+    return ReposPathResponse(path=str(resolved))
+
+
 @router.post("/enrichment/trigger")
 async def trigger_enrichment(
     request: Request,

@@ -55,26 +55,26 @@ async def main() -> int:
         base = args.base_url
 
         # 1.1 setup
-        status = (await raw.get(f"{base}/api/v1/auth/status")).json()
+        status = (await raw.get(f"{base}/api/v1/setup/status")).json()
         is_initialized = status.get("initialized", False)
 
         if not is_initialized:
             # Try short password (should 422)
-            r = await raw.post(f"{base}/api/v1/auth/setup", json={"password": "short"})
+            r = await raw.post(f"{base}/api/v1/setup", json={"password": "short"})
             if r.status_code == 422:
                 report.ok("setup rejects password < 8 chars")
             else:
                 report.fail("setup short password", f"status {r.status_code}")
 
             # Try too-long password (should 422)
-            r = await raw.post(f"{base}/api/v1/auth/setup", json={"password": "x" * 200})
+            r = await raw.post(f"{base}/api/v1/setup", json={"password": "x" * 200})
             if r.status_code == 422:
                 report.ok("setup rejects password > 128 chars")
             else:
                 report.fail("setup long password", f"status {r.status_code}")
 
             # Valid setup
-            r = await raw.post(f"{base}/api/v1/auth/setup", json={"password": args.password})
+            r = await raw.post(f"{base}/api/v1/setup", json={"password": args.password})
             if assert_status(r, 200, "setup with valid password"):
                 report.ok("setup with valid password")
                 cookie_header = r.headers.get("set-cookie", "")
@@ -86,10 +86,10 @@ async def main() -> int:
         else:
             report.warn("already initialized — skipping setup tests")
 
-        # Setup again should 400
-        r = await raw.post(f"{base}/api/v1/auth/setup", json={"password": args.password})
-        if r.status_code == 400:
-            report.ok("second setup returns 400")
+        # Setup again should 403 (already initialized)
+        r = await raw.post(f"{base}/api/v1/setup", json={"password": args.password})
+        if r.status_code == 403:
+            report.ok("second setup returns 403")
         else:
             report.fail("second setup", f"status {r.status_code}")
 

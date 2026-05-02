@@ -34,7 +34,7 @@ export async function apiFetch<T>(
 }
 
 export async function checkSetupStatus(): Promise<{ initialized: boolean }> {
-  const response = await fetch(`${API_BASE}/auth/status`, {
+  const response = await fetch(`${API_BASE}/setup/status`, {
     credentials: "include",
   })
   return response.json()
@@ -63,22 +63,6 @@ export async function login(password: string): Promise<void> {
       .json()
       .catch(() => ({ detail: response.statusText }))
     throw new Error((error as { detail?: string }).detail || "Login failed")
-  }
-  useAuthStore.getState().setAuthenticated(true)
-}
-
-export async function setup(password: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/auth/setup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-    credentials: "include",
-  })
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ detail: response.statusText }))
-    throw new Error((error as { detail?: string }).detail || "Setup failed")
   }
   useAuthStore.getState().setAuthenticated(true)
 }

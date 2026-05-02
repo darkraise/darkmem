@@ -1,0 +1,157 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { apiFetch } from "@/lib/api"
+import { useAuthStore } from "@/features/auth"
+
+export type ProbeModelsRequest = {
+  api_kind: "openai" | "anthropic" | "ollama" | "google" | "deepseek" | "zai"
+  base_url: string
+  api_key?: string | null
+}
+
+export type ProbeModelsResponse = {
+  models: string[]
+  fetched_via: string
+  error: string | null
+}
+
+export type FsRoot = { path: string; label: string }
+export type FsRootsResponse = { roots: FsRoot[] }
+
+export type FsListEntry = {
+  name: string
+  path: string
+  is_dir: boolean
+  is_git: boolean
+  has_repos: boolean
+  repo_count: number
+}
+
+export type FsListResponse = {
+  path: string
+  parent: string | null
+  entries: FsListEntry[]
+  is_git: boolean
+  blocked_reason: string | null
+}
+
+export type SetupRepoSelection = { name: string; sub_path: string }
+
+export type SetupLLMPurpose = {
+  model: string
+  reasoning: boolean
+  dimensions?: number | null
+}
+
+export type SetupLLM = {
+  provider_name: string
+  api_kind: string
+  base_url: string
+  api_key: string | null
+  supports_embedding: boolean
+  purposes: Partial<Record<
+    "embedding" | "extraction" | "classification" | "reasoning" | "summarization" | "reranker",
+    SetupLLMPurpose
+  >>
+}
+
+export type SetupRequest = {
+  password: string
+  llm?: SetupLLM | null
+  repos?: {
+    base_path: string
+    repos: SetupRepoSelection[]
+  } | null
+}
+
+export type SetupSectionStatus = { ok: boolean; message: string | null }
+
+export type SetupResponse = {
+  password: SetupSectionStatus
+  llm: SetupSectionStatus
+  repos: SetupSectionStatus
+  repos_added: string[]
+  repos_failed: { name: string; error: string }[]
+}
+
+const API_BASE = "/api/v1"
+
+async function rawFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string>),
+  }
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error((err as { detail?: string }).detail || `HTTP ${response.status}`)
+  }
+  return response.json() as Promise<T>
+}
+
+export function useProbeModels() {
+  return useMutation<ProbeModelsResponse, Error, ProbeModelsRequest>({
+    mutationFn: (body) =>
+      rawFetch<ProbeModelsResponse>("/setup/probe-models", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  })
+}
+
+export function useFsRoots(apiBase: "/setup" | "/system") {
+  return useQuery<FsRootsResponse>({
+    queryKey: ["fs", apiBase, "roots"],
+    queryFn: () =>
+      apiBase === "/setup"
+        ? rawFetch<FsRootsResponse>("/setup/fs/roots")
+        : apiFetch<FsRootsResponse>("/system/fs/roots"),
+  })
+}
+
+export async function fsList(
+  apiBase: "/setup" | "/system",
+  path: string,
+  detectRepos = false,
+): Promise<FsListResponse> {
+  const qs = new URLSearchParams({ path, detect_repos: String(detectRepos) })
+  if (apiBase === "/setup") {
+    return rawFetch<FsListResponse>(`/setup/fs/list?${qs.toString()}`)
+  }
+  return apiFetch<FsListResponse>(`/system/fs/list?${qs.toString()}`)
+}
+
+export function useFinalizeSetup() {
+  return useMutation<SetupResponse, Error, SetupRequest>({
+    mutationFn: async (body) => {
+      const result = await rawFetch<SetupResponse>("/setup", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+      useAuthStore.getState().setAuthenticated(true)
+      return result
+    },
+  })
+}
+
+export function useReposPath() {
+  return useQuery<{ path: string | null }>({
+    queryKey: ["reposPath"],
+    queryFn: () => apiFetch<{ path: string | null }>("/config/repos-path"),
+  })
+}
+
+export function useUpdateReposPath() {
+  const qc = useQueryClient()
+  return useMutation<{ path: string | null }, Error, { path: string }>({
+    mutationFn: (body) =>
+      apiFetch<{ path: string | null }>("/config/repos-path", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reposPath"] }),
+  })
+}
