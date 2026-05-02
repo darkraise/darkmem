@@ -299,7 +299,7 @@ async def health():
     pipeline = getattr(app.state, "pipeline", None)
     llm = getattr(app.state, "llm", None)
 
-    async def check_pgvector():
+    async def check_pgvector() -> bool:
         try:
             async with async_session_factory() as session:
                 result = await session.execute(
@@ -309,22 +309,60 @@ async def health():
         except Exception:
             return False
 
-    async def check_llm():
+    async def check_llm() -> bool:
+        """Light-weight reachability probe for the configured embedding provider.
+
+        Branches on the provider's ``api_kind`` instead of assuming Ollama —
+        the previous implementation hard-coded ``/api/tags`` and stripped
+        ``/v1`` with ``rstrip`` (which removes a character set, not a suffix),
+        so it returned False for every cloud provider and surfaced as a
+        permanent 503 even when the configured LLM was perfectly reachable.
+        """
         try:
-            base_url = llm.config.get("embedding", {}).base_url if llm else None
-            if not base_url:
+            embedding_cfg = llm.config.get("embedding") if llm else None
+            if embedding_cfg is None or not embedding_cfg.base_url:
                 return False
-            ollama_base = base_url.rstrip("/v1").rstrip("/")
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                resp = await client.get(f"{ollama_base}/api/tags")
-                return resp.status_code == 200
+            api_kind = getattr(embedding_cfg, "api_kind", "openai")
+            base = embedding_cfg.base_url.rstrip("/")
+            api_key = getattr(embedding_cfg, "api_key", None)
+
+            if api_kind == "ollama":
+                root = base.removesuffix("/v1").removesuffix("/api")
+                url = f"{root}/api/tags"
+                headers: dict[str, str] = {}
+            else:
+                url = f"{base}/models"
+                headers = {}
+                if api_kind == "anthropic" and api_key:
+                    headers["x-api-key"] = api_key
+                    headers["anthropic-version"] = "2023-06-01"
+                elif api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(url, headers=headers)
+            return resp.is_success
         except Exception:
             return False
 
     pgvector_ok, llm_ok = await asyncio.gather(check_pgvector(), check_llm())
 
-    overall = "ok" if all([pgvector_ok, llm_ok]) else "degraded"
-    status_code = 200 if overall == "ok" else 503
+    # Status-code policy:
+    #   * pgvector is a hard dependency — without it none of the API works;
+    #     a failure here returns 503 so orchestrators page on it.
+    #   * The LLM is a soft dependency — UI, auth, config and repo endpoints
+    #     all work without it. Report the truth in the body but keep the
+    #     status code at 200 so a flaky vendor doesn't trigger noisy alerts.
+    if not pgvector_ok:
+        overall = "down"
+        status_code = 503
+    elif not llm_ok:
+        overall = "degraded"
+        status_code = 200
+    else:
+        overall = "ok"
+        status_code = 200
+
     return JSONResponse(
         {
             "status": overall,
