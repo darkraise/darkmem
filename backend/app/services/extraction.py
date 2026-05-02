@@ -295,6 +295,100 @@ def _apply_type_overrides(entities: list[dict]) -> list[dict]:
     return out
 
 
+# Path-with-extension: at least one slash AND a known file extension.
+# Captures things like:
+#   backend/app/services/llm_seed.py
+#   frontend/src/routes/_authenticated/settings.tsx
+#   migrations/versions/0001_initial.py
+#   backend/app/main.py:health()      (path:symbol form, suffix optional)
+# Specifically does NOT match:
+#   classA.method1()    (no slash, just dots — method call, not a path)
+#   obj.attr.subattr    (same — attribute access, not a module path)
+# The slash requirement is what disambiguates path tokens from method
+# calls. Dotted-module specs (``app.services.classifier``) are also
+# excluded for the same reason — they look identical to chained method
+# calls without a slash, and false-positives there poison the graph.
+_FILE_PATH_RE = re.compile(
+    r"\b"
+    r"(?:[\w][\w.\-]*?/)+"            # one or more slash-terminated segments
+    r"[\w][\w\-]*"                    # final basename
+    r"\.(?:py|pyi|ts|tsx|js|jsx|mjs|cjs|go|rs|java|kt|kts|"
+    r"cpp|cc|cxx|c|h|hpp|hh|cs|rb|php|swift|m|mm|"
+    r"html|htm|css|scss|sass|less|"
+    r"json|jsonc|yaml|yml|toml|ini|cfg|conf|env|"
+    r"sql|prisma|sh|bash|zsh|fish|ps1|bat|cmd|"
+    r"md|mdx|rst|tex|"
+    r"proto|graphql|gql|"
+    r"lua|jl|hs|ml|mli|scala|swift|zig|elm|ex|exs|erl|clj|cljs|"
+    r"xml|svg|csv|tsv"
+    r")"
+    r"(?::[\w.\-]+(?:\(\))?)?"        # optional :symbol or :symbol() suffix
+    r"\b"
+)
+
+
+def _rescue_file_path_entities(entities: list[dict], content: str) -> list[dict]:
+    """Rescue file-path tokens the LLM dropped.
+
+    deepseek-v4-pro / gpt-5.4-mini extract code symbols (function names,
+    class names) reliably, but consistently drop file-path tokens like
+    ``backend/app/services/llm_seed.py`` even when they are mentioned
+    multiple times in a relocation memory's prose. Three rounds of
+    prompt instruction (rounds 5, 6, 10) had no effect on this. With
+    file paths missing, Pattern D in the relation rescue cannot find
+    the new-home target of a REPLACES, so the relocation edge is lost.
+
+    This rescue runs after the LLM extraction (and after
+    ``_rescue_known_entities``) and adds any path-like token that
+    matches ``_FILE_PATH_RE`` and isn't already covered by an existing
+    entity span. The pattern requires a slash AND a known extension —
+    plain dotted forms like ``classA.method1()`` and
+    ``obj.attr.subattr`` are NOT matched, because without a slash they
+    cannot be reliably distinguished from chained attribute / method
+    calls.
+
+    Added entities are typed ``artifact`` consistently (rule 7b).
+    """
+    if not content:
+        return entities
+    out = list(entities)
+    seen_lower = {(e.get("name") or "").strip().lower() for e in out}
+
+    # Build occupied spans the same way ``_rescue_known_entities`` does
+    # so we don't duplicate when the LLM did extract the path. We use
+    # case-insensitive matching against the raw content.
+    text_lower = content.lower()
+    occupied: list[tuple[int, int]] = []
+    for e in entities:
+        e_name = (e.get("name") or "").strip()
+        if not e_name:
+            continue
+        e_low = e_name.lower()
+        start = 0
+        while True:
+            idx = text_lower.find(e_low, start)
+            if idx < 0:
+                break
+            occupied.append((idx, idx + len(e_low)))
+            start = idx + 1
+
+    def _overlaps_existing(s: int, e: int) -> bool:
+        return any(not (e <= os or s >= oe) for os, oe in occupied)
+
+    for m in _FILE_PATH_RE.finditer(content):
+        s, e = m.span()
+        if _overlaps_existing(s, e):
+            continue
+        path = m.group(0)
+        key = path.lower()
+        if key in seen_lower:
+            continue
+        seen_lower.add(key)
+        out.append({"name": path, "type": "artifact", "properties": {}})
+        occupied.append((s, e))
+    return out
+
+
 def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
     """Add curated names that appear in the text but were missed by the LLM.
 
@@ -1413,6 +1507,12 @@ def clean_extraction(
     # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
     # not dropped as substrings of longer model proposals (``cpu_fallback``).
     entities = _rescue_known_entities(entities, content)
+    # File-path rescue: scans for ``a/b/c.py``-style tokens the LLM
+    # dropped and adds them as ``artifact`` entities. Closes the
+    # round-10 recall gap that broke Pattern D's B-zone selection on
+    # relocation memories. Plain dotted forms (``classA.method1()``)
+    # are intentionally NOT matched — see ``_FILE_PATH_RE`` docstring.
+    entities = _rescue_file_path_entities(entities, content)
     # Pattern-based relation synthesis. Adds DEPLOYED_ON / USES / REPLACES
     # triples for adjacent entity pairs joined by a connector phrase the
     # LLM misses (``X on Y``, ``X with Y``, ``X via Y``, ``X uses Y``,

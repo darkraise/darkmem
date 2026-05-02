@@ -213,6 +213,96 @@ def test_rescue_replaces_pattern_d_b_zone_window_accepts_close_entity():
     )
 
 
+# --- File-path entity rescue ----------------------------------------------
+
+
+def test_rescue_file_path_entities_adds_missing_paths():
+    """The deterministic file-path rescue scans the content for
+    ``a/b/c.py``-style tokens and adds any that weren't extracted."""
+    from app.services.extraction import _rescue_file_path_entities
+    text = (
+        "Seed data was moved out of Alembic migration 0001 into "
+        "backend/app/services/llm_seed.py and the wizard now uses it. "
+        "See also frontend/src/routes/_authenticated/settings.tsx."
+    )
+    out = _rescue_file_path_entities([], text)
+    names = {e["name"] for e in out}
+    assert "backend/app/services/llm_seed.py" in names
+    assert "frontend/src/routes/_authenticated/settings.tsx" in names
+    # All rescued paths are typed ``artifact`` consistently.
+    for e in out:
+        assert e["type"] == "artifact"
+
+
+def test_rescue_file_path_entities_skips_method_calls():
+    """The rescue MUST NOT match plain dotted forms like ``classA.method1()``
+    or ``obj.attr.subattr`` — without a slash they're indistinguishable
+    from method calls / attribute access."""
+    from app.services.extraction import _rescue_file_path_entities
+    text = (
+        "The handler calls classA.method1() then obj.attr.subattr to finish. "
+        "Anthropic.completion() and openai.embeddings.create() are also used."
+    )
+    out = _rescue_file_path_entities([], text)
+    # No entities should be added — none of these tokens have a slash.
+    assert out == []
+
+
+def test_rescue_file_path_entities_handles_path_with_symbol():
+    """``path/to/file.py:func()`` form is captured as a single entity."""
+    from app.services.extraction import _rescue_file_path_entities
+    text = "The bug fix lives in backend/app/main.py:health() now."
+    out = _rescue_file_path_entities([], text)
+    names = {e["name"] for e in out}
+    # Either the bare path or the path:symbol form is acceptable; the
+    # symbol-suffixed form is preferred when present.
+    assert any("backend/app/main.py" in n for n in names)
+
+
+def test_rescue_file_path_entities_does_not_duplicate_existing():
+    """When the LLM already extracted the path, the rescue must NOT add
+    a duplicate row."""
+    from app.services.extraction import _rescue_file_path_entities
+    existing = [
+        {"name": "backend/app/services/llm_seed.py", "type": "artifact", "properties": {}}
+    ]
+    text = "We moved seeds into backend/app/services/llm_seed.py last week."
+    out = _rescue_file_path_entities(existing, text)
+    assert len(out) == 1
+    assert out[0]["name"] == "backend/app/services/llm_seed.py"
+
+
+def test_rescue_file_path_entities_pattern_d_picks_up_rescued_path():
+    """End-to-end: when Pattern D's B-zone target is missing from the
+    LLM extraction, the file-path rescue adds it, and Pattern D then
+    emits the right REPLACES edge — closing the round-9/round-10 gap."""
+    from app.services.extraction import (
+        _rescue_file_path_entities,
+        _rescue_relations,
+    )
+    text = (
+        "Seed data was moved out of Alembic migration 0001 into "
+        "backend/app/services/llm_seed.py and is now applied by the "
+        "setup wizard's finalize handler instead."
+    )
+    # Simulate the round-10 LLM extraction: the file path is missing.
+    llm_entities = _entities(
+        "alembic migration 0001",
+        "alembic",
+        "finalize handler",
+    )
+    rescued = _rescue_file_path_entities(llm_entities, text)
+    rescued_names = {e["name"] for e in rescued}
+    assert "backend/app/services/llm_seed.py" in rescued_names
+    out = _rescue_relations(rescued, [], text)
+    assert _has(
+        out,
+        "backend/app/services/llm_seed.py",
+        "alembic migration 0001",
+        "REPLACES",
+    ), f"expected REPLACES from rescued path; got {out}"
+
+
 # --- Negation suppression --------------------------------------------------
 
 
