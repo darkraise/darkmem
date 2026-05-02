@@ -35,19 +35,24 @@ class GraphService:
         min_cluster_size: int = 3,
         include_entities: bool = False,
     ) -> dict:
-        importance_map = await self._fetch_importance_map()
-
         memory_nodes = []
         clusters: dict[int, list[str]] = {}
         similarity_edges: list[dict] = []
 
-        if self.vector_repo:
+        if self.vector_repo and self.llm is not None:
             try:
+                fingerprint = self.llm.llm_fingerprint()
                 clustered = await self.vector_repo.get_louvain_clustered_vectors(
+                    fingerprint=fingerprint,
                     min_score=similarity_threshold,
                     min_cluster_size=min_cluster_size,
                     limit=limit,
                 )
+                # Fetch importance only for the IDs we actually plot. The
+                # previous implementation did a full-table scan on every
+                # request, which gets expensive once the corpus grows.
+                clustered_ids = [p["memory_id"] for p in clustered]
+                importance_map = await self._fetch_importance_map(clustered_ids)
                 for p in clustered:
                     payload = p.get("payload", {})
                     mid = str(p["memory_id"])
@@ -106,9 +111,13 @@ class GraphService:
             "neighbors": neighbors,
         }
 
-    async def _fetch_importance_map(self) -> dict[str, float]:
+    async def _fetch_importance_map(self, memory_ids: list) -> dict[str, float]:
+        if not memory_ids:
+            return {}
         try:
-            result = await self.session.execute(select(Memory.id, Memory.importance))
+            result = await self.session.execute(
+                select(Memory.id, Memory.importance).where(Memory.id.in_(memory_ids))
+            )
             return {str(row[0]): row[1] for row in result.all()}
         except Exception:
             logger.exception("Failed to fetch importance data")

@@ -1,14 +1,13 @@
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_session
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.relational import PostgresTagRepository
 from app.repositories.vector import PostgresVectorRepository
 from app.services.analytics import AnalyticsService
 from app.services.chat import ChatService
-from app.services.code_indexer import CodeIndexer
+from app.services.code_pipeline import CodePipeline
 from app.services.graph import GraphService
 from app.services.memory import MemoryService
 from app.services.repo_manager import RepoManager
@@ -24,8 +23,7 @@ async def get_chat_service(request: Request, session: AsyncSession = Depends(get
     if not llm:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="LLM service unavailable")
-    embedding_dims = getattr(request.app.state, "embedding_dims", settings.embedding_dimensions)
-    vector_repo = PostgresVectorRepository(session, embedding_dims)
+    vector_repo = PostgresVectorRepository(session)
     graph_repo = PostgresGraphRepository(session)
     return ChatService(session, llm, vector_repo, graph_repo)
 
@@ -38,17 +36,16 @@ async def get_analytics_service(request: Request, session: AsyncSession = Depend
 
 async def get_graph_service(request: Request, session: AsyncSession = Depends(get_session)) -> GraphService:
     llm = getattr(request.app.state, "llm", None)
-    embedding_dims = getattr(request.app.state, "embedding_dims", settings.embedding_dimensions)
-    vector_repo = PostgresVectorRepository(session, embedding_dims)
+    vector_repo = PostgresVectorRepository(session)
     graph_repo = PostgresGraphRepository(session)
     return GraphService(session, vector_repo, graph_repo, llm)
 
 
-async def get_code_indexer(request: Request, session: AsyncSession = Depends(get_session)) -> CodeIndexer:
+async def get_code_pipeline(request: Request, session: AsyncSession = Depends(get_session)) -> CodePipeline:
     llm = getattr(request.app.state, "llm", None)
-    embedding_dims = getattr(request.app.state, "embedding_dims", settings.embedding_dimensions)
-    vector_repo = PostgresVectorRepository(session, embedding_dims, "code_chunks")
-    return CodeIndexer(session, llm, vector_repo)
+    vector_repo = PostgresVectorRepository(session, "code_chunks")
+    repo_manager = RepoManager(session)
+    return CodePipeline(session=session, llm=llm, vector_repo=vector_repo, repo_manager=repo_manager)
 
 
 async def get_repo_manager(session: AsyncSession = Depends(get_session)) -> RepoManager:

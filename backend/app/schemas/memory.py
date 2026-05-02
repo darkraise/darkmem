@@ -82,7 +82,7 @@ class MemorySearchRequest(BaseModel):
 
 
 class MemoryBatchCreate(BaseModel):
-    entries: list[MemoryCreate]
+    entries: list[MemoryCreate] = Field(min_length=1, max_length=100)
 
 
 class MemoryMergeRequest(BaseModel):

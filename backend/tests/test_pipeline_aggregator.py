@@ -5,56 +5,23 @@ from app.services.pipeline_aggregator import build_pipeline_state
 
 
 @pytest.mark.asyncio
-async def test_aggregator_empty_db_yields_llm_mode(session: AsyncSession):
+async def test_aggregator_returns_llm_state(session: AsyncSession):
     state = await build_pipeline_state(session)
-    assert state["mode"] == "llm"
-    assert state["stages"] == {
-        "extraction": "llm",
-        "classification": "llm",
-        "retrieval": "llm",
-    }
-    assert state["shadow_mode"] is False
-    assert state["ml"]["persistence"] == "ttl"  # default TTL is 30 min
-    assert state["ml"]["idle_ttl_minutes"] == 30
-    assert "available_devices" in state["ml"]
     assert set(state["llm"].keys()) == {
         "embedding", "extraction", "classification",
         "reasoning", "summarization", "reranker",
     }
     assert "extraction" in state["prompts"]
-    assert "groups" not in state["ml"]  # groups live in /metrics, not aggregator
+    assert state["relation_rescue"] is True
 
 
 @pytest.mark.asyncio
-async def test_aggregator_mode_derives_ml(session):
+async def test_aggregator_reflects_relation_rescue_flag(session):
     from app.models.config import Config
-    session.add(Config(key="feature_flags", value={
-        "ml_extraction": True, "ml_classification": True, "ml_retrieval": True,
-    }))
+    session.add(Config(key="feature_flags", value={"relation_rescue": False}))
     await session.flush()
     state = await build_pipeline_state(session)
-    assert state["mode"] == "ml"
-    assert state["stages"]["extraction"] == "ml"
-
-
-@pytest.mark.asyncio
-async def test_aggregator_mode_derives_mixed(session):
-    from app.models.config import Config
-    session.add(Config(key="feature_flags", value={
-        "ml_extraction": True, "ml_classification": False, "ml_retrieval": True,
-    }))
-    await session.flush()
-    state = await build_pipeline_state(session)
-    assert state["mode"] == "mixed"
-
-
-@pytest.mark.asyncio
-async def test_aggregator_persistence_persistent(session):
-    from app.models.config import Config
-    session.add(Config(key="feature_flags", value={"ml_idle_ttl_minutes": 0}))
-    await session.flush()
-    state = await build_pipeline_state(session)
-    assert state["ml"]["persistence"] == "persistent"
+    assert state["relation_rescue"] is False
 
 
 def test_stage_prompt_keys_exhaust_prompts_module():

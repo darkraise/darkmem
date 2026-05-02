@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -16,10 +17,9 @@ RRF_K = 60
 
 
 class HybridSearchService:
-    def __init__(self, llm: LLMOrchestrator, session: AsyncSession, embedding_dims: int = 1024):
+    def __init__(self, llm: LLMOrchestrator, session: AsyncSession):
         self.llm = llm
         self.session = session
-        self.embedding_dims = embedding_dims
 
     async def search(
         self,
@@ -28,10 +28,10 @@ class HybridSearchService:
         semantic_weight: float = 0.7,
     ) -> list[dict]:
         fetch_n = limit * 3
-        vector = await self.llm.embed(query)
+        vector, fingerprint = await self.llm.embed(query)
 
         try:
-            semantic_results = await self._semantic_search(vector, fetch_n)
+            semantic_results = await self._semantic_search(vector, fingerprint, fetch_n)
         except Exception as e:
             logger.error("Semantic search failed: %s", e)
             semantic_results = []
@@ -50,32 +50,28 @@ class HybridSearchService:
         limit: int = 20,
         repo_id: UUID | None = None,
         language: str | None = None,
-        semantic_weight: float = 0.7,
+        semantic_weight: float = 0.7,  # noqa: ARG002 — kept for call-site stability
     ) -> list[dict]:
-        fetch_n = limit * 3
-        vector = await self.llm.embed(query)
-
+        # Code search is semantic-only. The per-fingerprint
+        # ``code_chunk_embeddings__<slug>`` child tables carry the embedding
+        # but no FTS column, so there is no keyword side to fuse with.
+        vector, fingerprint = await self.llm.embed(query)
         try:
-            semantic_results = await self._semantic_code_search(vector, fetch_n, repo_id, language)
+            return await self._semantic_code_search(
+                vector, fingerprint, limit, repo_id, language,
+            )
         except Exception as e:
             logger.error("Semantic code search failed: %s", e)
-            semantic_results = []
+            return []
 
-        try:
-            keyword_results = await self._keyword_code_search(query, fetch_n, repo_id, language)
-        except Exception as e:
-            logger.error("Keyword code search failed: %s", e)
-            keyword_results = []
-
-        return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
-
-    async def _semantic_search(self, vector: list[float], limit: int) -> list[dict]:
+    async def _semantic_search(self, vector: list[float], fingerprint: str, limit: int) -> list[dict]:
+        table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT memory_id,
                        1 - (embedding <=> CAST(:vec AS vector)) AS score,
                        payload
-                FROM memory_embeddings
+                FROM {table}
                 ORDER BY embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
             """),
@@ -110,8 +106,14 @@ class HybridSearchService:
         ]
 
     async def _semantic_code_search(
-        self, vector: list[float], limit: int, repo_id: UUID | None, language: str | None,
+        self,
+        vector: list[float],
+        fingerprint: str,
+        limit: int,
+        repo_id: UUID | None,
+        language: str | None,
     ) -> list[dict]:
+        table = child_table("code_chunk_embeddings", fingerprint)
         filters = ""
         params: dict = {"vec": str(vector), "limit": limit}
         if repo_id is not None:
@@ -126,7 +128,7 @@ class HybridSearchService:
                 SELECT id, repo_id, file_path, symbol_name, chunk_content,
                        line_start, line_end,
                        1 - (embedding <=> CAST(:vec AS vector)) AS score
-                FROM code_chunk_embeddings
+                FROM {table}
                 WHERE TRUE {filters}
                 ORDER BY embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
@@ -140,41 +142,6 @@ class HybridSearchService:
                 "chunk_content": row.chunk_content,
                 "line_start": row.line_start, "line_end": row.line_end,
                 "score": float(row.score), "source": "semantic",
-            }
-            for row in result
-        ]
-
-    async def _keyword_code_search(
-        self, query: str, limit: int, repo_id: UUID | None, language: str | None,
-    ) -> list[dict]:
-        filters = ""
-        params: dict = {"q": query, "limit": limit}
-        if repo_id is not None:
-            filters += " AND repo_id = :repo_id"
-            params["repo_id"] = repo_id
-        if language is not None:
-            filters += " AND language = :language"
-            params["language"] = language
-
-        result = await self.session.execute(
-            text(f"""
-                SELECT id, repo_id, file_path, symbol_name, chunk_content,
-                       line_start, line_end,
-                       ts_rank(search_vector, plainto_tsquery('english', :q)) AS rank
-                FROM code_chunk_embeddings
-                WHERE search_vector @@ plainto_tsquery('english', :q) {filters}
-                ORDER BY rank DESC
-                LIMIT :limit
-            """),
-            params,
-        )
-        return [
-            {
-                "id": str(row.id), "repo_id": str(row.repo_id),
-                "file_path": row.file_path, "symbol_name": row.symbol_name,
-                "chunk_content": row.chunk_content,
-                "line_start": row.line_start, "line_end": row.line_end,
-                "score": float(row.rank), "source": "keyword",
             }
             for row in result
         ]

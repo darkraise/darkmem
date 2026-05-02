@@ -1,20 +1,16 @@
-"""Consolidated 10-type entity and relation taxonomy for the ML extraction heads.
+"""Consolidated 10-type entity and relation taxonomy.
 
-The LLM and ML extraction paths both emit values from these lists. Values
-pre-dating the taxonomy consolidation are mapped in via the LEGACY_* tables
-(both at DB-migration time and at runtime by :func:`normalize_entity_type` /
+The LLM extraction path emits values from these lists. Values pre-dating
+the taxonomy consolidation are mapped in via the LEGACY_* tables (both at
+DB-migration time and at runtime by :func:`normalize_entity_type` /
 :func:`normalize_relation_type`).
-
-Keep in sync with:
-  * fine-tuning/scripts/_build_coding10_splits.py (entity TYPE_MAP, 35 -> 10)
-  * fine-tuning/scripts/_build_rebel_coding10_splits.py (REL_MAP, 30 -> 10)
-  * fine-tuning/models/PRODUCTION.md (canonical list)
 """
 
 from __future__ import annotations
 
 
 ENTITY_TYPES: list[str] = [
+    # Tech stack (Tier 1)
     "tool",
     "service",
     "database",
@@ -23,20 +19,41 @@ ENTITY_TYPES: list[str] = [
     "project",
     "algorithm",
     "artifact",
+    # Generic / fallback
     "concept",
     "entity",
+    # Real-world subjects (Tier 2 expansion)
+    "person",
+    "organization",
+    "event",
+    "place",
+    "paper",
 ]
 
 RELATIONSHIP_TYPES: list[str] = [
+    # Composition / dependency
     "USES",
     "DEPENDS_ON",
-    "REPLACES",
-    "IS_A",
     "HAS_PART",
+    "IMPLEMENTS",
+    "EXTENDS",
+    # Replacement / evolution
+    "REPLACES",
+    "IMPROVES_ON",
+    # Identity
+    "IS_A",
+    # Hosting / location
     "DEPLOYED_ON",
+    # Causality
     "CAUSES",
+    # Attribution / temporal
     "AUTHORED_BY",
     "HAPPENED_ON",
+    # Reference / inspiration
+    "MENTIONS",
+    "CITES",
+    "INSPIRED_BY",
+    # Catch-all
     "RELATED_TO",
 ]
 
@@ -45,13 +62,12 @@ _RELATIONSHIP_TYPE_SET: frozenset[str] = frozenset(RELATIONSHIP_TYPES)
 
 
 LEGACY_ENTITY_TYPE_MAP: dict[str, str] = {
-    "person": "entity",
-    "organization": "entity",
-    "team": "entity",
-    "company": "entity",
-    "date": "entity",
-    "place": "entity",
-    "event": "entity",
+    # ``person``, ``organization``, ``event``, ``place``, ``paper`` are
+    # first-class entity types now — only true legacy aliases remain.
+    "team": "organization",
+    "company": "organization",
+    "date": "entity",  # bare dates are values; this only catches the rare
+                       # case the model insists on emitting one.
     "technology": "tool",
     "framework": "tool",
     "library": "tool",
@@ -71,7 +87,7 @@ LEGACY_ENTITY_TYPE_MAP: dict[str, str] = {
     "error": "artifact",
     "theory": "concept",
     "field": "concept",
-    "publication": "concept",
+    "publication": "paper",
     "finding": "concept",
     "claim": "concept",
     "data structure": "concept",
@@ -81,14 +97,14 @@ LEGACY_ENTITY_TYPE_MAP: dict[str, str] = {
 
 
 LEGACY_RELATION_TYPE_MAP: dict[str, str] = {
+    # IMPLEMENTS, EXTENDS, IMPROVES_ON are first-class types now; legacy
+    # rows that used those labels survive unchanged.
     "CONFIGURES": "USES",
     "APPLIES_TO": "USES",
     "COMMUNICATES_WITH": "USES",
-    "IMPLEMENTS": "USES",
-    "IMPROVES_ON": "REPLACES",
-    "BUILDS_ON": "REPLACES",
-    "EXTENDS": "HAS_PART",
+    "BUILDS_ON": "IMPROVES_ON",
     "LOCATED_IN": "DEPLOYED_ON",
+    "RUNS_ON": "DEPLOYED_ON",
     "PRODUCES": "CAUSES",
     "FIXES": "CAUSES",
     "PUBLISHED_IN": "AUTHORED_BY",

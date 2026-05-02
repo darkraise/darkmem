@@ -57,23 +57,33 @@ export function ChatOverlay({ selectedNodeId, selectedEntityId, onNodeSelect }: 
   }
 
   return (
-    <div className="fixed bottom-16 right-4 z-40 w-[480px] h-[680px] max-h-[calc(100vh-5rem)] bg-card border border-[rgba(99,102,241,0.15)] rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.08)] flex flex-col overflow-hidden">
+    <div
+      role="dialog"
+      aria-modal="false"
+      aria-label="Chat panel"
+      className="fixed bottom-16 right-4 z-40 w-[480px] h-[680px] max-h-[calc(100vh-5rem)] bg-card border border-[rgba(99,102,241,0.15)] rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.08)] flex flex-col overflow-hidden"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setOpen(false)
+      }}
+    >
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <span className="text-sm font-semibold">Chat</span>
         <div className="flex items-center gap-1.5">
           {convId && (
             <button
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              aria-label="Open chat in dedicated page"
               onClick={() => navigate({ to: "/chat", search: { id: convId } })}
             >
-              Open <ExternalLink className="w-3 h-3" />
+              Open <ExternalLink className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
           <button
             className="text-muted-foreground hover:text-foreground p-0.5"
+            aria-label="Close chat panel"
             onClick={() => setOpen(false)}
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>

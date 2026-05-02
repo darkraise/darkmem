@@ -5,8 +5,7 @@ When a newly ingested memory carries a high-confidence REPLACES relation
 memories that mention the deprecated technology X and flips their status
 to 'superseded' with a pointer to the new memory.
 
-Guards that must all pass before a candidate is flipped (see
-`fine-tuning/SCHEMA_V2_PLAN.md` Phase 5.3):
+Guards that must all pass before a candidate is flipped:
 
 1. Same project as the new memory.
 2. Candidate status is 'active'.
@@ -43,6 +42,7 @@ async def detect_supersessions(
     *,
     new_memory_id: UUID,
     new_memory_text: str | None,
+    new_memory_created_at: datetime,
     project: str,
     new_relations: list[dict],
     now: datetime | None = None,
@@ -50,6 +50,12 @@ async def detect_supersessions(
     """Mark same-project active memories as superseded by ``new_memory_id``.
 
     Returns the list of old memory ids that were flipped.
+
+    Candidates must be strictly older than ``new_memory_created_at``.
+    Without this guard, two memories that both carry the same REPLACES
+    relation will supersede each other when both are processed (a
+    bidirectional flip during reprocess), making both vanish from the
+    default ``status='active'`` view.
 
     Safe to call inside an existing transaction; callers commit.
     """
@@ -76,6 +82,7 @@ async def detect_supersessions(
         .where(Memory.project == project)
         .where(Memory.status == "active")
         .where(Memory.created_at >= cutoff)
+        .where(Memory.created_at < new_memory_created_at)
         .where(Memory.id != new_memory_id)
         .where(Memory.technologies.overlap(replaces_targets))
     )

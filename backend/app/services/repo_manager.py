@@ -24,6 +24,46 @@ def _sanitize_url(text: str) -> str:
     return re.sub(r'x-access-token:[^@]+@', 'x-access-token:***@', text)
 
 
+# Common system / credential trees we never want the indexer to walk into,
+# even on a personal-use deployment. Not exhaustive — defence against the
+# typo class of foot-gun, not the malicious-admin class.
+_LOCAL_PATH_BLOCKLIST: tuple[str, ...] = (
+    "/etc", "/root", "/var", "/sys", "/proc", "/boot", "/dev",
+    "/private/etc", "/private/var",  # macOS
+)
+_HOME_SUBPATH_BLOCKLIST: tuple[str, ...] = (
+    ".ssh", ".aws", ".gnupg", ".config", ".kube", ".docker", ".npm", ".cache",
+)
+
+
+def validate_local_path(raw: str) -> Path:
+    """Resolve ``raw`` and reject it if the indexer shouldn't read from there.
+
+    Raises ``ValueError`` with a single sentence explaining the reason.
+    Returns the resolved ``Path`` so callers can use it directly.
+    """
+    if not raw or not raw.strip():
+        raise ValueError("local_path must not be empty")
+    resolved = Path(raw).expanduser().resolve()
+    if not resolved.exists():
+        raise ValueError(f"local_path does not exist: {resolved}")
+    if not resolved.is_dir():
+        raise ValueError(f"local_path is not a directory: {resolved}")
+    posix = resolved.as_posix()
+    for blocked in _LOCAL_PATH_BLOCKLIST:
+        if posix == blocked or posix.startswith(blocked + "/"):
+            raise ValueError(f"local_path is inside a blocked system tree: {blocked}")
+    home = Path.home().resolve().as_posix()
+    if posix.startswith(home + "/"):
+        rest = posix[len(home) + 1:]
+        first = rest.split("/", 1)[0]
+        if first in _HOME_SUBPATH_BLOCKLIST:
+            raise ValueError(
+                f"local_path is inside a blocked credential tree: ~/{first}"
+            )
+    return resolved
+
+
 def _force_remove(func, path, exc_info):
     import stat
     os.chmod(path, stat.S_IWRITE)
@@ -35,10 +75,18 @@ class RepoManager:
         self.session = session
 
     async def create(self, data: RepoCreate) -> Repository:
+        # Validate local_path early so a typo can't end up writing a row
+        # whose indexer will walk into /etc or ~/.ssh on the next sync.
+        validated_local_path: str | None = None
+        if data.local_path:
+            try:
+                validated_local_path = str(validate_local_path(data.local_path))
+            except ValueError as e:
+                raise ValueError(str(e)) from None
         repo = Repository(
             name=data.name,
             url=data.url,
-            local_path=data.local_path,
+            local_path=validated_local_path,
             provider=data.provider,
             default_branch=data.default_branch,
             sync_interval_minutes=data.sync_interval_minutes,
@@ -216,7 +264,10 @@ class RepoManager:
 
     def repo_working_dir(self, repo: Repository) -> Path:
         if repo.local_path:
-            return Path(repo.local_path)
+            # Defence-in-depth: re-validate at every access so a row that
+            # pre-dates the validator (or had its path mutated outside the
+            # service) cannot drag the indexer into a blocked tree.
+            return validate_local_path(repo.local_path)
         return self._clone_path(repo)
 
     async def _clone_repo(self, repo: Repository) -> None:

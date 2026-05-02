@@ -129,11 +129,8 @@ async def batch_create(
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    results = []
-    for entry in body.entries:
-        memory = await service.create_memory(entry, api_key_id=None)
-        results.append(_to_response(memory))
-    return results
+    memories = await service.batch_create_memories(body.entries, api_key_id=None)
+    return [_to_response(m) for m in memories]
 
 
 @router.post("/{memory_id}/merge", response_model=MemoryResponse)

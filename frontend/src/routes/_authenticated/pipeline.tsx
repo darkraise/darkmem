@@ -2,8 +2,6 @@ import { useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "darkraise-ui/layout"
 import { usePipeline, useSystemPrompts } from "@/hooks/api"
-import { PipelineModeToggle } from "@/components/pipeline/PipelineModeToggle"
-import { MLPanel } from "@/components/pipeline/MLPanel"
 import { LLMPanel } from "@/components/pipeline/LLMPanel"
 import { AssistantServicesPanel } from "@/components/pipeline/AssistantServicesPanel"
 import { checkPromptExhaustiveness } from "@/components/pipeline/prompt-map"
@@ -39,13 +37,9 @@ function PipelinePage() {
     <div className="p-6 space-y-4">
       <PageHeader
         title="Pipeline"
-        description="Pick the stack used when adding memories. Configure devices, models, and prompts per stage."
+        description="Configure the LLM purposes, profiles, and prompts that power memory ingestion."
       />
-      <PipelineModeToggle state={state} />
-      <div className="grid lg:grid-cols-2 gap-4">
-        <MLPanel state={state} />
-        <LLMPanel state={state} />
-      </div>
+      <LLMPanel state={state} />
       <AssistantServicesPanel state={state} />
     </div>
   )
@@ -55,11 +49,7 @@ function PipelineSkeleton() {
   return (
     <div className="p-6 space-y-4">
       <div className="h-10 w-40 bg-muted rounded animate-pulse" />
-      <div className="h-24 bg-muted rounded animate-pulse" />
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="h-96 bg-muted rounded animate-pulse" />
-        <div className="h-96 bg-muted rounded animate-pulse" />
-      </div>
+      <div className="h-96 bg-muted rounded animate-pulse" />
     </div>
   )
 }

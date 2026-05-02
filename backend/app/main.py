@@ -10,9 +10,9 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, graph, health, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, graph, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, tags, vectors
 from app.api.websocket import websocket_endpoint
-from app.config import ml_pipeline_settings, settings
+from app.config import settings
 from app.services.llm import LLMOrchestrator
 from app.services.pipeline import ProcessingPipeline
 
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     llm = None
 
     # Load UI-editable system prompts from the DB before anything else needs
-    # them (ML/LLM dispatchers both call `prompt.get()` synchronously).
+    # them (extraction and classification call `prompt.get()` synchronously).
     try:
         from app.services import prompt as _prompt_mod
         async with async_session_factory() as _s:
@@ -36,130 +36,52 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Could not load system_prompts overrides; falling back to in-code defaults")
 
-    ml_eviction_task = None
-    if ml_pipeline_settings.enabled:
-        # Lazy-load ML groups on first use. We still read the device
-        # preference at startup so ``_instance_shell`` picks the right GPU
-        # for the deferred first load (the shell is created without any
-        # weights — no VRAM cost yet).
-        try:
-            from app.services.ml_models import (
-                _instance_shell as _ml_instance_shell,
-                evict_idle as _ml_evict_idle,
-            )
-            device_pref = ml_pipeline_settings.device
-            cuda_index_pref: int | None = None
-            check_interval = 60.0
-            idle_ttl_minutes = 30
-            try:
-                from sqlalchemy import select as _sa_select
-                from app.models.config import Config as _Config
-                async with async_session_factory() as _s:
-                    row = (
-                        await _s.execute(_sa_select(_Config).where(_Config.key == "feature_flags"))
-                    ).scalar_one_or_none()
-                    if row and isinstance(row.value, dict):
-                        stored_device = row.value.get("ml_device")
-                        if stored_device in ("auto", "cpu", "cuda"):
-                            device_pref = stored_device
-                        stored_index = row.value.get("ml_cuda_index")
-                        if isinstance(stored_index, int) and 0 <= stored_index <= 15:
-                            cuda_index_pref = stored_index
-                        stored_ttl = row.value.get("ml_idle_ttl_minutes")
-                        if isinstance(stored_ttl, int) and stored_ttl >= 0:
-                            idle_ttl_minutes = stored_ttl
-                        stored_check = row.value.get("ml_eviction_check_interval_seconds")
-                        if isinstance(stored_check, int) and stored_check >= 10:
-                            check_interval = float(stored_check)
-            except Exception:
-                logger.exception("Could not read ml_device from feature_flags; using env defaults")
-
-            # Prime the shell on the chosen device without loading any heads.
-            # The first ensure_*_loaded call will populate it.
-            from app.services import ml_models as _mm
-            from app.services.ml_models import _resolve_device
-            with _mm._LOCK:
-                if _mm._INSTANCE is None:
-                    resolved = _resolve_device(device_pref, cuda_index_pref)
-                    _mm._INSTANCE = _mm.MLModels(
-                        device=resolved,
-                        models_dir=ml_pipeline_settings.models_dir,
-                    )
-            logger.info(
-                "ML pipeline enabled (lazy): device=%s idle_ttl_minutes=%d check_interval_s=%.0f",
-                _mm._INSTANCE.device if _mm._INSTANCE else device_pref,
-                idle_ttl_minutes, check_interval,
-            )
-
-            async def _ml_eviction_loop():
-                from app.services.pipeline import _get_feature_flags_cached
-                while True:
-                    try:
-                        flags = await _get_feature_flags_cached(async_session_factory)
-                        ttl_minutes = int(flags.get("ml_idle_ttl_minutes", idle_ttl_minutes) or 0)
-                        interval = float(flags.get("ml_eviction_check_interval_seconds", check_interval) or check_interval)
-                        if ttl_minutes > 0:
-                            evicted = await asyncio.to_thread(_ml_evict_idle, ttl_minutes * 60)
-                            if evicted:
-                                logger.info("ML idle eviction: released groups=%s", evicted)
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception:
-                        logger.exception("ML eviction loop iteration failed")
-                        interval = check_interval
-                    await asyncio.sleep(max(10.0, interval))
-
-            ml_eviction_task = asyncio.create_task(_ml_eviction_loop())
-        except Exception:
-            logger.exception("ML pipeline lazy setup failed")
-
     try:
         from app.services.config import get_llm_config
-        from app.services.feature_flags import get_feature_flags_dict
+        from app.services.embedder_registry import (
+            EmbedderInfo, embedder_registry, parse_fingerprint,
+        )
         async with async_session_factory() as session:
             llm_config = await get_llm_config(session)
-            _flags_snapshot = await get_feature_flags_dict(session)
         llm = LLMOrchestrator(llm_config)
 
-        embedding_dims = llm_config["embedding"].dimensions or settings.embedding_dimensions
-        ml_retrieval_on = bool(_flags_snapshot.get("ml_retrieval", False))
-        if ml_retrieval_on:
-            # ML retrieval is lazy-loaded on first request. Probing here would
-            # pull the retriever weights into memory at boot, defeating the
-            # point. Trust the configured dims; the retriever checkpoint is
-            # pinned in fine-tuning/PRODUCTION.md.
-            logger.info("ML retrieval enabled; skipping startup dim probe (dims=%d)", embedding_dims)
-        else:
-            try:
-                test_vec = await llm.embed("dimension probe")
-                embedding_dims = len(test_vec)
-                logger.info(f"Detected embedding dimensions: {embedding_dims}")
-                if embedding_dims != settings.embedding_dimensions:
-                    logger.error(
-                        f"Embedding model returns {embedding_dims} dimensions but "
-                        f"settings.embedding_dimensions is {settings.embedding_dimensions}. "
-                        f"Update EMBEDDING_DIMENSIONS env var or change the model."
-                    )
-                    raise SystemExit(1)
-            except SystemExit:
-                raise
-            except Exception as e:
-                logger.warning(f"Could not auto-detect embedding dimensions: {e}")
+        # Hydrate the in-process registry cache from existing rows so that
+        # already-known fingerprints don't trigger redundant DDL.
+        async with async_session_factory() as session:
+            await embedder_registry.warm_cache_from_db(session)
+
+        llm_fp = llm.llm_fingerprint()
+        try:
+            llm_model_id, llm_dims = parse_fingerprint(llm_fp)
+            async with async_session_factory() as session:
+                await embedder_registry.register(
+                    session,
+                    EmbedderInfo(
+                        fingerprint=llm_fp, model_id=llm_model_id,
+                        dims=llm_dims, source="llm",
+                    ),
+                )
+        except Exception:
+            logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
 
         from app.api.websocket import event_manager
-        pipeline = ProcessingPipeline(llm, async_session_factory, embedding_dims, broadcast=event_manager.broadcast)
+        pipeline = ProcessingPipeline(llm, async_session_factory, broadcast=event_manager.broadcast)
         app.state.pipeline = pipeline
         app.state.llm = llm
-        app.state.embedding_dims = embedding_dims
         app.state.session_factory = async_session_factory
         logger.info("Pipeline initialized: pgvector + LLM connected")
     except Exception as e:
         logger.exception("Pipeline not available (Postgres-only mode)")
         app.state.pipeline = None
-        app.state.embedding_dims = settings.embedding_dimensions
         app.state.session_factory = async_session_factory
 
     set_pipeline(pipeline)
+
+    # Single shared lock for LLM config / provider / profile writes. Routes
+    # used to lazy-create on first touch, which raced under concurrent
+    # save clicks (each request saw None, each created its own Lock, the
+    # second store overwrote the first — neither serialized).
+    app.state.llm_config_lock = asyncio.Lock()
 
     from app.services import prompt
     agent_instructions = prompt.get("agent_instructions")
@@ -168,7 +90,8 @@ async def lifespan(app: FastAPI):
 
     # Feature 2: register retry handlers for the failure tracking system
     from app.services.pipeline_failures import register_retry_handler
-    from app.services.code_indexer import CodeIndexer
+    from app.services.code_pipeline import CodePipeline
+    from app.services.repo_manager import RepoManager
     from app.repositories.vector import PostgresVectorRepository
 
     if pipeline is not None:
@@ -198,21 +121,21 @@ async def lifespan(app: FastAPI):
         @register_retry_handler("code_index")
         async def _retry_code_index(repo_id):
             async with async_session_factory() as s:
-                embedding_dims = getattr(app.state, "embedding_dims", settings.embedding_dimensions)
-                code_vector_repo = PostgresVectorRepository(s, embedding_dims, "code_chunks")
+                code_vector_repo = PostgresVectorRepository(s, "code_chunks")
                 active_llm = getattr(app.state, "llm", None)
-                indexer = CodeIndexer(s, active_llm, code_vector_repo)
-                await indexer.index_repo(repo_id)
+                pipeline = CodePipeline(
+                    session=s, llm=active_llm,
+                    vector_repo=code_vector_repo,
+                    repo_manager=RepoManager(s),
+                )
+                await pipeline.run(repo_id)
                 await s.commit()
 
     async def periodic_repo_sync():
         while True:
             try:
                 await asyncio.sleep(300)
-                from app.services.code_indexer import CodeIndexer
                 from app.models.code import Repository
-                from app.repositories.vector import PostgresVectorRepository
-                embedding_dims = getattr(app.state, "embedding_dims", settings.embedding_dimensions)
                 active_llm = getattr(app.state, "llm", None)
                 async with async_session_factory() as list_session:
                     repos_result = (await list_session.execute(
@@ -227,9 +150,13 @@ async def lifespan(app: FastAPI):
                             continue
                     async with async_session_factory() as repo_session:
                         try:
-                            code_vector_repo = PostgresVectorRepository(repo_session, embedding_dims, "code_chunks")
-                            indexer = CodeIndexer(repo_session, active_llm, code_vector_repo)
-                            await indexer.index_repo(repo.id)
+                            code_vector_repo = PostgresVectorRepository(repo_session, "code_chunks")
+                            pipeline = CodePipeline(
+                                session=repo_session, llm=active_llm,
+                                vector_repo=code_vector_repo,
+                                repo_manager=RepoManager(repo_session),
+                            )
+                            await pipeline.run(repo.id)
                             await repo_session.commit()
                         except Exception as e:
                             await repo_session.rollback()
@@ -312,14 +239,20 @@ async def lifespan(app: FastAPI):
         enrichment_worker.stop()
     if enrichment_task:
         enrichment_task.cancel()
-    if ml_eviction_task:
-        ml_eviction_task.cancel()
 
     from app.services.task_registry import TaskRegistry
     TaskRegistry.cancel_all()
 
-    if llm:
-        await llm.close()
+    # Close whichever orchestrator is currently live, not the one from
+    # startup — admin saves on the LLM Providers / LLM Config pages
+    # replace ``app.state.llm`` mid-session, and the previous instance is
+    # already closed by ``_replace_orchestrator``'s background task.
+    current_llm = getattr(app.state, "llm", None) or llm
+    if current_llm:
+        try:
+            await current_llm.close()
+        except Exception:
+            logger.warning("Failed to close active LLM orchestrator at shutdown", exc_info=True)
 
 
 app = FastAPI(title="darkmem", version="0.2.0", description="Centralized memory system for AI agents", lifespan=lifespan)
@@ -345,7 +278,6 @@ app.include_router(repos.router)
 app.include_router(code.router)
 app.include_router(pipeline_failures.router)
 app.include_router(reembed.router)
-app.include_router(health.router)
 
 
 app.add_api_websocket_route("/ws", websocket_endpoint)

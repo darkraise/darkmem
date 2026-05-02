@@ -5,21 +5,25 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.embedder_registry import child_table
 
 
 class PostgresGraphRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def find_similar_entity(self, embedding: list[float], threshold: float = 0.85) -> dict | None:
+    async def find_similar_entity(
+        self, embedding: list[float], fingerprint: str, threshold: float = 0.85,
+    ) -> dict | None:
+        table = child_table("entity_embeddings", fingerprint)
         result = await self.session.execute(
-            text("""
-                SELECT id, name, entity_type,
-                       1 - (embedding <=> CAST(:vec AS vector)) AS score
-                FROM entities
-                WHERE embedding IS NOT NULL
-                  AND 1 - (embedding <=> CAST(:vec AS vector)) > :threshold
-                ORDER BY embedding <=> CAST(:vec AS vector)
+            text(f"""
+                SELECT e.id, e.name, e.entity_type,
+                       1 - (ee.embedding <=> CAST(:vec AS vector)) AS score
+                FROM {table} ee
+                JOIN entities e ON e.id = ee.entity_id
+                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) > :threshold
+                ORDER BY ee.embedding <=> CAST(:vec AS vector)
                 LIMIT 1
             """),
             {"vec": str(embedding), "threshold": threshold},
@@ -29,21 +33,24 @@ class PostgresGraphRepository:
             return None
         return {"id": str(row["id"]), "name": row["name"], "entity_type": row["entity_type"], "score": float(row["score"])}
 
-    async def upsert_entity_embedding(self, entity_id: str, embedding: list[float], model_fingerprint: str | None = None):
+    async def upsert_entity_embedding(
+        self, entity_id: str, embedding: list[float], fingerprint: str,
+    ):
+        table = child_table("entity_embeddings", fingerprint)
         await self.session.execute(
-            text("""
-                UPDATE entities
-                SET embedding = CAST(:vec AS vector),
-                    model_fingerprint = :fp
-                WHERE id = CAST(:id AS uuid)
+            text(f"""
+                INSERT INTO {table} (entity_id, fingerprint, embedding)
+                VALUES (CAST(:id AS uuid), :fp, CAST(:vec AS vector))
+                ON CONFLICT (entity_id, fingerprint) DO UPDATE
+                    SET embedding = EXCLUDED.embedding
             """),
-            {"id": entity_id, "vec": str(embedding), "fp": model_fingerprint},
+            {"id": entity_id, "vec": str(embedding), "fp": fingerprint},
         )
 
     async def get_cached_entity_embeddings(
         self,
         name_lowers: list[str],
-        model_fingerprint: str,
+        fingerprint: str,
     ) -> dict[str, list[float]]:
         """Return {name_lower: embedding} for entries matching the fingerprint.
 
@@ -51,13 +58,25 @@ class PostgresGraphRepository:
         """
         if not name_lowers:
             return {}
+        table = child_table("entity_embedding_cache", fingerprint)
+        # The child table may not exist yet for a brand-new fingerprint that
+        # hasn't been registered. Defend against that with a to_regclass
+        # check; missing partitions simply return zero hits.
+        exists = (
+            await self.session.execute(
+                text("SELECT to_regclass(:t)"),
+                {"t": f"public.{table}"},
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            return {}
         result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT name_lower, embedding::text AS embedding_text
-                FROM entity_embedding_cache
-                WHERE name_lower = ANY(:names) AND model_fingerprint = :fp
+                FROM {table}
+                WHERE name_lower = ANY(:names)
             """),
-            {"names": name_lowers, "fp": model_fingerprint},
+            {"names": name_lowers},
         )
         out: dict[str, list[float]] = {}
         for row in result.mappings().all():
@@ -68,24 +87,30 @@ class PostgresGraphRepository:
     async def upsert_entity_embeddings_cache(
         self,
         name_to_embedding: dict[str, list[float]],
-        model_fingerprint: str,
+        fingerprint: str,
     ) -> None:
-        """Upsert cache entries. ON CONFLICT updates last_used_at and hit_count."""
+        """Upsert cache entries. ON CONFLICT updates last_used_at and hit_count.
+
+        Single multi-row INSERT via ``unnest``/``jsonb_to_recordset`` so a
+        Phase 3 batch with M misses costs one round-trip instead of M.
+        """
         if not name_to_embedding:
             return
-        for name_lower, embedding in name_to_embedding.items():
-            await self.session.execute(
-                text("""
-                    INSERT INTO entity_embedding_cache
-                        (name_lower, model_fingerprint, embedding, created_at, last_used_at, hit_count)
-                    VALUES
-                        (:name, :fp, CAST(:vec AS vector), NOW(), NOW(), 1)
-                    ON CONFLICT (name_lower, model_fingerprint) DO UPDATE SET
-                        last_used_at = NOW(),
-                        hit_count = entity_embedding_cache.hit_count + 1
-                """),
-                {"name": name_lower, "fp": model_fingerprint, "vec": str(embedding)},
-            )
+        table = child_table("entity_embedding_cache", fingerprint)
+        names = list(name_to_embedding.keys())
+        vecs = [str(name_to_embedding[n]) for n in names]
+        await self.session.execute(
+            text(f"""
+                INSERT INTO {table}
+                    (name_lower, fingerprint, embedding, created_at, last_used_at, hit_count)
+                SELECT n, :fp, CAST(v AS vector), NOW(), NOW(), 1
+                FROM unnest(CAST(:names AS text[]), CAST(:vecs AS text[])) AS t(n, v)
+                ON CONFLICT (name_lower, fingerprint) DO UPDATE SET
+                    last_used_at = NOW(),
+                    hit_count = {table}.hit_count + 1
+            """),
+            {"fp": fingerprint, "names": names, "vecs": vecs},
+        )
 
     async def create_entity(self, name: str, entity_type: str, properties: dict, memory_id: UUID) -> dict:
         result = await self.session.execute(

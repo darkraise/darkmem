@@ -7,198 +7,348 @@ import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Badge } from "darkraise-ui/components/badge"
 import { toast } from "sonner"
-import { useUpdateLlmConfig, type LlmPurposeConfig, type PipelineState } from "@/hooks/api"
+import {
+useUpdateLlmConfig,
+useLlmProviders,
+useLlmProfiles,
+type LlmPurposeConfig,
+type PipelineState,
+} from "@/hooks/api"
 import { PROMPT_PURPOSE_MAP, type LLMPurpose } from "./prompt-map"
 import { LLMPurposePromptEditor } from "./LLMPurposePromptEditor"
+import { API_KIND_OPTIONS } from "./api-kinds"
 
 interface Props {
-  purpose: LLMPurpose
-  config: LlmPurposeConfig
-  prompts: PipelineState["prompts"]
-  overridden?: boolean
-  onObsoleteDetected?: (counts: { memories: number; code_chunks: number; entities: number }) => void
+purpose: LLMPurpose
+config: LlmPurposeConfig
+prompts: PipelineState["prompts"]
+onObsoleteDetected?: (counts: { memories: number; code_chunks: number; entities: number }) => void
 }
 
-export function LLMPurposeCard({ purpose, config, prompts, overridden = false, onObsoleteDetected }: Props) {
-  const update = useUpdateLlmConfig()
-  const [open, setOpen] = useState(purpose === "extraction" && !overridden)
-  const [draft, setDraft] = useState<LlmPurposeConfig>(config)
-  const [paramsText, setParamsText] = useState(
-    Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
-  )
-  const [dirty, setDirty] = useState(false)
+export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }: Props) {
+const update = useUpdateLlmConfig()
+const { data: providersResp } = useLlmProviders()
+const { data: llmProfilesResp } = useLlmProfiles()
+const allProviders = providersResp?.profiles ?? {}
+const allLlmProfiles = llmProfilesResp?.profiles ?? {}
+// For the embedding purpose only show Profiles flagged ``is_embedding``
+// and whose Provider supports embedding; everything else hides
+// embedding-only Profiles. Either way the user can't accidentally
+// wire a chat-model Profile into the embedding stage or vice versa.
+const profileNames = Object.keys(allLlmProfiles)
+.filter((name) => {
+const p = allLlmProfiles[name]
+const provider = allProviders[p.provider_ref]
+if (purpose === "embedding") {
+return p.is_embedding && (provider?.supports_embedding ?? true)
+}
+return !p.is_embedding
+})
+.sort()
+const [open, setOpen] = useState(purpose === "extraction")
+const [draft, setDraft] = useState<LlmPurposeConfig>(config)
+const [paramsText, setParamsText] = useState(
+Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
+)
+const [dirty, setDirty] = useState(false)
+const linkedToProfile = !!draft.provider_ref
 
-  useEffect(() => {
-    // Don't stomp in-progress edits when the aggregator refetches (e.g. after
-    // window-focus invalidation). Sync only when the card is clean.
-    if (dirty) return
-    setDraft(config)
-    setParamsText(
-      Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
-    )
-  }, [config, dirty])
+// The dropdown reads ``draft.profile_ref`` directly — the explicit
+// link the server stores on the purpose row. Manual edits to any
+// profile-derived field clear the link so the placeholder shows again.
+// Falls back to "" when the linked name is unknown to the current
+// profile set (e.g., the profile was renamed or deleted).
+const activeProfileName = profileNames.includes(draft.profile_ref ?? "")
+  ? (draft.profile_ref as string)
+  : ""
 
-  const promptKeys = PROMPT_PURPOSE_MAP[purpose]
+useEffect(() => {
+// Don't stomp in-progress edits when the aggregator refetches (e.g. after
+// window-focus invalidation). Sync only when the card is clean.
+if (dirty) return
+setDraft(config)
+setParamsText(
+Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
+)
+}, [config, dirty])
 
-  const save = () => {
-    const payload: Record<string, unknown> = {
-      provider: draft.provider,
-      base_url: draft.base_url,
-      model: draft.model,
-      reasoning: draft.reasoning,
-      tool_call_mode: draft.tool_call_mode,
-    }
-    if (draft.api_key && draft.api_key !== "***") payload.api_key = draft.api_key
-    if (purpose === "embedding" && draft.dimensions) payload.dimensions = draft.dimensions
-    if (paramsText.trim()) {
-      try {
-        payload.params = JSON.parse(paramsText)
-      } catch {
-        toast.error("Invalid JSON in params")
-        return
-      }
-    }
-    update.mutate({ [purpose]: payload }, {
-      onSuccess: (data) => {
-        setDirty(false)
-        const obs = data.obsolete_after_change
-        if (obs && (obs.memories > 0 || obs.code_chunks > 0 || obs.entities > 0)) {
-          onObsoleteDetected?.(obs)
-        } else {
-          toast.success(`${purpose} updated`)
-        }
-      },
-      onError: (err) => toast.error(`Save failed: ${err.message}`),
-    })
-  }
+const promptKeys = PROMPT_PURPOSE_MAP[purpose]
 
-  const cancel = () => {
-    setDraft(config)
-    setParamsText(
-      Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
-    )
-    setDirty(false)
-  }
+const save = () => {
+const payload: Record<string, unknown> = {
+model: draft.model,
+reasoning: draft.reasoning,
+provider_ref: draft.provider_ref ?? "",
+// Empty string clears the profile link on the server (matches the
+// provider_ref convention). null on draft means user manually
+// edited a field and broke the link.
+profile_ref: draft.profile_ref ?? "",
+}
+// Connection fields are only sent when the user manages them on the
+// purpose itself. With a profile linked, we leave the stored values
+// alone so a later unlink falls back to whatever was there last.
+if (!linkedToProfile) {
+payload.provider = draft.provider
+payload.base_url = draft.base_url
+payload.api_kind = draft.api_kind ?? "openai"
+if (draft.api_key && draft.api_key !== "***") payload.api_key = draft.api_key
+}
+if (purpose === "embedding" && draft.dimensions) payload.dimensions = draft.dimensions
+if (paramsText.trim()) {
+try {
+payload.params = JSON.parse(paramsText)
+} catch {
+toast.error("Invalid JSON in params")
+return
+}
+}
+update.mutate({ [purpose]: payload }, {
+onSuccess: (data) => {
+setDirty(false)
+const obs = data.obsolete_after_change
+if (obs && (obs.memories > 0 || obs.code_chunks > 0 || obs.entities > 0)) {
+onObsoleteDetected?.(obs)
+} else {
+toast.success(`${purpose} updated`)
+}
+},
+onError: (err) => toast.error(`Save failed: ${err.message}`),
+})
+}
 
-  return (
-    <Card className={`${open && !overridden ? "border-primary" : ""} ${overridden ? "opacity-60" : ""}`}>
-      <button
-        type="button"
-        className="w-full text-left p-2 flex justify-between items-center gap-2"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <span className="text-xs font-semibold capitalize flex items-center gap-2">
-          {open ? "▾" : "▸"} {purpose}
-          {overridden && (
-            <Badge variant="secondary" className="text-[9px]">overridden by Darkmem ML</Badge>
-          )}
-        </span>
-        <span className="text-[10px] text-muted-foreground font-mono truncate">
-          {config.model}{config.dimensions ? ` · ${config.dimensions}d` : ""} · {config.provider}
-        </span>
-      </button>
-      {open && (
-        <CardContent className="p-0">
-        <fieldset
-          disabled={overridden}
-          className="space-y-3 pt-0 p-4 border-0 m-0 disabled:opacity-70"
-          aria-label={`${purpose} LLM configuration`}
-        >
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Provider" value={draft.provider} onChange={(v) => patch({ provider: v })} />
-            <Field label="Model" mono value={draft.model} onChange={(v) => patch({ model: v })} />
-            <Field label="Base URL" mono value={draft.base_url} onChange={(v) => patch({ base_url: v })} />
-            <Field label="API key" mono type="password" value={draft.api_key ?? ""} onChange={(v) => patch({ api_key: v })} />
-            {purpose === "embedding" && (
-              <Field
-                label="Dimensions"
-                value={String(draft.dimensions ?? "")}
-                onChange={(v) => patch({ dimensions: Number(v) || null })}
-              />
-            )}
-          </div>
+const cancel = () => {
+setDraft(config)
+setParamsText(
+Object.keys(config.params || {}).length ? JSON.stringify(config.params, null, 2) : "",
+)
+setDirty(false)
+}
 
-          {purpose === "extraction" && (
-            <div className="flex items-center gap-2">
-              <Label className="text-xs">Mode</Label>
-              <select
-                value={draft.tool_call_mode}
-                onChange={(e) => patch({ tool_call_mode: e.target.value })}
-                className="h-7 text-xs rounded border border-border bg-background px-2"
-              >
-                <option value="json">JSON</option>
-                <option value="flat">Flat tool call</option>
-                <option value="nested">Nested tool call</option>
-              </select>
-            </div>
-          )}
+const panelId = `llm-purpose-${purpose}-panel`
 
-          {purpose !== "embedding" && (
-            <div className="flex items-center gap-2">
-              <Label className="text-xs">Reasoning mode</Label>
-              <Switch checked={draft.reasoning} onCheckedChange={(v) => patch({ reasoning: v })} />
-            </div>
-          )}
+return (
+<Card className={open ? "border-primary" : ""}>
+<button
+type="button"
+className="w-full text-left p-2 flex justify-between items-center gap-2"
+onClick={() => setOpen((o) => !o)}
+aria-expanded={open}
+aria-controls={panelId}
+>
+<span className="text-xs font-semibold capitalize flex items-center gap-2">
+{open ? "▾" : "▸"} {purpose}
+</span>
+<span className="text-[10px] text-muted-foreground font-mono truncate">
+{config.model}{config.dimensions ? ` · ${config.dimensions}d` : ""} · {config.provider}
+</span>
+</button>
+{open && (
+<CardContent className="p-0">
+<div
+id={panelId}
+className="space-y-3 pt-0 p-4"
+aria-label={`${purpose} LLM configuration`}
+>
+<div className="flex items-center gap-2">
+<Label className="text-xs">LLM Profile</Label>
+<select
+value={activeProfileName}
+onChange={(e) => {
+const profileName = e.target.value
+if (!profileName) return
+const prof = allLlmProfiles[profileName]
+if (!prof) return
+// Apply Profile values to the form so the user sees an
+// immediate preview of every effective field — provider,
+// base URL, API kind, and API key (masked) come from the
+// linked Provider; model, params, and reasoning come from
+// the Profile. Cancel reverts the draft to the prop's
+// ``config`` so the saved row wins on rollback.
+const linkedProvider = allProviders[prof.provider_ref]
+patch({
+profile_ref: profileName,
+provider_ref: prof.provider_ref,
+model: prof.model,
+reasoning: prof.is_embedding ? false : prof.reasoning,
+params: prof.params || {},
+...(linkedProvider
+? {
+provider: linkedProvider.provider,
+base_url: linkedProvider.base_url,
+api_kind: linkedProvider.api_kind as LlmPurposeConfig["api_kind"],
+// The API responses already mask configured keys
+// as ``"***"``; falling back to that sentinel
+// keeps the input field non-empty without
+// exposing the secret.
+api_key: linkedProvider.api_key ?? "",
+}
+: {}),
+})
+setParamsText(
+Object.keys(prof.params || {}).length
+? JSON.stringify(prof.params, null, 2)
+: "",
+)
+setDirty(true)
+}}
+className="h-9 text-sm rounded border border-border bg-background px-2 flex-1"
+title="Apply a saved LLM Profile's defaults (model, params, reasoning) to this purpose."
+disabled={profileNames.length === 0}
+>
+<option value="">
+{profileNames.length === 0
+? "(no Profiles available — create one in Settings)"
+: "Apply a Profile…"}
+</option>
+{profileNames.map((name) => {
+const p = allLlmProfiles[name]
+return (
+<option key={name} value={name}>
+{name} — {p.provider_ref}/{p.model}
+</option>
+)
+})}
+</select>
+{linkedToProfile && (
+<Badge variant="secondary" className="text-[9px]" title={`Linked Provider: ${draft.provider_ref}`}>
+via {draft.provider_ref}
+</Badge>
+)}
+</div>
 
-          <details>
-            <summary className="text-[10px] text-muted-foreground cursor-pointer">More… (JSON params)</summary>
-            <Textarea
-              value={paramsText}
-              onChange={(e) => {
-                setParamsText(e.target.value)
-                setDirty(true)
-              }}
-              rows={3}
-              className="text-xs font-mono mt-1"
-              placeholder='{"temperature": 0.2}'
-            />
-          </details>
+<div className="grid grid-cols-2 gap-2">
+<Field
+label="Provider"
+value={draft.provider}
+onChange={(v) => patch({ provider: v })}
+disabled={linkedToProfile}
+/>
+<Field label="Model" mono value={draft.model} onChange={(v) => patch({ model: v })} />
+<Field
+label="Base URL"
+mono
+value={draft.base_url}
+onChange={(v) => patch({ base_url: v })}
+disabled={linkedToProfile}
+/>
+<Field
+label="API key"
+mono
+type="password"
+value={draft.api_key ?? ""}
+onChange={(v) => patch({ api_key: v })}
+disabled={linkedToProfile}
+/>
+{purpose === "embedding" && (
+<Field
+label="Dimensions"
+value={String(draft.dimensions ?? "")}
+onChange={(v) => patch({ dimensions: Number(v) || null })}
+/>
+)}
+</div>
 
-          {dirty && (
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={cancel} disabled={update.isPending}>Cancel</Button>
-              <Button size="sm" onClick={save} disabled={update.isPending}>
-                {update.isPending ? "Saving…" : "Save"}
-              </Button>
-            </div>
-          )}
+<div className="flex items-center gap-2">
+<Label className="text-xs">API</Label>
+<select
+value={draft.api_kind ?? "openai"}
+onChange={(e) => patch({ api_kind: e.target.value })}
+disabled={linkedToProfile}
+className="h-7 text-xs rounded border border-border bg-background px-2 disabled:opacity-50"
+title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds reserve a slot for future native adapters and currently route through OpenAI compat."
+>
+{API_KIND_OPTIONS.map((opt) => (
+<option key={opt.value} value={opt.value}>
+{opt.label}
+{opt.note ? ` — ${opt.note}` : ""}
+</option>
+))}
+</select>
+{linkedToProfile && (
+<span className="text-[10px] text-muted-foreground">
+managed by profile <code>{draft.provider_ref}</code>
+</span>
+)}
+</div>
 
-          <LLMPurposePromptEditor keys={promptKeys} prompts={prompts} />
-        </fieldset>
-        </CardContent>
-      )}
-    </Card>
-  )
+{purpose !== "embedding" && (
+<div className="flex items-center gap-2">
+<Label className="text-xs">Reasoning mode</Label>
+<Switch checked={draft.reasoning} onCheckedChange={(v) => patch({ reasoning: v })} />
+</div>
+)}
 
-  function patch(p: Partial<LlmPurposeConfig>) {
-    setDraft((d) => ({ ...d, ...p }))
-    setDirty(true)
-  }
+<details>
+<summary className="text-[10px] text-muted-foreground cursor-pointer">More… (JSON params)</summary>
+<Textarea
+value={paramsText}
+onChange={(e) => {
+setParamsText(e.target.value)
+// Editing params manually breaks the profile link, same as
+// the field-level patches. The save still sends profile_ref:""
+// so the server clears the FK.
+setDraft((d) => ({ ...d, profile_ref: null }))
+setDirty(true)
+}}
+rows={3}
+className="text-xs font-mono mt-1"
+placeholder='{"temperature": 0.2}'
+/>
+</details>
+
+{dirty && (
+<div className="flex justify-end gap-2">
+<Button variant="ghost" onClick={cancel} disabled={update.isPending}>Cancel</Button>
+<Button onClick={save} disabled={update.isPending}>
+{update.isPending ? "Saving…" : "Save"}
+</Button>
+</div>
+)}
+
+<LLMPurposePromptEditor keys={promptKeys} prompts={prompts} />
+</div>
+</CardContent>
+)}
+</Card>
+)
+
+function patch(p: Partial<LlmPurposeConfig>) {
+// Manual edits to any profile-derived field break the link to the
+// applied Profile. The apply onChange handler explicitly re-sets
+// profile_ref on its own patch payload, so it overrides the clear.
+const next: Partial<LlmPurposeConfig> = "profile_ref" in p
+  ? p
+  : { ...p, profile_ref: null }
+setDraft((d) => ({ ...d, ...next }))
+setDirty(true)
+}
 }
 
 function Field({
-  label,
-  value,
-  onChange,
-  mono,
-  type,
+label,
+value,
+onChange,
+mono,
+type,
+disabled,
 }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  mono?: boolean
-  type?: string
+label: string
+value: string
+onChange: (v: string) => void
+mono?: boolean
+type?: string
+disabled?: boolean
 }) {
-  return (
-    <div>
-      <Label className="text-[10px] text-muted-foreground">{label}</Label>
-      <Input
-        type={type ?? "text"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`h-7 text-xs ${mono ? "font-mono" : ""}`}
-      />
-    </div>
-  )
+return (
+<div>
+<Label className="text-[10px] text-muted-foreground">{label}</Label>
+<Input
+type={type ?? "text"}
+value={value}
+onChange={(e) => onChange(e.target.value)}
+disabled={disabled}
+className={`h-7 text-xs ${mono ? "font-mono" : ""} disabled:opacity-50`}
+/>
+</div>
+)
 }

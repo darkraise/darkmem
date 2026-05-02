@@ -985,23 +985,45 @@ class CodePipeline:
         _embed_chunk_size = _merged_flags.get("embedding_batch_size", 20)
         _embed_concurrency = _merged_flags.get("embedding_concurrency", 1)
 
+        # All chunks share whichever embedder is currently active. We capture
+        # the fingerprint from the first embed call and assert agreement.
+        embed_fingerprint: dict[str, str] = {}
+
         async def _embed_one(fp: str, pr) -> None:
             texts = [c["content"][:2000] for c in pr.chunks]
             async with sem:
                 try:
-                    vectors = await self.llm.embed_batch_chunked(texts, _embed_chunk_size, _embed_concurrency)
+                    vectors, fingerprint = await self.llm.embed_batch_chunked(
+                        texts, _embed_chunk_size, _embed_concurrency,
+                    )
                     embed_results[fp] = vectors
+                    embed_fingerprint[fp] = fingerprint
                 except Exception as exc:
                     logger.warning("Batch embedding failed for %s: %s", fp, exc)
                     self._stats["errors"].append(f"embed:{fp}:{exc}")
 
         await asyncio.gather(*[_embed_one(fp, pr) for fp, pr in file_items])
 
+        # Register every distinct fingerprint observed before writing rows.
+        if embed_fingerprint:
+            from app.services.embedder_registry import (  # noqa: PLC0415
+                EmbedderInfo, embedder_registry, parse_fingerprint,
+            )
+            for fp_value in set(embed_fingerprint.values()):
+                if embedder_registry.is_known(fp_value):
+                    continue
+                model_id, dims = parse_fingerprint(fp_value)
+                await embedder_registry.register(
+                    self.session,
+                    EmbedderInfo(fingerprint=fp_value, model_id=model_id, dims=dims, source="llm"),
+                )
+
         chunk_count = 0
         for fp, pr in file_items:
             vectors = embed_results.get(fp)
             if not vectors:
                 continue
+            fingerprint = embed_fingerprint[fp]
             chunks_to_store = []
             for chunk, vector in zip(pr.chunks, vectors):
                 chunks_to_store.append({
@@ -1016,7 +1038,7 @@ class CodePipeline:
                 })
             if chunks_to_store:
                 await self.vector_repo.delete_code_chunks_by_file(self._repo.id, fp)
-                await self.vector_repo.upsert_code_chunks(chunks_to_store)
+                await self.vector_repo.upsert_code_chunks(chunks_to_store, fingerprint=fingerprint)
                 chunk_count += len(chunks_to_store)
 
         self._stats["chunks_stored"] = chunk_count
@@ -1043,22 +1065,26 @@ class CodePipeline:
         )
         syms = rows.scalars().all()
 
-        for sym in syms:
+        if syms:
+            sym_ids = [str(s.id) for s in syms]
             try:
-                await self.session.execute(
+                # Single multi-row insert instead of N round-trips.
+                # ``ON CONFLICT (symbol_id) DO NOTHING`` keeps the
+                # idempotent semantics of the original loop.
+                result = await self.session.execute(
                     text("""
                         INSERT INTO enrichment_queue (id, symbol_id, status, created_at)
-                        VALUES (gen_random_uuid(), :sym_id, 'pending', NOW())
+                        SELECT gen_random_uuid(), CAST(s AS uuid), 'pending', NOW()
+                        FROM unnest(CAST(:sym_ids AS text[])) AS s
                         ON CONFLICT (symbol_id) DO NOTHING
                     """),
-                    {"sym_id": str(sym.id)},
+                    {"sym_ids": sym_ids},
                 )
-                queued += 1
+                queued = result.rowcount or 0
+                await self.session.commit()
             except Exception as exc:
-                logger.warning("Failed to queue enrichment: %s", exc)
-
-        if queued:
-            await self.session.commit()
+                logger.warning("Failed to queue enrichment batch: %s", exc)
+                queued = 0
 
         self._stats["enrichment_queued"] = queued
         logger.info("Phase 13 queued %d symbols for enrichment", queued)

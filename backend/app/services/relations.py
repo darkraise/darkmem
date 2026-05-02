@@ -1,64 +1,37 @@
-"""Schema-v2 relation + entity constants shared across the backend.
+"""Relation + entity constants shared across the backend.
 
-Mirrors the 5-type coding-native relation set defined in
-`fine-tuning/SCHEMA_V2_PLAN.md` so the pipeline, search filters, and
-backfill scripts agree on a single authoritative set.
+The 10→5 collapse from the ML era has been removed: the LLM emits the
+full ``RELATIONSHIP_TYPES`` set and we store all of them as-is. This
+module re-exports the canonical sets for back-compat.
 """
 from __future__ import annotations
 
-
-# 5-type relation set for the coding-native schema.
-RELATION_TYPES_V2: tuple[str, ...] = (
-    "USES",
-    "REPLACES",
-    "IS_A",
-    "DEPLOYED_ON",
-    "CAUSES",
-)
+from app.taxonomy import RELATIONSHIP_TYPES
 
 
-# Collapses historical 10-type (and their 30-type ancestors) relation labels
-# into the 5-type set. Values that map to None are dropped outright by the
-# Phase 6.5 relationship backfill. Mirrors
-# fine-tuning/scripts/_build_rebel_coding5_splits.REL_MAP_5.
-REL_MAP_5: dict[str, str | None] = {
-    # USES cluster
-    "USES": "USES",
-    "CONFIGURES": "USES",
-    "APPLIES_TO": "USES",
-    "COMMUNICATES_WITH": "USES",
-    "IMPLEMENTS": "USES",
-    "DEPENDS_ON": "USES",
-    "HAS_PART": "USES",
-    "EXTENDS": "USES",
-    # REPLACES cluster
-    "REPLACES": "REPLACES",
-    "IMPROVES_ON": "REPLACES",
-    "BUILDS_ON": "REPLACES",
-    # IS_A
-    "IS_A": "IS_A",
-    # DEPLOYED_ON cluster
-    "DEPLOYED_ON": "DEPLOYED_ON",
-    "LOCATED_IN": "DEPLOYED_ON",
-    # CAUSES cluster
-    "CAUSES": "CAUSES",
-    "PRODUCES": "CAUSES",
-    "FIXES": "CAUSES",
-    # Dropped sources — explicit None so membership stays authoritative.
-    "RELATED_TO": None,
-    "KNOWS": None,
-    "SUPPORTS": None,
-    "CONTRADICTS": None,
-    "PREFERS": None,
-    "FEELS_ABOUT": None,
-    "PLANS_TO": None,
-    "VISITED": None,
-    "LIVES_IN": None,
-    "HAPPENED_ON": None,
-    "AUTHORED_BY": None,
-    "PUBLISHED_IN": None,
-    "WORKS_AT": None,
-}
+# Public alias for callers that imported the schema-v2 name. Now points at
+# the full canonical relation type list.
+RELATION_TYPES_V2: tuple[str, ...] = tuple(RELATIONSHIP_TYPES)
+
+
+# Replacement-family relations: REPLACES, IMPROVES_ON, and the legacy
+# BUILDS_ON all describe "X supersedes Y" in the prompt taxonomy. The
+# rescue dedup uses this group to avoid emitting one variant when the LLM
+# has already produced another.
+REPLACES_FAMILY: frozenset[str] = frozenset({"REPLACES", "IMPROVES_ON", "BUILDS_ON"})
+
+
+def family_key(rel_type: str) -> str:
+    """Return the canonical bucket for relation-type equivalence in dedup.
+
+    Today the only family is REPLACES; everything else is its own bucket.
+    Used by the rescue layer's dedup keys so e.g. an LLM-emitted REPLACES
+    suppresses a rescue-emitted IMPROVES_ON for the same pair.
+    """
+    rt = (rel_type or "").upper()
+    if rt in REPLACES_FAMILY:
+        return "REPLACES"
+    return rt
 
 
 # Entity types that count as "technologies" for the `memories.technologies`
@@ -78,8 +51,7 @@ REPLACES_CONFIDENCE_THRESHOLD: float = 0.7
 
 # Textual markers that indicate speculative or low-confidence REPLACES
 # phrasing; when the source memory matches any of these the supersession
-# detector short-circuits. The relation extractor does not currently emit
-# per-relation confidence, so this rule stands in until it does.
+# detector short-circuits.
 SPECULATIVE_REPLACES_MARKERS: frozenset[str] = frozenset({
     "might",
     "could",

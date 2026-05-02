@@ -49,6 +49,49 @@ class MemoryService:
 
         return memory
 
+    async def batch_create_memories(
+        self, entries: list[MemoryCreate], api_key_id: UUID | None,
+    ) -> list[Memory]:
+        """Bulk-insert N memories then run a single ``pipeline.process_batch``.
+
+        Beats the per-entry loop because the pipeline runs embedding,
+        extraction, classification, and entity dedup in phased fan-outs
+        sized by ``pipeline_concurrency`` instead of N sequential calls.
+        """
+        memories: list[Memory] = []
+        for data in entries:
+            memory = await self.memory_repo.create(
+                content=data.content, source=data.source, source_agent=data.source_agent,
+                memory_type=data.memory_type, importance=data.importance,
+                metadata=data.metadata, expires_at=data.expires_at,
+                project=data.project,
+            )
+            if data.tags:
+                await self.memory_repo.set_tags(memory.id, data.tags)
+                await self.session.refresh(memory, ["tags"])
+            await self.audit_repo.log("create", memory.id, api_key_id, {"source": data.source})
+            memories.append(memory)
+
+        # Commit before dispatching so FK constraints are satisfied and the
+        # pipeline's fresh sessions read the new rows.
+        await self.session.commit()
+
+        if self.pipeline and memories:
+            batch_entries = [
+                {
+                    "memory_id": m.id, "content": m.content, "source": m.source,
+                    "tags": [t.name for t in m.tags], "memory_type": m.memory_type,
+                    "created_at": m.created_at.isoformat() if m.created_at else "",
+                }
+                for m in memories
+            ]
+            statuses = await self.pipeline.process_batch(batch_entries)
+            for m, status in zip(memories, statuses):
+                await self.audit_repo.log("pipeline", m.id, api_key_id, status)
+            await self.session.commit()
+
+        return memories
+
     async def get_memory(self, memory_id: UUID) -> Memory | None:
         return await self.memory_repo.get(memory_id)
 
@@ -64,14 +107,19 @@ class MemoryService:
 
         await self.audit_repo.log("update", memory_id, api_key_id, {"fields": list(update_fields.keys())})
 
-        # Re-process if content changed
+        # Re-process if content changed. Commit first so the pipeline's
+        # fresh session reads the new content; otherwise the re-extraction
+        # runs against the stale committed value and writes mis-aligned
+        # entities/relations.
         if self.pipeline and "content" in update_fields:
+            await self.session.commit()
             status = await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
             await self.audit_repo.log("pipeline", memory.id, api_key_id, status)
+            await self.session.commit()
 
         return memory
 
@@ -237,7 +285,14 @@ limit=params.limit, offset=params.offset,
         # memory_id as either a UUID or a string (hybrid vs pure paths);
         # normalize to UUID for consistent dict keys.
         memory_ids = [UUID(r["memory_id"]) if isinstance(r["memory_id"], str) else r["memory_id"] for r in semantic_results]
-        score_by_id = {mid: r["score"] for mid, r in zip(memory_ids, semantic_results)}
+        # Hybrid path returns ``rrf_score`` (the fused ordering signal) plus
+        # the underlying ``score`` from each side. The pure-vector path
+        # returns ``score`` only. Prefer rrf_score when present so the
+        # value reported in ``sources`` matches the displayed ordering.
+        score_by_id = {
+            mid: (r.get("rrf_score") if r.get("rrf_score") is not None else r.get("score", 0.0))
+            for mid, r in zip(memory_ids, semantic_results)
+        }
         fetched = await self.memory_repo.get_many(memory_ids) if memory_ids else []
         fetched_by_id = {m.id: m for m in fetched}
 

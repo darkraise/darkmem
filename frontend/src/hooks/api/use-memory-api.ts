@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 
+export type MemoryStatus = "active" | "superseded" | "archived" | "deleted";
+
 export interface Memory {
   id: string;
   content: string;
@@ -22,6 +24,8 @@ export interface Memory {
   llm_flags?: string[];
   related_memories?: { memory_id: string; score: number }[];
   rrf_score?: number;
+  status?: MemoryStatus;
+  superseded_by?: string | null;
 }
 
 export interface Tag {
@@ -82,6 +86,7 @@ export interface PaginatedSearchParams {
   tags_any?: string[];
   source?: string;
   memory_type?: string;
+  status?: MemoryStatus[];
   limit?: number;
   offset?: number;
   semantic_weight?: number;
@@ -105,6 +110,11 @@ export function usePaginatedSearch(params: PaginatedSearchParams) {
           tags_any: params.tags_any?.length ? params.tags_any : undefined,
           source: params.source || undefined,
           memory_type: params.memory_type || undefined,
+          // Default to showing both active and superseded so the
+          // Memories page doesn't silently hide memories after a
+          // REPLACES-supersession runs (the status default on the
+          // server is `["active"]`).
+          status: params.status ?? ["active", "superseded"],
           limit: params.limit ?? 50,
           offset: params.offset ?? 0,
           semantic_weight: params.semantic_weight,

@@ -15,8 +15,7 @@ export function AssistantServicesPanel({ state }: Props) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Assistant services</CardTitle>
         <p className="text-muted-foreground text-xs">
-          Always-on LLM purposes used by chat, code enrichment, wiki generation, and reranking.
-          Independent of the stack toggle above.
+          LLM purposes used by chat, code enrichment, wiki generation, and reranking.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">

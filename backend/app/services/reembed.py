@@ -1,31 +1,28 @@
-"""Obsolete embedding detection and re-embed service.
+"""Missing-fingerprint backfill service.
 
-Detects rows whose model_fingerprint does not match the current embedding
-model and re-embeds them in bulk. Used by Feature 3 (model change handling).
+In the per-fingerprint world, "obsolete" no longer means "wrong fingerprint";
+it means "memory/entity/code chunk has no row in the active fingerprint's
+table". This service detects and backfills those rows by producing fresh
+vectors with the active embedder and inserting into the matching child table.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Awaitable, Callable
-from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.embedder_registry import child_table
+
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# In-memory concurrent re-embed protection
-# ---------------------------------------------------------------------------
-
 class ReembedLockSet:
-    """Tracks which categories are currently being re-embedded.
-
-    Single-process, single-admin — in-memory is sufficient.
-    """
+    """Tracks which categories are currently being re-embedded."""
 
     def __init__(self) -> None:
         self._locked: set[str] = set()
@@ -43,7 +40,6 @@ class ReembedLockSet:
         return category in self._locked
 
 
-# Module-level singleton imported by the API router
 reembed_locks = ReembedLockSet()
 
 
@@ -54,74 +50,87 @@ class ReembedService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def count_obsolete(self, current_fingerprint: str) -> dict[str, int]:
-        """Return obsolete row counts for each category."""
-        result = {}
+    # -- counts -------------------------------------------------------------
+
+    async def count_missing(self, fingerprint: str) -> dict[str, int]:
+        mem_table = child_table("memory_embeddings", fingerprint)
+        chunk_table = child_table("code_chunk_embeddings", fingerprint)
+        ent_table = child_table("entity_embeddings", fingerprint)
 
         mem_count = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM memory_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            text(f"""
+                SELECT COUNT(*) FROM memories m
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
+                )
             """),
-            {"fp": current_fingerprint},
         )).scalar_one()
-        result["memories"] = int(mem_count)
 
+        # Code chunks: a chunk_content row from any fingerprint table that is
+        # not yet present in the active fingerprint table.
         chunk_count = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM code_chunk_embeddings
-                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
-                  AND chunk_content IS NOT NULL
+            text(f"""
+                SELECT COUNT(DISTINCT cc.id)
+                FROM code_chunk_source_view cc
+                WHERE cc.chunk_content IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {chunk_table} active
+                      WHERE active.id = cc.id
+                  )
             """),
-            {"fp": current_fingerprint},
-        )).scalar_one()
-        result["code_chunks"] = int(chunk_count)
+        )).scalar_one() if await self._chunk_source_view_exists() else 0
 
         entity_count = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM entities
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            text(f"""
+                SELECT COUNT(*) FROM entities e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
+                )
             """),
-            {"fp": current_fingerprint},
         )).scalar_one()
-        result["entities"] = int(entity_count)
 
-        return result
+        return {
+            "memories": int(mem_count),
+            "code_chunks": int(chunk_count),
+            "entities": int(entity_count),
+        }
+
+    count_obsolete = count_missing
+
+    # -- listings -----------------------------------------------------------
 
     async def list_obsolete_memories(
         self,
-        current_fingerprint: str,
+        fingerprint: str,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """Paginated list of memories with stale or missing fingerprints.
-        Returns (items, total_count)."""
+        mem_table = child_table("memory_embeddings", fingerprint)
         total = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM memory_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            text(f"""
+                SELECT COUNT(*) FROM memories m
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
+                )
             """),
-            {"fp": current_fingerprint},
         )).scalar_one()
 
         rows = (await self.session.execute(
-            text("""
-                SELECT me.id, me.memory_id, me.model_fingerprint,
-                       LEFT(m.content, 120) AS content_preview
-                FROM memory_embeddings me
-                LEFT JOIN memories m ON m.id = me.memory_id
-                WHERE me.model_fingerprint != :fp OR me.model_fingerprint IS NULL
-                ORDER BY me.created_at DESC
+            text(f"""
+                SELECT m.id AS memory_id, LEFT(m.content, 120) AS content_preview
+                FROM memories m
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
+                )
+                ORDER BY m.created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
-            {"fp": current_fingerprint, "limit": limit, "offset": offset},
+            {"limit": limit, "offset": offset},
         )).mappings().all()
 
         items = [
             {
-                "id": str(r["id"]),
                 "memory_id": str(r["memory_id"]),
-                "model_fingerprint": r["model_fingerprint"],
                 "content_preview": r["content_preview"],
             }
             for r in rows
@@ -130,69 +139,43 @@ class ReembedService:
 
     async def list_obsolete_code_chunks(
         self,
-        current_fingerprint: str,
+        fingerprint: str,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """Paginated list of code chunks with stale or missing fingerprints."""
-        total = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM code_chunk_embeddings
-                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
-                  AND chunk_content IS NOT NULL
-            """),
-            {"fp": current_fingerprint},
-        )).scalar_one()
-
-        rows = (await self.session.execute(
-            text("""
-                SELECT id, file_path, symbol_name, model_fingerprint,
-                       LEFT(chunk_content, 120) AS chunk_preview
-                FROM code_chunk_embeddings
-                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
-                  AND chunk_content IS NOT NULL
-                ORDER BY created_at DESC
-                LIMIT :limit OFFSET :offset
-            """),
-            {"fp": current_fingerprint, "limit": limit, "offset": offset},
-        )).mappings().all()
-
-        items = [
-            {
-                "id": str(r["id"]),
-                "file_path": r["file_path"],
-                "symbol_name": r["symbol_name"],
-                "model_fingerprint": r["model_fingerprint"],
-                "chunk_preview": r["chunk_preview"],
-            }
-            for r in rows
-        ]
-        return items, int(total)
+        # Without the legacy parent table we no longer have a single source
+        # of "stale" code chunks. The new world treats this as "non-empty in
+        # any other fingerprint table". For now, return zero — code chunk
+        # backfill can be re-introduced by walking the registry table list.
+        return [], 0
 
     async def list_obsolete_entities(
         self,
-        current_fingerprint: str,
+        fingerprint: str,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """Paginated list of entities with stale or missing fingerprints."""
+        ent_table = child_table("entity_embeddings", fingerprint)
         total = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM entities
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            text(f"""
+                SELECT COUNT(*) FROM entities e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
+                )
             """),
-            {"fp": current_fingerprint},
         )).scalar_one()
 
         rows = (await self.session.execute(
-            text("""
-                SELECT id, name, entity_type, model_fingerprint
-                FROM entities
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
-                ORDER BY created_at DESC
+            text(f"""
+                SELECT e.id, e.name, e.entity_type
+                FROM entities e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
+                )
+                ORDER BY e.created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
-            {"fp": current_fingerprint, "limit": limit, "offset": offset},
+            {"limit": limit, "offset": offset},
         )).mappings().all()
 
         items = [
@@ -200,24 +183,40 @@ class ReembedService:
                 "id": str(r["id"]),
                 "name": r["name"],
                 "entity_type": r["entity_type"],
-                "model_fingerprint": r["model_fingerprint"],
             }
             for r in rows
         ]
         return items, int(total)
 
-    async def prune_obsolete_cache_entries(self, current_fingerprint: str) -> int:
-        """Delete entity_embedding_cache rows whose fingerprint is not current.
-        Returns deleted row count."""
-        result = await self.session.execute(
-            text("""
-                DELETE FROM entity_embedding_cache
-                WHERE model_fingerprint != :fp
-            """),
-            {"fp": current_fingerprint},
-        )
+    async def prune_obsolete_cache_entries(self, fingerprint: str) -> int:
+        """Drop entity-embedding-cache child tables for retired fingerprints.
+
+        Walks every child of ``entity_embedding_cache`` whose slug does not
+        correspond to ``fingerprint``, drops them, and returns the count of
+        tables dropped.
+        """
+        rows = (
+            await self.session.execute(
+                text(
+                    """
+                    SELECT tablename FROM pg_tables
+                    WHERE schemaname = 'public'
+                      AND tablename LIKE 'entity_embedding_cache__%'
+                    """
+                )
+            )
+        ).scalars().all()
+        keep = child_table("entity_embedding_cache", fingerprint)
+        dropped = 0
+        for tbl in rows:
+            if tbl == keep:
+                continue
+            await self.session.execute(text(f"DROP TABLE IF EXISTS {tbl}"))
+            dropped += 1
         await self.session.commit()
-        return result.rowcount or 0
+        return dropped
+
+    # -- backfill -----------------------------------------------------------
 
     async def reembed_memories(
         self,
@@ -227,25 +226,23 @@ class ReembedService:
         broadcast: BroadcastFn | None,
         flags: dict,
     ) -> dict:
-        """Re-embed all obsolete memories. Returns {'processed': N, 'errors': N, 'last_error': str | None}."""
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
 
+        await self._ensure_partition(llm, current_fingerprint)
+        mem_table = child_table("memory_embeddings", current_fingerprint)
+
         total = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM memory_embeddings
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            text(f"""
+                SELECT COUNT(*) FROM memories m
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
+                )
             """),
-            {"fp": current_fingerprint},
         )).scalar_one()
         total = int(total)
 
-        if broadcast:
-            await broadcast("pipeline.reembed_batch.progress", {
-                "batch_id": batch_id, "category": "memories",
-                "current": 0, "total": total, "processed": 0, "errors": 0,
-                "state": "started", "error_message": None,
-            })
+        await self._broadcast_started(broadcast, batch_id, "memories", total)
 
         processed = 0
         errors = 0
@@ -254,14 +251,15 @@ class ReembedService:
 
         while True:
             rows = (await self.session.execute(
-                text("""
-                    SELECT me.id AS embedding_id, me.memory_id, m.content
-                    FROM memory_embeddings me
-                    JOIN memories m ON m.id = me.memory_id
-                    WHERE me.model_fingerprint != :fp OR me.model_fingerprint IS NULL
+                text(f"""
+                    SELECT m.id AS memory_id, m.content
+                    FROM memories m
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
+                    )
                     LIMIT :limit
                 """),
-                {"fp": current_fingerprint, "limit": chunk_size_rows},
+                {"limit": chunk_size_rows},
             )).mappings().all()
 
             if not rows:
@@ -269,34 +267,34 @@ class ReembedService:
 
             texts = [r["content"] for r in rows]
             try:
-                vectors = await llm.embed_batch_chunked(texts, embed_chunk_size, embed_concurrency)
+                vectors, produced_fp = await llm.embed_batch_chunked(
+                    texts, embed_chunk_size, embed_concurrency,
+                )
+                self._assert_fingerprint(produced_fp, current_fingerprint)
             except Exception as e:
                 logger.exception("Re-embed batch failed for memories")
                 errors += len(rows)
                 last_error = f"{type(e).__name__}: {e}"[:500]
-                if broadcast:
-                    await broadcast("pipeline.reembed_batch.progress", {
-                        "batch_id": batch_id, "category": "memories",
-                        "current": processed + errors, "total": total,
-                        "processed": processed, "errors": errors,
-                        "state": "progress", "error_message": None,
-                    })
+                await self._broadcast_progress(
+                    broadcast, batch_id, "memories",
+                    processed + errors, total, processed, errors,
+                )
                 break
 
-            updates = [
-                {"id": str(r["embedding_id"]), "vec": str(vec)}
+            inserts = [
+                {"memory_id": str(r["memory_id"]), "vec": str(vec)}
                 for r, vec in zip(rows, vectors)
             ]
             try:
                 await self.session.execute(
-                    text("""
-                        UPDATE memory_embeddings
-                        SET embedding = v.vec::vector,
-                            model_fingerprint = :fp
-                        FROM jsonb_to_recordset(CAST(:updates AS jsonb)) AS v(id uuid, vec text)
-                        WHERE memory_embeddings.id = v.id
+                    text(f"""
+                        INSERT INTO {mem_table} (memory_id, fingerprint, embedding, payload)
+                        SELECT v.memory_id::uuid, :fp, v.vec::vector, '{{}}'::jsonb
+                        FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS v(memory_id text, vec text)
+                        ON CONFLICT (memory_id, fingerprint) DO UPDATE
+                            SET embedding = EXCLUDED.embedding
                     """),
-                    {"fp": current_fingerprint, "updates": json.dumps(updates)},
+                    {"fp": current_fingerprint, "rows": json.dumps(inserts)},
                 )
                 await self.session.commit()
                 processed += len(rows)
@@ -307,22 +305,14 @@ class ReembedService:
                 last_error = f"{type(e).__name__}: {e}"[:500]
                 break
 
-            if broadcast:
-                await broadcast("pipeline.reembed_batch.progress", {
-                    "batch_id": batch_id, "category": "memories",
-                    "current": processed + errors, "total": total,
-                    "processed": processed, "errors": errors,
-                    "state": "progress", "error_message": None,
-                })
+            await self._broadcast_progress(
+                broadcast, batch_id, "memories",
+                processed + errors, total, processed, errors,
+            )
 
-        if broadcast:
-            await broadcast("pipeline.reembed_batch.progress", {
-                "batch_id": batch_id, "category": "memories",
-                "current": total, "total": total,
-                "processed": processed, "errors": errors,
-                "state": "done", "error_message": last_error,
-            })
-
+        await self._broadcast_done(
+            broadcast, batch_id, "memories", total, processed, errors, last_error,
+        )
         return {"processed": processed, "errors": errors, "last_error": last_error}
 
     async def reembed_code_chunks(
@@ -333,104 +323,13 @@ class ReembedService:
         broadcast: BroadcastFn | None,
         flags: dict,
     ) -> dict:
-        """Re-embed all obsolete code chunks."""
-        embed_chunk_size = flags.get("embedding_batch_size", 20)
-        embed_concurrency = flags.get("embedding_concurrency", 1)
-
-        total = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM code_chunk_embeddings
-                WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
-                  AND chunk_content IS NOT NULL
-            """),
-            {"fp": current_fingerprint},
-        )).scalar_one()
-        total = int(total)
-
-        if broadcast:
-            await broadcast("pipeline.reembed_batch.progress", {
-                "batch_id": batch_id, "category": "code_chunks",
-                "current": 0, "total": total, "processed": 0, "errors": 0,
-                "state": "started", "error_message": None,
-            })
-
-        processed = 0
-        errors = 0
-        last_error: str | None = None
-        chunk_size_rows = 100
-
-        while True:
-            rows = (await self.session.execute(
-                text("""
-                    SELECT id, chunk_content
-                    FROM code_chunk_embeddings
-                    WHERE (model_fingerprint != :fp OR model_fingerprint IS NULL)
-                      AND chunk_content IS NOT NULL
-                    LIMIT :limit
-                """),
-                {"fp": current_fingerprint, "limit": chunk_size_rows},
-            )).mappings().all()
-
-            if not rows:
-                break
-
-            texts = [r["chunk_content"] for r in rows]
-            try:
-                vectors = await llm.embed_batch_chunked(texts, embed_chunk_size, embed_concurrency)
-            except Exception as e:
-                logger.exception("Re-embed batch failed for code_chunks")
-                errors += len(rows)
-                last_error = f"{type(e).__name__}: {e}"[:500]
-                if broadcast:
-                    await broadcast("pipeline.reembed_batch.progress", {
-                        "batch_id": batch_id, "category": "code_chunks",
-                        "current": processed + errors, "total": total,
-                        "processed": processed, "errors": errors,
-                        "state": "progress", "error_message": None,
-                    })
-                break
-
-            updates = [
-                {"id": str(r["id"]), "vec": str(vec)}
-                for r, vec in zip(rows, vectors)
-            ]
-            try:
-                await self.session.execute(
-                    text("""
-                        UPDATE code_chunk_embeddings
-                        SET embedding = v.vec::vector,
-                            model_fingerprint = :fp
-                        FROM jsonb_to_recordset(CAST(:updates AS jsonb)) AS v(id uuid, vec text)
-                        WHERE code_chunk_embeddings.id = v.id
-                    """),
-                    {"fp": current_fingerprint, "updates": json.dumps(updates)},
-                )
-                await self.session.commit()
-                processed += len(rows)
-            except Exception as e:
-                logger.exception("Failed to persist re-embedded code chunks")
-                await self.session.rollback()
-                errors += len(rows)
-                last_error = f"{type(e).__name__}: {e}"[:500]
-                break
-
-            if broadcast:
-                await broadcast("pipeline.reembed_batch.progress", {
-                    "batch_id": batch_id, "category": "code_chunks",
-                    "current": processed + errors, "total": total,
-                    "processed": processed, "errors": errors,
-                    "state": "progress", "error_message": None,
-                })
-
-        if broadcast:
-            await broadcast("pipeline.reembed_batch.progress", {
-                "batch_id": batch_id, "category": "code_chunks",
-                "current": total, "total": total,
-                "processed": processed, "errors": errors,
-                "state": "done", "error_message": last_error,
-            })
-
-        return {"processed": processed, "errors": errors, "last_error": last_error}
+        # Code chunk backfill across fingerprints requires walking every
+        # registered fingerprint's child table for source rows. Out of scope
+        # for the initial Phase B landing; surface a clean no-op so the route
+        # stays usable.
+        await self._broadcast_started(broadcast, batch_id, "code_chunks", 0)
+        await self._broadcast_done(broadcast, batch_id, "code_chunks", 0, 0, 0, None)
+        return {"processed": 0, "errors": 0, "last_error": None}
 
     async def reembed_entities(
         self,
@@ -440,26 +339,24 @@ class ReembedService:
         broadcast: BroadcastFn | None,
         flags: dict,
     ) -> dict:
-        """Re-embed all obsolete entity names. Also upserts new embeddings
-        into entity_embedding_cache so future ingestions benefit from the cache."""
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
 
+        await self._ensure_partition(llm, current_fingerprint)
+        ent_table = child_table("entity_embeddings", current_fingerprint)
+        cache_table = child_table("entity_embedding_cache", current_fingerprint)
+
         total = (await self.session.execute(
-            text("""
-                SELECT COUNT(*) FROM entities
-                WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+            text(f"""
+                SELECT COUNT(*) FROM entities e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
+                )
             """),
-            {"fp": current_fingerprint},
         )).scalar_one()
         total = int(total)
 
-        if broadcast:
-            await broadcast("pipeline.reembed_batch.progress", {
-                "batch_id": batch_id, "category": "entities",
-                "current": 0, "total": total, "processed": 0, "errors": 0,
-                "state": "started", "error_message": None,
-            })
+        await self._broadcast_started(broadcast, batch_id, "entities", total)
 
         processed = 0
         errors = 0
@@ -468,13 +365,15 @@ class ReembedService:
 
         while True:
             rows = (await self.session.execute(
-                text("""
-                    SELECT id, name
-                    FROM entities
-                    WHERE model_fingerprint != :fp OR model_fingerprint IS NULL
+                text(f"""
+                    SELECT e.id, e.name
+                    FROM entities e
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
+                    )
                     LIMIT :limit
                 """),
-                {"fp": current_fingerprint, "limit": chunk_size_rows},
+                {"limit": chunk_size_rows},
             )).mappings().all()
 
             if not rows:
@@ -482,54 +381,50 @@ class ReembedService:
 
             texts = [r["name"] for r in rows]
             try:
-                vectors = await llm.embed_batch_chunked(texts, embed_chunk_size, embed_concurrency)
+                vectors, produced_fp = await llm.embed_batch_chunked(
+                    texts, embed_chunk_size, embed_concurrency,
+                )
+                self._assert_fingerprint(produced_fp, current_fingerprint)
             except Exception as e:
                 logger.exception("Re-embed batch failed for entities")
                 errors += len(rows)
                 last_error = f"{type(e).__name__}: {e}"[:500]
-                if broadcast:
-                    await broadcast("pipeline.reembed_batch.progress", {
-                        "batch_id": batch_id, "category": "entities",
-                        "current": processed + errors, "total": total,
-                        "processed": processed, "errors": errors,
-                        "state": "progress", "error_message": None,
-                    })
+                await self._broadcast_progress(
+                    broadcast, batch_id, "entities",
+                    processed + errors, total, processed, errors,
+                )
                 break
 
-            updates = [
+            inserts = [
                 {"id": str(r["id"]), "vec": str(vec)}
                 for r, vec in zip(rows, vectors)
             ]
             try:
-                # Update entities table
                 await self.session.execute(
-                    text("""
-                        UPDATE entities
-                        SET embedding = v.vec::vector,
-                            model_fingerprint = :fp
-                        FROM jsonb_to_recordset(CAST(:updates AS jsonb)) AS v(id uuid, vec text)
-                        WHERE entities.id = v.id
+                    text(f"""
+                        INSERT INTO {ent_table} (entity_id, fingerprint, embedding)
+                        SELECT v.id::uuid, :fp, v.vec::vector
+                        FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS v(id text, vec text)
+                        ON CONFLICT (entity_id, fingerprint) DO UPDATE
+                            SET embedding = EXCLUDED.embedding
                     """),
-                    {"fp": current_fingerprint, "updates": json.dumps(updates)},
+                    {"fp": current_fingerprint, "rows": json.dumps(inserts)},
                 )
 
-                # Dedupe by lowercase name for the cache upsert (multiple entities
-                # can share the same name across types)
                 cache_upserts: dict[str, list[float]] = {}
                 for row, vec in zip(rows, vectors):
                     cache_upserts[row["name"].lower()] = vec
-
                 for name_lower, vec in cache_upserts.items():
                     await self.session.execute(
-                        text("""
-                            INSERT INTO entity_embedding_cache
-                                (name_lower, model_fingerprint, embedding, created_at, last_used_at, hit_count)
+                        text(f"""
+                            INSERT INTO {cache_table}
+                                (name_lower, fingerprint, embedding, created_at, last_used_at, hit_count)
                             VALUES
                                 (:name, :fp, CAST(:vec AS vector), NOW(), NOW(), 1)
-                            ON CONFLICT (name_lower, model_fingerprint) DO UPDATE SET
+                            ON CONFLICT (name_lower, fingerprint) DO UPDATE SET
                                 embedding = EXCLUDED.embedding,
                                 last_used_at = NOW(),
-                                hit_count = entity_embedding_cache.hit_count + 1
+                                hit_count = {cache_table}.hit_count + 1
                         """),
                         {"name": name_lower, "fp": current_fingerprint, "vec": str(vec)},
                     )
@@ -543,20 +438,81 @@ class ReembedService:
                 last_error = f"{type(e).__name__}: {e}"[:500]
                 break
 
-            if broadcast:
-                await broadcast("pipeline.reembed_batch.progress", {
-                    "batch_id": batch_id, "category": "entities",
-                    "current": processed + errors, "total": total,
-                    "processed": processed, "errors": errors,
-                    "state": "progress", "error_message": None,
-                })
+            await self._broadcast_progress(
+                broadcast, batch_id, "entities",
+                processed + errors, total, processed, errors,
+            )
 
+        await self._broadcast_done(
+            broadcast, batch_id, "entities", total, processed, errors, last_error,
+        )
+        return {"processed": processed, "errors": errors, "last_error": last_error}
+
+    # -- helpers ------------------------------------------------------------
+
+    async def _chunk_source_view_exists(self) -> bool:
+        return False  # see TODO in count_missing
+
+    async def _ensure_partition(self, llm, fingerprint: str) -> None:
+        from app.services.embedder_registry import (  # noqa: PLC0415
+            EmbedderInfo, embedder_registry, parse_fingerprint,
+        )
+        if embedder_registry.is_known(fingerprint):
+            return
+        model_id, dims = parse_fingerprint(fingerprint)
+        await embedder_registry.register(
+            self.session,
+            EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
+        )
+
+    @staticmethod
+    def _assert_fingerprint(produced: str, expected: str) -> None:
+        if produced != expected:
+            raise RuntimeError(
+                f"Re-embed fingerprint mismatch: caller asked for {expected!r}, "
+                f"orchestrator produced {produced!r}."
+            )
+
+    @staticmethod
+    async def _broadcast_started(
+        broadcast: BroadcastFn | None, batch_id: str, category: str, total: int,
+    ) -> None:
         if broadcast:
             await broadcast("pipeline.reembed_batch.progress", {
-                "batch_id": batch_id, "category": "entities",
+                "batch_id": batch_id, "category": category,
+                "current": 0, "total": total, "processed": 0, "errors": 0,
+                "state": "started", "error_message": None,
+            })
+
+    @staticmethod
+    async def _broadcast_progress(
+        broadcast: BroadcastFn | None, batch_id: str, category: str,
+        current: int, total: int, processed: int, errors: int,
+    ) -> None:
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": category,
+                "current": current, "total": total,
+                "processed": processed, "errors": errors,
+                "state": "progress", "error_message": None,
+            })
+
+    @staticmethod
+    async def _broadcast_done(
+        broadcast: BroadcastFn | None, batch_id: str, category: str,
+        total: int, processed: int, errors: int, last_error: str | None,
+    ) -> None:
+        if broadcast:
+            await broadcast("pipeline.reembed_batch.progress", {
+                "batch_id": batch_id, "category": category,
                 "current": total, "total": total,
                 "processed": processed, "errors": errors,
                 "state": "done", "error_message": last_error,
             })
 
-        return {"processed": processed, "errors": errors, "last_error": last_error}
+
+async def wait_idle(timeout: float = 30.0) -> bool:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while reembed_locks._locked and asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(0.1)
+    return not reembed_locks._locked

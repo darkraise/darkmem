@@ -100,8 +100,12 @@ async def test_backfill_confidence_uses_estimator(session):
 
 
 @pytest.mark.asyncio
-async def test_backfill_relations_remap_and_delete(session):
-    # Two entities and two relations: one collapses to USES, one to None (drop).
+async def test_legacy_relation_rows_normalize_at_read_time(session):
+    """After dropping the 5-type collapse, legacy rows store the full
+    canonical label set. Old DB rows that pre-date the expansion still
+    survive — we just rely on ``normalize_relation_type`` at the
+    extraction boundary to map any third-party legacy aliases.
+    """
     a = uuid.uuid4()
     b = uuid.uuid4()
     await session.execute(
@@ -114,36 +118,19 @@ async def test_backfill_relations_remap_and_delete(session):
         ),
         {"a": a, "b": b},
     )
+    # Insert specific predicates that previously would have been collapsed.
     await session.execute(
         text(
             """
             INSERT INTO entity_relations (id, source_entity_id, target_entity_id, rel_type)
             VALUES (gen_random_uuid(), :a, :b, 'DEPENDS_ON'),
-                   (gen_random_uuid(), :a, :b, 'RELATED_TO')
+                   (gen_random_uuid(), :a, :b, 'HAS_PART')
             """
         ),
         {"a": a, "b": b},
     )
 
-    from app.services.relations import REL_MAP_5
-
-    # Remap the survivors; drop the None-mapped label.
-    for old, new in REL_MAP_5.items():
-        if new is None:
-            await session.execute(
-                text("DELETE FROM entity_relations WHERE rel_type = :old"),
-                {"old": old},
-            )
-        elif old != new:
-            # Simple UPDATE without the merge CTE is fine here: no collision set up.
-            await session.execute(
-                text("UPDATE entity_relations SET rel_type = :new WHERE rel_type = :old"),
-                {"old": old, "new": new},
-            )
-
-    remaining = (
-        await session.execute(
-            text("SELECT rel_type FROM entity_relations ORDER BY rel_type")
-        )
-    ).scalars().all()
-    assert remaining == ["USES"]
+    rows = (await session.execute(
+        text("SELECT rel_type FROM entity_relations ORDER BY rel_type")
+    )).scalars().all()
+    assert rows == ["DEPENDS_ON", "HAS_PART"]

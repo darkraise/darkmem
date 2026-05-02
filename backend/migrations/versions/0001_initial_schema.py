@@ -2,17 +2,23 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-04-20
+Create Date: 2026-04-29
 
-Single greenfield schema. Includes:
-  - Core tables (api_keys, memories, tags, config, audit_log)
+Single greenfield schema. Consolidated migration that produces the final
+post-per-fingerprint embedding layout in one shot. Includes:
+
+  - Core tables (api_keys, memories, tags, memory_tags, config, audit_log)
   - Chat tables (conversations, messages)
   - Code indexing (repositories, code_files, code_symbols)
-  - pgvector (memory_embeddings, code_chunk_embeddings, entity embeddings)
   - Knowledge graph (entities, entity_relations, code_graph_nodes, code_edges)
   - Knowledge triples + memory crossrefs
-  - Full-text search (tsvector + GIN + triggers)
-  - Pipeline operations (enrichment_queue, pipeline_failures, entity_embedding_cache)
+  - Embedder registry (``embedders``); per-fingerprint child tables
+    (``memory_embeddings__<slug>``, ``entity_embeddings__<slug>``,
+    ``code_chunk_embeddings__<slug>``, ``entity_embedding_cache__<slug>``)
+    are created lazily by ``EmbedderRegistry`` the first time a fingerprint
+    is observed, so the migration only seeds the parent registry row.
+  - Full-text search on memories (tsvector + GIN + trigger)
+  - Pipeline operations (enrichment_queue, pipeline_failures)
   - Auth + revocation (token_blocklist)
 """
 from collections.abc import Sequence
@@ -167,6 +173,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['repo_id'], ['repositories.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
     )
+    # Phase 3 of the indexer hits this lookup once per changed file; without
+    # the compound index the planner sequential-scans on repo_id which grows
+    # with file count.
+    op.execute(
+        "CREATE INDEX ix_code_files_repo_path ON code_files(repo_id, file_path)"
+    )
 
     op.create_table('code_symbols',
         sa.Column('id', sa.UUID(), nullable=False),
@@ -187,49 +199,25 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['parent_symbol_id'], ['code_symbols.id'], ondelete='SET NULL'),
         sa.PrimaryKeyConstraint('id'),
     )
-
-    # -- pgvector: memory embeddings --
-    op.create_table('memory_embeddings',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column('memory_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('memories.id', ondelete='CASCADE'), unique=True, nullable=False),
-        sa.Column('payload', postgresql.JSONB, server_default=sa.text("'{}'::jsonb")),
-        sa.Column('model_fingerprint', sa.String(100)),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
+    # Phase 6/8 join code_symbols on file_id — the FK declaration alone
+    # does not create an index, and growing symbol counts make the join
+    # increasingly expensive without one.
+    op.execute(
+        "CREATE INDEX ix_code_symbols_file_id ON code_symbols(file_id)"
     )
-    op.execute("ALTER TABLE memory_embeddings ADD COLUMN embedding vector(1024)")
-    op.execute("CREATE INDEX ix_memory_embeddings_hnsw ON memory_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128)")
 
-    # -- pgvector: code chunk embeddings --
-    op.create_table('code_chunk_embeddings',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column('repo_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('repositories.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('file_path', sa.String(1024), nullable=False),
-        sa.Column('language', sa.String(50)),
-        sa.Column('symbol_name', sa.String(500)),
-        sa.Column('chunk_content', sa.Text),
-        sa.Column('line_start', sa.Integer),
-        sa.Column('line_end', sa.Integer),
-        sa.Column('model_fingerprint', sa.String(100)),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
-    op.execute("ALTER TABLE code_chunk_embeddings ADD COLUMN embedding vector(1024)")
-    op.execute("CREATE INDEX ix_code_chunk_embeddings_hnsw ON code_chunk_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128)")
-    op.create_index('ix_code_chunk_embeddings_repo', 'code_chunk_embeddings', ['repo_id'])
-
-    # -- Knowledge graph: entities + relations --
+    # -- Knowledge graph: entities + relations (no inline embedding column —
+    # vectors live in per-fingerprint child tables created by the registry).
     op.create_table('entities',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column('name', sa.String(500), nullable=False),
         sa.Column('entity_type', sa.String(100), nullable=False),
         sa.Column('properties', postgresql.JSONB, server_default=sa.text("'{}'::jsonb")),
         sa.Column('memory_ids', postgresql.ARRAY(postgresql.UUID(as_uuid=True)), server_default=sa.text("'{}'::uuid[]")),
-        sa.Column('model_fingerprint', sa.String(100)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint('name', 'entity_type'),
     )
     op.execute("CREATE INDEX ix_entities_memory_ids ON entities USING gin (memory_ids)")
-    op.execute("ALTER TABLE entities ADD COLUMN embedding vector(1024)")
-    op.execute("CREATE INDEX ix_entities_embedding_hnsw ON entities USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128)")
 
     op.create_table('entity_relations',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
@@ -243,22 +231,6 @@ def upgrade() -> None:
         sa.UniqueConstraint('source_entity_id', 'target_entity_id', 'rel_type'),
     )
     op.execute("CREATE INDEX ix_entity_relations_memory_ids ON entity_relations USING gin (memory_ids)")
-
-    # -- Entity embedding cache (dedup lookups keyed by lowercased name) --
-    op.execute(
-        """
-        CREATE TABLE entity_embedding_cache (
-            name_lower VARCHAR(255) NOT NULL,
-            model_fingerprint VARCHAR(100) NOT NULL,
-            embedding vector(1024) NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            hit_count INTEGER NOT NULL DEFAULT 1,
-            PRIMARY KEY (name_lower, model_fingerprint)
-        )
-        """
-    )
-    op.execute("CREATE INDEX ix_entity_embedding_cache_last_used ON entity_embedding_cache(last_used_at)")
 
     # -- Code graph (replaces Neo4j) --
     op.create_table('code_graph_nodes',
@@ -305,7 +277,24 @@ def upgrade() -> None:
     op.create_index('ix_knowledge_triples_predicate', 'knowledge_triples', ['predicate'])
     op.create_index('ix_knowledge_triples_valid', 'knowledge_triples', ['valid_from', 'valid_to'])
 
-    # -- Full-text search: tsvector columns + GIN indexes + triggers --
+    # -- Embedder registry. Per-fingerprint child tables (memory_embeddings__<slug>,
+    # entity_embeddings__<slug>, code_chunk_embeddings__<slug>,
+    # entity_embedding_cache__<slug>) are created on demand by
+    # ``EmbedderRegistry.register`` when a new fingerprint is observed.
+    op.execute(
+        """
+        CREATE TABLE embedders (
+            fingerprint    TEXT PRIMARY KEY,
+            model_id       TEXT NOT NULL,
+            dims           INTEGER NOT NULL CHECK (dims > 0),
+            source         TEXT NOT NULL CHECK (source = 'llm'),
+            registered_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            retired_at     TIMESTAMPTZ
+        )
+        """
+    )
+
+    # -- Full-text search on memories: tsvector column + GIN index + trigger --
     op.execute("ALTER TABLE memories ADD COLUMN search_vector tsvector")
     op.execute("CREATE INDEX ix_memories_fts ON memories USING gin(search_vector)")
     op.execute("""
@@ -320,24 +309,6 @@ def upgrade() -> None:
         CREATE TRIGGER memories_fts_update
         BEFORE INSERT OR UPDATE OF content ON memories
         FOR EACH ROW EXECUTE FUNCTION memories_fts_trigger()
-    """)
-
-    op.execute("ALTER TABLE code_chunk_embeddings ADD COLUMN search_vector tsvector")
-    op.execute("CREATE INDEX ix_code_chunks_fts ON code_chunk_embeddings USING gin(search_vector)")
-    op.execute("""
-        CREATE OR REPLACE FUNCTION code_chunks_fts_trigger() RETURNS trigger AS $$
-        BEGIN
-            NEW.search_vector :=
-                setweight(to_tsvector('english', COALESCE(NEW.symbol_name, '')), 'A') ||
-                setweight(to_tsvector('english', COALESCE(NEW.chunk_content, '')), 'B');
-            RETURN NEW;
-        END
-        $$ LANGUAGE plpgsql
-    """)
-    op.execute("""
-        CREATE TRIGGER code_chunks_fts_update
-        BEFORE INSERT OR UPDATE OF chunk_content, symbol_name ON code_chunk_embeddings
-        FOR EACH ROW EXECUTE FUNCTION code_chunks_fts_trigger()
     """)
 
     # -- Token blocklist for JWT revocation --
@@ -411,10 +382,163 @@ def upgrade() -> None:
     )
     op.create_index('ix_memory_crossrefs_related', 'memory_crossrefs', ['related_memory_id'])
 
+    # -- LLM provider / profile / purpose tables. Replaces the old
+    # ``config`` JSONB blobs (llm_providers / llm_profiles / llm_config)
+    # so we get DB-enforced uniqueness, FK delete protection,
+    # rename support, and an explicit profile_id link from each
+    # purpose row (the dropdown reads it directly -- no more
+    # reverse-matching by parameter equality).
+    op.execute(
+        """
+        CREATE TABLE llm_providers (
+            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name                VARCHAR(64) NOT NULL UNIQUE,
+            provider            VARCHAR(64) NOT NULL,
+            base_url            VARCHAR(512) NOT NULL,
+            api_key             VARCHAR(1024),
+            api_kind            VARCHAR(32) NOT NULL DEFAULT 'openai',
+            supports_embedding  BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            api_key_rotated_at  TIMESTAMPTZ
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TABLE llm_profiles (
+            id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name          VARCHAR(64) NOT NULL UNIQUE,
+            provider_id   UUID NOT NULL REFERENCES llm_providers(id) ON DELETE RESTRICT,
+            model         VARCHAR(255) NOT NULL,
+            params        JSONB NOT NULL DEFAULT '{}'::jsonb,
+            is_embedding  BOOLEAN NOT NULL DEFAULT FALSE,
+            reasoning     BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TABLE llm_purpose_configs (
+            purpose       VARCHAR(64) PRIMARY KEY,
+            provider_id   UUID REFERENCES llm_providers(id) ON DELETE SET NULL,
+            profile_id    UUID REFERENCES llm_profiles(id) ON DELETE SET NULL,
+            model         VARCHAR(255) NOT NULL,
+            dimensions    INTEGER,
+            reasoning     BOOLEAN NOT NULL DEFAULT FALSE,
+            api_kind      VARCHAR(32) NOT NULL DEFAULT 'openai',
+            provider      VARCHAR(64) NOT NULL DEFAULT 'ollama',
+            base_url      VARCHAR(512) NOT NULL DEFAULT '',
+            api_key       VARCHAR(1024),
+            params        JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+
+    # Seed providers (one row per supported vendor).
+    op.execute(
+        """
+        INSERT INTO llm_providers (name, provider, base_url, api_key, api_kind, supports_embedding) VALUES
+            ('ollama', 'ollama', 'http://localhost:11434/v1', NULL, 'ollama', TRUE),
+            ('openai', 'openai', 'https://api.openai.com/v1', NULL, 'openai', TRUE),
+            ('anthropic', 'anthropic', 'https://api.anthropic.com/v1', NULL, 'anthropic', FALSE),
+            ('google', 'google', 'https://generativelanguage.googleapis.com/v1beta/openai', NULL, 'google', TRUE),
+            ('deepseek', 'deepseek', 'https://api.deepseek.com/v1', NULL, 'deepseek', FALSE),
+            ('zai', 'zai', 'https://api.z.ai/api/paas/v4', NULL, 'zai', TRUE)
+        """
+    )
+
+    # Seed profiles. provider_id resolves via subquery so the seed stays readable.
+    op.execute(
+        """
+        INSERT INTO llm_profiles (name, provider_id, model, params, is_embedding, reasoning) VALUES
+            ('ollama-embedding', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen3-embedding:0.6b', '{}'::jsonb, TRUE, FALSE),
+            ('ollama-extraction', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0}'::jsonb, FALSE, FALSE),
+            ('ollama-classification', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0}'::jsonb, FALSE, FALSE),
+            ('ollama-reasoning', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen3:4b', '{"temperature": 0.7}'::jsonb, FALSE, TRUE),
+            ('ollama-summarization', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0.3}'::jsonb, FALSE, FALSE),
+            ('ollama-reranker', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0}'::jsonb, FALSE, FALSE),
+            ('openai-embedding', (SELECT id FROM llm_providers WHERE name = 'openai'), 'text-embedding-3-small', '{}'::jsonb, TRUE, FALSE),
+            ('openai-embedding-large', (SELECT id FROM llm_providers WHERE name = 'openai'), 'text-embedding-3-large', '{}'::jsonb, TRUE, FALSE),
+            ('openai-extraction', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-mini', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 2048}'::jsonb, FALSE, FALSE),
+            ('openai-nano-extraction', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-nano', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 2048}'::jsonb, FALSE, FALSE),
+            ('openai-classification', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-nano', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 64}'::jsonb, FALSE, FALSE),
+            ('openai-reasoning', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4', '{"temperature": 1, "reasoning_effort": "high", "verbosity": "medium", "max_completion_tokens": 4096}'::jsonb, FALSE, TRUE),
+            ('openai-summarization', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-mini', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "medium", "max_completion_tokens": 512}'::jsonb, FALSE, FALSE),
+            ('openai-reranker', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-nano', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 32}'::jsonb, FALSE, FALSE),
+            ('zai-flash-extraction', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.7-flash', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
+            ('zai-flash-classification', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.5-flash', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
+            ('zai-flash-summarization', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.5-flash', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
+            ('zai-flash-reranker', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.5-flash', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
+            ('zai-turbo-extraction', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
+            ('zai-turbo-classification', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
+            ('zai-turbo-summarization', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
+            ('zai-turbo-reranker', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
+            ('zai-turbo-reasoning', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE),
+            ('deepseek-flash-extraction', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-v4-flash', '{"temperature": 0, "max_tokens": 2048, "thinking": {"type": "disabled"}}'::jsonb, FALSE, FALSE),
+            ('deepseek-pro-extraction', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-v4-pro', '{"temperature": 0, "max_tokens": 2048, "thinking": {"type": "disabled"}}'::jsonb, FALSE, FALSE),
+            ('deepseek-flash-classification', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-chat', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
+            ('deepseek-flash-summarization', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-chat', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
+            ('deepseek-flash-reranker', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-chat', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
+            ('deepseek-flash-reasoning', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-reasoner', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE),
+            ('deepseek-pro-reasoning', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-v4-pro', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE),
+            ('anthropic-haiku-extraction', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
+            ('anthropic-sonnet-extraction', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-sonnet-4-6', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
+            ('google-embedding', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-embedding-001', '{}'::jsonb, TRUE, FALSE),
+            ('google-lite-extraction', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash-lite', '{"temperature": 0, "max_tokens": 2048, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
+            ('google-flash-extraction', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0, "max_tokens": 2048, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
+            ('google-flash-classification', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0, "max_tokens": 64, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
+            ('google-flash-summarization', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0.3, "max_tokens": 512, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
+            ('google-flash-reranker', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0, "max_tokens": 32, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
+            ('google-pro-extraction', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-pro', '{"temperature": 0, "max_tokens": 2048, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
+            ('google-pro-reasoning', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-pro', '{"temperature": 0.7, "max_tokens": 4096, "reasoning_effort": "high"}'::jsonb, FALSE, TRUE),
+            ('anthropic-haiku-classification', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
+            ('anthropic-haiku-summarization', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
+            ('anthropic-haiku-reranker', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
+            ('anthropic-sonnet-reasoning', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-sonnet-4-6', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE)
+        """
+    )
+
+    # Seed purpose configs with the same defaults as ``Settings.llm_*``.
+    op.execute(
+        """
+        INSERT INTO llm_purpose_configs (purpose, provider_id, model, dimensions, reasoning, api_kind, provider, base_url, params) VALUES
+            ('embedding', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen3-embedding:0.6b', 1024, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{}'::jsonb),
+            ('extraction', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0}'::jsonb),
+            ('classification', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0}'::jsonb),
+            ('reasoning', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0.7}'::jsonb),
+            ('summarization', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0.3}'::jsonb),
+            ('reranker', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0}'::jsonb)
+        """
+    )
+
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS code_chunks_fts_update ON code_chunk_embeddings")
-    op.execute("DROP FUNCTION IF EXISTS code_chunks_fts_trigger()")
+    # Drop every per-fingerprint child table created by the registry. The set
+    # isn't known at migration time so we walk pg_tables for the pattern.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+            t record;
+        BEGIN
+            FOR t IN
+                SELECT tablename FROM pg_tables
+                WHERE schemaname = 'public'
+                  AND (tablename LIKE 'memory_embeddings__%'
+                       OR tablename LIKE 'entity_embeddings__%'
+                       OR tablename LIKE 'code_chunk_embeddings__%'
+                       OR tablename LIKE 'entity_embedding_cache__%')
+            LOOP
+                EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', t.tablename);
+            END LOOP;
+        END $$;
+        """
+    )
+
     op.execute("DROP TRIGGER IF EXISTS memories_fts_update ON memories")
     op.execute("DROP FUNCTION IF EXISTS memories_fts_trigger()")
 
@@ -427,14 +551,12 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS pipeline_failures CASCADE")
     op.drop_table('enrichment_queue')
     op.drop_table('token_blocklist')
+    op.execute("DROP TABLE IF EXISTS embedders CASCADE")
     op.drop_table('knowledge_triples')
     op.drop_table('code_edges')
     op.drop_table('code_graph_nodes')
-    op.execute("DROP TABLE IF EXISTS entity_embedding_cache CASCADE")
     op.drop_table('entity_relations')
     op.drop_table('entities')
-    op.drop_table('code_chunk_embeddings')
-    op.drop_table('memory_embeddings')
     op.drop_table('code_symbols')
     op.drop_table('code_files')
     op.drop_table('repositories')

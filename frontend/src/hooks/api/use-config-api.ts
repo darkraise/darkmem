@@ -8,8 +8,159 @@ export interface LlmPurposeConfig {
   api_key: string | null;
   dimensions: number | null;
   reasoning: boolean;
-  tool_call_mode: string;
+  api_kind: string;
   params: Record<string, unknown>;
+  // Optional reference to a stored LLM provider profile. When set, the
+  // purpose inherits provider/base_url/api_key/api_kind from that profile.
+  provider_ref?: string | null;
+  // Optional reference to a stored LLM profile (preset). When set, the
+  // dropdown shows this profile as the active selection.
+  profile_ref?: string | null;
+}
+
+export interface LlmProviderProfile {
+  provider: string;
+  base_url: string;
+  api_key: string | null;
+  api_kind: string;
+  supports_embedding: boolean;
+}
+
+export interface LlmProvidersResponse {
+  profiles: Record<string, LlmProviderProfile>;
+}
+
+export interface LlmProviderTestRequest {
+  mode?: "chat" | "embedding";
+  model?: string;
+}
+
+export interface LlmProviderTestResponse {
+  ok: boolean;
+  status_code: number | null;
+  latency_ms: number;
+  url: string;
+  message: string;
+}
+
+export function useLlmProviders() {
+  return useQuery<LlmProvidersResponse>({
+    queryKey: ["llmProviders"],
+    queryFn: () => apiFetch<LlmProvidersResponse>("/config/llm-providers"),
+  });
+}
+
+export function useUpdateLlmProviders() {
+  const qc = useQueryClient();
+  return useMutation<LlmProvidersResponse, Error, LlmProvidersResponse>({
+    mutationFn: (body) =>
+      apiFetch<LlmProvidersResponse>("/config/llm-providers", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llmProviders"] });
+      qc.invalidateQueries({ queryKey: ["llmConfig"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+}
+
+export function useDeleteLlmProvider() {
+  const qc = useQueryClient();
+  return useMutation<LlmProvidersResponse, Error, { name: string }>({
+    mutationFn: ({ name }) =>
+      apiFetch<LlmProvidersResponse>(`/config/llm-providers/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llmProviders"] });
+      qc.invalidateQueries({ queryKey: ["llmConfig"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+}
+
+export function useTestLlmProvider() {
+  return useMutation<
+    LlmProviderTestResponse,
+    Error,
+    { name: string; body?: LlmProviderTestRequest }
+  >({
+    mutationFn: ({ name, body }) =>
+      apiFetch<LlmProviderTestResponse>(
+        `/config/llm-providers/${encodeURIComponent(name)}/test`,
+        { method: "POST", body: JSON.stringify(body ?? { mode: "chat" }) },
+      ),
+  });
+}
+
+// -- LLM Provider models-fetch ---------------------------------------------
+
+export interface LlmProviderModelsResponse {
+  models: string[];
+  fetched_via: string;
+  error: string | null;
+}
+
+export function useProviderModels(providerName: string | null, enabled: boolean = true) {
+  return useQuery<LlmProviderModelsResponse>({
+    queryKey: ["llmProviderModels", providerName],
+    queryFn: () =>
+      apiFetch<LlmProviderModelsResponse>(
+        `/config/llm-providers/${encodeURIComponent(providerName!)}/models`,
+      ),
+    enabled: enabled && !!providerName,
+    staleTime: 60_000,
+  });
+}
+
+// -- LLM Profiles ----------------------------------------------------------
+
+export interface LlmProfile {
+  provider_ref: string;
+  model: string;
+  params: Record<string, unknown>;
+  is_embedding: boolean;
+  reasoning: boolean;
+}
+
+export interface LlmProfilesResponse {
+  profiles: Record<string, LlmProfile>;
+}
+
+export function useLlmProfiles() {
+  return useQuery<LlmProfilesResponse>({
+    queryKey: ["llmProfiles"],
+    queryFn: () => apiFetch<LlmProfilesResponse>("/config/llm-profiles"),
+  });
+}
+
+export function useUpdateLlmProfiles() {
+  const qc = useQueryClient();
+  return useMutation<LlmProfilesResponse, Error, LlmProfilesResponse>({
+    mutationFn: (body) =>
+      apiFetch<LlmProfilesResponse>("/config/llm-profiles", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llmProfiles"] });
+    },
+  });
+}
+
+export function useDeleteLlmProfile() {
+  const qc = useQueryClient();
+  return useMutation<LlmProfilesResponse, Error, { name: string }>({
+    mutationFn: ({ name }) =>
+      apiFetch<LlmProfilesResponse>(`/config/llm-profiles/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llmProfiles"] });
+    },
+  });
 }
 
 export interface LlmConfigResponse {
@@ -48,8 +199,6 @@ export function useUpdateLlmConfig() {
   });
 }
 
-export type MLDeviceFamily = "auto" | "cpu" | "cuda";
-
 export interface FeatureFlags {
   llm_enrichment_enabled: boolean;
   hybrid_search_enabled: boolean;
@@ -60,17 +209,8 @@ export interface FeatureFlags {
   embedding_batch_size: number;
   embedding_concurrency: number;
   entity_cache_ttl_minutes: number;
-  // Per-stage pipeline path: true -> ML head, false -> LLM fallback.
-  ml_extraction: boolean;
-  ml_classification: boolean;
-  ml_retrieval: boolean;
-  ml_shadow_mode: boolean;
+  relation_rescue: boolean;
   confidence_rank_gamma: number;
-  // Device selection + lazy-load TTL controls.
-  ml_device: MLDeviceFamily;
-  ml_cuda_index: number;
-  ml_idle_ttl_minutes: number;
-  ml_eviction_check_interval_seconds: number;
 }
 
 export function useFeatureFlags() {
@@ -178,100 +318,3 @@ export function useUpdateSystemPrompts() {
   });
 }
 
-// -- ML device picker -------------------------------------------------------
-
-export interface MLDeviceInfo {
-  id: string;
-  label: string;
-  kind: "cpu" | "cuda";
-  index: number | null;
-}
-
-export interface MLDeviceCurrent {
-  ml_device: MLDeviceFamily;
-  ml_cuda_index: number;
-  loaded: boolean;
-  effective_device: string | null;
-  cpu_fallback: boolean;
-}
-
-export interface MLDevicesResponse {
-  available: MLDeviceInfo[];
-  current: MLDeviceCurrent;
-}
-
-export function useMLDevices() {
-  return useQuery<MLDevicesResponse>({
-    queryKey: ["mlDevices"],
-    queryFn: () => apiFetch<MLDevicesResponse>("/config/ml-devices"),
-    staleTime: 30_000,
-  });
-}
-
-export interface MLDeviceApplyResponse {
-  ml_device: MLDeviceFamily;
-  ml_cuda_index: number;
-  effective_device: string;
-  loaded: boolean;
-  reloaded: boolean;
-  reload_error: string | null;
-}
-
-export function useApplyMLDevice() {
-  const qc = useQueryClient();
-  return useMutation<
-    MLDeviceApplyResponse,
-    Error,
-    { ml_device?: MLDeviceFamily; ml_cuda_index?: number }
-  >({
-    mutationFn: (body) =>
-      apiFetch<MLDeviceApplyResponse>("/config/ml-device/apply", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["mlDevices"] });
-      qc.invalidateQueries({ queryKey: ["featureFlags"] });
-      qc.invalidateQueries({ queryKey: ["mlModelsHealth"] });
-      qc.invalidateQueries({ queryKey: ["pipeline"] });
-      qc.invalidateQueries({ queryKey: ["mlMetrics"] });
-    },
-  });
-}
-
-// -- ML models health (per-group load + idle state) -------------------------
-
-export interface MLHeadSource {
-  kind: "local" | "hub" | null;
-  location: string | null;
-  revision: string | null;
-}
-
-export interface MLModelsHealthResponse {
-  enabled: boolean;
-  device: string;
-  models_dir: string;
-  loaded: boolean;
-  any_loaded?: boolean;
-  heads: Record<string, boolean>;
-  sources?: Record<string, MLHeadSource>;
-  groups?: Record<string, { loaded: boolean; idle_seconds: number | null }>;
-  embedding_dims: number | null;
-  fingerprint: string | null;
-  vram_allocated_mb: number | null;
-  note?: string;
-}
-
-export function useMLModelsHealth(enabled: boolean = true) {
-  return useQuery<MLModelsHealthResponse>({
-    queryKey: ["mlModelsHealth"],
-    queryFn: async () => {
-      // Health endpoint lives at /api/health, not /api/v1, so bypass apiFetch.
-      const resp = await fetch("/api/health/ml_models", { credentials: "include" });
-      if (!resp.ok) throw new Error(`ml_models health failed: ${resp.status}`);
-      return (await resp.json()) as MLModelsHealthResponse;
-    },
-    refetchInterval: enabled ? 10_000 : false,
-    enabled,
-  });
-}

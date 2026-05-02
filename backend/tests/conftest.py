@@ -1,3 +1,4 @@
+import asyncio
 import os
 import subprocess
 import sys
@@ -79,6 +80,10 @@ async def client(session):
         yield session
 
     app.dependency_overrides[get_session] = override
+    # The lifespan would normally set this on startup; the test client
+    # never enters it, so initialise here to match production state.
+    if not getattr(app.state, "llm_config_lock", None):
+        app.state.llm_config_lock = asyncio.Lock()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()

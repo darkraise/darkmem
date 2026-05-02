@@ -227,6 +227,7 @@ export function useForgetFailure() {
 }
 
 export function useRetryAllFailures() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (filters?: { entity_type?: string; pipeline_name?: string }) => {
       const qs = new URLSearchParams()
@@ -236,6 +237,13 @@ export function useRetryAllFailures() {
       return apiFetch<{ accepted: boolean; batch_id: string; total: number }>(url, {
         method: "POST",
       })
+    },
+    // Per-row progress arrives via WebSocket (PipelineRetryBatchProgress),
+    // but if the WS is disconnected the failures table goes stale forever.
+    // Invalidate immediately so at minimum the count badge refetches.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+      qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
     },
   })
 }
@@ -261,6 +269,7 @@ export function useObsoleteCounts() {
     queryKey: ["obsoleteCounts"],
     queryFn: () => apiFetch<ObsoleteCounts>("/reembed/obsolete-counts"),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
 }
 

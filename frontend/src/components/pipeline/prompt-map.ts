@@ -9,7 +9,7 @@ export type LLMPurpose =
 /** Which stage-bound prompts belong to each LLM purpose card. */
 export const PROMPT_PURPOSE_MAP: Record<LLMPurpose, string[]> = {
   embedding: [],
-  extraction: ["extraction", "extraction_entities", "extraction_relationships"],
+  extraction: ["extraction"],
   classification: ["classification"],
   reasoning: ["reasoning"],
   summarization: ["summarization"],

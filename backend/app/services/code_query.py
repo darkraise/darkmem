@@ -29,10 +29,11 @@ class CodeQueryService:
 
         if self.llm:
             try:
-                vector = await self.llm.embed(query)
+                vector, fingerprint = await self.llm.embed(query)
                 vector_repo = PostgresVectorRepository(self.session)
                 chunk_results = await vector_repo.search_code_chunks(
-                    vector, limit=limit * 2, repo_id=repo_id, language=language,
+                    vector, fingerprint=fingerprint,
+                    limit=limit * 2, repo_id=repo_id, language=language,
                 )
                 for rank, chunk in enumerate(chunk_results, start=1):
                     key = f"{chunk['file_path']}:{chunk['line_start']}"

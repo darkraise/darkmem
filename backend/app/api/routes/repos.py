@@ -8,11 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_code_indexer, get_repo_manager
+from app.api.deps import get_code_pipeline, get_repo_manager
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import RepoCreate, RepoResponse, RepoUpdate
-from app.services.code_indexer import CodeIndexer
+from app.services.code_pipeline import CodePipeline
 from app.services.repo_manager import RepoManager
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,8 @@ async def create_repo(
         repo = await manager.create(body)
     except IntegrityError:
         raise HTTPException(status_code=409, detail=f"Repository '{body.name}' already exists")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return _to_response(repo)
 
 
@@ -125,7 +127,7 @@ async def reindex_repo(
     repo_id: UUID,
     full: bool = False,
     _user=Depends(require_auth),
-    indexer: CodeIndexer = Depends(get_code_indexer),
+    pipeline: CodePipeline = Depends(get_code_pipeline),
     manager: RepoManager = Depends(get_repo_manager),
 ):
     from app.database import async_session_factory
@@ -142,21 +144,21 @@ async def reindex_repo(
     await manager.session.flush()
     await manager.session.commit()
 
-    _embedding_dims = indexer.vector_repo.dimensions
-    _collection_name = indexer.vector_repo.collection_name
-    _llm = indexer.llm
+    _collection_name = pipeline.vector_repo.collection_name if pipeline.vector_repo else "code_chunks"
+    _llm = pipeline.llm
 
     async def _run_index():
         try:
             async with async_session_factory() as session:
                 from app.repositories.vector import PostgresVectorRepository
-                fresh_vector_repo = PostgresVectorRepository(session, _embedding_dims, _collection_name)
-                idx = CodeIndexer(
-                    session,
-                    _llm,
-                    fresh_vector_repo,
+                fresh_vector_repo = PostgresVectorRepository(session, _collection_name)
+                idx = CodePipeline(
+                    session=session,
+                    llm=_llm,
+                    vector_repo=fresh_vector_repo,
+                    repo_manager=RepoManager(session),
                 )
-                await idx.index_repo(repo_id, full=full)
+                await idx.run(repo_id, full=full)
         except Exception as e:
             logger.error(f"Background reindex failed for {repo_id}: {e}")
             from app.api.websocket import event_manager

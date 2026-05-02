@@ -141,6 +141,7 @@ async def test_detect_supersessions_flips_old_active_memory(session):
         session,
         new_memory_id=new_id,
         new_memory_text="we switched from redis to valkey",
+        new_memory_created_at=datetime.now(timezone.utc) + timedelta(seconds=1),
         project=project,
         new_relations=[{"type": "REPLACES", "source": "valkey", "target": "redis"}],
     )
@@ -167,6 +168,7 @@ async def test_detect_supersessions_skips_speculative_source(session):
         session,
         new_memory_id=uuid.uuid4(),
         new_memory_text="we might switch from redis to valkey",
+        new_memory_created_at=datetime.now(timezone.utc) + timedelta(seconds=1),
         project=project,
         new_relations=[{"type": "REPLACES", "source": "valkey", "target": "redis"}],
     )
@@ -191,6 +193,7 @@ async def test_detect_supersessions_respects_project_scope(session):
         session,
         new_memory_id=uuid.uuid4(),
         new_memory_text="we switched from redis to valkey",
+        new_memory_created_at=datetime.now(timezone.utc) + timedelta(seconds=1),
         project="this-project",
         new_relations=[{"type": "REPLACES", "source": "valkey", "target": "redis"}],
     )
@@ -219,6 +222,7 @@ async def test_detect_supersessions_respects_staleness_window(session):
         session,
         new_memory_id=uuid.uuid4(),
         new_memory_text="we switched from redis to valkey",
+        new_memory_created_at=datetime.now(timezone.utc) + timedelta(seconds=1),
         project=project,
         new_relations=[{"type": "REPLACES", "source": "valkey", "target": "redis"}],
     )
@@ -244,6 +248,7 @@ async def test_detect_supersessions_requires_technology_containment(session):
         session,
         new_memory_id=uuid.uuid4(),
         new_memory_text="we switched from redis to valkey",
+        new_memory_created_at=datetime.now(timezone.utc) + timedelta(seconds=1),
         project=project,
         new_relations=[{"type": "REPLACES", "source": "valkey", "target": "redis"}],
     )
@@ -251,6 +256,49 @@ async def test_detect_supersessions_requires_technology_containment(session):
     assert flipped == []
     await session.refresh(unrelated)
     assert unrelated.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_detect_supersessions_skips_newer_candidates(session):
+    """When two memories carry the same REPLACES relation and both get
+    processed (e.g., during a reprocess-all), the older one must NOT
+    supersede the newer one. Without the strict-older guard the two
+    flip each other to ``status='superseded'`` and both vanish from the
+    default Memories view, which is the production bug from
+    2026-05-01."""
+    project = "darkmem-test"
+    older_created = datetime.now(timezone.utc) - timedelta(hours=1)
+    older = Memory(
+        **_minimal_memory_kwargs(content="darkmem migrated from qdrant to pgvector"),
+        project=project,
+        status="active",
+        technologies=["pgvector", "qdrant"],
+    )
+    newer = Memory(
+        **_minimal_memory_kwargs(content="darkmem switched from qdrant to pgvector"),
+        project=project,
+        status="active",
+        technologies=["pgvector", "qdrant"],
+    )
+    session.add_all([older, newer])
+    await session.flush()
+    older.created_at = older_created
+    await session.flush()
+
+    # Re-process the OLDER memory: it carries REPLACES too, but it must
+    # not supersede the newer memory.
+    flipped = await detect_supersessions(
+        session,
+        new_memory_id=older.id,
+        new_memory_text=older.content,
+        new_memory_created_at=older.created_at,
+        project=project,
+        new_relations=[{"type": "REPLACES", "source": "pgvector", "target": "qdrant"}],
+    )
+
+    assert flipped == []
+    await session.refresh(newer)
+    assert newer.status == "active"
 
 
 # --- Memory-row defaults (from migration 0005) -----------------------------
@@ -294,75 +342,49 @@ async def test_memory_find_by_project(session):
     assert [m.project for m in rows] == ["proj-a"]
 
 
-# --- REL_MAP_5 coverage on the 10-type relation vocabulary ----------------
+# --- Relation taxonomy: full 16-type set is preserved end-to-end -----------
 
-def test_rel_map_5_covers_every_10_type_label():
-    """ExtractionMLService normalises 30 -> 10 then applies REL_MAP_5 to get
-    5. The post-hoc step will silently drop a 10-type label if REL_MAP_5
-    lacks a key for it. Lock the expected mapping so future taxonomy drift
-    has to be intentional."""
-    from app.services.relations import REL_MAP_5
+def test_relation_types_v2_matches_canonical_set():
+    """``RELATION_TYPES_V2`` is the storage-side alias for the canonical
+    relation type list. After Tier 1 they're the same set — anything the
+    LLM emits is stored as-is, no collapse."""
+    from app.services.relations import RELATION_TYPES_V2
+    from app.taxonomy import RELATIONSHIP_TYPES
+
+    assert set(RELATION_TYPES_V2) == set(RELATIONSHIP_TYPES)
+
+
+def test_canonical_relation_types_include_expanded_set():
+    """Lock the post-expansion type list so future taxonomy drift is
+    intentional. If a type is added or removed, this test must be
+    updated alongside the prompt."""
+    from app.taxonomy import RELATIONSHIP_TYPES
 
     expected = {
-        "USES": "USES",
-        "DEPENDS_ON": "USES",
-        "HAS_PART": "USES",
-        "REPLACES": "REPLACES",
-        "IS_A": "IS_A",
-        "DEPLOYED_ON": "DEPLOYED_ON",
-        "CAUSES": "CAUSES",
-        "AUTHORED_BY": None,
-        "HAPPENED_ON": None,
-        "RELATED_TO": None,
+        # Composition / dependency
+        "USES", "DEPENDS_ON", "HAS_PART", "IMPLEMENTS", "EXTENDS",
+        # Replacement / evolution
+        "REPLACES", "IMPROVES_ON",
+        # Identity
+        "IS_A",
+        # Hosting
+        "DEPLOYED_ON",
+        # Causality
+        "CAUSES",
+        # Attribution / temporal
+        "AUTHORED_BY", "HAPPENED_ON",
+        # Reference
+        "MENTIONS", "CITES", "INSPIRED_BY",
+        # Catch-all
+        "RELATED_TO",
     }
-    for label, mapped in expected.items():
-        assert label in REL_MAP_5, f"REL_MAP_5 missing 10-type label {label!r}"
-        assert REL_MAP_5[label] == mapped, (
-            f"REL_MAP_5[{label!r}] = {REL_MAP_5[label]!r}, expected {mapped!r}"
-        )
+    assert set(RELATIONSHIP_TYPES) == expected
 
 
-def test_extraction_ml_drops_dropped_cluster_relations():
-    """When the REBEL decoder emits a RELATED_TO triplet, the post-hoc
-    REL_MAP_5 step in `_run_relations` must drop it rather than store it —
-    otherwise the 5-type invariant on `entity_relations.rel_type` is broken.
-    """
-    from app.services.relations import REL_MAP_5
-    from app.taxonomy import normalize_relation_type
-
-    for raw in ("RELATED_TO", "HAPPENED_ON", "AUTHORED_BY", "KNOWS", "VISITED"):
-        ten = normalize_relation_type(raw)
-        five = REL_MAP_5.get(ten, ten)
-        assert five is None, (
-            f"dropped-cluster label {raw!r} survived as 10={ten!r} 5={five!r}; "
-            "ExtractionMLService would store a non-5-type rel_type"
-        )
-
-
-def test_extraction_ml_preserves_core_clusters():
-    """Core 10-type labels must collapse cleanly into the 5-type set."""
-    from app.services.relations import REL_MAP_5, RELATION_TYPES_V2
-    from app.taxonomy import normalize_relation_type
-
-    for raw, expected_five in (
-        ("USES", "USES"),
-        ("DEPENDS_ON", "USES"),
-        ("HAS_PART", "USES"),
-        ("REPLACES", "REPLACES"),
-        ("IS_A", "IS_A"),
-        ("DEPLOYED_ON", "DEPLOYED_ON"),
-        ("CAUSES", "CAUSES"),
-    ):
-        ten = normalize_relation_type(raw)
-        five = REL_MAP_5.get(ten, ten)
-        assert five == expected_five, f"{raw} -> {ten} -> {five}, expected {expected_five}"
-        assert five in RELATION_TYPES_V2
-
-
-def test_clean_extraction_collapses_10_type_to_5_type():
-    """`clean_extraction` is the shared path for both the LLM and ML
-    extraction paths; it must emit 5-type relation rows so downstream graph
-    inserts never need further normalisation."""
+def test_clean_extraction_preserves_specific_predicates():
+    """``clean_extraction`` no longer collapses 10-type to 5-type. Specific
+    predicates like DEPENDS_ON, HAS_PART, AUTHORED_BY, HAPPENED_ON now
+    survive end-to-end."""
     from app.services.extraction import clean_extraction
 
     result = {
@@ -371,21 +393,37 @@ def test_clean_extraction_collapses_10_type_to_5_type():
         "entities": [
             {"name": "pgvector", "type": "tool"},
             {"name": "postgres", "type": "database"},
-            {"name": "someone", "type": "entity"},
-            {"name": "2024-04-19", "type": "entity"},
+            {"name": "Traag et al.", "type": "person"},
+            {"name": "Leiden", "type": "algorithm"},
         ],
         "relationships": [
             {"source": "pgvector", "target": "postgres", "type": "DEPENDS_ON"},
             {"source": "pgvector", "target": "postgres", "type": "HAS_PART"},
-            {"source": "postgres", "target": "someone", "type": "AUTHORED_BY"},
-            {"source": "postgres", "target": "2024-04-19", "type": "HAPPENED_ON"},
+            {"source": "Leiden", "target": "Traag et al.", "type": "AUTHORED_BY"},
         ],
     }
     cleaned = clean_extraction(result, content="pgvector depends on postgres")
 
     kept_types = {r["type"] for r in cleaned["relationships"]}
-    assert "USES" in kept_types, f"DEPENDS_ON/HAS_PART should collapse to USES; got {kept_types}"
-    for dropped in ("AUTHORED_BY", "HAPPENED_ON"):
-        assert dropped not in kept_types, (
-            f"{dropped} must be dropped by REL_MAP_5; got {kept_types}"
-        )
+    # Specific predicates survive — no longer demoted to USES.
+    assert "DEPENDS_ON" in kept_types
+    assert "HAS_PART" in kept_types
+    assert "AUTHORED_BY" in kept_types
+
+
+def test_legacy_relation_labels_normalize_to_canonical():
+    """Legacy labels still in old DB rows or external sources route to
+    the canonical set via ``normalize_relation_type``."""
+    from app.taxonomy import normalize_relation_type
+
+    cases = {
+        "BUILDS_ON": "IMPROVES_ON",
+        "RUNS_ON": "DEPLOYED_ON",
+        "CONFIGURES": "USES",
+        "PUBLISHED_IN": "AUTHORED_BY",
+        "VISITED": "HAPPENED_ON",
+        "KNOWS": "RELATED_TO",
+        "totally_unknown": "RELATED_TO",
+    }
+    for raw, expected in cases.items():
+        assert normalize_relation_type(raw) == expected, raw

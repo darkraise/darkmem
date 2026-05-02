@@ -321,7 +321,7 @@ async def code_search(
     from app.models.code import Repository
     from app.repositories.vector import PostgresVectorRepository
 
-    query_vector = await _pipeline.llm.embed(query)
+    query_vector, query_fingerprint = await _pipeline.llm.embed(query)
 
     repo_id: UUID | None = None
     if repo_name:
@@ -337,6 +337,7 @@ async def code_search(
         vector_repo = PostgresVectorRepository(session)
         results = await vector_repo.search_code_chunks(
             query_vector,
+            fingerprint=query_fingerprint,
             limit=limit,
             repo_id=repo_id,
             language=language,

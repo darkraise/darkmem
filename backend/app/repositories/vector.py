@@ -2,49 +2,60 @@ import json
 from uuid import UUID, uuid4
 
 import numpy as np
-from sqlalchemy import delete, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.embedding import CodeChunkEmbedding, MemoryEmbedding
+from app.services.embedder_registry import child_table
 
 _COMMUNITY_SAMPLE_CAP = 10_000
 
 
 class PostgresVectorRepository:
-    def __init__(self, session: AsyncSession, dimensions: int = 1024, collection_name: str = "memories"):
+    """Per-fingerprint vector access.
+
+    Reads and writes always target the child table that matches the
+    fingerprint passed in. The repository never queries across fingerprints.
+    """
+
+    def __init__(self, session: AsyncSession, collection_name: str = "memories"):
         self.session = session
-        self.dimensions = dimensions
         self.collection_name = collection_name
 
     async def ensure_collection(self):
         pass
 
-    async def upsert(self, memory_id: UUID, vector: list[float], payload: dict, model_fingerprint: str | None = None):
+    async def upsert(
+        self,
+        memory_id: UUID,
+        vector: list[float],
+        payload: dict,
+        fingerprint: str,
+    ):
+        table = child_table("memory_embeddings", fingerprint)
         await self.session.execute(
-            text("""
-                INSERT INTO memory_embeddings (id, memory_id, embedding, payload, model_fingerprint)
-                VALUES (:id, :memory_id, :embedding, CAST(:payload AS jsonb), :fingerprint)
-                ON CONFLICT (memory_id) DO UPDATE
+            text(f"""
+                INSERT INTO {table} (memory_id, fingerprint, embedding, payload)
+                VALUES (:memory_id, :fp, CAST(:embedding AS vector), CAST(:payload AS jsonb))
+                ON CONFLICT (memory_id, fingerprint) DO UPDATE
                     SET embedding = EXCLUDED.embedding,
-                        payload = EXCLUDED.payload,
-                        model_fingerprint = EXCLUDED.model_fingerprint
+                        payload = EXCLUDED.payload
             """),
             {
-                "id": uuid4(),
                 "memory_id": memory_id,
+                "fp": fingerprint,
                 "embedding": str(vector),
                 "payload": json.dumps(payload),
-                "fingerprint": model_fingerprint,
             },
         )
 
-    async def search(self, vector: list[float], limit: int = 20) -> list[dict]:
+    async def search(self, vector: list[float], fingerprint: str, limit: int = 20) -> list[dict]:
+        table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT memory_id,
                        1 - (embedding <=> CAST(:vec AS vector)) AS score,
                        payload
-                FROM memory_embeddings
+                FROM {table}
                 ORDER BY embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
             """),
@@ -56,9 +67,24 @@ class PostgresVectorRepository:
         ]
 
     async def delete(self, memory_id: UUID):
-        await self.session.execute(
-            delete(MemoryEmbedding).where(MemoryEmbedding.memory_id == memory_id)
-        )
+        """Delete the memory's embedding from every registered fingerprint table.
+
+        ``ON DELETE CASCADE`` on each child's FK makes this redundant when the
+        parent memory row is dropped — and that path is the typical caller.
+        Kept so callers cleaning stranded embeddings still work.
+
+        The loop is one round-trip per registered fingerprint. Typical
+        deployments have 1-2 fingerprints, so the cost is bounded.
+        """
+        rows = (
+            await self.session.execute(text("SELECT fingerprint FROM embedders"))
+        ).scalars().all()
+        for fp in rows:
+            table = child_table("memory_embeddings", fp)
+            await self.session.execute(
+                text(f"DELETE FROM {table} WHERE memory_id = :id"),
+                {"id": memory_id},
+            )
 
     @staticmethod
     def _parse_vector(raw) -> list[float]:
@@ -66,11 +92,12 @@ class PostgresVectorRepository:
             return [float(x) for x in raw.strip("[]").split(",")]
         return [float(x) for x in raw]
 
-    async def get_all_vectors(self, limit: int = 500) -> list[dict]:
+    async def get_all_vectors(self, fingerprint: str, limit: int = 500) -> list[dict]:
+        table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
-            text("""
-                SELECT memory_id, embedding, payload
-                FROM memory_embeddings
+            text(f"""
+                SELECT memory_id, embedding::text AS embedding_text, payload
+                FROM {table}
                 LIMIT :limit
             """),
             {"limit": limit},
@@ -78,16 +105,18 @@ class PostgresVectorRepository:
         return [
             {
                 "memory_id": UUID(str(row.memory_id)),
-                "vector": self._parse_vector(row.embedding),
+                "vector": self._parse_vector(row.embedding_text),
                 "payload": row.payload,
             }
             for row in result
         ]
 
-    async def get_clustered_vectors(self, eps: float = 0.5, min_samples: int = 2, limit: int = 300) -> list[dict]:
+    async def get_clustered_vectors(
+        self, fingerprint: str, eps: float = 0.5, min_samples: int = 2, limit: int = 300,
+    ) -> list[dict]:
         from sklearn.cluster import DBSCAN
 
-        points = await self.get_all_vectors(limit=limit)
+        points = await self.get_all_vectors(fingerprint, limit=limit)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
@@ -102,11 +131,15 @@ class PostgresVectorRepository:
         return points
 
     async def get_louvain_clustered_vectors(
-        self, min_score: float = 0.5, min_cluster_size: int = 3, limit: int = 500
+        self,
+        fingerprint: str,
+        min_score: float = 0.5,
+        min_cluster_size: int = 3,
+        limit: int = 500,
     ) -> list[dict]:
-        import igraph
+        import igraph  # noqa: F401
 
-        points = await self.get_all_vectors(limit=limit)
+        points = await self.get_all_vectors(fingerprint, limit=limit)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
@@ -182,18 +215,33 @@ class PostgresVectorRepository:
     def _build_sparse_edges(
         normalized: np.ndarray, threshold: float, chunk_size: int = 500
     ) -> tuple[list[tuple[int, int]], list[float]]:
+        """Return upper-triangular (i, j) pairs whose cosine similarity ≥ ``threshold``.
+
+        Vectorised: for each chunk of rows compute the chunk-vs-all sim
+        matrix, mask the diagonal and lower triangle, then ``np.where`` to
+        pull qualifying column indices in one NumPy call. The original
+        Python double-loop scaled to O(n²) Python operations at the 10k
+        sample cap (~50M iterations); this version stays in NumPy.
+        """
         n = len(normalized)
         edges: list[tuple[int, int]] = []
         weights: list[float] = []
         for i in range(0, n, chunk_size):
             chunk = normalized[i : i + chunk_size]
-            sims = chunk @ normalized.T
-            for local_idx in range(len(chunk)):
-                global_idx = i + local_idx
-                for j in range(global_idx + 1, n):
-                    if sims[local_idx, j] >= threshold:
-                        edges.append((global_idx, j))
-                        weights.append(float(sims[local_idx, j]))
+            sims = chunk @ normalized.T  # shape: (chunk_len, n)
+            # Mask out everything at or below the diagonal of the full matrix.
+            # For row r in the chunk (global index i+r) we want columns
+            # strictly greater than i+r — set every column ≤ i+r to -inf.
+            chunk_len = sims.shape[0]
+            col_idx = np.arange(n)[None, :]                  # (1, n)
+            row_global = (i + np.arange(chunk_len))[:, None] # (chunk_len, 1)
+            sims = np.where(col_idx > row_global, sims, -np.inf)
+            rows_local, cols = np.where(sims >= threshold)
+            if rows_local.size == 0:
+                continue
+            global_rows = i + rows_local
+            edges.extend(zip(global_rows.tolist(), cols.tolist()))
+            weights.extend(sims[rows_local, cols].astype(float).tolist())
         return edges, weights
 
     @staticmethod
@@ -215,23 +263,34 @@ class PostgresVectorRepository:
         partition = g.community_multilevel(weights="weight")
         return partition.membership
 
-    async def find_similar(self, memory_id: UUID, threshold: float = 0.9, limit: int = 10) -> list[dict]:
+    async def find_similar(
+        self, memory_id: UUID, fingerprint: str, threshold: float = 0.9, limit: int = 10,
+    ) -> list[dict]:
+        table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
-            select(MemoryEmbedding.embedding).where(MemoryEmbedding.memory_id == memory_id)
+            text(f"""
+                SELECT embedding::text AS embedding_text
+                FROM {table}
+                WHERE memory_id = :memory_id
+            """),
+            {"memory_id": memory_id},
         )
-        row = result.scalar_one_or_none()
+        row = result.mappings().first()
         if row is None:
             return []
-        vector = self._parse_vector(row)
-        results = await self.search(vector, limit=limit + 1)
+        vector = self._parse_vector(row["embedding_text"])
+        results = await self.search(vector, fingerprint=fingerprint, limit=limit + 1)
         return [r for r in results if r["memory_id"] != memory_id and r["score"] >= threshold]
 
-    async def find_similar_memories(self, memory_id: UUID, top_k: int = 5, min_score: float = 0.4) -> list[dict]:
+    async def find_similar_memories(
+        self, memory_id: UUID, fingerprint: str, top_k: int = 5, min_score: float = 0.4,
+    ) -> list[dict]:
+        table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT me2.memory_id,
                        1 - (me1.embedding <=> me2.embedding) AS score
-                FROM memory_embeddings me1, memory_embeddings me2
+                FROM {table} me1, {table} me2
                 WHERE me1.memory_id = :memory_id
                   AND me2.memory_id != :memory_id
                   AND 1 - (me1.embedding <=> me2.embedding) > :min_score
@@ -249,15 +308,18 @@ class PostgresVectorRepository:
             text("DELETE FROM memory_crossrefs WHERE memory_id = :memory_id"),
             {"memory_id": memory_id},
         )
-        for ref in crossrefs:
-            await self.session.execute(
-                text("""
-                    INSERT INTO memory_crossrefs (memory_id, related_memory_id, score)
-                    VALUES (:memory_id, :related_memory_id, :score)
-                    ON CONFLICT (memory_id, related_memory_id) DO UPDATE SET score = EXCLUDED.score
-                """),
-                {"memory_id": memory_id, "related_memory_id": ref["memory_id"], "score": ref["score"]},
-            )
+        # Single multi-row insert; was N round-trips per memory ingest.
+        related = [ref["memory_id"] for ref in crossrefs]
+        scores = [float(ref["score"]) for ref in crossrefs]
+        await self.session.execute(
+            text("""
+                INSERT INTO memory_crossrefs (memory_id, related_memory_id, score)
+                SELECT :memory_id, r, s
+                FROM unnest(CAST(:related AS uuid[]), CAST(:scores AS double precision[])) AS t(r, s)
+                ON CONFLICT (memory_id, related_memory_id) DO UPDATE SET score = EXCLUDED.score
+            """),
+            {"memory_id": memory_id, "related": related, "scores": scores},
+        )
 
     async def get_crossrefs(self, memory_id: UUID) -> list[dict]:
         result = await self.session.execute(
@@ -273,20 +335,18 @@ class PostgresVectorRepository:
 
     # --- Code chunk methods ---
 
-    async def upsert_code_chunks(self, chunks: list[dict]):
-        """Insert code chunk embeddings. Callers must call delete_code_chunks_by_file
-        for the relevant file before calling this to avoid duplicate rows."""
+    async def upsert_code_chunks(self, chunks: list[dict], fingerprint: str):
         if not chunks:
             return
-        import json
-
+        table = child_table("code_chunk_embeddings", fingerprint)
         await self.session.execute(
-            text("""
-                INSERT INTO code_chunk_embeddings
-                    (id, repo_id, file_path, language, symbol_name, chunk_content,
-                     line_start, line_end, embedding)
+            text(f"""
+                INSERT INTO {table}
+                    (id, fingerprint, repo_id, file_path, language, symbol_name,
+                     chunk_content, line_start, line_end, embedding)
                 SELECT
                     gen_random_uuid(),
+                    :fp,
                     d.repo_id::uuid,
                     d.file_path,
                     d.language,
@@ -306,28 +366,33 @@ class PostgresVectorRepository:
                     embedding     text
                 )
             """),
-            {"data": json.dumps([
-                {
-                    "repo_id": str(c["repo_id"]),
-                    "file_path": c.get("file_path", ""),
-                    "language": c.get("language"),
-                    "symbol_name": c.get("symbol_name"),
-                    "chunk_content": c.get("chunk_content"),
-                    "line_start": str(c["line_start"]) if c.get("line_start") is not None else None,
-                    "line_end": str(c["line_end"]) if c.get("line_end") is not None else None,
-                    "embedding": str(c["embedding"]),
-                }
-                for c in chunks
-            ])},
+            {
+                "fp": fingerprint,
+                "data": json.dumps([
+                    {
+                        "repo_id": str(c["repo_id"]),
+                        "file_path": c.get("file_path", ""),
+                        "language": c.get("language"),
+                        "symbol_name": c.get("symbol_name"),
+                        "chunk_content": c.get("chunk_content"),
+                        "line_start": str(c["line_start"]) if c.get("line_start") is not None else None,
+                        "line_end": str(c["line_end"]) if c.get("line_end") is not None else None,
+                        "embedding": str(c["embedding"]),
+                    }
+                    for c in chunks
+                ]),
+            },
         )
 
     async def search_code_chunks(
         self,
         vector: list[float],
+        fingerprint: str,
         limit: int = 20,
         repo_id: UUID | None = None,
         language: str | None = None,
     ) -> list[dict]:
+        table = child_table("code_chunk_embeddings", fingerprint)
         filters = ""
         params: dict = {"vec": str(vector), "limit": limit}
         if repo_id is not None:
@@ -348,7 +413,7 @@ class PostgresVectorRepository:
                        line_start,
                        line_end,
                        1 - (embedding <=> CAST(:vec AS vector)) AS score
-                FROM code_chunk_embeddings
+                FROM {table}
                 WHERE TRUE {filters}
                 ORDER BY embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
@@ -371,14 +436,25 @@ class PostgresVectorRepository:
         ]
 
     async def delete_code_chunks_by_repo(self, repo_id: UUID):
-        await self.session.execute(
-            delete(CodeChunkEmbedding).where(CodeChunkEmbedding.repo_id == repo_id)
-        )
+        rows = (
+            await self.session.execute(text("SELECT fingerprint FROM embedders"))
+        ).scalars().all()
+        for fp in rows:
+            table = child_table("code_chunk_embeddings", fp)
+            await self.session.execute(
+                text(f"DELETE FROM {table} WHERE repo_id = :rid"),
+                {"rid": repo_id},
+            )
 
     async def delete_code_chunks_by_file(self, repo_id: UUID, file_path: str):
-        await self.session.execute(
-            delete(CodeChunkEmbedding).where(
-                CodeChunkEmbedding.repo_id == repo_id,
-                CodeChunkEmbedding.file_path == file_path,
+        rows = (
+            await self.session.execute(text("SELECT fingerprint FROM embedders"))
+        ).scalars().all()
+        for fp in rows:
+            table = child_table("code_chunk_embeddings", fp)
+            await self.session.execute(
+                text(
+                    f"DELETE FROM {table} WHERE repo_id = :rid AND file_path = :fp_path"
+                ),
+                {"rid": repo_id, "fp_path": file_path},
             )
-        )

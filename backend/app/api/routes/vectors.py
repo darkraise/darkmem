@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -16,8 +16,14 @@ async def get_vector_projection(
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
+    llm = getattr(request.app.state, "llm", None) if request else None
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
+    # Project the active embedder's vectors. Inactive fingerprints live in
+    # other partitions; mixing spaces would yield meaningless coordinates.
+    fingerprint = llm.llm_fingerprint()
     repo = PostgresVectorRepository(session)
-    points = await repo.get_all_vectors(limit=limit)
+    points = await repo.get_all_vectors(fingerprint=fingerprint, limit=limit)
 
     if len(points) < 2:
         return {"points": [

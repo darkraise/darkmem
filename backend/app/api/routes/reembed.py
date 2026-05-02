@@ -1,15 +1,8 @@
-"""Re-embed API routes for Feature 3 (model change handling).
+"""Re-embed API routes.
 
-Provides:
-  - GET  /api/v1/reembed/obsolete-counts
-  - GET  /api/v1/reembed/obsolete/memories
-  - GET  /api/v1/reembed/obsolete/code-chunks
-  - GET  /api/v1/reembed/obsolete/entities
-  - POST /api/v1/reembed/memories   (async, WebSocket progress)
-  - POST /api/v1/reembed/code-chunks (async, WebSocket progress)
-  - POST /api/v1/reembed/entities    (async, WebSocket progress)
-  - POST /api/v1/reembed/all         (async, runs all three categories)
-  - POST /api/v1/reembed/prune-cache (sync)
+After the per-fingerprint redesign these endpoints are a missing-fingerprint
+backfill: they look for memories/entities/code chunks whose vector for the
+active embedder partition does not yet exist, and produce one.
 """
 
 from __future__ import annotations
@@ -38,6 +31,13 @@ async def _get_flags() -> dict:
     return await _get_feature_flags(async_session_factory)
 
 
+def _resolve_fingerprint(request: Request) -> str:
+    pipeline = getattr(request.app.state, "pipeline", None)
+    if pipeline is None or pipeline.llm is None:
+        raise HTTPException(503, "Pipeline not initialized")
+    return pipeline.llm.llm_fingerprint()
+
+
 @router.get("/obsolete-counts")
 async def get_obsolete_counts(
     request: Request,
@@ -45,16 +45,17 @@ async def get_obsolete_counts(
     session: AsyncSession = Depends(get_session),
 ):
     pipeline = getattr(request.app.state, "pipeline", None)
-    if pipeline is None:
+    if pipeline is None or pipeline.llm is None:
         return {
             "memories": 0, "code_chunks": 0, "entities": 0,
             "current_fingerprint": "",
         }
+    fingerprint = pipeline.llm.llm_fingerprint()
     svc = ReembedService(session)
-    counts = await svc.count_obsolete(pipeline.embedding_fingerprint)
+    counts = await svc.count_missing(fingerprint)
     return {
         **counts,
-        "current_fingerprint": pipeline.embedding_fingerprint,
+        "current_fingerprint": fingerprint,
     }
 
 
@@ -66,13 +67,9 @@ async def list_obsolete_memories(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    pipeline = getattr(request.app.state, "pipeline", None)
-    if pipeline is None:
-        raise HTTPException(503, "Pipeline not initialized")
+    fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_memories(
-        pipeline.embedding_fingerprint, limit=limit, offset=offset,
-    )
+    items, total = await svc.list_obsolete_memories(fingerprint, limit=limit, offset=offset)
     return {"items": items, "total": total}
 
 
@@ -84,13 +81,9 @@ async def list_obsolete_code_chunks(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    pipeline = getattr(request.app.state, "pipeline", None)
-    if pipeline is None:
-        raise HTTPException(503, "Pipeline not initialized")
+    fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_code_chunks(
-        pipeline.embedding_fingerprint, limit=limit, offset=offset,
-    )
+    items, total = await svc.list_obsolete_code_chunks(fingerprint, limit=limit, offset=offset)
     return {"items": items, "total": total}
 
 
@@ -102,13 +95,9 @@ async def list_obsolete_entities(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    pipeline = getattr(request.app.state, "pipeline", None)
-    if pipeline is None:
-        raise HTTPException(503, "Pipeline not initialized")
+    fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_entities(
-        pipeline.embedding_fingerprint, limit=limit, offset=offset,
-    )
+    items, total = await svc.list_obsolete_entities(fingerprint, limit=limit, offset=offset)
     return {"items": items, "total": total}
 
 
@@ -117,7 +106,6 @@ async def _dispatch_single_category(
     pipeline,
     session: AsyncSession,
 ):
-    """Shared logic for /reembed/memories, /code-chunks, /entities."""
     if not reembed_locks.try_acquire(category):
         return JSONResponse(
             status_code=409,
@@ -125,12 +113,12 @@ async def _dispatch_single_category(
         )
 
     try:
-        snapshot_fingerprint = pipeline.embedding_fingerprint
+        snapshot_fingerprint = pipeline.llm.llm_fingerprint()
         snapshot_llm = pipeline.llm
         batch_id = str(uuid4())
 
         svc = ReembedService(session)
-        counts = await svc.count_obsolete(snapshot_fingerprint)
+        counts = await svc.count_missing(snapshot_fingerprint)
         total = counts.get(category, 0)
 
         method_name_map = {
@@ -212,7 +200,6 @@ async def reembed_all(
     if pipeline is None:
         raise HTTPException(503, "Pipeline not initialized")
 
-    # Try to acquire all three locks; release any acquired on failure
     acquired: list[str] = []
     for cat in ("memories", "entities", "code_chunks"):
         if reembed_locks.try_acquire(cat):
@@ -229,12 +216,12 @@ async def reembed_all(
             )
 
     try:
-        snapshot_fingerprint = pipeline.embedding_fingerprint
+        snapshot_fingerprint = pipeline.llm.llm_fingerprint()
         snapshot_llm = pipeline.llm
         batch_id = str(uuid4())
 
         svc = ReembedService(session)
-        totals = await svc.count_obsolete(snapshot_fingerprint)
+        totals = await svc.count_missing(snapshot_fingerprint)
 
         async def _run_all():
             try:
@@ -278,9 +265,7 @@ async def prune_cache(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    pipeline = getattr(request.app.state, "pipeline", None)
-    if pipeline is None:
-        raise HTTPException(503, "Pipeline not initialized")
+    fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    deleted = await svc.prune_obsolete_cache_entries(pipeline.embedding_fingerprint)
+    deleted = await svc.prune_obsolete_cache_entries(fingerprint)
     return {"deleted": deleted}

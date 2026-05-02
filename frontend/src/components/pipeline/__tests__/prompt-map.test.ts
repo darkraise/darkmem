@@ -3,7 +3,7 @@ import { EXPECTED_PROMPT_KEYS, checkPromptExhaustiveness } from "../prompt-map"
 
 describe("prompt-map", () => {
   it("expected set includes all stage-bound and orphan keys", () => {
-    expect(EXPECTED_PROMPT_KEYS.has("extraction_entities")).toBe(true)
+    expect(EXPECTED_PROMPT_KEYS.has("extraction")).toBe(true)
     expect(EXPECTED_PROMPT_KEYS.has("chat")).toBe(true)
     expect(EXPECTED_PROMPT_KEYS.has("agent_instructions")).toBe(true)
   })

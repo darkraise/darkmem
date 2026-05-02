@@ -3,20 +3,17 @@ import logging
 import time
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import FEATURE_FLAGS_DEFAULTS, settings
 from app.models.config import Config
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import PostgresVectorRepository
 from app.services.classification_llm import ClassificationService
-from app.services.classification_ml import ClassificationMLService
 from app.services.extraction import ExtractionService
-from app.services.extraction_ml import ExtractionMLService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import estimate_confidence, rank_fusion_factor
 from app.services.memory_classifier import classify as regex_classify
-from app.services.ml_models import models_available  # noqa: F401 — kept for external imports
 from app.services.relations import TECH_TYPES
 from app.services.supersession import detect_supersessions
 from app.services import prompt
@@ -85,83 +82,42 @@ def _flag_cache_reset() -> None:
     _flag_refresh_task = None
 
 
-class _ExtractionDispatcher:
-    """Routes extraction to ML or LLM based on the live ``ml_extraction`` flag.
-
-    With lazy loading, the first ML call triggers the group load. If the
-    load fails (OOM, missing checkpoint) the call raises and we fall back
-    to the LLM path for this and subsequent requests until a one-time
-    per-process warning is cleared by a successful reload.
-    """
-
-    def __init__(self, pipeline: "ProcessingPipeline"):
-        self._p = pipeline
-        self._warned_unavailable = False
-
-    async def extract(self, content: str, system_prompt: str | None = None) -> dict:
-        flags = await _get_feature_flags_cached(self._p.session_factory)
-        if flags.get("ml_extraction", False):
-            try:
-                return await self._p._extraction_ml.extract(content, system_prompt)
-            except Exception as exc:
-                if not self._warned_unavailable:
-                    logger.warning(
-                        "ml_extraction enabled but ML path failed (%s); falling back to LLM",
-                        exc,
-                    )
-                    self._warned_unavailable = True
-        return await self._p._extraction_llm.extract(content, system_prompt)
-
-
-class _ClassificationDispatcher:
-    def __init__(self, pipeline: "ProcessingPipeline"):
-        self._p = pipeline
-        self._warned_unavailable = False
-
-    async def classify(
-        self,
-        content: str,
-        enabled_areas: list[str],
-        system_prompt: str,
-        mode: str = "simple",
-    ) -> dict:
-        flags = await _get_feature_flags_cached(self._p.session_factory)
-        if flags.get("ml_classification", False):
-            try:
-                return await self._p._classification_ml.classify(
-                    content, enabled_areas, system_prompt, mode=mode,
-                )
-            except Exception as exc:
-                if not self._warned_unavailable:
-                    logger.warning(
-                        "ml_classification enabled but ML path failed (%s); falling back to LLM",
-                        exc,
-                    )
-                    self._warned_unavailable = True
-        return await self._p._classification_llm.classify(
-            content, enabled_areas, system_prompt, mode=mode,
-        )
-
-
 class ProcessingPipeline:
-    def __init__(self, llm: LLMOrchestrator, session_factory, embedding_dims: int, broadcast=None):
+    def __init__(self, llm: LLMOrchestrator, session_factory, broadcast=None):
         self.llm = llm
-        self._extraction_llm = ExtractionService(llm)
-        self._extraction_ml = ExtractionMLService()
-        self._classification_llm = ClassificationService(llm)
-        self._classification_ml = ClassificationMLService()
-        self.extraction = _ExtractionDispatcher(self)
-        self.classification = _ClassificationDispatcher(self)
+        self.extraction = ExtractionService(llm)
+        self.classification = ClassificationService(llm)
         self.session_factory = session_factory
-        self.embedding_dims = embedding_dims
         self._broadcast = broadcast
-        self.embedding_fingerprint = f"{llm.config['embedding'].model}|{embedding_dims}"
+        # Cache key is (name_lower, fingerprint); fingerprint is provided per
+        # call rather than frozen at __init__, so flag flips don't poison the
+        # cache.
         self._entity_cache: dict[tuple[str, str], tuple[list[float], float]] = {}
         self._entity_cache_lock = asyncio.Lock()
+
+    async def _register_fingerprint(self, fingerprint: str) -> None:
+        """Idempotently register the fingerprint so its partition exists."""
+        from app.services.embedder_registry import (  # noqa: PLC0415
+            EmbedderInfo, embedder_registry, parse_fingerprint,
+        )
+        if embedder_registry.is_known(fingerprint):
+            return
+        model_id, dims = parse_fingerprint(fingerprint)
+        async with self.session_factory() as session:
+            await embedder_registry.register(
+                session,
+                EmbedderInfo(
+                    fingerprint=fingerprint,
+                    model_id=model_id,
+                    dims=dims,
+                    source="llm",
+                ),
+            )
 
     async def _lookup_entity_embeddings(
         self,
         name_lowers: list[str],
+        fingerprint: str,
         ttl_seconds: float,
         use_memory_cache: bool,
     ) -> tuple[dict[str, list[float]], list[str]]:
@@ -170,19 +126,18 @@ class ProcessingPipeline:
         hits: dict[str, list[float]] = {}
         still_missing: list[str] = []
         now = time.monotonic()
-        fp = self.embedding_fingerprint
 
         if use_memory_cache:
             async with self._entity_cache_lock:
                 for name in name_lowers:
-                    entry = self._entity_cache.get((name, fp))
+                    entry = self._entity_cache.get((name, fingerprint))
                     if entry is not None:
                         emb, cached_at = entry
                         if now - cached_at <= ttl_seconds:
                             hits[name] = emb
                             continue
                         else:
-                            del self._entity_cache[(name, fp)]
+                            del self._entity_cache[(name, fingerprint)]
                     still_missing.append(name)
         else:
             still_missing = list(name_lowers)
@@ -190,12 +145,12 @@ class ProcessingPipeline:
         if still_missing:
             async with self.session_factory() as session:
                 repo = PostgresGraphRepository(session)
-                db_hits = await repo.get_cached_entity_embeddings(still_missing, fp)
+                db_hits = await repo.get_cached_entity_embeddings(still_missing, fingerprint)
             if db_hits:
                 if use_memory_cache:
                     async with self._entity_cache_lock:
                         for name, emb in db_hits.items():
-                            self._entity_cache[(name, fp)] = (emb, now)
+                            self._entity_cache[(name, fingerprint)] = (emb, now)
                 hits.update(db_hits)
                 still_missing = [n for n in still_missing if n not in db_hits]
 
@@ -204,17 +159,17 @@ class ProcessingPipeline:
     async def _store_entity_embeddings(
         self,
         name_to_embedding: dict[str, list[float]],
+        fingerprint: str,
         use_memory_cache: bool,
     ) -> None:
         """Write new embeddings to DB cache and (optionally) in-memory cache."""
         if not name_to_embedding:
             return
-        fp = self.embedding_fingerprint
 
         try:
             async with self.session_factory() as session:
                 repo = PostgresGraphRepository(session)
-                await repo.upsert_entity_embeddings_cache(name_to_embedding, fp)
+                await repo.upsert_entity_embeddings_cache(name_to_embedding, fingerprint)
                 await session.commit()
         except Exception:
             logger.warning("Failed to persist entity embedding cache to DB", exc_info=True)
@@ -224,12 +179,13 @@ class ProcessingPipeline:
             now = time.monotonic()
             async with self._entity_cache_lock:
                 for name, emb in name_to_embedding.items():
-                    self._entity_cache[(name, fp)] = (emb, now)
+                    self._entity_cache[(name, fingerprint)] = (emb, now)
 
     async def _write_memory(
         self,
         entry: dict,
         vector: list[float] | None,
+        fingerprint: str,
         extraction: dict | Exception,
         llm_classification: dict | None,
         name_to_embedding: dict[str, list[float]],
@@ -256,7 +212,6 @@ class ProcessingPipeline:
             "relations_count": 0,
             "error": None,
         }
-
         if isinstance(extraction, Exception):
             status["extract"] = "error"
             status["error"] = f"Extraction failed: {extraction}"
@@ -288,11 +243,26 @@ class ProcessingPipeline:
             extraction = None
 
         async with self.session_factory() as session:
-            vector_repo = PostgresVectorRepository(session, self.embedding_dims)
+            vector_repo = PostgresVectorRepository(session)
             graph_repo = PostgresGraphRepository(session)
 
             if status["embed"] == "ok":
                 regex_result = regex_classify(content, enabled_areas=areas, mode=mode)
+
+                # Idempotent re-extraction: strip any prior contributions of
+                # this memory_id from the entity graph before writing the new
+                # set. Otherwise re-running with a different model just
+                # accumulates duplicate-by-type rows on top of the previous
+                # extraction. ``delete_by_memory_id`` only removes entities
+                # whose memory_ids array becomes empty after the strip, so
+                # entities shared with other memories are preserved.
+                try:
+                    await graph_repo.delete_by_memory_id(memory_id)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to strip prior graph contributions for %s: %s",
+                        memory_id, exc,
+                    )
 
                 try:
                     async with session.begin_nested():
@@ -312,7 +282,7 @@ class ProcessingPipeline:
 
                         await vector_repo.upsert(
                             memory_id=memory_id, vector=vector, payload=payload,
-                            model_fingerprint=self.embedding_fingerprint,
+                            fingerprint=fingerprint,
                         )
                         status["vector"] = "ok"
 
@@ -344,23 +314,32 @@ class ProcessingPipeline:
                             # canonical_map (e.g., "pgvector" vs "PgVector") does not
                             # cause the supersession detector or search filter to miss.
                             tech_names: set[str] = set()
+                            # Build a display-name map keyed by the canonical
+                            # lower-cased name. The canonical name is what we
+                            # write to ``entities.name``; the original casing
+                            # is preserved in properties so the UI can render
+                            # ``Darkmem`` instead of ``darkmem``.
                             for entity in extraction.get("entities", []):
+                                display_name = entity["name"]
+                                canonical_name = display_name.strip().lower()
+                                props = dict(entity.get("properties") or {})
+                                if display_name != canonical_name:
+                                    props.setdefault("display_name", display_name)
                                 created = await graph_repo.create_entity(
-                                    name=entity["name"], entity_type=entity["type"],
-                                    properties=entity.get("properties", {}), memory_id=memory_id,
+                                    name=canonical_name, entity_type=entity["type"],
+                                    properties=props, memory_id=memory_id,
                                 )
-                                emb = name_to_embedding.get(entity.get("_orig_lower", entity["name"].lower()))
+                                emb = name_to_embedding.get(entity.get("_orig_lower", canonical_name))
                                 if emb and created:
                                     await graph_repo.upsert_entity_embedding(
-                                        created["id"], emb, model_fingerprint=self.embedding_fingerprint,
+                                        created["id"], emb, fingerprint=fingerprint,
                                     )
                                 if entity.get("type") in TECH_TYPES:
-                                    canon = entity.get("name")
-                                    if canon:
-                                        tech_names.add(canon.lower())
+                                    tech_names.add(canonical_name)
                             for rel in extraction.get("relationships", []):
                                 await graph_repo.create_relationship(
-                                    source_name=rel["source"], target_name=rel["target"],
+                                    source_name=(rel["source"] or "").strip().lower(),
+                                    target_name=(rel["target"] or "").strip().lower(),
                                     rel_type=rel["type"], properties=rel.get("properties", {}),
                                     weight=rel.get("weight", 0.5), memory_id=memory_id,
                                 )
@@ -373,6 +352,7 @@ class ProcessingPipeline:
                                         session,
                                         new_memory_id=memory_id,
                                         new_memory_text=content,
+                                        new_memory_created_at=mem_record.created_at,
                                         project=mem_record.project,
                                         new_relations=extraction.get("relationships", []),
                                     )
@@ -395,8 +375,10 @@ class ProcessingPipeline:
         if status["vector"] == "ok":
             try:
                 async with self.session_factory() as xref_session:
-                    xref_repo = PostgresVectorRepository(xref_session, self.embedding_dims)
-                    similar = await xref_repo.find_similar_memories(memory_id, top_k=5, min_score=0.4)
+                    xref_repo = PostgresVectorRepository(xref_session)
+                    similar = await xref_repo.find_similar_memories(
+                        memory_id, fingerprint=fingerprint, top_k=5, min_score=0.4,
+                    )
                     await xref_repo.store_crossrefs(memory_id, similar)
                     await xref_session.commit()
             except Exception as e:
@@ -455,7 +437,8 @@ class ProcessingPipeline:
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
         ttl_seconds = flags.get("entity_cache_ttl_minutes", 60) * 60
-        llm_enrichment = flags.get("llm_enrichment_enabled", False)
+        classification_on = flags.get("llm_enrichment_enabled", False)
+        relation_rescue = flags.get("relation_rescue", True)
 
         logger.info(
             "Starting batch pipeline: %d memories, pipeline_concurrency=%d, embed_chunk_size=%d, embed_concurrency=%d",
@@ -464,22 +447,37 @@ class ProcessingPipeline:
 
         # Phase 1: Content embedding
         contents = [e["content"] for e in entries]
+        embedding_fingerprint: str | None = None
         try:
-            vectors = await self.llm.embed_batch_chunked(contents, embed_chunk_size, embed_concurrency)
-            logger.info("Phase 1 complete: embedded %d contents", len(vectors))
+            vectors, embedding_fingerprint = await self.llm.embed_batch_chunked(
+                contents, embed_chunk_size, embed_concurrency,
+            )
+            logger.info(
+                "Phase 1 complete: embedded %d contents under %s",
+                len(vectors), embedding_fingerprint,
+            )
         except Exception as e:
             logger.error("Phase 1 content embedding failed: %s: %s", type(e).__name__, e)
             vectors = [None] * len(entries)
 
+        # Register the producing embedder before any partition write. Skipped
+        # when Phase 1 failed entirely; downstream writes will be marked as
+        # error in that case.
+        if embedding_fingerprint and any(v is not None for v in vectors):
+            await self._register_fingerprint(embedding_fingerprint)
+
         # Phase 2: Extraction and LLM classification
         ext_prompt = prompt.get("extraction")
-        cls_prompt = prompt.get("classification") if llm_enrichment else ""
+        cls_prompt = prompt.get("classification") if classification_on else ""
         semaphore = asyncio.Semaphore(pipeline_concurrency)
 
         async def run_extract(content: str):
             async with semaphore:
                 try:
-                    return await self.extraction.extract(content, system_prompt=ext_prompt)
+                    return await self.extraction.extract(
+                        content, system_prompt=ext_prompt,
+                        relation_rescue=relation_rescue,
+                    )
                 except Exception as exc:
                     return exc
 
@@ -493,7 +491,7 @@ class ProcessingPipeline:
                     logger.warning("LLM classification failed: %s", exc)
                     return None
 
-        if llm_enrichment:
+        if classification_on:
             extract_tasks = [run_extract(e["content"]) for e in entries]
             classify_tasks = [run_classify(e["content"]) for e in entries]
             all_results = await asyncio.gather(*extract_tasks, *classify_tasks)
@@ -502,7 +500,11 @@ class ProcessingPipeline:
         else:
             extractions = await asyncio.gather(*[run_extract(e["content"]) for e in entries])
             classifications = [None] * len(entries)
-        logger.info("Phase 2 complete: extractions=%d, classifications=%s", len(extractions), "on" if llm_enrichment else "off")
+        logger.info(
+            "Phase 2 complete: extractions=%d, classifications=%s",
+            len(extractions),
+            "llm" if classification_on else "off",
+        )
 
         # Phase 3: Entity embedding with cache
         unique_names: set[str] = set()
@@ -515,21 +517,30 @@ class ProcessingPipeline:
 
         unique_names_list = sorted(unique_names)
         name_to_embedding: dict[str, list[float]] = {}
+        # Default the entity-embedding fingerprint to the content one. When
+        # Phase 1 failed but Phase 3 still runs (cache hits), there is no new
+        # producer to ask, so we keep the prior fingerprint.
+        entity_fingerprint = embedding_fingerprint
 
-        if unique_names_list:
+        if unique_names_list and entity_fingerprint:
             hits, misses = await self._lookup_entity_embeddings(
-                unique_names_list, ttl_seconds, use_memory_cache=True,
+                unique_names_list, entity_fingerprint, ttl_seconds, use_memory_cache=True,
             )
             name_to_embedding.update(hits)
             logger.info("Phase 3 cache lookup: %d hits, %d misses", len(hits), len(misses))
 
             if misses:
                 try:
-                    new_embeddings_list = await self.llm.embed_batch_chunked(
+                    new_embeddings_list, new_fp = await self.llm.embed_batch_chunked(
                         misses, embed_chunk_size, embed_concurrency,
                     )
+                    if new_fp != entity_fingerprint:
+                        # Active embedder changed between Phase 1 and Phase 3.
+                        # Register the new one and use it as the entity-cache key.
+                        await self._register_fingerprint(new_fp)
+                        entity_fingerprint = new_fp
                     new_map = dict(zip(misses, new_embeddings_list))
-                    await self._store_entity_embeddings(new_map, use_memory_cache=True)
+                    await self._store_entity_embeddings(new_map, entity_fingerprint, use_memory_cache=True)
                     name_to_embedding.update(new_map)
                     logger.info("Phase 3 complete: embedded %d new entity names", len(new_map))
                 except Exception as e:
@@ -537,25 +548,43 @@ class ProcessingPipeline:
         else:
             logger.info("Phase 3 skipped: no entities to embed")
 
-        # Phase 4: Dedup lookup (one call per unique name)
+        # Phase 4: Dedup lookup (one call per unique name).
+        # Probes are independent ANN queries — fan them out concurrently
+        # bounded by ``pipeline_concurrency`` so a batch of 20 distinct
+        # entity names doesn't serialize 20 round-trips.
         canonical_map: dict[str, str] = {}
-        if name_to_embedding:
-            async with self.session_factory() as dedup_session:
-                dedup_repo = PostgresGraphRepository(dedup_session)
-                for lower_name, emb in name_to_embedding.items():
+        if name_to_embedding and entity_fingerprint:
+            dedup_sem = asyncio.Semaphore(pipeline_concurrency)
+
+            async def _probe(lower_name: str, emb: list[float]) -> tuple[str, str | None]:
+                async with dedup_sem:
                     try:
-                        match = await dedup_repo.find_similar_entity(emb, threshold=0.85)
+                        async with self.session_factory() as probe_session:
+                            probe_repo = PostgresGraphRepository(probe_session)
+                            match = await probe_repo.find_similar_entity(
+                                emb, fingerprint=entity_fingerprint, threshold=0.85,
+                            )
                         if match and match["name"].lower() != lower_name:
-                            canonical_map[lower_name] = match["name"]
+                            return lower_name, match["name"]
                     except Exception as e:
                         logger.warning("Dedup lookup failed for %s: %s", lower_name, e)
+                    return lower_name, None
+
+            results = await asyncio.gather(
+                *[_probe(n, e) for n, e in name_to_embedding.items()]
+            )
+            for lower_name, canonical in results:
+                if canonical:
+                    canonical_map[lower_name] = canonical
             logger.info("Phase 4 complete: %d canonical remappings", len(canonical_map))
 
         # Phase 5: Per-memory writes
+        write_fingerprint = entity_fingerprint or embedding_fingerprint or ""
+
         async def run_write(entry: dict, vector: list[float] | None, extraction, classification):
             async with semaphore:
                 return await self._write_memory(
-                    entry, vector, extraction, classification,
+                    entry, vector, write_fingerprint, extraction, classification,
                     name_to_embedding, canonical_map, flags,
                 )
 
@@ -628,7 +657,7 @@ class ProcessingPipeline:
     async def delete_memory(self, memory_id: UUID):
         try:
             async with self.session_factory() as session:
-                vector_repo = PostgresVectorRepository(session, self.embedding_dims)
+                vector_repo = PostgresVectorRepository(session)
                 graph_repo = PostgresGraphRepository(session)
                 await vector_repo.delete(memory_id)
                 await graph_repo.delete_by_memory_id(memory_id)
@@ -647,7 +676,7 @@ class ProcessingPipeline:
             if flags["hybrid_search_enabled"]:
                 from app.services.hybrid_search import HybridSearchService
                 async with self.session_factory() as session:
-                    hybrid = HybridSearchService(self.llm, session, self.embedding_dims)
+                    hybrid = HybridSearchService(self.llm, session)
                     results = await hybrid.search(query, limit=limit, semantic_weight=semantic_weight)
 
                     if flags["reranker_enabled"]:
@@ -658,10 +687,10 @@ class ProcessingPipeline:
                     results = await self._apply_confidence_weighting(session, results, flags)
                     return results
             else:
-                vector = await self.llm.embed(query)
+                vector, fingerprint = await self.llm.embed(query)
                 async with self.session_factory() as session:
-                    vector_repo = PostgresVectorRepository(session, self.embedding_dims)
-                    results = await vector_repo.search(vector, limit=limit)
+                    vector_repo = PostgresVectorRepository(session)
+                    results = await vector_repo.search(vector, fingerprint=fingerprint, limit=limit)
                     results = await self._apply_confidence_weighting(session, results, flags)
                     return results
         except Exception as e:
@@ -685,14 +714,25 @@ class ProcessingPipeline:
         if gamma == 0.0 or not results:
             return results
 
-        memory_ids = [r.get("memory_id") or r.get("id") for r in results if (r.get("memory_id") or r.get("id"))]
+        # Coerce every retrieval row's id to a real UUID so the bound
+        # parameter is uuid[] rather than text[]. PG won't use the PK
+        # index on memories.id when the operand is text.
+        raw_ids = [r.get("memory_id") or r.get("id") for r in results]
+        memory_ids: list[UUID] = []
+        for raw in raw_ids:
+            if not raw:
+                continue
+            try:
+                memory_ids.append(raw if isinstance(raw, UUID) else UUID(str(raw)))
+            except (ValueError, TypeError):
+                continue
         if not memory_ids:
             return results
 
         from sqlalchemy import text as sa_text
         row_result = await session.execute(
             sa_text("SELECT id, confidence FROM memories WHERE id = ANY(:ids)"),
-            {"ids": [str(mid) for mid in memory_ids]},
+            {"ids": memory_ids},
         )
         conf_map: dict[str, float] = {str(row[0]): float(row[1]) for row in row_result}
 
@@ -706,10 +746,26 @@ class ProcessingPipeline:
         return sorted(results, key=lambda r: float(r.get(score_key, 0.0) or 0.0), reverse=True)
 
     async def find_duplicates(self, memory_id: UUID, threshold: float = 0.9) -> list[dict]:
+        """Find memories whose vectors are above ``threshold`` against this one.
+
+        Compares within whichever fingerprint already holds an embedding for
+        the source memory. If none exist, returns an empty list.
+        """
         try:
             async with self.session_factory() as session:
-                vector_repo = PostgresVectorRepository(session, self.embedding_dims)
-                return await vector_repo.find_similar(memory_id, threshold=threshold)
+                vector_repo = PostgresVectorRepository(session)
+                fp_row = await session.execute(
+                    text("""
+                        SELECT fingerprint FROM memory_embeddings
+                        WHERE memory_id = :id
+                        ORDER BY created_at DESC LIMIT 1
+                    """),
+                    {"id": memory_id},
+                )
+                fp = fp_row.scalar_one_or_none()
+                if not fp:
+                    return []
+                return await vector_repo.find_similar(memory_id, fingerprint=fp, threshold=threshold)
         except Exception as e:
             logger.error(f"Duplicate search failed: {e}")
             raise

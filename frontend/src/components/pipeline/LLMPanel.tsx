@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
-import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import {
   Dialog,
@@ -15,23 +14,9 @@ import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
 import type { LLMPurpose } from "./prompt-map"
 
-// The three stack-swappable purposes. reasoning/summarization/reranker
-// live on the separate Assistant Services panel since they run on LLM
-// regardless of the stack toggle.
+// Purposes wired into the ingestion pipeline. reasoning/summarization/reranker
+// live on the separate Assistant Services panel.
 const ORDER: LLMPurpose[] = ["embedding", "extraction", "classification"]
-
-const PURPOSE_TO_STAGE: Record<(typeof ORDER)[number], keyof PipelineState["stages"]> = {
-  embedding: "retrieval",
-  extraction: "extraction",
-  classification: "classification",
-}
-
-function isPurposeOverridden(
-  purpose: (typeof ORDER)[number],
-  stages: PipelineState["stages"],
-): boolean {
-  return stages[PURPOSE_TO_STAGE[purpose]] === "ml"
-}
 
 interface Props {
   state: PipelineState
@@ -43,10 +28,6 @@ export function LLMPanel({ state }: Props) {
   const [obsolete, setObsolete] = useState<
     { memories: number; code_chunks: number; entities: number } | null
   >(null)
-
-  const llmStages = Object.values(state.stages).filter((v) => v === "llm").length
-  const status = llmStages === 3 ? "active" : llmStages === 0 ? "inactive" : "mixed"
-  const active = llmStages > 0
 
   const startReembed = () => {
     reembedAll.mutate(undefined, {
@@ -60,33 +41,25 @@ export function LLMPanel({ state }: Props) {
   }
 
   return (
-    <Card className={status === "inactive" ? "opacity-60" : ""}>
-      <CardHeader className="pb-2 flex flex-row items-start justify-between">
-        <div>
-          <CardTitle className="text-sm">LLM stack</CardTitle>
-          <p className="text-muted-foreground text-xs">Embedding, extraction, and classification when not handed to Darkmem ML</p>
-        </div>
-        <Badge variant={status === "active" ? "default" : "outline"} className="text-[10px]">
-          {status} · {llmStages}/3
-        </Badge>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">LLM pipeline</CardTitle>
+        <p className="text-muted-foreground text-xs">
+          Embedding, extraction, and classification settings used during memory ingestion.
+        </p>
       </CardHeader>
       <CardContent className="p-0">
-        <fieldset
-          disabled={!active}
-          className="space-y-2 border-0 p-6 pt-0 m-0 disabled:opacity-60"
-          aria-label="LLM stack configuration"
-        >
+        <div className="space-y-2 p-6 pt-0">
           {ORDER.map((p) => (
             <LLMPurposeCard
               key={p}
               purpose={p}
               config={state.llm[p]}
               prompts={state.prompts}
-              overridden={isPurposeOverridden(p, state.stages)}
               onObsoleteDetected={setObsolete}
             />
           ))}
-        </fieldset>
+        </div>
       </CardContent>
 
       <Dialog open={obsolete !== null} onOpenChange={(v) => !v && setObsolete(null)}>

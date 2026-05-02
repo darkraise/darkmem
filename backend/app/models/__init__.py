@@ -5,8 +5,9 @@ from .base import Base
 from app.models.chat import Conversation, Message  # noqa: F401
 from .code import CodeEdge, CodeFile, CodeGraphNode, CodeSymbol, Repository
 from .config import Config
-from .embedding import CodeChunkEmbedding, EntityEmbeddingCache, MemoryEmbedding
+from .embedding import Embedder
 from .graph import Entity, EntityRelation, KnowledgeTriple
+from .llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
 from .memory import Memory, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
 
@@ -29,8 +30,9 @@ __all__ = [
     "Entity",
     "EntityRelation",
     "KnowledgeTriple",
-    "MemoryEmbedding",
-    "CodeChunkEmbedding",
-    "EntityEmbeddingCache",
+    "Embedder",
+    "LLMProvider",
+    "LLMProfile",
+    "LLMPurposeConfigRow",
     "PipelineFailure",
 ]
