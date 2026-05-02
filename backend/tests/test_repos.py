@@ -122,6 +122,59 @@ async def test_update_repo_interval_wakes_sync_loop(client, auth_headers, tmp_pa
     assert app.state.repo_sync_wakeup.is_set() is True
 
 
+async def test_mark_periodic_sync_failure_disables_auto_sync(session, tmp_path):
+    """A failed periodic sync must record the error AND set is_active=False
+    so the polling worker stops retrying every tick."""
+    from app.services.repo_manager import RepoManager
+    from app.schemas.code import RepoCreate
+    from app.models.code import Repository
+
+    repo_dir = tmp_path / "circuit-breaker-repo"
+    repo_dir.mkdir()
+    manager = RepoManager(session)
+    repo = await manager.create(RepoCreate(
+        name="circuit-breaker-repo",
+        local_path=str(repo_dir),
+        provider="local",
+    ))
+    assert repo.is_active is True
+    assert repo.status == "ready"
+
+    # Simulate a fetch failure with an error string that includes an
+    # embedded auth token — the helper must sanitize before persisting.
+    err = RuntimeError(
+        "git fetch failed: https://x-access-token:ghp_secret123@github.com/me/x.git"
+    )
+    updated = await manager.mark_periodic_sync_failure(repo.id, err)
+
+    assert updated is not None
+    assert updated.is_active is False
+    assert updated.status == "error"
+    assert "git fetch failed" in (updated.status_message or "")
+    assert "ghp_secret123" not in (updated.status_message or "")
+    assert "x-access-token:***@" in (updated.status_message or "")
+
+    # Round-trip: the next loop iteration filters by is_active=True and
+    # this repo must now be excluded.
+    from sqlalchemy import select as sa_select
+    fresh = (await session.execute(
+        sa_select(Repository).where(Repository.is_active == True)  # noqa: E712
+    )).scalars().all()
+    assert all(r.id != repo.id for r in fresh)
+
+
+async def test_mark_periodic_sync_failure_returns_none_for_missing(session):
+    """Calling the helper with an unknown repo_id is a no-op, not a crash."""
+    import uuid
+    from app.services.repo_manager import RepoManager
+
+    manager = RepoManager(session)
+    result = await manager.mark_periodic_sync_failure(
+        uuid.uuid4(), RuntimeError("anything"),
+    )
+    assert result is None
+
+
 async def test_update_repo_no_op_does_not_wake(client, auth_headers, tmp_path):
     """Re-PUTing the same interval value must not flip the wake event."""
     from app.main import app

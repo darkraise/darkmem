@@ -181,6 +181,31 @@ async def lifespan(app: FastAPI):
                         except Exception as e:
                             await repo_session.rollback()
                             logger.error(f"Periodic sync failed for {repo.name}: {e}")
+                            # Trip the auto-sync circuit breaker. A new session
+                            # is required because ``repo_session`` was just
+                            # rolled back; reusing it would block the next
+                            # write on the failed transaction's lock state.
+                            try:
+                                async with async_session_factory() as fail_session:
+                                    fail_manager = RepoManager(fail_session)
+                                    updated = await fail_manager.mark_periodic_sync_failure(
+                                        repo.id, e,
+                                    )
+                                if updated is not None:
+                                    from app.api.websocket import event_manager
+                                    await event_manager.broadcast(
+                                        "repo.auto_sync_disabled",
+                                        {
+                                            "repo_id": str(repo.id),
+                                            "name": updated.name,
+                                            "status_message": updated.status_message or "",
+                                        },
+                                    )
+                            except Exception as inner_e:
+                                logger.error(
+                                    "Failed to mark repo %s as errored: %s",
+                                    repo.id, inner_e,
+                                )
             except Exception as e:
                 logger.error(f"Periodic sync loop error: {e}")
 

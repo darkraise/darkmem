@@ -225,6 +225,39 @@ class RepoManager:
         await self.session.commit()
         return True
 
+    async def mark_periodic_sync_failure(
+        self, repo_id: UUID, error: str | Exception,
+    ) -> Repository | None:
+        """Record a periodic-sync failure on the repo row and disable
+        auto-sync.
+
+        The periodic loop in ``app.main.periodic_repo_sync`` calls this
+        when a repo's ``CodePipeline.run`` raises (typically a git fetch
+        / pull error). Without this, the loop would re-attempt the same
+        repo every tick — flooding logs and the upstream git server with
+        the same failing request.
+
+        The row is updated to ``status='error'`` with the sanitized error
+        in ``status_message`` (truncated to 500 chars) and
+        ``is_active=False`` so subsequent ticks skip it. The user can
+        re-enable from the Edit Repo dialog after fixing the underlying
+        issue (auth, network, branch rename, etc.).
+        """
+        repo = await self.session.get(Repository, repo_id)
+        if not repo:
+            return None
+        message = _sanitize_url(str(error))[:500]
+        repo.status = "error"
+        repo.status_message = message
+        repo.is_active = False
+        await self.session.commit()
+        await self.session.refresh(repo)
+        logger.warning(
+            "Disabled auto-sync for repo %s (%s) after periodic-sync failure: %s",
+            repo.name, repo_id, message[:200],
+        )
+        return repo
+
     async def get_auth_token(self, repo: Repository) -> str | None:
         if not repo.auth_token_ref:
             return None
