@@ -4,6 +4,7 @@ import { Card, CardContent } from "darkraise-ui/components/card"
 import { toast } from "sonner"
 import { useSetupWizardStore, PURPOSES } from "@/features/setup/setupWizardStore"
 import { useFinalizeSetup, type SetupRequest, type SetupLLM } from "@/hooks/api/use-setup-api"
+import { ParticleBackground } from "./ParticleBackground"
 import { StepPassword, isStepPasswordValid } from "./StepPassword"
 import { StepLLM, isStepLLMValid } from "./StepLLM"
 import { StepRepoPath, isStepRepoPathValid } from "./StepRepoPath"
@@ -107,58 +108,62 @@ export function SetupWizard() {
   }
 
   return (
-    <div className="w-full max-w-2xl space-y-4">
-      <div className="text-center space-y-1">
-        <h1 className="text-2xl font-bold font-mono">darkmem</h1>
-        <p className="text-sm text-muted-foreground">{STEP_TITLES[step]}</p>
-      </div>
-      <ol className="flex justify-center gap-2 text-xs">
-        {[1, 2, 3, 4].map((s) => (
-          <li
-            key={s}
-            className={`px-3 py-1 rounded-md border ${
-              s === step
-                ? "border-primary text-primary"
-                : s < step
-                  ? "border-muted text-muted-foreground line-through"
-                  : "border-muted text-muted-foreground"
-            }`}
-          >
-            {s}. {STEP_TITLES[s as 1 | 2 | 3 | 4]}
-          </li>
-        ))}
-      </ol>
+    <>
+      <ParticleBackground />
+      <Card className="w-full max-w-2xl border-border/60 bg-card/85 shadow-2xl backdrop-blur-md">
+        <CardContent className="space-y-6 p-8">
+          <div className="text-center space-y-1">
+            <h1 className="text-2xl font-bold font-mono tracking-tight">darkmem</h1>
+            <p className="text-sm text-muted-foreground">{STEP_TITLES[step]}</p>
+          </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          {step === 1 && <StepPassword />}
-          {step === 2 && <StepLLM />}
-          {step === 3 && <StepRepoPath />}
-          {step === 4 && <StepFinish />}
+          <ol className="flex flex-wrap justify-center gap-2 text-xs">
+            {[1, 2, 3, 4].map((s) => (
+              <li
+                key={s}
+                className={`px-3 py-1 rounded-md border transition-colors ${
+                  s === step
+                    ? "border-primary bg-primary/10 text-primary"
+                    : s < step
+                      ? "border-muted bg-muted/30 text-muted-foreground"
+                      : "border-muted/50 text-muted-foreground"
+                }`}
+              >
+                {s}. {STEP_TITLES[s as 1 | 2 | 3 | 4]}
+              </li>
+            ))}
+          </ol>
+
+          <div className="min-h-[320px]">
+            {step === 1 && <StepPassword />}
+            {step === 2 && <StepLLM />}
+            {step === 3 && <StepRepoPath />}
+            {step === 4 && <StepFinish />}
+          </div>
+
+          <div className="flex justify-between border-t border-border/60 pt-4">
+            <Button variant="ghost" onClick={goBack} disabled={step === 1 || finalize.isPending}>
+              Back
+            </Button>
+            <div className="flex gap-2">
+              {(step === 2 || step === 3) && (
+                <Button variant="outline" onClick={skip} disabled={finalize.isPending}>
+                  Skip
+                </Button>
+              )}
+              {step < 4 ? (
+                <Button onClick={goNext} disabled={!stepValid}>
+                  Next
+                </Button>
+              ) : (
+                <Button onClick={handleFinish} disabled={finalize.isPending}>
+                  {finalize.isPending ? "Finishing..." : "Finish"}
+                </Button>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-between">
-        <Button variant="ghost" onClick={goBack} disabled={step === 1 || finalize.isPending}>
-          Back
-        </Button>
-        <div className="flex gap-2">
-          {(step === 2 || step === 3) && (
-            <Button variant="outline" onClick={skip}>
-              Skip
-            </Button>
-          )}
-          {step < 4 ? (
-            <Button onClick={goNext} disabled={!stepValid}>
-              Next
-            </Button>
-          ) : (
-            <Button onClick={handleFinish} disabled={finalize.isPending}>
-              {finalize.isPending ? "Finishing..." : "Finish"}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+    </>
   )
 }
