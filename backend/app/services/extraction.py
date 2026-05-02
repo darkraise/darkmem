@@ -874,6 +874,28 @@ def _rescue_relations_replaces(
         # captures it deterministically. Both endpoints must already be
         # in the entity list — this never invents new entities, only the
         # edge between two the LLM already extracted.
+        #
+        # Two refinements compared to Patterns A-C, both observed live
+        # on memory 89b069f7:
+        #
+        # 1. A-zone matching prefers the LONGEST entity span, not the
+        #    first by start position. The text "Alembic migration 0001"
+        #    contains both ``alembic`` (tool) and ``alembic migration
+        #    0001`` (artifact) as entities; first-by-start picks the
+        #    shorter one and the rescue produces the wrong target. The
+        #    longest-span tiebreak resolves to the more specific entity.
+        #
+        # 2. B-zone matching uses FIRST-by-start (the entity adjacent to
+        #    ``into``) and requires its start to fall within 50 chars of
+        #    the marker. Two reasons:
+        #    - "first" matches the relocation phrasing: the new home is
+        #      the noun immediately after ``into``, not the longest noun
+        #      anywhere downstream.
+        #    - The 50-char window is tight enough to skip distant
+        #      entities when the obvious file-path target wasn't
+        #      extracted (the round-9 failure mode), so the rescue
+        #      declines to fire instead of producing a wrong edge.
+        _B_ZONE_WINDOW = 50
         for verb_m in _TRANSITION_VERBS_RE.finditer(clause):
             tail = clause[verb_m.end():]
             out_of_m = re.search(r"\bout\s+of\b", tail)
@@ -887,9 +909,36 @@ def _rescue_relations_replaces(
             a_zone_start = out_of_abs_end
             a_zone_end = out_of_abs_end + into_m.start()
             b_zone_start = out_of_abs_end + into_m.end()
-            b_zone_end = clause_end
-            a_occ = _first_entity_in(a_zone_start, a_zone_end)
-            b_occ = _first_entity_in(b_zone_start, b_zone_end)
+            b_zone_end = min(clause_end, b_zone_start + _B_ZONE_WINDOW)
+
+            # A-zone: pick the longest entity whose span is fully inside
+            # the zone (start AND end). Prefers ``alembic migration 0001``
+            # over ``alembic`` when both overlap.
+            a_occ = None
+            a_span = -1
+            for occ in occurrences:
+                name_a, s_a, e_a = occ
+                if s_a < a_zone_start or e_a > a_zone_end:
+                    continue
+                length = e_a - s_a
+                if length > a_span:
+                    a_span = length
+                    a_occ = occ
+
+            # B-zone: pick the FIRST entity by start position whose
+            # start lies within the 50-char window after ``into``. The
+            # relocation noun the writer intended is the one adjacent
+            # to ``into``, not the longest noun further downstream.
+            b_occ = None
+            b_best_start = b_zone_end
+            for occ in occurrences:
+                name_b, s_b, e_b = occ
+                if s_b < b_zone_start or s_b >= b_zone_end:
+                    continue
+                if s_b < b_best_start:
+                    b_best_start = s_b
+                    b_occ = occ
+
             if a_occ and b_occ:
                 _emit(b_occ[0], a_occ[0], 0.85, "out-of-into")
             break  # one out-of-into per clause is enough

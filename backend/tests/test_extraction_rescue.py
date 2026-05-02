@@ -155,6 +155,64 @@ def test_rescue_replaces_pattern_d_negation_suppresses():
     assert not any(r.get("type") == "REPLACES" for r in out)
 
 
+def test_rescue_replaces_pattern_d_prefers_longest_a_zone_entity():
+    """When two entities overlap in the A zone (e.g., 'alembic' and
+    'alembic migration 0001' both extracted), Pattern D must pick the
+    longest-span entity as the REPLACES target, not the shortest."""
+    ents = _entities("alembic", "alembic migration 0001", "llm_seed.py")
+    out = _rescue_relations(
+        ents, [],
+        "Seed data was moved out of Alembic migration 0001 into llm_seed.py",
+    )
+    # Should emit `llm_seed.py REPLACES alembic migration 0001`, NOT
+    # `llm_seed.py REPLACES alembic` — the more specific entity wins
+    # the A-zone tiebreak.
+    assert _has(out, "llm_seed.py", "alembic migration 0001", "REPLACES"), (
+        f"expected longest-span A-zone entity to win; got {out}"
+    )
+    assert not _has(out, "llm_seed.py", "alembic", "REPLACES"), (
+        f"shorter overlapping entity must NOT be selected; got {out}"
+    )
+
+
+def test_rescue_replaces_pattern_d_b_zone_window_blocks_distant_entity():
+    """When the obvious new-home file path isn't extracted as an entity,
+    Pattern D must NOT fall through to a distant entity that happens to
+    appear later in the clause. The 80-char B-zone window enforces this:
+    the rescue declines to fire, which is the correct failure mode."""
+    # `llm_seed.py` is intentionally NOT in the entity set — this
+    # simulates the round-9 recall gap where the model failed to
+    # extract the file path. `finalize handler` is far past the
+    # file path in the same clause; the previous (windowless)
+    # implementation incorrectly picked it as the new home.
+    ents = _entities("alembic migration 0001", "finalize handler")
+    out = _rescue_relations(
+        ents, [],
+        "Seed data was moved out of Alembic migration 0001 into "
+        "backend/app/services/llm_seed.py and is now applied by the "
+        "setup wizard's finalize handler instead.",
+    )
+    # No REPLACES at all is the correct outcome — the rescue cannot
+    # invent the missing file-path entity, so it must decline.
+    assert not any(r.get("type") == "REPLACES" for r in out), (
+        f"rescue must decline when obvious target is unextracted; got {out}"
+    )
+
+
+def test_rescue_replaces_pattern_d_b_zone_window_accepts_close_entity():
+    """Sanity check the inverse: when the obvious new-home IS extracted
+    and sits within the 80-char window, Pattern D fires normally."""
+    ents = _entities("alembic migration 0001", "llm_seed.py", "finalize handler")
+    out = _rescue_relations(
+        ents, [],
+        "Seed data was moved out of Alembic migration 0001 into "
+        "llm_seed.py and is now applied by the finalize handler instead.",
+    )
+    assert _has(out, "llm_seed.py", "alembic migration 0001", "REPLACES"), (
+        f"expected llm_seed.py REPLACES alembic migration 0001; got {out}"
+    )
+
+
 # --- Negation suppression --------------------------------------------------
 
 
