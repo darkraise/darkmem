@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -272,9 +273,8 @@ class SetupLLMPurpose(BaseModel):
 
 
 class SetupLLM(BaseModel):
-    provider_name: str = Field(min_length=1, max_length=64)
     api_kind: str
-    base_url: str
+    base_url: str | None = None
     api_key: str | None = None
     supports_embedding: bool = True
     purposes: dict[PURPOSE_LITERAL, SetupLLMPurpose]
@@ -351,69 +351,127 @@ async def setup_finalize(
         ))
         await session.commit()
 
-        # 2. LLM block — optional. All-or-nothing: any exception rolls
-        # back the partial LLM writes only.
+        # 2. LLM block — optional. Inserts the full default seed
+        # (DEFAULT_PROVIDERS + DEFAULT_PROFILES + DEFAULT_PURPOSE_CONFIGS)
+        # so the user finishes setup with a fully populated menu of
+        # vendors and preset profiles. The user's api_key is applied
+        # to the matching api_kind row; their per-purpose model
+        # selections override the default purpose-config rows. This
+        # replaces the pre-refactor "single provider, six profiles"
+        # path AND removes the dependency on migration-seeded rows
+        # that the pre-refactor handler upserted into.
         if body.llm is not None:
             try:
-                provider = LLMProvider(
-                    name=body.llm.provider_name,
-                    provider=body.llm.api_kind,
-                    base_url=body.llm.base_url,
-                    api_key=body.llm.api_key,
-                    api_kind=body.llm.api_kind,
-                    supports_embedding=body.llm.supports_embedding,
+                from app.services.llm_seed import (
+                    DEFAULT_PROVIDERS,
+                    DEFAULT_PROFILES,
+                    DEFAULT_PURPOSE_CONFIGS,
+                    provider_seed_by_kind,
                 )
-                if body.llm.api_key:
-                    provider.api_key_rotated_at = datetime.now(timezone.utc)
-                session.add(provider)
+
+                # Insert every seeded provider. The matching api_kind
+                # row gets the user-supplied api_key and (optionally)
+                # an overridden base_url and supports_embedding flag.
+                provider_id_by_name: dict[str, uuid.UUID] = {}
+                for ps in DEFAULT_PROVIDERS:
+                    is_user_choice = (ps.api_kind == body.llm.api_kind)
+                    provider = LLMProvider(
+                        name=ps.name,
+                        provider=ps.provider,
+                        base_url=(body.llm.base_url or ps.base_url) if is_user_choice else ps.base_url,
+                        api_key=body.llm.api_key if is_user_choice else None,
+                        api_kind=ps.api_kind,
+                        supports_embedding=(
+                            body.llm.supports_embedding if is_user_choice else ps.supports_embedding
+                        ),
+                    )
+                    if is_user_choice and body.llm.api_key:
+                        provider.api_key_rotated_at = datetime.now(timezone.utc)
+                    session.add(provider)
+                    await session.flush()
+                    provider_id_by_name[ps.name] = provider.id
+
+                # Insert every seeded profile.
+                profile_id_by_name: dict[str, uuid.UUID] = {}
+                for prof in DEFAULT_PROFILES:
+                    profile = LLMProfile(
+                        name=prof.name,
+                        provider_id=provider_id_by_name[prof.provider_name],
+                        model=prof.model,
+                        params=dict(prof.params),
+                        is_embedding=prof.is_embedding,
+                        reasoning=prof.reasoning,
+                    )
+                    session.add(profile)
+                    await session.flush()
+                    profile_id_by_name[prof.name] = profile.id
+
+                # Insert default purpose configs (Ollama defaults so a
+                # no-credentials install still runs end-to-end).
+                purpose_rows: dict[str, LLMPurposeConfigRow] = {}
+                for pc in DEFAULT_PURPOSE_CONFIGS:
+                    row = LLMPurposeConfigRow(
+                        purpose=pc.purpose,
+                        provider_id=provider_id_by_name.get(pc.provider_name),
+                        profile_id=None,
+                        model=pc.model,
+                        dimensions=pc.dimensions,
+                        reasoning=pc.reasoning,
+                        api_kind=pc.api_kind,
+                        provider=pc.provider,
+                        base_url=pc.base_url,
+                        api_key=None,
+                        params=dict(pc.params),
+                    )
+                    session.add(row)
+                    purpose_rows[pc.purpose] = row
                 await session.flush()
 
+                # Apply user choices on top: for each purpose the user
+                # picked a model for, overlay api_kind / base_url /
+                # api_key / model onto the seeded purpose-config row,
+                # and create a ``default-<purpose>`` profile pointing
+                # at the user's vendor for the dropdown to surface.
+                user_provider_seed = provider_seed_by_kind(body.llm.api_kind)
+                user_provider_id = (
+                    provider_id_by_name.get(user_provider_seed.name)
+                    if user_provider_seed else None
+                )
+                user_base_url = body.llm.base_url or (
+                    user_provider_seed.base_url if user_provider_seed else ""
+                )
                 for purpose_key, spec in body.llm.purposes.items():
                     is_embedding = (purpose_key == "embedding")
-                    profile = LLMProfile(
+
+                    user_profile = LLMProfile(
                         name=f"default-{purpose_key}",
-                        provider_id=provider.id,
+                        provider_id=user_provider_id,
                         model=spec.model,
                         params={},
                         is_embedding=is_embedding,
                         reasoning=False if is_embedding else spec.reasoning,
                     )
-                    session.add(profile)
+                    session.add(user_profile)
                     await session.flush()
 
-                    # Upsert: migrations seed a default row per purpose so we
-                    # update it in place rather than insert a conflicting one.
-                    existing_purpose = (await session.execute(
-                        select(LLMPurposeConfigRow).where(
-                            LLMPurposeConfigRow.purpose == purpose_key
-                        )
-                    )).scalar_one_or_none()
-                    if existing_purpose is None:
-                        session.add(LLMPurposeConfigRow(
-                            purpose=purpose_key,
-                            provider_id=provider.id,
-                            profile_id=profile.id,
-                            model=spec.model,
-                            dimensions=spec.dimensions if is_embedding else None,
-                            reasoning=False if is_embedding else spec.reasoning,
-                            api_kind=body.llm.api_kind,
-                            provider=body.llm.api_kind,
-                            base_url=body.llm.base_url,
-                            api_key=body.llm.api_key,
-                            params={},
-                        ))
-                    else:
-                        existing_purpose.provider_id = provider.id
-                        existing_purpose.profile_id = profile.id
-                        existing_purpose.model = spec.model
-                        existing_purpose.dimensions = spec.dimensions if is_embedding else None
-                        existing_purpose.reasoning = False if is_embedding else spec.reasoning
-                        existing_purpose.api_kind = body.llm.api_kind
-                        existing_purpose.provider = body.llm.api_kind
-                        existing_purpose.base_url = body.llm.base_url
-                        existing_purpose.api_key = body.llm.api_key
-                        existing_purpose.params = {}
-                        existing_purpose.updated_at = datetime.now(timezone.utc)
+                    pcfg = purpose_rows.get(purpose_key)
+                    if pcfg is None:
+                        # Should not happen for the six canonical
+                        # purposes; create the row defensively.
+                        pcfg = LLMPurposeConfigRow(purpose=purpose_key, model="")
+                        session.add(pcfg)
+                    pcfg.provider_id = user_provider_id
+                    pcfg.profile_id = user_profile.id
+                    pcfg.model = spec.model
+                    pcfg.dimensions = spec.dimensions if is_embedding else None
+                    pcfg.reasoning = False if is_embedding else spec.reasoning
+                    pcfg.api_kind = body.llm.api_kind
+                    pcfg.provider = body.llm.api_kind
+                    pcfg.base_url = user_base_url
+                    pcfg.api_key = body.llm.api_key
+                    pcfg.params = {}
+                    pcfg.updated_at = datetime.now(timezone.utc)
+
                 await session.commit()
             except Exception as exc:
                 await session.rollback()

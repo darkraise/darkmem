@@ -40,7 +40,6 @@ type SetupWizardState = {
   password: { value: string; confirm: string }
   llm: {
     skipped: boolean
-    provider_name: string
     api_kind: string
     base_url: string
     api_key: string
@@ -76,7 +75,6 @@ const initial = () => ({
   password: { value: "", confirm: "" },
   llm: {
     skipped: false,
-    provider_name: "",
     api_kind: "openai",
     base_url: "https://api.openai.com/v1",
     api_key: "",

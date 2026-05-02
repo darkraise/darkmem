@@ -9,6 +9,46 @@ import pytest
 from app.services import prompt as prompt_mod
 
 
+@pytest.fixture
+async def seeded_llm(session):
+    """Seed DEFAULT_PROVIDERS + DEFAULT_PROFILES into the test DB.
+
+    Migration 0001 used to do this; that seed has moved into
+    ``app.services.llm_seed`` and is now applied by the setup wizard's
+    finalize handler. Tests that exercise the providers / profiles UI
+    against an empty DB depend on this fixture to land an equivalent
+    set of rows.
+    """
+    from app.services.llm_seed import DEFAULT_PROVIDERS, DEFAULT_PROFILES
+    from app.models.llm_config import LLMProvider, LLMProfile
+
+    name_to_id: dict[str, object] = {}
+    for ps in DEFAULT_PROVIDERS:
+        provider = LLMProvider(
+            name=ps.name,
+            provider=ps.provider,
+            base_url=ps.base_url,
+            api_kind=ps.api_kind,
+            supports_embedding=ps.supports_embedding,
+            api_key=None,
+        )
+        session.add(provider)
+        await session.flush()
+        name_to_id[ps.name] = provider.id
+
+    for prof in DEFAULT_PROFILES:
+        session.add(LLMProfile(
+            name=prof.name,
+            provider_id=name_to_id[prof.provider_name],
+            model=prof.model,
+            params=dict(prof.params),
+            is_embedding=prof.is_embedding,
+            reasoning=prof.reasoning,
+        ))
+    await session.flush()
+    yield
+
+
 # --- Prompt module cache --------------------------------------------------
 
 def test_prompt_module_default_fallback():
@@ -181,7 +221,7 @@ async def test_put_system_prompts_rejects_oversized_prompt(client, auth_headers)
 
 
 @pytest.mark.asyncio
-async def test_llm_providers_seed_includes_known_vendors(client, auth_headers):
+async def test_llm_providers_seed_includes_known_vendors(client, auth_headers, seeded_llm):
     """The migration seeds one profile per supported vendor with a null
     api_key so the user can configure them through the UI. Each cloud
     profile's api_kind names its vendor so a future native adapter lights
@@ -233,7 +273,7 @@ async def test_llm_providers_rejects_unknown_api_kind(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_llm_profiles_seed_covers_all_purposes(client, auth_headers):
+async def test_llm_profiles_seed_covers_all_purposes(client, auth_headers, seeded_llm):
     """The migration seeds one Profile per (provider, purpose) for the
     two main providers (Ollama, OpenAI) so a fresh install has working
     defaults for every pipeline stage."""
@@ -405,7 +445,7 @@ async def test_test_provider_returns_404_for_unknown_profile(client, auth_header
 
 
 @pytest.mark.asyncio
-async def test_test_provider_rejects_embedding_when_unsupported(client, auth_headers):
+async def test_test_provider_rejects_embedding_when_unsupported(client, auth_headers, seeded_llm):
     """Anthropic profile is seeded supports_embedding=false; the test
     route must short-circuit instead of probing a known-404 endpoint."""
     resp = await client.post(
@@ -480,7 +520,7 @@ async def test_test_provider_happy_path_uses_correct_url(client, auth_headers, m
 
 
 @pytest.mark.asyncio
-async def test_test_provider_ollama_strips_v1_for_native_path(client, auth_headers, monkeypatch):
+async def test_test_provider_ollama_strips_v1_for_native_path(client, auth_headers, monkeypatch, seeded_llm):
     """ollama profile is api_kind=ollama with base_url ending in /v1 — the
     probe should strip /v1 and hit /api/chat."""
     import httpx
@@ -515,7 +555,7 @@ async def test_test_provider_ollama_strips_v1_for_native_path(client, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_provider_models_short_circuits_when_cloud_key_missing(client, auth_headers):
+async def test_provider_models_short_circuits_when_cloud_key_missing(client, auth_headers, seeded_llm):
     """Seeded cloud Providers ship with api_key=null. The models route
     should return a structured error pointing the operator at Settings
     instead of passing through the vendor's 'Missing bearer auth' 401."""
@@ -529,7 +569,7 @@ async def test_provider_models_short_circuits_when_cloud_key_missing(client, aut
 
 
 @pytest.mark.asyncio
-async def test_test_provider_short_circuits_when_cloud_key_missing(client, auth_headers):
+async def test_test_provider_short_circuits_when_cloud_key_missing(client, auth_headers, seeded_llm):
     """Same short-circuit on the chat probe route — refuses with 409 when
     a cloud Provider has no API key configured."""
     resp = await client.post(

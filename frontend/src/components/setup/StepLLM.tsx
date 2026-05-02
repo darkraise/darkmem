@@ -97,33 +97,23 @@ export function StepLLM() {
           <CardTitle className="text-sm">Provider</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Display name</Label>
-              <Input
-                value={llm.provider_name}
-                onChange={(e) => setLlmField("provider_name", e.target.value)}
-                placeholder="e.g. OpenAI"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>API kind</Label>
-              <Select
-                value={llm.api_kind}
-                onValueChange={(v) => handleApiKindChange(v as LlmApiKind)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {API_KIND_OPTIONS.map((k) => (
-                    <SelectItem key={k.value} value={k.value}>
-                      {k.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <Label>API kind</Label>
+            <Select
+              value={llm.api_kind}
+              onValueChange={(v) => handleApiKindChange(v as LlmApiKind)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {API_KIND_OPTIONS.map((k) => (
+                  <SelectItem key={k.value} value={k.value}>
+                    {k.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>Base URL</Label>
@@ -231,7 +221,7 @@ export function StepLLM() {
 
 export function isStepLLMValid(llm: ReturnType<typeof useSetupWizardStore.getState>["llm"]): boolean {
   if (llm.skipped) return true
-  if (!llm.provider_name.trim()) return false
+  if (!llm.api_kind.trim()) return false
   if (!llm.base_url.trim()) return false
   if (llm.supports_embedding && !llm.perPurpose.embedding.model.trim()) return false
   for (const p of REQUIRED_PURPOSES_NON_EMBEDDING) {

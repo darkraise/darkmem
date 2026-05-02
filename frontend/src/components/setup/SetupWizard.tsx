@@ -59,7 +59,7 @@ export function SetupWizard() {
 
   const buildRequest = (): SetupRequest => {
     const body: SetupRequest = { password: password.value }
-    if (!llm.skipped && llm.provider_name) {
+    if (!llm.skipped && llm.api_kind) {
       const purposes: SetupLLM["purposes"] = {}
       for (const p of PURPOSES) {
         if (p === "embedding" && !llm.supports_embedding) continue
@@ -72,9 +72,8 @@ export function SetupWizard() {
         }
       }
       body.llm = {
-        provider_name: llm.provider_name.trim(),
         api_kind: llm.api_kind,
-        base_url: llm.base_url.trim(),
+        base_url: llm.base_url.trim() || null,
         api_key: llm.api_key || null,
         supports_embedding: llm.supports_embedding,
         purposes,

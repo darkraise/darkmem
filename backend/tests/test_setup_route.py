@@ -259,10 +259,21 @@ async def test_setup_finalize_password_only(client, session):
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_llm(client, session):
+    """The wizard now seeds the full default provider / profile menu and
+    overlays the user's api_kind row's api_key + per-purpose model
+    selections on top. Asserts cover (a) every seeded vendor lands as a
+    row, (b) the chosen vendor has the api_key, others have NULL, (c)
+    seeded profiles appear, (d) ``default-<purpose>`` profiles linked to
+    the chosen vendor are created, (e) purpose configs point at the
+    chosen vendor with the user's models."""
+    from app.services.llm_seed import (
+        DEFAULT_PROVIDERS,
+        DEFAULT_PROFILES,
+    )
+
     payload = {
         "password": "test-pw-12345",
         "llm": {
-            "provider_name": "OpenAI",
             "api_kind": "openai",
             "base_url": "https://api.openai.com/v1",
             "api_key": "sk-test",
@@ -276,31 +287,51 @@ async def test_setup_finalize_with_llm(client, session):
         },
     }
     response = await client.post("/api/v1/setup", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["llm"]["ok"] is True
 
-    # Migrations seed default provider/profile/purpose rows; assert the
-    # wizard's writes are present rather than that nothing else is.
-    new_provider = (await session.execute(
-        select(LLMProvider).where(LLMProvider.name == "OpenAI")
-    )).scalar_one_or_none()
-    assert new_provider is not None
-    assert new_provider.api_key == "sk-test"
-    assert new_provider.api_kind == "openai"
+    # (a) every seeded vendor row landed.
+    provider_rows = (await session.execute(select(LLMProvider))).scalars().all()
+    by_kind = {r.api_kind: r for r in provider_rows}
+    for ps in DEFAULT_PROVIDERS:
+        assert ps.api_kind in by_kind, f"missing seeded provider {ps.api_kind}"
 
+    # (b) only the user's api_kind row carries the api_key.
+    assert by_kind["openai"].api_key == "sk-test"
+    for kind in ("anthropic", "deepseek", "google", "ollama", "zai"):
+        assert by_kind[kind].api_key is None
+
+    # (c) seeded profiles are present.
     profile_names = set((await session.execute(
         select(LLMProfile.name)
     )).scalars().all())
+    for prof in DEFAULT_PROFILES:
+        assert prof.name in profile_names, f"missing seeded profile {prof.name}"
+
+    # (d) ``default-<purpose>`` profiles linked to the chosen vendor.
     for purpose in ("embedding", "extraction", "classification", "reasoning"):
         assert f"default-{purpose}" in profile_names
+    user_provider = by_kind["openai"]
+    user_default_profiles = (await session.execute(
+        select(LLMProfile).where(LLMProfile.name.like("default-%"))
+    )).scalars().all()
+    for p in user_default_profiles:
+        assert p.provider_id == user_provider.id
 
-    # Each of the wizard's purposes should be linked to the new provider.
-    for purpose in ("embedding", "extraction", "classification", "reasoning"):
+    # (e) purpose-config rows reflect user choice.
+    for purpose, expected_model in [
+        ("embedding", "text-embedding-3-small"),
+        ("extraction", "gpt-4o-mini"),
+        ("classification", "gpt-4o-mini"),
+        ("reasoning", "gpt-4o"),
+    ]:
         row = (await session.execute(
             select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == purpose)
         )).scalar_one_or_none()
         assert row is not None
-        assert row.provider_id == new_provider.id
+        assert row.provider_id == user_provider.id
+        assert row.model == expected_model
+        assert row.api_kind == "openai"
 
 
 @pytest.mark.asyncio

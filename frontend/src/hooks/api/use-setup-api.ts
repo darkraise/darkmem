@@ -43,9 +43,8 @@ export type SetupLLMPurpose = {
 }
 
 export type SetupLLM = {
-  provider_name: string
   api_kind: string
-  base_url: string
+  base_url: string | null
   api_key: string | null
   supports_embedding: boolean
   purposes: Partial<Record<

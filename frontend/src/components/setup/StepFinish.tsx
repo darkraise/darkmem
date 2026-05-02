@@ -26,12 +26,13 @@ export function StepFinish() {
           <CardTitle className="text-sm">Default LLM provider</CardTitle>
         </CardHeader>
         <CardContent className="text-sm space-y-1">
-          {llm.skipped || !llm.provider_name ? (
+          {llm.skipped || !llm.api_kind ? (
             <span className="text-muted-foreground">Skipped — system defaults will be used.</span>
           ) : (
             <>
               <div>
-                <strong>{llm.provider_name}</strong> ({llm.api_kind})
+                <strong className="capitalize">{llm.api_kind}</strong>{" "}
+                <span className="text-muted-foreground">(default vendor menu seeded; api key applied to this row)</span>
               </div>
               <ul className="ml-4 list-disc">
                 {PURPOSES.filter(

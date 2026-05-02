@@ -438,82 +438,14 @@ def upgrade() -> None:
         """
     )
 
-    # Seed providers (one row per supported vendor).
-    op.execute(
-        """
-        INSERT INTO llm_providers (name, provider, base_url, api_key, api_kind, supports_embedding) VALUES
-            ('ollama', 'ollama', 'http://localhost:11434/v1', NULL, 'ollama', TRUE),
-            ('openai', 'openai', 'https://api.openai.com/v1', NULL, 'openai', TRUE),
-            ('anthropic', 'anthropic', 'https://api.anthropic.com/v1', NULL, 'anthropic', FALSE),
-            ('google', 'google', 'https://generativelanguage.googleapis.com/v1beta/openai', NULL, 'google', TRUE),
-            ('deepseek', 'deepseek', 'https://api.deepseek.com/v1', NULL, 'deepseek', FALSE),
-            ('zai', 'zai', 'https://api.z.ai/api/paas/v4', NULL, 'zai', TRUE)
-        """
-    )
-
-    # Seed profiles. provider_id resolves via subquery so the seed stays readable.
-    op.execute(
-        """
-        INSERT INTO llm_profiles (name, provider_id, model, params, is_embedding, reasoning) VALUES
-            ('ollama-embedding', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen3-embedding:0.6b', '{}'::jsonb, TRUE, FALSE),
-            ('ollama-extraction', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0}'::jsonb, FALSE, FALSE),
-            ('ollama-classification', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0}'::jsonb, FALSE, FALSE),
-            ('ollama-reasoning', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen3:4b', '{"temperature": 0.7}'::jsonb, FALSE, TRUE),
-            ('ollama-summarization', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0.3}'::jsonb, FALSE, FALSE),
-            ('ollama-reranker', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', '{"temperature": 0}'::jsonb, FALSE, FALSE),
-            ('openai-embedding', (SELECT id FROM llm_providers WHERE name = 'openai'), 'text-embedding-3-small', '{}'::jsonb, TRUE, FALSE),
-            ('openai-embedding-large', (SELECT id FROM llm_providers WHERE name = 'openai'), 'text-embedding-3-large', '{}'::jsonb, TRUE, FALSE),
-            ('openai-extraction', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-mini', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 2048}'::jsonb, FALSE, FALSE),
-            ('openai-nano-extraction', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-nano', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 2048}'::jsonb, FALSE, FALSE),
-            ('openai-classification', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-nano', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 64}'::jsonb, FALSE, FALSE),
-            ('openai-reasoning', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4', '{"temperature": 1, "reasoning_effort": "high", "verbosity": "medium", "max_completion_tokens": 4096}'::jsonb, FALSE, TRUE),
-            ('openai-summarization', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-mini', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "medium", "max_completion_tokens": 512}'::jsonb, FALSE, FALSE),
-            ('openai-reranker', (SELECT id FROM llm_providers WHERE name = 'openai'), 'gpt-5.4-nano', '{"temperature": 1, "reasoning_effort": "none", "verbosity": "low", "max_completion_tokens": 32}'::jsonb, FALSE, FALSE),
-            ('zai-flash-extraction', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.7-flash', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
-            ('zai-flash-classification', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.5-flash', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
-            ('zai-flash-summarization', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.5-flash', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
-            ('zai-flash-reranker', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-4.5-flash', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
-            ('zai-turbo-extraction', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
-            ('zai-turbo-classification', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
-            ('zai-turbo-summarization', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
-            ('zai-turbo-reranker', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
-            ('zai-turbo-reasoning', (SELECT id FROM llm_providers WHERE name = 'zai'), 'glm-5-turbo', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE),
-            ('deepseek-flash-extraction', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-v4-flash', '{"temperature": 0, "max_tokens": 2048, "thinking": {"type": "disabled"}}'::jsonb, FALSE, FALSE),
-            ('deepseek-pro-extraction', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-v4-pro', '{"temperature": 0, "max_tokens": 2048, "thinking": {"type": "disabled"}}'::jsonb, FALSE, FALSE),
-            ('deepseek-flash-classification', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-chat', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
-            ('deepseek-flash-summarization', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-chat', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
-            ('deepseek-flash-reranker', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-chat', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
-            ('deepseek-flash-reasoning', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-reasoner', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE),
-            ('deepseek-pro-reasoning', (SELECT id FROM llm_providers WHERE name = 'deepseek'), 'deepseek-v4-pro', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE),
-            ('anthropic-haiku-extraction', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
-            ('anthropic-sonnet-extraction', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-sonnet-4-6', '{"temperature": 0, "max_tokens": 2048}'::jsonb, FALSE, FALSE),
-            ('google-embedding', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-embedding-001', '{}'::jsonb, TRUE, FALSE),
-            ('google-lite-extraction', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash-lite', '{"temperature": 0, "max_tokens": 2048, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
-            ('google-flash-extraction', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0, "max_tokens": 2048, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
-            ('google-flash-classification', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0, "max_tokens": 64, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
-            ('google-flash-summarization', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0.3, "max_tokens": 512, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
-            ('google-flash-reranker', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-flash', '{"temperature": 0, "max_tokens": 32, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
-            ('google-pro-extraction', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-pro', '{"temperature": 0, "max_tokens": 2048, "reasoning_effort": "none"}'::jsonb, FALSE, FALSE),
-            ('google-pro-reasoning', (SELECT id FROM llm_providers WHERE name = 'google'), 'gemini-2.5-pro', '{"temperature": 0.7, "max_tokens": 4096, "reasoning_effort": "high"}'::jsonb, FALSE, TRUE),
-            ('anthropic-haiku-classification', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0, "max_tokens": 64}'::jsonb, FALSE, FALSE),
-            ('anthropic-haiku-summarization', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0.3, "max_tokens": 512}'::jsonb, FALSE, FALSE),
-            ('anthropic-haiku-reranker', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-haiku-4-5', '{"temperature": 0, "max_tokens": 32}'::jsonb, FALSE, FALSE),
-            ('anthropic-sonnet-reasoning', (SELECT id FROM llm_providers WHERE name = 'anthropic'), 'claude-sonnet-4-6', '{"temperature": 0.7, "max_tokens": 4096}'::jsonb, FALSE, TRUE)
-        """
-    )
-
-    # Seed purpose configs with the same defaults as ``Settings.llm_*``.
-    op.execute(
-        """
-        INSERT INTO llm_purpose_configs (purpose, provider_id, model, dimensions, reasoning, api_kind, provider, base_url, params) VALUES
-            ('embedding', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen3-embedding:0.6b', 1024, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{}'::jsonb),
-            ('extraction', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0}'::jsonb),
-            ('classification', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0}'::jsonb),
-            ('reasoning', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0.7}'::jsonb),
-            ('summarization', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0.3}'::jsonb),
-            ('reranker', (SELECT id FROM llm_providers WHERE name = 'ollama'), 'qwen2.5:3b', NULL, FALSE, 'openai', 'ollama', 'http://localhost:11434/v1', '{"temperature": 0}'::jsonb)
-        """
-    )
+    # LLM seed data is no longer applied here. The setup wizard's
+    # finalize handler reads ``app.services.llm_seed`` and inserts the
+    # default providers / profiles / purpose-configs at install time,
+    # overlaid with whatever the operator filled in. Keeping the seeds
+    # in code (instead of the migration) lets defaults be reviewed and
+    # diffed like any other source file, and lets the wizard apply
+    # user input to the seed before insert without resorting to
+    # post-insert UPDATEs against migration-seeded rows.
 
 
 def downgrade() -> None:
