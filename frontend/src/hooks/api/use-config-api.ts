@@ -267,7 +267,6 @@ export function useClassificationAreas() {
 export interface EnrichmentConfig {
   enabled: boolean;
   batch_size: number;
-  interval_seconds: number;
 }
 
 export function useEnrichmentConfig() {

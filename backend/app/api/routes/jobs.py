@@ -3,7 +3,7 @@
 Exposes the in-process ``JobRegistry`` over three endpoints:
 
 * ``GET  /api/v1/jobs`` — list every registered job with config + state.
-* ``PUT  /api/v1/jobs/{key}`` — update enabled / interval_seconds.
+* ``PUT  /api/v1/jobs/{key}`` — update enabled / cron.
 * ``POST /api/v1/jobs/{key}/trigger`` — fire the runner immediately.
 
 All routes require auth.
@@ -23,9 +23,9 @@ class JobItem(BaseModel):
     display_name: str
     description: str
     enabled: bool
-    interval_seconds: int
+    cron: str
     min_interval_seconds: int
-    default_interval_seconds: int
+    default_cron: str
     last_run_at: str | None = None
     last_status: str | None = None
     last_error: str | None = None
@@ -38,7 +38,7 @@ class JobsResponse(BaseModel):
 
 class JobUpdate(BaseModel):
     enabled: bool | None = None
-    interval_seconds: int | None = Field(default=None, ge=1)
+    cron: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class JobTriggerResponse(BaseModel):
@@ -76,7 +76,7 @@ async def update_job(
         await registry.update_config(
             key,
             enabled=body.enabled,
-            interval_seconds=body.interval_seconds,
+            cron=body.cron,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

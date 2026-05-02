@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
             "indexing pipeline. The per-repo Reindex button bypasses this "
             "loop and runs immediately."
         ),
-        default_interval_seconds=300,
+        default_cron="*/5 * * * *",
         min_interval_seconds=30,
         runner=make_repo_sync_runner(app, async_session_factory),
     ))
@@ -184,7 +184,7 @@ async def lifespan(app: FastAPI):
             "symbols (function / class / method docs). Batch size comes "
             "from the legacy enrichment_config row."
         ),
-        default_interval_seconds=10,
+        default_cron="*/10 * * * * *",
         min_interval_seconds=1,
         runner=make_code_enrichment_runner(app, async_session_factory),
     ))
@@ -195,7 +195,7 @@ async def lifespan(app: FastAPI):
             "Deletes expired entries from the auth token blocklist. Safe "
             "to leave on; disable only if you are debugging revocation."
         ),
-        default_interval_seconds=3600,
+        default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_token_blocklist_cleanup_runner(async_session_factory),
     ))
@@ -206,7 +206,7 @@ async def lifespan(app: FastAPI):
             "Prunes orphaned pipeline-failure rows and resolved entries "
             "older than 30 days. Safe to leave on."
         ),
-        default_interval_seconds=3600,
+        default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_pipeline_failure_cleanup_runner(async_session_factory),
     ))

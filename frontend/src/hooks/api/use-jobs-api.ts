@@ -6,9 +6,9 @@ export interface Job {
   display_name: string
   description: string
   enabled: boolean
-  interval_seconds: number
+  cron: string
   min_interval_seconds: number
-  default_interval_seconds: number
+  default_cron: string
   last_run_at: string | null
   last_status: "ok" | "error" | null
   last_error: string | null
@@ -21,7 +21,7 @@ export interface JobsResponse {
 
 export interface JobUpdateParams {
   enabled?: boolean
-  interval_seconds?: number
+  cron?: string
 }
 
 export interface JobTriggerResponse {

@@ -35,7 +35,7 @@ async def stubbed_jobs(client):
         key="alpha",
         display_name="Alpha",
         description="Increments a counter.",
-        default_interval_seconds=600,
+        default_cron="*/10 * * * *",
         min_interval_seconds=10,
         runner=alpha_runner,
     ))
@@ -43,7 +43,7 @@ async def stubbed_jobs(client):
         key="beta",
         display_name="Beta",
         description="Always raises.",
-        default_interval_seconds=600,
+        default_cron="*/10 * * * *",
         min_interval_seconds=10,
         runner=beta_runner,
     ))
@@ -73,26 +73,38 @@ async def test_list_jobs_requires_auth(stubbed_jobs, client):
 
 
 @pytest.mark.asyncio
-async def test_update_job_changes_interval(stubbed_jobs, client, auth_headers):
+async def test_update_job_changes_cron(stubbed_jobs, client, auth_headers):
     response = await client.put(
         "/api/v1/jobs/alpha",
-        json={"interval_seconds": 120},
+        json={"cron": "*/2 * * * *"},
         headers=auth_headers,
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["interval_seconds"] == 120
+    assert body["cron"] == "*/2 * * * *"
     assert body["key"] == "alpha"
 
 
 @pytest.mark.asyncio
-async def test_update_job_rejects_below_minimum(stubbed_jobs, client, auth_headers):
+async def test_update_job_rejects_invalid_cron(stubbed_jobs, client, auth_headers):
     response = await client.put(
         "/api/v1/jobs/alpha",
-        json={"interval_seconds": 1},
+        json={"cron": "not a cron"},
         headers=auth_headers,
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_job_accepts_six_field_cron(stubbed_jobs, client, auth_headers):
+    response = await client.put(
+        "/api/v1/jobs/alpha",
+        json={"cron": "*/30 * * * * *"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cron"] == "*/30 * * * * *"
 
 
 @pytest.mark.asyncio
@@ -132,7 +144,7 @@ async def test_trigger_records_runner_failure(stubbed_jobs, client, auth_headers
 async def test_disabling_job_stops_loop(stubbed_jobs, client, auth_headers):
     registry = stubbed_jobs["registry"]
     # Start the loop manually so we can assert disable cancels it.
-    await registry.update_config("alpha", enabled=True, interval_seconds=10)
+    await registry.update_config("alpha", enabled=True, cron="*/5 * * * *")
     job = registry.get("alpha")
     # update_config restarted the loop; give the event loop a tick.
     await asyncio.sleep(0)

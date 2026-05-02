@@ -3,39 +3,35 @@
 Replaces the per-loop ``asyncio.create_task(periodic_X())`` pattern in
 ``app.main`` with a unified registry: each periodic job is described
 by a ``Job`` dataclass and dispatched via ``JobRegistry.start()``.
-The registry persists per-job config (enabled, interval) in the
+The registry persists per-job config (enabled, cron) in the
 ``config`` table under keys of the form ``job:<key>`` and exposes
 read / write / trigger operations consumed by the ``/api/v1/jobs``
 routes.
 
-Design choices worth noting:
+Scheduling shape: each job runs on a cron expression. Five-field
+expressions (``*/5 * * * *``) carry the standard minute-precision
+semantics. Six-field expressions put the seconds field first
+(``*/10 * * * * *`` = every ten seconds), matching the Quartz
+convention. ``min_interval_seconds`` is a per-job floor that
+protects against runaway expressions; the loop will not fire more
+often than this regardless of what the cron computes.
 
-* **One asyncio task per job, owned by the registry.** Tasks are
-  cancelled cleanly on app shutdown via ``stop_all()``; the registry
-  also re-spawns a job's task when its ``enabled`` flag flips on
-  through the UI / API.
-* **Interruptible wait.** Every job's loop uses
-  ``asyncio.wait_for(wakeup.wait(), timeout=interval_seconds)`` with a
-  per-job ``asyncio.Event``. Updating ``interval_seconds`` or
-  triggering manually sets the event so the loop wakes immediately
-  instead of waiting for the previous interval to elapse.
-* **Persistence shape.** Each job has a ``config`` row keyed
-  ``job:<key>`` with JSON value::
+Persistence shape — each job has a ``config`` row keyed
+``job:<key>`` with JSON value::
 
-        {
-            "enabled": bool,
-            "interval_seconds": int,
-            "min_interval_seconds": int,
-            "last_run_at": "ISO8601 string" | null,
-            "last_status": "ok" | "error" | null,
-            "last_error": "<short message>" | null
-        }
+    {
+        "enabled": bool,
+        "cron": "*/5 * * * *",
+        "min_interval_seconds": int,
+        "last_run_at": "ISO8601 string" | null,
+        "last_status": "ok" | "error" | null,
+        "last_error": "<short message>" | null,
+    }
 
-* **Manual trigger semantics.** ``trigger(key)`` schedules an
-  out-of-band run that does NOT wait for the next tick and does NOT
-  conflict with the loop — it acquires the same per-job
-  ``asyncio.Lock`` the loop uses, runs the job's ``runner``, and
-  records the outcome.
+Manual trigger semantics: ``trigger(key)`` schedules an out-of-band
+run that does NOT wait for the next tick and does NOT conflict with
+the loop — it acquires the same per-job ``asyncio.Lock`` the loop
+uses, runs the job's ``runner``, and records the outcome.
 """
 from __future__ import annotations
 
@@ -45,6 +41,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
+from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -56,10 +53,29 @@ logger = logging.getLogger(__name__)
 JobRunner = Callable[[], Awaitable[None]]
 
 
+def is_valid_cron(expr: str) -> bool:
+    """Validate a 5- or 6-field cron expression. Six-field puts the
+    seconds field first (Quartz-style)."""
+    if not isinstance(expr, str) or not expr.strip():
+        return False
+    return croniter.is_valid(expr.strip(), second_at_beginning=True)
+
+
+def next_fire_delta_seconds(expr: str, now: datetime, *, floor: int) -> float:
+    """Seconds until the next cron fire, never less than ``floor``."""
+    base = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+    itr = croniter(expr, base, second_at_beginning=True)
+    nxt: datetime = itr.get_next(datetime)
+    if nxt.tzinfo is None:
+        nxt = nxt.replace(tzinfo=timezone.utc)
+    delta = (nxt - base).total_seconds()
+    return max(float(floor), delta)
+
+
 @dataclass
 class JobConfig:
     enabled: bool
-    interval_seconds: int
+    cron: str
     min_interval_seconds: int
     last_run_at: datetime | None = None
     last_status: str | None = None
@@ -68,7 +84,7 @@ class JobConfig:
     def to_dict(self) -> dict:
         return {
             "enabled": self.enabled,
-            "interval_seconds": self.interval_seconds,
+            "cron": self.cron,
             "min_interval_seconds": self.min_interval_seconds,
             "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
             "last_status": self.last_status,
@@ -80,7 +96,7 @@ class JobConfig:
         last_run = data.get("last_run_at")
         return cls(
             enabled=bool(data.get("enabled", False)),
-            interval_seconds=int(data.get("interval_seconds", 60)),
+            cron=str(data.get("cron", "*/5 * * * *")),
             min_interval_seconds=int(data.get("min_interval_seconds", 1)),
             last_run_at=datetime.fromisoformat(last_run) if last_run else None,
             last_status=data.get("last_status"),
@@ -93,7 +109,7 @@ class Job:
     key: str
     display_name: str
     description: str
-    default_interval_seconds: int
+    default_cron: str
     min_interval_seconds: int
     runner: JobRunner
     # Live wiring filled in by the registry at start().
@@ -113,6 +129,11 @@ class JobRegistry:
     def register(self, job: Job) -> None:
         if job.key in self._jobs:
             raise ValueError(f"Job {job.key!r} already registered")
+        if not is_valid_cron(job.default_cron):
+            raise ValueError(
+                f"Job {job.key!r} default_cron {job.default_cron!r} is not a "
+                f"valid 5- or 6-field cron expression"
+            )
         self._jobs[job.key] = job
 
     def keys(self) -> list[str]:
@@ -133,14 +154,14 @@ class JobRegistry:
                 select(Config).where(Config.key == self._config_key(key))
             )).scalar_one_or_none()
         job = self._jobs.get(key)
-        if row and isinstance(row.value, dict):
+        if row and isinstance(row.value, dict) and "cron" in row.value:
             return JobConfig.from_dict(row.value)
-        # Synthesize a default if the row is missing — keeps tests and
-        # fresh installs happy without forcing the migration to be the
-        # only path that creates these rows.
+        # Synthesize a default if the row is missing or pre-cron — keeps
+        # tests and fresh installs happy without forcing the migration to
+        # be the only path that creates these rows.
         return JobConfig(
             enabled=True,
-            interval_seconds=job.default_interval_seconds if job else 60,
+            cron=job.default_cron if job else "*/5 * * * *",
             min_interval_seconds=job.min_interval_seconds if job else 1,
         )
 
@@ -164,7 +185,7 @@ class JobRegistry:
                 "key": job.key,
                 "display_name": job.display_name,
                 "description": job.description,
-                "default_interval_seconds": job.default_interval_seconds,
+                "default_cron": job.default_cron,
                 "min_interval_seconds": job.min_interval_seconds,
                 "running": running,
                 **cfg.to_dict(),
@@ -219,9 +240,20 @@ class JobRegistry:
                 if not cfg.enabled:
                     logger.info("Job %s disabled mid-loop, exiting", key)
                     return
-                interval = max(cfg.min_interval_seconds, cfg.interval_seconds)
                 try:
-                    await asyncio.wait_for(job.wakeup.wait(), timeout=interval)
+                    delta = next_fire_delta_seconds(
+                        cfg.cron,
+                        datetime.now(timezone.utc),
+                        floor=cfg.min_interval_seconds,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Job %s cron %r is invalid; sleeping %ss before retry: %s",
+                        key, cfg.cron, cfg.min_interval_seconds, exc,
+                    )
+                    delta = float(cfg.min_interval_seconds)
+                try:
+                    await asyncio.wait_for(job.wakeup.wait(), timeout=delta)
                 except asyncio.TimeoutError:
                     pass
                 job.wakeup.clear()
@@ -254,7 +286,7 @@ class JobRegistry:
         key: str,
         *,
         enabled: bool | None = None,
-        interval_seconds: int | None = None,
+        cron: str | None = None,
     ) -> JobConfig:
         if key not in self._jobs:
             raise KeyError(key)
@@ -263,15 +295,15 @@ class JobRegistry:
         prev_enabled = cfg.enabled
         if enabled is not None:
             cfg.enabled = enabled
-        if interval_seconds is not None:
-            if interval_seconds < job.min_interval_seconds:
+        if cron is not None:
+            cron = cron.strip()
+            if not is_valid_cron(cron):
                 raise ValueError(
-                    f"interval_seconds {interval_seconds} is below the min "
-                    f"of {job.min_interval_seconds} for job {key!r}"
+                    f"Cron {cron!r} is not a valid 5- or 6-field expression"
                 )
-            cfg.interval_seconds = interval_seconds
+            cfg.cron = cron
         await self.save_config(key, cfg)
-        # Apply enable / disable flips by restarting the loop. Interval
+        # Apply enable / disable flips by restarting the loop. Cron
         # changes are picked up on the loop's next read of load_config(),
         # which happens on every iteration; nudging the wakeup makes the
         # change effective immediately.
@@ -279,6 +311,7 @@ class JobRegistry:
             await self._restart_loop(key)
         elif cfg.enabled:
             job.wakeup.set()
+        _ = job  # used above; satisfy linter
         return cfg
 
     async def trigger(self, key: str) -> JobConfig:

@@ -908,7 +908,6 @@ async def list_classification_areas(
 class EnrichmentConfigUpdate(BaseModel):
     enabled: bool = False
     batch_size: int = Field(default=5, ge=1, le=100)
-    interval_seconds: int = Field(default=10, ge=1, le=3600)
 
 
 @router.get("/enrichment")
@@ -919,8 +918,12 @@ async def get_enrichment_config(
     result = await session.execute(select(Config).where(Config.key == "enrichment_config"))
     config = result.scalar_one_or_none()
     if not config:
-        return {"enabled": False, "batch_size": 5, "interval_seconds": 10}
-    return config.value
+        return {"enabled": False, "batch_size": 5}
+    value = config.value if isinstance(config.value, dict) else {}
+    return {
+        "enabled": bool(value.get("enabled", False)),
+        "batch_size": int(value.get("batch_size", 5)),
+    }
 
 
 @router.put("/enrichment")
@@ -939,29 +942,15 @@ async def update_enrichment_config(
         session.add(Config(key="enrichment_config", value=new_value))
     await session.flush()
 
-    worker = getattr(request.app.state, "enrichment_worker", None)
-    if worker:
-        worker.batch_size = body.batch_size
-        worker.interval = body.interval_seconds
-
-        if body.enabled and not worker._running:
-            old_task = getattr(request.app.state, "enrichment_task", None)
-            if old_task and not old_task.done():
-                worker.stop()
-                old_task.cancel()
-                # Wait for the cancelled loop to actually exit before we start
-                # a new one so we never have two run_loops racing on the same
-                # worker state.
-                try:
-                    await old_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-            worker._running = False
-
-            task = asyncio.create_task(worker.run_loop())
-            request.app.state.enrichment_task = task
-        elif not body.enabled and worker._running:
-            worker.stop()
+    # Mirror the enabled flag onto the cron-driven job row so toggling
+    # enrichment from Settings still pauses the periodic loop. Scheduling
+    # is governed by the cron expression on job:code_enrichment.
+    job_registry = getattr(request.app.state, "job_registry", None)
+    if job_registry is not None and job_registry.get("code_enrichment") is not None:
+        try:
+            await job_registry.update_config("code_enrichment", enabled=body.enabled)
+        except Exception:
+            pass
 
     return new_value
 

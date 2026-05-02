@@ -99,7 +99,7 @@ async def client(session):
             key="repo_sync",
             display_name="Repository Sync",
             description="(test stub)",
-            default_interval_seconds=300,
+            default_cron="*/5 * * * *",
             min_interval_seconds=30,
             runner=_noop,
         ))

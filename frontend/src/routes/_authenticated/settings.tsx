@@ -51,19 +51,17 @@ const trigger = useTriggerEnrichment()
 
 const [enabled, setEnabled] = useState(false)
 const [batchSize, setBatchSize] = useState(5)
-const [interval, setInterval] = useState(10)
 
 useEffect(() => {
 if (config) {
 setEnabled(config.enabled)
 setBatchSize(config.batch_size)
-setInterval(config.interval_seconds)
 }
 }, [config])
 
 const handleSave = () => {
 updateConfig.mutate(
-{ enabled, batch_size: batchSize, interval_seconds: interval },
+{ enabled, batch_size: batchSize },
 {
 onSuccess: () => toast.success("Enrichment config saved"),
 onError: (err) =>
@@ -98,7 +96,6 @@ LLM-powered code symbol summarization
 <Label className="text-sm">Enabled</Label>
 <Switch checked={enabled} onCheckedChange={setEnabled} />
 </div>
-<div className="grid grid-cols-2 gap-3">
 <div>
 <Label className="text-muted-foreground text-xs">Batch Size</Label>
 <Input
@@ -107,18 +104,9 @@ min={1}
 value={batchSize}
 onChange={(e) => setBatchSize(Number(e.target.value))}
 />
-</div>
-<div>
-<Label className="text-muted-foreground text-xs">
-Interval (seconds)
-</Label>
-<Input
-type="number"
-min={1}
-value={interval}
-onChange={(e) => setInterval(Number(e.target.value))}
-/>
-</div>
+<p className="text-muted-foreground text-[11px] mt-1">
+Schedule lives on the Jobs page (job key <code className="font-mono">code_enrichment</code>).
+</p>
 </div>
 <div className="flex gap-2">
 <Button

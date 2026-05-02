@@ -5,10 +5,30 @@ import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
 import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "sonner"
 import { Play, Save } from "lucide-react"
 import { useJobs, useUpdateJob, useTriggerJob, type Job } from "@/hooks/api"
+
+const CRON_PRESETS: { label: string; value: string }[] = [
+  { label: "Every 10 seconds", value: "*/10 * * * * *" },
+  { label: "Every 30 seconds", value: "*/30 * * * * *" },
+  { label: "Every minute", value: "* * * * *" },
+  { label: "Every 5 minutes", value: "*/5 * * * *" },
+  { label: "Every 15 minutes", value: "*/15 * * * *" },
+  { label: "Every 30 minutes", value: "*/30 * * * *" },
+  { label: "Hourly", value: "0 * * * *" },
+  { label: "Every 6 hours", value: "0 */6 * * *" },
+  { label: "Daily at 03:00", value: "0 3 * * *" },
+  { label: "Weekdays at 09:00", value: "0 9 * * 1-5" },
+]
 
 export const Route = createFileRoute("/_authenticated/jobs")({
   component: JobsPage,
@@ -29,8 +49,8 @@ function relativeTime(iso: string | null): string {
 function JobRow({ job }: { job: Job }) {
   const updateJob = useUpdateJob()
   const triggerJob = useTriggerJob()
-  const [interval, setInterval] = useState<number>(job.interval_seconds)
-  const dirty = interval !== job.interval_seconds
+  const [cron, setCron] = useState<string>(job.cron)
+  const dirty = cron.trim() !== job.cron
 
   const handleToggle = (enabled: boolean) => {
     updateJob.mutate(
@@ -46,9 +66,9 @@ function JobRow({ job }: { job: Job }) {
   const handleSave = () => {
     if (!dirty) return
     updateJob.mutate(
-      { key: job.key, data: { interval_seconds: interval } },
+      { key: job.key, data: { cron: cron.trim() } },
       {
-        onSuccess: () => toast.success(`${job.display_name} interval saved`),
+        onSuccess: () => toast.success(`${job.display_name} schedule saved`),
         onError: (err) => toast.error(`Save failed: ${err.message}`),
       },
     )
@@ -117,7 +137,7 @@ function JobRow({ job }: { job: Job }) {
             <span>·</span>
             <span>min interval: {job.min_interval_seconds}s</span>
             <span>·</span>
-            <span>default: {job.default_interval_seconds}s</span>
+            <span className="font-mono">default: {job.default_cron}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -128,14 +148,26 @@ function JobRow({ job }: { job: Job }) {
             aria-label={`Toggle ${job.display_name}`}
           />
           <div className="flex items-center gap-1">
+            <Select value="" onValueChange={(v) => v && setCron(v)}>
+              <SelectTrigger className="h-8 w-32 text-xs">
+                <SelectValue placeholder="Preset…" />
+              </SelectTrigger>
+              <SelectContent>
+                {CRON_PRESETS.map((p) => (
+                  <SelectItem key={p.value} value={p.value} className="text-xs">
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Input
-              type="number"
-              className="h-8 w-20 text-xs"
-              value={interval}
-              min={job.min_interval_seconds}
-              onChange={(e) => setInterval(Number(e.target.value))}
+              type="text"
+              className="h-8 w-44 text-xs font-mono"
+              value={cron}
+              onChange={(e) => setCron(e.target.value)}
+              placeholder="*/5 * * * *"
+              aria-label={`Cron expression for ${job.display_name}`}
             />
-            <span className="text-xs text-muted-foreground">s</span>
             <Button
               variant="ghost"
               size="sm"
