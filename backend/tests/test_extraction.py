@@ -67,6 +67,29 @@ async def test_extract_handles_invalid_json():
 # --- _drop_uses_when_replaces_exists ----------------------------------
 
 
+def test_content_seed_is_deterministic():
+    from app.services.extraction import _content_seed
+
+    a = _content_seed("Memory about pgvector and Qdrant")
+    b = _content_seed("Memory about pgvector and Qdrant")
+    assert a == b
+
+
+def test_content_seed_differs_for_different_content():
+    from app.services.extraction import _content_seed
+
+    a = _content_seed("Memory A")
+    b = _content_seed("Memory B")
+    assert a != b
+
+
+def test_content_seed_fits_in_uint32():
+    from app.services.extraction import _content_seed
+
+    seed = _content_seed("any content")
+    assert 0 <= seed < 2**32
+
+
 def test_drop_uses_when_replaces_present_same_direction():
     """The exact ``promtail USES grafana alloy`` false positive from real
     runs: REPLACES says ``grafana alloy REPLACES promtail``, the rescue

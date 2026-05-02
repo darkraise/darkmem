@@ -1,5 +1,6 @@
 """LLM-based memory classification using domain-aware type sets."""
 
+import hashlib
 import json
 import logging
 
@@ -49,6 +50,9 @@ class ClassificationService:
         # orchestrator does not have a `classification` entry (pre-schema-v2
         # deployments whose DB row was written before the purpose existed).
         purpose = "classification" if "classification" in self.llm.config else "extraction"
+        # Per-content seed mirrors extraction.py — same content, same
+        # classification result across calls (modulo vendor snapshot drift).
+        seed = int(hashlib.sha256(content.encode("utf-8")).hexdigest()[:8], 16)
         try:
             response = await self.llm.chat_completion(
                 purpose,
@@ -57,6 +61,7 @@ class ClassificationService:
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
+                seed=seed,
             )
             result = json.loads(response)
             classified_type = result.get("type", "fact")

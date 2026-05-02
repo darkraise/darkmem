@@ -78,6 +78,49 @@ async def test_chat_completion_with_extra_body():
     await llm.close()
 
 
+async def test_chat_completion_forwards_seed():
+    captured: dict = {}
+
+    def handler(request: httpx.Request):
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    llm = _make_orchestrator(handler)
+    await llm.chat_completion(
+        "extraction",
+        messages=[{"role": "user", "content": "test"}],
+        seed=12345,
+    )
+    assert captured["body"]["seed"] == 12345
+    await llm.close()
+
+
+async def test_chat_completion_omits_seed_for_anthropic():
+    captured: dict = {}
+
+    def handler(request: httpx.Request):
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    config = {
+        "extraction": LLMPurposeConfig(
+            base_url="http://mock", model="claude", api_kind="anthropic",
+        ),
+        "embedding": LLMPurposeConfig(base_url="http://mock", model="test-embed"),
+        "reasoning": LLMPurposeConfig(base_url="http://mock", model="test"),
+        "summarization": LLMPurposeConfig(base_url="http://mock", model="test"),
+    }
+    llm = LLMOrchestrator(config)
+    llm._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await llm.chat_completion(
+        "extraction",
+        messages=[{"role": "user", "content": "test"}],
+        seed=12345,
+    )
+    assert "seed" not in captured["body"]
+    await llm.close()
+
+
 async def test_embed_with_api_key():
     def handler(request: httpx.Request):
         assert request.headers["Authorization"] == "Bearer sk-test123"

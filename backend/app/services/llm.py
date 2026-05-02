@@ -140,13 +140,32 @@ class LLMOrchestrator:
         flat = [vec for chunk_result, _ in results for vec in chunk_result]
         return flat, fingerprint
 
-    async def chat_completion(self, purpose: str, messages: list[dict], response_format: dict | None = None) -> str:
+    async def chat_completion(
+        self,
+        purpose: str,
+        messages: list[dict],
+        response_format: dict | None = None,
+        seed: int | None = None,
+    ) -> str:
+        """Send a chat-completion request to the configured LLM.
+
+        ``seed`` (when set) is forwarded to the vendor as a top-level
+        ``seed`` parameter in the request body. OpenAI, DeepSeek, z.ai,
+        and Google's OpenAI-compat shims all honour it; Anthropic does
+        not (the param is silently ignored). Combined with
+        ``temperature=0``, a fixed seed makes the same content +
+        same prompt produce the same output across calls — the single
+        biggest determinism lever for the extraction pipeline. Callers
+        typically derive the seed from a hash of the user content so
+        same-content requests are reproducible while different content
+        gets different sampling paths.
+        """
         cfg = self.config[purpose]
         headers = self._headers(cfg)
 
         if cfg.api_kind == "ollama":
             return await self._chat_completion_ollama(
-                cfg, purpose, messages, response_format, headers,
+                cfg, purpose, messages, response_format, headers, seed=seed,
             )
 
         # OpenAI-compatible path. ``/no_think`` is a soft directive — works
@@ -194,6 +213,12 @@ class LLMOrchestrator:
                 "type": "enabled" if cfg.reasoning else "disabled",
             }
 
+        # Per-call seed override (Anthropic ignores; everyone else honours).
+        # The cfg.params.seed value, if present, can also pin the seed —
+        # this overrides it so callers can supply per-content seeds.
+        if seed is not None and cfg.api_kind != "anthropic":
+            body["seed"] = int(seed)
+
         try:
             response = await self._client.post(
                 f"{cfg.base_url}/chat/completions",
@@ -230,6 +255,7 @@ class LLMOrchestrator:
         messages: list[dict],
         response_format: dict | None,
         headers: dict,
+        seed: int | None = None,
     ) -> str:
         """Native Ollama ``/api/chat`` call.
 
@@ -266,6 +292,11 @@ class LLMOrchestrator:
                 for k, v in extra.items():
                     if k != "options":
                         body[k] = v
+        # Per-call seed override — Ollama accepts ``seed`` inside
+        # ``options``. Mirrors the OpenAI-path override above so callers
+        # can derive a content-hash seed for reproducibility.
+        if seed is not None:
+            options["seed"] = int(seed)
         if options:
             body["options"] = options
         if response_format and response_format.get("type") == "json_object":
