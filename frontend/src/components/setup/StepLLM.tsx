@@ -29,6 +29,20 @@ const BASE_URL_DEFAULTS: Record<LlmApiKind, string> = {
   zai: "https://api.z.ai/api/paas/v4",
 }
 
+// Which api_kinds expose an embeddings endpoint at all. Anthropic and
+// DeepSeek do not — picking those should auto-clear the supports_embedding
+// toggle so step 2 doesn't sit there demanding an embedding model that the
+// vendor cannot serve. The user can still flip it back on for custom
+// proxies that route embeddings through an OpenAI-compat endpoint.
+const KIND_SUPPORTS_EMBEDDING: Record<LlmApiKind, boolean> = {
+  openai: true,
+  ollama: true,
+  google: true,
+  zai: true,
+  anthropic: false,
+  deepseek: false,
+}
+
 const PURPOSE_HINT: Record<Purpose, string> = {
   embedding: "Vector model used for memory and code search",
   extraction: "Structured-data extraction from memories",
@@ -50,6 +64,7 @@ export function StepLLM() {
     if (!llm.base_url || Object.values(BASE_URL_DEFAULTS).includes(llm.base_url)) {
       setLlmField("base_url", BASE_URL_DEFAULTS[api_kind])
     }
+    setLlmField("supports_embedding", KIND_SUPPORTS_EMBEDDING[api_kind])
   }
 
   const handleFetchModels = async () => {
@@ -126,12 +141,19 @@ export function StepLLM() {
               placeholder={llm.api_kind === "ollama" ? "(not required for Ollama)" : "sk-..."}
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             <Switch
+              className="mt-0.5"
               checked={llm.supports_embedding}
               onCheckedChange={(v) => setLlmField("supports_embedding", v)}
             />
-            <span className="text-sm">Provider supports embeddings</span>
+            <div className="text-sm">
+              <div>Provider supports embeddings</div>
+              <div className="text-xs text-muted-foreground">
+                Auto-set from API kind (off for Anthropic and DeepSeek). Override only for
+                custom proxies that route embeddings through this base URL.
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={handleFetchModels} disabled={probe.isPending}>
