@@ -80,6 +80,11 @@ export function StepFinish() {
                       </span>
                     </div>
                   ))}
+                  <div className="pt-2 text-xs text-muted-foreground">
+                    Imported repositories start with auto-sync <strong>off</strong>. Open
+                    the Repositories page and enable each one from its Edit dialog when
+                    you're ready to have darkmem fetch and re-index it on a schedule.
+                  </div>
                 </div>
               )}
             </>
