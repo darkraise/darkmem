@@ -103,6 +103,58 @@ def test_rescue_replaces_pattern_c_supersedes(content, src, tgt):
     assert _has(out, src, tgt, "REPLACES")
 
 
+# --- REPLACES pattern D: "<verb> X out of A into B" ----------------------
+
+
+@pytest.mark.parametrize(
+    "content,a,b",
+    [
+        (
+            "Seed data was moved out of migration 0001 into llm_seed.py",
+            "migration 0001", "llm_seed.py",
+        ),
+        (
+            "The provider list was extracted out of the SQL seed into services/seed.py",
+            "SQL seed", "services/seed.py",
+        ),
+        (
+            "We lifted the schema out of base.py into models.py",
+            "base.py", "models.py",
+        ),
+    ],
+)
+def test_rescue_replaces_pattern_d_out_of_into(content, a, b):
+    """Pattern D: relocation form 'moved out of A into B' -> B REPLACES A.
+    Existing Pattern A only handles 'from X to Y'; refactor decision
+    memories use 'out of … into …' instead, which Pattern D captures."""
+    ents = _entities(a, b)
+    out = _rescue_relations(ents, [], content)
+    assert _has(out, b, a, "REPLACES"), (
+        f"expected {b!r} REPLACES {a!r}; got {out}"
+    )
+
+
+def test_rescue_replaces_pattern_d_skips_when_endpoint_missing():
+    """If only one endpoint is in the entity list, Pattern D emits nothing
+    (consistent with Pattern A's 'both endpoints required' contract)."""
+    ents = _entities("llm_seed.py")
+    out = _rescue_relations(
+        ents, [],
+        "Seed data was moved out of migration 0001 into llm_seed.py",
+    )
+    assert not any(r.get("type") == "REPLACES" for r in out)
+
+
+def test_rescue_replaces_pattern_d_negation_suppresses():
+    """Clause-level negation guard applies to Pattern D too."""
+    ents = _entities("migration 0001", "llm_seed.py")
+    out = _rescue_relations(
+        ents, [],
+        "Seed data was not moved out of migration 0001 into llm_seed.py",
+    )
+    assert not any(r.get("type") == "REPLACES" for r in out)
+
+
 # --- Negation suppression --------------------------------------------------
 
 

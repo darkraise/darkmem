@@ -447,7 +447,10 @@ _TRANSITION_VERBS_RE = re.compile(
     r"drop(?:ped|ping|s)?|"
     r"replac(?:ed|es|ing)?|"
     r"phas(?:e|ed|es|ing)\s+out|"
-    r"jump(?:ed|ing|s)?"
+    r"jump(?:ed|ing|s)?|"
+    r"extract(?:ed|ing|s)?|"
+    r"lift(?:ed|ing|s)?|"
+    r"reloc(?:ate|ated|ating|ates)"
     r")\b",
     re.IGNORECASE,
 )
@@ -860,6 +863,36 @@ def _rescue_relations_replaces(
             x_occ = _first_entity_in(verb_end_abs, clause_end)
             if x_occ and y_occ:
                 _emit(y_occ[0], x_occ[0], 0.85, "supersedes")
+
+        # Pattern D: file-level relocation "<verb> ... out of A into B"
+        # -> B REPLACES A. The existing Pattern A handles "from X to Y";
+        # decision memories about code refactors use "out of A into B"
+        # ("seed data was moved out of migration 0001 into llm_seed.py")
+        # which never matches Pattern A's "from"/"to" anchors. Six rounds
+        # of prompt patches across 2026-05-02 failed to elicit REPLACES
+        # on this surface form from deepseek-v4-pro, so the rescue layer
+        # captures it deterministically. Both endpoints must already be
+        # in the entity list — this never invents new entities, only the
+        # edge between two the LLM already extracted.
+        for verb_m in _TRANSITION_VERBS_RE.finditer(clause):
+            tail = clause[verb_m.end():]
+            out_of_m = re.search(r"\bout\s+of\b", tail)
+            if not out_of_m:
+                continue
+            out_of_abs_end = clause_start + verb_m.end() + out_of_m.end()
+            after_out_of = text_lower[out_of_abs_end:clause_end]
+            into_m = re.search(r"\binto\b", after_out_of)
+            if not into_m:
+                continue
+            a_zone_start = out_of_abs_end
+            a_zone_end = out_of_abs_end + into_m.start()
+            b_zone_start = out_of_abs_end + into_m.end()
+            b_zone_end = clause_end
+            a_occ = _first_entity_in(a_zone_start, a_zone_end)
+            b_occ = _first_entity_in(b_zone_start, b_zone_end)
+            if a_occ and b_occ:
+                _emit(b_occ[0], a_occ[0], 0.85, "out-of-into")
+            break  # one out-of-into per clause is enough
 
     return out
 
