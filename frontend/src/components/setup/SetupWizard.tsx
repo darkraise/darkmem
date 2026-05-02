@@ -14,7 +14,7 @@ const STEP_TITLES: Record<1 | 2 | 3 | 4, string> = {
   1: "Admin password",
   2: "Default LLM provider",
   3: "Default code repo path",
-  4: "Finish setup",
+  4: "Review & finish",
 }
 
 export function SetupWizard() {
@@ -110,14 +110,14 @@ export function SetupWizard() {
   return (
     <>
       <ParticleBackground />
-      <Card className="w-full max-w-2xl border-border/60 bg-card/85 shadow-2xl backdrop-blur-md">
-        <CardContent className="space-y-6 p-8">
-          <div className="text-center space-y-1">
+      <Card className="w-full max-w-2xl border-border/60 bg-card/85 shadow-2xl backdrop-blur-md max-h-[90vh] flex flex-col">
+        <CardContent className="flex flex-col gap-6 p-8 overflow-hidden">
+          <div className="text-center space-y-1 shrink-0">
             <h1 className="text-2xl font-bold font-mono tracking-tight">darkmem</h1>
-            <p className="text-sm text-muted-foreground">{STEP_TITLES[step]}</p>
+            <p className="text-sm text-muted-foreground">Initial Setup</p>
           </div>
 
-          <ol className="flex flex-wrap justify-center gap-2 text-xs">
+          <ol className="flex flex-wrap justify-center gap-2 text-xs shrink-0">
             {[1, 2, 3, 4].map((s) => (
               <li
                 key={s}
@@ -134,14 +134,14 @@ export function SetupWizard() {
             ))}
           </ol>
 
-          <div className="min-h-[320px]">
+          <div className="flex-1 overflow-y-auto pr-1">
             {step === 1 && <StepPassword />}
             {step === 2 && <StepLLM />}
             {step === 3 && <StepRepoPath />}
             {step === 4 && <StepFinish />}
           </div>
 
-          <div className="flex justify-between border-t border-border/60 pt-4">
+          <div className="flex justify-between border-t border-border/60 pt-4 shrink-0">
             <Button variant="ghost" onClick={goBack} disabled={step === 1 || finalize.isPending}>
               Back
             </Button>
