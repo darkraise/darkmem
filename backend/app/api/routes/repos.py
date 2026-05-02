@@ -103,12 +103,35 @@ async def get_repo(
 async def update_repo(
     repo_id: UUID,
     body: RepoUpdate,
+    request: FastAPIRequest,
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
 ):
+    # Snapshot the current values BEFORE the update so we can detect
+    # whether the change actually flipped any polling-relevant field.
+    # Both ``sync_interval_minutes`` and ``is_active`` directly affect
+    # the periodic_repo_sync loop's "is this repo due now?" decision —
+    # changes to either should wake the worker so the new cadence
+    # takes effect immediately instead of after the next 5-minute tick.
+    existing = await manager.get(repo_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    prev_interval = existing.sync_interval_minutes
+    prev_active = existing.is_active
+
     repo = await manager.update(repo_id, body)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
+
+    polling_relevant_changed = (
+        repo.sync_interval_minutes != prev_interval
+        or repo.is_active != prev_active
+    )
+    if polling_relevant_changed:
+        wakeup = getattr(request.app.state, "repo_sync_wakeup", None)
+        if wakeup is not None:
+            wakeup.set()
+
     return _to_response(repo)
 
 

@@ -38,6 +38,14 @@ export interface RepoCreateParams {
   sync_interval_minutes?: number;
 }
 
+export interface RepoUpdateParams {
+  name?: string;
+  default_branch?: string;
+  sync_interval_minutes?: number;
+  auth_token?: string;
+  is_active?: boolean;
+}
+
 export interface CodeGraphNode {
   id: string;
   label: string;
@@ -139,6 +147,21 @@ export function useCreateRepo() {
   return useMutation({
     mutationFn: (data: RepoCreateParams) =>
       apiFetch<Repo>("/repos", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["repos"] });
+      qc.invalidateQueries({ queryKey: ["repoStats"] });
+    },
+  });
+}
+
+export function useUpdateRepo() {
+  const qc = useQueryClient();
+  return useMutation<Repo, Error, { id: string; data: RepoUpdateParams }>({
+    mutationFn: ({ id, data }) =>
+      apiFetch<Repo>(`/repos/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] });
       qc.invalidateQueries({ queryKey: ["repoStats"] });

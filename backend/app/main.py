@@ -83,6 +83,14 @@ async def lifespan(app: FastAPI):
     # second store overwrote the first — neither serialized).
     app.state.llm_config_lock = asyncio.Lock()
 
+    # Wakeup signal for the periodic repo sync loop. Mutating
+    # ``sync_interval_minutes`` or ``is_active`` on a repo sets this
+    # event; the loop's interruptible wait then returns immediately and
+    # re-reads the repos table on the next iteration. Without this, an
+    # interval change would not take effect until the loop's next
+    # 5-minute tick.
+    app.state.repo_sync_wakeup = asyncio.Event()
+
     from app.services import prompt
     agent_instructions = prompt.get("agent_instructions")
     if agent_instructions:
@@ -132,9 +140,21 @@ async def lifespan(app: FastAPI):
                 await s.commit()
 
     async def periodic_repo_sync():
+        wakeup: asyncio.Event = app.state.repo_sync_wakeup
         while True:
             try:
-                await asyncio.sleep(300)
+                # Interruptible wait. Either the 5-minute timeout fires
+                # (the normal cadence) or a config change sets the event
+                # (PUT /api/v1/repos/{id} with sync_interval_minutes or
+                # is_active changed). Clearing happens AFTER the wait so a
+                # signal that arrives during processing is preserved and
+                # picked up on the next iteration.
+                try:
+                    await asyncio.wait_for(wakeup.wait(), timeout=300)
+                except asyncio.TimeoutError:
+                    pass
+                wakeup.clear()
+
                 from app.models.code import Repository
                 active_llm = getattr(app.state, "llm", None)
                 async with async_session_factory() as list_session:

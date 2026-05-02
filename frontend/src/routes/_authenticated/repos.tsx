@@ -4,13 +4,14 @@ import {
 useRepoStats,
 useRepos,
 useCreateRepo,
+useUpdateRepo,
 useDeleteRepo,
 useReindexRepo,
 useTriggerEnrichment,
 useRepoTasks,
 useCancelTask,
 } from "@/hooks/api"
-import type { RepoCreateParams, RepoTask, Repo } from "@/hooks/api"
+import type { RepoCreateParams, RepoUpdateParams, RepoTask, Repo } from "@/hooks/api"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
@@ -32,7 +33,8 @@ DialogTrigger,
 } from "darkraise-ui/components/dialog"
 import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "sonner"
-import { Plus, RefreshCw, Trash2, X } from "lucide-react"
+import { Switch } from "darkraise-ui/components/switch"
+import { Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react"
 
 export const Route = createFileRoute("/_authenticated/repos")({
 component: RepositoriesPage,
@@ -164,14 +166,126 @@ placeholder="Optional"
 )
 }
 
+function EditRepoDialog({ repo, onClose }: { repo: Repo; onClose: () => void }) {
+const updateRepo = useUpdateRepo()
+const [form, setForm] = useState<RepoUpdateParams>({
+name: repo.name,
+default_branch: repo.default_branch,
+sync_interval_minutes: repo.sync_interval_minutes,
+auth_token: "",
+is_active: repo.is_active,
+})
+
+const set = <K extends keyof RepoUpdateParams>(field: K, value: RepoUpdateParams[K]) =>
+setForm((prev) => ({ ...prev, [field]: value }))
+
+const handleSubmit = (e: React.FormEvent) => {
+e.preventDefault()
+
+const payload: RepoUpdateParams = {}
+if (form.name && form.name !== repo.name) payload.name = form.name
+if (form.default_branch && form.default_branch !== repo.default_branch)
+payload.default_branch = form.default_branch
+if (
+form.sync_interval_minutes != null &&
+form.sync_interval_minutes !== repo.sync_interval_minutes
+)
+payload.sync_interval_minutes = form.sync_interval_minutes
+if (form.is_active !== repo.is_active) payload.is_active = form.is_active
+// Only send auth_token if user typed a new value; empty string is treated
+// as "clear the token" by the backend, which we expose explicitly.
+if (form.auth_token && form.auth_token.trim() !== "")
+payload.auth_token = form.auth_token
+
+if (Object.keys(payload).length === 0) {
+toast.info("No changes to save")
+onClose()
+return
+}
+
+updateRepo.mutate(
+{ id: repo.id, data: payload },
+{
+onSuccess: () => {
+toast.success("Repository updated")
+onClose()
+},
+onError: (err) => toast.error(`Failed to update: ${err.message}`),
+},
+)
+}
+
+return (
+<form onSubmit={handleSubmit} className="space-y-3">
+<div>
+<Label className="text-xs text-muted-foreground">Name</Label>
+<Input
+value={form.name ?? ""}
+onChange={(e) => set("name", e.target.value)}
+required
+/>
+</div>
+<div className="grid grid-cols-2 gap-3">
+<div>
+<Label className="text-xs text-muted-foreground">Default branch</Label>
+<Input
+value={form.default_branch ?? "main"}
+onChange={(e) => set("default_branch", e.target.value)}
+/>
+</div>
+<div>
+<Label className="text-xs text-muted-foreground">Sync interval (min)</Label>
+<Input
+type="number"
+value={form.sync_interval_minutes ?? 30}
+onChange={(e) => set("sync_interval_minutes", Number(e.target.value))}
+min={1}
+/>
+</div>
+</div>
+<div>
+<Label className="text-xs text-muted-foreground">
+Auth token{" "}
+<span className="text-[10px]">
+(leave blank to keep current)
+</span>
+</Label>
+<Input
+type="password"
+value={form.auth_token ?? ""}
+onChange={(e) => set("auth_token", e.target.value)}
+placeholder="Paste a new token to rotate"
+/>
+</div>
+<div className="flex items-center justify-between rounded-md border px-3 py-2">
+<div>
+<div className="text-sm">Active (auto-sync enabled)</div>
+<div className="text-xs text-muted-foreground">
+When off, the periodic sync skips this repo. Manual reindex still works.
+</div>
+</div>
+<Switch
+checked={form.is_active ?? true}
+onCheckedChange={(v) => set("is_active", v)}
+/>
+</div>
+<Button type="submit" className="w-full" disabled={updateRepo.isPending}>
+{updateRepo.isPending ? "Saving..." : "Save changes"}
+</Button>
+</form>
+)
+}
+
 function RepoRow({
 repo,
 onReindex,
 onDelete,
+onEdit,
 }: {
 repo: Repo
 onReindex: (id: string) => void
 onDelete: (id: string, name: string) => void
+onEdit: (repo: Repo) => void
 }) {
 const { data: tasks } = useRepoTasks(
 repo.status === "cloning" || repo.status === "indexing" ? repo.id : null,
@@ -263,6 +377,14 @@ className={`w-3.5 h-3.5 mr-1 ${repo.status === "indexing" ? "animate-spin" : ""}
 </Button>
 <Button
 variant="ghost"
+className="h-7 px-2 text-xs"
+onClick={() => onEdit(repo)}
+aria-label={`Edit repository ${repo.name}`}
+>
+<Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+</Button>
+<Button
+variant="ghost"
 className="h-7 px-2 text-xs text-destructive hover:text-destructive"
 onClick={() => onDelete(repo.id, repo.name)}
 aria-label={`Delete repository ${repo.name}`}
@@ -315,6 +437,7 @@ const reindexRepo = useReindexRepo()
 const triggerEnrichment = useTriggerEnrichment()
 
 const [dialogOpen, setDialogOpen] = useState(false)
+const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
 
 const handleReindex = (id: string) => {
 reindexRepo.mutate(id, {
@@ -381,6 +504,20 @@ Add Repo
 <p className="text-muted-foreground">No repositories yet. Add one to get started.</p>
 )}
 
+<Dialog
+open={editingRepo !== null}
+onOpenChange={(open) => !open && setEditingRepo(null)}
+>
+<DialogContent>
+<DialogHeader>
+<DialogTitle>Edit Repository</DialogTitle>
+</DialogHeader>
+{editingRepo && (
+<EditRepoDialog repo={editingRepo} onClose={() => setEditingRepo(null)} />
+)}
+</DialogContent>
+</Dialog>
+
 {repos && repos.length > 0 && (
 <Card>
 <CardHeader className="pb-2">
@@ -396,6 +533,7 @@ key={repo.id}
 repo={repo}
 onReindex={handleReindex}
 onDelete={handleDelete}
+onEdit={setEditingRepo}
 />
 ))}
 </div>

@@ -72,6 +72,84 @@ async def test_repos_require_auth(client):
     assert resp.status_code in (401, 403)
 
 
+async def test_update_repo_interval_wakes_sync_loop(client, auth_headers, tmp_path):
+    """Updating sync_interval_minutes must signal the periodic loop so the
+    new cadence takes effect immediately instead of after the next tick."""
+    from app.main import app
+
+    repo_dir = tmp_path / "wake-test-repo"
+    repo_dir.mkdir()
+    create = await client.post(
+        "/api/v1/repos",
+        json={
+            "name": "wake-test-repo",
+            "local_path": str(repo_dir),
+            "provider": "local",
+            "sync_interval_minutes": 30,
+        },
+        headers=auth_headers,
+    )
+    assert create.status_code == 201
+    repo_id = create.json()["id"]
+
+    # Drain any wake event the create handler may have set.
+    app.state.repo_sync_wakeup.clear()
+
+    # Updating an unrelated field (name) must NOT wake the loop.
+    await client.put(
+        f"/api/v1/repos/{repo_id}",
+        json={"name": "wake-test-repo-renamed"},
+        headers=auth_headers,
+    )
+    assert app.state.repo_sync_wakeup.is_set() is False
+
+    # Changing sync_interval_minutes MUST wake the loop.
+    await client.put(
+        f"/api/v1/repos/{repo_id}",
+        json={"sync_interval_minutes": 5},
+        headers=auth_headers,
+    )
+    assert app.state.repo_sync_wakeup.is_set() is True
+
+    app.state.repo_sync_wakeup.clear()
+
+    # Toggling is_active MUST also wake the loop.
+    await client.put(
+        f"/api/v1/repos/{repo_id}",
+        json={"is_active": False},
+        headers=auth_headers,
+    )
+    assert app.state.repo_sync_wakeup.is_set() is True
+
+
+async def test_update_repo_no_op_does_not_wake(client, auth_headers, tmp_path):
+    """Re-PUTing the same interval value must not flip the wake event."""
+    from app.main import app
+
+    repo_dir = tmp_path / "noop-test-repo"
+    repo_dir.mkdir()
+    create = await client.post(
+        "/api/v1/repos",
+        json={
+            "name": "noop-test-repo",
+            "local_path": str(repo_dir),
+            "provider": "local",
+            "sync_interval_minutes": 15,
+        },
+        headers=auth_headers,
+    )
+    assert create.status_code == 201
+    repo_id = create.json()["id"]
+    app.state.repo_sync_wakeup.clear()
+
+    await client.put(
+        f"/api/v1/repos/{repo_id}",
+        json={"sync_interval_minutes": 15},
+        headers=auth_headers,
+    )
+    assert app.state.repo_sync_wakeup.is_set() is False
+
+
 def test_validate_local_path_rejects_git_repo_when_must_not_be_repo(tmp_path):
     """``must_not_be_repo`` blocks the chosen path itself being a repo."""
     import pytest

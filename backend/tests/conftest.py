@@ -84,6 +84,8 @@ async def client(session):
     # never enters it, so initialise here to match production state.
     if not getattr(app.state, "llm_config_lock", None):
         app.state.llm_config_lock = asyncio.Lock()
+    if not getattr(app.state, "repo_sync_wakeup", None):
+        app.state.repo_sync_wakeup = asyncio.Event()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
