@@ -22,6 +22,7 @@ import { Route as AuthenticatedReindexRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated/pipeline'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedLlmRouteImport } from './routes/_authenticated/llm'
+import { Route as AuthenticatedJobsRouteImport } from './routes/_authenticated/jobs'
 import { Route as AuthenticatedGraphRouteImport } from './routes/_authenticated/graph'
 import { Route as AuthenticatedCodeWikiRouteImport } from './routes/_authenticated/code-wiki'
 import { Route as AuthenticatedCodeGraphRouteImport } from './routes/_authenticated/code-graph'
@@ -92,6 +93,11 @@ const AuthenticatedLlmRoute = AuthenticatedLlmRouteImport.update({
   path: '/llm',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedJobsRoute = AuthenticatedJobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedGraphRoute = AuthenticatedGraphRouteImport.update({
   id: '/graph',
   path: '/graph',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/code-graph': typeof AuthenticatedCodeGraphRoute
   '/code-wiki': typeof AuthenticatedCodeWikiRoute
   '/graph': typeof AuthenticatedGraphRoute
+  '/jobs': typeof AuthenticatedJobsRoute
   '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/code-graph': typeof AuthenticatedCodeGraphRoute
   '/code-wiki': typeof AuthenticatedCodeWikiRoute
   '/graph': typeof AuthenticatedGraphRoute
+  '/jobs': typeof AuthenticatedJobsRoute
   '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/_authenticated/code-graph': typeof AuthenticatedCodeGraphRoute
   '/_authenticated/code-wiki': typeof AuthenticatedCodeWikiRoute
   '/_authenticated/graph': typeof AuthenticatedGraphRoute
+  '/_authenticated/jobs': typeof AuthenticatedJobsRoute
   '/_authenticated/llm': typeof AuthenticatedLlmRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
     | '/code-graph'
     | '/code-wiki'
     | '/graph'
+    | '/jobs'
     | '/llm'
     | '/memories'
     | '/pipeline'
@@ -202,6 +212,7 @@ export interface FileRouteTypes {
     | '/code-graph'
     | '/code-wiki'
     | '/graph'
+    | '/jobs'
     | '/llm'
     | '/memories'
     | '/pipeline'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/_authenticated/code-graph'
     | '/_authenticated/code-wiki'
     | '/_authenticated/graph'
+    | '/_authenticated/jobs'
     | '/_authenticated/llm'
     | '/_authenticated/memories'
     | '/_authenticated/pipeline'
@@ -332,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLlmRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/jobs': {
+      id: '/_authenticated/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof AuthenticatedJobsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/graph': {
       id: '/_authenticated/graph'
       path: '/graph'
@@ -376,6 +395,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCodeGraphRoute: typeof AuthenticatedCodeGraphRoute
   AuthenticatedCodeWikiRoute: typeof AuthenticatedCodeWikiRoute
   AuthenticatedGraphRoute: typeof AuthenticatedGraphRoute
+  AuthenticatedJobsRoute: typeof AuthenticatedJobsRoute
   AuthenticatedLlmRoute: typeof AuthenticatedLlmRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
@@ -393,6 +413,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCodeGraphRoute: AuthenticatedCodeGraphRoute,
   AuthenticatedCodeWikiRoute: AuthenticatedCodeWikiRoute,
   AuthenticatedGraphRoute: AuthenticatedGraphRoute,
+  AuthenticatedJobsRoute: AuthenticatedJobsRoute,
   AuthenticatedLlmRoute: AuthenticatedLlmRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,

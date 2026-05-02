@@ -62,6 +62,15 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
 ]
+# Optional ML inference stack — required to load ML profiles via the
+# Darkmem ML Profiles tab. CPU-only by deliberate choice; install via
+#   pip install -e .[ml] --extra-index-url https://download.pytorch.org/whl/cpu
+# The runtime gracefully degrades to the regex classifier when these
+# packages aren't available, so this group is optional in dev/test.
+ml = [
+    "transformers>=4.40.0",
+    "torch>=2.2.0",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

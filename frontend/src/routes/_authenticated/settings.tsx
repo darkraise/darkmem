@@ -14,6 +14,7 @@ type ClassificationAreaInfo,
 import { ORPHAN_PROMPTS } from "@/components/pipeline/prompt-map"
 import { LLMProvidersPanel } from "@/components/pipeline/LLMProvidersPanel"
 import { LLMProfilesPanel } from "@/components/pipeline/LLMProfilesPanel"
+import { MLProfilesPanel } from "@/components/pipeline/MLProfilesPanel"
 import { ServerPathBrowser } from "@/components/setup/ServerPathBrowser"
 import { useReposPath, useUpdateReposPath } from "@/hooks/api/use-setup-api"
 import {
@@ -502,6 +503,7 @@ const SETTINGS_TABS = [
 { value: "assistant", label: "Assistant Prompts" },
 { value: "llm-providers", label: "LLM Providers" },
 { value: "llm-profiles", label: "LLM Profiles" },
+{ value: "ml-profiles", label: "Darkmem ML Profiles" },
 ] as const satisfies readonly { value: SettingsTabValue; label: string }[]
 
 function SettingsPage() {
@@ -558,6 +560,10 @@ description="Configure workers, feature flags, prompts, and classification."
 
 <TabsContent value="llm-profiles" className="mt-4">
 <LLMProfilesPanel />
+</TabsContent>
+
+<TabsContent value="ml-profiles" className="mt-4">
+<MLProfilesPanel />
 </TabsContent>
 </Tabs>
 </div>

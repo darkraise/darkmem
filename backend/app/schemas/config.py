@@ -16,6 +16,7 @@ class LLMPurposeConfigSchema(BaseModel):
     params: dict = Field(default_factory=dict)
     provider_ref: str | None = None
     profile_ref: str | None = None
+    ml_profile_ref: str | None = None
 
 
 class LLMPurposeConfigUpdate(BaseModel):
@@ -30,6 +31,7 @@ class LLMPurposeConfigUpdate(BaseModel):
     # Empty string clears the reference; absent leaves it untouched.
     provider_ref: str | None = None
     profile_ref: str | None = None
+    ml_profile_ref: str | None = None
 
 
 class LLMProviderProfileSchema(BaseModel):
@@ -85,6 +87,7 @@ class LLMProfileSchema(BaseModel):
     params: dict = Field(default_factory=dict)
     is_embedding: bool = False
     reasoning: bool = False
+    purpose: str | None = None
 
 
 class LLMProfilesResponse(BaseModel):
@@ -93,6 +96,22 @@ class LLMProfilesResponse(BaseModel):
 
 class LLMProfilesUpdate(BaseModel):
     profiles: dict[str, LLMProfileSchema]
+
+
+class MLProfileSchema(BaseModel):
+    """One ML profile — HuggingFace classifier loaded into the backend
+    for in-process inference. Always runs on CPU."""
+
+    model_repo: str
+    ttl_seconds: int = 0
+
+
+class MLProfilesResponse(BaseModel):
+    profiles: dict[str, MLProfileSchema] = Field(default_factory=dict)
+
+
+class MLProfilesUpdate(BaseModel):
+    profiles: dict[str, MLProfileSchema]
 
 
 class LLMProviderModelsResponse(BaseModel):

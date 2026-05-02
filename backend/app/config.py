@@ -104,6 +104,10 @@ class LLMPurposeConfig(BaseModel):
     # when the user manually edits a field that diverges from the
     # profile's preset.
     profile_ref: str | None = None
+    # Optional reference to an entry in the ``ml_profiles`` table —
+    # when set, the classifier purpose dispatches to the in-process
+    # MLClassificationService instead of the LLM-backed one.
+    ml_profile_ref: str | None = None
 
 
 class Settings(BaseSettings):

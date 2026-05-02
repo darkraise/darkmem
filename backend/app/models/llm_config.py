@@ -84,6 +84,7 @@ class LLMProfile(Base):
     params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_embedding: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reasoning: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    purpose: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("NOW()"), nullable=False,
     )
@@ -92,6 +93,36 @@ class LLMProfile(Base):
     )
 
     provider: Mapped[LLMProvider] = relationship("LLMProvider", back_populates="profiles")
+
+
+class MLProfile(Base):
+    """One stored ML Profile — a HuggingFace classifier loaded into the
+    backend process for in-process inference. Used by the classifier
+    purpose as an alternative to LLM-based classification.
+
+    The ``MLModelManager`` lazy-loads the model on first use, caches
+    it keyed by ``model_repo``, and (when ``ttl_seconds > 0``) evicts
+    on idle. ``ttl_seconds = 0`` means "never evict" — the model
+    stays resident until the backend stops.
+
+    All inference runs on CPU; GPU is intentionally unsupported in
+    this iteration so ``torch+cpu`` is the only required dependency.
+    """
+
+    __tablename__ = "ml_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"),
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    model_repo: Mapped[str] = mapped_column(String(512), nullable=False)
+    ttl_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("NOW()"), nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("NOW()"), nullable=False,
+    )
 
 
 class LLMPurposeConfigRow(Base):
@@ -115,6 +146,11 @@ class LLMPurposeConfigRow(Base):
     profile_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("llm_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    ml_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ml_profiles.id", ondelete="SET NULL"),
         nullable=True,
     )
     model: Mapped[str] = mapped_column(String(255), nullable=False)

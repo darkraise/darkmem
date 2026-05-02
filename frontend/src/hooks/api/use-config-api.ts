@@ -16,6 +16,18 @@ export interface LlmPurposeConfig {
   // Optional reference to a stored LLM profile (preset). When set, the
   // dropdown shows this profile as the active selection.
   profile_ref?: string | null;
+  // Optional reference to a stored ML profile. When set, the classifier
+  // purpose dispatches to the in-process MLClassificationService.
+  ml_profile_ref?: string | null;
+}
+
+export interface MlProfile {
+  model_repo: string;
+  ttl_seconds: number;
+}
+
+export interface MlProfilesResponse {
+  profiles: Record<string, MlProfile>;
 }
 
 export interface LlmProviderProfile {
@@ -123,6 +135,7 @@ export interface LlmProfile {
   params: Record<string, unknown>;
   is_embedding: boolean;
   reasoning: boolean;
+  purpose?: string | null;
 }
 
 export interface LlmProfilesResponse {
@@ -318,3 +331,41 @@ export function useUpdateSystemPrompts() {
   });
 }
 
+
+// -- ML Profiles -----------------------------------------------------------
+
+export function useMlProfiles() {
+  return useQuery<MlProfilesResponse>({
+    queryKey: ["mlProfiles"],
+    queryFn: () => apiFetch<MlProfilesResponse>("/config/ml-profiles"),
+  });
+}
+
+export function useUpdateMlProfiles() {
+  const qc = useQueryClient();
+  return useMutation<MlProfilesResponse, Error, MlProfilesResponse>({
+    mutationFn: (body) =>
+      apiFetch<MlProfilesResponse>("/config/ml-profiles", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mlProfiles"] });
+      qc.invalidateQueries({ queryKey: ["llmConfig"] });
+    },
+  });
+}
+
+export function useDeleteMlProfile() {
+  const qc = useQueryClient();
+  return useMutation<MlProfilesResponse, Error, { name: string }>({
+    mutationFn: ({ name }) =>
+      apiFetch<MlProfilesResponse>(`/config/ml-profiles/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mlProfiles"] });
+      qc.invalidateQueries({ queryKey: ["llmConfig"] });
+    },
+  });
+}

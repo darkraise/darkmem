@@ -11,6 +11,7 @@ import {
 useUpdateLlmConfig,
 useLlmProviders,
 useLlmProfiles,
+useMlProfiles,
 type LlmPurposeConfig,
 type PipelineState,
 } from "@/hooks/api"
@@ -29,22 +30,37 @@ export function LLMPurposeCard({ purpose, config, prompts, onObsoleteDetected }:
 const update = useUpdateLlmConfig()
 const { data: providersResp } = useLlmProviders()
 const { data: llmProfilesResp } = useLlmProfiles()
+const { data: mlProfilesResp } = useMlProfiles()
 const allProviders = providersResp?.profiles ?? {}
 const allLlmProfiles = llmProfilesResp?.profiles ?? {}
-// For the embedding purpose only show Profiles flagged ``is_embedding``
-// and whose Provider supports embedding; everything else hides
-// embedding-only Profiles. Either way the user can't accidentally
-// wire a chat-model Profile into the embedding stage or vice versa.
+const allMlProfiles = mlProfilesResp?.profiles ?? {}
+// Strict per-purpose filter: only show Profiles whose ``purpose`` column
+// matches the card. Profiles created before the purpose column existed
+// (purpose=NULL) fall back to the legacy embedding/reasoning heuristic
+// so they don't disappear from the menu after the migration backfill.
 const profileNames = Object.keys(allLlmProfiles)
 .filter((name) => {
 const p = allLlmProfiles[name]
 const provider = allProviders[p.provider_ref]
+if (p.purpose) {
+if (p.purpose !== purpose) return false
+if (purpose === "embedding") return provider?.supports_embedding ?? true
+return true
+}
+// Legacy fallback when purpose isn't set on the profile row.
 if (purpose === "embedding") {
 return p.is_embedding && (provider?.supports_embedding ?? true)
 }
 return !p.is_embedding
 })
 .sort()
+// ML profiles only surface for the classifier card. Names are kept in
+// a separate list so the option label can flag them as ``[ml]`` and
+// the apply-handler can dispatch to ml_profile_ref instead of
+// profile_ref.
+const mlProfileNames = purpose === "classification"
+? Object.keys(allMlProfiles).sort()
+: []
 const [open, setOpen] = useState(purpose === "extraction")
 const [draft, setDraft] = useState<LlmPurposeConfig>(config)
 const [paramsText, setParamsText] = useState(
@@ -83,6 +99,7 @@ provider_ref: draft.provider_ref ?? "",
 // provider_ref convention). null on draft means user manually
 // edited a field and broke the link.
 profile_ref: draft.profile_ref ?? "",
+ml_profile_ref: draft.ml_profile_ref ?? "",
 }
 // Connection fields are only sent when the user manages them on the
 // purpose itself. With a profile linked, we leave the stored values
@@ -150,23 +167,44 @@ className="space-y-3 pt-0 p-4"
 aria-label={`${purpose} LLM configuration`}
 >
 <div className="flex items-center gap-2">
-<Label className="text-xs">LLM Profile</Label>
+<Label className="text-xs">Profile</Label>
 <select
-value={activeProfileName}
+value={
+draft.ml_profile_ref && mlProfileNames.includes(draft.ml_profile_ref)
+? `ml:${draft.ml_profile_ref}`
+: activeProfileName
+? `llm:${activeProfileName}`
+: ""
+}
 onChange={(e) => {
-const profileName = e.target.value
-if (!profileName) return
+const value = e.target.value
+if (!value) return
+if (value.startsWith("ml:")) {
+const mlName = value.slice(3)
+const mlProf = allMlProfiles[mlName]
+if (!mlProf) return
+// ML profile selected — clear the LLM-side draft state and
+// route the classifier to the in-process ML runtime. The
+// resolver's ml_profile_ref column is what the pipeline
+// reads to decide which classifier service to construct.
+patch({
+ml_profile_ref: mlName,
+profile_ref: null,
+provider_ref: null,
+model: mlProf.model_repo,
+api_key: "",
+})
+setParamsText("")
+setDirty(true)
+return
+}
+const profileName = value.slice(4)
 const prof = allLlmProfiles[profileName]
 if (!prof) return
-// Apply Profile values to the form so the user sees an
-// immediate preview of every effective field — provider,
-// base URL, API kind, and API key (masked) come from the
-// linked Provider; model, params, and reasoning come from
-// the Profile. Cancel reverts the draft to the prop's
-// ``config`` so the saved row wins on rollback.
 const linkedProvider = allProviders[prof.provider_ref]
 patch({
 profile_ref: profileName,
+ml_profile_ref: null,
 provider_ref: prof.provider_ref,
 model: prof.model,
 reasoning: prof.is_embedding ? false : prof.reasoning,
@@ -176,10 +214,6 @@ params: prof.params || {},
 provider: linkedProvider.provider,
 base_url: linkedProvider.base_url,
 api_kind: linkedProvider.api_kind as LlmPurposeConfig["api_kind"],
-// The API responses already mask configured keys
-// as ``"***"``; falling back to that sentinel
-// keeps the input field non-empty without
-// exposing the secret.
 api_key: linkedProvider.api_key ?? "",
 }
 : {}),
@@ -192,26 +226,39 @@ Object.keys(prof.params || {}).length
 setDirty(true)
 }}
 className="h-9 text-sm rounded border border-border bg-background px-2 flex-1"
-title="Apply a saved LLM Profile's defaults (model, params, reasoning) to this purpose."
-disabled={profileNames.length === 0}
+title="Apply a saved Profile to this purpose."
+disabled={profileNames.length === 0 && mlProfileNames.length === 0}
 >
 <option value="">
-{profileNames.length === 0
+{profileNames.length === 0 && mlProfileNames.length === 0
 ? "(no Profiles available — create one in Settings)"
 : "Apply a Profile…"}
 </option>
 {profileNames.map((name) => {
 const p = allLlmProfiles[name]
 return (
-<option key={name} value={name}>
+<option key={`llm-${name}`} value={`llm:${name}`}>
 {name} — {p.provider_ref}/{p.model}
 </option>
 )
 })}
+{mlProfileNames.map((name) => {
+const m = allMlProfiles[name]
+return (
+<option key={`ml-${name}`} value={`ml:${name}`}>
+[ml] {name} — {m.model_repo}
+</option>
+)
+})}
 </select>
-{linkedToProfile && (
+{linkedToProfile && !draft.ml_profile_ref && (
 <Badge variant="secondary" className="text-[9px]" title={`Linked Provider: ${draft.provider_ref}`}>
 via {draft.provider_ref}
+</Badge>
+)}
+{draft.ml_profile_ref && (
+<Badge variant="secondary" className="text-[9px]" title="In-process ML classifier">
+ml: {draft.ml_profile_ref}
 </Badge>
 )}
 </div>

@@ -5,6 +5,7 @@ export type SettingsTabValue =
   | "assistant"
   | "llm-providers"
   | "llm-profiles"
+  | "ml-profiles"
 const KNOWN: SettingsTabValue[] = [
   "flags",
   "classification",
@@ -12,6 +13,7 @@ const KNOWN: SettingsTabValue[] = [
   "assistant",
   "llm-providers",
   "llm-profiles",
+  "ml-profiles",
 ]
 
 export function resolveStoredTab(stored: string | null): SettingsTabValue {

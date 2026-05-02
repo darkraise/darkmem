@@ -481,14 +481,43 @@ class ProcessingPipeline:
                 except Exception as exc:
                     return exc
 
+        # Pick the classifier implementation: if the classifier purpose
+        # config has an ml_profile_ref set, dispatch to the in-process
+        # MLClassificationService instead of the LLM-backed one. The
+        # surface (``classify(content, areas, prompt, mode)`` returning
+        # ``{hall, summary, emotions, flags}``) is identical.
+        classifier = self.classification
+        try:
+            from app.services.config import get_llm_config as _fetch_cfg
+            from app.models.llm_config import MLProfile as _MLProfile
+            from sqlalchemy import select as _sa_select
+            async with self.session_factory() as _classifier_session:
+                _live_cfg = await _fetch_cfg(_classifier_session)
+                _classifier_cfg = _live_cfg.get("classification")
+                _ml_ref = getattr(_classifier_cfg, "ml_profile_ref", None) if _classifier_cfg else None
+                if _ml_ref:
+                    _ml_row = (await _classifier_session.execute(
+                        _sa_select(_MLProfile).where(_MLProfile.name == _ml_ref)
+                    )).scalar_one_or_none()
+                    if _ml_row is not None:
+                        from app.services.classification_ml import MLClassificationService
+                        from app.services.ml_runtime import ml_model_manager
+                        classifier = MLClassificationService(
+                            ml_model_manager,
+                            _ml_row.model_repo,
+                            _ml_row.ttl_seconds,
+                        )
+        except Exception:
+            logger.exception("Failed to resolve classifier; falling back to LLM service")
+
         async def run_classify(content: str):
             async with semaphore:
                 try:
                     areas = flags.get("classification_areas", ["general"])
                     mode = flags.get("classification_mode", "simple")
-                    return await self.classification.classify(content, areas, cls_prompt, mode=mode)
+                    return await classifier.classify(content, areas, cls_prompt, mode=mode)
                 except Exception as exc:
-                    logger.warning("LLM classification failed: %s", exc)
+                    logger.warning("Classification failed: %s", exc)
                     return None
 
         if classification_on:

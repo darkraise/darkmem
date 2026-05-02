@@ -18,7 +18,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
-import { CircleHelp, Trash2 } from "lucide-react"
+import { CircleHelp, Plus, Trash2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "darkraise-ui/components/dialog"
 import { toast } from "sonner"
 import {
   useLlmProfiles,
@@ -75,7 +82,6 @@ export function LLMProfilesPanel() {
   const update = useUpdateLlmProfiles()
   const remove = useDeleteLlmProfile()
   const [draft, setDraft] = useState<DraftMap>({})
-  const [newName, setNewName] = useState("")
 
   const stored: DraftMap = useMemo(() => {
     const out: DraftMap = {}
@@ -155,8 +161,14 @@ export function LLMProfilesPanel() {
     }))
   }
 
-  const addProfile = () => {
-    const trimmed = newName.trim()
+  const [addOpen, setAddOpen] = useState(false)
+
+  const addProfile = (
+    name: string,
+    providerRef: string,
+    purpose: KnownPurpose,
+  ) => {
+    const trimmed = name.trim()
     if (!trimmed) return
     if (trimmed.includes("/") || trimmed.length > 64) {
       toast.error("Profile name must omit '/' and stay under 64 chars")
@@ -173,16 +185,17 @@ export function LLMProfilesPanel() {
     setDraft((prev) => ({
       ...prev,
       [trimmed]: {
-        provider_ref: providerNames[0],
+        provider_ref: providerRef,
         model: "",
         params: {},
-        is_embedding: false,
-        reasoning: false,
+        is_embedding: purpose === "embedding",
+        reasoning: purpose === "reasoning",
+        purpose,
         _isNew: true,
         _paramsText: "",
       },
     }))
-    setNewName("")
+    setAddOpen(false)
   }
 
   const drop = (name: string) => {
@@ -237,6 +250,7 @@ export function LLMProfilesPanel() {
         params,
         is_embedding: !!p.is_embedding,
         reasoning: p.is_embedding ? false : !!p.reasoning,
+        purpose: p.purpose ?? null,
       }
     }
     update.mutate(
@@ -349,29 +363,26 @@ export function LLMProfilesPanel() {
           </Tabs>
         )}
 
-        <div className="border-t border-border pt-3 flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2">
-            <Label htmlFor="new_profile_name" className="text-xs">New Profile</Label>
-            <Input
-              id="new_profile_name"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="e.g. extraction-default"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  addProfile()
-                }
-              }}
-              className="max-w-xs"
-            />
-          </div>
-          <Button variant="outline" onClick={addProfile} disabled={!newName.trim()}>
-            Add
-          </Button>
+        <div className="border-t border-border pt-3 flex items-center justify-end">
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add Profile
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add LLM Profile</DialogTitle>
+              </DialogHeader>
+              <AddProfileForm
+                providerNames={providerNames}
+                existingNames={profileNames}
+                onClose={() => setAddOpen(false)}
+                onCreate={addProfile}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
@@ -510,5 +521,91 @@ function ProfileRow({ name, profile, isNew, dirty, providerNames, onPatch, onDel
         </div>
       </div>
     </div>
+  )
+}
+
+function AddProfileForm({
+  providerNames,
+  existingNames,
+  onClose,
+  onCreate,
+}: {
+  providerNames: string[]
+  existingNames: string[]
+  onClose: () => void
+  onCreate: (name: string, providerRef: string, purpose: KnownPurpose) => void
+}) {
+  const [name, setName] = useState("")
+  const [providerRef, setProviderRef] = useState(providerNames[0] ?? "")
+  const [purpose, setPurpose] = useState<KnownPurpose>("extraction")
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    if (existingNames.includes(name.trim())) {
+      toast.error(`Profile "${name.trim()}" already exists`)
+      return
+    }
+    if (!providerRef) {
+      toast.error("Pick a Provider")
+      return
+    }
+    onCreate(name.trim(), providerRef, purpose)
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <div>
+        <Label className="text-xs text-muted-foreground">Profile name</Label>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. openai-classification-fast"
+          required
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs text-muted-foreground">Provider</Label>
+          <select
+            value={providerRef}
+            onChange={(e) => setProviderRef(e.target.value)}
+            className="h-9 w-full text-sm rounded border border-border bg-background px-2"
+            required
+          >
+            {providerNames.length === 0 && <option value="">(no providers — add one first)</option>}
+            {providerNames.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Purpose</Label>
+          <select
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value as KnownPurpose)}
+            className="h-9 w-full text-sm rounded border border-border bg-background px-2"
+            required
+          >
+            {KNOWN_PURPOSES.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        Strict per-purpose: this profile will only show in the Pipeline page's
+        dropdown for the selected purpose. Model and params are filled in inline
+        after the row appears.
+      </p>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!name.trim() || providerNames.length === 0}>
+          Add
+        </Button>
+      </div>
+    </form>
   )
 }

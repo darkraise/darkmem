@@ -13,7 +13,7 @@ from app.api.auth import require_auth
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
-from app.models.llm_config import LLMProvider, LLMProfile, LLMPurposeConfigRow
+from app.models.llm_config import LLMProvider, LLMProfile, LLMPurposeConfigRow, MLProfile
 from app.schemas.config import (
     LLMConfigResponse,
     LLMConfigUpdate,
@@ -27,6 +27,9 @@ from app.schemas.config import (
     LLMProviderTestResponse,
     LLMProvidersResponse,
     LLMProvidersUpdate,
+    MLProfileSchema,
+    MLProfilesResponse,
+    MLProfilesUpdate,
 )
 from app.services.config import (
     PURPOSES,
@@ -119,11 +122,14 @@ async def update_llm_config(
     async with request.app.state.llm_config_lock:
         update_data = body.model_dump(exclude_unset=True)
 
-        # Look up provider/profile name → id once for the whole request.
+        # Look up provider/profile/ml-profile name → id once for the
+        # whole request.
         prov_rows = (await session.execute(select(LLMProvider))).scalars().all()
         provider_id_by_name = {row.name: row.id for row in prov_rows}
         prof_rows = (await session.execute(select(LLMProfile))).scalars().all()
         profile_id_by_name = {row.name: row.id for row in prof_rows}
+        ml_prof_rows = (await session.execute(select(MLProfile))).scalars().all()
+        ml_profile_id_by_name = {row.name: row.id for row in ml_prof_rows}
 
         for purpose in PURPOSES:
             if purpose not in update_data or update_data[purpose] is None:
@@ -158,6 +164,22 @@ async def update_llm_config(
                         detail=f"unknown profile {ref!r}",
                     )
                 row.profile_id = profile_id_by_name.get(ref) if ref else None
+                # Picking an LLM profile clears any previously-set ML
+                # profile reference. Only one of the two FKs should be
+                # populated at a time; the pipeline dispatch reads
+                # ml_profile_id first and falls back to the LLM path.
+                if ref:
+                    row.ml_profile_id = None
+            if "ml_profile_ref" in incoming:
+                ref = incoming.pop("ml_profile_ref") or None
+                if ref and ref not in ml_profile_id_by_name:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"unknown ml-profile {ref!r}",
+                    )
+                row.ml_profile_id = ml_profile_id_by_name.get(ref) if ref else None
+                if ref:
+                    row.profile_id = None
 
             for field in (
                 "model", "dimensions", "reasoning", "api_kind",
@@ -611,6 +633,7 @@ async def _profile_to_schema(row: LLMProfile, provider_name: str) -> LLMProfileS
         params=row.params or {},
         is_embedding=row.is_embedding,
         reasoning=row.reasoning,
+        purpose=row.purpose,
     )
 
 
@@ -627,6 +650,7 @@ async def _list_profiles_with_provider(session: AsyncSession) -> dict[str, LLMPr
             params=row.params or {},
             is_embedding=row.is_embedding,
             reasoning=row.reasoning,
+            purpose=row.purpose,
         )
         for row, prov_name in rows
     }
@@ -690,6 +714,8 @@ async def update_llm_profiles_route(
         row.params = prof.params or {}
         row.is_embedding = prof.is_embedding
         row.reasoning = prof.reasoning if not prof.is_embedding else False
+        if prof.purpose is not None:
+            row.purpose = prof.purpose or None
         row.updated_at = datetime.now(timezone.utc)
     await session.flush()
 
@@ -710,6 +736,84 @@ async def delete_llm_profile_route(
     await session.delete(row)
     await session.flush()
     return LLMProfilesResponse(profiles=await _list_profiles_with_provider(session))
+
+
+# ── ML profiles ─────────────────────────────────────────────────────
+
+
+def _ml_profile_to_schema(row: MLProfile) -> MLProfileSchema:
+    return MLProfileSchema(model_repo=row.model_repo, ttl_seconds=row.ttl_seconds)
+
+
+@router.get("/ml-profiles", response_model=MLProfilesResponse)
+async def get_ml_profiles_route(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    rows = (await session.execute(select(MLProfile))).scalars().all()
+    return MLProfilesResponse(
+        profiles={r.name: _ml_profile_to_schema(r) for r in rows},
+    )
+
+
+@router.put("/ml-profiles", response_model=MLProfilesResponse)
+async def update_ml_profiles_route(
+    body: MLProfilesUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Upsert the posted ML profiles. Profiles in the table that are
+    NOT in the request body are left alone — same semantics as the
+    LLM profiles endpoint. Use DELETE /ml-profiles/{name} to remove."""
+    for name in body.profiles:
+        _validate_name(name, kind="ml-profile")
+        ttl = body.profiles[name].ttl_seconds
+        if ttl < 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"ml-profile {name!r}: ttl_seconds must be >= 0 (0 means no eviction)",
+            )
+
+    existing_rows = (await session.execute(select(MLProfile))).scalars().all()
+    existing_by_name = {r.name: r for r in existing_rows}
+    for name, prof in body.profiles.items():
+        row = existing_by_name.get(name)
+        if row is None:
+            row = MLProfile(
+                name=name,
+                model_repo=prof.model_repo,
+                ttl_seconds=prof.ttl_seconds,
+            )
+            session.add(row)
+        else:
+            row.model_repo = prof.model_repo
+            row.ttl_seconds = prof.ttl_seconds
+            row.updated_at = datetime.now(timezone.utc)
+    await session.flush()
+
+    rows = (await session.execute(select(MLProfile))).scalars().all()
+    return MLProfilesResponse(
+        profiles={r.name: _ml_profile_to_schema(r) for r in rows},
+    )
+
+
+@router.delete("/ml-profiles/{name}", response_model=MLProfilesResponse)
+async def delete_ml_profile_route(
+    name: str,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    row = (await session.execute(
+        select(MLProfile).where(MLProfile.name == name)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"ml-profile {name!r} not found")
+    await session.delete(row)
+    await session.flush()
+    rows = (await session.execute(select(MLProfile))).scalars().all()
+    return MLProfilesResponse(
+        profiles={r.name: _ml_profile_to_schema(r) for r in rows},
+    )
 
 
 class FeatureFlagsResponse(BaseModel):

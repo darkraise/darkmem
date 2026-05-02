@@ -108,27 +108,32 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
         "reranker": settings.llm_reranker,
     }
 
-    # One round-trip for purposes + providers + profiles in name form.
+    # One round-trip for purposes + providers + profiles + ml-profiles
+    # in name form so the resolver can return _ref strings without
+    # follow-up queries.
+    from app.models.llm_config import MLProfile
     stmt = (
         select(
             LLMPurposeConfigRow,
             LLMProvider.name.label("provider_name"),
             LLMProfileRow.name.label("profile_name"),
+            MLProfile.name.label("ml_profile_name"),
         )
         .outerjoin(LLMProvider, LLMPurposeConfigRow.provider_id == LLMProvider.id)
         .outerjoin(LLMProfileRow, LLMPurposeConfigRow.profile_id == LLMProfileRow.id)
+        .outerjoin(MLProfile, LLMPurposeConfigRow.ml_profile_id == MLProfile.id)
     )
     result = await session.execute(stmt)
-    by_purpose: dict[str, tuple[LLMPurposeConfigRow, str | None, str | None]] = {}
-    for row, prov_name, prof_name in result.all():
-        by_purpose[row.purpose] = (row, prov_name, prof_name)
+    by_purpose: dict[str, tuple[LLMPurposeConfigRow, str | None, str | None, str | None]] = {}
+    for row, prov_name, prof_name, ml_prof_name in result.all():
+        by_purpose[row.purpose] = (row, prov_name, prof_name, ml_prof_name)
 
     providers = await get_llm_providers(session)
 
     merged: dict[str, LLMPurposeConfig] = {}
     for purpose in PURPOSES:
         if purpose in by_purpose:
-            row, prov_name, prof_name = by_purpose[purpose]
+            row, prov_name, prof_name, ml_prof_name = by_purpose[purpose]
             cfg = LLMPurposeConfig(
                 provider=row.provider,
                 base_url=row.base_url,
@@ -140,6 +145,7 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
                 params=row.params or {},
                 provider_ref=prov_name,
                 profile_ref=prof_name,
+                ml_profile_ref=ml_prof_name,
             )
             if prov_name and prov_name in providers:
                 cfg = _apply_provider(cfg, providers[prov_name])
