@@ -3,6 +3,15 @@ import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import path from "node:path"
+import http from "node:http"
+
+// Disable HTTP keep-alive on the dev proxy → backend hop. Vite's
+// http-proxy reuses sockets from Node's global agent, but uvicorn
+// closes idle keep-alive sockets after 5s; reusing one of those
+// dead sockets surfaces as a sporadic 502 Bad Gateway on the first
+// request after the user spends a few seconds idle on a page (e.g.
+// typing an API key in the setup wizard before clicking Fetch).
+const noKeepAliveAgent = new http.Agent({ keepAlive: false })
 
 export default defineConfig({
   plugins: [
@@ -24,8 +33,8 @@ export default defineConfig({
     port: 3636,
     allowedHosts: ["host.docker.internal"],
     proxy: {
-      "/api": "http://localhost:8000",
-      "/health": "http://localhost:8000",
+      "/api": { target: "http://localhost:8000", agent: noKeepAliveAgent },
+      "/health": { target: "http://localhost:8000", agent: noKeepAliveAgent },
       "/ws": { target: "ws://localhost:8000", ws: true },
     },
   },

@@ -75,19 +75,33 @@ export type SetupResponse = {
 
 const API_BASE = "/api/v1"
 
+// Single transparent retry on 502/503/504. The setup wizard sits idle on
+// step 2 while the user types an API key, and the dev proxy can serve a
+// stale keep-alive socket on the next click; that surfaces as 502 even
+// though no real request reached the backend. A retry on a fresh socket
+// always lands. The check is gated to the gateway-error range so genuine
+// 4xx and 5xx-from-the-handler are not retried.
 async function rawFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init.headers as Record<string, string>),
   }
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    credentials: "include",
-  })
+  const doFetch = () =>
+    fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include" })
+
+  let response: Response
+  try {
+    response = await doFetch()
+    if ([502, 503, 504].includes(response.status)) {
+      response = await doFetch()
+    }
+  } catch (err) {
+    response = await doFetch()
+  }
+
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error((err as { detail?: string }).detail || `HTTP ${response.status}`)
+    const errBody = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error((errBody as { detail?: string }).detail || `HTTP ${response.status}`)
   }
   return response.json() as Promise<T>
 }
