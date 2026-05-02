@@ -77,6 +77,55 @@ def _force_remove(func, path, exc_info):
     func(path)
 
 
+async def add_git_safe_directory(path: Path) -> bool:
+    """Whitelist ``path`` in the backend user's git ``safe.directory`` list.
+
+    git refuses to fetch / pull / reset against a working tree whose
+    owner uid differs from the process uid (the "fatal: detected
+    dubious ownership in repository at '<path>'" error). This shows
+    up most often when:
+
+    - The setup wizard registers a folder that the operator cloned
+      while running as a different user (root vs their own account).
+    - The backend runs in Docker as uid 1000 but the bind-mounted
+      host folder is owned by some other uid.
+    - On Windows, the working tree was cloned by a different account
+      than the one running the dev server.
+
+    Running ``git config --global --add safe.directory <path>`` once
+    per registered repo records the trust in the running user's
+    ``~/.gitconfig``. The directive is exact-path, so adding a parent
+    folder does NOT whitelist its children — each detected repo must
+    be added on its own. The ``--add`` form is idempotent at the user
+    level (duplicate entries are accepted and harmless), so retrying
+    a creation that previously succeeded does not error.
+
+    Best-effort: if git isn't installed, ``HOME`` is not writable, or
+    the subprocess otherwise fails, we log and return ``False``. The
+    caller continues with the repo creation regardless — the worst
+    case is the same dubious-ownership error the operator would have
+    hit before this helper existed.
+    """
+    import subprocess
+    cmd = ["git", "config", "--global", "--add", "safe.directory", str(path)]
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(cmd, capture_output=True, timeout=10),
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        logger.warning("git safe.directory add failed for %s: %s", path, exc)
+        return False
+    if result.returncode != 0:
+        logger.warning(
+            "git safe.directory add failed for %s: rc=%d stderr=%s",
+            path, result.returncode, result.stderr.decode(errors="replace").strip(),
+        )
+        return False
+    logger.info("Added %s to git safe.directory", path)
+    return True
+
+
 class RepoManager:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -90,6 +139,10 @@ class RepoManager:
                 validated_local_path = str(validate_local_path(data.local_path))
             except ValueError as e:
                 raise ValueError(str(e)) from None
+            # Pre-emptively whitelist the path in the backend user's git
+            # safe.directory so the first fetch / pull doesn't trip the
+            # "dubious ownership" guard. Best-effort — see helper docstring.
+            await add_git_safe_directory(Path(validated_local_path))
         repo = Repository(
             name=data.name,
             url=data.url,

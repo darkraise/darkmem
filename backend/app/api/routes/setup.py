@@ -440,11 +440,18 @@ async def setup_finalize(
                 await session.rollback()
                 repos_status = SetupSectionStatus(ok=False, message=str(exc))
             else:
+                from app.services.repo_manager import add_git_safe_directory
                 for entry in body.repos.repos:
                     try:
                         full_path = validate_local_path(
                             str(Path(body.repos.base_path) / entry.sub_path)
                         )
+                        # Whitelist the working tree before the first
+                        # periodic fetch tries to operate on it. Without
+                        # this, wizard-imported repos owned by a different
+                        # uid than the backend process trip git's
+                        # "dubious ownership" guard on every sync.
+                        await add_git_safe_directory(full_path)
                         session.add(Repository(
                             name=entry.name,
                             provider="local",

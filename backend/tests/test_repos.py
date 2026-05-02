@@ -163,6 +163,52 @@ async def test_mark_periodic_sync_failure_disables_auto_sync(session, tmp_path):
     assert all(r.id != repo.id for r in fresh)
 
 
+async def test_add_git_safe_directory_runs_correct_command(tmp_path, monkeypatch):
+    """Verify the helper invokes git config --global --add safe.directory <path>."""
+    from app.services.repo_manager import add_git_safe_directory
+    import subprocess
+
+    captured = {}
+
+    class FakeResult:
+        returncode = 0
+        stderr = b""
+        stdout = b""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["timeout"] = kwargs.get("timeout")
+        return FakeResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    target = tmp_path / "some-repo"
+    target.mkdir()
+    ok = await add_git_safe_directory(target)
+
+    assert ok is True
+    assert captured["cmd"] == [
+        "git", "config", "--global", "--add", "safe.directory", str(target),
+    ]
+    assert captured["timeout"] == 10
+
+
+async def test_add_git_safe_directory_returns_false_on_failure(tmp_path, monkeypatch):
+    """Subprocess errors must NOT crash the caller — best-effort only."""
+    from app.services.repo_manager import add_git_safe_directory
+    import subprocess
+
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError("git is not installed in this environment")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    target = tmp_path / "some-repo"
+    target.mkdir()
+    ok = await add_git_safe_directory(target)
+    assert ok is False
+
+
 async def test_mark_periodic_sync_failure_returns_none_for_missing(session):
     """Calling the helper with an unknown repo_id is a no-op, not a crash."""
     import uuid
