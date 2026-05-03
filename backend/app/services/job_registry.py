@@ -177,9 +177,24 @@ class JobRegistry:
             await session.commit()
 
     async def list_with_config(self) -> list[dict]:
+        keys = [self._config_key(k) for k in self._jobs]
+        async with self._session_factory() as session:
+            rows = (await session.execute(
+                select(Config).where(Config.key.in_(keys))
+            )).scalars().all()
+        by_key = {row.key: row.value for row in rows if isinstance(row.value, dict)}
+
         out: list[dict] = []
         for key, job in self._jobs.items():
-            cfg = await self.load_config(key)
+            value = by_key.get(self._config_key(key))
+            if value and "cron" in value:
+                cfg = JobConfig.from_dict(value)
+            else:
+                cfg = JobConfig(
+                    enabled=True,
+                    cron=job.default_cron,
+                    min_interval_seconds=job.min_interval_seconds,
+                )
             running = job.task is not None and not job.task.done()
             out.append({
                 "key": job.key,
