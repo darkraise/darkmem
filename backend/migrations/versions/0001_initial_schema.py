@@ -2,10 +2,10 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-04-29
+Create Date: 2026-05-03
 
 Single greenfield schema. Consolidated migration that produces the final
-post-per-fingerprint embedding layout in one shot. Includes:
+schema in one shot. Includes:
 
   - Core tables (api_keys, memories, tags, memory_tags, config, audit_log)
   - Chat tables (conversations, messages)
@@ -20,6 +20,10 @@ post-per-fingerprint embedding layout in one shot. Includes:
   - Full-text search on memories (tsvector + GIN + trigger)
   - Pipeline operations (enrichment_queue, pipeline_failures)
   - Auth + revocation (token_blocklist)
+  - LLM provider / profile / purpose tables (with per-purpose column on
+    ``llm_profiles`` and ``ml_profile_id`` FK on ``llm_purpose_configs``)
+  - ``ml_profiles`` table for the in-process HF classifier dispatch
+  - Cron-scheduled background jobs seeded under ``job:*`` config keys
 """
 from collections.abc import Sequence
 from typing import Union
@@ -153,13 +157,19 @@ def upgrade() -> None:
         sa.Column('auth_token_ref', sa.String(255)),
         sa.Column('last_indexed_commit', sa.String(64)),
         sa.Column('last_indexed_at', sa.DateTime(timezone=True)),
-        sa.Column('sync_interval_minutes', sa.Integer(), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=False),
+        sa.Column('auto_sync', sa.Boolean(), nullable=False),
         sa.Column('status', sa.String(20), nullable=False),
         sa.Column('status_message', sa.String(500)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.PrimaryKeyConstraint('id'),
+    )
+    # The repo_sync job runner filters by ``auto_sync = TRUE`` on every
+    # tick; a partial index keeps the planner off a sequential scan as
+    # the table grows.
+    op.execute(
+        "CREATE INDEX ix_repositories_auto_sync ON repositories(id) "
+        "WHERE auto_sync = TRUE"
     )
 
     op.create_table('code_files',
@@ -382,6 +392,22 @@ def upgrade() -> None:
     )
     op.create_index('ix_memory_crossrefs_related', 'memory_crossrefs', ['related_memory_id'])
 
+    # -- ML profiles (in-process HF classifier dispatch). The default row
+    # is inserted at app startup from ``app.services.ml_seed`` so the seed
+    # can be reviewed and diffed like any other source file.
+    op.create_table(
+        "ml_profiles",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True,
+                  server_default=sa.text("gen_random_uuid()")),
+        sa.Column("name", sa.String(64), nullable=False, unique=True),
+        sa.Column("model_repo", sa.String(512), nullable=False),
+        sa.Column("ttl_seconds", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("created_at", sa.DateTime(timezone=True),
+                  server_default=sa.text('now()'), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True),
+                  server_default=sa.text('now()'), nullable=False),
+    )
+
     # -- LLM provider / profile / purpose tables. Replaces the old
     # ``config`` JSONB blobs (llm_providers / llm_profiles / llm_config)
     # so we get DB-enforced uniqueness, FK delete protection,
@@ -414,6 +440,7 @@ def upgrade() -> None:
             params        JSONB NOT NULL DEFAULT '{}'::jsonb,
             is_embedding  BOOLEAN NOT NULL DEFAULT FALSE,
             reasoning     BOOLEAN NOT NULL DEFAULT FALSE,
+            purpose       VARCHAR(32),
             created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -425,6 +452,7 @@ def upgrade() -> None:
             purpose       VARCHAR(64) PRIMARY KEY,
             provider_id   UUID REFERENCES llm_providers(id) ON DELETE SET NULL,
             profile_id    UUID REFERENCES llm_profiles(id) ON DELETE SET NULL,
+            ml_profile_id UUID REFERENCES ml_profiles(id) ON DELETE SET NULL,
             model         VARCHAR(255) NOT NULL,
             dimensions    INTEGER,
             reasoning     BOOLEAN NOT NULL DEFAULT FALSE,
@@ -446,6 +474,25 @@ def upgrade() -> None:
     # diffed like any other source file, and lets the wizard apply
     # user input to the seed before insert without resorting to
     # post-insert UPDATEs against migration-seeded rows.
+
+    # -- Background job registry. Seeds the four periodic loops the
+    # ``JobRegistry`` reads at boot. Schedules are cron expressions
+    # (5-field minute precision; 6-field with leading seconds for
+    # sub-minute schedules per Quartz convention).
+    op.execute(
+        """
+        INSERT INTO config (key, value) VALUES
+            ('job:repo_sync',
+             '{"enabled": true,  "cron": "*/5 * * * *",      "min_interval_seconds": 30, "last_run_at": null, "last_status": null, "last_error": null}'::jsonb),
+            ('job:code_enrichment',
+             '{"enabled": false, "cron": "*/10 * * * * *",   "min_interval_seconds": 1,  "last_run_at": null, "last_status": null, "last_error": null}'::jsonb),
+            ('job:token_blocklist_cleanup',
+             '{"enabled": true,  "cron": "0 * * * *",        "min_interval_seconds": 60, "last_run_at": null, "last_status": null, "last_error": null}'::jsonb),
+            ('job:pipeline_failure_cleanup',
+             '{"enabled": true,  "cron": "0 * * * *",        "min_interval_seconds": 60, "last_run_at": null, "last_status": null, "last_error": null}'::jsonb)
+        ON CONFLICT (key) DO NOTHING
+        """
+    )
 
 
 def downgrade() -> None:
@@ -474,6 +521,10 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS memories_fts_update ON memories")
     op.execute("DROP FUNCTION IF EXISTS memories_fts_trigger()")
 
+    op.execute("DROP TABLE IF EXISTS llm_purpose_configs CASCADE")
+    op.execute("DROP TABLE IF EXISTS llm_profiles CASCADE")
+    op.execute("DROP TABLE IF EXISTS llm_providers CASCADE")
+    op.drop_table('ml_profiles')
     op.drop_table('memory_crossrefs')
     op.drop_index('ix_memories_technologies', table_name='memories')
     op.drop_index('ix_memories_status', table_name='memories')
@@ -491,6 +542,7 @@ def downgrade() -> None:
     op.drop_table('entities')
     op.drop_table('code_symbols')
     op.drop_table('code_files')
+    op.execute("DROP INDEX IF EXISTS ix_repositories_auto_sync")
     op.drop_table('repositories')
     op.drop_table('messages')
     op.drop_table('conversations')
