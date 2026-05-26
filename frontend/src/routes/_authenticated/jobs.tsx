@@ -1,5 +1,7 @@
 import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import type { ColumnDef } from "@tanstack/react-table"
+import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
@@ -46,11 +48,60 @@ function relativeTime(iso: string | null): string {
   return `${days}d ago`
 }
 
-function JobRow({ job }: { job: Job }) {
+// Inline cron editor lives in the cell renderer to keep per-row draft state.
+function CronCell({ job }: { job: Job }) {
   const updateJob = useUpdateJob()
-  const triggerJob = useTriggerJob()
   const [cron, setCron] = useState<string>(job.cron)
   const dirty = cron.trim() !== job.cron
+
+  const handleSave = () => {
+    if (!dirty) return
+    updateJob.mutate(
+      { key: job.key, data: { cron: cron.trim() } },
+      {
+        onSuccess: () => toast.success(`${job.display_name} schedule saved`),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Select value="" onValueChange={(v) => v && setCron(v)}>
+        <SelectTrigger className="h-7 w-28 text-xs">
+          <SelectValue placeholder="Preset…" />
+        </SelectTrigger>
+        <SelectContent>
+          {CRON_PRESETS.map((p) => (
+            <SelectItem key={p.value} value={p.value} className="text-xs">
+              {p.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        type="text"
+        className="h-7 w-36 text-xs font-mono"
+        value={cron}
+        onChange={(e) => setCron(e.target.value)}
+        placeholder="*/5 * * * *"
+        aria-label={`Cron expression for ${job.display_name}`}
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-xs"
+        onClick={handleSave}
+        disabled={!dirty || updateJob.isPending}
+      >
+        <Save className="w-3.5 h-3.5" />
+      </Button>
+    </div>
+  )
+}
+
+function EnabledCell({ job }: { job: Job }) {
+  const updateJob = useUpdateJob()
 
   const handleToggle = (enabled: boolean) => {
     updateJob.mutate(
@@ -63,16 +114,18 @@ function JobRow({ job }: { job: Job }) {
     )
   }
 
-  const handleSave = () => {
-    if (!dirty) return
-    updateJob.mutate(
-      { key: job.key, data: { cron: cron.trim() } },
-      {
-        onSuccess: () => toast.success(`${job.display_name} schedule saved`),
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
-      },
-    )
-  }
+  return (
+    <Switch
+      checked={job.enabled}
+      onCheckedChange={handleToggle}
+      disabled={updateJob.isPending}
+      aria-label={`Toggle ${job.display_name}`}
+    />
+  )
+}
+
+function TriggerCell({ job }: { job: Job }) {
+  const triggerJob = useTriggerJob()
 
   const handleTrigger = () => {
     triggerJob.mutate(job.key, {
@@ -88,117 +141,117 @@ function JobRow({ job }: { job: Job }) {
   }
 
   return (
-    <div className="px-4 py-3 space-y-2">
-      <div className="flex items-center gap-3">
-        <span
-          className={`w-2 h-2 rounded-full shrink-0 ${
-            !job.enabled
-              ? "bg-muted-foreground"
-              : job.last_status === "error"
-                ? "bg-red-500"
-                : job.running
-                  ? "bg-green-500"
-                  : "bg-yellow-500"
-          }`}
-          title={
-            !job.enabled
-              ? "disabled"
-              : job.last_status === "error"
-                ? `last error: ${job.last_error}`
-                : job.running
-                  ? "loop running"
-                  : "loop not running"
-          }
-        />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold">{job.display_name}</span>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-              {job.key}
-            </Badge>
-            {job.last_status === "error" && (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 text-destructive border-destructive"
-                title={job.last_error ?? ""}
-              >
-                last run errored
-              </Badge>
-            )}
-            {!job.enabled && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                disabled
-              </Badge>
-            )}
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5">{job.description}</div>
-          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-            <span>last run: {relativeTime(job.last_run_at)}</span>
-            <span>·</span>
-            <span>min interval: {job.min_interval_seconds}s</span>
-            <span>·</span>
-            <span className="font-mono">default: {job.default_cron}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Switch
-            checked={job.enabled}
-            onCheckedChange={handleToggle}
-            disabled={updateJob.isPending}
-            aria-label={`Toggle ${job.display_name}`}
-          />
-          <div className="flex items-center gap-1">
-            <Select value="" onValueChange={(v) => v && setCron(v)}>
-              <SelectTrigger className="h-8 w-32 text-xs">
-                <SelectValue placeholder="Preset…" />
-              </SelectTrigger>
-              <SelectContent>
-                {CRON_PRESETS.map((p) => (
-                  <SelectItem key={p.value} value={p.value} className="text-xs">
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              type="text"
-              className="h-8 w-44 text-xs font-mono"
-              value={cron}
-              onChange={(e) => setCron(e.target.value)}
-              placeholder="*/5 * * * *"
-              aria-label={`Cron expression for ${job.display_name}`}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={handleSave}
-              disabled={!dirty || updateJob.isPending}
-            >
-              <Save className="w-3.5 h-3.5 mr-1" />
-              Save
-            </Button>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={handleTrigger}
-            disabled={triggerJob.isPending}
-          >
-            <Play className="w-3.5 h-3.5 mr-1" />
-            {triggerJob.isPending ? "Running..." : "Trigger"}
-          </Button>
-        </div>
-      </div>
-      {job.last_status === "error" && job.last_error && (
-        <div className="ml-5 text-xs text-destructive bg-destructive/10 rounded px-2 py-1 font-mono">
-          {job.last_error}
-        </div>
-      )}
-    </div>
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-7 px-2 text-xs"
+      onClick={handleTrigger}
+      disabled={triggerJob.isPending}
+    >
+      <Play className="w-3.5 h-3.5 mr-1" />
+      {triggerJob.isPending ? "Running..." : "Trigger"}
+    </Button>
   )
 }
+
+const columns: ColumnDef<Job>[] = [
+  {
+    accessorKey: "display_name",
+    header: "Job",
+    size: 200,
+    cell: ({ row }) => (
+      <div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              !row.original.enabled
+                ? "bg-muted-foreground"
+                : row.original.last_status === "error"
+                  ? "bg-red-500"
+                  : row.original.running
+                    ? "bg-green-500"
+                    : "bg-yellow-500"
+            }`}
+            title={
+              !row.original.enabled
+                ? "disabled"
+                : row.original.last_status === "error"
+                  ? `last error: ${row.original.last_error}`
+                  : row.original.running
+                    ? "loop running"
+                    : "loop not running"
+            }
+          />
+          <span className="text-sm font-medium">{row.original.display_name}</span>
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">{row.original.description}</div>
+        {row.original.last_status === "error" && row.original.last_error && (
+          <div className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1 mt-1 font-mono">
+            {row.original.last_error}
+          </div>
+        )}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "key",
+    header: "Key",
+    size: 160,
+    cell: ({ getValue }) => (
+      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+        {String(getValue())}
+      </Badge>
+    ),
+  },
+  {
+    id: "enabled",
+    header: "Enabled",
+    size: 80,
+    cell: ({ row }) => <EnabledCell job={row.original} />,
+  },
+  {
+    id: "cron",
+    header: "Schedule",
+    cell: ({ row }) => <CronCell job={row.original} />,
+  },
+  {
+    accessorKey: "last_run_at",
+    header: "Last run",
+    size: 130,
+    cell: ({ getValue }) => relativeTime(getValue() as string | null),
+  },
+  {
+    accessorKey: "last_status",
+    header: "Status",
+    size: 90,
+    cell: ({ getValue }) => {
+      const v = getValue() as string | null
+      if (!v) return <span className="text-muted-foreground text-xs">—</span>
+      return (
+        <Badge
+          variant={v === "error" ? "destructive" : "secondary"}
+          className="text-[10px] px-1.5 py-0"
+        >
+          {v}
+        </Badge>
+      )
+    },
+  },
+  {
+    accessorKey: "min_interval_seconds",
+    header: "Min interval",
+    size: 110,
+    cell: ({ getValue }) => (
+      <span className="text-xs text-muted-foreground">{getValue() as number}s</span>
+    ),
+  },
+  {
+    id: "actions",
+    header: "",
+    size: 110,
+    cell: ({ row }) => <TriggerCell job={row.original} />,
+  },
+]
 
 function JobsPage() {
   const { data, isLoading, error } = useJobs()
@@ -206,14 +259,14 @@ function JobsPage() {
   return (
     <div className="p-6 space-y-4">
       <PageHeader title="Jobs" />
-      {isLoading && <p className="text-muted-foreground">Loading...</p>}
       {error && (
         <p className="text-destructive">Failed to load jobs: {(error as Error).message}</p>
       )}
-      {data && data.jobs.length === 0 && (
+      {isLoading ? (
+        <DataTableSkeleton columnCount={8} />
+      ) : data && data.jobs.length === 0 ? (
         <p className="text-muted-foreground">No jobs registered.</p>
-      )}
-      {data && data.jobs.length > 0 && (
+      ) : (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
@@ -221,11 +274,7 @@ function JobsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {data.jobs.map((job) => (
-                <JobRow key={job.key} job={job} />
-              ))}
-            </div>
+            <DataTable columns={columns} data={data?.jobs ?? []} />
           </CardContent>
         </Card>
       )}
