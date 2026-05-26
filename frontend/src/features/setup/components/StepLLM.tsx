@@ -11,7 +11,7 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
-import { API_KIND_OPTIONS, type LlmApiKind } from "@/components/pipeline/api-kinds"
+import { API_KIND_OPTIONS, type LlmApiKind } from "@/features/pipeline/api-kinds"
 import {
   PURPOSES,
   REQUIRED_PURPOSES_NON_EMBEDDING,

@@ -11,10 +11,10 @@ useSystemPrompts,
 useUpdateSystemPrompts,
 type ClassificationAreaInfo,
 } from "@/hooks/api"
-import { ORPHAN_PROMPTS } from "@/components/pipeline/prompt-map"
-import { LLMProvidersPanel } from "@/components/pipeline/LLMProvidersPanel"
-import { LLMProfilesPanel } from "@/components/pipeline/LLMProfilesPanel"
-import { MLProfilesPanel } from "@/components/pipeline/MLProfilesPanel"
+import { ORPHAN_PROMPTS } from "@/features/pipeline/prompt-map"
+import { LLMProvidersPanel } from "@/features/pipeline/LLMProvidersPanel"
+import { LLMProfilesPanel } from "@/features/pipeline/LLMProfilesPanel"
+import { MLProfilesPanel } from "@/features/pipeline/MLProfilesPanel"
 import { ServerPathBrowser } from "@/features/setup/components/ServerPathBrowser"
 import { useReposPath, useUpdateReposPath } from "@/hooks/api/use-setup-api"
 import {

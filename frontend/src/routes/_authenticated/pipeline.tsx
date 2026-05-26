@@ -2,9 +2,9 @@ import { useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "darkraise-ui/layout"
 import { usePipeline, useSystemPrompts } from "@/hooks/api"
-import { LLMPanel } from "@/components/pipeline/LLMPanel"
-import { AssistantServicesPanel } from "@/components/pipeline/AssistantServicesPanel"
-import { checkPromptExhaustiveness } from "@/components/pipeline/prompt-map"
+import { LLMPanel } from "@/features/pipeline/LLMPanel"
+import { AssistantServicesPanel } from "@/features/pipeline/AssistantServicesPanel"
+import { checkPromptExhaustiveness } from "@/features/pipeline/prompt-map"
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
   component: PipelinePage,
