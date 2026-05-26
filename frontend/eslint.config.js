@@ -27,4 +27,17 @@ export default tseslint.config(
     },
   },
   prettier,
+  {
+    files: ["src/routes/**/*.tsx", "src/features/**/*.{ts,tsx}", "src/hooks/**/*.ts", "src/lib/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { group: ["@/demo/*", "../demo/*", "../../demo/*"], message: "Production code may not import from src/demo/ — that path is for Storybook and demo-mode Playwright specs only." },
+          ],
+        },
+      ],
+    },
+  },
 )

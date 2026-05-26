@@ -1,0 +1,4 @@
+[
+  { "key": "repo_sync", "cron": "0 */6 * * *", "last_run": "2026-05-25T12:00:00Z", "next_run": "2026-05-25T18:00:00Z", "last_status": "ok", "min_interval_seconds": 300 },
+  { "key": "enrichment_worker", "cron": "*/15 * * * *", "last_run": "2026-05-25T13:45:00Z", "next_run": "2026-05-25T14:00:00Z", "last_status": "ok", "min_interval_seconds": 60 }
+]
