@@ -1,9 +1,6 @@
-import { useState } from "react"
+import { useForm } from "@tanstack/react-form"
 import { useCreateMemory } from "@/hooks/api"
 import { Button } from "darkraise-ui/components/button"
-import { Input } from "darkraise-ui/components/input"
-import { Textarea } from "darkraise-ui/components/textarea"
-import { Label } from "darkraise-ui/components/label"
 import {
   Dialog,
   DialogContent,
@@ -12,26 +9,26 @@ import {
   DialogDescription,
   DialogFooter,
 } from "darkraise-ui/components/dialog"
+import { TextareaField, SelectField, FieldWrapper } from "darkraise-ui/forms"
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "darkraise-ui/components/select"
+  TagsInput,
+  TagsInputControl,
+  TagsInputInput,
+  TagsInputItem,
+  TagsInputItemPreview,
+  TagsInputItemText,
+  TagsInputItemDeleteTrigger,
+} from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
+import { createMemorySchema } from "../schemas"
 
-const MEMORY_TYPES = [
-  "fact",
-  "decision",
-  "problem",
-  "preference",
-  "reference",
-  "architecture",
-  "milestone",
-] as const
-
-const NONE_VALUE = "__none__"
+const MEMORY_TYPE_OPTIONS = [
+  { value: "fact", label: "Fact" },
+  { value: "decision", label: "Decision" },
+  { value: "preference", label: "Preference" },
+  { value: "reference", label: "Reference" },
+  { value: "context", label: "Context" },
+]
 
 interface CreateMemoryDialogProps {
   open: boolean
@@ -39,61 +36,31 @@ interface CreateMemoryDialogProps {
 }
 
 export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogProps) {
-  const [content, setContent] = useState("")
-  const [source, setSource] = useState("manual")
-  const [tagsInput, setTagsInput] = useState("")
-  const [memoryType, setMemoryType] = useState<string>(NONE_VALUE)
-  const [error, setError] = useState("")
   const createMemory = useCreateMemory()
 
-  const resetForm = () => {
-    setContent("")
-    setSource("manual")
-    setTagsInput("")
-    setMemoryType(NONE_VALUE)
-    setError("")
-  }
-
-  const handleOpenChange = (next: boolean) => {
-    if (!next) resetForm()
-    onOpenChange(next)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-
-    const trimmedContent = content.trim()
-    if (trimmedContent.length === 0) {
-      setError("Content is required")
-      return
-    }
-
-    const tags = tagsInput
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0)
-
-    const trimmedSource = source.trim()
-
-    try {
+  const form = useForm({
+    defaultValues: {
+      content: "",
+      project: "default",
+      memory_type: "fact" as "fact" | "decision" | "preference" | "reference" | "context",
+      tags: [] as string[],
+    },
+    onSubmit: async ({ value }) => {
       await createMemory.mutateAsync({
-        content: trimmedContent,
-        source: trimmedSource.length > 0 ? trimmedSource : "manual",
-        tags: tags.length > 0 ? tags : undefined,
-        memory_type: memoryType !== NONE_VALUE ? memoryType : undefined,
+        content: value.content,
+        memory_type: value.memory_type,
+        tags: value.tags.length > 0 ? value.tags : undefined,
       })
       toast.success("Memory created")
-      resetForm()
+      form.reset()
       onOpenChange(false)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create memory"
-      setError(message)
-      toast.error(message)
-    }
-  }
+    },
+  })
 
-  const submitting = createMemory.isPending
+  const handleOpenChange = (next: boolean) => {
+    if (!next) form.reset()
+    onOpenChange(next)
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -104,69 +71,117 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
             Create a memory to save a fact, decision, or note. Content is required.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Create memory">
-          <div className="space-y-1">
-            <Label htmlFor="create-memory-content">Content</Label>
-            <Textarea
-              id="create-memory-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="What do you want to remember?"
-              rows={5}
-              autoFocus
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="create-memory-source">Source</Label>
-            <Input
-              id="create-memory-source"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="manual"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="create-memory-tags">Tags</Label>
-            <Input
-              id="create-memory-tags"
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="comma, separated, tags"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="create-memory-type">Memory Type</Label>
-            <Select value={memoryType} onValueChange={setMemoryType}>
-              <SelectTrigger id="create-memory-type">
-                <SelectValue placeholder="Select a type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE_VALUE}>(none)</SelectItem>
-                {MEMORY_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {error && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+          className="space-y-4"
+          aria-label="Create memory"
+        >
+          <form.Field
+            name="content"
+            validators={{
+              onChange: ({ value }) => {
+                const result = createMemorySchema.shape.content.safeParse(value)
+                return result.success ? undefined : result.error.issues[0]?.message
+              },
+            }}
+          >
+            {(field) => (
+              <TextareaField
+                name={field.name}
+                label="Content"
+                value={field.state.value}
+                onChange={(v) => field.handleChange(v)}
+                onBlur={field.handleBlur}
+                placeholder="What do you want to remember?"
+                rows={5}
+                isInvalid={field.state.meta.errors.length > 0}
+                errors={
+                  field.state.meta.errors.length > 0
+                    ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                    : undefined
+                }
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="memory_type">
+            {(field) => (
+              <SelectField
+                name={field.name}
+                label="Memory Type"
+                value={field.state.value}
+                onChange={(v) =>
+                  field.handleChange(
+                    v as "fact" | "decision" | "preference" | "reference" | "context",
+                  )
+                }
+                onBlur={field.handleBlur}
+                options={MEMORY_TYPE_OPTIONS}
+                isInvalid={field.state.meta.errors.length > 0}
+                errors={
+                  field.state.meta.errors.length > 0
+                    ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                    : undefined
+                }
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="tags">
+            {(field) => (
+              <FieldWrapper
+                name={field.name}
+                label="Tags"
+                description="Press Enter or comma to add a tag"
+                isInvalid={field.state.meta.errors.length > 0}
+                errors={
+                  field.state.meta.errors.length > 0
+                    ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                    : undefined
+                }
+              >
+                {() => (
+                  <TagsInput
+                    value={field.state.value}
+                    onValueChange={({ value }) => field.handleChange(value)}
+                  >
+                    <TagsInputControl>
+                      {field.state.value.map((tag, index) => (
+                        <TagsInputItem key={tag} index={index} value={tag}>
+                          <TagsInputItemPreview>
+                            <TagsInputItemText>{tag}</TagsInputItemText>
+                            <TagsInputItemDeleteTrigger />
+                          </TagsInputItemPreview>
+                        </TagsInputItem>
+                      ))}
+                      <TagsInputInput placeholder={field.state.value.length === 0 ? "Add tags…" : ""} />
+                    </TagsInputControl>
+                  </TagsInput>
+                )}
+              </FieldWrapper>
+            )}
+          </form.Field>
+
+          {createMemory.isError && (
             <p role="alert" aria-live="assertive" className="text-sm text-destructive">
-              {error}
+              {(createMemory.error as Error).message}
             </p>
           )}
+
           <DialogFooter>
             <Button
               type="button"
               variant="ghost"
               onClick={() => handleOpenChange(false)}
-              disabled={submitting}
+              disabled={createMemory.isPending}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Creating..." : "Create Memory"}
+            <Button type="submit" disabled={createMemory.isPending}>
+              {createMemory.isPending ? "Creating…" : "Create Memory"}
             </Button>
           </DialogFooter>
         </form>
