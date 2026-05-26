@@ -42,6 +42,8 @@ export interface RepoUpdateParams {
   default_branch?: string
   auth_token?: string
   auto_sync?: boolean
+  enrich_symbols?: boolean
+  generate_wiki?: boolean
 }
 
 export interface CodeGraphNode {
@@ -186,8 +188,17 @@ export function useDeleteRepo() {
 export function useReindexRepo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch(`/repos/${id}/reindex`, { method: "POST" }),
+    mutationFn: ({
+      id,
+      options,
+    }: {
+      id: string
+      options: { full?: boolean; enrich_symbols?: boolean; generate_wiki?: boolean }
+    }) =>
+      apiFetch(`/repos/${id}/reindex`, {
+        method: "POST",
+        body: JSON.stringify(options),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] })
       qc.invalidateQueries({ queryKey: ["repoStats"] })

@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form"
+import { useStore } from "@tanstack/react-store"
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,7 @@ export function ReindexDialog({
     },
   })
 
-  const values = form.useStore((s) => s.values)
+  const values = useStore(form.store, (s) => s.values)
   const wholeFormError =
     !values.full && !values.enrich_symbols && !values.generate_wiki
       ? "Pick at least one reindex action"

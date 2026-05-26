@@ -496,6 +496,8 @@ function RepositoriesPage() {
             data.default_branch = v.branch
           if (v.auto_sync !== editingRepo.auto_sync)
             data.auto_sync = v.auto_sync
+          data.enrich_symbols = v.enrich_symbols
+          data.generate_wiki = v.generate_wiki
           if (Object.keys(data).length === 0) {
             toast.info("No changes to save")
             return
@@ -514,10 +516,13 @@ function RepositoriesPage() {
         onOpenChange={(o) => !o && setReindexingRepo(null)}
         onConfirm={async (v: ReindexInput) => {
           if (!reindexingRepo) return
-          await reindexRepo.mutateAsync(reindexingRepo.id, {
-            onSuccess: () => toast.success("Reindex triggered"),
-            onError: () => toast.error("Reindex failed"),
-          })
+          await reindexRepo.mutateAsync(
+            { id: reindexingRepo.id, options: v },
+            {
+              onSuccess: () => toast.success("Reindex triggered"),
+              onError: () => toast.error("Reindex failed"),
+            },
+          )
         }}
       />
 

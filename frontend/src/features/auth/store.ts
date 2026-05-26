@@ -2,9 +2,7 @@ import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
 interface AuthState {
-  token: string | null
   isAuthenticated: boolean
-  login: (token: string) => void
   setAuthenticated: (value: boolean) => void
   logout: () => void
 }
@@ -30,19 +28,14 @@ function safeStorage(): Storage {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      token: null,
       isAuthenticated: false,
-
-      login: (token: string) => {
-        set({ token, isAuthenticated: true })
-      },
 
       setAuthenticated: (value: boolean) => {
         set({ isAuthenticated: value })
       },
 
       logout: () => {
-        set({ token: null, isAuthenticated: false })
+        set({ isAuthenticated: false })
       },
     }),
     {

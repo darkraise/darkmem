@@ -1,5 +1,5 @@
 import { useForm } from "@tanstack/react-form"
-import { TextField, FieldWrapper } from "darkraise-ui/forms"
+import { FieldWrapper } from "darkraise-ui/forms"
 import { Button } from "darkraise-ui/components/button"
 import {
   PasswordInput,
@@ -14,7 +14,7 @@ import { useLogin } from "../hooks/useLogin"
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const login = useLogin()
   const form = useForm({
-    defaultValues: { username: "", password: "" },
+    defaultValues: { password: "" },
     onSubmit: async ({ value }) => {
       await login.mutateAsync(value)
       onSuccess()
@@ -29,34 +29,6 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       }}
       className="space-y-4"
     >
-      <form.Field
-        name="username"
-        validators={{
-          onChange: ({ value }) => {
-            const result = loginSchema.shape.username.safeParse(value)
-            return result.success ? undefined : result.error.issues[0]?.message
-          },
-        }}
-      >
-        {(field) => (
-          <TextField
-            name={field.name}
-            label="Username"
-            value={field.state.value}
-            onChange={(v) => field.handleChange(v)}
-            onBlur={field.handleBlur}
-            errors={
-              field.state.meta.errors.length > 0
-                ? field.state.meta.errors.map((e) => ({
-                    message: e ?? undefined,
-                  }))
-                : undefined
-            }
-            isInvalid={field.state.meta.errors.length > 0}
-          />
-        )}
-      </form.Field>
-
       <form.Field
         name="password"
         validators={{

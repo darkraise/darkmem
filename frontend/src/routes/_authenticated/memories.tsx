@@ -232,20 +232,23 @@ function MemoriesPage() {
     }
   }
 
-  const handleDelete = (id: string) => {
-    if (!window.confirm("Delete this memory?")) return
-    deleteMemory.mutate(id, {
-      onSuccess: () => {
-        setSelected((prev) => {
-          const next = new Set(prev)
-          next.delete(id)
-          return next
-        })
-        if (detailMemory?.id === id) setDetailMemory(null)
-        qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
-      },
-    })
-  }
+  const handleDelete = useCallback(
+    (id: string) => {
+      if (!window.confirm("Delete this memory?")) return
+      deleteMemory.mutate(id, {
+        onSuccess: () => {
+          setSelected((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+          if (detailMemory?.id === id) setDetailMemory(null)
+          qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+        },
+      })
+    },
+    [deleteMemory, detailMemory, qc],
+  )
 
   const handleBulkDelete = async () => {
     if (!window.confirm(`Delete ${selected.size} memories?`)) return
@@ -444,8 +447,7 @@ function MemoriesPage() {
         size: 40,
       },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [memories, selected, highlightId],
+    [memories, selected, highlightId, handleDelete],
   )
 
   return (
