@@ -1,0 +1,127 @@
+import type { Meta, StoryObj } from "@storybook/react"
+import { useState } from "react"
+import { GraphToolbar } from "./graph-toolbar"
+import type { ColorMode } from "@/features/graph/lib/graph-colors"
+import type { HullMode } from "@/features/graph/lib/graph-geometry"
+import type { SizeMode } from "@/features/graph/lib/graph-utils"
+
+const meta: Meta<typeof GraphToolbar> = {
+  title: "Graph/GraphToolbar",
+  component: GraphToolbar,
+  parameters: { layout: "fullscreen" },
+  decorators: [
+    (Story) => (
+      <div className="relative h-[200px] bg-background">
+        <Story />
+      </div>
+    ),
+  ],
+}
+export default meta
+
+type S = StoryObj<typeof GraphToolbar>
+
+const defaultArgs = {
+  viewMode: "2d" as const,
+  onViewModeChange: () => {},
+  colorMode: "type" as ColorMode,
+  onColorModeChange: () => {},
+  hullMode: "cluster" as HullMode,
+  onHullModeChange: () => {},
+  entityLayer: true,
+  onEntityLayerChange: () => {},
+  showSettings: false,
+  onToggleSettings: () => {},
+  sizeMode: "connections" as SizeMode,
+  onSizeModeChange: () => {},
+  similarityThreshold: 0.65,
+  onSimilarityChange: () => {},
+  minClusterSize: 3,
+  onMinClusterSizeChange: () => {},
+  spacing: 200,
+  onSpacingChange: () => {},
+  clusterTightness: 120,
+  onClusterTightnessChange: () => {},
+  onReset: () => {},
+}
+
+export const Default: S = {
+  args: defaultArgs,
+}
+
+export const View3D: S = {
+  args: {
+    ...defaultArgs,
+    viewMode: "3d",
+    spacing: 80,
+  },
+}
+
+export const TagColor: S = {
+  args: {
+    ...defaultArgs,
+    colorMode: "tag",
+    hullMode: "tag",
+  },
+}
+
+export const WithSettingsOpen: S = {
+  args: {
+    ...defaultArgs,
+    showSettings: true,
+  },
+}
+
+export const Interactive: S = {
+  render: () => {
+    const [viewMode, setViewMode] = useState<"2d" | "3d">("2d")
+    const [colorMode, setColorMode] = useState<ColorMode>("type")
+    const [hullMode, setHullMode] = useState<HullMode>("cluster")
+    const [entityLayer, setEntityLayer] = useState(true)
+    const [showSettings, setShowSettings] = useState(false)
+    const [sizeMode, setSizeMode] = useState<SizeMode>("connections")
+    const [threshold, setThreshold] = useState(0.65)
+    const [minCluster, setMinCluster] = useState(3)
+    const [spacing, setSpacing] = useState(200)
+    const [tightness, setTightness] = useState(120)
+
+    return (
+      <div className="relative h-[300px] bg-background">
+        <GraphToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          colorMode={colorMode}
+          onColorModeChange={setColorMode}
+          hullMode={hullMode}
+          onHullModeChange={setHullMode}
+          entityLayer={entityLayer}
+          onEntityLayerChange={setEntityLayer}
+          showSettings={showSettings}
+          onToggleSettings={setShowSettings}
+          sizeMode={sizeMode}
+          onSizeModeChange={setSizeMode}
+          similarityThreshold={threshold}
+          onSimilarityChange={setThreshold}
+          minClusterSize={minCluster}
+          onMinClusterSizeChange={setMinCluster}
+          spacing={spacing}
+          onSpacingChange={setSpacing}
+          clusterTightness={tightness}
+          onClusterTightnessChange={setTightness}
+          onReset={() => {
+            setViewMode("2d")
+            setColorMode("type")
+            setHullMode("cluster")
+            setEntityLayer(true)
+            setShowSettings(false)
+            setSizeMode("connections")
+            setThreshold(0.65)
+            setMinCluster(3)
+            setSpacing(200)
+            setTightness(120)
+          }}
+        />
+      </div>
+    )
+  },
+}
