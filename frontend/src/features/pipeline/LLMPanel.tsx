@@ -1,5 +1,10 @@
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import {
   Dialog,
@@ -25,9 +30,11 @@ interface Props {
 export function LLMPanel({ state }: Props) {
   const navigate = useNavigate()
   const reembedAll = useReembedAll()
-  const [obsolete, setObsolete] = useState<
-    { memories: number; code_chunks: number; entities: number } | null
-  >(null)
+  const [obsolete, setObsolete] = useState<{
+    memories: number
+    code_chunks: number
+    entities: number
+  } | null>(null)
 
   const startReembed = () => {
     reembedAll.mutate(undefined, {
@@ -36,7 +43,8 @@ export function LLMPanel({ state }: Props) {
         setObsolete(null)
         navigate({ to: "/reindex" })
       },
-      onError: (err) => toast.error(`Re-embed failed: ${(err as Error).message}`),
+      onError: (err) =>
+        toast.error(`Re-embed failed: ${(err as Error).message}`),
     })
   }
 
@@ -45,7 +53,8 @@ export function LLMPanel({ state }: Props) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">LLM pipeline</CardTitle>
         <p className="text-muted-foreground text-xs">
-          Embedding, extraction, and classification settings used during memory ingestion.
+          Embedding, extraction, and classification settings used during memory
+          ingestion.
         </p>
       </CardHeader>
       <CardContent className="p-0">
@@ -62,26 +71,37 @@ export function LLMPanel({ state }: Props) {
         </div>
       </CardContent>
 
-      <Dialog open={obsolete !== null} onOpenChange={(v) => !v && setObsolete(null)}>
+      <Dialog
+        open={obsolete !== null}
+        onOpenChange={(v) => !v && setObsolete(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Embedding model changed</DialogTitle>
           </DialogHeader>
           {obsolete && (
-            <div className="text-sm space-y-3 py-2">
-              <p>The embedding changed. Existing vectors are now from the old model:</p>
-              <ul className="text-sm space-y-1 pl-4 list-disc">
+            <div className="space-y-3 py-2 text-sm">
+              <p>
+                The embedding changed. Existing vectors are now from the old
+                model:
+              </p>
+              <ul className="list-disc space-y-1 pl-4 text-sm">
                 {obsolete.memories > 0 && <li>{obsolete.memories} memories</li>}
                 {obsolete.entities > 0 && <li>{obsolete.entities} entities</li>}
-                {obsolete.code_chunks > 0 && <li>{obsolete.code_chunks} code chunks</li>}
+                {obsolete.code_chunks > 0 && (
+                  <li>{obsolete.code_chunks} code chunks</li>
+                )}
               </ul>
-              <p className="text-[11px] text-muted-foreground">
-                Re-embedding recomputes vectors only; extraction and classification stay as-is.
+              <p className="text-muted-foreground text-[11px]">
+                Re-embedding recomputes vectors only; extraction and
+                classification stay as-is.
               </p>
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setObsolete(null)}>Later</Button>
+            <Button variant="ghost" onClick={() => setObsolete(null)}>
+              Later
+            </Button>
             <Button onClick={startReembed} disabled={reembedAll.isPending}>
               {reembedAll.isPending ? "Starting…" : "Re-embed now"}
             </Button>

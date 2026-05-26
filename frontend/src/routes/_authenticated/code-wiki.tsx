@@ -2,7 +2,12 @@ import { useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useRepos } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import {
@@ -21,26 +26,26 @@ export const Route = createFileRoute("/_authenticated/code-wiki")({
 })
 
 interface WikiData {
-  repo_name: string;
-  overview: string | null;
+  repo_name: string
+  overview: string | null
   modules: Array<{
-    path: string;
-    summary: string | null;
-    symbol_count: number;
+    path: string
+    summary: string | null
+    symbol_count: number
     files: Array<{
-      path: string;
-      language: string | null;
+      path: string
+      language: string | null
       symbols: Array<{
-        name: string;
-        kind: string;
-        signature: string | null;
-        summary: string | null;
-        line_start: number;
-      }>;
-    }>;
-  }>;
-  total_modules: number;
-  total_files: number;
+        name: string
+        kind: string
+        signature: string | null
+        summary: string | null
+        line_start: number
+      }>
+    }>
+  }>
+  total_modules: number
+  total_files: number
 }
 
 function useWiki(repoId: string | null) {
@@ -49,7 +54,7 @@ function useWiki(repoId: string | null) {
     queryFn: () => apiFetch(`/code/wiki/${repoId}`),
     enabled: !!repoId,
     staleTime: 5 * 60 * 1000,
-  });
+  })
 }
 
 function CodeWikiPage() {
@@ -60,7 +65,7 @@ function CodeWikiPage() {
   const [expandedModule, setExpandedModule] = useState<string | null>(null)
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 p-6">
       <PageHeader title="Code Wiki" />
 
       <div className="flex items-center gap-4">
@@ -98,7 +103,7 @@ function CodeWikiPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm">{wiki.overview}</p>
-                <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
+                <div className="text-muted-foreground mt-2 flex gap-3 text-xs">
                   <span>{wiki.total_modules} modules</span>
                   <span>{wiki.total_files} files</span>
                 </div>
@@ -110,7 +115,7 @@ function CodeWikiPage() {
             {wiki.modules.map((mod) => (
               <Card key={mod.path}>
                 <div
-                  className="px-4 py-3 cursor-pointer hover:bg-accent/30 transition-colors"
+                  className="hover:bg-accent/30 cursor-pointer px-4 py-3 transition-colors"
                   onClick={() =>
                     setExpandedModule(
                       expandedModule === mod.path ? null : mod.path,
@@ -126,22 +131,22 @@ function CodeWikiPage() {
                         {mod.symbol_count} symbols
                       </Badge>
                     </div>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-muted-foreground text-xs">
                       {mod.files.length} files
                     </span>
                   </div>
                   {mod.summary && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-muted-foreground mt-1 text-xs">
                       {mod.summary}
                     </p>
                   )}
                 </div>
 
                 {expandedModule === mod.path && (
-                  <CardContent className="border-t border-border pt-3">
+                  <CardContent className="border-border border-t pt-3">
                     {mod.files.map((file) => (
                       <div key={file.path} className="mb-4">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="mb-2 flex items-center gap-2">
                           <span className="font-mono text-xs font-medium">
                             {file.path}
                           </span>
@@ -167,7 +172,7 @@ function CodeWikiPage() {
                                   </span>
                                 )}
                                 {sym.summary && (
-                                  <p className="text-muted-foreground ml-4 mt-0.5">
+                                  <p className="text-muted-foreground mt-0.5 ml-4">
                                     {sym.summary}
                                   </p>
                                 )}
@@ -197,8 +202,9 @@ function CodeWikiPage() {
         />
       )}
 
-      {!selectedRepoId && !isLoading && (
-        repos && repos.length === 0 ? (
+      {!selectedRepoId &&
+        !isLoading &&
+        (repos && repos.length === 0 ? (
           <EmptyState
             title="No repositories indexed yet"
             description="Add a repository to get started."
@@ -213,8 +219,7 @@ function CodeWikiPage() {
             title="Select a repository"
             description="Choose a repository from the dropdown to view its generated documentation."
           />
-        )
-      )}
+        ))}
     </div>
   )
 }

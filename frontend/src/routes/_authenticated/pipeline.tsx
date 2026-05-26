@@ -24,17 +24,27 @@ function PipelinePage() {
   if (error || !state) {
     return (
       <div className="p-6">
-        <PageHeader title="Pipeline" description="Failed to load pipeline state." />
-        <div role="alert" className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 mt-4">
-          <p className="text-destructive text-sm">{(error as Error)?.message ?? "Unknown error"}</p>
-          <button className="text-xs underline mt-2" onClick={() => refetch()}>Retry</button>
+        <PageHeader
+          title="Pipeline"
+          description="Failed to load pipeline state."
+        />
+        <div
+          role="alert"
+          className="bg-destructive/10 border-destructive/30 mt-4 rounded-lg border p-4"
+        >
+          <p className="text-destructive text-sm">
+            {(error as Error)?.message ?? "Unknown error"}
+          </p>
+          <button className="mt-2 text-xs underline" onClick={() => refetch()}>
+            Retry
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 p-6">
       <PageHeader
         title="Pipeline"
         description="Configure the LLM purposes, profiles, and prompts that power memory ingestion."
@@ -47,9 +57,9 @@ function PipelinePage() {
 
 function PipelineSkeleton() {
   return (
-    <div className="p-6 space-y-4">
-      <div className="h-10 w-40 bg-muted rounded animate-pulse" />
-      <div className="h-96 bg-muted rounded animate-pulse" />
+    <div className="space-y-4 p-6">
+      <div className="bg-muted h-10 w-40 animate-pulse rounded" />
+      <div className="bg-muted h-96 animate-pulse rounded" />
     </div>
   )
 }

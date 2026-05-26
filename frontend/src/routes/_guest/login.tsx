@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_guest/login")({
 function LoginPage() {
   const router = useRouter()
   return (
-    <div className="mx-auto max-w-md mt-24">
+    <div className="mx-auto mt-24 max-w-md">
       <PageHeader title="darkmem" description="Sign in to continue." />
       <LoginForm onSuccess={() => router.navigate({ to: "/" })} />
     </div>

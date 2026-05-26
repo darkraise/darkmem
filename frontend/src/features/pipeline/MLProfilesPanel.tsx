@@ -1,5 +1,10 @@
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
@@ -34,7 +39,7 @@ export function MLProfilesPanel() {
           <CardTitle className="text-sm">Darkmem ML Profiles</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-32 bg-muted rounded animate-pulse" />
+          <div className="bg-muted h-32 animate-pulse rounded" />
         </CardContent>
       </Card>
     )
@@ -70,18 +75,19 @@ export function MLProfilesPanel() {
 
   return (
     <Card>
-      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <div>
           <CardTitle className="text-sm">Darkmem ML Profiles</CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">
-            HuggingFace classifiers loaded into the backend for in-process inference.
-            CPU-only. TTL of 0 means "never unload until backend stops".
+          <p className="text-muted-foreground mt-1 text-xs">
+            HuggingFace classifiers loaded into the backend for in-process
+            inference. CPU-only. TTL of 0 means "never unload until backend
+            stops".
           </p>
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="h-3.5 w-3.5 mr-1" />
+              <Plus className="mr-1 h-3.5 w-3.5" />
               Add ML Profile
             </Button>
           </DialogTrigger>
@@ -104,7 +110,8 @@ export function MLProfilesPanel() {
                       toast.success(`${name} created`)
                       setAddOpen(false)
                     },
-                    onError: (err) => toast.error(`Create failed: ${err.message}`),
+                    onError: (err) =>
+                      toast.error(`Create failed: ${err.message}`),
                   },
                 )
               }}
@@ -114,11 +121,11 @@ export function MLProfilesPanel() {
       </CardHeader>
       <CardContent className="p-0">
         {names.length === 0 ? (
-          <p className="text-muted-foreground text-xs px-4 py-3">
+          <p className="text-muted-foreground px-4 py-3 text-xs">
             No ML profiles yet. Add one above.
           </p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="divide-border divide-y">
             {names.map((name) => (
               <MlProfileRow
                 key={name}
@@ -152,16 +159,18 @@ function MlProfileRow({
   const [ttl, setTtl] = useState<number>(profile.ttl_seconds)
   const dirty = ttl !== profile.ttl_seconds
   return (
-    <div className="px-4 py-3 flex items-center gap-3">
-      <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold truncate">{name}</span>
-          <Badge variant="outline" className="text-[10px] font-mono">
+          <span className="truncate text-sm font-bold">{name}</span>
+          <Badge variant="outline" className="font-mono text-[10px]">
             {profile.model_repo}
           </Badge>
-          <Badge variant="secondary" className="text-[10px]">CPU</Badge>
+          <Badge variant="secondary" className="text-[10px]">
+            CPU
+          </Badge>
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">
+        <div className="text-muted-foreground mt-0.5 text-xs">
           {profile.ttl_seconds === 0
             ? "TTL: ∞ (never unload)"
             : `TTL: ${profile.ttl_seconds}s`}
@@ -175,7 +184,7 @@ function MlProfileRow({
           onChange={(e) => setTtl(Number(e.target.value))}
           className="h-8 w-24 text-xs"
         />
-        <span className="text-[10px] text-muted-foreground">s</span>
+        <span className="text-muted-foreground text-[10px]">s</span>
         <Button
           variant="ghost"
           size="sm"
@@ -188,7 +197,7 @@ function MlProfileRow({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive h-7 px-2 text-xs"
           onClick={onDelete}
           disabled={disabled}
           aria-label={`Delete ML profile ${name}`}
@@ -230,7 +239,7 @@ function AddMlProfileForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-xs text-muted-foreground">Profile name</Label>
+        <Label className="text-muted-foreground text-xs">Profile name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -239,7 +248,9 @@ function AddMlProfileForm({
         />
       </div>
       <div>
-        <Label className="text-xs text-muted-foreground">HuggingFace model repo</Label>
+        <Label className="text-muted-foreground text-xs">
+          HuggingFace model repo
+        </Label>
         <Input
           value={repo}
           onChange={(e) => setRepo(e.target.value)}
@@ -247,21 +258,19 @@ function AddMlProfileForm({
           className="font-mono"
           required
         />
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-muted-foreground mt-1 text-[10px]">
           Public HF Hub repos only — no token configuration in this iteration.
         </p>
       </div>
       <div>
-        <Label className="text-xs text-muted-foreground">
-          TTL (seconds)
-        </Label>
+        <Label className="text-muted-foreground text-xs">TTL (seconds)</Label>
         <Input
           type="number"
           min={0}
           value={ttl}
           onChange={(e) => setTtl(Number(e.target.value))}
         />
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-muted-foreground mt-1 text-[10px]">
           0 = never unload until backend restart. Otherwise the model is evicted
           after that many idle seconds.
         </p>

@@ -1,15 +1,45 @@
 // Run with: tsx src/demo/data/generate.ts > src/demo/data/memories.json
 import { randomUUID } from "node:crypto"
 
-const SOURCES = ["claude-code", "mcp-test", "api", "rest-test", "dashboard"] as const
-const TYPES = ["fact", "decision", "preference", "reference", "context"] as const
+const SOURCES = [
+  "claude-code",
+  "mcp-test",
+  "api",
+  "rest-test",
+  "dashboard",
+] as const
+const TYPES = [
+  "fact",
+  "decision",
+  "preference",
+  "reference",
+  "context",
+] as const
 const TECHS = [
-  "python", "fastapi", "postgres", "react", "typescript", "vite",
-  "pytest", "alembic", "docker", "kubernetes", "qdrant", "redis",
+  "python",
+  "fastapi",
+  "postgres",
+  "react",
+  "typescript",
+  "vite",
+  "pytest",
+  "alembic",
+  "docker",
+  "kubernetes",
+  "qdrant",
+  "redis",
 ]
 const TAGS = [
-  "auth", "pipeline", "infra", "ui", "backend", "memory",
-  "embedding", "classification", "extraction", "retrieval",
+  "auth",
+  "pipeline",
+  "infra",
+  "ui",
+  "backend",
+  "memory",
+  "embedding",
+  "classification",
+  "extraction",
+  "retrieval",
 ]
 
 const rows = Array.from({ length: 5000 }, (_, i) => ({

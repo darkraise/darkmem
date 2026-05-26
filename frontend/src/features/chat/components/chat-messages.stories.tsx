@@ -8,7 +8,7 @@ const meta: Meta<typeof ChatMessages> = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <div className="h-[500px] flex flex-col bg-background">
+      <div className="bg-background flex h-[500px] flex-col">
         <Story />
       </div>
     ),
@@ -36,7 +36,8 @@ const assistantMsg: ChatMessage = {
       {
         id: "m1",
         score: 0.92,
-        content: "FastAPI uses dependency injection for auth middleware via Depends()",
+        content:
+          "FastAPI uses dependency injection for auth middleware via Depends()",
         source: "claude-code",
         tags: ["python", "fastapi"],
         created_at: new Date().toISOString(),
@@ -69,7 +70,8 @@ export const Streaming: S = {
     messages: [userMsg],
     isStreaming: true,
     pendingUserMessage: "Can you show me an example?",
-    streamingContent: "Sure! Here's how you'd write a basic auth dependency in FastAPI:\n\n```python\nfrom fastapi import Depends, HTTPException\n```",
+    streamingContent:
+      "Sure! Here's how you'd write a basic auth dependency in FastAPI:\n\n```python\nfrom fastapi import Depends, HTTPException\n```",
     streamingSources: {
       memories: [
         {
@@ -102,7 +104,8 @@ export const ErrorState: S = {
       {
         id: "a-err",
         role: "assistant",
-        content: "I'm sorry, I encountered an error processing your request. Please try again.",
+        content:
+          "I'm sorry, I encountered an error processing your request. Please try again.",
         context: null,
         created_at: new Date().toISOString(),
       },

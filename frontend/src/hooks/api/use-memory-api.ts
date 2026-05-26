@@ -1,45 +1,49 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { apiFetch } from "@/lib/api"
 
-export type MemoryStatus = "active" | "superseded" | "archived" | "deleted";
+export type MemoryStatus = "active" | "superseded" | "archived" | "deleted"
 
 export interface Memory {
-  id: string;
-  content: string;
-  source: string;
-  source_agent: string | null;
-  memory_type: string | null;
-  importance: number;
-  metadata: Record<string, unknown>;
-  tags: string[];
-  created_at: string;
-  updated_at: string;
-  expires_at: string | null;
-  is_archived: boolean;
-  classified_type?: string | null;
-  classified_confidence?: number | null;
-  llm_classified_type?: string | null;
-  llm_summary?: string | null;
-  llm_emotions?: string[];
-  llm_flags?: string[];
-  related_memories?: { memory_id: string; score: number }[];
-  rrf_score?: number;
-  status?: MemoryStatus;
-  superseded_by?: string | null;
+  id: string
+  content: string
+  source: string
+  source_agent: string | null
+  memory_type: string | null
+  importance: number
+  metadata: Record<string, unknown>
+  tags: string[]
+  created_at: string
+  updated_at: string
+  expires_at: string | null
+  is_archived: boolean
+  classified_type?: string | null
+  classified_confidence?: number | null
+  llm_classified_type?: string | null
+  llm_summary?: string | null
+  llm_emotions?: string[]
+  llm_flags?: string[]
+  related_memories?: { memory_id: string; score: number }[]
+  rrf_score?: number
+  status?: MemoryStatus
+  superseded_by?: string | null
 }
 
 export interface Tag {
-  id: number;
-  name: string;
-  category: string | null;
-  memory_count: number;
+  id: number
+  name: string
+  category: string | null
+  memory_count: number
 }
 
 export function useMemories() {
   return useQuery<Memory[]>({
     queryKey: ["memories"],
-    queryFn: () => apiFetch("/memories/search", { method: "POST", body: JSON.stringify({ limit: 50 }) }),
-  });
+    queryFn: () =>
+      apiFetch("/memories/search", {
+        method: "POST",
+        body: JSON.stringify({ limit: 50 }),
+      }),
+  })
 }
 
 export function useMemory(id: string) {
@@ -47,56 +51,75 @@ export function useMemory(id: string) {
     queryKey: ["memory", id],
     queryFn: () => apiFetch(`/memories/${id}`),
     enabled: !!id,
-  });
+  })
 }
 
 export function useCreateMemory() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { content: string; tags?: string[]; source?: string; memory_type?: string }) =>
-      apiFetch<Memory>("/memories", { method: "POST", body: JSON.stringify(data) }),
+    mutationFn: (data: {
+      content: string
+      tags?: string[]
+      source?: string
+      memory_type?: string
+    }) =>
+      apiFetch<Memory>("/memories", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["memories"] });
-      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] });
+      qc.invalidateQueries({ queryKey: ["memories"] })
+      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
     },
-  });
+  })
 }
 
 export function useDeleteMemory() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => apiFetch(`/memories/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) =>
+      apiFetch(`/memories/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
-  });
+  })
 }
 
 export function useSearchMemories() {
   return useMutation({
-    mutationFn: (params: { query?: string; tags_any?: string[]; limit?: number }) =>
-      apiFetch<Memory[]>("/memories/search", { method: "POST", body: JSON.stringify(params) }),
-  });
+    mutationFn: (params: {
+      query?: string
+      tags_any?: string[]
+      limit?: number
+    }) =>
+      apiFetch<Memory[]>("/memories/search", {
+        method: "POST",
+        body: JSON.stringify(params),
+      }),
+  })
 }
 
 export function useTags() {
-  return useQuery<Tag[]>({ queryKey: ["tags"], queryFn: () => apiFetch("/tags") });
+  return useQuery<Tag[]>({
+    queryKey: ["tags"],
+    queryFn: () => apiFetch("/tags"),
+  })
 }
 
 export interface PaginatedSearchParams {
-  query?: string;
-  tags_any?: string[];
-  source?: string;
-  memory_type?: string;
-  status?: MemoryStatus[];
-  limit?: number;
-  offset?: number;
-  semantic_weight?: number;
+  query?: string
+  tags_any?: string[]
+  source?: string
+  memory_type?: string
+  status?: MemoryStatus[]
+  limit?: number
+  offset?: number
+  semantic_weight?: number
 }
 
 export interface PaginatedMemories {
-  items: Memory[];
-  total: number;
-  limit: number;
-  offset: number;
+  items: Memory[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export function usePaginatedSearch(params: PaginatedSearchParams) {
@@ -120,6 +143,5 @@ export function usePaginatedSearch(params: PaginatedSearchParams) {
           semantic_weight: params.semantic_weight,
         }),
       }),
-  });
+  })
 }
-

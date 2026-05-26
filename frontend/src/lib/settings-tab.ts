@@ -17,6 +17,7 @@ const KNOWN: SettingsTabValue[] = [
 ]
 
 export function resolveStoredTab(stored: string | null): SettingsTabValue {
-  if (stored && (KNOWN as string[]).includes(stored)) return stored as SettingsTabValue
+  if (stored && (KNOWN as string[]).includes(stored))
+    return stored as SettingsTabValue
   return "flags"
 }

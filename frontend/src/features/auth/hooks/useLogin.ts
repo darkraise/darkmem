@@ -6,7 +6,8 @@ import type { LoginInput } from "../schemas"
 export function useLogin() {
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
   return useMutation({
-    mutationFn: (input: LoginInput) => authAdapter.login({ password: input.password }),
+    mutationFn: (input: LoginInput) =>
+      authAdapter.login({ password: input.password }),
     onSuccess: () => setAuthenticated(true),
   })
 }

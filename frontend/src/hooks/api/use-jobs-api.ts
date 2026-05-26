@@ -44,7 +44,10 @@ export function useUpdateJob() {
   const qc = useQueryClient()
   return useMutation<Job, Error, { key: string; data: JobUpdateParams }>({
     mutationFn: ({ key, data }) =>
-      apiFetch<Job>(`/jobs/${key}`, { method: "PUT", body: JSON.stringify(data) }),
+      apiFetch<Job>(`/jobs/${key}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   })
 }

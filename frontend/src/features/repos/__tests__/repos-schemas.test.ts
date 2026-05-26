@@ -15,18 +15,30 @@ describe("cronExpressionSchema", () => {
 
 describe("reindexSchema", () => {
   it("requires at least one action", () => {
-    const r = reindexSchema.safeParse({ full: false, enrich_symbols: false, generate_wiki: false })
+    const r = reindexSchema.safeParse({
+      full: false,
+      enrich_symbols: false,
+      generate_wiki: false,
+    })
     expect(r.success).toBe(false)
   })
   it("accepts a single action", () => {
-    expect(reindexSchema.safeParse({ full: false, enrich_symbols: true, generate_wiki: false }).success).toBe(true)
+    expect(
+      reindexSchema.safeParse({
+        full: false,
+        enrich_symbols: true,
+        generate_wiki: false,
+      }).success,
+    ).toBe(true)
   })
 })
 
 describe("editRepoSchema", () => {
   it("defaults branch to main", () => {
     const r = editRepoSchema.parse({
-      name: "x", path: "/p", sync_cron: "0 0 * * *",
+      name: "x",
+      path: "/p",
+      sync_cron: "0 0 * * *",
     })
     expect(r.branch).toBe("main")
   })

@@ -79,24 +79,25 @@ function ChatPage() {
         onDelete={handleDelete}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         {activeId || stream.isStreaming ? (
           <>
-            <div className="px-4 py-3 border-b border-border shrink-0 flex items-center gap-2">
+            <div className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
               {editingTitle ? (
                 <Input
                   autoFocus
                   defaultValue={convDetail?.title || ""}
-                  className="text-sm font-semibold bg-transparent border-b border-primary focus:ring-0 focus:border-indigo-400 flex-1 h-auto py-0 rounded-none"
+                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 text-sm font-semibold focus:border-indigo-400 focus:ring-0"
                   onBlur={(e) => handleTitleSubmit(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleTitleSubmit(e.currentTarget.value)
+                    if (e.key === "Enter")
+                      handleTitleSubmit(e.currentTarget.value)
                     if (e.key === "Escape") setEditingTitle(false)
                   }}
                 />
               ) : (
                 <h2
-                  className="text-sm font-semibold truncate flex-1 cursor-pointer hover:text-primary transition-colors"
+                  className="hover:text-primary flex-1 cursor-pointer truncate text-sm font-semibold transition-colors"
                   onClick={() => setEditingTitle(true)}
                   title="Click to rename"
                 >
@@ -104,7 +105,7 @@ function ChatPage() {
                 </h2>
               )}
               {messages.length > 0 && (
-                <span className="text-xs text-muted-foreground/40 shrink-0">
+                <span className="text-muted-foreground/40 shrink-0 text-xs">
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
                 </span>
               )}
@@ -124,24 +125,28 @@ function ChatPage() {
             />
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-6 text-muted-foreground px-4">
+          <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-6 px-4">
             <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center"
-              style={{ background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)" }}
+              className="flex h-20 w-20 items-center justify-center rounded-2xl"
+              style={{
+                background:
+                  "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)",
+              }}
             >
-              <Sparkles className="w-8 h-8 text-indigo-400" />
+              <Sparkles className="h-8 w-8 text-indigo-400" />
             </div>
-            <div className="text-center max-w-md">
-              <p className="text-xl font-semibold text-foreground mb-2">
+            <div className="max-w-md text-center">
+              <p className="text-foreground mb-2 text-xl font-semibold">
                 Ask anything about your memories
               </p>
               <p className="text-sm leading-relaxed">
-                Chat with your knowledge base. Ask questions, explore connections,
-                and discover insights from your stored memories and entities.
+                Chat with your knowledge base. Ask questions, explore
+                connections, and discover insights from your stored memories and
+                entities.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+            <div className="flex max-w-lg flex-wrap justify-center gap-2">
               {[
                 "What do I know about Docker?",
                 "Summarize recent decisions",
@@ -150,7 +155,7 @@ function ChatPage() {
               ].map((prompt) => (
                 <button
                   key={prompt}
-                  className="text-xs bg-[rgba(99,102,241,0.04)] border border-[rgba(99,102,241,0.1)] hover:bg-[rgba(99,102,241,0.1)] hover:border-[rgba(99,102,241,0.2)] hover:text-indigo-200 px-4 py-2 rounded-full text-slate-300 transition-all"
+                  className="rounded-full border border-[rgba(99,102,241,0.1)] bg-[rgba(99,102,241,0.04)] px-4 py-2 text-xs text-slate-300 transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
                   onClick={async () => {
                     const resultId = await stream.sendMessage(null, prompt)
                     if (resultId) setActiveId(resultId)

@@ -1,7 +1,15 @@
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import { Checkbox } from "darkraise-ui/components/checkbox"
-import { useSetupWizardStore, PURPOSES } from "@/features/setup/setupWizardStore"
+import {
+  useSetupWizardStore,
+  PURPOSES,
+} from "@/features/setup/setupWizardStore"
 
 export function StepFinish() {
   const password = useSetupWizardStore((s) => s.password)
@@ -25,18 +33,24 @@ export function StepFinish() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Default LLM provider</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm space-y-1">
+        <CardContent className="space-y-1 text-sm">
           {llm.skipped || !llm.api_kind ? (
-            <span className="text-muted-foreground">Skipped — system defaults will be used.</span>
+            <span className="text-muted-foreground">
+              Skipped — system defaults will be used.
+            </span>
           ) : (
             <>
               <div>
                 <strong className="capitalize">{llm.api_kind}</strong>{" "}
-                <span className="text-muted-foreground">(default vendor menu seeded; api key applied to this row)</span>
+                <span className="text-muted-foreground">
+                  (default vendor menu seeded; api key applied to this row)
+                </span>
               </div>
               <ul className="ml-4 list-disc">
                 {PURPOSES.filter(
-                  (p) => (p !== "embedding" || llm.supports_embedding) && llm.perPurpose[p].model,
+                  (p) =>
+                    (p !== "embedding" || llm.supports_embedding) &&
+                    llm.perPurpose[p].model,
                 ).map((p) => (
                   <li key={p}>
                     <span className="capitalize">{p}</span>:{" "}
@@ -53,16 +67,20 @@ export function StepFinish() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Default code repo path</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm space-y-2">
+        <CardContent className="space-y-2 text-sm">
           {repos.skipped || !repos.basePath ? (
-            <span className="text-muted-foreground">Skipped — configure later under Settings.</span>
+            <span className="text-muted-foreground">
+              Skipped — configure later under Settings.
+            </span>
           ) : (
             <>
               <div>
                 Base path: <span className="font-mono">{repos.basePath}</span>
               </div>
               {repos.detected.length === 0 ? (
-                <div className="text-muted-foreground">No repositories detected.</div>
+                <div className="text-muted-foreground">
+                  No repositories detected.
+                </div>
               ) : (
                 <div className="space-y-1">
                   {repos.detected.map((r) => (
@@ -76,15 +94,16 @@ export function StepFinish() {
                         value={r.name}
                         onChange={(e) => rename(r.subPath, e.target.value)}
                       />
-                      <span className="text-xs text-muted-foreground font-mono">
+                      <span className="text-muted-foreground font-mono text-xs">
                         {r.subPath}
                       </span>
                     </div>
                   ))}
-                  <div className="pt-2 text-xs text-muted-foreground">
-                    Imported repositories start with auto-sync <strong>off</strong>. Open
-                    the Repositories page and enable each one from its Edit dialog when
-                    you're ready to have darkmem fetch and re-index it on a schedule.
+                  <div className="text-muted-foreground pt-2 text-xs">
+                    Imported repositories start with auto-sync{" "}
+                    <strong>off</strong>. Open the Repositories page and enable
+                    each one from its Edit dialog when you're ready to have
+                    darkmem fetch and re-index it on a schedule.
                   </div>
                 </div>
               )}

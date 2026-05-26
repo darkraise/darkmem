@@ -2,8 +2,15 @@ import { useNavigate } from "@tanstack/react-router"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent } from "darkraise-ui/components/card"
 import { toast } from "darkraise-ui/components/sonner"
-import { useSetupWizardStore, PURPOSES } from "@/features/setup/setupWizardStore"
-import { useFinalizeSetup, type SetupRequest, type SetupLLM } from "@/hooks/api/use-setup-api"
+import {
+  useSetupWizardStore,
+  PURPOSES,
+} from "@/features/setup/setupWizardStore"
+import {
+  useFinalizeSetup,
+  type SetupRequest,
+  type SetupLLM,
+} from "@/hooks/api/use-setup-api"
 import { ParticleBackground } from "./ParticleBackground"
 import { StepPassword, isStepPasswordValid } from "./StepPassword"
 import { StepLLM, isStepLLMValid } from "./StepLLM"
@@ -109,18 +116,20 @@ export function SetupWizard() {
   return (
     <>
       <ParticleBackground />
-      <Card className="w-full max-w-2xl border-border/60 bg-card/85 shadow-2xl backdrop-blur-md max-h-[90vh] flex flex-col">
-        <CardContent className="flex flex-col gap-6 p-8 overflow-hidden">
-          <div className="text-center space-y-1 shrink-0">
-            <h1 className="text-2xl font-bold font-mono tracking-tight">darkmem</h1>
-            <p className="text-sm text-muted-foreground">Initial Setup</p>
+      <Card className="border-border/60 bg-card/85 flex max-h-[90vh] w-full max-w-2xl flex-col shadow-2xl backdrop-blur-md">
+        <CardContent className="flex flex-col gap-6 overflow-hidden p-8">
+          <div className="shrink-0 space-y-1 text-center">
+            <h1 className="font-mono text-2xl font-bold tracking-tight">
+              darkmem
+            </h1>
+            <p className="text-muted-foreground text-sm">Initial Setup</p>
           </div>
 
-          <ol className="flex flex-wrap justify-center gap-2 text-xs shrink-0">
+          <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-xs">
             {[1, 2, 3, 4].map((s) => (
               <li
                 key={s}
-                className={`px-3 py-1 rounded-md border transition-colors ${
+                className={`rounded-md border px-3 py-1 transition-colors ${
                   s === step
                     ? "border-primary bg-primary/10 text-primary"
                     : s < step
@@ -140,13 +149,21 @@ export function SetupWizard() {
             {step === 4 && <StepFinish />}
           </div>
 
-          <div className="flex justify-between border-t border-border/60 pt-4 shrink-0">
-            <Button variant="ghost" onClick={goBack} disabled={step === 1 || finalize.isPending}>
+          <div className="border-border/60 flex shrink-0 justify-between border-t pt-4">
+            <Button
+              variant="ghost"
+              onClick={goBack}
+              disabled={step === 1 || finalize.isPending}
+            >
               Back
             </Button>
             <div className="flex gap-2">
               {(step === 2 || step === 3) && (
-                <Button variant="outline" onClick={skip} disabled={finalize.isPending}>
+                <Button
+                  variant="outline"
+                  onClick={skip}
+                  disabled={finalize.isPending}
+                >
                   Skip
                 </Button>
               )}

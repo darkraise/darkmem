@@ -3,7 +3,12 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Switch } from "darkraise-ui/components/switch"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import {
   Select,
   SelectTrigger,
@@ -11,7 +16,10 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
-import { API_KIND_OPTIONS, type LlmApiKind } from "@/features/pipeline/api-kinds"
+import {
+  API_KIND_OPTIONS,
+  type LlmApiKind,
+} from "@/features/pipeline/api-kinds"
 import {
   PURPOSES,
   REQUIRED_PURPOSES_NON_EMBEDDING,
@@ -61,7 +69,10 @@ export function StepLLM() {
 
   const handleApiKindChange = (api_kind: LlmApiKind) => {
     setLlmField("api_kind", api_kind)
-    if (!llm.base_url || Object.values(BASE_URL_DEFAULTS).includes(llm.base_url)) {
+    if (
+      !llm.base_url ||
+      Object.values(BASE_URL_DEFAULTS).includes(llm.base_url)
+    ) {
       setLlmField("base_url", BASE_URL_DEFAULTS[api_kind])
     }
     setLlmField("supports_embedding", KIND_SUPPORTS_EMBEDDING[api_kind])
@@ -128,7 +139,11 @@ export function StepLLM() {
               type="password"
               value={llm.api_key}
               onChange={(e) => setLlmField("api_key", e.target.value)}
-              placeholder={llm.api_kind === "ollama" ? "(not required for Ollama)" : "sk-..."}
+              placeholder={
+                llm.api_kind === "ollama"
+                  ? "(not required for Ollama)"
+                  : "sk-..."
+              }
             />
           </div>
           <div className="flex items-start gap-2">
@@ -139,9 +154,10 @@ export function StepLLM() {
             />
             <div className="text-sm">
               <div>Provider supports embeddings</div>
-              <div className="text-xs text-muted-foreground">
-                Auto-set from API kind (off for Anthropic and DeepSeek). Override only for
-                custom proxies that route embeddings through this base URL.
+              <div className="text-muted-foreground text-xs">
+                Auto-set from API kind (off for Anthropic and DeepSeek).
+                Override only for custom proxies that route embeddings through
+                this base URL.
               </div>
             </div>
           </div>
@@ -150,13 +166,14 @@ export function StepLLM() {
               {probe.isPending ? "Fetching..." : "Fetch available models"}
             </Button>
             {llm.models.length > 0 && (
-              <span className="text-sm text-muted-foreground">
-                {llm.models.length} model{llm.models.length === 1 ? "" : "s"} loaded
+              <span className="text-muted-foreground text-sm">
+                {llm.models.length} model{llm.models.length === 1 ? "" : "s"}{" "}
+                loaded
               </span>
             )}
           </div>
           {probeError && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-destructive text-sm">
               {probeError}
             </p>
           )}
@@ -177,20 +194,26 @@ export function StepLLM() {
             return (
               <div
                 key={purpose}
-                className="grid grid-cols-[140px,1fr,auto] gap-3 items-center"
+                className="grid grid-cols-[140px,1fr,auto] items-center gap-3"
               >
                 <div>
                   <div className="text-sm font-medium capitalize">
                     {purpose}
-                    {required && <span className="text-destructive ml-1">*</span>}
+                    {required && (
+                      <span className="text-destructive ml-1">*</span>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground">{PURPOSE_HINT[purpose]}</div>
+                  <div className="text-muted-foreground text-xs">
+                    {PURPOSE_HINT[purpose]}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <Input
                     list={`models-${purpose}`}
                     value={draft.model}
-                    onChange={(e) => setLlmPurpose(purpose, { model: e.target.value })}
+                    onChange={(e) =>
+                      setLlmPurpose(purpose, { model: e.target.value })
+                    }
                     placeholder="model id"
                   />
                   <datalist id={`models-${purpose}`}>
@@ -203,7 +226,9 @@ export function StepLLM() {
                   <label className="flex items-center gap-2 text-xs">
                     <Switch
                       checked={draft.reasoning}
-                      onCheckedChange={(v) => setLlmPurpose(purpose, { reasoning: v })}
+                      onCheckedChange={(v) =>
+                        setLlmPurpose(purpose, { reasoning: v })
+                      }
                     />
                     reasoning
                   </label>
@@ -219,11 +244,14 @@ export function StepLLM() {
   )
 }
 
-export function isStepLLMValid(llm: ReturnType<typeof useSetupWizardStore.getState>["llm"]): boolean {
+export function isStepLLMValid(
+  llm: ReturnType<typeof useSetupWizardStore.getState>["llm"],
+): boolean {
   if (llm.skipped) return true
   if (!llm.api_kind.trim()) return false
   if (!llm.base_url.trim()) return false
-  if (llm.supports_embedding && !llm.perPurpose.embedding.model.trim()) return false
+  if (llm.supports_embedding && !llm.perPurpose.embedding.model.trim())
+    return false
   for (const p of REQUIRED_PURPOSES_NON_EMBEDDING) {
     if (!llm.perPurpose[p].model.trim()) return false
   }

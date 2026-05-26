@@ -12,9 +12,19 @@ import {
   useRepoTasks,
   useCancelTask,
 } from "@/hooks/api"
-import type { RepoCreateParams, RepoUpdateParams, RepoTask, Repo } from "@/hooks/api"
+import type {
+  RepoCreateParams,
+  RepoUpdateParams,
+  RepoTask,
+  Repo,
+} from "@/hooks/api"
 import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
@@ -62,14 +72,20 @@ const PROVIDER_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   local: "outline",
 }
 
-function StatValue({ label, value }: { label: string; value: string | number }) {
+function StatValue({
+  label,
+  value,
+}: {
+  label: string
+  value: string | number
+}) {
   return (
     <Card>
       <CardContent className="pt-4">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+        <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
           {label}
         </div>
-        <div className="text-3xl font-bold mt-1">{value}</div>
+        <div className="mt-1 text-3xl font-bold">{value}</div>
       </CardContent>
     </Card>
   )
@@ -86,8 +102,10 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
     auto_sync: true,
   })
 
-  const set = <K extends keyof RepoCreateParams>(field: K, value: RepoCreateParams[K]) =>
-    setForm((prev) => ({ ...prev, [field]: value }))
+  const set = <K extends keyof RepoCreateParams>(
+    field: K,
+    value: RepoCreateParams[K],
+  ) => setForm((prev) => ({ ...prev, [field]: value }))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -112,11 +130,15 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <Label className="text-xs text-muted-foreground">Name *</Label>
-        <Input value={form.name} onChange={(e) => set("name", e.target.value)} required />
+        <Label className="text-muted-foreground text-xs">Name *</Label>
+        <Input
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+          required
+        />
       </div>
       <div>
-        <Label className="text-xs text-muted-foreground">URL</Label>
+        <Label className="text-muted-foreground text-xs">URL</Label>
         <Input
           value={form.url ?? ""}
           onChange={(e) => set("url", e.target.value)}
@@ -124,8 +146,11 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <Label className="text-xs text-muted-foreground">Provider</Label>
-        <Select value={form.provider ?? "github"} onValueChange={(v) => set("provider", v)}>
+        <Label className="text-muted-foreground text-xs">Provider</Label>
+        <Select
+          value={form.provider ?? "github"}
+          onValueChange={(v) => set("provider", v)}
+        >
           <SelectTrigger className="h-8 w-full">
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
@@ -137,14 +162,14 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         </Select>
       </div>
       <div>
-        <Label className="text-xs text-muted-foreground">Default branch</Label>
+        <Label className="text-muted-foreground text-xs">Default branch</Label>
         <Input
           value={form.default_branch ?? "main"}
           onChange={(e) => set("default_branch", e.target.value)}
         />
       </div>
       <div>
-        <Label className="text-xs text-muted-foreground">Auth token</Label>
+        <Label className="text-muted-foreground text-xs">Auth token</Label>
         <Input
           type="password"
           value={form.auth_token ?? ""}
@@ -160,9 +185,10 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
         <div className="text-sm">
           <div>Auto-sync</div>
-          <div className="text-xs text-muted-foreground">
-            When on, the repo_sync background job fetches and re-indexes this repo on every
-            tick. Manual reindex always works regardless of this toggle.
+          <div className="text-muted-foreground text-xs">
+            When on, the repo_sync background job fetches and re-indexes this
+            repo on every tick. Manual reindex always works regardless of this
+            toggle.
           </div>
         </div>
       </div>
@@ -172,7 +198,6 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
     </form>
   )
 }
-
 
 function RepoTaskList({ repo }: { repo: Repo }) {
   const { data: tasks } = useRepoTasks(
@@ -187,13 +212,13 @@ function RepoTaskList({ repo }: { repo: Repo }) {
       {tasks.map((task: RepoTask) => (
         <div
           key={task.id}
-          className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1"
+          className="text-muted-foreground bg-muted/30 flex items-center gap-2 rounded px-2 py-1 text-xs"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-          <Badge variant="outline" className="text-[9px] px-1 py-0">
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-500" />
+          <Badge variant="outline" className="px-1 py-0 text-[9px]">
             {task.kind}
           </Badge>
-          <span className="truncate flex-1">{task.message}</span>
+          <span className="flex-1 truncate">{task.message}</span>
           <span className="shrink-0">{relativeTime(task.created_at)}</span>
           <button
             className="text-muted-foreground hover:text-destructive shrink-0"
@@ -208,7 +233,7 @@ function RepoTaskList({ repo }: { repo: Repo }) {
               )
             }
           >
-            <X className="w-3 h-3" aria-hidden="true" />
+            <X className="h-3 w-3" aria-hidden="true" />
           </button>
         </div>
       ))}
@@ -248,22 +273,22 @@ function RepositoriesPage() {
         <div>
           <div className="flex items-center gap-2">
             <span
-              className={`w-2 h-2 rounded-full shrink-0 ${
+              className={`h-2 w-2 shrink-0 rounded-full ${
                 row.original.status === "cloning"
-                  ? "bg-yellow-500 animate-pulse"
+                  ? "animate-pulse bg-yellow-500"
                   : row.original.status === "error"
                     ? "bg-red-500"
                     : row.original.status === "cancelled"
                       ? "bg-orange-500"
                       : row.original.status === "indexing"
-                        ? "bg-blue-500 animate-pulse"
+                        ? "animate-pulse bg-blue-500"
                         : row.original.auto_sync
                           ? "bg-green-500"
                           : "bg-muted-foreground"
               }`}
               title={row.original.status_message ?? row.original.status}
             />
-            <span className="font-medium text-sm">{row.original.name}</span>
+            <span className="text-sm font-medium">{row.original.name}</span>
           </div>
           <RepoTaskList repo={row.original} />
         </div>
@@ -275,8 +300,10 @@ function RepositoriesPage() {
       size: 100,
       cell: ({ getValue }) => (
         <Badge
-          variant={PROVIDER_VARIANT[String(getValue()).toLowerCase()] ?? "outline"}
-          className="text-[10px] px-1.5 py-0"
+          variant={
+            PROVIDER_VARIANT[String(getValue()).toLowerCase()] ?? "outline"
+          }
+          className="px-1.5 py-0 text-[10px]"
         >
           {String(getValue())}
         </Badge>
@@ -291,7 +318,7 @@ function RepositoriesPage() {
       id: "location",
       header: "Location",
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground truncate max-w-[240px] block">
+        <span className="text-muted-foreground block max-w-[240px] truncate text-xs">
           {row.original.url ?? row.original.local_path ?? "—"}
         </span>
       ),
@@ -306,7 +333,7 @@ function RepositoriesPage() {
           return (
             <Badge
               variant="outline"
-              className="text-[10px] px-1.5 py-0 text-destructive border-destructive"
+              className="text-destructive border-destructive px-1.5 py-0 text-[10px]"
               title={status_message ?? ""}
             >
               error
@@ -315,12 +342,19 @@ function RepositoriesPage() {
         }
         if (status === "cancelled") {
           return (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-500 border-orange-500">
+            <Badge
+              variant="outline"
+              className="border-orange-500 px-1.5 py-0 text-[10px] text-orange-500"
+            >
               cancelled
             </Badge>
           )
         }
-        return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status}</Badge>
+        return (
+          <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+            {status}
+          </Badge>
+        )
       },
     },
     {
@@ -350,7 +384,7 @@ function RepositoriesPage() {
       header: "Files / Symbols",
       size: 120,
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-muted-foreground text-xs">
           {row.original.file_count} / {row.original.symbol_count}
         </span>
       ),
@@ -365,11 +399,14 @@ function RepositoriesPage() {
             size="sm"
             variant="ghost"
             className="h-7 px-2 text-xs"
-            disabled={row.original.status === "cloning" || row.original.status === "indexing"}
+            disabled={
+              row.original.status === "cloning" ||
+              row.original.status === "indexing"
+            }
             onClick={() => setReindexingRepo(row.original)}
           >
             <RefreshCw
-              className={`w-3.5 h-3.5 mr-1 ${row.original.status === "indexing" ? "animate-spin" : ""}`}
+              className={`mr-1 h-3.5 w-3.5 ${row.original.status === "indexing" ? "animate-spin" : ""}`}
             />
             {row.original.status === "indexing" ? "Indexing..." : "Reindex"}
           </Button>
@@ -384,7 +421,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+            className="text-destructive hover:text-destructive h-7 px-2 text-xs"
             onClick={() => handleDelete(row.original.id, row.original.name)}
           >
             Delete
@@ -395,7 +432,7 @@ function RepositoriesPage() {
   ]
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 p-6">
       <PageHeader title="Repositories" />
 
       <div className="flex items-center justify-end gap-2">
@@ -403,7 +440,8 @@ function RepositoriesPage() {
           variant="outline"
           onClick={() =>
             triggerEnrichment.mutate(undefined, {
-              onSuccess: (data) => toast.success(`Enriched ${data.processed} symbols`),
+              onSuccess: (data) =>
+                toast.success(`Enriched ${data.processed} symbols`),
               onError: () => toast.error("Enrichment failed"),
             })
           }
@@ -414,7 +452,7 @@ function RepositoriesPage() {
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="w-4 h-4 mr-1" />
+              <Plus className="mr-1 h-4 w-4" />
               Add Repo
             </Button>
           </DialogTrigger>
@@ -427,7 +465,7 @@ function RepositoriesPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatValue label="Repos" value={stats?.total_repos ?? "—"} />
         <StatValue label="Files" value={stats?.total_files ?? "—"} />
         <StatValue label="Symbols" value={stats?.total_symbols ?? "—"} />
@@ -454,8 +492,10 @@ function RepositoriesPage() {
           if (!editingRepo) return
           const data: RepoUpdateParams = {}
           if (v.name !== editingRepo.name) data.name = v.name
-          if (v.branch !== editingRepo.default_branch) data.default_branch = v.branch
-          if (v.auto_sync !== editingRepo.auto_sync) data.auto_sync = v.auto_sync
+          if (v.branch !== editingRepo.default_branch)
+            data.default_branch = v.branch
+          if (v.auto_sync !== editingRepo.auto_sync)
+            data.auto_sync = v.auto_sync
           if (Object.keys(data).length === 0) {
             toast.info("No changes to save")
             return
@@ -483,12 +523,14 @@ function RepositoriesPage() {
 
       {isLoading ? (
         <DataTableSkeleton columnCount={9} />
-      ) : (repos?.length === 0 ? (
-        <p className="text-muted-foreground">No repositories yet. Add one to get started.</p>
+      ) : repos?.length === 0 ? (
+        <p className="text-muted-foreground">
+          No repositories yet. Add one to get started.
+        </p>
       ) : (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
               Repositories
             </CardTitle>
           </CardHeader>
@@ -496,7 +538,7 @@ function RepositoriesPage() {
             <DataTable columns={columns} data={repos ?? []} />
           </CardContent>
         </Card>
-      ))}
+      )}
     </div>
   )
 }

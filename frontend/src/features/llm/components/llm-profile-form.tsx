@@ -109,7 +109,9 @@ export function LLMProfileForm({
             name={field.name}
             label="API kind"
             value={field.state.value}
-            onChange={(v) => field.handleChange(v as LLMProfileInput["api_kind"])}
+            onChange={(v) =>
+              field.handleChange(v as LLMProfileInput["api_kind"])
+            }
             onBlur={field.handleBlur}
             isInvalid={field.state.meta.errors.length > 0}
             errors={makeErrors(field.state.meta.errors)}

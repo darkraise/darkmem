@@ -72,7 +72,7 @@ type SetupWizardState = {
 const emptyPurposeDraft: PurposeDraft = { model: "", reasoning: false }
 
 const initial = () => ({
-  step: 1 as 1,
+  step: 1 as const,
   password: { value: "", confirm: "" },
   llm: {
     skipped: false,

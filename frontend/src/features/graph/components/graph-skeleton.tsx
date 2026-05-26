@@ -1,7 +1,7 @@
 interface SkelCluster {
-  color: string;
-  hull: { cx: string; cy: string; rx: string; ry: string; rotate: string };
-  nodes: { top: string; left: string; size: string; delay: string }[];
+  color: string
+  hull: { cx: string; cy: string; rx: string; ry: string; rotate: string }
+  nodes: { top: string; left: string; size: string; delay: string }[]
 }
 
 const SKEL_CLUSTERS: SkelCluster[] = [
@@ -65,9 +65,15 @@ const SKEL_CLUSTERS: SkelCluster[] = [
       { top: "22%", left: "78%", size: "20px", delay: "0.4s" },
     ],
   },
-];
+]
 
-const SKEL_EDGES: { top: string; left: string; width: string; rotate: string; delay: string }[] = [
+const SKEL_EDGES: {
+  top: string
+  left: string
+  width: string
+  rotate: string
+  delay: string
+}[] = [
   { top: "34%", left: "20%", width: "70px", rotate: "-12deg", delay: "0.2s" },
   { top: "30%", left: "16%", width: "55px", rotate: "35deg", delay: "0.5s" },
   { top: "42%", left: "18%", width: "60px", rotate: "15deg", delay: "0.8s" },
@@ -81,19 +87,23 @@ const SKEL_EDGES: { top: string; left: string; width: string; rotate: string; de
   { top: "46%", left: "32%", width: "120px", rotate: "5deg", delay: "0.6s" },
   { top: "26%", left: "30%", width: "90px", rotate: "-8deg", delay: "0.4s" },
   { top: "54%", left: "48%", width: "60px", rotate: "35deg", delay: "0.2s" },
-];
+]
 
-const SKEL_BARS = ["64px", "80px", "56px", "48px"];
+const SKEL_BARS = ["64px", "80px", "56px", "48px"]
 
-export function GraphSkeleton({ label = "Loading graph data..." }: { label?: string }) {
+export function GraphSkeleton({
+  label = "Loading graph data...",
+}: {
+  label?: string
+}) {
   return (
-    <div className="relative flex-1 min-h-0 h-full">
-      <div className="bg-[#0d1117] absolute inset-0 overflow-hidden">
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-2 px-3 py-1.5 bg-card/70 rounded-md border border-border z-10">
+    <div className="relative h-full min-h-0 flex-1">
+      <div className="absolute inset-0 overflow-hidden bg-[#0d1117]">
+        <div className="bg-card/70 border-border absolute top-3 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-md border px-3 py-1.5">
           {SKEL_BARS.map((w, i) => (
             <div
               key={i}
-              className="h-2 rounded-full bg-[#21262d] animate-pulse"
+              className="h-2 animate-pulse rounded-full bg-[#21262d]"
               style={{ width: w, animationDelay: `${i * 0.15}s` }}
             />
           ))}
@@ -102,7 +112,7 @@ export function GraphSkeleton({ label = "Loading graph data..." }: { label?: str
         {SKEL_CLUSTERS.map((c, ci) => (
           <div
             key={`hull-${ci}`}
-            className="absolute rounded-[50%] animate-pulse"
+            className="absolute animate-pulse rounded-[50%]"
             style={{
               left: c.hull.cx,
               top: c.hull.cy,
@@ -136,7 +146,7 @@ export function GraphSkeleton({ label = "Loading graph data..." }: { label?: str
           c.nodes.map((n, ni) => (
             <div
               key={`n-${ci}-${ni}`}
-              className="absolute rounded-full animate-pulse"
+              className="absolute animate-pulse rounded-full"
               style={{
                 top: n.top,
                 left: n.left,
@@ -150,10 +160,10 @@ export function GraphSkeleton({ label = "Loading graph data..." }: { label?: str
           )),
         )}
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-muted-foreground tracking-wide animate-pulse">
+        <div className="text-muted-foreground absolute bottom-4 left-1/2 -translate-x-1/2 animate-pulse text-xs tracking-wide">
           {label}
         </div>
       </div>
     </div>
-  );
+  )
 }

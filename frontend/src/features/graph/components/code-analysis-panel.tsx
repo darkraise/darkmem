@@ -1,54 +1,48 @@
-import { useState } from "react";
-import { Checkbox } from "darkraise-ui/components/checkbox";
-import { Label } from "darkraise-ui/components/label";
-import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api";
+import { useState } from "react"
+import { Checkbox } from "darkraise-ui/components/checkbox"
+import { Label } from "darkraise-ui/components/label"
+import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api"
 
 interface CodeAnalysisPanelProps {
   selectedNode: {
-    id: string;
-    label: string;
-    kind?: string;
-    file_path?: string;
-  } | null;
-  symbolDetail: CodeSymbolDetail | null | undefined;
-  blastRadiusIds: Set<string> | undefined;
-  blastRadiusData: BlastRadiusResult | null;
-  onBlastRadius: () => void;
-  onClearBlastRadius: () => void;
-  isBlastRadiusLoading: boolean;
-  nodeCount: number;
-  edgeCount: number;
-  visibleNodeTypes: Set<string>;
-  visibleEdgeTypes: Set<string>;
-  onToggleNodeType: (type: string) => void;
-  onToggleEdgeType: (type: string) => void;
-  nodeColors: Record<string, string>;
-  edgeColors: Record<string, string>;
-  allNodeTypes: string[];
-  allEdgeTypes: string[];
+    id: string
+    label: string
+    kind?: string
+    file_path?: string
+  } | null
+  symbolDetail: CodeSymbolDetail | null | undefined
+  blastRadiusIds: Set<string> | undefined
+  blastRadiusData: BlastRadiusResult | null
+  onBlastRadius: () => void
+  onClearBlastRadius: () => void
+  isBlastRadiusLoading: boolean
+  nodeCount: number
+  edgeCount: number
+  visibleNodeTypes: Set<string>
+  visibleEdgeTypes: Set<string>
+  onToggleNodeType: (type: string) => void
+  onToggleEdgeType: (type: string) => void
+  nodeColors: Record<string, string>
+  edgeColors: Record<string, string>
+  allNodeTypes: string[]
+  allEdgeTypes: string[]
 }
 
-function SectionHeader({
-  color,
-  label,
-}: {
-  color: string;
-  label: string;
-}) {
+function SectionHeader({ color, label }: { color: string; label: string }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
+    <div className="mb-3 flex items-center gap-2">
       <div
-        className="w-1 h-1 rounded-full"
+        className="h-1 w-1 rounded-full"
         style={{
           backgroundColor: color,
           boxShadow: `0 0 4px ${color}80`,
         }}
       />
-      <span className="text-[9px] uppercase tracking-[0.2em] text-zinc-500 font-mono font-semibold">
+      <span className="font-mono text-[9px] font-semibold tracking-[0.2em] text-zinc-500 uppercase">
         {label}
       </span>
     </div>
-  );
+  )
 }
 
 function CollapsibleSection({
@@ -57,35 +51,35 @@ function CollapsibleSection({
   defaultOpen = true,
   children,
 }: {
-  color: string;
-  label: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
+  color: string
+  label: string
+  defaultOpen?: boolean
+  children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="border-b border-cyan-900/10">
       <button
-        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-white/[0.01] transition-colors"
+        className="flex w-full items-center gap-2 px-4 py-3 transition-colors hover:bg-white/[0.01]"
         onClick={() => setOpen(!open)}
       >
         <div
-          className="w-1 h-1 rounded-full shrink-0"
+          className="h-1 w-1 shrink-0 rounded-full"
           style={{
             backgroundColor: color,
             boxShadow: `0 0 4px ${color}80`,
           }}
         />
-        <span className="text-[9px] uppercase tracking-[0.2em] text-zinc-500 font-mono font-semibold flex-1 text-left">
+        <span className="flex-1 text-left font-mono text-[9px] font-semibold tracking-[0.2em] text-zinc-500 uppercase">
           {label}
         </span>
-        <span className="text-[9px] text-zinc-700 font-mono">
+        <span className="font-mono text-[9px] text-zinc-700">
           {open ? "▾" : "▸"}
         </span>
       </button>
       {open && <div className="px-4 pb-3">{children}</div>}
     </div>
-  );
+  )
 }
 
 export function CodeAnalysisPanel({
@@ -110,47 +104,47 @@ export function CodeAnalysisPanel({
   const isAnalyzableSymbol =
     selectedNode &&
     selectedNode.kind !== "file" &&
-    selectedNode.kind !== "module";
+    selectedNode.kind !== "module"
 
   return (
-    <div className="code-analysis-panel flex flex-col h-full border-l border-cyan-900/15">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-cyan-900/15 shrink-0">
-        <div className="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]" />
-        <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-violet-300/70 font-mono">
+    <div className="code-analysis-panel flex h-full flex-col border-l border-cyan-900/15">
+      <div className="flex shrink-0 items-center gap-2 border-b border-cyan-900/15 px-4 py-2.5">
+        <div className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]" />
+        <span className="font-mono text-[10px] font-semibold tracking-[0.2em] text-violet-300/70 uppercase">
           Analysis
         </span>
         {selectedNode && (
-          <span className="ml-auto text-[9px] text-zinc-600 font-mono truncate max-w-[120px]">
+          <span className="ml-auto max-w-[120px] truncate font-mono text-[9px] text-zinc-600">
             {selectedNode.label}
           </span>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
+      <div className="min-h-0 flex-1 scrollbar-thin overflow-y-auto">
         {selectedNode ? (
           <>
             {/* Symbol Header */}
-            <div className="p-4 border-b border-cyan-900/10">
-              <h3 className="text-sm font-semibold text-cyan-100/90 font-mono truncate">
+            <div className="border-b border-cyan-900/10 p-4">
+              <h3 className="truncate font-mono text-sm font-semibold text-cyan-100/90">
                 {selectedNode.label}
               </h3>
-              <div className="flex gap-1.5 mt-2.5 flex-wrap">
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {selectedNode.kind && (
-                  <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border border-cyan-500/15 text-cyan-400/70 bg-cyan-500/5">
+                  <span className="rounded-sm border border-cyan-500/15 bg-cyan-500/5 px-2 py-0.5 font-mono text-[9px] tracking-wider text-cyan-400/70 uppercase">
                     {selectedNode.kind}
                   </span>
                 )}
                 {symbolDetail?.visibility && (
-                  <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border border-violet-500/15 text-violet-400/70 bg-violet-500/5">
+                  <span className="rounded-sm border border-violet-500/15 bg-violet-500/5 px-2 py-0.5 font-mono text-[9px] tracking-wider text-violet-400/70 uppercase">
                     {symbolDetail.visibility}
                   </span>
                 )}
                 {symbolDetail?.enrichment_status && (
                   <span
-                    className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border ${
+                    className={`rounded-sm border px-2 py-0.5 font-mono text-[9px] tracking-wider uppercase ${
                       symbolDetail.enrichment_status === "completed"
-                        ? "border-emerald-500/15 text-emerald-400/70 bg-emerald-500/5"
-                        : "border-amber-500/15 text-amber-400/70 bg-amber-500/5"
+                        ? "border-emerald-500/15 bg-emerald-500/5 text-emerald-400/70"
+                        : "border-amber-500/15 bg-amber-500/5 text-amber-400/70"
                     }`}
                   >
                     {symbolDetail.enrichment_status}
@@ -160,10 +154,10 @@ export function CodeAnalysisPanel({
 
               {symbolDetail?.file_path && (
                 <div className="mt-3 flex items-center gap-2">
-                  <span className="text-[8px] uppercase tracking-[0.2em] text-zinc-600 font-mono shrink-0">
+                  <span className="shrink-0 font-mono text-[8px] tracking-[0.2em] text-zinc-600 uppercase">
                     Path
                   </span>
-                  <span className="text-[10px] text-zinc-400/80 font-mono truncate">
+                  <span className="truncate font-mono text-[10px] text-zinc-400/80">
                     {symbolDetail.file_path}
                     {symbolDetail.line_start > 0 &&
                       `:${symbolDetail.line_start}–${symbolDetail.line_end}`}
@@ -174,9 +168,9 @@ export function CodeAnalysisPanel({
 
             {/* AI Summary */}
             {symbolDetail?.summary && (
-              <div className="p-4 border-b border-cyan-900/10">
+              <div className="border-b border-cyan-900/10 p-4">
                 <SectionHeader color="#22d3ee" label="AI Summary" />
-                <p className="text-[11px] text-zinc-300/70 leading-[1.7] font-mono">
+                <p className="font-mono text-[11px] leading-[1.7] text-zinc-300/70">
                   {symbolDetail.summary}
                 </p>
               </div>
@@ -184,21 +178,19 @@ export function CodeAnalysisPanel({
 
             {/* Blast Radius */}
             {isAnalyzableSymbol && (
-              <div className="p-4 border-b border-cyan-900/10">
+              <div className="border-b border-cyan-900/10 p-4">
                 <SectionHeader color="#f43f5e" label="Impact Analysis" />
                 <div className="flex gap-2">
                   <button
-                    className="flex-1 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded-sm border border-rose-500/15 text-rose-400/70 bg-rose-500/[0.03] hover:bg-rose-500/8 hover:border-rose-500/25 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-1 rounded-sm border border-rose-500/15 bg-rose-500/[0.03] px-3 py-1.5 font-mono text-[10px] tracking-wider text-rose-400/70 uppercase transition-colors hover:border-rose-500/25 hover:bg-rose-500/8 disabled:cursor-not-allowed disabled:opacity-30"
                     onClick={onBlastRadius}
                     disabled={isBlastRadiusLoading}
                   >
-                    {isBlastRadiusLoading
-                      ? "Analyzing…"
-                      : "Run Blast Radius"}
+                    {isBlastRadiusLoading ? "Analyzing…" : "Run Blast Radius"}
                   </button>
                   {blastRadiusIds && (
                     <button
-                      className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider rounded-sm border border-zinc-700/50 text-zinc-500 hover:bg-zinc-800/50 transition-colors"
+                      className="rounded-sm border border-zinc-700/50 px-3 py-1.5 font-mono text-[10px] tracking-wider text-zinc-500 uppercase transition-colors hover:bg-zinc-800/50"
                       onClick={onClearBlastRadius}
                     >
                       Clear
@@ -209,25 +201,25 @@ export function CodeAnalysisPanel({
                 {blastRadiusData && (
                   <div className="mt-3 space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className="px-2.5 py-1.5 rounded-sm bg-rose-500/5 border border-rose-500/10">
-                        <div className="text-base font-bold text-rose-300/80 font-mono">
+                      <div className="rounded-sm border border-rose-500/10 bg-rose-500/5 px-2.5 py-1.5">
+                        <div className="font-mono text-base font-bold text-rose-300/80">
                           {blastRadiusData.total}
                         </div>
-                        <div className="text-[8px] uppercase tracking-[0.2em] text-rose-500/40 font-mono">
+                        <div className="font-mono text-[8px] tracking-[0.2em] text-rose-500/40 uppercase">
                           Affected
                         </div>
                       </div>
                       <div
-                        className={`px-2.5 py-1.5 rounded-sm border ${
+                        className={`rounded-sm border px-2.5 py-1.5 ${
                           blastRadiusData.risk === "high"
-                            ? "bg-rose-500/5 border-rose-500/10"
+                            ? "border-rose-500/10 bg-rose-500/5"
                             : blastRadiusData.risk === "medium"
-                              ? "bg-amber-500/5 border-amber-500/10"
-                              : "bg-emerald-500/5 border-emerald-500/10"
+                              ? "border-amber-500/10 bg-amber-500/5"
+                              : "border-emerald-500/10 bg-emerald-500/5"
                         }`}
                       >
                         <div
-                          className={`text-base font-bold font-mono ${
+                          className={`font-mono text-base font-bold ${
                             blastRadiusData.risk === "high"
                               ? "text-rose-300/80"
                               : blastRadiusData.risk === "medium"
@@ -237,32 +229,32 @@ export function CodeAnalysisPanel({
                         >
                           {blastRadiusData.risk}
                         </div>
-                        <div className="text-[8px] uppercase tracking-[0.2em] text-zinc-500 font-mono">
+                        <div className="font-mono text-[8px] tracking-[0.2em] text-zinc-500 uppercase">
                           Risk
                         </div>
                       </div>
                     </div>
 
                     {blastRadiusData.affected.length > 0 && (
-                      <div className="mt-2 space-y-0.5 max-h-40 overflow-y-auto scrollbar-thin">
+                      <div className="mt-2 max-h-40 scrollbar-thin space-y-0.5 overflow-y-auto">
                         {blastRadiusData.affected.slice(0, 20).map((a, i) => (
                           <div
                             key={i}
-                            className="flex items-center gap-2 px-2 py-1 rounded-sm text-[10px] font-mono hover:bg-rose-500/[0.03] transition-colors"
+                            className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-[10px] transition-colors hover:bg-rose-500/[0.03]"
                           >
-                            <span className="text-rose-500/30 shrink-0">
+                            <span className="shrink-0 text-rose-500/30">
                               d{a.distance}
                             </span>
-                            <span className="text-zinc-500 shrink-0 w-14 truncate">
+                            <span className="w-14 shrink-0 truncate text-zinc-500">
                               {a.kind}
                             </span>
-                            <span className="text-zinc-400/70 truncate">
+                            <span className="truncate text-zinc-400/70">
                               {a.name}
                             </span>
                           </div>
                         ))}
                         {blastRadiusData.affected.length > 20 && (
-                          <div className="text-[9px] text-zinc-600 font-mono px-2 py-1">
+                          <div className="px-2 py-1 font-mono text-[9px] text-zinc-600">
                             +{blastRadiusData.affected.length - 20} more
                           </div>
                         )}
@@ -274,14 +266,12 @@ export function CodeAnalysisPanel({
             )}
           </>
         ) : (
-          <div className="p-4 border-b border-cyan-900/10">
-            <div className="flex flex-col items-center justify-center h-32 text-center">
-              <div className="w-10 h-10 rounded-lg border border-violet-500/8 bg-violet-500/[0.03] flex items-center justify-center mb-3">
-                <span className="text-violet-500/25 text-lg font-mono">
-                  ◆
-                </span>
+          <div className="border-b border-cyan-900/10 p-4">
+            <div className="flex h-32 flex-col items-center justify-center text-center">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-violet-500/8 bg-violet-500/[0.03]">
+                <span className="font-mono text-lg text-violet-500/25">◆</span>
               </div>
-              <p className="text-[11px] text-zinc-600 font-mono">
+              <p className="font-mono text-[11px] text-zinc-600">
                 Select a node for analysis
               </p>
             </div>
@@ -289,22 +279,22 @@ export function CodeAnalysisPanel({
         )}
 
         {/* Graph Statistics */}
-        <div className="p-4 border-b border-cyan-900/10">
+        <div className="border-b border-cyan-900/10 p-4">
           <SectionHeader color="#22d3ee" label="Graph Statistics" />
           <div className="grid grid-cols-2 gap-2">
-            <div className="px-3 py-2 rounded-sm bg-cyan-500/[0.03] border border-cyan-500/8">
-              <div className="text-lg font-bold text-cyan-300/80 font-mono tabular-nums">
+            <div className="rounded-sm border border-cyan-500/8 bg-cyan-500/[0.03] px-3 py-2">
+              <div className="font-mono text-lg font-bold text-cyan-300/80 tabular-nums">
                 {nodeCount.toLocaleString()}
               </div>
-              <div className="text-[8px] uppercase tracking-[0.2em] text-cyan-500/35 font-mono">
+              <div className="font-mono text-[8px] tracking-[0.2em] text-cyan-500/35 uppercase">
                 Nodes
               </div>
             </div>
-            <div className="px-3 py-2 rounded-sm bg-cyan-500/[0.03] border border-cyan-500/8">
-              <div className="text-lg font-bold text-cyan-300/80 font-mono tabular-nums">
+            <div className="rounded-sm border border-cyan-500/8 bg-cyan-500/[0.03] px-3 py-2">
+              <div className="font-mono text-lg font-bold text-cyan-300/80 tabular-nums">
                 {edgeCount.toLocaleString()}
               </div>
-              <div className="text-[8px] uppercase tracking-[0.2em] text-cyan-500/35 font-mono">
+              <div className="font-mono text-[8px] tracking-[0.2em] text-cyan-500/35 uppercase">
                 Edges
               </div>
             </div>
@@ -321,7 +311,7 @@ export function CodeAnalysisPanel({
             {allNodeTypes.map((type) => (
               <Label
                 key={type}
-                className="flex items-center gap-2 text-[10px] cursor-pointer font-mono py-0.5 group"
+                className="group flex cursor-pointer items-center gap-2 py-0.5 font-mono text-[10px]"
               >
                 <Checkbox
                   checked={visibleNodeTypes.has(type)}
@@ -329,7 +319,7 @@ export function CodeAnalysisPanel({
                   className="h-3 w-3 border-zinc-700"
                 />
                 <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
                   style={{
                     backgroundColor: nodeColors[type],
                     boxShadow: `0 0 3px ${nodeColors[type]}50`,
@@ -355,7 +345,7 @@ export function CodeAnalysisPanel({
             {allEdgeTypes.map((type) => (
               <Label
                 key={type}
-                className="flex items-center gap-2 text-[10px] cursor-pointer font-mono py-0.5 group"
+                className="group flex cursor-pointer items-center gap-2 py-0.5 font-mono text-[10px]"
               >
                 <Checkbox
                   checked={visibleEdgeTypes.has(type)}
@@ -363,7 +353,7 @@ export function CodeAnalysisPanel({
                   className="h-3 w-3 border-zinc-700"
                 />
                 <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
                   style={{
                     backgroundColor: edgeColors[type],
                     boxShadow: `0 0 3px ${edgeColors[type]}50`,
@@ -380,5 +370,5 @@ export function CodeAnalysisPanel({
         </CollapsibleSection>
       </div>
     </div>
-  );
+  )
 }

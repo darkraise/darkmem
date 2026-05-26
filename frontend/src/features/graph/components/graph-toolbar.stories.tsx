@@ -11,7 +11,7 @@ const meta: Meta<typeof GraphToolbar> = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <div className="relative h-[200px] bg-background">
+      <div className="bg-background relative h-[200px]">
         <Story />
       </div>
     ),
@@ -86,7 +86,7 @@ export const Interactive: S = {
     const [tightness, setTightness] = useState(120)
 
     return (
-      <div className="relative h-[300px] bg-background">
+      <div className="bg-background relative h-[300px]">
         <GraphToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}

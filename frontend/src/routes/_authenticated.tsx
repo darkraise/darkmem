@@ -1,10 +1,30 @@
-import { createFileRoute, Outlet, redirect, useRouter } from "@tanstack/react-router"
 import {
-  Home, Brain, MessageSquare, Share2, GitBranch, Orbit, Network,
-  FolderGit2, BookOpen, BarChart3, Activity, Cpu, Clock, Settings,
+  createFileRoute,
+  Outlet,
+  redirect,
+  useRouter,
+} from "@tanstack/react-router"
+import {
+  Home,
+  Brain,
+  MessageSquare,
+  Share2,
+  GitBranch,
+  Orbit,
+  Network,
+  FolderGit2,
+  BookOpen,
+  BarChart3,
+  Activity,
+  Cpu,
+  Clock,
+  Settings,
 } from "lucide-react"
 import {
-  useLayoutStore, SidebarLayout, TopNavLayout, StackedLayout,
+  useLayoutStore,
+  SidebarLayout,
+  TopNavLayout,
+  StackedLayout,
 } from "darkraise-ui/layout"
 import type { NavGroup } from "darkraise-ui/layout"
 import { useQueryClient } from "@tanstack/react-query"
@@ -84,9 +104,11 @@ function AuthenticatedLayout() {
   }
 
   const Shell =
-    layout === "top-nav" ? TopNavLayout :
-    layout === "stacked"  ? StackedLayout :
-                            SidebarLayout
+    layout === "top-nav"
+      ? TopNavLayout
+      : layout === "stacked"
+        ? StackedLayout
+        : SidebarLayout
 
   return (
     <Shell

@@ -92,7 +92,7 @@ export function ReindexDialog({
           </form.Field>
 
           {wholeFormError && (
-            <p className="text-sm text-destructive">{wholeFormError}</p>
+            <p className="text-destructive text-sm">{wholeFormError}</p>
           )}
 
           <DialogFooter>

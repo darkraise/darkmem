@@ -1,7 +1,11 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
-import { DataTable, DataTableSkeleton, DataTableEmpty } from "darkraise-ui/data-table"
+import {
+  DataTable,
+  DataTableSkeleton,
+  DataTableEmpty,
+} from "darkraise-ui/data-table"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
@@ -26,11 +30,7 @@ import {
   TagsInputItemText,
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
-import {
-  usePaginatedSearch,
-  useDeleteMemory,
-  useTags,
-} from "@/hooks/api"
+import { usePaginatedSearch, useDeleteMemory, useTags } from "@/hooks/api"
 import type { Memory } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
@@ -112,7 +112,8 @@ function MemoriesPage() {
 
   // Derive single backend params (backend accepts one source/type at a time;
   // if the user picks multiple, client-side filter handles narrowing further).
-  const backendSource = sourceFilters.length === 1 ? sourceFilters[0] : undefined
+  const backendSource =
+    sourceFilters.length === 1 ? sourceFilters[0] : undefined
   const backendType = typeFilters.length === 1 ? typeFilters[0] : undefined
 
   const { data, isLoading } = usePaginatedSearch({
@@ -132,8 +133,14 @@ function MemoriesPage() {
   const memories: Memory[] = useMemo(() => {
     const items = data?.items ?? []
     return items.filter((m) => {
-      if (sourceFilters.length > 1 && !sourceFilters.includes(m.source)) return false
-      if (typeFilters.length > 1 && m.memory_type && !typeFilters.includes(m.memory_type)) return false
+      if (sourceFilters.length > 1 && !sourceFilters.includes(m.source))
+        return false
+      if (
+        typeFilters.length > 1 &&
+        m.memory_type &&
+        !typeFilters.includes(m.memory_type)
+      )
+        return false
       return true
     })
   }, [data?.items, sourceFilters, typeFilters])
@@ -155,7 +162,10 @@ function MemoriesPage() {
       node.scrollIntoView({ behavior: "smooth", block: "center" })
       setHighlightId(focusId)
       const timer = setTimeout(() => setHighlightId(null), 1500)
-      navigate({ search: (prev) => ({ ...prev, focus: undefined }), replace: true })
+      navigate({
+        search: (prev) => ({ ...prev, focus: undefined }),
+        replace: true,
+      })
       return () => clearTimeout(timer)
     }
   }, [focusId, memories, navigate])
@@ -189,16 +199,13 @@ function MemoriesPage() {
     setSelected(new Set())
   }
 
-  const handlePaletteSubmit = useCallback(
-    (filter: CommandPaletteFilter) => {
-      setFreeQuery(filter.query)
-      if (filter.sources.length > 0) setSourceFilters(filter.sources)
-      if (filter.types.length > 0) setTypeFilters(filter.types)
-      if (filter.tags.length > 0) setTagFilters(filter.tags)
-      resetPagination()
-    },
-    [],
-  )
+  const handlePaletteSubmit = useCallback((filter: CommandPaletteFilter) => {
+    setFreeQuery(filter.query)
+    if (filter.sources.length > 0) setSourceFilters(filter.sources)
+    if (filter.types.length > 0) setTypeFilters(filter.types)
+    if (filter.tags.length > 0) setTagFilters(filter.tags)
+    resetPagination()
+  }, [])
 
   const clearFilters = () => {
     setFreeQuery("")
@@ -280,7 +287,10 @@ function MemoriesPage() {
   }
 
   const hasActiveFilter = Boolean(
-    freeQuery || sourceFilters.length || tagFilters.length || typeFilters.length,
+    freeQuery ||
+    sourceFilters.length ||
+    tagFilters.length ||
+    typeFilters.length,
   )
 
   const sourceItems = useMemo(
@@ -331,23 +341,27 @@ function MemoriesPage() {
                 else rowRefs.current.delete(m.id)
               }}
               className={`cursor-pointer transition-colors ${
-                highlightId === m.id ? "ring-2 ring-primary rounded" : ""
+                highlightId === m.id ? "ring-primary rounded ring-2" : ""
               }`}
               onClick={() => setDetailMemory(m)}
             >
-              <p className="text-sm line-clamp-2">{m.content}</p>
-              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <p className="line-clamp-2 text-sm">{m.content}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {m.status === "superseded" && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-500"
+                    className="border-amber-500/50 px-1.5 py-0 text-[10px] text-amber-500"
                     title="Superseded by a newer memory with a REPLACES relation"
                   >
                     superseded
                   </Badge>
                 )}
                 {m.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0">
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="px-1.5 py-0 text-[10px]"
+                  >
                     {tag}
                   </Badge>
                 ))}
@@ -373,7 +387,7 @@ function MemoriesPage() {
         id: "type",
         header: "Type",
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             {row.original.memory_type ?? "—"}
           </span>
         ),
@@ -383,12 +397,17 @@ function MemoriesPage() {
         id: "technologies",
         header: "Technologies",
         cell: ({ row }) => {
-          const techs = (row.original.metadata?.technologies as string[] | undefined) ?? []
+          const techs =
+            (row.original.metadata?.technologies as string[] | undefined) ?? []
           const visible = techs.slice(0, 3)
           return (
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex flex-wrap gap-1">
               {visible.map((t) => (
-                <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">
+                <Badge
+                  key={t}
+                  variant="outline"
+                  className="px-1.5 py-0 text-[10px]"
+                >
                   {t}
                 </Badge>
               ))}
@@ -401,7 +420,7 @@ function MemoriesPage() {
         id: "created_at",
         header: "Created",
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             {relativeTime(row.original.created_at)}
           </span>
         ),
@@ -412,14 +431,14 @@ function MemoriesPage() {
         header: "",
         cell: ({ row }) => (
           <button
-            className="text-muted-foreground hover:text-destructive p-1 rounded"
+            className="text-muted-foreground hover:text-destructive rounded p-1"
             aria-label="Delete memory"
             onClick={(e) => {
               e.stopPropagation()
               handleDelete(row.original.id)
             }}
           >
-            <X className="w-3.5 h-3.5" aria-hidden="true" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         ),
         size: 40,
@@ -430,8 +449,8 @@ function MemoriesPage() {
   )
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-6 pt-6 pb-0 shrink-0 flex items-center justify-between gap-4">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between gap-4 px-6 pt-6 pb-0">
         <PageHeader
           title="Memories"
           description={
@@ -446,11 +465,11 @@ function MemoriesPage() {
             onClick={() => setPaletteOpen(true)}
             title="Search (⌘K)"
           >
-            <Search className="size-4 mr-2" />
+            <Search className="mr-2 size-4" />
             Search
           </Button>
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4 mr-2" />
+            <Plus className="mr-2 size-4" />
             New Memory
           </Button>
         </div>
@@ -465,11 +484,11 @@ function MemoriesPage() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden p-4 pl-5">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden p-4 pl-5">
           {/* Filter chrome */}
-          <div className="flex flex-col lg:flex-row gap-2 mb-3 shrink-0">
+          <div className="mb-3 flex shrink-0 flex-col gap-2 lg:flex-row">
             {/* Tag filter using TagsInput */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1">
               <TagsInput
                 value={tagFilters}
                 onValueChange={({ value }) => {
@@ -487,7 +506,9 @@ function MemoriesPage() {
                     </TagsInputItem>
                   ))}
                   <TagsInputInput
-                    placeholder={tagFilters.length === 0 ? "Filter by tags…" : ""}
+                    placeholder={
+                      tagFilters.length === 0 ? "Filter by tags…" : ""
+                    }
                     list="tags-datalist"
                     className="text-sm"
                   />
@@ -500,7 +521,7 @@ function MemoriesPage() {
               </TagsInput>
             </div>
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-2">
               {/* Source multi-select */}
               <MultiSelect
                 items={sourceItems}
@@ -535,8 +556,8 @@ function MemoriesPage() {
 
           {/* Active free-query indicator */}
           {freeQuery && (
-            <div className="flex items-center gap-2 mb-2 shrink-0">
-              <span className="text-xs text-muted-foreground">
+            <div className="mb-2 flex shrink-0 items-center gap-2">
+              <span className="text-muted-foreground text-xs">
                 Searching for: <strong>{freeQuery}</strong>
               </span>
               <button
@@ -546,7 +567,7 @@ function MemoriesPage() {
                   resetPagination()
                 }}
               >
-                <X className="w-3 h-3" />
+                <X className="h-3 w-3" />
               </button>
             </div>
           )}
@@ -556,7 +577,11 @@ function MemoriesPage() {
             <DataTableSkeleton columnCount={7} rowCount={8} />
           ) : memories.length === 0 ? (
             <EmptyState
-              title={hasActiveFilter ? "No memories match your filters" : "No memories yet"}
+              title={
+                hasActiveFilter
+                  ? "No memories match your filters"
+                  : "No memories yet"
+              }
               description={
                 hasActiveFilter
                   ? "Try adjusting your search or filters."
@@ -578,7 +603,7 @@ function MemoriesPage() {
 
           {/* Pagination */}
           {total > PAGE_SIZE && (
-            <div className="flex items-center justify-between mt-3 text-sm text-muted-foreground shrink-0">
+            <div className="text-muted-foreground mt-3 flex shrink-0 items-center justify-between text-sm">
               <span>
                 Showing {pageStart}–{pageEnd} of {total}
               </span>
@@ -609,10 +634,16 @@ function MemoriesPage() {
 
           {/* Bulk action bar */}
           {selected.size > 0 && (
-            <div className="flex items-center gap-4 mt-3 p-3 bg-card border border-border rounded-lg text-sm shrink-0">
-              <span className="text-primary font-medium">{selected.size} selected</span>
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+            <div className="bg-card border-border mt-3 flex shrink-0 items-center gap-4 rounded-lg border p-3 text-sm">
+              <span className="text-primary font-medium">
+                {selected.size} selected
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 Delete
               </Button>
               <Button variant="outline" size="sm" onClick={handleBulkArchive}>
@@ -630,24 +661,29 @@ function MemoriesPage() {
           if (!open) setDetailMemory(null)
         }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent
+          side="right"
+          className="w-full overflow-y-auto sm:max-w-md"
+        >
           <SheetHeader>
             <SheetTitle className="text-base">Memory Details</SheetTitle>
           </SheetHeader>
           {detailMemory && (
-            <div className="space-y-4 mt-4">
+            <div className="mt-4 space-y-4">
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">
+                <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
                   Content
                 </div>
-                <p className="text-sm whitespace-pre-wrap">{detailMemory.content}</p>
+                <p className="text-sm whitespace-pre-wrap">
+                  {detailMemory.content}
+                </p>
               </div>
               {detailMemory.tags.length > 0 && (
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">
+                  <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
                     Tags
                   </div>
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex flex-wrap gap-1.5">
                     {detailMemory.tags.map((tag) => (
                       <Badge key={tag} variant="secondary">
                         {tag}
@@ -658,28 +694,32 @@ function MemoriesPage() {
               )}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                     Source
                   </div>
-                  <span style={{ color: SOURCE_COLORS[detailMemory.source] ?? "#c9d1d9" }}>
+                  <span
+                    style={{
+                      color: SOURCE_COLORS[detailMemory.source] ?? "#c9d1d9",
+                    }}
+                  >
                     {detailMemory.source}
                   </span>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                     Type
                   </div>
                   <span>{detailMemory.memory_type ?? "—"}</span>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                     Importance
                   </div>
                   <span>{detailMemory.importance}</span>
                 </div>
                 {detailMemory.classified_type && (
                   <div>
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                    <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                       Regex Classification
                     </div>
                     <span>{detailMemory.classified_type}</span>
@@ -687,69 +727,79 @@ function MemoriesPage() {
                 )}
                 {detailMemory.llm_classified_type && (
                   <div>
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                    <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                       LLM Classification
                     </div>
                     <span>{detailMemory.llm_classified_type}</span>
                   </div>
                 )}
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                     Created
                   </div>
-                  <span>{new Date(detailMemory.created_at).toLocaleString()}</span>
+                  <span>
+                    {new Date(detailMemory.created_at).toLocaleString()}
+                  </span>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
                     Updated
                   </div>
-                  <span>{new Date(detailMemory.updated_at).toLocaleString()}</span>
+                  <span>
+                    {new Date(detailMemory.updated_at).toLocaleString()}
+                  </span>
                 </div>
               </div>
               {(detailMemory.llm_summary ||
                 detailMemory.llm_emotions?.length ||
                 detailMemory.llm_flags?.length) && (
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">
+                  <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
                     LLM Enrichment
                   </div>
                   {detailMemory.llm_summary && (
-                    <p className="text-sm text-muted-foreground mb-1.5">
+                    <p className="text-muted-foreground mb-1.5 text-sm">
                       {detailMemory.llm_summary}
                     </p>
                   )}
-                  <div className="flex gap-1 flex-wrap">
+                  <div className="flex flex-wrap gap-1">
                     {detailMemory.llm_emotions?.map((e) => (
                       <Badge key={e} variant="outline" className="text-[10px]">
                         {e}
                       </Badge>
                     ))}
                     {detailMemory.llm_flags?.map((f) => (
-                      <Badge key={f} variant="secondary" className="text-[10px]">
+                      <Badge
+                        key={f}
+                        variant="secondary"
+                        className="text-[10px]"
+                      >
                         {f}
                       </Badge>
                     ))}
                   </div>
                 </div>
               )}
-              {detailMemory.related_memories && detailMemory.related_memories.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">
-                    Related Memories
+              {detailMemory.related_memories &&
+                detailMemory.related_memories.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
+                      Related Memories
+                    </div>
+                    <div className="space-y-1">
+                      {detailMemory.related_memories.map((ref) => (
+                        <div
+                          key={ref.memory_id}
+                          className="text-muted-foreground truncate text-xs"
+                        >
+                          {ref.memory_id.slice(0, 8)}… (
+                          {(ref.score * 100).toFixed(0)}% similar)
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {detailMemory.related_memories.map((ref) => (
-                      <div
-                        key={ref.memory_id}
-                        className="text-xs text-muted-foreground truncate"
-                      >
-                        {ref.memory_id.slice(0, 8)}… ({(ref.score * 100).toFixed(0)}% similar)
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="pt-3 border-t border-border">
+                )}
+              <div className="border-border border-t pt-3">
                 <Button
                   variant="destructive"
                   onClick={() => handleDelete(detailMemory.id)}

@@ -1,5 +1,8 @@
 import { useEffect } from "react"
-import { useSetupWizardStore, type DetectedRepo } from "@/features/setup/setupWizardStore"
+import {
+  useSetupWizardStore,
+  type DetectedRepo,
+} from "@/features/setup/setupWizardStore"
 import { fsList } from "@/hooks/api/use-setup-api"
 import { ServerPathBrowser } from "./ServerPathBrowser"
 
@@ -34,10 +37,15 @@ export function StepRepoPath() {
         onConfirm={handleConfirm}
       />
       {repos.basePath && (
-        <div className="text-sm text-muted-foreground">
-          Selected base path: <span className="font-mono">{repos.basePath}</span>
+        <div className="text-muted-foreground text-sm">
+          Selected base path:{" "}
+          <span className="font-mono">{repos.basePath}</span>
           {repos.detected.length > 0 ? (
-            <> — found <strong>{repos.detected.length}</strong> repository(ies). Review them on the next step.</>
+            <>
+              {" "}
+              — found <strong>{repos.detected.length}</strong> repository(ies).
+              Review them on the next step.
+            </>
           ) : (
             <> — no immediate-child repositories detected.</>
           )}
@@ -47,7 +55,10 @@ export function StepRepoPath() {
   )
 }
 
-export function isStepRepoPathValid(repos: { basePath: string; skipped: boolean }): boolean {
+export function isStepRepoPathValid(repos: {
+  basePath: string
+  skipped: boolean
+}): boolean {
   if (repos.skipped) return true
   return repos.basePath.length > 0
 }

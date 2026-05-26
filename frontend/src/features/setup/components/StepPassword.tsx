@@ -39,7 +39,7 @@ export function StepPassword() {
         />
       </div>
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-destructive text-sm">
           {error}
         </p>
       )}
@@ -47,6 +47,9 @@ export function StepPassword() {
   )
 }
 
-export function isStepPasswordValid(state: { value: string; confirm: string }): boolean {
+export function isStepPasswordValid(state: {
+  value: string
+  confirm: string
+}): boolean {
   return state.value.length >= 8 && state.value === state.confirm
 }

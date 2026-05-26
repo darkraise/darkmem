@@ -1,9 +1,18 @@
 import { z } from "zod"
 
 export const createMemorySchema = z.object({
-  content: z.string().min(1, "Content required").max(20_000, "Content too long"),
+  content: z
+    .string()
+    .min(1, "Content required")
+    .max(20_000, "Content too long"),
   project: z.string().default("default"),
-  memory_type: z.enum(["fact", "decision", "preference", "reference", "context"]),
+  memory_type: z.enum([
+    "fact",
+    "decision",
+    "preference",
+    "reference",
+    "context",
+  ]),
   tags: z.array(z.string().min(1)).max(20, "Up to 20 tags"),
 })
 export type CreateMemoryInput = z.infer<typeof createMemorySchema>

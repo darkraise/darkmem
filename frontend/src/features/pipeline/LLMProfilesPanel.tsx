@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Button } from "darkraise-ui/components/button"
@@ -57,7 +62,10 @@ const KNOWN_PURPOSES = [
 type KnownPurpose = (typeof KNOWN_PURPOSES)[number]
 const KNOWN_PURPOSE_SET = new Set<string>(KNOWN_PURPOSES)
 
-function inferPurpose(profileName: string, isEmbedding: boolean): KnownPurpose | "other" {
+function inferPurpose(
+  profileName: string,
+  isEmbedding: boolean,
+): KnownPurpose | "other" {
   // Walk segments right-to-left so a name like "openai-embedding-large"
   // routes to "embedding" (the keyword), not the trailing variant tag.
   const segments = profileName.toLowerCase().split("-")
@@ -85,7 +93,9 @@ export function LLMProfilesPanel() {
 
   const stored: DraftMap = useMemo(() => {
     const out: DraftMap = {}
-    for (const [name, profile] of Object.entries(profilesResp?.profiles ?? {})) {
+    for (const [name, profile] of Object.entries(
+      profilesResp?.profiles ?? {},
+    )) {
       out[name] = {
         ...profile,
         _paramsText: Object.keys(profile.params || {}).length
@@ -100,7 +110,10 @@ export function LLMProfilesPanel() {
     setDraft({})
   }, [stored])
 
-  const merged: DraftMap = useMemo(() => ({ ...stored, ...draft }), [stored, draft])
+  const merged: DraftMap = useMemo(
+    () => ({ ...stored, ...draft }),
+    [stored, draft],
+  )
   const profileNames = Object.keys(merged).sort()
   const providerNames = Object.keys(providersResp?.profiles ?? {}).sort()
 
@@ -135,7 +148,8 @@ export function LLMProfilesPanel() {
       // Stable purpose order, with unknown buckets ("other") at the end.
       const order = [...KNOWN_PURPOSES, "other"]
       return keys.sort(
-        (a, b) => order.indexOf(a as KnownPurpose) - order.indexOf(b as KnownPurpose),
+        (a, b) =>
+          order.indexOf(a as KnownPurpose) - order.indexOf(b as KnownPurpose),
       )
     }
     return keys.sort()
@@ -149,7 +163,9 @@ export function LLMProfilesPanel() {
       setActiveGroup("")
       return
     }
-    setActiveGroup((prev) => (prev && groupKeys.includes(prev) ? prev : groupKeys[0]))
+    setActiveGroup((prev) =>
+      prev && groupKeys.includes(prev) ? prev : groupKeys[0],
+    )
   }, [groupKeys])
 
   const dirty = Object.keys(draft).length > 0
@@ -240,7 +256,9 @@ export function LLMProfilesPanel() {
             throw new Error("must be a JSON object")
           }
         } catch (err) {
-          toast.error(`Profile '${name}' has invalid params JSON: ${(err as Error).message}`)
+          toast.error(
+            `Profile '${name}' has invalid params JSON: ${(err as Error).message}`,
+          )
           return
         }
       }
@@ -269,7 +287,7 @@ export function LLMProfilesPanel() {
           <CardTitle className="text-sm">LLM Profiles</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-32 bg-muted rounded animate-pulse" />
+          <div className="bg-muted h-32 animate-pulse rounded" />
         </CardContent>
       </Card>
     )
@@ -278,7 +296,7 @@ export function LLMProfilesPanel() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
           LLM Profiles
           <TooltipProvider delayDuration={150}>
             <Tooltip>
@@ -286,24 +304,26 @@ export function LLMProfilesPanel() {
                 <button
                   type="button"
                   aria-label="What are LLM Profiles?"
-                  className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-sm focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+                  className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
                 >
                   <CircleHelp className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-md text-xs leading-relaxed">
-                A Profile is a preset for one purpose: a Provider plus a
-                model, default params, and the purpose-style flags
-                (embedding-only, reasoning-enabled). Pick a Profile in
-                the LLM purpose card on the Pipeline page to populate
-                the form with these defaults.
+              <TooltipContent
+                side="top"
+                className="max-w-md text-xs leading-relaxed"
+              >
+                A Profile is a preset for one purpose: a Provider plus a model,
+                default params, and the purpose-style flags (embedding-only,
+                reasoning-enabled). Pick a Profile in the LLM purpose card on
+                the Pipeline page to populate the form with these defaults.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </CardTitle>
         <p className="text-muted-foreground text-xs">
-          Reusable per-purpose presets. Pick a Provider, a model, and
-          defaults; the purpose card uses these as starting values.
+          Reusable per-purpose presets. Pick a Provider, a model, and defaults;
+          the purpose card uses these as starting values.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -315,18 +335,23 @@ export function LLMProfilesPanel() {
 
         {profileNames.length > 0 && (
           <div className="flex items-center gap-2">
-            <Label htmlFor="profiles_group_by" className="text-xs">Group by</Label>
+            <Label htmlFor="profiles_group_by" className="text-xs">
+              Group by
+            </Label>
             <select
               id="profiles_group_by"
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              className="h-8 text-xs rounded border border-border bg-background px-2"
+              className="border-border bg-background h-8 rounded border px-2 text-xs"
             >
               <option value="provider">Provider</option>
               <option value="purpose">Purpose</option>
             </select>
-            <span className="text-[10px] text-muted-foreground">
-              {profileNames.length} profile{profileNames.length === 1 ? "" : "s"} across {groupKeys.length} {groupBy === "provider" ? "provider" : "purpose"}{groupKeys.length === 1 ? "" : "s"}
+            <span className="text-muted-foreground text-[10px]">
+              {profileNames.length} profile
+              {profileNames.length === 1 ? "" : "s"} across {groupKeys.length}{" "}
+              {groupBy === "provider" ? "provider" : "purpose"}
+              {groupKeys.length === 1 ? "" : "s"}
             </span>
           </div>
         )}
@@ -344,7 +369,7 @@ export function LLMProfilesPanel() {
               ))}
             </TabsList>
             {groupKeys.map((key) => (
-              <TabsContent key={key} value={key} className="space-y-3 mt-3">
+              <TabsContent key={key} value={key} className="mt-3 space-y-3">
                 {groups[key].map((name) => (
                   <ProfileRow
                     key={name}
@@ -363,11 +388,11 @@ export function LLMProfilesPanel() {
           </Tabs>
         )}
 
-        <div className="border-t border-border pt-3 flex items-center justify-end">
+        <div className="border-border flex items-center justify-end border-t pt-3">
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
-                <Plus className="h-3.5 w-3.5 mr-1" />
+                <Plus className="mr-1 h-3.5 w-3.5" />
                 Add Profile
               </Button>
             </DialogTrigger>
@@ -385,14 +410,18 @@ export function LLMProfilesPanel() {
           </Dialog>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+        <div className="border-border flex items-center justify-end gap-2 border-t pt-3">
           {dirty && (
-            <span className="text-[10px] text-muted-foreground mr-auto">
+            <span className="text-muted-foreground mr-auto text-[10px]">
               {Object.keys(draft).length} unsaved change
               {Object.keys(draft).length === 1 ? "" : "s"}
             </span>
           )}
-          <Button variant="ghost" onClick={reset} disabled={!dirty || update.isPending}>
+          <Button
+            variant="ghost"
+            onClick={reset}
+            disabled={!dirty || update.isPending}
+          >
             Reset
           </Button>
           <Button onClick={save} disabled={!dirty || update.isPending}>
@@ -415,23 +444,44 @@ interface RowProps {
   disabled: boolean
 }
 
-function ProfileRow({ name, profile, isNew, dirty, providerNames, onPatch, onDelete, disabled }: RowProps) {
+function ProfileRow({
+  name,
+  profile,
+  isNew,
+  dirty,
+  providerNames,
+  onPatch,
+  onDelete,
+  disabled,
+}: RowProps) {
   const { data: modelsResp, isLoading: modelsLoading } = useProviderModels(
     profile.provider_ref || null,
     !!profile.provider_ref,
   )
   return (
-    <div className="rounded-md border border-border p-3 space-y-2">
+    <div className="border-border space-y-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-mono">{name}</span>
-          {isNew && <Badge variant="default" className="text-[9px]">new</Badge>}
-          {!isNew && dirty && <Badge variant="secondary" className="text-[9px]">edited</Badge>}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xs">{name}</span>
+          {isNew && (
+            <Badge variant="default" className="text-[9px]">
+              new
+            </Badge>
+          )}
+          {!isNew && dirty && (
+            <Badge variant="secondary" className="text-[9px]">
+              edited
+            </Badge>
+          )}
           {profile.is_embedding && (
-            <Badge variant="outline" className="text-[9px]">embedding</Badge>
+            <Badge variant="outline" className="text-[9px]">
+              embedding
+            </Badge>
           )}
           {profile.reasoning && !profile.is_embedding && (
-            <Badge variant="outline" className="text-[9px]">reasoning</Badge>
+            <Badge variant="outline" className="text-[9px]">
+              reasoning
+            </Badge>
           )}
         </div>
         <Button
@@ -444,21 +494,25 @@ function ProfileRow({ name, profile, isNew, dirty, providerNames, onPatch, onDel
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <Label className="text-[10px] text-muted-foreground">Provider</Label>
+          <Label className="text-muted-foreground text-[10px]">Provider</Label>
           <select
             value={profile.provider_ref}
-            onChange={(e) => onPatch({ provider_ref: e.target.value, model: "" })}
-            className="h-9 w-full text-sm rounded border border-border bg-background px-2"
+            onChange={(e) =>
+              onPatch({ provider_ref: e.target.value, model: "" })
+            }
+            className="border-border bg-background h-9 w-full rounded border px-2 text-sm"
           >
             {providerNames.map((p) => (
-              <option key={p} value={p}>{p}</option>
+              <option key={p} value={p}>
+                {p}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <Label className="text-[10px] text-muted-foreground">Model</Label>
+          <Label className="text-muted-foreground text-[10px]">Model</Label>
           {/* Datalist combobox: fetched models autocomplete, but free-text
               entry still works. Vendor /v1/models endpoints are sometimes
               incomplete (e.g., z.ai omits glm-4.5-flash), so a hard select
@@ -481,34 +535,41 @@ function ProfileRow({ name, profile, isNew, dirty, providerNames, onPatch, onDel
             </datalist>
           )}
           {modelsResp?.error && (
-            <p className="text-[10px] text-destructive mt-1">{modelsResp.error}</p>
+            <p className="text-destructive mt-1 text-[10px]">
+              {modelsResp.error}
+            </p>
           )}
           {modelsResp && modelsResp.models.length > 0 && (
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {modelsResp.models.length} models from vendor — type to filter
-              or enter a name not in the list.
+            <p className="text-muted-foreground mt-1 text-[10px]">
+              {modelsResp.models.length} models from vendor — type to filter or
+              enter a name not in the list.
             </p>
           )}
         </div>
       </div>
       <div>
-        <Label className="text-[10px] text-muted-foreground">
+        <Label className="text-muted-foreground text-[10px]">
           Default params (JSON object, optional)
         </Label>
         <Textarea
           value={profile._paramsText ?? ""}
           onChange={(e) => onPatch({ _paramsText: e.target.value })}
           rows={3}
-          className="text-xs font-mono"
+          className="font-mono text-xs"
           placeholder='{"temperature": 0.2}'
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-border pt-2">
+      <div className="border-border grid grid-cols-1 gap-2 border-t pt-2 sm:grid-cols-2">
         <div className="flex items-center justify-between">
           <Label className="text-xs">Embedding profile</Label>
           <Switch
             checked={!!profile.is_embedding}
-            onCheckedChange={(v) => onPatch({ is_embedding: v, reasoning: v ? false : profile.reasoning })}
+            onCheckedChange={(v) =>
+              onPatch({
+                is_embedding: v,
+                reasoning: v ? false : profile.reasoning,
+              })
+            }
           />
         </div>
         <div className="flex items-center justify-between">
@@ -556,7 +617,7 @@ function AddProfileForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-xs text-muted-foreground">Profile name</Label>
+        <Label className="text-muted-foreground text-xs">Profile name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -566,34 +627,40 @@ function AddProfileForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label className="text-xs text-muted-foreground">Provider</Label>
+          <Label className="text-muted-foreground text-xs">Provider</Label>
           <select
             value={providerRef}
             onChange={(e) => setProviderRef(e.target.value)}
-            className="h-9 w-full text-sm rounded border border-border bg-background px-2"
+            className="border-border bg-background h-9 w-full rounded border px-2 text-sm"
             required
           >
-            {providerNames.length === 0 && <option value="">(no providers — add one first)</option>}
+            {providerNames.length === 0 && (
+              <option value="">(no providers — add one first)</option>
+            )}
             {providerNames.map((p) => (
-              <option key={p} value={p}>{p}</option>
+              <option key={p} value={p}>
+                {p}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <Label className="text-xs text-muted-foreground">Purpose</Label>
+          <Label className="text-muted-foreground text-xs">Purpose</Label>
           <select
             value={purpose}
             onChange={(e) => setPurpose(e.target.value as KnownPurpose)}
-            className="h-9 w-full text-sm rounded border border-border bg-background px-2"
+            className="border-border bg-background h-9 w-full rounded border px-2 text-sm"
             required
           >
             {KNOWN_PURPOSES.map((p) => (
-              <option key={p} value={p}>{p}</option>
+              <option key={p} value={p}>
+                {p}
+              </option>
             ))}
           </select>
         </div>
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-muted-foreground text-[10px]">
         Strict per-purpose: this profile will only show in the Pipeline page's
         dropdown for the selected purpose. Model and params are filled in inline
         after the row appears.
@@ -602,7 +669,10 @@ function AddProfileForm({
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!name.trim() || providerNames.length === 0}>
+        <Button
+          type="submit"
+          disabled={!name.trim() || providerNames.length === 0}
+        >
           Add
         </Button>
       </div>

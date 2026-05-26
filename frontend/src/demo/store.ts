@@ -13,6 +13,7 @@ export const useDemoStore = create<DemoStoreState>((set) => ({
   jobs: jobsData as unknown as Job[],
   llmProfiles: llmProfilesData as unknown as LlmProfile[],
   addMemory: (m) => set((s) => ({ memories: [m, ...s.memories] })),
-  deleteMemory: (id) => set((s) => ({ memories: s.memories.filter((x) => x.id !== id) })),
+  deleteMemory: (id) =>
+    set((s) => ({ memories: s.memories.filter((x) => x.id !== id) })),
   resetMemories: () => set({ memories: initialMemories }),
 }))

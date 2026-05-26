@@ -24,9 +24,15 @@ export function ParticleBackground({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const particlesRef = useRef<Particle[]>([])
-  const sizeRef = useRef<{ w: number; h: number; dpr: number }>({ w: 0, h: 0, dpr: 1 })
+  const sizeRef = useRef<{ w: number; h: number; dpr: number }>({
+    w: 0,
+    h: 0,
+    dpr: 1,
+  })
   const mouseRef = useRef<{ x: number; y: number; active: boolean }>({
-    x: 0, y: 0, active: false,
+    x: 0,
+    y: 0,
+    active: false,
   })
 
   useEffect(() => {
@@ -35,7 +41,9 @@ export function ParticleBackground({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
 
     const spawn = (w: number, h: number): Particle => ({
       x: Math.random() * w,
@@ -160,8 +168,12 @@ export function ParticleBackground({
 
       // Vignette overlay (drawn last so the centre stays usable).
       const gradient = ctx.createRadialGradient(
-        w / 2, h / 2, Math.min(w, h) * 0.15,
-        w / 2, h / 2, Math.max(w, h) * 0.7,
+        w / 2,
+        h / 2,
+        Math.min(w, h) * 0.15,
+        w / 2,
+        h / 2,
+        Math.max(w, h) * 0.7,
       )
       gradient.addColorStop(0, "rgba(0,0,0,0)")
       gradient.addColorStop(1, "rgba(0,0,0,0.35)")
@@ -193,7 +205,7 @@ export function ParticleBackground({
     <canvas
       ref={canvasRef}
       aria-hidden="true"
-      className="fixed inset-0 pointer-events-none"
+      className="pointer-events-none fixed inset-0"
       style={{
         background:
           "radial-gradient(ellipse at center, hsl(220 18% 12%) 0%, hsl(222 22% 6%) 70%, hsl(224 26% 4%) 100%)",

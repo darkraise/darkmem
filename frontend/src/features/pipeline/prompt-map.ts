@@ -17,7 +17,11 @@ export const PROMPT_PURPOSE_MAP: Record<LLMPurpose, string[]> = {
 }
 
 /** Prompts not owned by a single purpose; rendered on Settings -> Assistant Prompts. */
-export const ORPHAN_PROMPTS = ["chat", "cluster_naming", "agent_instructions"] as const
+export const ORPHAN_PROMPTS = [
+  "chat",
+  "cluster_naming",
+  "agent_instructions",
+] as const
 
 export const EXPECTED_PROMPT_KEYS = new Set<string>([
   ...Object.values(PROMPT_PURPOSE_MAP).flat(),
@@ -31,9 +35,9 @@ export function checkPromptExhaustiveness(serverKeys: Iterable<string>): void {
   const extra = [...server].filter((k) => !EXPECTED_PROMPT_KEYS.has(k))
   if (missing.length || extra.length) {
     // eslint-disable-next-line no-console
-    console.warn(
-      "[prompt-map] mismatch with server system-prompts:",
-      { missing, extra },
-    )
+    console.warn("[prompt-map] mismatch with server system-prompts:", {
+      missing,
+      extra,
+    })
   }
 }

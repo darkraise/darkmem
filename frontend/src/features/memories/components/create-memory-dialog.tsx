@@ -35,14 +35,22 @@ interface CreateMemoryDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogProps) {
+export function CreateMemoryDialog({
+  open,
+  onOpenChange,
+}: CreateMemoryDialogProps) {
   const createMemory = useCreateMemory()
 
   const form = useForm({
     defaultValues: {
       content: "",
       project: "default",
-      memory_type: "fact" as "fact" | "decision" | "preference" | "reference" | "context",
+      memory_type: "fact" as
+        | "fact"
+        | "decision"
+        | "preference"
+        | "reference"
+        | "context",
       tags: [] as string[],
     },
     onSubmit: async ({ value }) => {
@@ -68,7 +76,8 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
         <DialogHeader>
           <DialogTitle>New Memory</DialogTitle>
           <DialogDescription>
-            Create a memory to save a fact, decision, or note. Content is required.
+            Create a memory to save a fact, decision, or note. Content is
+            required.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -84,7 +93,9 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
             validators={{
               onChange: ({ value }) => {
                 const result = createMemorySchema.shape.content.safeParse(value)
-                return result.success ? undefined : result.error.issues[0]?.message
+                return result.success
+                  ? undefined
+                  : result.error.issues[0]?.message
               },
             }}
           >
@@ -100,7 +111,9 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
                 isInvalid={field.state.meta.errors.length > 0}
                 errors={
                   field.state.meta.errors.length > 0
-                    ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                    ? field.state.meta.errors.map((e) => ({
+                        message: e ?? undefined,
+                      }))
                     : undefined
                 }
               />
@@ -115,7 +128,12 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
                 value={field.state.value}
                 onChange={(v) =>
                   field.handleChange(
-                    v as "fact" | "decision" | "preference" | "reference" | "context",
+                    v as
+                      | "fact"
+                      | "decision"
+                      | "preference"
+                      | "reference"
+                      | "context",
                   )
                 }
                 onBlur={field.handleBlur}
@@ -123,7 +141,9 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
                 isInvalid={field.state.meta.errors.length > 0}
                 errors={
                   field.state.meta.errors.length > 0
-                    ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                    ? field.state.meta.errors.map((e) => ({
+                        message: e ?? undefined,
+                      }))
                     : undefined
                 }
               />
@@ -139,7 +159,9 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
                 isInvalid={field.state.meta.errors.length > 0}
                 errors={
                   field.state.meta.errors.length > 0
-                    ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                    ? field.state.meta.errors.map((e) => ({
+                        message: e ?? undefined,
+                      }))
                     : undefined
                 }
               >
@@ -157,7 +179,11 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
                           </TagsInputItemPreview>
                         </TagsInputItem>
                       ))}
-                      <TagsInputInput placeholder={field.state.value.length === 0 ? "Add tags…" : ""} />
+                      <TagsInputInput
+                        placeholder={
+                          field.state.value.length === 0 ? "Add tags…" : ""
+                        }
+                      />
                     </TagsInputControl>
                   </TagsInput>
                 )}
@@ -166,7 +192,11 @@ export function CreateMemoryDialog({ open, onOpenChange }: CreateMemoryDialogPro
           </form.Field>
 
           {createMemory.isError && (
-            <p role="alert" aria-live="assertive" className="text-sm text-destructive">
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="text-destructive text-sm"
+            >
               {(createMemory.error as Error).message}
             </p>
           )}

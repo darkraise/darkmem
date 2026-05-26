@@ -2,7 +2,12 @@ import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { Input } from "darkraise-ui/components/input"
@@ -81,7 +86,7 @@ function CronCell({ job }: { job: Job }) {
       </Select>
       <Input
         type="text"
-        className="h-7 w-36 text-xs font-mono"
+        className="h-7 w-36 font-mono text-xs"
         value={cron}
         onChange={(e) => setCron(e.target.value)}
         placeholder="*/5 * * * *"
@@ -94,7 +99,7 @@ function CronCell({ job }: { job: Job }) {
         onClick={handleSave}
         disabled={!dirty || updateJob.isPending}
       >
-        <Save className="w-3.5 h-3.5" />
+        <Save className="h-3.5 w-3.5" />
       </Button>
     </div>
   )
@@ -108,7 +113,9 @@ function EnabledCell({ job }: { job: Job }) {
       { key: job.key, data: { enabled } },
       {
         onSuccess: () =>
-          toast.success(`${job.display_name} ${enabled ? "enabled" : "disabled"}`),
+          toast.success(
+            `${job.display_name} ${enabled ? "enabled" : "disabled"}`,
+          ),
         onError: (err) => toast.error(`Failed: ${err.message}`),
       },
     )
@@ -148,7 +155,7 @@ function TriggerCell({ job }: { job: Job }) {
       onClick={handleTrigger}
       disabled={triggerJob.isPending}
     >
-      <Play className="w-3.5 h-3.5 mr-1" />
+      <Play className="mr-1 h-3.5 w-3.5" />
       {triggerJob.isPending ? "Running..." : "Trigger"}
     </Button>
   )
@@ -163,7 +170,7 @@ const columns: ColumnDef<Job>[] = [
       <div>
         <div className="flex items-center gap-2">
           <span
-            className={`w-2 h-2 rounded-full shrink-0 ${
+            className={`h-2 w-2 shrink-0 rounded-full ${
               !row.original.enabled
                 ? "bg-muted-foreground"
                 : row.original.last_status === "error"
@@ -182,11 +189,15 @@ const columns: ColumnDef<Job>[] = [
                     : "loop not running"
             }
           />
-          <span className="text-sm font-medium">{row.original.display_name}</span>
+          <span className="text-sm font-medium">
+            {row.original.display_name}
+          </span>
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">{row.original.description}</div>
+        <div className="text-muted-foreground mt-0.5 text-xs">
+          {row.original.description}
+        </div>
         {row.original.last_status === "error" && row.original.last_error && (
-          <div className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1 mt-1 font-mono">
+          <div className="text-destructive bg-destructive/10 mt-1 rounded px-2 py-1 font-mono text-xs">
             {row.original.last_error}
           </div>
         )}
@@ -198,7 +209,7 @@ const columns: ColumnDef<Job>[] = [
     header: "Key",
     size: 160,
     cell: ({ getValue }) => (
-      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+      <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px]">
         {String(getValue())}
       </Badge>
     ),
@@ -230,7 +241,7 @@ const columns: ColumnDef<Job>[] = [
       return (
         <Badge
           variant={v === "error" ? "destructive" : "secondary"}
-          className="text-[10px] px-1.5 py-0"
+          className="px-1.5 py-0 text-[10px]"
         >
           {v}
         </Badge>
@@ -242,7 +253,9 @@ const columns: ColumnDef<Job>[] = [
     header: "Min interval",
     size: 110,
     cell: ({ getValue }) => (
-      <span className="text-xs text-muted-foreground">{getValue() as number}s</span>
+      <span className="text-muted-foreground text-xs">
+        {getValue() as number}s
+      </span>
     ),
   },
   {
@@ -257,10 +270,12 @@ function JobsPage() {
   const { data, isLoading, error } = useJobs()
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 p-6">
       <PageHeader title="Jobs" />
       {error && (
-        <p className="text-destructive">Failed to load jobs: {(error as Error).message}</p>
+        <p className="text-destructive">
+          Failed to load jobs: {(error as Error).message}
+        </p>
       )}
       {isLoading ? (
         <DataTableSkeleton columnCount={8} />
@@ -269,7 +284,7 @@ function JobsPage() {
       ) : (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
               Background Jobs
             </CardTitle>
           </CardHeader>

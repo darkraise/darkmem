@@ -23,9 +23,18 @@ interface Props {
   onOpenChange: (open: boolean) => void
 }
 
-export function LLMProviderTestDialog({ providerName, mode, open, onOpenChange }: Props) {
-  const { data: modelsResp, isLoading: modelsLoading, error: modelsError, refetch } =
-    useProviderModels(providerName, open)
+export function LLMProviderTestDialog({
+  providerName,
+  mode,
+  open,
+  onOpenChange,
+}: Props) {
+  const {
+    data: modelsResp,
+    isLoading: modelsLoading,
+    error: modelsError,
+    refetch,
+  } = useProviderModels(providerName, open)
   const test = useTestLlmProvider()
   const [model, setModel] = useState<string>("")
   const [result, setResult] = useState<LlmProviderTestResponse | null>(null)
@@ -52,7 +61,9 @@ export function LLMProviderTestDialog({ providerName, mode, open, onOpenChange }
         onSuccess: (r) => {
           setResult(r)
           if (r.ok) {
-            toast.success(`${providerName}: ${mode} probe OK (${r.latency_ms} ms)`)
+            toast.success(
+              `${providerName}: ${mode} probe OK (${r.latency_ms} ms)`,
+            )
           } else {
             toast.error(
               `${providerName}: ${mode} probe failed${r.status_code ? ` (HTTP ${r.status_code})` : ""}`,
@@ -78,7 +89,8 @@ export function LLMProviderTestDialog({ providerName, mode, open, onOpenChange }
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            Test {mode === "chat" ? "Chat" : "Embedding"} — {providerName ?? "(no provider)"}
+            Test {mode === "chat" ? "Chat" : "Embedding"} —{" "}
+            {providerName ?? "(no provider)"}
           </DialogTitle>
         </DialogHeader>
 
@@ -86,31 +98,38 @@ export function LLMProviderTestDialog({ providerName, mode, open, onOpenChange }
           <div>
             <Label className="text-xs">Model</Label>
             {modelsLoading && (
-              <p className="text-[10px] text-muted-foreground mt-1">Fetching models…</p>
+              <p className="text-muted-foreground mt-1 text-[10px]">
+                Fetching models…
+              </p>
             )}
             {modelsError && (
-              <p className="text-[10px] text-destructive mt-1">
+              <p className="text-destructive mt-1 text-[10px]">
                 Could not fetch models: {(modelsError as Error).message}
               </p>
             )}
             {modelsResp?.error && (
-              <p className="text-[10px] text-destructive mt-1">
+              <p className="text-destructive mt-1 text-[10px]">
                 Provider returned: {modelsResp.error}
               </p>
             )}
-            {modelsResp && modelsResp.models.length === 0 && !modelsResp.error && (
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Provider returned an empty model list. You can type a model name below.
-              </p>
-            )}
+            {modelsResp &&
+              modelsResp.models.length === 0 &&
+              !modelsResp.error && (
+                <p className="text-muted-foreground mt-1 text-[10px]">
+                  Provider returned an empty model list. You can type a model
+                  name below.
+                </p>
+              )}
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="h-9 w-full text-sm rounded border border-border bg-background px-2 mt-1"
+              className="border-border bg-background mt-1 h-9 w-full rounded border px-2 text-sm"
               disabled={!modelsResp || modelsResp.models.length === 0}
             >
               {modelsResp?.models.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
             </select>
             {modelsResp && modelsResp.models.length === 0 && (
@@ -119,34 +138,39 @@ export function LLMProviderTestDialog({ providerName, mode, open, onOpenChange }
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="model id (e.g. gpt-4o-mini)"
-                className="h-9 w-full text-sm rounded border border-border bg-background px-2 mt-2 font-mono"
+                className="border-border bg-background mt-2 h-9 w-full rounded border px-2 font-mono text-sm"
               />
             )}
             {modelsResp?.fetched_via && (
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-muted-foreground mt-1 text-[10px]">
                 Fetched via {modelsResp.fetched_via}
               </p>
             )}
           </div>
 
           {result && (
-            <div className="rounded-md border border-border p-3 space-y-2">
+            <div className="border-border space-y-2 rounded-md border p-3">
               <div className="flex items-center gap-2">
-                <Badge variant={result.ok ? "default" : "destructive"} className="text-[10px]">
+                <Badge
+                  variant={result.ok ? "default" : "destructive"}
+                  className="text-[10px]"
+                >
                   {result.ok ? "OK" : "FAIL"}
                 </Badge>
                 {result.status_code !== null && (
                   <span className="text-xs">HTTP {result.status_code}</span>
                 )}
-                <span className="text-xs text-muted-foreground">{result.latency_ms} ms</span>
+                <span className="text-muted-foreground text-xs">
+                  {result.latency_ms} ms
+                </span>
               </div>
               {result.url && (
-                <p className="text-[10px] text-muted-foreground font-mono break-all">
+                <p className="text-muted-foreground font-mono text-[10px] break-all">
                   {result.url}
                 </p>
               )}
               {result.message && (
-                <p className="text-[10px] text-muted-foreground break-all">
+                <p className="text-muted-foreground text-[10px] break-all">
                   {result.message}
                 </p>
               )}
@@ -155,7 +179,11 @@ export function LLMProviderTestDialog({ providerName, mode, open, onOpenChange }
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => refetch()} disabled={modelsLoading}>
+          <Button
+            variant="ghost"
+            onClick={() => refetch()}
+            disabled={modelsLoading}
+          >
             Refresh models
           </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

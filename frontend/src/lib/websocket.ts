@@ -41,12 +41,19 @@ export function useWebSocket() {
 
     ws.current.onmessage = (event) => {
       const msg = JSON.parse(event.data as string) as {
-        [K in keyof WebSocketEventMap]?: { event: K; data: WebSocketEventMap[K] }
+        [K in keyof WebSocketEventMap]?: {
+          event: K
+          data: WebSocketEventMap[K]
+        }
       }[keyof WebSocketEventMap] & { event?: string; data?: unknown }
 
       if (!msg.event) return
 
-      if (msg.event === "pipeline.completed" || msg.event === "pipeline.partial" || msg.event === "pipeline.failed") {
+      if (
+        msg.event === "pipeline.completed" ||
+        msg.event === "pipeline.partial" ||
+        msg.event === "pipeline.failed"
+      ) {
         showPipelineToast(msg.event, msg.data as PipelineStatus)
         void qc.invalidateQueries({ queryKey: ["memories"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
@@ -81,16 +88,22 @@ export function useWebSocket() {
       }
 
       if (msg.event === "pipeline.reembed_batch.progress") {
-        const d = msg.data as WebSocketEventMap["pipeline.reembed_batch.progress"]
+        const d =
+          msg.data as WebSocketEventMap["pipeline.reembed_batch.progress"]
         qc.setQueryData(["reembedBatchProgress", d.batch_id, d.category], d)
         if (d.state === "done") {
           void qc.invalidateQueries({ queryKey: ["obsoleteCounts"] })
           if (d.errors > 0) {
-            toast.warning(`Re-embed ${d.category}: ${d.processed} succeeded, ${d.errors} failed`, {
-              description: d.error_message || undefined,
-            })
+            toast.warning(
+              `Re-embed ${d.category}: ${d.processed} succeeded, ${d.errors} failed`,
+              {
+                description: d.error_message || undefined,
+              },
+            )
           } else if (d.processed > 0) {
-            toast.success(`Re-embed ${d.category} complete: ${d.processed} updated`)
+            toast.success(
+              `Re-embed ${d.category} complete: ${d.processed} updated`,
+            )
           }
         }
       }
@@ -116,7 +129,9 @@ export function useWebSocket() {
           toast.error(`Clone failed: ${d.error}`)
         } else if (msg.event === "repo.indexing_completed") {
           const d = msg.data as WebSocketEventMap["repo.indexing_completed"]
-          toast.success(`Indexed ${d.files_changed} files, ${d.symbols_indexed} symbols`)
+          toast.success(
+            `Indexed ${d.files_changed} files, ${d.symbols_indexed} symbols`,
+          )
         } else if (msg.event === "repo.indexing_failed") {
           const d = msg.data as WebSocketEventMap["repo.indexing_failed"]
           toast.error(`Indexing failed: ${d.error}`)

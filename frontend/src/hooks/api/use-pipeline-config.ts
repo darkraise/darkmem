@@ -12,7 +12,10 @@ export interface PipelineState {
     summarization: LlmPurposeConfig
     reranker: LlmPurposeConfig
   }
-  prompts: Record<string, { default: string; override: string; effective: string }>
+  prompts: Record<
+    string,
+    { default: string; override: string; effective: string }
+  >
 }
 
 export function usePipeline() {

@@ -62,7 +62,7 @@ export function MemoryCommandPalette({
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="w-full max-w-lg bg-popover border border-border rounded-lg shadow-xl overflow-hidden"
+        className="bg-popover border-border w-full max-w-lg overflow-hidden rounded-lg border shadow-xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") {

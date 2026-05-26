@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react"
 import { Button } from "darkraise-ui/components/button"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import { Badge } from "darkraise-ui/components/badge"
 import { Folder, FolderGit2, ChevronRight } from "lucide-react"
@@ -14,7 +19,13 @@ type Props = {
   disabled?: boolean
 }
 
-export function ServerPathBrowser({ apiBase, value, onChange, onConfirm, disabled }: Props) {
+export function ServerPathBrowser({
+  apiBase,
+  value,
+  onChange,
+  onConfirm,
+  disabled,
+}: Props) {
   const { data: rootsData } = useFsRoots(apiBase)
   const [entries, setEntries] = useState<FsListEntry[]>([])
   const [parent, setParent] = useState<string | null>(null)
@@ -92,7 +103,11 @@ export function ServerPathBrowser({ apiBase, value, onChange, onConfirm, disable
             placeholder="/absolute/path/to/folder"
             disabled={disabled}
           />
-          <Button variant="outline" onClick={handleManualGo} disabled={disabled}>
+          <Button
+            variant="outline"
+            onClick={handleManualGo}
+            disabled={disabled}
+          >
             Go
           </Button>
         </div>
@@ -108,44 +123,51 @@ export function ServerPathBrowser({ apiBase, value, onChange, onConfirm, disable
           </Button>
         )}
 
-        <div className="border rounded-md max-h-72 overflow-y-auto divide-y">
+        <div className="max-h-72 divide-y overflow-y-auto rounded-md border">
           {entries.map((entry) => (
             <button
               key={entry.path}
               type="button"
-              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent text-left"
+              className="hover:bg-accent flex w-full items-center gap-2 px-3 py-2 text-left"
               onClick={() => navigate(entry.path)}
               disabled={disabled}
             >
-              {entry.is_git ? <FolderGit2 className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+              {entry.is_git ? (
+                <FolderGit2 className="h-4 w-4" />
+              ) : (
+                <Folder className="h-4 w-4" />
+              )}
               <span className="flex-1 truncate">{entry.name}</span>
               {entry.is_git && <Badge variant="secondary">git</Badge>}
               {entry.has_repos && <Badge>{`repos:${entry.repo_count}`}</Badge>}
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <ChevronRight className="text-muted-foreground h-4 w-4" />
             </button>
           ))}
           {entries.length === 0 && !error && (
-            <div className="px-3 py-6 text-sm text-muted-foreground text-center">
+            <div className="text-muted-foreground px-3 py-6 text-center text-sm">
               No subfolders.
             </div>
           )}
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-destructive text-sm">
             {error}
           </p>
         )}
 
         <div className="flex justify-end">
-          <Button onClick={handleConfirm} disabled={disabled || !value || isGit}>
+          <Button
+            onClick={handleConfirm}
+            disabled={disabled || !value || isGit}
+          >
             Use this folder
           </Button>
         </div>
         {isGit && (
-          <p className="text-xs text-muted-foreground">
-            This folder is itself a git repository — pick its parent to register the repos
-            inside.
+          <p className="text-muted-foreground text-xs">
+            This folder is itself a git repository — pick its parent to register
+            the repos inside.
           </p>
         )}
       </CardContent>

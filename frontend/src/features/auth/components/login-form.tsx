@@ -47,7 +47,9 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             onBlur={field.handleBlur}
             errors={
               field.state.meta.errors.length > 0
-                ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                ? field.state.meta.errors.map((e) => ({
+                    message: e ?? undefined,
+                  }))
                 : undefined
             }
             isInvalid={field.state.meta.errors.length > 0}
@@ -71,7 +73,9 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             isInvalid={field.state.meta.errors.length > 0}
             errors={
               field.state.meta.errors.length > 0
-                ? field.state.meta.errors.map((e) => ({ message: e ?? undefined }))
+                ? field.state.meta.errors.map((e) => ({
+                    message: e ?? undefined,
+                  }))
                 : undefined
             }
           >
@@ -102,7 +106,9 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       </Button>
 
       {login.isError && (
-        <p className="text-sm text-destructive">{(login.error as Error).message}</p>
+        <p className="text-destructive text-sm">
+          {(login.error as Error).message}
+        </p>
       )}
     </form>
   )

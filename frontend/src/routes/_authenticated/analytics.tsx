@@ -16,14 +16,26 @@ import {
   Pie,
   Cell,
 } from "recharts"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { PageHeader } from "darkraise-ui/layout"
 
 export const Route = createFileRoute("/_authenticated/analytics")({
   component: AnalyticsPage,
 })
 
-const COLORS = ["#58a6ff", "#3fb950", "#d2a8ff", "#ffa657", "#f778ba", "#8b949e"]
+const COLORS = [
+  "#58a6ff",
+  "#3fb950",
+  "#d2a8ff",
+  "#ffa657",
+  "#f778ba",
+  "#8b949e",
+]
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -36,14 +48,20 @@ function relativeTime(iso: string): string {
   return `${days}d ago`
 }
 
-function StatTile({ label, value }: { label: string; value: string | number | null }) {
+function StatTile({
+  label,
+  value,
+}: {
+  label: string
+  value: string | number | null
+}) {
   return (
     <Card>
       <CardContent className="pt-4">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+        <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
           {label}
         </div>
-        <div className="text-3xl font-bold mt-1">{value ?? "—"}</div>
+        <div className="mt-1 text-3xl font-bold">{value ?? "—"}</div>
       </CardContent>
     </Card>
   )
@@ -55,7 +73,9 @@ const logColumns: ColumnDef<PipelineLog>[] = [
     header: "ID",
     size: 70,
     cell: ({ getValue }) => (
-      <span className="text-xs font-mono text-muted-foreground">{String(getValue())}</span>
+      <span className="text-muted-foreground font-mono text-xs">
+        {String(getValue())}
+      </span>
     ),
   },
   {
@@ -66,7 +86,10 @@ const logColumns: ColumnDef<PipelineLog>[] = [
       const v = getValue()
       if (!v) return <span className="text-muted-foreground text-xs">—</span>
       return (
-        <span className="text-xs font-mono truncate block max-w-[180px]" title={String(v)}>
+        <span
+          className="block max-w-[180px] truncate font-mono text-xs"
+          title={String(v)}
+        >
           {String(v).slice(0, 8)}…
         </span>
       )
@@ -77,14 +100,16 @@ const logColumns: ColumnDef<PipelineLog>[] = [
     header: "Time",
     size: 130,
     cell: ({ getValue }) => (
-      <span className="text-xs text-muted-foreground">{relativeTime(String(getValue()))}</span>
+      <span className="text-muted-foreground text-xs">
+        {relativeTime(String(getValue()))}
+      </span>
     ),
   },
   {
     accessorKey: "details",
     header: "Details",
     cell: ({ getValue }) => (
-      <span className="text-xs font-mono text-muted-foreground truncate block max-w-[400px]">
+      <span className="text-muted-foreground block max-w-[400px] truncate font-mono text-xs">
         {JSON.stringify(getValue())}
       </span>
     ),
@@ -98,33 +123,40 @@ function AnalyticsPage() {
   const { data: logs, isLoading: logsLoading } = usePipelineLogs(20)
 
   const tagData =
-    tags?.slice(0, 10).map((t) => ({ name: t.name, count: t.memory_count })) ?? []
+    tags?.slice(0, 10).map((t) => ({ name: t.name, count: t.memory_count })) ??
+    []
 
   const sourceData = useMemo(() => {
     if (!memories) return []
     const counts = new Map<string, number>()
-    for (const m of memories) counts.set(m.source, (counts.get(m.source) ?? 0) + 1)
-    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }))
+    for (const m of memories)
+      counts.set(m.source, (counts.get(m.source) ?? 0) + 1)
+    return Array.from(counts.entries()).map(([name, value]) => ({
+      name,
+      value,
+    }))
   }, [memories])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       <PageHeader
         title="Analytics"
         description="Tag and source trends. Pipeline and extraction metrics live on the Pipeline page."
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatTile label="Memories" value={stats?.memories ?? null} />
         <StatTile label="Tags" value={stats?.tags ?? null} />
         <StatTile label="Entities" value={stats?.entities ?? null} />
         <StatTile label="Relationships" value={stats?.relationships ?? null} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Top Tags by Memory Count</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Top Tags by Memory Count
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {tagData.length > 0 ? (
@@ -185,7 +217,9 @@ function AnalyticsPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground text-sm">No source data yet.</p>
+              <p className="text-muted-foreground text-sm">
+                No source data yet.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -193,13 +227,17 @@ function AnalyticsPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Recent Pipeline Activity</CardTitle>
+          <CardTitle className="text-sm font-medium">
+            Recent Pipeline Activity
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {logsLoading ? (
             <DataTableSkeleton columnCount={4} rowCount={5} />
           ) : !logs || logs.length === 0 ? (
-            <p className="text-muted-foreground text-sm p-4">No pipeline activity yet.</p>
+            <p className="text-muted-foreground p-4 text-sm">
+              No pipeline activity yet.
+            </p>
           ) : (
             <DataTable columns={logColumns} data={logs} />
           )}

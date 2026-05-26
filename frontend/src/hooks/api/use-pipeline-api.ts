@@ -1,35 +1,35 @@
-import { useState, useCallback, useRef } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { useState, useCallback, useRef } from "react"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
+import { apiFetch } from "@/lib/api"
 
 export interface Stats {
-  memories: number;
-  tags: number;
-  entities: number | null;
-  relationships: number | null;
-  sources: string[];
+  memories: number
+  tags: number
+  entities: number | null
+  relationships: number | null
+  sources: string[]
 }
 
 export interface HealthStatus {
-  status: string;
-  pipeline: boolean;
-  services: { pgvector: boolean; llm: boolean };
+  status: string
+  pipeline: boolean
+  services: { pgvector: boolean; llm: boolean }
 }
 
 export interface PipelineLog {
-  id: number;
-  memory_id: string | null;
-  details: Record<string, unknown>;
-  timestamp: string;
+  id: number
+  memory_id: string | null
+  details: Record<string, unknown>
+  timestamp: string
 }
 
 export interface ReprocessProgress {
-  current: number;
-  total: number;
-  processed: number;
-  errors: number;
-  memoryId?: string;
-  status?: string;
+  current: number
+  total: number
+  processed: number
+  errors: number
+  memoryId?: string
+  status?: string
 }
 
 export interface PipelineFailure {
@@ -53,41 +53,44 @@ export interface PipelineFailureListResponse {
 }
 
 export function useStats() {
-  return useQuery<Stats>({ queryKey: ["stats"], queryFn: () => apiFetch("/analytics/stats") });
+  return useQuery<Stats>({
+    queryKey: ["stats"],
+    queryFn: () => apiFetch("/analytics/stats"),
+  })
 }
 
 export function useHealth() {
   return useQuery<HealthStatus>({
     queryKey: ["health"],
     queryFn: async () => {
-      const res = await fetch("/health");
-      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
-      return res.json();
+      const res = await fetch("/health")
+      if (!res.ok) throw new Error(`Health check failed: ${res.status}`)
+      return res.json()
     },
     refetchInterval: 30000,
-  });
+  })
 }
 
 export function usePipelineLogs(limit = 10) {
   return useQuery<PipelineLog[]>({
     queryKey: ["pipelineLogs", limit],
     queryFn: () => apiFetch(`/analytics/pipeline-logs?limit=${limit}`),
-  });
+  })
 }
 
 export function useReprocessStream(endpoint: "/analytics/reprocess/stream") {
-  const qc = useQueryClient();
-  const [isPending, setIsPending] = useState(false);
-  const [progress, setProgress] = useState<ReprocessProgress | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const qc = useQueryClient()
+  const [isPending, setIsPending] = useState(false)
+  const [progress, setProgress] = useState<ReprocessProgress | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const mutate = useCallback(async () => {
-    if (isPending) return;
-    setIsPending(true);
-    setProgress(null);
+    if (isPending) return
+    setIsPending(true)
+    setProgress(null)
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const res = await fetch(`/api/v1${endpoint}`, {
@@ -95,30 +98,35 @@ export function useReprocessStream(endpoint: "/analytics/reprocess/stream") {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         signal: controller.signal,
-      });
+      })
 
-      if (!res.ok) throw new Error(`Reprocess failed: ${res.status}`);
-      if (!res.body) throw new Error("No response body");
+      if (!res.ok) throw new Error(`Reprocess failed: ${res.status}`)
+      if (!res.body) throw new Error("No response body")
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
 
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        const { done, value } = await reader.read()
+        if (done) break
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
 
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data: ")) continue;
-          const event = JSON.parse(trimmed.slice(6));
+          const trimmed = line.trim()
+          if (!trimmed.startsWith("data: ")) continue
+          const event = JSON.parse(trimmed.slice(6))
 
           if (event.type === "start") {
-            setProgress({ current: 0, total: event.total, processed: 0, errors: 0 });
+            setProgress({
+              current: 0,
+              total: event.total,
+              processed: 0,
+              errors: 0,
+            })
           } else if (event.type === "progress") {
             setProgress({
               current: event.current,
@@ -127,62 +135,65 @@ export function useReprocessStream(endpoint: "/analytics/reprocess/stream") {
               errors: event.errors,
               memoryId: event.memory_id,
               status: event.status,
-            });
+            })
           } else if (event.type === "done") {
             setProgress({
               current: event.total,
               total: event.total,
               processed: event.processed,
               errors: event.errors,
-            });
+            })
           }
         }
       }
 
-      qc.invalidateQueries({ queryKey: ["pipelineLogs"] });
-      qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
+      qc.invalidateQueries({ queryKey: ["stats"] })
     } finally {
-      setIsPending(false);
-      abortRef.current = null;
+      setIsPending(false)
+      abortRef.current = null
     }
-  }, [endpoint, isPending, qc]);
+  }, [endpoint, isPending, qc])
 
   const cancel = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+    abortRef.current?.abort()
+  }, [])
 
-  return { mutate, isPending, progress, cancel };
+  return { mutate, isPending, progress, cancel }
 }
 
 export interface OverviewData {
   counts: {
-    memories: number;
-    tags: number;
-    entities: number | null;
-    relationships: number | null;
-  };
-  activity: Array<{ date: string; count: number }>;
-  sources: Array<{ name: string; count: number }>;
-  top_tags: Array<{ name: string; count: number }>;
+    memories: number
+    tags: number
+    entities: number | null
+    relationships: number | null
+  }
+  activity: Array<{ date: string; count: number }>
+  sources: Array<{ name: string; count: number }>
+  top_tags: Array<{ name: string; count: number }>
   recent_memories: Array<{
-    id: string;
-    content: string;
-    source: string;
-    memory_type: string | null;
-    tags: string[];
-    created_at: string;
-  }>;
-  recent_errors: number;
+    id: string
+    content: string
+    source: string
+    memory_type: string | null
+    tags: string[]
+    created_at: string
+  }>
+  recent_errors: number
 }
 
 export function useOverview(days: number = 7) {
   return useQuery<OverviewData>({
     queryKey: ["overview", days],
     queryFn: () => apiFetch(`/analytics/overview?days=${days}`),
-  });
+  })
 }
 
-export function usePipelineFailures(filters?: { entity_type?: string; pipeline_name?: string }) {
+export function usePipelineFailures(filters?: {
+  entity_type?: string
+  pipeline_name?: string
+}) {
   const qs = new URLSearchParams()
   if (filters?.entity_type) qs.set("entity_type", filters.entity_type)
   if (filters?.pipeline_name) qs.set("pipeline_name", filters.pipeline_name)
@@ -196,7 +207,8 @@ export function usePipelineFailures(filters?: { entity_type?: string; pipeline_n
 export function usePipelineFailureCounts() {
   return useQuery<Record<string, number>>({
     queryKey: ["pipelineFailureCounts"],
-    queryFn: () => apiFetch<Record<string, number>>("/pipeline-failures/counts"),
+    queryFn: () =>
+      apiFetch<Record<string, number>>("/pipeline-failures/counts"),
   })
 }
 
@@ -229,14 +241,20 @@ export function useForgetFailure() {
 export function useRetryAllFailures() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (filters?: { entity_type?: string; pipeline_name?: string }) => {
+    mutationFn: (filters?: {
+      entity_type?: string
+      pipeline_name?: string
+    }) => {
       const qs = new URLSearchParams()
       if (filters?.entity_type) qs.set("entity_type", filters.entity_type)
       if (filters?.pipeline_name) qs.set("pipeline_name", filters.pipeline_name)
       const url = `/pipeline-failures/retry-all${qs.toString() ? `?${qs}` : ""}`
-      return apiFetch<{ accepted: boolean; batch_id: string; total: number }>(url, {
-        method: "POST",
-      })
+      return apiFetch<{ accepted: boolean; batch_id: string; total: number }>(
+        url,
+        {
+          method: "POST",
+        },
+      )
     },
     // Per-row progress arrives via WebSocket (PipelineRetryBatchProgress),
     // but if the WS is disconnected the failures table goes stale forever.
@@ -249,7 +267,9 @@ export function useRetryAllFailures() {
 }
 
 export function useRetryBatchProgress(batchId: string | null) {
-  return useQuery<import("@/lib/websocket-events").PipelineRetryBatchProgress | undefined>({
+  return useQuery<
+    import("@/lib/websocket-events").PipelineRetryBatchProgress | undefined
+  >({
     queryKey: ["retryBatchProgress", batchId],
     queryFn: () => undefined,
     enabled: false,

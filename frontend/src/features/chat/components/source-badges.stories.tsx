@@ -7,7 +7,7 @@ const meta: Meta<typeof SourceBadges> = {
   parameters: { layout: "padded" },
   decorators: [
     (Story) => (
-      <div className="bg-background p-4 max-w-lg">
+      <div className="bg-background max-w-lg p-4">
         <Story />
       </div>
     ),
@@ -21,7 +21,8 @@ const singleMemory = [
   {
     id: "m1",
     score: 0.93,
-    content: "FastAPI uses dependency injection for auth middleware via Depends()",
+    content:
+      "FastAPI uses dependency injection for auth middleware via Depends()",
     source: "claude-code",
     tags: ["python", "fastapi"],
     created_at: new Date().toISOString(),

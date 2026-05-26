@@ -1,21 +1,26 @@
-import { X } from "lucide-react";
-import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api";
-import { UNIFIED_PALETTE, UNCLUSTERED_COLOR, entityTypeColor, resolveNodeColor } from "@/features/graph/lib/graph-colors";
-import type { ColorMode } from "@/features/graph/lib/graph-colors";
+import { X } from "lucide-react"
+import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api"
+import {
+  UNIFIED_PALETTE,
+  UNCLUSTERED_COLOR,
+  entityTypeColor,
+  resolveNodeColor,
+} from "@/features/graph/lib/graph-colors"
+import type { ColorMode } from "@/features/graph/lib/graph-colors"
 
 interface GraphDetailPanelProps {
-  selectedMemory: UnifiedMemory | null;
-  clusterName: string;
-  memories: UnifiedMemory[];
-  clusterNames: Record<string, string>;
-  visibleEdgeCount: number;
-  onClose: () => void;
-  children?: React.ReactNode;
-  selectedEntity?: GraphEntity | null;
-  entityRelations?: EntityRelation[];
-  allEntities?: GraphEntity[];
-  onNavigateToMemory?: (memoryId: string) => void;
-  colorMode: ColorMode;
+  selectedMemory: UnifiedMemory | null
+  clusterName: string
+  memories: UnifiedMemory[]
+  clusterNames: Record<string, string>
+  visibleEdgeCount: number
+  onClose: () => void
+  children?: React.ReactNode
+  selectedEntity?: GraphEntity | null
+  entityRelations?: EntityRelation[]
+  allEntities?: GraphEntity[]
+  onNavigateToMemory?: (memoryId: string) => void
+  colorMode: ColorMode
 }
 
 export function GraphDetailPanel({
@@ -36,72 +41,81 @@ export function GraphDetailPanel({
     ? "Entity Detail"
     : selectedMemory
       ? "Memory Detail"
-      : "Graph Summary";
+      : "Graph Summary"
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-border shrink-0">
+      <div className="border-border flex shrink-0 items-center justify-between border-b px-4 pt-3 pb-2">
         <span className="text-sm font-medium">{panelTitle}</span>
         <button
           className="text-muted-foreground hover:text-foreground rounded-sm p-1"
           onClick={onClose}
         >
-          <X className="w-4 h-4" />
+          <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto min-h-0">
-      {selectedEntity ? (
-        <EntityDetail
-          entity={selectedEntity}
-          memories={memories}
-          entityRelations={entityRelations}
-          allEntities={allEntities}
-          onNavigateToMemory={onNavigateToMemory}
-        />
-      ) : selectedMemory ? (
-        <MemoryDetail
-          memory={selectedMemory}
-          clusterName={clusterName}
-          colorMode={colorMode}
-        >
-          {children}
-        </MemoryDetail>
-      ) : (
-        <GraphSummary
-          memories={memories}
-          clusterNames={clusterNames}
-          visibleEdgeCount={visibleEdgeCount}
-          colorMode={colorMode}
-          entities={allEntities}
-          entityRelations={entityRelations}
-        />
-      )}
+      <div className="min-h-0 flex-1 overflow-auto">
+        {selectedEntity ? (
+          <EntityDetail
+            entity={selectedEntity}
+            memories={memories}
+            entityRelations={entityRelations}
+            allEntities={allEntities}
+            onNavigateToMemory={onNavigateToMemory}
+          />
+        ) : selectedMemory ? (
+          <MemoryDetail
+            memory={selectedMemory}
+            clusterName={clusterName}
+            colorMode={colorMode}
+          >
+            {children}
+          </MemoryDetail>
+        ) : (
+          <GraphSummary
+            memories={memories}
+            clusterNames={clusterNames}
+            visibleEdgeCount={visibleEdgeCount}
+            colorMode={colorMode}
+            entities={allEntities}
+            entityRelations={entityRelations}
+          />
+        )}
       </div>
     </>
-  );
+  )
 }
 
 interface EntityDetailProps {
-  entity: GraphEntity;
-  memories: UnifiedMemory[];
-  entityRelations?: EntityRelation[];
-  allEntities?: GraphEntity[];
-  onNavigateToMemory?: (memoryId: string) => void;
+  entity: GraphEntity
+  memories: UnifiedMemory[]
+  entityRelations?: EntityRelation[]
+  allEntities?: GraphEntity[]
+  onNavigateToMemory?: (memoryId: string) => void
 }
 
-function EntityDetail({ entity, memories, entityRelations, allEntities, onNavigateToMemory }: EntityDetailProps) {
-  const color = entityTypeColor(entity.entity_type);
-  const related = entityRelations?.filter(
-    (r) => r.source === entity.id || r.target === entity.id,
-  ) ?? [];
+function EntityDetail({
+  entity,
+  memories,
+  entityRelations,
+  allEntities,
+  onNavigateToMemory,
+}: EntityDetailProps) {
+  const color = entityTypeColor(entity.entity_type)
+  const related =
+    entityRelations?.filter(
+      (r) => r.source === entity.id || r.target === entity.id,
+    ) ?? []
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 p-4">
       <div>
-        <h3 className="text-base font-semibold text-foreground">{entity.name}</h3>
+        <h3 className="text-foreground text-base font-semibold">
+          {entity.name}
+        </h3>
         <span
-          className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full capitalize"
+          className="mt-1 inline-block rounded-full px-2 py-0.5 text-xs capitalize"
           style={{ backgroundColor: color + "20", color }}
         >
           {entity.entity_type}
@@ -110,7 +124,9 @@ function EntityDetail({ entity, memories, entityRelations, allEntities, onNaviga
 
       {Object.keys(entity.properties).length > 0 && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Properties</p>
+          <p className="text-muted-foreground mb-1 text-xs font-semibold tracking-wider uppercase">
+            Properties
+          </p>
           <div className="space-y-1">
             {Object.entries(entity.properties).map(([key, value]) => (
               <div key={key} className="flex gap-2 text-xs">
@@ -123,70 +139,81 @@ function EntityDetail({ entity, memories, entityRelations, allEntities, onNaviga
       )}
 
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+        <p className="text-muted-foreground mb-1 text-xs font-semibold tracking-wider uppercase">
           Linked Memories ({entity.memory_ids.length})
         </p>
         <div className="space-y-1">
           {entity.memory_ids.slice(0, 20).map((mid) => {
-            const mem = memories.find((m) => m.id === mid);
+            const mem = memories.find((m) => m.id === mid)
             return (
               <button
                 key={mid}
-                className="w-full text-left text-xs text-muted-foreground hover:text-foreground truncate block py-0.5"
+                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left text-xs"
                 onClick={() => onNavigateToMemory?.(mid)}
                 title={mem?.content}
               >
                 {mem ? mem.content.slice(0, 80) : mid.slice(0, 8) + "…"}
               </button>
-            );
+            )
           })}
         </div>
       </div>
 
       {related.length > 0 && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+          <p className="text-muted-foreground mb-1 text-xs font-semibold tracking-wider uppercase">
             Related Entities ({related.length})
           </p>
           <div className="space-y-1">
             {related.map((r, i) => {
-              const otherId = r.source === entity.id ? r.target : r.source;
-              const otherEntity = allEntities?.find((e) => e.id === otherId);
-              const isSource = r.source === entity.id;
+              const otherId = r.source === entity.id ? r.target : r.source
+              const otherEntity = allEntities?.find((e) => e.id === otherId)
+              const isSource = r.source === entity.id
               return (
                 <div key={i} className="flex items-center gap-1.5 text-xs">
-                  <span className="text-muted-foreground">{isSource ? "→" : "←"}</span>
+                  <span className="text-muted-foreground">
+                    {isSource ? "→" : "←"}
+                  </span>
                   <span className="text-foreground">{r.type}</span>
                   <span className="text-muted-foreground">→</span>
-                  <span className="text-foreground truncate">{otherEntity?.name ?? otherId.slice(0, 8)}</span>
+                  <span className="text-foreground truncate">
+                    {otherEntity?.name ?? otherId.slice(0, 8)}
+                  </span>
                 </div>
-              );
+              )
             })}
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
 
 interface MemoryDetailProps {
-  memory: UnifiedMemory;
-  clusterName: string;
-  children?: React.ReactNode;
-  colorMode: ColorMode;
+  memory: UnifiedMemory
+  clusterName: string
+  children?: React.ReactNode
+  colorMode: ColorMode
 }
 
-function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetailProps) {
+function MemoryDetail({
+  memory,
+  clusterName,
+  children,
+  colorMode,
+}: MemoryDetailProps) {
   return (
-    <div className="p-4 space-y-3">
-      <p className="text-sm text-foreground leading-relaxed">{memory.content}</p>
+    <div className="space-y-3 p-4">
+      <p className="text-foreground text-sm leading-relaxed">
+        {memory.content}
+      </p>
 
       {memory.tags.length > 0 && (
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex flex-wrap gap-1">
           {memory.tags.map((t) => (
             <span
               key={t}
-              className="text-xs px-1.5 py-0.5 rounded bg-accent text-primary"
+              className="bg-accent text-primary rounded px-1.5 py-0.5 text-xs"
             >
               {t}
             </span>
@@ -194,13 +221,25 @@ function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetail
         </div>
       )}
 
-      <div className="text-xs text-muted-foreground space-y-0.5">
+      <div className="text-muted-foreground space-y-0.5 text-xs">
         <div className="flex items-center gap-1">
           Source:{" "}
-          <span className="inline-flex items-center gap-1 text-foreground">
+          <span className="text-foreground inline-flex items-center gap-1">
             <span
-              className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: colorMode === "tag" ? resolveNodeColor({ cluster: -1, memory_type: null, tags: memory.tags.length > 0 ? [memory.tags[0]] : [] }, "tag") : "#8b949e" }}
+              className="inline-block h-2 w-2 rounded-full"
+              style={{
+                backgroundColor:
+                  colorMode === "tag"
+                    ? resolveNodeColor(
+                        {
+                          cluster: -1,
+                          memory_type: null,
+                          tags: memory.tags.length > 0 ? [memory.tags[0]] : [],
+                        },
+                        "tag",
+                      )
+                    : "#8b949e",
+              }}
             />
             {memory.source}
           </span>
@@ -208,10 +247,22 @@ function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetail
         {memory.memory_type && (
           <div className="flex items-center gap-1">
             Type:{" "}
-            <span className="inline-flex items-center gap-1 text-foreground">
+            <span className="text-foreground inline-flex items-center gap-1">
               <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: colorMode === "type" ? resolveNodeColor({ cluster: -1, memory_type: memory.memory_type, tags: [] }, "type") : "#8b949e" }}
+                className="inline-block h-2 w-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    colorMode === "type"
+                      ? resolveNodeColor(
+                          {
+                            cluster: -1,
+                            memory_type: memory.memory_type,
+                            tags: [],
+                          },
+                          "type",
+                        )
+                      : "#8b949e",
+                }}
               />
               {memory.memory_type}
             </span>
@@ -219,15 +270,22 @@ function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetail
         )}
         <div>
           Importance:{" "}
-          <span className="text-foreground">{memory.importance.toFixed(2)}</span>
+          <span className="text-foreground">
+            {memory.importance.toFixed(2)}
+          </span>
         </div>
         {memory.cluster >= 0 && (
           <div className="flex items-center gap-1">
             Cluster:{" "}
-            <span className="inline-flex items-center gap-1 text-foreground">
+            <span className="text-foreground inline-flex items-center gap-1">
               <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: colorMode === "cluster" ? UNIFIED_PALETTE[memory.cluster % UNIFIED_PALETTE.length] : "#8b949e" }}
+                className="inline-block h-2 w-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    colorMode === "cluster"
+                      ? UNIFIED_PALETTE[memory.cluster % UNIFIED_PALETTE.length]
+                      : "#8b949e",
+                }}
               />
               {clusterName || `Cluster ${memory.cluster}`}
             </span>
@@ -236,108 +294,129 @@ function MemoryDetail({ memory, clusterName, children, colorMode }: MemoryDetail
       </div>
 
       {children && (
-        <div className="pt-2 border-t border-border">
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+        <div className="border-border border-t pt-2">
+          <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
             Entity Context
           </p>
           {children}
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-xs">
             Click a neighbor node to navigate.
           </p>
         </div>
       )}
     </div>
-  );
+  )
 }
 
 interface GraphSummaryProps {
-  memories: UnifiedMemory[];
-  clusterNames: Record<string, string>;
-  visibleEdgeCount: number;
-  colorMode: ColorMode;
-  entities?: GraphEntity[];
-  entityRelations?: EntityRelation[];
+  memories: UnifiedMemory[]
+  clusterNames: Record<string, string>
+  visibleEdgeCount: number
+  colorMode: ColorMode
+  entities?: GraphEntity[]
+  entityRelations?: EntityRelation[]
 }
 
-function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode, entities, entityRelations }: GraphSummaryProps) {
-  const clusterCounts = new Map<number, number>();
-  const typeCounts = new Map<string, number>();
-  const sourceCounts = new Map<string, number>();
-  const tagCategoryCounts = new Map<string, number>();
+function GraphSummary({
+  memories,
+  clusterNames,
+  visibleEdgeCount,
+  colorMode,
+  entities,
+  entityRelations,
+}: GraphSummaryProps) {
+  const clusterCounts = new Map<number, number>()
+  const typeCounts = new Map<string, number>()
+  const sourceCounts = new Map<string, number>()
+  const tagCategoryCounts = new Map<string, number>()
 
   for (const m of memories) {
     if (m.cluster >= 0) {
-      clusterCounts.set(m.cluster, (clusterCounts.get(m.cluster) ?? 0) + 1);
+      clusterCounts.set(m.cluster, (clusterCounts.get(m.cluster) ?? 0) + 1)
     }
-    const t = m.memory_type || "(none)";
-    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
-    sourceCounts.set(m.source, (sourceCounts.get(m.source) ?? 0) + 1);
+    const t = m.memory_type || "(none)"
+    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1)
+    sourceCounts.set(m.source, (sourceCounts.get(m.source) ?? 0) + 1)
     for (const tag of m.tags) {
-      const prefix = tag.includes("/") ? tag.split("/")[0] : tag;
-      tagCategoryCounts.set(prefix, (tagCategoryCounts.get(prefix) ?? 0) + 1);
+      const prefix = tag.includes("/") ? tag.split("/")[0] : tag
+      tagCategoryCounts.set(prefix, (tagCategoryCounts.get(prefix) ?? 0) + 1)
     }
   }
 
-  const entityTypeCounts = new Map<string, number>();
+  const entityTypeCounts = new Map<string, number>()
   for (const e of entities ?? []) {
-    entityTypeCounts.set(e.entity_type, (entityTypeCounts.get(e.entity_type) ?? 0) + 1);
+    entityTypeCounts.set(
+      e.entity_type,
+      (entityTypeCounts.get(e.entity_type) ?? 0) + 1,
+    )
   }
 
-  const sortedClusters = [...clusterCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const sortedTypes = [...typeCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const sortedTagCategories = [...tagCategoryCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const sortedEntityTypes = [...entityTypeCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const sortedClusters = [...clusterCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )
+  const sortedTypes = [...typeCounts.entries()].sort((a, b) => b[1] - a[1])
+  const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1])
+  const sortedTagCategories = [...tagCategoryCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )
+  const sortedEntityTypes = [...entityTypeCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 p-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{memories.length}</p>
-          <p className="text-xs text-muted-foreground">Memories</p>
+          <p className="text-muted-foreground text-xs">Memories</p>
         </div>
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{clusterCounts.size}</p>
-          <p className="text-xs text-muted-foreground">Clusters</p>
+          <p className="text-muted-foreground text-xs">Clusters</p>
         </div>
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{visibleEdgeCount}</p>
-          <p className="text-xs text-muted-foreground">Edges</p>
+          <p className="text-muted-foreground text-xs">Edges</p>
         </div>
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{typeCounts.size}</p>
-          <p className="text-xs text-muted-foreground">Types</p>
+          <p className="text-muted-foreground text-xs">Types</p>
         </div>
         {(entities?.length ?? 0) > 0 && (
           <div className="bg-background rounded-lg p-3">
             <p className="text-2xl font-bold">{entities!.length}</p>
-            <p className="text-xs text-muted-foreground">Entities</p>
+            <p className="text-muted-foreground text-xs">Entities</p>
           </div>
         )}
         {(entityRelations?.length ?? 0) > 0 && (
           <div className="bg-background rounded-lg p-3">
             <p className="text-2xl font-bold">{entityRelations!.length}</p>
-            <p className="text-xs text-muted-foreground">Relations</p>
+            <p className="text-muted-foreground text-xs">Relations</p>
           </div>
         )}
       </div>
 
       {sortedClusters.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+          <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
             Clusters
           </p>
           <div className="space-y-1.5">
             {sortedClusters.map(([cid, count]) => (
               <div key={cid} className="flex items-center gap-2 text-sm">
                 <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: colorMode === "cluster" ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length] : "#8b949e" }}
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor:
+                      colorMode === "cluster"
+                        ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length]
+                        : "#8b949e",
+                  }}
                 />
-                <span className="flex-1 truncate text-foreground">
+                <span className="text-foreground flex-1 truncate">
                   {clusterNames[String(cid)] || `Cluster ${cid}`}
                 </span>
-                <span className="text-xs text-muted-foreground">{count}</span>
+                <span className="text-muted-foreground text-xs">{count}</span>
               </div>
             ))}
           </div>
@@ -346,18 +425,32 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode, ent
 
       {sortedTagCategories.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+          <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
             Tag Categories
           </p>
           <div className="space-y-1.5">
             {sortedTagCategories.map(([category, count]) => (
               <div key={category} className="flex items-center gap-2 text-sm">
                 <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: colorMode === "tag" ? resolveNodeColor({ cluster: -1, memory_type: null, tags: [category + "/x"] }, "tag") : "#8b949e" }}
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor:
+                      colorMode === "tag"
+                        ? resolveNodeColor(
+                            {
+                              cluster: -1,
+                              memory_type: null,
+                              tags: [category + "/x"],
+                            },
+                            "tag",
+                          )
+                        : "#8b949e",
+                  }}
                 />
-                <span className="flex-1 text-foreground capitalize">{category}</span>
-                <span className="text-xs text-muted-foreground">{count}</span>
+                <span className="text-foreground flex-1 capitalize">
+                  {category}
+                </span>
+                <span className="text-muted-foreground text-xs">{count}</span>
               </div>
             ))}
           </div>
@@ -366,18 +459,30 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode, ent
 
       {sortedTypes.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+          <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
             Types
           </p>
           <div className="space-y-1.5">
             {sortedTypes.map(([type, count]) => (
               <div key={type} className="flex items-center gap-2 text-sm">
                 <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: colorMode === "type" ? resolveNodeColor({ cluster: -1, memory_type: type === "(none)" ? null : type, tags: [] }, "type") : "#8b949e" }}
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor:
+                      colorMode === "type"
+                        ? resolveNodeColor(
+                            {
+                              cluster: -1,
+                              memory_type: type === "(none)" ? null : type,
+                              tags: [],
+                            },
+                            "type",
+                          )
+                        : "#8b949e",
+                  }}
                 />
-                <span className="flex-1 text-foreground">{type}</span>
-                <span className="text-xs text-muted-foreground">{count}</span>
+                <span className="text-foreground flex-1">{type}</span>
+                <span className="text-muted-foreground text-xs">{count}</span>
               </div>
             ))}
           </div>
@@ -386,14 +491,14 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode, ent
 
       {sortedSources.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+          <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
             Sources
           </p>
           <div className="space-y-1.5">
             {sortedSources.map(([src, count]) => (
               <div key={src} className="flex items-center gap-2 text-sm">
-                <span className="flex-1 text-foreground">{src}</span>
-                <span className="text-xs text-muted-foreground">{count}</span>
+                <span className="text-foreground flex-1">{src}</span>
+                <span className="text-muted-foreground text-xs">{count}</span>
               </div>
             ))}
           </div>
@@ -402,23 +507,28 @@ function GraphSummary({ memories, clusterNames, visibleEdgeCount, colorMode, ent
 
       {sortedEntityTypes.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+          <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
             Entity Types
           </p>
           <div className="space-y-1.5">
             {sortedEntityTypes.map(([etype, count]) => (
               <div key={etype} className="flex items-center gap-2 text-sm">
                 <span
-                  className="w-2.5 h-2.5 shrink-0"
-                  style={{ backgroundColor: entityTypeColor(etype), clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
+                  className="h-2.5 w-2.5 shrink-0"
+                  style={{
+                    backgroundColor: entityTypeColor(etype),
+                    clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+                  }}
                 />
-                <span className="flex-1 text-foreground capitalize">{etype}</span>
-                <span className="text-xs text-muted-foreground">{count}</span>
+                <span className="text-foreground flex-1 capitalize">
+                  {etype}
+                </span>
+                <span className="text-muted-foreground text-xs">{count}</span>
               </div>
             ))}
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }

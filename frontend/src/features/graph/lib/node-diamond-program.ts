@@ -1,7 +1,7 @@
-import { NodeSquareProgram } from "@sigma/node-square";
-import { drawDiscNodeLabel } from "sigma/rendering";
-import type { Settings } from "sigma/settings";
-import type { NodeDisplayData, PartialButFor } from "sigma/types";
+import { NodeSquareProgram } from "@sigma/node-square"
+import { drawDiscNodeLabel } from "sigma/rendering"
+import type { Settings } from "sigma/settings"
+import type { NodeDisplayData, PartialButFor } from "sigma/types"
 
 const DIAMOND_VERTEX_SHADER = /* glsl */ `
 attribute vec4 a_id;
@@ -40,71 +40,71 @@ void main() {
 
   v_color.a *= bias;
 }
-`;
+`
 
 export function drawDiamondNodeHover(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
 ): void {
-  const size = settings.labelSize;
-  const font = settings.labelFont;
-  const weight = settings.labelWeight;
-  context.font = `${weight} ${size}px ${font}`;
+  const size = settings.labelSize
+  const font = settings.labelFont
+  const weight = settings.labelWeight
+  context.font = `${weight} ${size}px ${font}`
 
-  const PADDING = 2;
-  const r = data.size + PADDING;
+  const PADDING = 2
+  const r = data.size + PADDING
 
-  context.fillStyle = "#FFF";
-  context.shadowOffsetX = 0;
-  context.shadowOffsetY = 0;
-  context.shadowBlur = 8;
-  context.shadowColor = "#000";
+  context.fillStyle = "#FFF"
+  context.shadowOffsetX = 0
+  context.shadowOffsetY = 0
+  context.shadowBlur = 8
+  context.shadowColor = "#000"
 
   if (typeof data.label === "string") {
-    const textWidth = context.measureText(data.label).width;
-    const boxWidth = Math.round(textWidth + 5);
-    const boxHeight = Math.round(size + 2 * PADDING);
+    const textWidth = context.measureText(data.label).width
+    const boxWidth = Math.round(textWidth + 5)
+    const boxHeight = Math.round(size + 2 * PADDING)
 
-    context.beginPath();
-    context.moveTo(data.x, data.y - r);
-    context.lineTo(data.x + r, data.y);
-    context.lineTo(data.x + r, data.y + boxHeight / 2);
-    context.lineTo(data.x + r + boxWidth, data.y + boxHeight / 2);
-    context.lineTo(data.x + r + boxWidth, data.y - boxHeight / 2);
-    context.lineTo(data.x + r, data.y - boxHeight / 2);
-    context.lineTo(data.x + r, data.y);
-    context.lineTo(data.x, data.y + r);
-    context.lineTo(data.x - r, data.y);
-    context.closePath();
-    context.fill();
+    context.beginPath()
+    context.moveTo(data.x, data.y - r)
+    context.lineTo(data.x + r, data.y)
+    context.lineTo(data.x + r, data.y + boxHeight / 2)
+    context.lineTo(data.x + r + boxWidth, data.y + boxHeight / 2)
+    context.lineTo(data.x + r + boxWidth, data.y - boxHeight / 2)
+    context.lineTo(data.x + r, data.y - boxHeight / 2)
+    context.lineTo(data.x + r, data.y)
+    context.lineTo(data.x, data.y + r)
+    context.lineTo(data.x - r, data.y)
+    context.closePath()
+    context.fill()
   } else {
-    context.beginPath();
-    context.moveTo(data.x, data.y - r);
-    context.lineTo(data.x + r, data.y);
-    context.lineTo(data.x, data.y + r);
-    context.lineTo(data.x - r, data.y);
-    context.closePath();
-    context.fill();
+    context.beginPath()
+    context.moveTo(data.x, data.y - r)
+    context.lineTo(data.x + r, data.y)
+    context.lineTo(data.x, data.y + r)
+    context.lineTo(data.x - r, data.y)
+    context.closePath()
+    context.fill()
   }
 
-  context.shadowBlur = 0;
-  drawDiscNodeLabel(context, data, settings);
+  context.shadowBlur = 0
+  drawDiscNodeLabel(context, data, settings)
 }
 
 export class NodeDiamondProgram extends NodeSquareProgram {
   constructor(...args: ConstructorParameters<typeof NodeSquareProgram>) {
-    super(...args);
+    super(...args)
     // Clear inherited drawSquareNodeHover so sigma falls through to
     // defaultDrawNodeHover where we route to drawDiamondNodeHover
-    this.drawHover = undefined as any;
+    this.drawHover = undefined as any
   }
 
   getDefinition() {
-    const def = super.getDefinition();
+    const def = super.getDefinition()
     return {
       ...def,
       VERTEX_SHADER_SOURCE: DIAMOND_VERTEX_SHADER,
-    };
+    }
   }
 }

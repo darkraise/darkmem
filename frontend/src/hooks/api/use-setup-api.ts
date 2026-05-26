@@ -47,10 +47,17 @@ export type SetupLLM = {
   base_url: string | null
   api_key: string | null
   supports_embedding: boolean
-  purposes: Partial<Record<
-    "embedding" | "extraction" | "classification" | "reasoning" | "summarization" | "reranker",
-    SetupLLMPurpose
-  >>
+  purposes: Partial<
+    Record<
+      | "embedding"
+      | "extraction"
+      | "classification"
+      | "reasoning"
+      | "summarization"
+      | "reranker",
+      SetupLLMPurpose
+    >
+  >
 }
 
 export type SetupRequest = {
@@ -99,8 +106,12 @@ async function rawFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const errBody = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error((errBody as { detail?: string }).detail || `HTTP ${response.status}`)
+    const errBody = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }))
+    throw new Error(
+      (errBody as { detail?: string }).detail || `HTTP ${response.status}`,
+    )
   }
   return response.json() as Promise<T>
 }

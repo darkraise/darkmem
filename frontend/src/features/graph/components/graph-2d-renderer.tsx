@@ -1,46 +1,52 @@
-import { useRef, useEffect, useCallback } from "react";
-import Graph from "graphology";
-import Sigma from "sigma";
-import EdgeCurveProgram from "@sigma/edge-curve";
-import { NodeDiamondProgram, drawDiamondNodeHover } from "@/features/graph/lib/node-diamond-program";
-import { drawDiscNodeHover } from "sigma/rendering";
-import FA2Layout from "graphology-layout-forceatlas2/worker";
-import { inferSettings } from "graphology-layout-forceatlas2";
-import { computeSize } from "@/features/graph/lib/graph-utils";
-import { computeHullGroups, drawHullForSigma } from "@/features/graph/lib/graph-geometry";
-import type { HullMode } from "@/features/graph/lib/graph-geometry";
-import type { SizeMode } from "@/features/graph/lib/graph-utils";
+import { useRef, useEffect, useCallback } from "react"
+import Graph from "graphology"
+import Sigma from "sigma"
+import EdgeCurveProgram from "@sigma/edge-curve"
+import {
+  NodeDiamondProgram,
+  drawDiamondNodeHover,
+} from "@/features/graph/lib/node-diamond-program"
+import { drawDiscNodeHover } from "sigma/rendering"
+import FA2Layout from "graphology-layout-forceatlas2/worker"
+import { inferSettings } from "graphology-layout-forceatlas2"
+import { computeSize } from "@/features/graph/lib/graph-utils"
+import {
+  computeHullGroups,
+  drawHullForSigma,
+} from "@/features/graph/lib/graph-geometry"
+import type { HullMode } from "@/features/graph/lib/graph-geometry"
+import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import {
   resolveNodeColor,
   resolveGroupColor,
   entityTypeColor,
   lightenHex,
   darkenHex,
-} from "@/features/graph/lib/graph-colors";
-import type { ColorMode } from "@/features/graph/lib/graph-colors";
+} from "@/features/graph/lib/graph-colors"
+import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import type {
   UnifiedMemory,
   UnifiedGraphData,
   GraphEntity,
   EntityRelation,
-} from "@/hooks/api";
+} from "@/hooks/api"
 
 interface Graph2DRendererProps {
-  data: UnifiedGraphData;
-  filteredMemories: UnifiedMemory[];
-  filteredEdges: { source: string; target: string; score: number }[];
-  selectedNodeId: string | null;
-  onNodeSelect: (nodeId: string | null) => void;
-  onReady: () => void;
-  sizeMode: SizeMode;
-  colorMode: ColorMode;
-  spacing: number;
-  clusterTightness: number;
-  hullMode: HullMode;
-  entityLayerEnabled: boolean;
-  entities: GraphEntity[];
-  entityRelations: EntityRelation[];
-  onEntitySelect?: (entityId: string | null) => void;
+  data: UnifiedGraphData
+  filteredMemories: UnifiedMemory[]
+  filteredEdges: { source: string; target: string; score: number }[]
+  selectedNodeId: string | null
+  onNodeSelect: (nodeId: string | null) => void
+  onReady: () => void
+  sizeMode: SizeMode
+  colorMode: ColorMode
+  spacing: number
+  clusterTightness: number
+  hullMode: HullMode
+  entityLayerEnabled: boolean
+  entities: GraphEntity[]
+  entityRelations: EntityRelation[]
+  onEntitySelect?: (entityId: string | null) => void
 }
 
 export function Graph2DRenderer({
@@ -57,44 +63,44 @@ export function Graph2DRenderer({
   entityRelations,
   onEntitySelect,
 }: Graph2DRendererProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const sigmaRef = useRef<Sigma | null>(null);
-  const graphRef = useRef<Graph | null>(null);
-  const fa2Ref = useRef<FA2Layout | null>(null);
-  const selectedNodeIdRef = useRef(selectedNodeId);
-  const hoveredNodeRef = useRef<string | null>(null);
-  const colorModeRef = useRef(colorMode);
-  const hullModeRef = useRef(hullMode);
-  const filteredMemoriesRef = useRef(filteredMemories);
+  const containerRef = useRef<HTMLDivElement>(null)
+  const sigmaRef = useRef<Sigma | null>(null)
+  const graphRef = useRef<Graph | null>(null)
+  const fa2Ref = useRef<FA2Layout | null>(null)
+  const selectedNodeIdRef = useRef(selectedNodeId)
+  const hoveredNodeRef = useRef<string | null>(null)
+  const colorModeRef = useRef(colorMode)
+  const hullModeRef = useRef(hullMode)
+  const filteredMemoriesRef = useRef(filteredMemories)
 
   const buildGraph = useCallback(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current) return
 
     if (fa2Ref.current) {
-      fa2Ref.current.kill();
-      fa2Ref.current = null;
+      fa2Ref.current.kill()
+      fa2Ref.current = null
     }
     if (sigmaRef.current) {
-      sigmaRef.current.kill();
-      sigmaRef.current = null;
-      graphRef.current = null;
+      sigmaRef.current.kill()
+      sigmaRef.current = null
+      graphRef.current = null
     }
 
-    const graph = new Graph();
-    graphRef.current = graph;
+    const graph = new Graph()
+    graphRef.current = graph
 
-    const connMap = new Map<string, number>();
+    const connMap = new Map<string, number>()
     for (const e of filteredEdges) {
-      connMap.set(e.source, (connMap.get(e.source) ?? 0) + 1);
-      connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1);
+      connMap.set(e.source, (connMap.get(e.source) ?? 0) + 1)
+      connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1)
     }
 
-    const allNodeIds = new Set<string>();
+    const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
-      const color = resolveNodeColor(m, colorModeRef.current);
-      const conns = connMap.get(m.id) ?? 0;
-      const size = computeSize(sizeMode, conns, m.importance);
-      allNodeIds.add(m.id);
+      const color = resolveNodeColor(m, colorModeRef.current)
+      const conns = connMap.get(m.id) ?? 0
+      const size = computeSize(sizeMode, conns, m.importance)
+      allNodeIds.add(m.id)
       graph.addNode(m.id, {
         x: (Math.random() - 0.5) * 10,
         y: (Math.random() - 0.5) * 10,
@@ -103,34 +109,33 @@ export function Graph2DRenderer({
         color,
         borderColor: darkenHex(color),
         _kind: "memory",
-      });
+      })
     }
 
     for (const e of filteredEdges) {
       if (graph.hasNode(e.source) && graph.hasNode(e.target)) {
         try {
           const srcColor =
-            graph.getNodeAttribute(e.source, "color") || "#8b949e";
-          const edgeColor = darkenHex(srcColor, 0.6);
+            graph.getNodeAttribute(e.source, "color") || "#8b949e"
+          const edgeColor = darkenHex(srcColor, 0.6)
           graph.addEdge(e.source, e.target, {
             color: edgeColor,
             size: 2.5,
-          });
+          })
         } catch {
           /* duplicate */
         }
       }
     }
 
-
     if (entityLayerEnabled) {
       const visibleEntities = entities.filter((ent) =>
         ent.memory_ids.some((mid) => allNodeIds.has(mid)),
-      );
-      const entityIdSet = new Set(visibleEntities.map((ent) => ent.id));
+      )
+      const entityIdSet = new Set(visibleEntities.map((ent) => ent.id))
 
       for (const ent of visibleEntities) {
-        const bg = entityTypeColor(ent.entity_type);
+        const bg = entityTypeColor(ent.entity_type)
         graph.addNode(`entity:${ent.id}`, {
           x: (Math.random() - 0.5) * 10,
           y: (Math.random() - 0.5) * 10,
@@ -141,7 +146,7 @@ export function Graph2DRenderer({
           type: "diamond",
           _kind: "entity",
           _entityData: ent,
-        });
+        })
       }
 
       for (const r of entityRelations) {
@@ -151,7 +156,7 @@ export function Graph2DRenderer({
               color: "#ffa65770",
               size: 2.5,
               label: r.type,
-            });
+            })
           } catch {
             /* duplicate */
           }
@@ -165,7 +170,7 @@ export function Graph2DRenderer({
               graph.addEdge(`entity:${ent.id}`, mid, {
                 color: "#58606920",
                 size: 2.5,
-              });
+              })
             } catch {
               /* duplicate */
             }
@@ -186,163 +191,165 @@ export function Graph2DRenderer({
       edgeProgramClasses: { curve: EdgeCurveProgram },
       defaultDrawNodeHover: (context, data, settings) => {
         if (data.type === "diamond") {
-          drawDiamondNodeHover(context, data, settings);
+          drawDiamondNodeHover(context, data, settings)
         } else {
-          drawDiscNodeHover(context, data, settings);
+          drawDiscNodeHover(context, data, settings)
         }
       },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
       defaultNodeColor: "#8b949e",
       nodeReducer(node, data) {
-        const res = { ...data };
-        const hov = hoveredNodeRef.current;
-        const sel = selectedNodeIdRef.current;
+        const res = { ...data }
+        const hov = hoveredNodeRef.current
+        const sel = selectedNodeIdRef.current
         if (hov === node) {
-          res.color = lightenHex(data.color || "#8b949e", 0.4);
-          res.size = (data.size || 5) * 1.4;
-          res.highlighted = true;
+          res.color = lightenHex(data.color || "#8b949e", 0.4)
+          res.size = (data.size || 5) * 1.4
+          res.highlighted = true
         } else if (sel === node) {
-          res.color = lightenHex(data.color || "#8b949e", 0.4);
-          res.size = (data.size || 5) * 1.4;
-          res.highlighted = true;
+          res.color = lightenHex(data.color || "#8b949e", 0.4)
+          res.size = (data.size || 5) * 1.4
+          res.highlighted = true
           if (data.type !== "diamond") {
-            res.borderColor = "#ffffff";
-            res.borderSize = 3;
+            res.borderColor = "#ffffff"
+            res.borderSize = 3
           }
         } else if (sel && sel !== node) {
           const isNeighbor =
-            graph.hasEdge(sel, node) || graph.hasEdge(node, sel);
+            graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
           if (!isNeighbor) {
-            res.color = "#444444";
-            res.label = "";
+            res.color = "#444444"
+            res.label = ""
           }
         }
-        return res;
+        return res
       },
       edgeReducer(edge, data) {
-        const res = { ...data };
-        const hov = hoveredNodeRef.current;
-        const sel = selectedNodeIdRef.current;
-        const src = graph.source(edge);
-        const tgt = graph.target(edge);
+        const res = { ...data }
+        const hov = hoveredNodeRef.current
+        const sel = selectedNodeIdRef.current
+        const src = graph.source(edge)
+        const tgt = graph.target(edge)
 
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = (data.size || 2.5) * 2;
+            res.size = (data.size || 2.5) * 2
             const neighborColor =
               graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              "#8b949e";
-            res.color = lightenHex(neighborColor, 0.3);
+              "#8b949e"
+            res.color = lightenHex(neighborColor, 0.3)
           } else {
-            res.color = "#444444";
-            res.size = (data.size || 2.5) * 0.5;
+            res.color = "#444444"
+            res.size = (data.size || 2.5) * 0.5
           }
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = (data.size || 2.5) * 2;
+          res.size = (data.size || 2.5) * 2
           const neighborColor =
             graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            "#8b949e";
-          res.color = lightenHex(neighborColor, 0.3);
+            "#8b949e"
+          res.color = lightenHex(neighborColor, 0.3)
         }
 
-        return res;
+        return res
       },
-    });
+    })
 
     sigma.on("enterNode", ({ node }) => {
-      hoveredNodeRef.current = node;
-      containerRef.current!.style.cursor = "pointer";
-      sigma.refresh();
-    });
+      hoveredNodeRef.current = node
+      containerRef.current!.style.cursor = "pointer"
+      sigma.refresh()
+    })
     sigma.on("leaveNode", () => {
-      hoveredNodeRef.current = null;
-      containerRef.current!.style.cursor = "default";
-      sigma.refresh();
-    });
+      hoveredNodeRef.current = null
+      containerRef.current!.style.cursor = "default"
+      sigma.refresh()
+    })
 
     sigma.on("clickNode", ({ node }) => {
-      const attrs = graph.getNodeAttributes(node);
+      const attrs = graph.getNodeAttributes(node)
       if (attrs._kind === "entity") {
-        onEntitySelect?.(attrs._entityData?.id ?? null);
+        onEntitySelect?.(attrs._entityData?.id ?? null)
       } else {
-        onNodeSelect(node);
+        onNodeSelect(node)
       }
-    });
+    })
     sigma.on("clickStage", () => {
-      onNodeSelect(null);
-      onEntitySelect?.(null);
-    });
+      onNodeSelect(null)
+      onEntitySelect?.(null)
+    })
 
-    sigmaRef.current = sigma;
+    sigmaRef.current = sigma
 
-    const sigmaContainer = sigma.getContainer();
-    const hullCanvas = document.createElement("canvas");
-    hullCanvas.style.position = "absolute";
-    hullCanvas.style.inset = "0";
-    hullCanvas.style.pointerEvents = "none";
-    hullCanvas.style.zIndex = "1";
-    sigmaContainer.appendChild(hullCanvas);
-    const hullCtx = hullCanvas.getContext("2d")!;
+    const sigmaContainer = sigma.getContainer()
+    const hullCanvas = document.createElement("canvas")
+    hullCanvas.style.position = "absolute"
+    hullCanvas.style.inset = "0"
+    hullCanvas.style.pointerEvents = "none"
+    hullCanvas.style.zIndex = "1"
+    sigmaContainer.appendChild(hullCanvas)
+    const hullCtx = hullCanvas.getContext("2d")!
 
     function drawHulls() {
-      if (!sigmaRef.current || !containerRef.current) return;
-      const w = containerRef.current.clientWidth;
-      const h = containerRef.current.clientHeight;
-      const dpr = window.devicePixelRatio || 1;
+      if (!sigmaRef.current || !containerRef.current) return
+      const w = containerRef.current.clientWidth
+      const h = containerRef.current.clientHeight
+      const dpr = window.devicePixelRatio || 1
       if (hullCanvas.width !== w * dpr || hullCanvas.height !== h * dpr) {
-        hullCanvas.width = w * dpr;
-        hullCanvas.height = h * dpr;
-        hullCanvas.style.width = w + "px";
-        hullCanvas.style.height = h + "px";
+        hullCanvas.width = w * dpr
+        hullCanvas.height = h * dpr
+        hullCanvas.style.width = w + "px"
+        hullCanvas.style.height = h + "px"
       }
-      hullCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      hullCtx.clearRect(0, 0, w, h);
+      hullCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      hullCtx.clearRect(0, 0, w, h)
 
-      const hullGroups = computeHullGroups(filteredMemoriesRef.current, hullModeRef.current);
-      let idx = 0;
+      const hullGroups = computeHullGroups(
+        filteredMemoriesRef.current,
+        hullModeRef.current,
+      )
+      let idx = 0
       for (const [groupKey, members] of hullGroups) {
-        const color = resolveGroupColor(groupKey, idx, colorModeRef.current, hullModeRef.current);
-        drawHullForSigma(
-          hullCtx,
-          sigmaRef.current,
-          members,
-          color,
-          0.07,
-          0.2,
-        );
-        idx++;
+        const color = resolveGroupColor(
+          groupKey,
+          idx,
+          colorModeRef.current,
+          hullModeRef.current,
+        )
+        drawHullForSigma(hullCtx, sigmaRef.current, members, color, 0.07, 0.2)
+        idx++
       }
 
-      const borderTargets = new Set<string>();
-      if (hoveredNodeRef.current) borderTargets.add(hoveredNodeRef.current);
-      if (selectedNodeIdRef.current) borderTargets.add(selectedNodeIdRef.current);
+      const borderTargets = new Set<string>()
+      if (hoveredNodeRef.current) borderTargets.add(hoveredNodeRef.current)
+      if (selectedNodeIdRef.current)
+        borderTargets.add(selectedNodeIdRef.current)
       for (const nodeId of borderTargets) {
-        if (!graph.hasNode(nodeId)) continue;
-        const attrs = graph.getNodeAttributes(nodeId);
-        if (attrs._kind !== "entity") continue;
-        const displayData = sigmaRef.current.getNodeDisplayData(nodeId);
-        if (!displayData) continue;
-        const vp = sigmaRef.current.framedGraphToViewport(displayData);
-        const sizePixels = sigmaRef.current.scaleSize(displayData.size);
-        const r = sizePixels * Math.SQRT2 + 1;
-        const border = 3;
-        hullCtx.beginPath();
-        hullCtx.moveTo(vp.x, vp.y - r);
-        hullCtx.lineTo(vp.x + r, vp.y);
-        hullCtx.lineTo(vp.x, vp.y + r);
-        hullCtx.lineTo(vp.x - r, vp.y);
-        hullCtx.closePath();
-        hullCtx.strokeStyle = "#ffffff";
-        hullCtx.lineWidth = border;
-        hullCtx.stroke();
+        if (!graph.hasNode(nodeId)) continue
+        const attrs = graph.getNodeAttributes(nodeId)
+        if (attrs._kind !== "entity") continue
+        const displayData = sigmaRef.current.getNodeDisplayData(nodeId)
+        if (!displayData) continue
+        const vp = sigmaRef.current.framedGraphToViewport(displayData)
+        const sizePixels = sigmaRef.current.scaleSize(displayData.size)
+        const r = sizePixels * Math.SQRT2 + 1
+        const border = 3
+        hullCtx.beginPath()
+        hullCtx.moveTo(vp.x, vp.y - r)
+        hullCtx.lineTo(vp.x + r, vp.y)
+        hullCtx.lineTo(vp.x, vp.y + r)
+        hullCtx.lineTo(vp.x - r, vp.y)
+        hullCtx.closePath()
+        hullCtx.strokeStyle = "#ffffff"
+        hullCtx.lineWidth = border
+        hullCtx.stroke()
       }
     }
 
-    sigma.on("afterRender", drawHulls);
-    sigma.on("kill", () => hullCanvas.remove());
+    sigma.on("afterRender", drawHulls)
+    sigma.on("kill", () => hullCanvas.remove())
 
     const fa2 = new FA2Layout(graph, {
       settings: {
@@ -353,14 +360,14 @@ export function Graph2DRenderer({
         gravity: 1,
         slowDown: 12,
       },
-    });
-    fa2Ref.current = fa2;
-    fa2.start();
+    })
+    fa2Ref.current = fa2
+    fa2.start()
     setTimeout(() => {
-      if (fa2Ref.current) fa2Ref.current.stop();
-    }, 8000);
+      if (fa2Ref.current) fa2Ref.current.stop()
+    }, 8000)
 
-    onReady();
+    onReady()
   }, [
     filteredMemories,
     filteredEdges,
@@ -372,45 +379,45 @@ export function Graph2DRenderer({
     onNodeSelect,
     onEntitySelect,
     onReady,
-  ]);
+  ])
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => buildGraph());
+    const frame = requestAnimationFrame(() => buildGraph())
     return () => {
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(frame)
       if (fa2Ref.current) {
-        fa2Ref.current.kill();
-        fa2Ref.current = null;
+        fa2Ref.current.kill()
+        fa2Ref.current = null
       }
       if (sigmaRef.current) {
-        sigmaRef.current.kill();
-        sigmaRef.current = null;
-        graphRef.current = null;
+        sigmaRef.current.kill()
+        sigmaRef.current = null
+        graphRef.current = null
       }
-    };
-  }, [buildGraph]);
+    }
+  }, [buildGraph])
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    const el = containerRef.current
+    if (!el) return
     const observer = new ResizeObserver(() => {
-      sigmaRef.current?.refresh();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+      sigmaRef.current?.refresh()
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
-    selectedNodeIdRef.current = selectedNodeId;
-    sigmaRef.current?.refresh();
-  }, [selectedNodeId]);
+    selectedNodeIdRef.current = selectedNodeId
+    sigmaRef.current?.refresh()
+  }, [selectedNodeId])
 
   useEffect(() => {
-    colorModeRef.current = colorMode;
-    hullModeRef.current = hullMode;
-    filteredMemoriesRef.current = filteredMemories;
-    sigmaRef.current?.refresh();
-  }, [colorMode, hullMode, filteredMemories]);
+    colorModeRef.current = colorMode
+    hullModeRef.current = hullMode
+    filteredMemoriesRef.current = filteredMemories
+    sigmaRef.current?.refresh()
+  }, [colorMode, hullMode, filteredMemories])
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  return <div ref={containerRef} className="absolute inset-0" />
 }

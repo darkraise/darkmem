@@ -1,9 +1,14 @@
 import { z } from "zod"
 
-export const setupPasswordSchema = z.object({
-  value: z.string().min(8, "Password must be at least 8 characters"),
-  confirm: z.string(),
-}).refine((d) => d.value === d.confirm, { message: "Passwords do not match", path: ["confirm"] })
+export const setupPasswordSchema = z
+  .object({
+    value: z.string().min(8, "Password must be at least 8 characters"),
+    confirm: z.string(),
+  })
+  .refine((d) => d.value === d.confirm, {
+    message: "Passwords do not match",
+    path: ["confirm"],
+  })
 
 export const setupLLMSchema = z.object({
   skipped: z.boolean(),
@@ -17,11 +22,13 @@ export const setupLLMSchema = z.object({
 export const setupReposSchema = z.object({
   skipped: z.boolean(),
   basePath: z.string(),
-  detected: z.array(z.object({
-    name: z.string().min(1),
-    subPath: z.string(),
-    selected: z.boolean(),
-  })),
+  detected: z.array(
+    z.object({
+      name: z.string().min(1),
+      subPath: z.string(),
+      selected: z.boolean(),
+    }),
+  ),
 })
 
 export const setupCompleteSchema = z.object({
