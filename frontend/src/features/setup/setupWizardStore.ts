@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { persist } from "zustand/middleware"
 
 export type Purpose =
   | "embedding"
@@ -92,46 +93,60 @@ const initial = () => ({
   repos: { skipped: false, basePath: "", detected: [] as DetectedRepo[] },
 })
 
-export const useSetupWizardStore = create<SetupWizardState>((set) => ({
-  ...initial(),
-  setStep: (step) => set({ step }),
-  setPassword: (value, confirm) => set({ password: { value, confirm } }),
-  setLlmField: (key, value) =>
-    set((s) => ({ llm: { ...s.llm, [key]: value } })),
-  setLlmPurpose: (purpose, draft) =>
-    set((s) => ({
-      llm: {
-        ...s.llm,
-        perPurpose: {
-          ...s.llm.perPurpose,
-          [purpose]: { ...s.llm.perPurpose[purpose], ...draft },
-        },
-      },
-    })),
-  setLlmSkipped: (skipped) => set((s) => ({ llm: { ...s.llm, skipped } })),
-  setReposBasePath: (basePath) =>
-    set((s) => ({ repos: { ...s.repos, basePath } })),
-  setReposDetected: (detected) =>
-    set((s) => ({ repos: { ...s.repos, detected } })),
-  toggleRepoSelected: (subPath) =>
-    set((s) => ({
-      repos: {
-        ...s.repos,
-        detected: s.repos.detected.map((r) =>
-          r.subPath === subPath ? { ...r, selected: !r.selected } : r,
-        ),
-      },
-    })),
-  renameDetectedRepo: (subPath, name) =>
-    set((s) => ({
-      repos: {
-        ...s.repos,
-        detected: s.repos.detected.map((r) =>
-          r.subPath === subPath ? { ...r, name } : r,
-        ),
-      },
-    })),
-  setReposSkipped: (skipped) =>
-    set((s) => ({ repos: { ...s.repos, skipped } })),
-  reset: () => set(initial()),
-}))
+export const useSetupWizardStore = create<SetupWizardState>()(
+  persist(
+    (set) => ({
+      ...initial(),
+      setStep: (step) => set({ step }),
+      setPassword: (value, confirm) => set({ password: { value, confirm } }),
+      setLlmField: (key, value) =>
+        set((s) => ({ llm: { ...s.llm, [key]: value } })),
+      setLlmPurpose: (purpose, draft) =>
+        set((s) => ({
+          llm: {
+            ...s.llm,
+            perPurpose: {
+              ...s.llm.perPurpose,
+              [purpose]: { ...s.llm.perPurpose[purpose], ...draft },
+            },
+          },
+        })),
+      setLlmSkipped: (skipped) => set((s) => ({ llm: { ...s.llm, skipped } })),
+      setReposBasePath: (basePath) =>
+        set((s) => ({ repos: { ...s.repos, basePath } })),
+      setReposDetected: (detected) =>
+        set((s) => ({ repos: { ...s.repos, detected } })),
+      toggleRepoSelected: (subPath) =>
+        set((s) => ({
+          repos: {
+            ...s.repos,
+            detected: s.repos.detected.map((r) =>
+              r.subPath === subPath ? { ...r, selected: !r.selected } : r,
+            ),
+          },
+        })),
+      renameDetectedRepo: (subPath, name) =>
+        set((s) => ({
+          repos: {
+            ...s.repos,
+            detected: s.repos.detected.map((r) =>
+              r.subPath === subPath ? { ...r, name } : r,
+            ),
+          },
+        })),
+      setReposSkipped: (skipped) =>
+        set((s) => ({ repos: { ...s.repos, skipped } })),
+      reset: () => set(initial()),
+    }),
+    {
+      name: "darkmem-setup-wizard",
+      version: 1,
+      partialize: (s) => ({
+        step: s.step,
+        password: { value: "", confirm: "" },
+        llm: s.llm,
+        repos: s.repos,
+      }),
+    },
+  ),
+)

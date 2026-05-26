@@ -15,7 +15,7 @@ import { ORPHAN_PROMPTS } from "@/components/pipeline/prompt-map"
 import { LLMProvidersPanel } from "@/components/pipeline/LLMProvidersPanel"
 import { LLMProfilesPanel } from "@/components/pipeline/LLMProfilesPanel"
 import { MLProfilesPanel } from "@/components/pipeline/MLProfilesPanel"
-import { ServerPathBrowser } from "@/components/setup/ServerPathBrowser"
+import { ServerPathBrowser } from "@/features/setup/components/ServerPathBrowser"
 import { useReposPath, useUpdateReposPath } from "@/hooks/api/use-setup-api"
 import {
 Card,
