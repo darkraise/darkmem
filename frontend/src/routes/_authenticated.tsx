@@ -1,25 +1,15 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { createFileRoute, Outlet, redirect, useRouter } from "@tanstack/react-router"
 import {
-  Home,
-  Brain,
-  MessageSquare,
-  Share2,
-  GitBranch,
-  Orbit,
-  Network,
-  FolderGit2,
-  BookOpen,
-  BarChart3,
-  Activity,
-  Cpu,
-  Clock,
-  Settings,
+  Home, Brain, MessageSquare, Share2, GitBranch, Orbit, Network,
+  FolderGit2, BookOpen, BarChart3, Activity, Cpu, Clock, Settings,
 } from "lucide-react"
-import { SidebarLayout } from "darkraise-ui/layout"
+import {
+  useLayoutStore, SidebarLayout, TopNavLayout, StackedLayout,
+} from "darkraise-ui/layout"
+import type { NavGroup } from "darkraise-ui/layout"
+import { useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
-import type { NavGroup } from "darkraise-ui/layout"
-
 
 const nav: NavGroup[] = [
   {
@@ -58,37 +48,54 @@ const nav: NavGroup[] = [
   },
 ]
 
-function AuthenticatedLayout() {
-  useWebSocket()
-
-  const handleLogout = async () => {
-    const { logout } = await import("@/lib/api")
-    await logout()
-    window.location.href = "/login"
-  }
-
-  return (
-    <SidebarLayout
-      nav={nav}
-      user={{ name: "Admin", email: "" }}
-      onLogout={handleLogout}
-    >
-      <Outlet />
-    </SidebarLayout>
-  )
-}
+const AUTH_VERIFY_TTL_MS = 60_000
+let _lastAuthVerifyAt = 0
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
     if (!useAuthStore.getState().isAuthenticated) {
       throw redirect({ to: "/login" })
     }
+    const now = Date.now()
+    if (now - _lastAuthVerifyAt < AUTH_VERIFY_TTL_MS) return
     const { checkAuth } = await import("@/lib/api")
     const ok = await checkAuth()
     if (!ok) {
       useAuthStore.getState().logout()
       throw redirect({ to: "/login" })
     }
+    _lastAuthVerifyAt = now
   },
   component: AuthenticatedLayout,
 })
+
+function AuthenticatedLayout() {
+  useWebSocket()
+  const layout = useLayoutStore((s) => s.layout)
+  const router = useRouter()
+  const queryClient = useQueryClient()
+
+  const handleLogout = async () => {
+    const { logout } = await import("@/lib/api")
+    await logout()
+    useAuthStore.getState().logout()
+    queryClient.clear()
+    router.navigate({ to: "/login" })
+  }
+
+  const Shell =
+    layout === "top-nav" ? TopNavLayout :
+    layout === "stacked"  ? StackedLayout :
+                            SidebarLayout
+
+  return (
+    <Shell
+      nav={nav}
+      user={{ name: "Admin", email: "" }}
+      onLogout={handleLogout}
+      showLayoutSwitcher
+    >
+      <Outlet />
+    </Shell>
+  )
+}
