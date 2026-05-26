@@ -37,6 +37,9 @@ import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
 import { Plus, RefreshCw, X } from "lucide-react"
+import { EditRepoDialog } from "@/features/repos/components/edit-repo-dialog"
+import { ReindexDialog } from "@/features/repos/components/reindex-dialog"
+import type { EditRepoInput, ReindexInput } from "@/features/repos/schemas"
 
 export const Route = createFileRoute("/_authenticated/repos")({
   component: RepositoriesPage,
@@ -170,96 +173,6 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-function EditRepoDialog({ repo, onClose }: { repo: Repo; onClose: () => void }) {
-  const updateRepo = useUpdateRepo()
-  const [form, setForm] = useState<RepoUpdateParams>({
-    name: repo.name,
-    default_branch: repo.default_branch,
-    auth_token: "",
-    auto_sync: repo.auto_sync,
-  })
-
-  const set = <K extends keyof RepoUpdateParams>(field: K, value: RepoUpdateParams[K]) =>
-    setForm((prev) => ({ ...prev, [field]: value }))
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const payload: RepoUpdateParams = {}
-    if (form.name && form.name !== repo.name) payload.name = form.name
-    if (form.default_branch && form.default_branch !== repo.default_branch)
-      payload.default_branch = form.default_branch
-    if (form.auto_sync !== repo.auto_sync) payload.auto_sync = form.auto_sync
-    if (form.auth_token && form.auth_token.trim() !== "")
-      payload.auth_token = form.auth_token
-
-    if (Object.keys(payload).length === 0) {
-      toast.info("No changes to save")
-      onClose()
-      return
-    }
-
-    updateRepo.mutate(
-      { id: repo.id, data: payload },
-      {
-        onSuccess: () => {
-          toast.success("Repository updated")
-          onClose()
-        },
-        onError: (err) => toast.error(`Failed to update: ${err.message}`),
-      },
-    )
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <div>
-        <Label className="text-xs text-muted-foreground">Name</Label>
-        <Input
-          value={form.name ?? ""}
-          onChange={(e) => set("name", e.target.value)}
-          required
-        />
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">Default branch</Label>
-        <Input
-          value={form.default_branch ?? "main"}
-          onChange={(e) => set("default_branch", e.target.value)}
-        />
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">
-          Auth token{" "}
-          <span className="text-[10px]">
-            (leave blank to keep current)
-          </span>
-        </Label>
-        <Input
-          type="password"
-          value={form.auth_token ?? ""}
-          onChange={(e) => set("auth_token", e.target.value)}
-          placeholder="Paste a new token to rotate"
-        />
-      </div>
-      <div className="flex items-center justify-between rounded-md border px-3 py-2">
-        <div>
-          <div className="text-sm">Auto-sync</div>
-          <div className="text-xs text-muted-foreground">
-            When off, the repo_sync job skips this repo. Manual reindex still works.
-          </div>
-        </div>
-        <Switch
-          checked={form.auto_sync ?? true}
-          onCheckedChange={(v) => set("auto_sync", v)}
-        />
-      </div>
-      <Button type="submit" className="w-full" disabled={updateRepo.isPending}>
-        {updateRepo.isPending ? "Saving..." : "Save changes"}
-      </Button>
-    </form>
-  )
-}
 
 function RepoTaskList({ repo }: { repo: Repo }) {
   const { data: tasks } = useRepoTasks(
@@ -313,13 +226,7 @@ function RepositoriesPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
-
-  const handleReindex = (id: string) => {
-    reindexRepo.mutate(id, {
-      onSuccess: () => toast.success("Reindex triggered"),
-      onError: () => toast.error("Reindex failed"),
-    })
-  }
+  const [reindexingRepo, setReindexingRepo] = useState<Repo | null>(null)
 
   const handleDelete = (id: string, name: string) => {
     if (!window.confirm(`Delete repository "${name}"?`)) return
@@ -459,7 +366,7 @@ function RepositoriesPage() {
             variant="ghost"
             className="h-7 px-2 text-xs"
             disabled={row.original.status === "cloning" || row.original.status === "indexing"}
-            onClick={() => handleReindex(row.original.id)}
+            onClick={() => setReindexingRepo(row.original)}
           >
             <RefreshCw
               className={`w-3.5 h-3.5 mr-1 ${row.original.status === "indexing" ? "animate-spin" : ""}`}
@@ -527,19 +434,52 @@ function RepositoriesPage() {
         <StatValue label="Enrichment" value={enrichmentLabel} />
       </div>
 
-      <Dialog
-        open={editingRepo !== null}
-        onOpenChange={(open) => !open && setEditingRepo(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Repository</DialogTitle>
-          </DialogHeader>
-          {editingRepo && (
-            <EditRepoDialog repo={editingRepo} onClose={() => setEditingRepo(null)} />
-          )}
-        </DialogContent>
-      </Dialog>
+      <EditRepoDialog
+        open={!!editingRepo}
+        onOpenChange={(o) => !o && setEditingRepo(null)}
+        initial={
+          editingRepo
+            ? {
+                name: editingRepo.name,
+                path: editingRepo.local_path ?? "",
+                branch: editingRepo.default_branch,
+                sync_cron: "0 */6 * * *",
+                auto_sync: editingRepo.auto_sync,
+                enrich_symbols: true,
+                generate_wiki: true,
+              }
+            : {}
+        }
+        onSave={async (v: EditRepoInput) => {
+          if (!editingRepo) return
+          const data: RepoUpdateParams = {}
+          if (v.name !== editingRepo.name) data.name = v.name
+          if (v.branch !== editingRepo.default_branch) data.default_branch = v.branch
+          if (v.auto_sync !== editingRepo.auto_sync) data.auto_sync = v.auto_sync
+          if (Object.keys(data).length === 0) {
+            toast.info("No changes to save")
+            return
+          }
+          await updateRepo.mutateAsync(
+            { id: editingRepo.id, data },
+            {
+              onSuccess: () => toast.success("Repository updated"),
+              onError: (err) => toast.error(`Failed to update: ${err.message}`),
+            },
+          )
+        }}
+      />
+      <ReindexDialog
+        open={!!reindexingRepo}
+        onOpenChange={(o) => !o && setReindexingRepo(null)}
+        onConfirm={async (v: ReindexInput) => {
+          if (!reindexingRepo) return
+          await reindexRepo.mutateAsync(reindexingRepo.id, {
+            onSuccess: () => toast.success("Reindex triggered"),
+            onError: () => toast.error("Reindex failed"),
+          })
+        }}
+      />
 
       {isLoading ? (
         <DataTableSkeleton columnCount={9} />
