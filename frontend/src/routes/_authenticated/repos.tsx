@@ -32,7 +32,7 @@ DialogTitle,
 DialogTrigger,
 } from "darkraise-ui/components/dialog"
 import { PageHeader } from "darkraise-ui/layout"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
 import { Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react"
 

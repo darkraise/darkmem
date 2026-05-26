@@ -36,7 +36,7 @@ TabsList,
 TabsTrigger,
 TabsContent,
 } from "darkraise-ui/components/tabs"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { PageHeader } from "darkraise-ui/layout"
 import { resolveStoredTab, type SettingsTabValue } from "@/lib/settings-tab"
 

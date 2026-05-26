@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "darkraise-ui/components/dialog"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { Plus, Trash2 } from "lucide-react"
 import {
   useMlProfiles,

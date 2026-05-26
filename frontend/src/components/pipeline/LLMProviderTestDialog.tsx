@@ -9,7 +9,7 @@ import {
 import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
 import { Badge } from "darkraise-ui/components/badge"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import {
   useProviderModels,
   useTestLlmProvider,

@@ -19,7 +19,7 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 
 const MEMORY_TYPES = [
   "fact",

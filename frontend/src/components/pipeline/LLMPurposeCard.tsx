@@ -6,7 +6,7 @@ import { Label } from "darkraise-ui/components/label"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Badge } from "darkraise-ui/components/badge"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import {
 useUpdateLlmConfig,
 useLlmProviders,

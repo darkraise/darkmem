@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent } from "darkraise-ui/components/card"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { useSetupWizardStore, PURPOSES } from "@/features/setup/setupWizardStore"
 import { useFinalizeSetup, type SetupRequest, type SetupLLM } from "@/hooks/api/use-setup-api"
 import { ParticleBackground } from "./ParticleBackground"

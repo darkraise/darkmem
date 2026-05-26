@@ -11,7 +11,7 @@ TooltipProvider,
 TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
 import { CircleHelp, Trash2 } from "lucide-react"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
 import {
 useLlmProviders,

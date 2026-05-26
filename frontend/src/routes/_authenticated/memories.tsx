@@ -24,7 +24,7 @@ SheetTitle,
 import { PageHeader } from "darkraise-ui/layout"
 import { X, Plus } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
 
 interface MemoriesSearch {

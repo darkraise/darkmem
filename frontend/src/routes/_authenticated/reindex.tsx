@@ -34,7 +34,7 @@ AlertDialogTitle,
 AlertDialogTrigger,
 } from "darkraise-ui/components/alert-dialog"
 import { PageHeader } from "darkraise-ui/layout"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 
 export const Route = createFileRoute("/_authenticated/reindex")({
 component: PipelinePage,

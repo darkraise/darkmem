@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "darkraise-ui/components/select"
 import { PageHeader } from "darkraise-ui/layout"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { Play, Save } from "lucide-react"
 import { useJobs, useUpdateJob, useTriggerJob, type Job } from "@/hooks/api"
 

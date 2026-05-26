@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
 
 function showPipelineToast(event: string, data: PipelineStatus) {

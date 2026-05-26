@@ -3,7 +3,7 @@ import { Textarea } from "darkraise-ui/components/textarea"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { Label } from "darkraise-ui/components/label"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { useUpdateSystemPrompts, type PipelineState } from "@/hooks/api"
 
 interface Props {

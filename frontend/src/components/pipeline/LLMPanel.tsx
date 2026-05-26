@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 import { useNavigate } from "@tanstack/react-router"
-import { toast } from "sonner"
+import { toast } from "darkraise-ui/components/sonner"
 import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
 import type { LLMPurpose } from "./prompt-map"
