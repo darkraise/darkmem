@@ -1,9 +1,13 @@
-import { useRef, useEffect } from "react"
 import { Toggle } from "darkraise-ui/components/toggle"
 import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "darkraise-ui/components/popover"
 import { Slider } from "darkraise-ui/components/slider"
 import { Settings, RotateCcw } from "lucide-react"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
@@ -21,8 +25,6 @@ interface GraphToolbarProps {
   onHullModeChange: (mode: HullMode) => void
   entityLayer: boolean
   onEntityLayerChange: (v: boolean) => void
-  showSettings: boolean
-  onToggleSettings: (pressed: boolean) => void
   sizeMode: SizeMode
   onSizeModeChange: (mode: SizeMode) => void
   similarityThreshold: number
@@ -80,8 +82,6 @@ export function GraphToolbar({
   onHullModeChange,
   entityLayer,
   onEntityLayerChange,
-  showSettings,
-  onToggleSettings,
   sizeMode,
   onSizeModeChange,
   similarityThreshold,
@@ -94,27 +94,6 @@ export function GraphToolbar({
   onClusterTightnessChange,
   onReset,
 }: GraphToolbarProps) {
-  const popoverRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!showSettings) return
-    function handleClick(e: MouseEvent) {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node)
-      ) {
-        onToggleSettings(false)
-      }
-    }
-    const timer = setTimeout(
-      () => document.addEventListener("click", handleClick),
-      0,
-    )
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener("click", handleClick)
-    }
-  }, [showSettings, onToggleSettings])
 
   return (
     <div className="pointer-events-none absolute top-3 right-0 left-0 z-20 flex flex-col items-center">
@@ -224,14 +203,99 @@ export function GraphToolbar({
           Entities
         </Toggle>
 
-        <Toggle
-          pressed={showSettings}
-          onPressedChange={onToggleSettings}
-          aria-label="Toggle graph settings"
-          className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-xs"
-        >
-          <Settings className="h-3.5 w-3.5" />
-        </Toggle>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Toggle
+              aria-label="Toggle graph settings"
+              className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-xs"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Toggle>
+          </PopoverTrigger>
+          <PopoverContent
+            side="bottom"
+            align="end"
+            className="bg-card/95 border-border w-[340px] rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-foreground text-xs font-semibold">
+                Settings
+              </span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-14 shrink-0 text-right text-xs">
+                  Size
+                </span>
+                <ToggleGroup
+                  type="single"
+                  value={sizeMode}
+                  onValueChange={(v) => {
+                    if (v) onSizeModeChange(v as SizeMode)
+                  }}
+                  className="gap-0"
+                >
+                  <ToggleGroupItem
+                    value="connections"
+                    variant="outline"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
+                  >
+                    Connections
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="importance"
+                    variant="outline"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
+                  >
+                    Importance
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="uniform"
+                    variant="outline"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
+                  >
+                    Uniform
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              <SliderRow
+                label="Edges"
+                min={0.3}
+                max={0.95}
+                step={0.05}
+                value={similarityThreshold}
+                onChange={onSimilarityChange}
+                float
+              />
+              <SliderRow
+                label="Min Size"
+                min={2}
+                max={10}
+                step={1}
+                value={minClusterSize}
+                onChange={onMinClusterSizeChange}
+              />
+              {viewMode === "2d" && (
+                <SliderRow
+                  label="Tightness"
+                  min={30}
+                  max={300}
+                  step={10}
+                  value={clusterTightness}
+                  onChange={onClusterTightnessChange}
+                />
+              )}
+              <SliderRow
+                label="Spacing"
+                min={viewMode === "2d" ? 100 : 30}
+                max={viewMode === "2d" ? 500 : 200}
+                step={viewMode === "2d" ? 25 : 10}
+                value={spacing}
+                onChange={onSpacingChange}
+              />
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <button
           type="button"
@@ -243,93 +307,6 @@ export function GraphToolbar({
         </button>
       </div>
 
-      {showSettings && (
-        <div
-          ref={popoverRef}
-          className="bg-card/95 border-border pointer-events-auto mt-2 rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
-          style={{ width: 340 }}
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-foreground text-xs font-semibold">
-              Settings
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground w-14 shrink-0 text-right text-xs">
-                Size
-              </span>
-              <ToggleGroup
-                type="single"
-                value={sizeMode}
-                onValueChange={(v) => {
-                  if (v) onSizeModeChange(v as SizeMode)
-                }}
-                className="gap-0"
-              >
-                <ToggleGroupItem
-                  value="connections"
-                  variant="outline"
-                  className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
-                >
-                  Connections
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="importance"
-                  variant="outline"
-                  className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
-                >
-                  Importance
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="uniform"
-                  variant="outline"
-                  className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
-                >
-                  Uniform
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-
-            <SliderRow
-              label="Edges"
-              min={0.3}
-              max={0.95}
-              step={0.05}
-              value={similarityThreshold}
-              onChange={onSimilarityChange}
-              float
-            />
-            <SliderRow
-              label="Min Size"
-              min={2}
-              max={10}
-              step={1}
-              value={minClusterSize}
-              onChange={onMinClusterSizeChange}
-            />
-            {viewMode === "2d" && (
-              <SliderRow
-                label="Tightness"
-                min={30}
-                max={300}
-                step={10}
-                value={clusterTightness}
-                onChange={onClusterTightnessChange}
-              />
-            )}
-            <SliderRow
-              label="Spacing"
-              min={viewMode === "2d" ? 100 : 30}
-              max={viewMode === "2d" ? 500 : 200}
-              step={viewMode === "2d" ? 25 : 10}
-              value={spacing}
-              onChange={onSpacingChange}
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }

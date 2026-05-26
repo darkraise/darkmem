@@ -2,6 +2,7 @@ import { useRef, useCallback } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { SendHorizonal, Square } from "lucide-react"
+import { ChatGradientButton } from "./chat-gradient-button"
 
 interface ChatInputProps {
   onSend: (message: string) => void
@@ -85,13 +86,13 @@ export function ChatInput({
             <Square className="h-3.5 w-3.5" />
           </Button>
         ) : (
-          <Button
-            className="mb-0.5 h-9 w-9 shrink-0 rounded-xl border-0 bg-gradient-to-r from-indigo-500 to-violet-500 p-0 hover:from-indigo-400 hover:to-violet-400"
+          <ChatGradientButton
+            className="mb-0.5 h-9 w-9 shrink-0 rounded-xl p-0"
             onClick={handleSubmit}
             disabled={disabled}
           >
             <SendHorizonal className="h-4 w-4 text-white" />
-          </Button>
+          </ChatGradientButton>
         )}
       </div>
       <p className="text-muted-foreground/30 text-center text-xs">

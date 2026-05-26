@@ -23,6 +23,7 @@ import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
 import { Play, Save } from "lucide-react"
 import { useJobs, useUpdateJob, useTriggerJob, type Job } from "@/hooks/api"
+import { relativeTime as _relativeTime } from "@/lib/format"
 
 const CRON_PRESETS: { label: string; value: string }[] = [
   { label: "Every 10 seconds", value: "*/10 * * * * *" },
@@ -43,14 +44,7 @@ export const Route = createFileRoute("/_authenticated/jobs")({
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never"
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return _relativeTime(iso)
 }
 
 // Inline cron editor lives in the cell renderer to keep per-row draft state.

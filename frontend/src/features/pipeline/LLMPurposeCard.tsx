@@ -8,6 +8,18 @@ import { Textarea } from "darkraise-ui/components/textarea"
 import { Badge } from "darkraise-ui/components/badge"
 import { toast } from "darkraise-ui/components/sonner"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "darkraise-ui/components/collapsible"
+import {
   useUpdateLlmConfig,
   useLlmProviders,
   useLlmProfiles,
@@ -192,7 +204,7 @@ export function LLMPurposeCard({
           >
             <div className="flex items-center gap-2">
               <Label className="text-xs">Profile</Label>
-              <select
+              <Select
                 value={
                   draft.ml_profile_ref &&
                   mlProfileNames.includes(draft.ml_profile_ref)
@@ -201,8 +213,7 @@ export function LLMPurposeCard({
                       ? `llm:${activeProfileName}`
                       : ""
                 }
-                onChange={(e) => {
-                  const value = e.target.value
+                onValueChange={(value) => {
                   if (!value) return
                   if (value.startsWith("ml:")) {
                     const mlName = value.slice(3)
@@ -251,34 +262,41 @@ export function LLMPurposeCard({
                   )
                   setDirty(true)
                 }}
-                className="border-border bg-background h-9 flex-1 rounded border px-2 text-sm"
-                title="Apply a saved Profile to this purpose."
                 disabled={
                   profileNames.length === 0 && mlProfileNames.length === 0
                 }
               >
-                <option value="">
-                  {profileNames.length === 0 && mlProfileNames.length === 0
-                    ? "(no Profiles available — create one in Settings)"
-                    : "Apply a Profile…"}
-                </option>
-                {profileNames.map((name) => {
-                  const p = allLlmProfiles[name]
-                  return (
-                    <option key={`llm-${name}`} value={`llm:${name}`}>
-                      {name} — {p.provider_ref}/{p.model}
-                    </option>
-                  )
-                })}
-                {mlProfileNames.map((name) => {
-                  const m = allMlProfiles[name]
-                  return (
-                    <option key={`ml-${name}`} value={`ml:${name}`}>
-                      [ml] {name} — {m.model_repo}
-                    </option>
-                  )
-                })}
-              </select>
+                <SelectTrigger
+                  className="h-9 flex-1 text-sm"
+                  title="Apply a saved Profile to this purpose."
+                >
+                  <SelectValue
+                    placeholder={
+                      profileNames.length === 0 && mlProfileNames.length === 0
+                        ? "(no Profiles available — create one in Settings)"
+                        : "Apply a Profile…"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {profileNames.map((name) => {
+                    const p = allLlmProfiles[name]
+                    return (
+                      <SelectItem key={`llm-${name}`} value={`llm:${name}`}>
+                        {name} — {p.provider_ref}/{p.model}
+                      </SelectItem>
+                    )
+                  })}
+                  {mlProfileNames.map((name) => {
+                    const m = allMlProfiles[name]
+                    return (
+                      <SelectItem key={`ml-${name}`} value={`ml:${name}`}>
+                        [ml] {name} — {m.model_repo}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
               {linkedToProfile && !draft.ml_profile_ref && (
                 <Badge
                   variant="secondary"
@@ -338,20 +356,26 @@ export function LLMPurposeCard({
 
             <div className="flex items-center gap-2">
               <Label className="text-xs">API</Label>
-              <select
+              <Select
                 value={draft.api_kind ?? "openai"}
-                onChange={(e) => patch({ api_kind: e.target.value })}
+                onValueChange={(v) => patch({ api_kind: v })}
                 disabled={linkedToProfile}
-                className="border-border bg-background h-7 rounded border px-2 text-xs disabled:opacity-50"
-                title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds reserve a slot for future native adapters and currently route through OpenAI compat."
               >
-                {API_KIND_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                    {opt.note ? ` — ${opt.note}` : ""}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className="h-7 text-xs disabled:opacity-50"
+                  title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds reserve a slot for future native adapters and currently route through OpenAI compat."
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {API_KIND_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                      {opt.note ? ` — ${opt.note}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {linkedToProfile && (
                 <span className="text-muted-foreground text-[10px]">
                   managed by profile <code>{draft.provider_ref}</code>
@@ -369,25 +393,27 @@ export function LLMPurposeCard({
               </div>
             )}
 
-            <details>
-              <summary className="text-muted-foreground cursor-pointer text-[10px]">
+            <Collapsible>
+              <CollapsibleTrigger className="text-muted-foreground cursor-pointer text-[10px]">
                 More… (JSON params)
-              </summary>
-              <Textarea
-                value={paramsText}
-                onChange={(e) => {
-                  setParamsText(e.target.value)
-                  // Editing params manually breaks the profile link, same as
-                  // the field-level patches. The save still sends profile_ref:""
-                  // so the server clears the FK.
-                  setDraft((d) => ({ ...d, profile_ref: null }))
-                  setDirty(true)
-                }}
-                rows={3}
-                className="mt-1 font-mono text-xs"
-                placeholder='{"temperature": 0.2}'
-              />
-            </details>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <Textarea
+                  value={paramsText}
+                  onChange={(e) => {
+                    setParamsText(e.target.value)
+                    // Editing params manually breaks the profile link, same as
+                    // the field-level patches. The save still sends profile_ref:""
+                    // so the server clears the FK.
+                    setDraft((d) => ({ ...d, profile_ref: null }))
+                    setDirty(true)
+                  }}
+                  rows={3}
+                  className="mt-1 font-mono text-xs"
+                  placeholder='{"temperature": 0.2}'
+                />
+              </CollapsibleContent>
+            </Collapsible>
 
             {dirty && (
               <div className="flex justify-end gap-2">

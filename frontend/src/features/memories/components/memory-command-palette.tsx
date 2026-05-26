@@ -6,6 +6,10 @@ import {
   CommandItem,
   CommandEmpty,
 } from "darkraise-ui/components/command"
+import {
+  Dialog,
+  DialogContent,
+} from "darkraise-ui/components/dialog"
 
 export interface CommandPaletteFilter {
   query: string
@@ -54,29 +58,19 @@ export function MemoryCommandPalette({
 }) {
   const [value, setValue] = useState("")
 
-  if (!open) return null
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-24"
-      onClick={() => onOpenChange(false)}
-    >
-      <div
-        className="bg-popover border-border w-full max-w-lg overflow-hidden rounded-lg border shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            onOpenChange(false)
-            setValue("")
-          }
-          if (e.key === "Enter") {
-            onSubmit(parseCommandPaletteQuery(value))
-            onOpenChange(false)
-            setValue("")
-          }
-        }}
-      >
-        <Command shouldFilter={false}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-hidden p-0">
+        <Command
+          shouldFilter={false}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              onSubmit(parseCommandPaletteQuery(value))
+              onOpenChange(false)
+              setValue("")
+            }
+          }}
+        >
           <CommandInput
             autoFocus
             value={value}
@@ -96,7 +90,7 @@ export function MemoryCommandPalette({
             </CommandItem>
           </CommandList>
         </Command>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

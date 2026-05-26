@@ -11,6 +11,14 @@ import { Label } from "darkraise-ui/components/label"
 import { Badge } from "darkraise-ui/components/badge"
 import { toast } from "darkraise-ui/components/sonner"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
+import { Input } from "darkraise-ui/components/input"
+import {
   useProviderModels,
   useTestLlmProvider,
   type LlmProviderTestResponse,
@@ -120,25 +128,29 @@ export function LLMProviderTestDialog({
                   name below.
                 </p>
               )}
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="border-border bg-background mt-1 h-9 w-full rounded border px-2 text-sm"
-              disabled={!modelsResp || modelsResp.models.length === 0}
-            >
-              {modelsResp?.models.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            {modelsResp && modelsResp.models.length === 0 && (
-              <input
+            {modelsResp && modelsResp.models.length > 0 ? (
+              <Select
+                value={model}
+                onValueChange={setModel}
+              >
+                <SelectTrigger className="mt-1 h-9 w-full text-sm">
+                  <SelectValue placeholder="Select a model…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelsResp.models.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="model id (e.g. gpt-4o-mini)"
-                className="border-border bg-background mt-2 h-9 w-full rounded border px-2 font-mono text-sm"
+                className="mt-2 h-9 w-full font-mono text-sm"
               />
             )}
             {modelsResp?.fetched_via && (

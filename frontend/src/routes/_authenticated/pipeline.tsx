@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "darkraise-ui/layout"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import { usePipeline, useSystemPrompts } from "@/hooks/api"
 import { LLMPanel } from "@/features/pipeline/LLMPanel"
 import { AssistantServicesPanel } from "@/features/pipeline/AssistantServicesPanel"
@@ -58,8 +59,8 @@ function PipelinePage() {
 function PipelineSkeleton() {
   return (
     <div className="space-y-4 p-6">
-      <div className="bg-muted h-10 w-40 animate-pulse rounded" />
-      <div className="bg-muted h-96 animate-pulse rounded" />
+      <Skeleton className="h-10 w-40 rounded" />
+      <Skeleton className="h-96 rounded" />
     </div>
   )
 }

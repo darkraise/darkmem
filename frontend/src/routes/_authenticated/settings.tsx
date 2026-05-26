@@ -40,6 +40,17 @@ import {
   TabsContent,
 } from "darkraise-ui/components/tabs"
 import { toast } from "darkraise-ui/components/sonner"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { PageHeader } from "darkraise-ui/layout"
 import { resolveStoredTab, type SettingsTabValue } from "@/lib/settings-tab"
 
@@ -196,22 +207,22 @@ function ClassificationAreasCard() {
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="border-border flex w-fit gap-1 rounded-md border p-0.5">
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={mode}
+          onValueChange={(v) => {
+            if (v && v !== mode) handleModeChange(v as "simple" | "expanded")
+          }}
+          disabled={updateFlags.isPending}
+          className="w-fit"
+        >
           {(["simple", "expanded"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => handleModeChange(m)}
-              disabled={updateFlags.isPending}
-              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
-                mode === m
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
+            <ToggleGroupItem key={m} value={m} className="text-xs">
               {m.charAt(0).toUpperCase() + m.slice(1)}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
 
         {mode === "simple" ? (
           <div className="space-y-2">
@@ -485,7 +496,7 @@ function ReposPathCard() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="bg-muted h-32 animate-pulse rounded" />
+          <Skeleton className="h-32 rounded" />
         ) : (
           <ServerPathBrowser
             apiBase="/system"
@@ -505,6 +516,7 @@ function AssistantPromptsCard() {
   const [selected, setSelected] = useState<string>(ORPHAN_PROMPTS[0])
   const [draft, setDraft] = useState("")
   const [dirty, setDirty] = useState(false)
+  const [pendingTab, setPendingTab] = useState<string | null>(null)
 
   useEffect(() => {
     if (!data) return
@@ -534,6 +546,35 @@ function AssistantPromptsCard() {
   }
 
   return (
+    <>
+    <AlertDialog
+      open={!!pendingTab}
+      onOpenChange={(o) => !o && setPendingTab(null)}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Unsaved changes to &ldquo;{selected}&rdquo; will be lost.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (pendingTab) {
+                setDirty(false)
+                setDraft(data.overrides[pendingTab] ?? data.defaults[pendingTab] ?? "")
+                setSelected(pendingTab)
+              }
+              setPendingTab(null)
+            }}
+          >
+            Discard
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Assistant Prompts</CardTitle>
@@ -550,12 +591,9 @@ function AssistantPromptsCard() {
           onValueChange={(p) => {
             if (!p || p === selected) return
             if (dirty) {
-              const ok = window.confirm(
-                `Discard unsaved changes to "${selected}"?`,
-              )
-              if (!ok) return
+              setPendingTab(p)
+              return
             }
-            setDirty(false)
             setDraft(data.overrides[p] ?? data.defaults[p] ?? "")
             setSelected(p)
           }}
@@ -591,6 +629,7 @@ function AssistantPromptsCard() {
         </div>
       </CardContent>
     </Card>
+    </>
   )
 }
 

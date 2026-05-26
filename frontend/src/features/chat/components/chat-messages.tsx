@@ -1,6 +1,10 @@
 import { useEffect, useRef, useMemo } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import { Bot, User, FileText, Diamond } from "lucide-react"
+import {
+  Avatar,
+  AvatarFallback,
+} from "darkraise-ui/components/avatar"
 import { SourceBadges } from "./source-badges"
 import type { ChatMessage } from "@/hooks/api"
 
@@ -50,17 +54,21 @@ function truncateContent(content: string, maxLen = 40): string {
 
 function AssistantAvatar() {
   return (
-    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/15 to-violet-500/10">
-      <Bot className="h-4 w-4 text-indigo-300" />
-    </div>
+    <Avatar className="mt-0.5 h-7 w-7 shrink-0 rounded-lg bg-gradient-to-br from-indigo-500/15 to-violet-500/10">
+      <AvatarFallback className="rounded-lg bg-transparent">
+        <Bot className="h-4 w-4 text-indigo-300" />
+      </AvatarFallback>
+    </Avatar>
   )
 }
 
 function UserAvatar() {
   return (
-    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-indigo-500/15 bg-indigo-500/10">
-      <User className="h-4 w-4 text-indigo-300" />
-    </div>
+    <Avatar className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-indigo-500/15 bg-indigo-500/10">
+      <AvatarFallback className="rounded-full bg-transparent">
+        <User className="h-4 w-4 text-indigo-300" />
+      </AvatarFallback>
+    </Avatar>
   )
 }
 

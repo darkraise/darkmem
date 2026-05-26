@@ -5,6 +5,7 @@ import { ChatMessages } from "./chat-messages"
 import { ChatInput } from "./chat-input"
 import { useConversation } from "@/hooks/api"
 import { useChatStream } from "../hooks/use-chat-stream"
+import { CHAT_GRADIENT_CLASS } from "./chat-gradient-button"
 
 interface ChatOverlayProps {
   selectedNodeId?: string | null
@@ -52,7 +53,7 @@ export function ChatOverlay({
   if (!open) {
     return (
       <button
-        className="fixed right-4 bottom-4 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg transition-all hover:from-indigo-400 hover:to-violet-400"
+        className={`fixed right-4 bottom-4 z-40 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all ${CHAT_GRADIENT_CLASS}`}
         onClick={() => setOpen(true)}
       >
         <MessageCircle className="h-5 w-5" />

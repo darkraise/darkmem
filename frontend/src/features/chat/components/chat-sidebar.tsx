@@ -3,6 +3,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Plus, Trash2, MessageCircle, Search } from "lucide-react"
 import type { ChatConversation } from "@/hooks/api"
+import { ChatGradientButton } from "./chat-gradient-button"
 
 interface ChatSidebarProps {
   conversations: ChatConversation[]
@@ -44,12 +45,12 @@ export function ChatSidebar({
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Conversations</span>
-          <Button
-            className="h-7 gap-1 border-0 bg-gradient-to-r from-indigo-500 to-violet-500 text-xs text-white hover:from-indigo-400 hover:to-violet-400"
+          <ChatGradientButton
+            className="h-7 gap-1 text-xs text-white"
             onClick={onCreate}
           >
             <Plus className="h-3.5 w-3.5" /> New
-          </Button>
+          </ChatGradientButton>
         </div>
         {conversations.length > 3 && (
           <div className="relative">

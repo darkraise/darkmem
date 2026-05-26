@@ -18,6 +18,17 @@ import {
 } from "darkraise-ui/components/dialog"
 import { toast } from "darkraise-ui/components/sonner"
 import { Plus, Trash2 } from "lucide-react"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import {
   useMlProfiles,
   useUpdateMlProfiles,
@@ -31,6 +42,7 @@ export function MLProfilesPanel() {
   const remove = useDeleteMlProfile()
 
   const [addOpen, setAddOpen] = useState(false)
+  const [confirmDeleteName, setConfirmDeleteName] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -39,7 +51,7 @@ export function MLProfilesPanel() {
           <CardTitle className="text-sm">Darkmem ML Profiles</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="bg-muted h-32 animate-pulse rounded" />
+          <Skeleton className="h-32 rounded" />
         </CardContent>
       </Card>
     )
@@ -63,7 +75,10 @@ export function MLProfilesPanel() {
   }
 
   const handleDelete = (name: string) => {
-    if (!window.confirm(`Delete ML profile "${name}"?`)) return
+    setConfirmDeleteName(name)
+  }
+
+  const confirmDelete = (name: string) => {
     remove.mutate(
       { name },
       {
@@ -74,6 +89,7 @@ export function MLProfilesPanel() {
   }
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <div>
@@ -140,6 +156,34 @@ export function MLProfilesPanel() {
         )}
       </CardContent>
     </Card>
+
+    <AlertDialog
+      open={!!confirmDeleteName}
+      onOpenChange={(o) => !o && setConfirmDeleteName(null)}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Delete ML profile &ldquo;{confirmDeleteName}&rdquo;?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            The profile will be removed and unloaded from memory.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (confirmDeleteName) confirmDelete(confirmDeleteName)
+              setConfirmDeleteName(null)
+            }}
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
 

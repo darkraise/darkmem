@@ -11,6 +11,7 @@ import {
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { PageHeader } from "darkraise-ui/layout"
+import { Stat, StatLabel, StatValue } from "darkraise-ui/components/stat"
 import {
   BarChart,
   Bar,
@@ -23,6 +24,7 @@ import {
   Pie,
   Cell,
 } from "recharts"
+import { relativeTime } from "@/lib/format"
 
 export const Route = createFileRoute("/_authenticated/")({
   component: OverviewPage,
@@ -49,16 +51,6 @@ function sourceColor(name: string, index: number): string {
   return SOURCE_COLORS[name] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length]
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 function formatXAxis(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T00:00:00")
@@ -74,7 +66,7 @@ function ServiceDot({ ok }: { ok: boolean }) {
   )
 }
 
-function StatValue({
+function StatBlock({
   label,
   value,
   delta,
@@ -84,15 +76,13 @@ function StatValue({
   delta?: number
 }) {
   return (
-    <div>
-      <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-bold">{value}</div>
+    <Stat>
+      <StatLabel>{label}</StatLabel>
+      <StatValue>{value}</StatValue>
       {delta != null && delta > 0 && (
         <div className="mt-0.5 text-xs text-green-500">+{delta} today</div>
       )}
-    </div>
+    </Stat>
   )
 }
 
@@ -151,14 +141,14 @@ function OverviewPage() {
         <Card>
           <CardContent className="pt-5">
             <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-              <StatValue
+              <StatBlock
                 label="Memories"
                 value={counts?.memories ?? "—"}
                 delta={todayCount}
               />
-              <StatValue label="Tags" value={counts?.tags ?? "—"} />
-              <StatValue label="Entities" value={counts?.entities ?? "—"} />
-              <StatValue
+              <StatBlock label="Tags" value={counts?.tags ?? "—"} />
+              <StatBlock label="Entities" value={counts?.entities ?? "—"} />
+              <StatBlock
                 label="Relations"
                 value={counts?.relationships ?? "—"}
               />
@@ -394,7 +384,7 @@ function OverviewPage() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:hidden">
         <Card>
           <CardContent className="pt-4">
-            <StatValue
+            <StatBlock
               label="Memories"
               value={counts?.memories ?? "—"}
               delta={todayCount}
@@ -403,17 +393,17 @@ function OverviewPage() {
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <StatValue label="Tags" value={counts?.tags ?? "—"} />
+            <StatBlock label="Tags" value={counts?.tags ?? "—"} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <StatValue label="Entities" value={counts?.entities ?? "—"} />
+            <StatBlock label="Entities" value={counts?.entities ?? "—"} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <StatValue label="Relations" value={counts?.relationships ?? "—"} />
+            <StatBlock label="Relations" value={counts?.relationships ?? "—"} />
           </CardContent>
         </Card>
       </div>

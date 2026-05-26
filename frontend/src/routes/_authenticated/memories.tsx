@@ -33,6 +33,17 @@ import {
 import { usePaginatedSearch, useDeleteMemory, useTags } from "@/hooks/api"
 import type { Memory } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
+import { relativeTime } from "@/lib/format"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
 import {
   MemoryCommandPalette,
@@ -61,16 +72,7 @@ const SOURCE_COLORS: Record<string, string> = {
   dashboard: "#f778ba",
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
+
 
 // Cap bulk concurrency. Each delete runs an independent server-side
 // pipeline cleanup; a 50-item bulk shouldn't open 50 concurrent backend
@@ -109,6 +111,9 @@ function MemoriesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detailMemory, setDetailMemory] = useState<Memory | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [confirmBulkArchive, setConfirmBulkArchive] = useState(false)
 
   // Derive single backend params (backend accepts one source/type at a time;
   // if the user picks multiple, client-side filter handles narrowing further).
@@ -234,7 +239,13 @@ function MemoriesPage() {
 
   const handleDelete = useCallback(
     (id: string) => {
-      if (!window.confirm("Delete this memory?")) return
+      setConfirmDeleteId(id)
+    },
+    [],
+  )
+
+  const confirmDelete = useCallback(
+    (id: string) => {
       deleteMemory.mutate(id, {
         onSuccess: () => {
           setSelected((prev) => {
@@ -250,8 +261,9 @@ function MemoriesPage() {
     [deleteMemory, detailMemory, qc],
   )
 
-  const handleBulkDelete = async () => {
-    if (!window.confirm(`Delete ${selected.size} memories?`)) return
+  const handleBulkDelete = () => setConfirmBulkDelete(true)
+
+  const confirmBulkDeleteAction = async () => {
     const ids = Array.from(selected)
     const { succeeded, firstError } = await runInBatches(ids, (id) =>
       deleteMemory.mutateAsync(id),
@@ -268,8 +280,9 @@ function MemoriesPage() {
     }
   }
 
-  const handleBulkArchive = async () => {
-    if (!window.confirm(`Archive ${selected.size} memories?`)) return
+  const handleBulkArchive = () => setConfirmBulkArchive(true)
+
+  const confirmBulkArchiveAction = async () => {
     const ids = Array.from(selected)
     const { succeeded, firstError } = await runInBatches(ids, (id) =>
       apiFetch(`/memories/${id}`, {
@@ -478,6 +491,87 @@ function MemoriesPage() {
       </div>
 
       <CreateMemoryDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      <AlertDialog
+        open={!!confirmDeleteId}
+        onOpenChange={(o) => !o && setConfirmDeleteId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete memory?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteId) confirmDelete(confirmDeleteId)
+                setConfirmDeleteId(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmBulkDelete}
+        onOpenChange={(o) => !o && setConfirmBulkDelete(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selected.size}{" "}
+              {selected.size === 1 ? "memory" : "memories"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmBulkDelete(false)
+                confirmBulkDeleteAction()
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmBulkArchive}
+        onOpenChange={(o) => !o && setConfirmBulkArchive(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Archive {selected.size}{" "}
+              {selected.size === 1 ? "memory" : "memories"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Archived memories are hidden from the default view.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmBulkArchive(false)
+                confirmBulkArchiveAction()
+              }}
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MemoryCommandPalette
         open={paletteOpen}

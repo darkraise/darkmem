@@ -48,6 +48,22 @@ import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
 import { Plus, RefreshCw, X } from "lucide-react"
 import { EditRepoDialog } from "@/features/repos/components/edit-repo-dialog"
+import { relativeTime } from "@/lib/format"
+import {
+  Stat as StatRoot,
+  StatLabel,
+  StatValue as StatValueEl,
+} from "darkraise-ui/components/stat"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { ReindexDialog } from "@/features/repos/components/reindex-dialog"
 import type { EditRepoInput, ReindexInput } from "@/features/repos/schemas"
 
@@ -55,16 +71,6 @@ export const Route = createFileRoute("/_authenticated/repos")({
   component: RepositoriesPage,
 })
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 const PROVIDER_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   github: "default",
@@ -82,10 +88,10 @@ function StatValue({
   return (
     <Card>
       <CardContent className="pt-4">
-        <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-          {label}
-        </div>
-        <div className="mt-1 text-3xl font-bold">{value}</div>
+        <StatRoot>
+          <StatLabel>{label}</StatLabel>
+          <StatValueEl>{value}</StatValueEl>
+        </StatRoot>
       </CardContent>
     </Card>
   )
@@ -252,9 +258,13 @@ function RepositoriesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
   const [reindexingRepo, setReindexingRepo] = useState<Repo | null>(null)
+  const [confirmDeleteRepo, setConfirmDeleteRepo] = useState<Repo | null>(null)
 
-  const handleDelete = (id: string, name: string) => {
-    if (!window.confirm(`Delete repository "${name}"?`)) return
+  const handleDelete = (repo: Repo) => {
+    setConfirmDeleteRepo(repo)
+  }
+
+  const confirmDelete = (id: string) => {
     deleteRepo.mutate(id, {
       onSuccess: () => toast.success("Repository deleted"),
       onError: () => toast.error("Failed to delete repository"),
@@ -422,7 +432,7 @@ function RepositoriesPage() {
             size="sm"
             variant="ghost"
             className="text-destructive hover:text-destructive h-7 px-2 text-xs"
-            onClick={() => handleDelete(row.original.id, row.original.name)}
+            onClick={() => handleDelete(row.original)}
           >
             Delete
           </Button>
@@ -525,6 +535,33 @@ function RepositoriesPage() {
           )
         }}
       />
+
+      <AlertDialog
+        open={!!confirmDeleteRepo}
+        onOpenChange={(o) => !o && setConfirmDeleteRepo(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete &ldquo;{confirmDeleteRepo?.name}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the repository and all its indexed data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteRepo) confirmDelete(confirmDeleteRepo.id)
+                setConfirmDeleteRepo(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {isLoading ? (
         <DataTableSkeleton columnCount={9} />

@@ -31,7 +31,6 @@ function UnifiedGraphPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
   const [graphReady, setGraphReady] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>("type")
-  const [showSettings, setShowSettings] = useState(false)
 
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5)
   const [minClusterSize, setMinClusterSize] = useState(3)
@@ -214,8 +213,6 @@ function UnifiedGraphPage() {
               onHullModeChange={layout.setHullMode}
               entityLayer={entityLayerEnabled}
               onEntityLayerChange={setEntityLayerEnabled}
-              showSettings={showSettings}
-              onToggleSettings={setShowSettings}
               sizeMode={layout.sizeMode}
               onSizeModeChange={layout.setSizeMode}
               similarityThreshold={similarityThreshold}

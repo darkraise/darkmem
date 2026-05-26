@@ -30,8 +30,6 @@ const defaultArgs = {
   onHullModeChange: () => {},
   entityLayer: true,
   onEntityLayerChange: () => {},
-  showSettings: false,
-  onToggleSettings: () => {},
   sizeMode: "connections" as SizeMode,
   onSizeModeChange: () => {},
   similarityThreshold: 0.65,
@@ -65,20 +63,12 @@ export const TagColor: S = {
   },
 }
 
-export const WithSettingsOpen: S = {
-  args: {
-    ...defaultArgs,
-    showSettings: true,
-  },
-}
-
 export const Interactive: S = {
   render: () => {
     const [viewMode, setViewMode] = useState<"2d" | "3d">("2d")
     const [colorMode, setColorMode] = useState<ColorMode>("type")
     const [hullMode, setHullMode] = useState<HullMode>("cluster")
     const [entityLayer, setEntityLayer] = useState(true)
-    const [showSettings, setShowSettings] = useState(false)
     const [sizeMode, setSizeMode] = useState<SizeMode>("connections")
     const [threshold, setThreshold] = useState(0.65)
     const [minCluster, setMinCluster] = useState(3)
@@ -96,8 +86,6 @@ export const Interactive: S = {
           onHullModeChange={setHullMode}
           entityLayer={entityLayer}
           onEntityLayerChange={setEntityLayer}
-          showSettings={showSettings}
-          onToggleSettings={setShowSettings}
           sizeMode={sizeMode}
           onSizeModeChange={setSizeMode}
           similarityThreshold={threshold}
@@ -113,7 +101,6 @@ export const Interactive: S = {
             setColorMode("type")
             setHullMode("cluster")
             setEntityLayer(true)
-            setShowSettings(false)
             setSizeMode("connections")
             setThreshold(0.65)
             setMinCluster(3)
