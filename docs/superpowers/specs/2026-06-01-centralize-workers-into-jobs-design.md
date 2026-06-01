@@ -1,6 +1,6 @@
 # Centralize background workers into the Jobs page
 
-- **Date:** 2026-06-01 (rev 2 — after codebase-grounded review)
+- **Date:** 2026-06-01 (rev 3 — after two codebase-grounded review passes)
 - **Status:** Approved (design, revised)
 - **Scope:** backend (`backend/app`) + frontend (`frontend/src`)
 
@@ -66,8 +66,10 @@ job can expose settings; `code_enrichment` uses it for `batch_size`.
   takes only `enabled`/`cron`): add `set_config(key, partial: dict)` (or
   extend `update_config`) that read-modify-writes the `job:<key>` row,
   preserving `last_run_at`/`last_status`/`last_error` and shallow-merging
-  `config` per key. `load_config` already returns the row and now exposes
-  `config` for the runner.
+  `config` per key. It must acquire the **same per-job `job.lock`** that
+  `_run_once` holds (as manual `trigger` already does) so a config save is
+  not clobbered by a concurrent scheduled run. `load_config` already returns
+  the row and now exposes `config` for the runner.
 - **`FieldDescriptor`** (backend Pydantic model + a single mirrored TS type):
 
   ```
@@ -96,7 +98,8 @@ job can expose settings; `code_enrichment` uses it for `batch_size`.
     / out-of-range value, then shallow read-modify-write merge into
     `job:<key>.config`; return the refreshed `JobItem`. Mirror `update_job`'s
     structure and the manual-validation precedent in `update_system_prompts`
-    (`config.py:1009-1024`).
+    (`config.py:1009-1024`). Update the `jobs.py` module docstring (which
+    lists three endpoints) to include this fourth one.
   - `PUT /api/v1/jobs/{key}` (enabled/cron) and
     `POST /api/v1/jobs/{key}/trigger` are unchanged.
 - **Runner** `make_code_enrichment_runner` reads `batch_size` from the
@@ -124,10 +127,11 @@ job can expose settings; `code_enrichment` uses it for `batch_size`.
   installs it is absent and the copy is a no-op landing on 5 (matching the
   current runner fallback). After this the `enrichment_config` row is
   unused; no DB migration needed to drop it.
-- `EnrichmentWorker.process_batch` stays (the real work). Its now-orphaned
-  `run_loop`/`stop`/`interval`/`_running` (`enrichment_worker.py:24-26,
-  98-116`) become dead code; remove them in this pass after confirming no
-  other caller, or note as explicit out-of-scope.
+- `EnrichmentWorker.process_batch` stays (the real work). Remove the
+  now-orphaned `run_loop`/`stop` methods and the `interval`/`_running`
+  attributes (`enrichment_worker.py:98-116` etc.) — a grep confirms no
+  remaining callers. Keep `self.batch_size`; `process_batch` reads it as a
+  fallback.
 
 ### Frontend — Jobs page (per-row config Dialog)
 
@@ -148,12 +152,17 @@ actions-column button, not an inline expanded row.
 - **`JobConfigForm`** renders fields from `config_schema`. `type: "int"`
   maps to the **composed** darkraise-ui `NumberInput` anatomy
   (`NumberInput > NumberInputControl > NumberInputField +
-  NumberInputTriggerGroup > Increment/DecrementTrigger`), reading
-  `onValueChange`'s `valueAsNumber`, mirroring the existing `NumericRow`
-  pattern in `settings.tsx`. It holds a draft; **Save** calls
-  `PUT /jobs/{key}/config` (rounding `valueAsNumber` for ints) with a
-  toast; **Cancel** closes.
-- Bump `DataTableSkeleton columnCount` from 8 to 9 for the new gear column
+  NumberInputTriggerGroup > NumberInputIncrementTrigger +
+  NumberInputDecrementTrigger`), reading `onValueChange`'s `valueAsNumber`
+  — reuse the existing `EnrichmentCard` block (`settings.tsx:123-135`) as
+  the literal template, with `step: 1` for ints (no manual rounding). It
+  holds a draft re-seeded from `job.config` each time the Dialog opens (key
+  the form by `job.key` / remount on open, mirroring `NumericRow`'s re-sync
+  `useEffect` at `settings.tsx:364-368`) so the 5s poll cannot leak a stale
+  draft. **Save** calls `PUT /jobs/{key}/config` with a toast; **Cancel**
+  closes.
+- The gear lives **inside the existing actions cell** (next to Trigger), so
+  the column count is unchanged — leave `DataTableSkeleton columnCount` at 8
   (`jobs.tsx:275`).
 - The per-row `enabled` switch and cron editor are unchanged.
 
@@ -175,10 +184,14 @@ actions-column button, not an inline expanded row.
 ### Frontend — Repositories page
 
 - Repoint the **Run Enrichment** button (`repos.tsx:11/259/451-464`) from
-  `useTriggerEnrichment` to `useTriggerJob("code_enrichment")`. The Jobs
-  trigger returns `{key,last_status,last_error,last_run_at}` (no `processed`
-  count), so change the success toast from `Enriched ${data.processed}
-  symbols` to `Enrichment run started`.
+  `useTriggerEnrichment` to `useTriggerJob`. The hook is **parameterless**;
+  the key is passed at mutate time: `const triggerJob = useTriggerJob()`
+  then `triggerJob.mutate("code_enrichment", { onSuccess, onError })`
+  (matching the established usage at `jobs.tsx:128-141`). The Jobs trigger
+  returns `{key,last_status,last_error,last_run_at}` (no `processed` count),
+  so the success toast changes from `Enriched ${data.processed} symbols` to
+  `Enrichment run started`; also invalidate `["repoStats"]` in `onSuccess`
+  so the page's Enrichment stat refreshes (the old hook never did).
 
 ## Data flow
 
@@ -210,22 +223,27 @@ actions-column button, not an inline expanded row.
 
 ## Testing
 
-- **Backend unit:** `JobConfig` round-trip including `config` (update the
-  two tests in `test_job_registry.py:51-67`); `set_config`/`load_config`;
-  `PUT /jobs/{key}/config` validation (unknown key → 422, out-of-range →
-  422, shallow merge); **`batch_size` survives a subsequent `trigger()`
-  and a subsequent enabled toggle** (the clobber guard); the runner reads
-  `batch_size` from job config (net-new — no runner test exists today);
-  `list_with_config` emits `config` + `config_schema`; the
-  `/config/enrichment` routes are gone.
-- **Backend e2e:** update `docs/e2e/scripts/02_config_flow.py` (lines
-  104-111) — remove/replace the `GET /config/enrichment` assertion (which
-  is already partly stale: it expects an `interval_seconds` key the route
-  never returns).
-- **Frontend:** a Jobs-page test for the config Dialog save; a Settings
-  test asserting no Workers tab; the `repos.tsx` button repoint; typecheck,
-  build, and the unit suite stay green. (No Jobs/Settings spec exists today
-  — net-new.)
+- **Backend unit (registry, `test_job_registry.py`):** `JobConfig`
+  round-trip including `config` (update the two tests at lines 51-67);
+  `set_config`/`load_config`; **`batch_size` survives a subsequent
+  `trigger()`, an `enabled` toggle, AND a cron save** (all three share the
+  `load→mutate→save` path — the clobber guard); the runner reads
+  `batch_size` from job config (net-new — no runner test exists today).
+- **Backend unit (HTTP route, `test_jobs_route.py`):** `PUT /jobs/{key}/config`
+  validation (unknown key → 422, out-of-range → 422, shallow merge) and
+  `GET /jobs` emitting `config` + `config_schema`. The route-test fixture
+  registers `alpha`/`beta` jobs with no schema; add one job with a non-empty
+  `config_schema` (a single int field) to bind these assertions against.
+  Confirm the `/config/enrichment` routes are gone.
+- **Backend e2e:** update `docs/e2e/scripts/02_config_flow.py` — remove or
+  replace the `GET /config/enrichment` assertion (lines 104-111; already
+  partly stale, expecting an `interval_seconds` key the route never returns)
+  and fix the module docstring (line 3) that lists "enrichment config".
+- **Frontend:** a Jobs-page test for the config Dialog save; extend
+  `lib/__tests__/settings-tab.test.ts` with
+  `resolveStoredTab("workers") === "flags"` (the load-bearing fallback) plus
+  a Settings assertion that no Workers tab renders; the `repos.tsx` button
+  repoint; typecheck, build, and the unit suite stay green.
 - **Sequence:** backend-first (config field + registry write path +
   endpoint + runner read + startup copy, tests green) before the frontend,
   so the API contract is settled before the UI is built.
