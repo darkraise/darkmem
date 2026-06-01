@@ -223,7 +223,7 @@ git commit -m "feat(jobs): add FieldDescriptor and Job.config_schema/default_con
 
 - [ ] **Step 1: Write the failing tests**
 
-Add a fixture-free async test using an in-memory-ish registry against the test DB. Reuse the existing test harness pattern (the file already constructs registries against `settings.test_database_url`; if a helper exists, follow it). Minimal version:
+Add fixture-free async tests. These hit the real test DB (the `config` table exists via conftest's autouse `setup_database` fixture). NOTE: `test_job_registry.py` has no DB harness today — the `create_async_engine`/`async_sessionmaker`/`settings` imports and the `_schema_registry()` helper below are **new** to the file (the equivalent pattern lives in `test_jobs_route.py`). These registries commit real `job:<key>` rows with **no rollback**, so each DB test takes a **distinct job key** to avoid cross-test residue. The helper is parameterised by key:
 
 ```python
 import pytest
@@ -231,7 +231,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import settings
 
 
-def _schema_registry():
+def _schema_registry(key: str = "cfgjob"):
     from app.services.job_registry import Job, JobRegistry, FieldDescriptor
     engine = create_async_engine(settings.test_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -241,7 +241,7 @@ def _schema_registry():
         return None
 
     reg.register(Job(
-        key="cfgjob", display_name="Cfg", description="d",
+        key=key, display_name="Cfg", description="d",
         default_cron="*/5 * * * *", min_interval_seconds=1, runner=_noop,
         config_schema=[FieldDescriptor(key="batch_size", label="Batch Size",
                                        default=5, min=1, max=100)],
@@ -251,16 +251,16 @@ def _schema_registry():
 
 @pytest.mark.asyncio
 async def test_set_config_merges_and_validates():
-    reg, engine = _schema_registry()
+    reg, engine = _schema_registry("cfg_set")
     try:
-        cfg = await reg.set_config("cfgjob", {"batch_size": 20})
+        cfg = await reg.set_config("cfg_set", {"batch_size": 20})
         assert cfg.config["batch_size"] == 20
         # unknown key rejected
         with pytest.raises(ValueError):
-            await reg.set_config("cfgjob", {"nope": 1})
+            await reg.set_config("cfg_set", {"nope": 1})
         # out-of-range rejected
         with pytest.raises(ValueError):
-            await reg.set_config("cfgjob", {"batch_size": 999})
+            await reg.set_config("cfg_set", {"batch_size": 999})
     finally:
         await reg.stop_all()
         await engine.dispose()
@@ -268,15 +268,15 @@ async def test_set_config_merges_and_validates():
 
 @pytest.mark.asyncio
 async def test_config_survives_trigger_and_toggle():
-    reg, engine = _schema_registry()
+    reg, engine = _schema_registry("cfg_survive")
     try:
-        await reg.set_config("cfgjob", {"batch_size": 33})
-        await reg.trigger("cfgjob")                       # load->mutate->save path
-        assert (await reg.load_config("cfgjob")).config["batch_size"] == 33
-        await reg.update_config("cfgjob", enabled=False)  # enabled toggle path
-        assert (await reg.load_config("cfgjob")).config["batch_size"] == 33
-        await reg.update_config("cfgjob", cron="*/2 * * * *")  # cron save path
-        assert (await reg.load_config("cfgjob")).config["batch_size"] == 33
+        await reg.set_config("cfg_survive", {"batch_size": 33})
+        await reg.trigger("cfg_survive")                       # load->mutate->save path
+        assert (await reg.load_config("cfg_survive")).config["batch_size"] == 33
+        await reg.update_config("cfg_survive", enabled=False)  # enabled toggle path
+        assert (await reg.load_config("cfg_survive")).config["batch_size"] == 33
+        await reg.update_config("cfg_survive", cron="*/2 * * * *")  # cron save path
+        assert (await reg.load_config("cfg_survive")).config["batch_size"] == 33
     finally:
         await reg.stop_all()
         await engine.dispose()
@@ -342,16 +342,18 @@ git commit -m "feat(jobs): registry set_config with schema validation under job.
 ```python
 @pytest.mark.asyncio
 async def test_list_with_config_emits_schema_and_merged_config():
-    reg, engine = _schema_registry()
+    # Distinct key so a row committed by an earlier test cannot shadow the
+    # "no saved row -> default applied" assertion below.
+    reg, engine = _schema_registry("cfg_list")
     try:
         items = await reg.list_with_config()
-        item = next(i for i in items if i["key"] == "cfgjob")
+        item = next(i for i in items if i["key"] == "cfg_list")
         # schema descriptors present
         assert item["config_schema"][0]["key"] == "batch_size"
         # config defaults applied even with no saved row
         assert item["config"] == {"batch_size": 5}
-        await reg.set_config("cfgjob", {"batch_size": 42})
-        item = next(i for i in (await reg.list_with_config()) if i["key"] == "cfgjob")
+        await reg.set_config("cfg_list", {"batch_size": 42})
+        item = next(i for i in (await reg.list_with_config()) if i["key"] == "cfg_list")
         assert item["config"] == {"batch_size": 42}
     finally:
         await reg.stop_all()
@@ -574,7 +576,7 @@ Replace the `enrichment_config` read block (lines 122-130) with a lazy registry 
     return run
 ```
 
-Update the docstring of `make_code_enrichment_runner` to say it reads `batch_size` from the `code_enrichment` job config (drop the "legacy enrichment_config row" mention). Remove the now-unused `ConfigModel`/`select` imports inside the function if they are no longer referenced.
+Update the docstring of `make_code_enrichment_runner` to say it reads `batch_size` from the `code_enrichment` job config (drop the "legacy enrichment_config row" mention). Delete **only** the function-local `from app.models.config import Config as ConfigModel` line (it is now unused). Do **not** touch the module-level `from sqlalchemy import delete, select` import (line 14) — `select`/`delete` are still used by `make_repo_sync_runner` and `make_token_blocklist_cleanup_runner`.
 
 - [ ] **Step 2: Verify backend still imports/builds**
 
@@ -810,7 +812,7 @@ import { Play, Save, Settings } from "lucide-react"
 Add above the `columns` definition. `ConfigCell` is keyed by `open` so the draft re-seeds each time the Dialog opens (re-mounts `JobConfigForm`), mirroring NumericRow's re-sync:
 
 ```typescript
-function JobConfigForm({
+export function JobConfigForm({
   job,
   schema,
   onClose,
@@ -850,7 +852,12 @@ function JobConfigForm({
             step={field.step ?? 1}
             value={draft[field.key]}
             onValueChange={(d) =>
-              setDraft((prev) => ({ ...prev, [field.key]: d.valueAsNumber }))
+              setDraft((prev) => ({
+                ...prev,
+                [field.key]: Number.isNaN(d.valueAsNumber)
+                  ? prev[field.key]
+                  : d.valueAsNumber,
+              }))
             }
           >
             <NumberInputControl>
@@ -878,7 +885,7 @@ function JobConfigForm({
   )
 }
 
-function ConfigCell({ job }: { job: Job }) {
+export function ConfigCell({ job }: { job: Job }) {
   const [open, setOpen] = useState(false)
   const schema = job.config_schema ?? []
   if (schema.length === 0) return null
@@ -927,15 +934,80 @@ Replace the `actions` column cell so it hosts both the gear and the trigger:
 
 Leave `DataTableSkeleton columnCount={8}` unchanged.
 
-- [ ] **Step 4: Verify typecheck + build**
+- [ ] **Step 4: Write a component test for the save wiring**
 
-Run: `cd frontend && npm run typecheck && npm run build`
-Expected: PASS / built.
+This is the spec's "Jobs-page test for the config Dialog save". It renders the exported `JobConfigForm` and asserts Save issues the `PUT /jobs/{key}/config`. (First time darkraise-ui components are rendered under jsdom — if a primitive needs a browser API jsdom lacks, add the polyfill in `frontend/src/test/setup.ts`; if it proves unviable, move this assertion to a Playwright e2e and note it.)
 
-- [ ] **Step 5: Commit**
+Create `frontend/src/routes/_authenticated/__tests__/job-config-form.test.tsx`:
+
+```tsx
+import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+
+vi.mock("@/lib/api", () => ({ apiFetch: vi.fn().mockResolvedValue({}) }))
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+import { apiFetch } from "@/lib/api"
+import { JobConfigForm } from "../jobs"
+import type { Job } from "@/hooks/api"
+
+function wrap(ui: React.ReactNode) {
+  const qc = new QueryClient()
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+}
+
+const job = {
+  key: "code_enrichment",
+  display_name: "Code Symbol Enrichment",
+  description: "",
+  enabled: true,
+  cron: "*/10 * * * * *",
+  min_interval_seconds: 1,
+  default_cron: "*/10 * * * * *",
+  last_run_at: null,
+  last_status: null,
+  last_error: null,
+  running: false,
+  config: { batch_size: 7 },
+  config_schema: [
+    { key: "batch_size", type: "int", label: "Batch Size", default: 5, min: 1, max: 100 },
+  ],
+} as Job
+
+describe("JobConfigForm", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("saves the seeded config via PUT /jobs/{key}/config", async () => {
+    const onClose = vi.fn()
+    wrap(<JobConfigForm job={job} schema={job.config_schema!} onClose={onClose} />)
+    await userEvent.click(screen.getByRole("button", { name: /save/i }))
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/jobs/code_enrichment/config",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ config: { batch_size: 7 } }),
+        }),
+      ),
+    )
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+})
+```
+
+- [ ] **Step 5: Verify typecheck + build + the new test**
+
+Run: `cd frontend && npm run typecheck && npm run build && npx vitest run src/routes/_authenticated/__tests__/job-config-form.test.tsx`
+Expected: PASS / built / test green.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/routes/_authenticated/jobs.tsx
+git add frontend/src/routes/_authenticated/jobs.tsx frontend/src/routes/_authenticated/__tests__/job-config-form.test.tsx
 git commit -m "feat(jobs): per-row Configure dialog with generic JobConfigForm"
 ```
 
@@ -948,16 +1020,15 @@ git commit -m "feat(jobs): per-row Configure dialog with generic JobConfigForm"
 
 - [ ] **Step 1: Swap the hook + mutate call + toast**
 
-Remove `useTriggerEnrichment` from the imports. Add `useTriggerJob` (from `@/hooks/api`) and `useQueryClient` (from `@tanstack/react-query`) if not already imported. Replace the hook instantiation:
+`repos.tsx` does not currently import `@tanstack/react-query`, and the Run Enrichment button uses an **inline** `onClick={() => triggerEnrichment.mutate(undefined, {...})}` arrow with no separate handler. Make all of these changes:
+
+1. **Imports:** remove `useTriggerEnrichment`; add `useTriggerJob` to the existing `@/hooks/api` import; add a **new** import line `import { useQueryClient } from "@tanstack/react-query"`.
+2. **Inside `RepositoriesPage`**, replace `const triggerEnrichment = useTriggerEnrichment()` (around line 259) with:
 
 ```typescript
   const triggerJob = useTriggerJob()
   const qc = useQueryClient()
-```
 
-Replace the button's `onClick` body (the `triggerEnrichment.mutate(...)` call):
-
-```typescript
   const handleRunEnrichment = () => {
     triggerJob.mutate("code_enrichment", {
       onSuccess: () => {
@@ -969,7 +1040,7 @@ Replace the button's `onClick` body (the `triggerEnrichment.mutate(...)` call):
   }
 ```
 
-Update the button to use `triggerJob.isPending` instead of `triggerEnrichment.isPending`.
+3. **Button (around lines 451-464):** set `onClick={handleRunEnrichment}` (replacing the inline arrow) and swap `triggerEnrichment.isPending` → `triggerJob.isPending` in both the `disabled` prop and the `Enriching... / Run Enrichment` label.
 
 - [ ] **Step 2: Verify typecheck**
 
@@ -1101,7 +1172,15 @@ Open the Jobs page, click the gear on **Code Symbol Enrichment**, confirm the Ba
 
 ## Notes for the implementer
 
-- Run backend commands from `backend/` and frontend commands from `frontend/`.
+**Pre-flight (do this before Task 1):**
+- **Pending working-tree changes.** This branch (`feat/ui-v3-refactor`) already has uncommitted edits in `frontend/src/routes/_authenticated/jobs.tsx`, `repos.tsx`, and `settings.tsx` (the darkraise-ui migration). A per-task `git add <file>` would sweep that unrelated work into a jobs/settings commit. **First commit or stash those pending changes** so each task below commits only its own hunks (or use `git add -p` to stage selectively). All the `Modify: file:line` references in this plan were read from that dirty working tree — keep it intact (don't revert it) or the line numbers shift.
+- **Backend DB.** The backend tests need the `darkmem_test` Postgres running at `localhost:5433` (`settings.test_database_url`). Bring it up before any `pytest` step, or the DB-backed tests (Tasks 3-5) and `pytest -q` gates (Tasks 6-8) fail with `InvalidCatalogNameError`.
+
+**General:**
+- Run backend commands from `backend/`, frontend commands from `frontend/`.
 - Keep commits atomic per task; do not squash phases together.
-- If a backend test fixture other than `stubbed_jobs` needs the new `config`/`config_schema` fields, default them (`config={}`, `config_schema=[]`) — both are optional on `JobConfig`/`Job`.
+- Backend DB-backed registry tests (Tasks 3-5) commit real `job:<key>` rows with no transaction rollback (their own engine, not the rolled-back `session` fixture). Each such test uses a **distinct job key** for isolation; preserve that when editing.
+- In Task 13, add the new `it(...)` **inside** the existing `describe("resolveStoredTab", ...)` block.
 - The `enrichment_config` DB row is intentionally left in place (unused) after migration; no Alembic change is required.
+
+**Testing scope note:** the spec also lists a "Settings asserts no Workers tab renders" component test. That is **deliberately deferred to the manual smoke (Task 15 Step 4)** plus the typecheck/build gate: there is no precedent for rendering the full Settings route (heavy providers/queries) under jsdom, and the load-bearing tab-removal logic is already unit-tested in Task 13 (`resolveStoredTab("workers") === "flags"`). The Jobs config-Dialog save IS covered by the component test in Task 10 Step 4.
