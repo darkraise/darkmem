@@ -217,14 +217,10 @@ export function JobConfigForm({
             max={field.max}
             step={field.step ?? 1}
             value={draft[field.key]}
-            onValueChange={(d) =>
-              setDraft((prev) => ({
-                ...prev,
-                [field.key]: Number.isNaN(d.valueAsNumber)
-                  ? prev[field.key]
-                  : d.valueAsNumber,
-              }))
-            }
+            onValueChange={(d) => {
+              if (Number.isNaN(d.valueAsNumber)) return
+              setDraft((prev) => ({ ...prev, [field.key]: d.valueAsNumber }))
+            }}
           >
             <NumberInputControl>
               <NumberInputField />

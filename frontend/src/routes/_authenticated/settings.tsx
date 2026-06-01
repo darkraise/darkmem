@@ -29,7 +29,6 @@ import {
   CardTitle,
 } from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
-import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
 import { Label } from "darkraise-ui/components/label"
 import { Textarea } from "darkraise-ui/components/textarea"
