@@ -164,7 +164,7 @@ function VectorSpacePage() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Vector Space</h1>
         {points.length > 0 && (
-          <span className="text-muted-foreground text-sm">
+          <span className="text-muted-foreground text-base">
             {points.length} memories projected (PCA 2D)
           </span>
         )}
@@ -204,18 +204,18 @@ function VectorSpacePage() {
                   10,
               }}
             >
-              <p className="text-foreground text-xs">{hovered.content}</p>
+              <p className="text-foreground text-base">{hovered.content}</p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {hovered.tags?.map((t) => (
                   <span
                     key={t}
-                    className="bg-accent text-primary rounded px-1.5 py-0.5 text-xs"
+                    className="bg-accent text-primary rounded px-1.5 py-0.5 text-base"
                   >
                     {t}
                   </span>
                 ))}
               </div>
-              <p className="text-muted-foreground mt-1 text-xs">
+              <p className="text-muted-foreground mt-1 text-base">
                 {hovered.source}{" "}
                 {hovered.memory_type && `| ${hovered.memory_type}`}
               </p>
@@ -228,7 +228,7 @@ function VectorSpacePage() {
           {Array.from(sourceColors.entries()).map(([source, color]) => (
             <div
               key={source}
-              className="text-muted-foreground flex items-center gap-1.5 text-xs"
+              className="text-muted-foreground flex items-center gap-1.5 text-base"
             >
               <div
                 className="h-3 w-3 rounded-full"

@@ -57,7 +57,7 @@ function StatusBadge({ value }: { value: string }) {
   const variant =
     value === "ok" ? "default" : value === "error" ? "destructive" : "secondary"
   return (
-    <Badge variant={variant} className="text-xs">
+    <Badge variant={variant} className="text-base">
       {value}
     </Badge>
   )
@@ -77,14 +77,14 @@ function ReprocessProgress({
 
   return (
     <div className="bg-muted/30 space-y-2 rounded-lg border p-3">
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between text-base">
         <span className="font-medium">{label}</span>
         <span className="text-muted-foreground tabular-nums">
           {progress.current} / {progress.total}
         </span>
       </div>
       <Progress value={pct} />
-      <div className="text-muted-foreground flex gap-3 text-xs">
+      <div className="text-muted-foreground flex gap-3 text-base">
         <span className="text-green-500">{progress.processed} succeeded</span>
         {progress.errors > 0 && (
           <span className="text-destructive">{progress.errors} failed</span>
@@ -169,7 +169,7 @@ function UnresolvedFailuresCard() {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm">Unresolved Failures</CardTitle>
+          <CardTitle className="text-base">Unresolved Failures</CardTitle>
           <Button
             variant="outline"
             onClick={handleRetryAll}
@@ -181,36 +181,39 @@ function UnresolvedFailuresCard() {
           </Button>
         </div>
         <div className="border-border mt-3 flex w-fit gap-1 rounded-md border p-0.5">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setFilter("all")}
-            className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+            className={`rounded px-3 py-1 text-base font-medium transition-colors ${
               filter === "all"
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
             All ({totalCount})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setFilter("memory_ingest")}
-            className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+            className={`rounded px-3 py-1 text-base font-medium transition-colors ${
               filter === "memory_ingest"
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Memory ({memoryCount})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setFilter("code_index")}
-            className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+            className={`rounded px-3 py-1 text-base font-medium transition-colors ${
               filter === "code_index"
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Code ({codeCount})
-          </button>
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -218,7 +221,7 @@ function UnresolvedFailuresCard() {
           activeBatchId !== null &&
           batchProgress.state !== "done" && (
             <div className="bg-muted/30 mb-4 space-y-2 rounded-lg border p-3">
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-base">
                 <span className="font-medium">Retrying failures...</span>
                 <span className="text-muted-foreground tabular-nums">
                   {batchProgress.current} / {batchProgress.total}
@@ -231,7 +234,7 @@ function UnresolvedFailuresCard() {
                     : 0
                 }
               />
-              <div className="text-muted-foreground flex gap-3 text-xs">
+              <div className="text-muted-foreground flex gap-3 text-base">
                 <span className="text-green-500">
                   {batchProgress.processed} succeeded
                 </span>
@@ -245,7 +248,7 @@ function UnresolvedFailuresCard() {
           )}
 
         {items.length === 0 && (
-          <p className="text-muted-foreground py-4 text-center text-sm">
+          <p className="text-muted-foreground py-4 text-center text-base">
             No unresolved failures
           </p>
         )}
@@ -257,7 +260,7 @@ function UnresolvedFailuresCard() {
               return (
                 <div key={f.id} className="space-y-2 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-base">
                       <Badge variant="outline">{f.entity_type}</Badge>
                       <span className="text-muted-foreground font-mono">
                         {f.failed_step}
@@ -284,16 +287,16 @@ function UnresolvedFailuresCard() {
                     </div>
                   </div>
                   {f.entity_preview && (
-                    <p className="text-foreground line-clamp-1 text-sm">
+                    <p className="text-foreground line-clamp-1 text-base">
                       {f.entity_preview}
                     </p>
                   )}
                   {f.error_message && (
-                    <p className="text-destructive line-clamp-2 text-xs">
+                    <p className="text-destructive line-clamp-2 text-base">
                       {f.error_message}
                     </p>
                   )}
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-base">
                     Last attempt: {new Date(f.last_attempt_at).toLocaleString()}
                   </p>
                 </div>
@@ -321,7 +324,7 @@ function CategoryProgressBar({
   return (
     <div className="mt-2 space-y-1">
       <Progress value={pct} />
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-base">
         {progress.current} / {progress.total}
         {progress.errors > 0 && (
           <span className="text-destructive ml-2">
@@ -406,7 +409,7 @@ function ObsoleteEmbeddingsCard() {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm">Obsolete Embeddings</CardTitle>
+          <CardTitle className="text-base">Obsolete Embeddings</CardTitle>
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -426,7 +429,7 @@ function ObsoleteEmbeddingsCard() {
             </Button>
           </div>
         </div>
-        <p className="text-muted-foreground mt-1 font-mono text-xs">
+        <p className="text-muted-foreground mt-1 font-mono text-base">
           Current: {counts.current_fingerprint}
         </p>
       </CardHeader>
@@ -434,8 +437,8 @@ function ObsoleteEmbeddingsCard() {
         <div className="divide-border border-border divide-y rounded-md border">
           <div className="flex items-center justify-between px-3 py-2">
             <div className="flex-1">
-              <span className="text-sm font-medium">Memories</span>
-              <p className="text-muted-foreground text-xs">
+              <span className="text-base font-medium">Memories</span>
+              <p className="text-muted-foreground text-base">
                 {counts.memories} obsolete
               </p>
               <CategoryProgressBar
@@ -457,8 +460,8 @@ function ObsoleteEmbeddingsCard() {
           </div>
           <div className="flex items-center justify-between px-3 py-2">
             <div className="flex-1">
-              <span className="text-sm font-medium">Entities</span>
-              <p className="text-muted-foreground text-xs">
+              <span className="text-base font-medium">Entities</span>
+              <p className="text-muted-foreground text-base">
                 {counts.entities} obsolete
               </p>
               <CategoryProgressBar
@@ -480,8 +483,8 @@ function ObsoleteEmbeddingsCard() {
           </div>
           <div className="flex items-center justify-between px-3 py-2">
             <div className="flex-1">
-              <span className="text-sm font-medium">Code chunks</span>
-              <p className="text-muted-foreground text-xs">
+              <span className="text-base font-medium">Code chunks</span>
+              <p className="text-muted-foreground text-base">
                 {counts.code_chunks} obsolete
               </p>
               <CategoryProgressBar
@@ -591,7 +594,7 @@ function PipelinePage() {
           <CardContent className="pt-4">
             <div className="mb-1 flex items-center gap-2">
               <ServiceDot ok={!!health?.pipeline} />
-              <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+              <span className="text-muted-foreground text-base font-medium tracking-wider uppercase">
                 Pipeline
               </span>
             </div>
@@ -602,7 +605,7 @@ function PipelinePage() {
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-3 text-base">
               <span className="flex items-center gap-1.5">
                 <ServiceDot ok={!!health?.services.pgvector} /> pgvector
               </span>
@@ -610,7 +613,7 @@ function PipelinePage() {
                 <ServiceDot ok={!!health?.services.llm} /> LLM
               </span>
             </div>
-            <div className="text-muted-foreground mt-2 text-xs">
+            <div className="text-muted-foreground mt-2 text-base">
               Service Health
             </div>
           </CardContent>
@@ -620,7 +623,9 @@ function PipelinePage() {
             <div className="text-2xl font-bold text-green-500">
               {successCount}
             </div>
-            <div className="text-muted-foreground text-xs">Successful Runs</div>
+            <div className="text-muted-foreground text-base">
+              Successful Runs
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -630,7 +635,7 @@ function PipelinePage() {
             >
               {errorCount}
             </div>
-            <div className="text-muted-foreground text-xs">
+            <div className="text-muted-foreground text-base">
               Failed / Partial
             </div>
           </CardContent>
@@ -639,14 +644,16 @@ function PipelinePage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Recent Pipeline Executions</CardTitle>
+          <CardTitle className="text-base">
+            Recent Pipeline Executions
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading && (
-            <p className="text-muted-foreground text-sm">Loading...</p>
+            <p className="text-muted-foreground text-base">Loading...</p>
           )}
           {!isLoading && !logs?.length && (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-base">
               No pipeline logs yet. Create a memory to trigger the pipeline.
             </p>
           )}
@@ -658,42 +665,42 @@ function PipelinePage() {
                 return (
                   <div
                     key={log.id}
-                    className={`rounded-lg border p-3 text-sm ${hasError ? "border-destructive/30 bg-destructive/5" : "border-border"}`}
+                    className={`rounded-lg border p-3 text-base ${hasError ? "border-destructive/30 bg-destructive/5" : "border-border"}`}
                   >
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-muted-foreground font-mono text-xs">
+                      <span className="text-muted-foreground font-mono text-base">
                         {log.memory_id?.slice(0, 8)}...
                       </span>
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-base">
                         {new Date(log.timestamp).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-base">
                         Embed:
                       </span>
                       <StatusBadge value={String(d.embed ?? "—")} />
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-base">
                         Extract:
                       </span>
                       <StatusBadge value={String(d.extract ?? "—")} />
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-base">
                         Vector:
                       </span>
                       <StatusBadge value={String(d.vector ?? "—")} />
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-base">
                         Graph:
                       </span>
                       <StatusBadge value={String(d.graph ?? "—")} />
                       {(d.entities_count as number) > 0 && (
-                        <span className="text-muted-foreground ml-2 text-xs">
+                        <span className="text-muted-foreground ml-2 text-base">
                           {String(d.entities_count)} entities,{" "}
                           {String(d.relations_count)} relations
                         </span>
                       )}
                     </div>
                     {hasError && (
-                      <p className="text-destructive mt-2 text-xs">
+                      <p className="text-destructive mt-2 text-base">
                         {String(d.error)}
                       </p>
                     )}

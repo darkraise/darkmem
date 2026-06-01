@@ -3,6 +3,14 @@ import { Card, CardContent } from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
+import {
+  NumberInput,
+  NumberInputControl,
+  NumberInputField,
+  NumberInputTriggerGroup,
+  NumberInputIncrementTrigger,
+  NumberInputDecrementTrigger,
+} from "darkraise-ui/components/number-input"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Badge } from "darkraise-ui/components/badge"
@@ -179,22 +187,23 @@ export function LLMPurposeCard({
 
   return (
     <Card className={open ? "border-primary" : ""}>
-      <button
+      <Button
+        variant="ghost"
         type="button"
         className="flex w-full items-center justify-between gap-2 p-2 text-left"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={panelId}
       >
-        <span className="flex items-center gap-2 text-xs font-semibold capitalize">
+        <span className="flex items-center gap-2 text-base font-semibold capitalize">
           {open ? "▾" : "▸"} {purpose}
         </span>
-        <span className="text-muted-foreground truncate font-mono text-[10px]">
+        <span className="text-muted-foreground truncate font-mono text-sm">
           {config.model}
           {config.dimensions ? ` · ${config.dimensions}d` : ""} ·{" "}
           {config.provider}
         </span>
-      </button>
+      </Button>
       {open && (
         <CardContent className="p-0">
           <div
@@ -203,7 +212,7 @@ export function LLMPurposeCard({
             aria-label={`${purpose} LLM configuration`}
           >
             <div className="flex items-center gap-2">
-              <Label className="text-xs">Profile</Label>
+              <Label className="text-base">Profile</Label>
               <Select
                 value={
                   draft.ml_profile_ref &&
@@ -267,7 +276,7 @@ export function LLMPurposeCard({
                 }
               >
                 <SelectTrigger
-                  className="h-9 flex-1 text-sm"
+                  className="h-9 flex-1 text-base"
                   title="Apply a saved Profile to this purpose."
                 >
                   <SelectValue
@@ -300,7 +309,7 @@ export function LLMPurposeCard({
               {linkedToProfile && !draft.ml_profile_ref && (
                 <Badge
                   variant="secondary"
-                  className="text-[9px]"
+                  className="text-sm"
                   title={`Linked Provider: ${draft.provider_ref}`}
                 >
                   via {draft.provider_ref}
@@ -309,7 +318,7 @@ export function LLMPurposeCard({
               {draft.ml_profile_ref && (
                 <Badge
                   variant="secondary"
-                  className="text-[9px]"
+                  className="text-sm"
                   title="In-process ML classifier"
                 >
                   ml: {draft.ml_profile_ref}
@@ -346,23 +355,38 @@ export function LLMPurposeCard({
                 disabled={linkedToProfile}
               />
               {purpose === "embedding" && (
-                <Field
-                  label="Dimensions"
-                  value={String(draft.dimensions ?? "")}
-                  onChange={(v) => patch({ dimensions: Number(v) || null })}
-                />
+                <div>
+                  <Label className="text-muted-foreground text-sm">
+                    Dimensions
+                  </Label>
+                  <NumberInput
+                    min={1}
+                    value={draft.dimensions ?? undefined}
+                    onValueChange={(d) =>
+                      patch({ dimensions: d.valueAsNumber || null })
+                    }
+                  >
+                    <NumberInputControl>
+                      <NumberInputField />
+                      <NumberInputTriggerGroup>
+                        <NumberInputIncrementTrigger />
+                        <NumberInputDecrementTrigger />
+                      </NumberInputTriggerGroup>
+                    </NumberInputControl>
+                  </NumberInput>
+                </div>
               )}
             </div>
 
             <div className="flex items-center gap-2">
-              <Label className="text-xs">API</Label>
+              <Label className="text-base">API</Label>
               <Select
                 value={draft.api_kind ?? "openai"}
                 onValueChange={(v) => patch({ api_kind: v })}
                 disabled={linkedToProfile}
               >
                 <SelectTrigger
-                  className="h-7 text-xs disabled:opacity-50"
+                  className="h-7 text-base disabled:opacity-50"
                   title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds reserve a slot for future native adapters and currently route through OpenAI compat."
                 >
                   <SelectValue />
@@ -377,7 +401,7 @@ export function LLMPurposeCard({
                 </SelectContent>
               </Select>
               {linkedToProfile && (
-                <span className="text-muted-foreground text-[10px]">
+                <span className="text-muted-foreground text-sm">
                   managed by profile <code>{draft.provider_ref}</code>
                 </span>
               )}
@@ -385,7 +409,7 @@ export function LLMPurposeCard({
 
             {purpose !== "embedding" && (
               <div className="flex items-center gap-2">
-                <Label className="text-xs">Reasoning mode</Label>
+                <Label className="text-base">Reasoning mode</Label>
                 <Switch
                   checked={draft.reasoning}
                   onCheckedChange={(v) => patch({ reasoning: v })}
@@ -394,7 +418,7 @@ export function LLMPurposeCard({
             )}
 
             <Collapsible>
-              <CollapsibleTrigger className="text-muted-foreground cursor-pointer text-[10px]">
+              <CollapsibleTrigger className="text-muted-foreground cursor-pointer text-sm">
                 More… (JSON params)
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -409,7 +433,7 @@ export function LLMPurposeCard({
                     setDirty(true)
                   }}
                   rows={3}
-                  className="mt-1 font-mono text-xs"
+                  className="mt-1 font-mono text-base"
                   placeholder='{"temperature": 0.2}'
                 />
               </CollapsibleContent>
@@ -465,13 +489,13 @@ function Field({
 }) {
   return (
     <div>
-      <Label className="text-muted-foreground text-[10px]">{label}</Label>
+      <Label className="text-muted-foreground text-sm">{label}</Label>
       <Input
         type={type ?? "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`h-7 text-xs ${mono ? "font-mono" : ""} disabled:opacity-50`}
+        className={`h-7 text-base ${mono ? "font-mono" : ""} disabled:opacity-50`}
       />
     </div>
   )

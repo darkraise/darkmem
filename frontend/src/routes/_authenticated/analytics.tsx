@@ -38,7 +38,6 @@ const COLORS = [
   "#8b949e",
 ]
 
-
 function StatTile({
   label,
   value,
@@ -49,7 +48,7 @@ function StatTile({
   return (
     <Card>
       <CardContent className="pt-4">
-        <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+        <div className="text-muted-foreground text-base font-medium tracking-wider uppercase">
           {label}
         </div>
         <div className="mt-1 text-3xl font-bold">{value ?? "—"}</div>
@@ -64,7 +63,7 @@ const logColumns: ColumnDef<PipelineLog>[] = [
     header: "ID",
     size: 70,
     cell: ({ getValue }) => (
-      <span className="text-muted-foreground font-mono text-xs">
+      <span className="text-muted-foreground font-mono text-base">
         {String(getValue())}
       </span>
     ),
@@ -75,10 +74,10 @@ const logColumns: ColumnDef<PipelineLog>[] = [
     size: 200,
     cell: ({ getValue }) => {
       const v = getValue()
-      if (!v) return <span className="text-muted-foreground text-xs">—</span>
+      if (!v) return <span className="text-muted-foreground text-base">—</span>
       return (
         <span
-          className="block max-w-[180px] truncate font-mono text-xs"
+          className="block max-w-[180px] truncate font-mono text-base"
           title={String(v)}
         >
           {String(v).slice(0, 8)}…
@@ -91,7 +90,7 @@ const logColumns: ColumnDef<PipelineLog>[] = [
     header: "Time",
     size: 130,
     cell: ({ getValue }) => (
-      <span className="text-muted-foreground text-xs">
+      <span className="text-muted-foreground text-base">
         {relativeTime(String(getValue()))}
       </span>
     ),
@@ -100,7 +99,7 @@ const logColumns: ColumnDef<PipelineLog>[] = [
     accessorKey: "details",
     header: "Details",
     cell: ({ getValue }) => (
-      <span className="text-muted-foreground block max-w-[400px] truncate font-mono text-xs">
+      <span className="text-muted-foreground block max-w-[400px] truncate font-mono text-base">
         {JSON.stringify(getValue())}
       </span>
     ),
@@ -145,7 +144,7 @@ function AnalyticsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-base font-medium">
               Top Tags by Memory Count
             </CardTitle>
           </CardHeader>
@@ -156,7 +155,7 @@ function AnalyticsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                   <XAxis
                     dataKey="name"
-                    tick={{ fill: "#8b949e", fontSize: 10 }}
+                    tick={{ fill: "#8b949e", fontSize: 11 }}
                     angle={-45}
                     textAnchor="end"
                     height={80}
@@ -173,13 +172,15 @@ function AnalyticsPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground text-sm">No tag data yet.</p>
+              <p className="text-muted-foreground text-base">
+                No tag data yet.
+              </p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Sources</CardTitle>
+            <CardTitle className="text-base font-medium">Sources</CardTitle>
           </CardHeader>
           <CardContent>
             {sourceData.length > 0 ? (
@@ -208,7 +209,7 @@ function AnalyticsPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-base">
                 No source data yet.
               </p>
             )}
@@ -218,7 +219,7 @@ function AnalyticsPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">
+          <CardTitle className="text-base font-medium">
             Recent Pipeline Activity
           </CardTitle>
         </CardHeader>
@@ -226,7 +227,7 @@ function AnalyticsPage() {
           {logsLoading ? (
             <DataTableSkeleton columnCount={4} rowCount={5} />
           ) : !logs || logs.length === 0 ? (
-            <p className="text-muted-foreground p-4 text-sm">
+            <p className="text-muted-foreground p-4 text-base">
               No pipeline activity yet.
             </p>
           ) : (

@@ -53,17 +53,18 @@ export function LLMPurposePromptEditor({ keys, prompts }: Props) {
 
   return (
     <div className="border-border mt-2 border-t pt-2">
-      <Label className="text-muted-foreground text-[10px] uppercase">
+      <Label className="text-muted-foreground text-sm uppercase">
         System prompts
       </Label>
       {keys.length > 1 && (
         <div className="my-1 flex flex-wrap gap-1">
           {keys.map((k) => (
-            <button
+            <Button
+              variant="ghost"
               key={k}
               type="button"
               onClick={() => setSelected(k)}
-              className={`rounded border px-2 py-0.5 text-[10px] ${
+              className={`rounded border px-2 py-0.5 text-sm ${
                 selected === k
                   ? "bg-primary text-primary-foreground border-primary"
                   : "border-border text-muted-foreground"
@@ -71,17 +72,17 @@ export function LLMPurposePromptEditor({ keys, prompts }: Props) {
             >
               {shortLabel(k)}
               {prompts[k]?.override && (
-                <Badge variant="secondary" className="ml-1 text-[9px]">
+                <Badge variant="secondary" className="ml-1 text-sm">
                   custom
                 </Badge>
               )}
-            </button>
+            </Button>
           ))}
         </div>
       )}
 
       <Textarea
-        className="min-h-[120px] font-mono text-xs"
+        className="min-h-[120px] font-mono text-base"
         value={draft}
         onChange={(e) => {
           setDraft(e.target.value)
@@ -89,7 +90,7 @@ export function LLMPurposePromptEditor({ keys, prompts }: Props) {
         }}
       />
       <div className="mt-1 flex items-center justify-between">
-        <span className="text-muted-foreground text-[10px]">
+        <span className="text-muted-foreground text-sm">
           {draft.length.toLocaleString()} / 20,000 ·{" "}
           {isOverridden ? "overridden" : "using default"}
         </span>

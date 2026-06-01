@@ -4,6 +4,7 @@ import { ChatSidebar } from "@/features/chat/components/chat-sidebar"
 import { ChatMessages } from "@/features/chat/components/chat-messages"
 import { ChatInput } from "@/features/chat/components/chat-input"
 import { Input } from "darkraise-ui/components/input"
+import { Button } from "darkraise-ui/components/button"
 import {
   useConversations,
   useConversation,
@@ -87,7 +88,7 @@ function ChatPage() {
                 <Input
                   autoFocus
                   defaultValue={convDetail?.title || ""}
-                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 text-sm font-semibold focus:border-indigo-400 focus:ring-0"
+                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 text-base font-semibold focus:border-indigo-400 focus:ring-0"
                   onBlur={(e) => handleTitleSubmit(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter")
@@ -97,7 +98,7 @@ function ChatPage() {
                 />
               ) : (
                 <h2
-                  className="hover:text-primary flex-1 cursor-pointer truncate text-sm font-semibold transition-colors"
+                  className="hover:text-primary flex-1 cursor-pointer truncate text-base font-semibold transition-colors"
                   onClick={() => setEditingTitle(true)}
                   title="Click to rename"
                 >
@@ -105,7 +106,7 @@ function ChatPage() {
                 </h2>
               )}
               {messages.length > 0 && (
-                <span className="text-muted-foreground/40 shrink-0 text-xs">
+                <span className="text-muted-foreground/40 shrink-0 text-base">
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
                 </span>
               )}
@@ -139,7 +140,7 @@ function ChatPage() {
               <p className="text-foreground mb-2 text-xl font-semibold">
                 Ask anything about your memories
               </p>
-              <p className="text-sm leading-relaxed">
+              <p className="text-base leading-relaxed">
                 Chat with your knowledge base. Ask questions, explore
                 connections, and discover insights from your stored memories and
                 entities.
@@ -153,16 +154,17 @@ function ChatPage() {
                 "Network topology overview",
                 "What services does darkmem use?",
               ].map((prompt) => (
-                <button
+                <Button
+                  variant="ghost"
                   key={prompt}
-                  className="rounded-full border border-[rgba(99,102,241,0.1)] bg-[rgba(99,102,241,0.04)] px-4 py-2 text-xs text-slate-300 transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
+                  className="rounded-full border border-[rgba(99,102,241,0.1)] bg-[rgba(99,102,241,0.04)] px-4 py-2 text-base text-slate-300 transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
                   onClick={async () => {
                     const resultId = await stream.sendMessage(null, prompt)
                     if (resultId) setActiveId(resultId)
                   }}
                 >
                   {prompt}
-                </button>
+                </Button>
               ))}
             </div>
           </div>

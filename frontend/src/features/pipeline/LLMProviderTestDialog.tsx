@@ -104,36 +104,33 @@ export function LLMProviderTestDialog({
 
         <div className="space-y-3">
           <div>
-            <Label className="text-xs">Model</Label>
+            <Label className="text-base">Model</Label>
             {modelsLoading && (
-              <p className="text-muted-foreground mt-1 text-[10px]">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Fetching models…
               </p>
             )}
             {modelsError && (
-              <p className="text-destructive mt-1 text-[10px]">
+              <p className="text-destructive mt-1 text-sm">
                 Could not fetch models: {(modelsError as Error).message}
               </p>
             )}
             {modelsResp?.error && (
-              <p className="text-destructive mt-1 text-[10px]">
+              <p className="text-destructive mt-1 text-sm">
                 Provider returned: {modelsResp.error}
               </p>
             )}
             {modelsResp &&
               modelsResp.models.length === 0 &&
               !modelsResp.error && (
-                <p className="text-muted-foreground mt-1 text-[10px]">
+                <p className="text-muted-foreground mt-1 text-sm">
                   Provider returned an empty model list. You can type a model
                   name below.
                 </p>
               )}
             {modelsResp && modelsResp.models.length > 0 ? (
-              <Select
-                value={model}
-                onValueChange={setModel}
-              >
-                <SelectTrigger className="mt-1 h-9 w-full text-sm">
+              <Select value={model} onValueChange={setModel}>
+                <SelectTrigger className="mt-1 h-9 w-full text-base">
                   <SelectValue placeholder="Select a model…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -150,11 +147,11 @@ export function LLMProviderTestDialog({
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="model id (e.g. gpt-4o-mini)"
-                className="mt-2 h-9 w-full font-mono text-sm"
+                className="mt-2 h-9 w-full font-mono text-base"
               />
             )}
             {modelsResp?.fetched_via && (
-              <p className="text-muted-foreground mt-1 text-[10px]">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Fetched via {modelsResp.fetched_via}
               </p>
             )}
@@ -165,24 +162,24 @@ export function LLMProviderTestDialog({
               <div className="flex items-center gap-2">
                 <Badge
                   variant={result.ok ? "default" : "destructive"}
-                  className="text-[10px]"
+                  className="text-sm"
                 >
                   {result.ok ? "OK" : "FAIL"}
                 </Badge>
                 {result.status_code !== null && (
-                  <span className="text-xs">HTTP {result.status_code}</span>
+                  <span className="text-base">HTTP {result.status_code}</span>
                 )}
-                <span className="text-muted-foreground text-xs">
+                <span className="text-muted-foreground text-base">
                   {result.latency_ms} ms
                 </span>
               </div>
               {result.url && (
-                <p className="text-muted-foreground font-mono text-[10px] break-all">
+                <p className="text-muted-foreground font-mono text-sm break-all">
                   {result.url}
                 </p>
               )}
               {result.message && (
-                <p className="text-muted-foreground text-[10px] break-all">
+                <p className="text-muted-foreground text-sm break-all">
                   {result.message}
                 </p>
               )}

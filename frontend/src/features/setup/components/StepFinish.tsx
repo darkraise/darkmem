@@ -22,18 +22,18 @@ export function StepFinish() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Admin password</CardTitle>
+          <CardTitle className="text-base">Admin password</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm">
+        <CardContent className="text-base">
           {password.value ? "Set" : "Not set"}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Default LLM provider</CardTitle>
+          <CardTitle className="text-base">Default LLM provider</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 text-sm">
+        <CardContent className="space-y-1 text-base">
           {llm.skipped || !llm.api_kind ? (
             <span className="text-muted-foreground">
               Skipped — system defaults will be used.
@@ -65,9 +65,9 @@ export function StepFinish() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Default code repo path</CardTitle>
+          <CardTitle className="text-base">Default code repo path</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-2 text-base">
           {repos.skipped || !repos.basePath ? (
             <span className="text-muted-foreground">
               Skipped — configure later under Settings.
@@ -94,12 +94,12 @@ export function StepFinish() {
                         value={r.name}
                         onChange={(e) => rename(r.subPath, e.target.value)}
                       />
-                      <span className="text-muted-foreground font-mono text-xs">
+                      <span className="text-muted-foreground font-mono text-base">
                         {r.subPath}
                       </span>
                     </div>
                   ))}
-                  <div className="text-muted-foreground pt-2 text-xs">
+                  <div className="text-muted-foreground pt-2 text-base">
                     Imported repositories start with auto-sync{" "}
                     <strong>off</strong>. Open the Repositories page and enable
                     each one from its Edit dialog when you're ready to have

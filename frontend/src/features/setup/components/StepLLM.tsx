@@ -17,6 +17,17 @@ import {
   SelectItem,
 } from "darkraise-ui/components/select"
 import {
+  Combobox,
+  ComboboxControl,
+  ComboboxInput,
+  ComboboxTrigger,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxItemText,
+  ComboboxEmpty,
+} from "darkraise-ui/components/combobox"
+import {
   API_KIND_OPTIONS,
   type LlmApiKind,
 } from "@/features/pipeline/api-kinds"
@@ -105,7 +116,7 @@ export function StepLLM() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Provider</CardTitle>
+          <CardTitle className="text-base">Provider</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1">
@@ -152,9 +163,9 @@ export function StepLLM() {
               checked={llm.supports_embedding}
               onCheckedChange={(v) => setLlmField("supports_embedding", v)}
             />
-            <div className="text-sm">
+            <div className="text-base">
               <div>Provider supports embeddings</div>
-              <div className="text-muted-foreground text-xs">
+              <div className="text-muted-foreground text-base">
                 Auto-set from API kind (off for Anthropic and DeepSeek).
                 Override only for custom proxies that route embeddings through
                 this base URL.
@@ -166,14 +177,14 @@ export function StepLLM() {
               {probe.isPending ? "Fetching..." : "Fetch available models"}
             </Button>
             {llm.models.length > 0 && (
-              <span className="text-muted-foreground text-sm">
+              <span className="text-muted-foreground text-base">
                 {llm.models.length} model{llm.models.length === 1 ? "" : "s"}{" "}
                 loaded
               </span>
             )}
           </div>
           {probeError && (
-            <p role="alert" className="text-destructive text-sm">
+            <p role="alert" className="text-destructive text-base">
               {probeError}
             </p>
           )}
@@ -182,11 +193,15 @@ export function StepLLM() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Per-purpose models</CardTitle>
+          <CardTitle className="text-base">Per-purpose models</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {visiblePurposes.map((purpose) => {
             const draft = llm.perPurpose[purpose]
+            const modelItems = (llm.models ?? []).map((m) => ({
+              value: m,
+              label: m,
+            }))
             const required =
               purpose === "embedding"
                 ? llm.supports_embedding
@@ -197,33 +212,44 @@ export function StepLLM() {
                 className="grid grid-cols-[140px,1fr,auto] items-center gap-3"
               >
                 <div>
-                  <div className="text-sm font-medium capitalize">
+                  <div className="text-base font-medium capitalize">
                     {purpose}
                     {required && (
                       <span className="text-destructive ml-1">*</span>
                     )}
                   </div>
-                  <div className="text-muted-foreground text-xs">
+                  <div className="text-muted-foreground text-base">
                     {PURPOSE_HINT[purpose]}
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Input
-                    list={`models-${purpose}`}
-                    value={draft.model}
-                    onChange={(e) =>
-                      setLlmPurpose(purpose, { model: e.target.value })
+                  <Combobox
+                    items={modelItems}
+                    inputValue={draft.model}
+                    onInputValueChange={(d) =>
+                      setLlmPurpose(purpose, { model: d.value })
                     }
-                    placeholder="model id"
-                  />
-                  <datalist id={`models-${purpose}`}>
-                    {llm.models.map((m) => (
-                      <option key={m} value={m} />
-                    ))}
-                  </datalist>
+                    openOnClick
+                    openOnFocus
+                  >
+                    <ComboboxControl>
+                      <ComboboxInput placeholder="model id" />
+                      <ComboboxTrigger />
+                    </ComboboxControl>
+                    <ComboboxContent>
+                      <ComboboxList>
+                        {modelItems.map((it) => (
+                          <ComboboxItem key={it.value} item={it}>
+                            <ComboboxItemText>{it.label}</ComboboxItemText>
+                          </ComboboxItem>
+                        ))}
+                        <ComboboxEmpty>No models</ComboboxEmpty>
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                 </div>
                 {purpose !== "embedding" && purpose !== "reranker" ? (
-                  <label className="flex items-center gap-2 text-xs">
+                  <Label className="flex items-center gap-2 text-base">
                     <Switch
                       checked={draft.reasoning}
                       onCheckedChange={(v) =>
@@ -231,7 +257,7 @@ export function StepLLM() {
                       }
                     />
                     reasoning
-                  </label>
+                  </Label>
                 ) : (
                   <span />
                 )}

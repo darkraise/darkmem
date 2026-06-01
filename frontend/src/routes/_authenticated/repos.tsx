@@ -71,7 +71,6 @@ export const Route = createFileRoute("/_authenticated/repos")({
   component: RepositoriesPage,
 })
 
-
 const PROVIDER_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   github: "default",
   gitlab: "secondary",
@@ -136,7 +135,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-xs">Name *</Label>
+        <Label className="text-muted-foreground text-base">Name *</Label>
         <Input
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
@@ -144,7 +143,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-xs">URL</Label>
+        <Label className="text-muted-foreground text-base">URL</Label>
         <Input
           value={form.url ?? ""}
           onChange={(e) => set("url", e.target.value)}
@@ -152,7 +151,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-xs">Provider</Label>
+        <Label className="text-muted-foreground text-base">Provider</Label>
         <Select
           value={form.provider ?? "github"}
           onValueChange={(v) => set("provider", v)}
@@ -168,14 +167,16 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         </Select>
       </div>
       <div>
-        <Label className="text-muted-foreground text-xs">Default branch</Label>
+        <Label className="text-muted-foreground text-base">
+          Default branch
+        </Label>
         <Input
           value={form.default_branch ?? "main"}
           onChange={(e) => set("default_branch", e.target.value)}
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-xs">Auth token</Label>
+        <Label className="text-muted-foreground text-base">Auth token</Label>
         <Input
           type="password"
           value={form.auth_token ?? ""}
@@ -189,9 +190,9 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
           checked={form.auto_sync ?? true}
           onCheckedChange={(v) => set("auto_sync", v)}
         />
-        <div className="text-sm">
+        <div className="text-base">
           <div>Auto-sync</div>
-          <div className="text-muted-foreground text-xs">
+          <div className="text-muted-foreground text-base">
             When on, the repo_sync background job fetches and re-indexes this
             repo on every tick. Manual reindex always works regardless of this
             toggle.
@@ -218,15 +219,17 @@ function RepoTaskList({ repo }: { repo: Repo }) {
       {tasks.map((task: RepoTask) => (
         <div
           key={task.id}
-          className="text-muted-foreground bg-muted/30 flex items-center gap-2 rounded px-2 py-1 text-xs"
+          className="text-muted-foreground bg-muted/30 flex items-center gap-2 rounded px-2 py-1 text-base"
         >
           <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-500" />
-          <Badge variant="outline" className="px-1 py-0 text-[9px]">
+          <Badge variant="outline" className="px-1 py-0 text-sm">
             {task.kind}
           </Badge>
           <span className="flex-1 truncate">{task.message}</span>
           <span className="shrink-0">{relativeTime(task.created_at)}</span>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             className="text-muted-foreground hover:text-destructive shrink-0"
             aria-label={`Cancel ${task.kind} task`}
             onClick={() =>
@@ -240,7 +243,7 @@ function RepoTaskList({ repo }: { repo: Repo }) {
             }
           >
             <X className="h-3 w-3" aria-hidden="true" />
-          </button>
+          </Button>
         </div>
       ))}
     </div>
@@ -298,7 +301,7 @@ function RepositoriesPage() {
               }`}
               title={row.original.status_message ?? row.original.status}
             />
-            <span className="text-sm font-medium">{row.original.name}</span>
+            <span className="text-base font-medium">{row.original.name}</span>
           </div>
           <RepoTaskList repo={row.original} />
         </div>
@@ -313,7 +316,7 @@ function RepositoriesPage() {
           variant={
             PROVIDER_VARIANT[String(getValue()).toLowerCase()] ?? "outline"
           }
-          className="px-1.5 py-0 text-[10px]"
+          className="px-1.5 py-0 text-sm"
         >
           {String(getValue())}
         </Badge>
@@ -328,7 +331,7 @@ function RepositoriesPage() {
       id: "location",
       header: "Location",
       cell: ({ row }) => (
-        <span className="text-muted-foreground block max-w-[240px] truncate text-xs">
+        <span className="text-muted-foreground block max-w-[240px] truncate text-base">
           {row.original.url ?? row.original.local_path ?? "—"}
         </span>
       ),
@@ -343,7 +346,7 @@ function RepositoriesPage() {
           return (
             <Badge
               variant="outline"
-              className="text-destructive border-destructive px-1.5 py-0 text-[10px]"
+              className="text-destructive border-destructive px-1.5 py-0 text-sm"
               title={status_message ?? ""}
             >
               error
@@ -354,14 +357,14 @@ function RepositoriesPage() {
           return (
             <Badge
               variant="outline"
-              className="border-orange-500 px-1.5 py-0 text-[10px] text-orange-500"
+              className="border-orange-500 px-1.5 py-0 text-sm text-orange-500"
             >
               cancelled
             </Badge>
           )
         }
         return (
-          <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+          <Badge variant="outline" className="px-1.5 py-0 text-sm">
             {status}
           </Badge>
         )
@@ -394,7 +397,7 @@ function RepositoriesPage() {
       header: "Files / Symbols",
       size: 120,
       cell: ({ row }) => (
-        <span className="text-muted-foreground text-xs">
+        <span className="text-muted-foreground text-base">
           {row.original.file_count} / {row.original.symbol_count}
         </span>
       ),
@@ -408,7 +411,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs"
+            className="h-7 px-2 text-base"
             disabled={
               row.original.status === "cloning" ||
               row.original.status === "indexing"
@@ -423,7 +426,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs"
+            className="h-7 px-2 text-base"
             onClick={() => setEditingRepo(row.original)}
           >
             Edit
@@ -431,7 +434,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-destructive hover:text-destructive h-7 px-2 text-xs"
+            className="text-destructive hover:text-destructive h-7 px-2 text-base"
             onClick={() => handleDelete(row.original)}
           >
             Delete
@@ -572,7 +575,7 @@ function RepositoriesPage() {
       ) : (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
               Repositories
             </CardTitle>
           </CardHeader>

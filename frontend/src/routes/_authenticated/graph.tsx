@@ -17,6 +17,7 @@ import { useState, useMemo } from "react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
+import { Label } from "darkraise-ui/components/label"
 import {
   Select,
   SelectContent,
@@ -84,10 +85,11 @@ interface TabButtonProps {
 
 function TabButton({ active, onClick, icon, label }: TabButtonProps) {
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={onClick}
       className={[
-        "flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+        "flex items-center gap-2 border-b-2 px-4 py-2 text-base font-medium transition-colors",
         active
           ? "border-cyan-400 text-cyan-400"
           : "text-muted-foreground hover:text-foreground hover:border-border border-transparent",
@@ -95,7 +97,7 @@ function TabButton({ active, onClick, icon, label }: TabButtonProps) {
     >
       {icon}
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -119,13 +121,13 @@ function TripleRow({ triple, animate }: TripleRowProps) {
     >
       {/* Timeline rail */}
       <div className="flex w-24 shrink-0 flex-col items-center gap-1 text-right">
-        <span className="font-mono text-[11px] leading-tight text-cyan-400/80">
+        <span className="font-mono text-sm leading-tight text-cyan-400/80">
           {fmtDate(triple.valid_from)}
         </span>
         {triple.valid_to && (
           <>
             <div className="bg-border min-h-[8px] w-px flex-1" />
-            <span className="text-muted-foreground font-mono text-[11px] leading-tight line-through">
+            <span className="text-muted-foreground font-mono text-sm leading-tight line-through">
               {fmtDate(triple.valid_to)}
             </span>
           </>
@@ -144,7 +146,7 @@ function TripleRow({ triple, animate }: TripleRowProps) {
       >
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className="font-mono text-sm font-medium"
+            className="font-mono text-base font-medium"
             style={{ color: expired ? "#8b949e" : "#e2e8f0" }}
           >
             {triple.subject}
@@ -154,7 +156,7 @@ function TripleRow({ triple, animate }: TripleRowProps) {
             <ArrowRight className="text-muted-foreground h-3.5 w-3.5" />
             <Badge
               variant="outline"
-              className="rounded border-0 px-1.5 py-0 font-mono text-[11px]"
+              className="rounded border-0 px-1.5 py-0 font-mono text-sm"
               style={{
                 backgroundColor: expired
                   ? "rgba(139,148,158,0.1)"
@@ -169,7 +171,7 @@ function TripleRow({ triple, animate }: TripleRowProps) {
 
           <span
             className={[
-              "font-mono text-sm",
+              "font-mono text-base",
               expired
                 ? "text-muted-foreground line-through"
                 : "text-foreground",
@@ -179,7 +181,7 @@ function TripleRow({ triple, animate }: TripleRowProps) {
           </span>
 
           <span
-            className="ml-auto shrink-0 font-mono text-[11px]"
+            className="ml-auto shrink-0 font-mono text-sm"
             style={{ color: `rgba(139,148,158,${triple.confidence})` }}
             title={`Confidence: ${confidencePct}%`}
           >
@@ -240,14 +242,14 @@ function KnowledgeTimelineTab() {
       {/* Controls */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+          <Label className="text-muted-foreground text-base font-medium tracking-wider uppercase">
             Entity
-          </label>
+          </Label>
           <Select
             value={selectedEntity || "__none__"}
             onValueChange={handleEntityChange}
           >
-            <SelectTrigger className="h-8 w-52 font-mono text-sm">
+            <SelectTrigger className="h-8 w-52 font-mono text-base">
               <SelectValue placeholder="Select entity…" />
             </SelectTrigger>
             <SelectContent>
@@ -260,7 +262,7 @@ function KnowledgeTimelineTab() {
               {entities?.map((e) => (
                 <SelectItem key={e.name} value={e.name}>
                   <span className="font-mono">{e.name}</span>
-                  <span className="text-muted-foreground ml-2 text-xs">
+                  <span className="text-muted-foreground ml-2 text-base">
                     {e.entity_type}
                   </span>
                 </SelectItem>
@@ -270,16 +272,16 @@ function KnowledgeTimelineTab() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium tracking-wider uppercase">
+          <Label className="text-muted-foreground flex items-center gap-1.5 text-base font-medium tracking-wider uppercase">
             <CalendarDays className="h-3 w-3" />
             As of date
-          </label>
+          </Label>
           <div className="flex gap-2">
             <Input
               type="date"
               value={asOfInput}
               onChange={(e) => setAsOfInput(e.target.value)}
-              className="h-8 w-44 font-mono text-sm"
+              className="h-8 w-44 font-mono text-base"
             />
             <Button onClick={handleApplyAsOf} disabled={!asOfInput}>
               Apply
@@ -297,7 +299,7 @@ function KnowledgeTimelineTab() {
         </div>
 
         {selectedEntity && selectedEntityMeta && (
-          <div className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
+          <div className="text-muted-foreground ml-auto flex items-center gap-2 text-base">
             <span
               className="h-2.5 w-2.5 shrink-0 rounded-full"
               style={{
@@ -322,7 +324,7 @@ function KnowledgeTimelineTab() {
 
       {/* Active date filter indicator */}
       {asOf && (
-        <div className="flex w-fit items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-950/40 px-3 py-1.5 font-mono text-xs text-cyan-400/80">
+        <div className="flex w-fit items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-950/40 px-3 py-1.5 font-mono text-base text-cyan-400/80">
           <Clock className="h-3 w-3" />
           Showing facts valid on {fmtDate(asOf)}
         </div>
@@ -332,21 +334,21 @@ function KnowledgeTimelineTab() {
       {!selectedEntity && (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Clock className="text-muted-foreground/30 h-10 w-10" />
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-base">
             Select an entity to view its temporal fact timeline.
           </p>
         </div>
       )}
 
       {selectedEntity && triplesLoading && (
-        <div className="text-muted-foreground flex items-center justify-center gap-2 py-8 text-sm">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 py-8 text-base">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading timeline…
         </div>
       )}
 
       {selectedEntity && !triplesLoading && sorted.length === 0 && (
-        <p className="text-muted-foreground py-8 text-center text-sm">
+        <p className="text-muted-foreground py-8 text-center text-base">
           No facts found
           {asOf ? ` valid on ${fmtDate(asOf)}` : ""} for "{selectedEntity}".
         </p>
@@ -359,7 +361,7 @@ function KnowledgeTimelineTab() {
           style={{ background: "rgba(8,8,14,0.6)" }}
         >
           {/* Legend */}
-          <div className="border-border/50 bg-card/30 text-muted-foreground flex items-center gap-4 border-b px-4 py-2 text-xs">
+          <div className="border-border/50 bg-card/30 text-muted-foreground flex items-center gap-4 border-b px-4 py-2 text-base">
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-cyan-400/80" />
               Active
@@ -387,7 +389,7 @@ function KnowledgeTimelineTab() {
           {Array.from(new Set(sorted.map((t) => t.predicate))).map((pred) => (
             <span
               key={pred}
-              className="border-border/50 rounded border px-2 py-0.5 font-mono text-[11px]"
+              className="border-border/50 rounded border px-2 py-0.5 font-mono text-sm"
               style={{
                 color: predicateColor(pred),
                 backgroundColor: `${predicateColor(pred)}12`,
@@ -465,7 +467,7 @@ function GraphTab({ data: graph, isLoading }: GraphTabProps) {
           {selected.kind === "node" ? (
             <>
               <h3 className="font-medium">{selected.label}</h3>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-base">
                 Type: {selected.type}
               </p>
             </>
@@ -474,7 +476,7 @@ function GraphTab({ data: graph, isLoading }: GraphTabProps) {
               <h3 className="font-medium">
                 {selected.label || "relationship"}
               </h3>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-base">
                 {selected.source} → {selected.target}
                 {selected.weight && (
                   <span className="ml-2">weight: {selected.weight}</span>
@@ -490,7 +492,7 @@ function GraphTab({ data: graph, isLoading }: GraphTabProps) {
           {Object.entries(ENTITY_TYPE_COLORS).map(([type, color]) => (
             <div
               key={type}
-              className="text-muted-foreground flex items-center gap-1.5 text-xs"
+              className="text-muted-foreground flex items-center gap-1.5 text-base"
             >
               <div
                 className="h-3 w-3 rounded-full"
@@ -522,7 +524,7 @@ function KnowledgeGraphPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Knowledge Graph</h1>
         {nodeCount > 0 && (
-          <span className="text-muted-foreground text-sm">
+          <span className="text-muted-foreground text-base">
             {nodeCount} entities, {edgeCount} relationships
           </span>
         )}

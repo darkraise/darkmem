@@ -7,6 +7,14 @@ import {
 } from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
+import {
+  NumberInput,
+  NumberInputControl,
+  NumberInputField,
+  NumberInputTriggerGroup,
+  NumberInputIncrementTrigger,
+  NumberInputDecrementTrigger,
+} from "darkraise-ui/components/number-input"
 import { Label } from "darkraise-ui/components/label"
 import { Badge } from "darkraise-ui/components/badge"
 import {
@@ -42,13 +50,15 @@ export function MLProfilesPanel() {
   const remove = useDeleteMlProfile()
 
   const [addOpen, setAddOpen] = useState(false)
-  const [confirmDeleteName, setConfirmDeleteName] = useState<string | null>(null)
+  const [confirmDeleteName, setConfirmDeleteName] = useState<string | null>(
+    null,
+  )
 
   if (isLoading) {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Darkmem ML Profiles</CardTitle>
+          <CardTitle className="text-base">Darkmem ML Profiles</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-32 rounded" />
@@ -90,99 +100,99 @@ export function MLProfilesPanel() {
 
   return (
     <>
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div>
-          <CardTitle className="text-sm">Darkmem ML Profiles</CardTitle>
-          <p className="text-muted-foreground mt-1 text-xs">
-            HuggingFace classifiers loaded into the backend for in-process
-            inference. CPU-only. TTL of 0 means "never unload until backend
-            stops".
-          </p>
-        </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Add ML Profile
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add ML Profile</DialogTitle>
-            </DialogHeader>
-            <AddMlProfileForm
-              existingNames={names}
-              onClose={() => setAddOpen(false)}
-              onCreate={(name, repo, ttl) => {
-                const next: Record<string, MlProfile> = {
-                  ...profiles,
-                  [name]: { model_repo: repo, ttl_seconds: ttl },
-                }
-                update.mutate(
-                  { profiles: next },
-                  {
-                    onSuccess: () => {
-                      toast.success(`${name} created`)
-                      setAddOpen(false)
-                    },
-                    onError: (err) =>
-                      toast.error(`Create failed: ${err.message}`),
-                  },
-                )
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      </CardHeader>
-      <CardContent className="p-0">
-        {names.length === 0 ? (
-          <p className="text-muted-foreground px-4 py-3 text-xs">
-            No ML profiles yet. Add one above.
-          </p>
-        ) : (
-          <div className="divide-border divide-y">
-            {names.map((name) => (
-              <MlProfileRow
-                key={name}
-                name={name}
-                profile={profiles[name]}
-                onSaveTtl={(ttl) => handleSaveTtl(name, ttl)}
-                onDelete={() => handleDelete(name)}
-                disabled={update.isPending || remove.isPending}
-              />
-            ))}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle className="text-base">Darkmem ML Profiles</CardTitle>
+            <p className="text-muted-foreground mt-1 text-base">
+              HuggingFace classifiers loaded into the backend for in-process
+              inference. CPU-only. TTL of 0 means "never unload until backend
+              stops".
+            </p>
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Add ML Profile
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add ML Profile</DialogTitle>
+              </DialogHeader>
+              <AddMlProfileForm
+                existingNames={names}
+                onClose={() => setAddOpen(false)}
+                onCreate={(name, repo, ttl) => {
+                  const next: Record<string, MlProfile> = {
+                    ...profiles,
+                    [name]: { model_repo: repo, ttl_seconds: ttl },
+                  }
+                  update.mutate(
+                    { profiles: next },
+                    {
+                      onSuccess: () => {
+                        toast.success(`${name} created`)
+                        setAddOpen(false)
+                      },
+                      onError: (err) =>
+                        toast.error(`Create failed: ${err.message}`),
+                    },
+                  )
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent className="p-0">
+          {names.length === 0 ? (
+            <p className="text-muted-foreground px-4 py-3 text-base">
+              No ML profiles yet. Add one above.
+            </p>
+          ) : (
+            <div className="divide-border divide-y">
+              {names.map((name) => (
+                <MlProfileRow
+                  key={name}
+                  name={name}
+                  profile={profiles[name]}
+                  onSaveTtl={(ttl) => handleSaveTtl(name, ttl)}
+                  onDelete={() => handleDelete(name)}
+                  disabled={update.isPending || remove.isPending}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-    <AlertDialog
-      open={!!confirmDeleteName}
-      onOpenChange={(o) => !o && setConfirmDeleteName(null)}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            Delete ML profile &ldquo;{confirmDeleteName}&rdquo;?
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            The profile will be removed and unloaded from memory.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => {
-              if (confirmDeleteName) confirmDelete(confirmDeleteName)
-              setConfirmDeleteName(null)
-            }}
-          >
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      <AlertDialog
+        open={!!confirmDeleteName}
+        onOpenChange={(o) => !o && setConfirmDeleteName(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete ML profile &ldquo;{confirmDeleteName}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The profile will be removed and unloaded from memory.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteName) confirmDelete(confirmDeleteName)
+                setConfirmDeleteName(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
@@ -206,33 +216,40 @@ function MlProfileRow({
     <div className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-bold">{name}</span>
-          <Badge variant="outline" className="font-mono text-[10px]">
+          <span className="truncate text-base font-bold">{name}</span>
+          <Badge variant="outline" className="font-mono text-sm">
             {profile.model_repo}
           </Badge>
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-sm">
             CPU
           </Badge>
         </div>
-        <div className="text-muted-foreground mt-0.5 text-xs">
+        <div className="text-muted-foreground mt-0.5 text-base">
           {profile.ttl_seconds === 0
             ? "TTL: ∞ (never unload)"
             : `TTL: ${profile.ttl_seconds}s`}
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Input
-          type="number"
+        <NumberInput
           min={0}
           value={ttl}
-          onChange={(e) => setTtl(Number(e.target.value))}
-          className="h-8 w-24 text-xs"
-        />
-        <span className="text-muted-foreground text-[10px]">s</span>
+          onValueChange={(d) => setTtl(d.valueAsNumber)}
+          className="h-8 w-28"
+        >
+          <NumberInputControl>
+            <NumberInputField className="text-base" />
+            <NumberInputTriggerGroup>
+              <NumberInputIncrementTrigger />
+              <NumberInputDecrementTrigger />
+            </NumberInputTriggerGroup>
+          </NumberInputControl>
+        </NumberInput>
+        <span className="text-muted-foreground text-sm">s</span>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs"
+          className="h-7 px-2 text-base"
           onClick={() => onSaveTtl(ttl)}
           disabled={!dirty || disabled}
         >
@@ -241,7 +258,7 @@ function MlProfileRow({
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive h-7 px-2 text-xs"
+          className="text-destructive hover:text-destructive h-7 px-2 text-base"
           onClick={onDelete}
           disabled={disabled}
           aria-label={`Delete ML profile ${name}`}
@@ -283,7 +300,7 @@ function AddMlProfileForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-xs">Profile name</Label>
+        <Label className="text-muted-foreground text-base">Profile name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -292,7 +309,7 @@ function AddMlProfileForm({
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-xs">
+        <Label className="text-muted-foreground text-base">
           HuggingFace model repo
         </Label>
         <Input
@@ -302,19 +319,26 @@ function AddMlProfileForm({
           className="font-mono"
           required
         />
-        <p className="text-muted-foreground mt-1 text-[10px]">
+        <p className="text-muted-foreground mt-1 text-sm">
           Public HF Hub repos only — no token configuration in this iteration.
         </p>
       </div>
       <div>
-        <Label className="text-muted-foreground text-xs">TTL (seconds)</Label>
-        <Input
-          type="number"
+        <Label className="text-muted-foreground text-base">TTL (seconds)</Label>
+        <NumberInput
           min={0}
           value={ttl}
-          onChange={(e) => setTtl(Number(e.target.value))}
-        />
-        <p className="text-muted-foreground mt-1 text-[10px]">
+          onValueChange={(d) => setTtl(d.valueAsNumber)}
+        >
+          <NumberInputControl>
+            <NumberInputField />
+            <NumberInputTriggerGroup>
+              <NumberInputIncrementTrigger />
+              <NumberInputDecrementTrigger />
+            </NumberInputTriggerGroup>
+          </NumberInputControl>
+        </NumberInput>
+        <p className="text-muted-foreground mt-1 text-sm">
           0 = never unload until backend restart. Otherwise the model is evicted
           after that many idle seconds.
         </p>

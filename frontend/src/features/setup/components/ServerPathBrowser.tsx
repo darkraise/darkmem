@@ -79,7 +79,7 @@ export function ServerPathBrowser({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Server folder browser</CardTitle>
+        <CardTitle className="text-base">Server folder browser</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-2">
@@ -125,9 +125,10 @@ export function ServerPathBrowser({
 
         <div className="max-h-72 divide-y overflow-y-auto rounded-md border">
           {entries.map((entry) => (
-            <button
+            <Button
               key={entry.path}
               type="button"
+              variant="ghost"
               className="hover:bg-accent flex w-full items-center gap-2 px-3 py-2 text-left"
               onClick={() => navigate(entry.path)}
               disabled={disabled}
@@ -141,17 +142,17 @@ export function ServerPathBrowser({
               {entry.is_git && <Badge variant="secondary">git</Badge>}
               {entry.has_repos && <Badge>{`repos:${entry.repo_count}`}</Badge>}
               <ChevronRight className="text-muted-foreground h-4 w-4" />
-            </button>
+            </Button>
           ))}
           {entries.length === 0 && !error && (
-            <div className="text-muted-foreground px-3 py-6 text-center text-sm">
+            <div className="text-muted-foreground px-3 py-6 text-center text-base">
               No subfolders.
             </div>
           )}
         </div>
 
         {error && (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive text-base">
             {error}
           </p>
         )}
@@ -165,7 +166,7 @@ export function ServerPathBrowser({
           </Button>
         </div>
         {isGit && (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-base">
             This folder is itself a git repository — pick its parent to register
             the repos inside.
           </p>

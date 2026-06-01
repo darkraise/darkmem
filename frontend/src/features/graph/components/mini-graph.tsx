@@ -1,3 +1,4 @@
+import { Button } from "darkraise-ui/components/button"
 import { useMemoryContext } from "@/hooks/api"
 import { entityTypeColor } from "@/features/graph/lib/graph-colors"
 
@@ -15,10 +16,12 @@ export function MiniGraph({
   const { data, isLoading } = useMemoryContext(memoryId)
 
   if (isLoading)
-    return <p className="text-muted-foreground p-2 text-xs">Loading context…</p>
+    return (
+      <p className="text-muted-foreground p-2 text-base">Loading context…</p>
+    )
   if (!data || (data.entities.length === 0 && data.neighbors.length === 0)) {
     return (
-      <p className="text-muted-foreground p-2 text-xs">
+      <p className="text-muted-foreground p-2 text-base">
         No entities extracted yet. Run the pipeline with entity extraction
         enabled to populate this graph.
       </p>
@@ -32,12 +35,13 @@ export function MiniGraph({
     >
       {data.entities.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-xs">Entities</p>
+          <p className="text-muted-foreground mb-1 text-base">Entities</p>
           <div className="flex flex-wrap gap-1">
             {data.entities.map((e) => (
-              <button
+              <Button
+                variant="ghost"
                 key={e.id}
-                className="rounded px-1.5 py-0.5 text-xs"
+                className="rounded px-1.5 py-0.5 text-base"
                 style={{
                   backgroundColor: entityTypeColor(e.entity_type) + "30",
                   color: entityTypeColor(e.entity_type),
@@ -45,24 +49,25 @@ export function MiniGraph({
                 onClick={() => onEntitySelect?.(e.id)}
               >
                 {e.name}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
       )}
       {data.neighbors.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-xs">Neighbors</p>
+          <p className="text-muted-foreground mb-1 text-base">Neighbors</p>
           <div className="space-y-0.5">
             {data.neighbors.slice(0, 5).map((n) => (
-              <button
+              <Button
+                variant="ghost"
                 key={n.id}
-                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left text-xs"
+                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left text-base"
                 onClick={() => onNavigate(n.id)}
                 title={n.content}
               >
                 {n.content.slice(0, 60)}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

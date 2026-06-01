@@ -30,7 +30,7 @@ import {
   TagsInputItemText,
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
-import { usePaginatedSearch, useDeleteMemory, useTags } from "@/hooks/api"
+import { usePaginatedSearch, useDeleteMemory } from "@/hooks/api"
 import type { Memory } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import { relativeTime } from "@/lib/format"
@@ -71,8 +71,6 @@ const SOURCE_COLORS: Record<string, string> = {
   "rest-test": "#ffa657",
   dashboard: "#f778ba",
 }
-
-
 
 // Cap bulk concurrency. Each delete runs an independent server-side
 // pipeline cleanup; a 50-item bulk shouldn't open 50 concurrent backend
@@ -130,7 +128,6 @@ function MemoriesPage() {
     offset,
   })
   const { data: unfilteredData } = usePaginatedSearch({ limit: 1, offset: 0 })
-  const { data: tagsData } = useTags()
   const deleteMemory = useDeleteMemory()
   const qc = useQueryClient()
 
@@ -237,12 +234,9 @@ function MemoriesPage() {
     }
   }
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      setConfirmDeleteId(id)
-    },
-    [],
-  )
+  const handleDelete = useCallback((id: string) => {
+    setConfirmDeleteId(id)
+  }, [])
 
   const confirmDelete = useCallback(
     (id: string) => {
@@ -361,12 +355,12 @@ function MemoriesPage() {
               }`}
               onClick={() => setDetailMemory(m)}
             >
-              <p className="line-clamp-2 text-sm">{m.content}</p>
+              <p className="line-clamp-2 text-base">{m.content}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {m.status === "superseded" && (
                   <Badge
                     variant="outline"
-                    className="border-amber-500/50 px-1.5 py-0 text-[10px] text-amber-500"
+                    className="border-amber-500/50 px-1.5 py-0 text-sm text-amber-500"
                     title="Superseded by a newer memory with a REPLACES relation"
                   >
                     superseded
@@ -376,7 +370,7 @@ function MemoriesPage() {
                   <Badge
                     key={tag}
                     variant="secondary"
-                    className="px-1.5 py-0 text-[10px]"
+                    className="px-1.5 py-0 text-sm"
                   >
                     {tag}
                   </Badge>
@@ -391,7 +385,7 @@ function MemoriesPage() {
         header: "Source",
         cell: ({ row }) => (
           <span
-            className="text-xs font-medium"
+            className="text-base font-medium"
             style={{ color: SOURCE_COLORS[row.original.source] ?? "#8b949e" }}
           >
             {row.original.source}
@@ -403,7 +397,7 @@ function MemoriesPage() {
         id: "type",
         header: "Type",
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-base">
             {row.original.memory_type ?? "—"}
           </span>
         ),
@@ -422,7 +416,7 @@ function MemoriesPage() {
                 <Badge
                   key={t}
                   variant="outline"
-                  className="px-1.5 py-0 text-[10px]"
+                  className="px-1.5 py-0 text-sm"
                 >
                   {t}
                 </Badge>
@@ -436,7 +430,7 @@ function MemoriesPage() {
         id: "created_at",
         header: "Created",
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-base">
             {relativeTime(row.original.created_at)}
           </span>
         ),
@@ -446,7 +440,9 @@ function MemoriesPage() {
         id: "actions",
         header: "",
         cell: ({ row }) => (
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             className="text-muted-foreground hover:text-destructive rounded p-1"
             aria-label="Delete memory"
             onClick={(e) => {
@@ -455,7 +451,7 @@ function MemoriesPage() {
             }}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+          </Button>
         ),
         size: 40,
       },
@@ -605,15 +601,9 @@ function MemoriesPage() {
                     placeholder={
                       tagFilters.length === 0 ? "Filter by tags…" : ""
                     }
-                    list="tags-datalist"
-                    className="text-sm"
+                    className="text-base"
                   />
                 </TagsInputControl>
-                <datalist id="tags-datalist">
-                  {tagsData?.map((t) => (
-                    <option key={t.name} value={t.name} />
-                  ))}
-                </datalist>
               </TagsInput>
             </div>
 
@@ -627,7 +617,7 @@ function MemoriesPage() {
                   resetPagination()
                 }}
                 placeholder="All sources"
-                className="h-8 w-40 text-sm"
+                className="h-8 w-40 text-base"
               />
 
               {/* Type multi-select */}
@@ -639,7 +629,7 @@ function MemoriesPage() {
                   resetPagination()
                 }}
                 placeholder="All types"
-                className="h-8 w-36 text-sm"
+                className="h-8 w-36 text-base"
               />
 
               {hasActiveFilter && (
@@ -653,10 +643,12 @@ function MemoriesPage() {
           {/* Active free-query indicator */}
           {freeQuery && (
             <div className="mb-2 flex shrink-0 items-center gap-2">
-              <span className="text-muted-foreground text-xs">
+              <span className="text-muted-foreground text-base">
                 Searching for: <strong>{freeQuery}</strong>
               </span>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 className="text-muted-foreground hover:text-foreground"
                 onClick={() => {
                   setFreeQuery("")
@@ -664,7 +656,7 @@ function MemoriesPage() {
                 }}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             </div>
           )}
 
@@ -699,7 +691,7 @@ function MemoriesPage() {
 
           {/* Pagination */}
           {total > PAGE_SIZE && (
-            <div className="text-muted-foreground mt-3 flex shrink-0 items-center justify-between text-sm">
+            <div className="text-muted-foreground mt-3 flex shrink-0 items-center justify-between text-base">
               <span>
                 Showing {pageStart}–{pageEnd} of {total}
               </span>
@@ -730,7 +722,7 @@ function MemoriesPage() {
 
           {/* Bulk action bar */}
           {selected.size > 0 && (
-            <div className="bg-card border-border mt-3 flex shrink-0 items-center gap-4 rounded-lg border p-3 text-sm">
+            <div className="bg-card border-border mt-3 flex shrink-0 items-center gap-4 rounded-lg border p-3 text-base">
               <span className="text-primary font-medium">
                 {selected.size} selected
               </span>
@@ -767,16 +759,16 @@ function MemoriesPage() {
           {detailMemory && (
             <div className="mt-4 space-y-4">
               <div>
-                <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
+                <div className="text-muted-foreground mb-1 text-base font-medium tracking-wider uppercase">
                   Content
                 </div>
-                <p className="text-sm whitespace-pre-wrap">
+                <p className="text-base whitespace-pre-wrap">
                   {detailMemory.content}
                 </p>
               </div>
               {detailMemory.tags.length > 0 && (
                 <div>
-                  <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-1 text-base font-medium tracking-wider uppercase">
                     Tags
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -788,9 +780,9 @@ function MemoriesPage() {
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-base">
                 <div>
-                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                     Source
                   </div>
                   <span
@@ -802,20 +794,20 @@ function MemoriesPage() {
                   </span>
                 </div>
                 <div>
-                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                     Type
                   </div>
                   <span>{detailMemory.memory_type ?? "—"}</span>
                 </div>
                 <div>
-                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                     Importance
                   </div>
                   <span>{detailMemory.importance}</span>
                 </div>
                 {detailMemory.classified_type && (
                   <div>
-                    <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                    <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                       Regex Classification
                     </div>
                     <span>{detailMemory.classified_type}</span>
@@ -823,14 +815,14 @@ function MemoriesPage() {
                 )}
                 {detailMemory.llm_classified_type && (
                   <div>
-                    <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                    <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                       LLM Classification
                     </div>
                     <span>{detailMemory.llm_classified_type}</span>
                   </div>
                 )}
                 <div>
-                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                     Created
                   </div>
                   <span>
@@ -838,7 +830,7 @@ function MemoriesPage() {
                   </span>
                 </div>
                 <div>
-                  <div className="text-muted-foreground mb-0.5 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                     Updated
                   </div>
                   <span>
@@ -850,26 +842,22 @@ function MemoriesPage() {
                 detailMemory.llm_emotions?.length ||
                 detailMemory.llm_flags?.length) && (
                 <div>
-                  <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
+                  <div className="text-muted-foreground mb-1 text-base font-medium tracking-wider uppercase">
                     LLM Enrichment
                   </div>
                   {detailMemory.llm_summary && (
-                    <p className="text-muted-foreground mb-1.5 text-sm">
+                    <p className="text-muted-foreground mb-1.5 text-base">
                       {detailMemory.llm_summary}
                     </p>
                   )}
                   <div className="flex flex-wrap gap-1">
                     {detailMemory.llm_emotions?.map((e) => (
-                      <Badge key={e} variant="outline" className="text-[10px]">
+                      <Badge key={e} variant="outline" className="text-sm">
                         {e}
                       </Badge>
                     ))}
                     {detailMemory.llm_flags?.map((f) => (
-                      <Badge
-                        key={f}
-                        variant="secondary"
-                        className="text-[10px]"
-                      >
+                      <Badge key={f} variant="secondary" className="text-sm">
                         {f}
                       </Badge>
                     ))}
@@ -879,14 +867,14 @@ function MemoriesPage() {
               {detailMemory.related_memories &&
                 detailMemory.related_memories.length > 0 && (
                   <div>
-                    <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wider uppercase">
+                    <div className="text-muted-foreground mb-1 text-base font-medium tracking-wider uppercase">
                       Related Memories
                     </div>
                     <div className="space-y-1">
                       {detailMemory.related_memories.map((ref) => (
                         <div
                           key={ref.memory_id}
-                          className="text-muted-foreground truncate text-xs"
+                          className="text-muted-foreground truncate text-base"
                         >
                           {ref.memory_id.slice(0, 8)}… (
                           {(ref.score * 100).toFixed(0)}% similar)

@@ -78,7 +78,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       </Button>
 
       {login.isError && (
-        <p className="text-destructive text-sm">
+        <p className="text-destructive text-base">
           {(login.error as Error).message}
         </p>
       )}

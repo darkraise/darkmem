@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "darkraise-ui/layout"
+import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { usePipeline, useSystemPrompts } from "@/hooks/api"
 import { LLMPanel } from "@/features/pipeline/LLMPanel"
@@ -33,12 +34,16 @@ function PipelinePage() {
           role="alert"
           className="bg-destructive/10 border-destructive/30 mt-4 rounded-lg border p-4"
         >
-          <p className="text-destructive text-sm">
+          <p className="text-destructive text-base">
             {(error as Error)?.message ?? "Unknown error"}
           </p>
-          <button className="mt-2 text-xs underline" onClick={() => refetch()}>
+          <Button
+            variant="link"
+            className="mt-2 text-base underline"
+            onClick={() => refetch()}
+          >
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     )

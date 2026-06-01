@@ -99,11 +99,11 @@ function CodeWikiPage() {
           {wiki.overview && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Overview</CardTitle>
+                <CardTitle className="text-base">Overview</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm">{wiki.overview}</p>
-                <div className="text-muted-foreground mt-2 flex gap-3 text-xs">
+                <p className="text-base">{wiki.overview}</p>
+                <div className="text-muted-foreground mt-2 flex gap-3 text-base">
                   <span>{wiki.total_modules} modules</span>
                   <span>{wiki.total_files} files</span>
                 </div>
@@ -124,19 +124,19 @@ function CodeWikiPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-medium">
+                      <span className="font-mono text-base font-medium">
                         {mod.path}
                       </span>
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-sm">
                         {mod.symbol_count} symbols
                       </Badge>
                     </div>
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-muted-foreground text-base">
                       {mod.files.length} files
                     </span>
                   </div>
                   {mod.summary && (
-                    <p className="text-muted-foreground mt-1 text-xs">
+                    <p className="text-muted-foreground mt-1 text-base">
                       {mod.summary}
                     </p>
                   )}
@@ -147,11 +147,11 @@ function CodeWikiPage() {
                     {mod.files.map((file) => (
                       <div key={file.path} className="mb-4">
                         <div className="mb-2 flex items-center gap-2">
-                          <span className="font-mono text-xs font-medium">
+                          <span className="font-mono text-base font-medium">
                             {file.path}
                           </span>
                           {file.language && (
-                            <Badge variant="outline" className="text-[9px]">
+                            <Badge variant="outline" className="text-sm">
                               {file.language}
                             </Badge>
                           )}
@@ -159,7 +159,10 @@ function CodeWikiPage() {
                         {file.symbols.length > 0 && (
                           <div className="ml-4 space-y-1">
                             {file.symbols.map((sym, i) => (
-                              <div key={`${sym.name}-${i}`} className="text-xs">
+                              <div
+                                key={`${sym.name}-${i}`}
+                                className="text-base"
+                              >
                                 <span className="text-muted-foreground">
                                   {sym.kind}
                                 </span>{" "}

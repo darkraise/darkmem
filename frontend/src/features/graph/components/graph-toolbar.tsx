@@ -9,6 +9,8 @@ import {
   PopoverContent,
 } from "darkraise-ui/components/popover"
 import { Slider } from "darkraise-ui/components/slider"
+import { Button } from "darkraise-ui/components/button"
+import { Label } from "darkraise-ui/components/label"
 import { Settings, RotateCcw } from "lucide-react"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
@@ -58,8 +60,8 @@ function SliderRow({
   float = false,
 }: SliderRowProps) {
   return (
-    <div className="text-muted-foreground flex items-center gap-2 text-xs">
-      <label className="w-14 shrink-0 text-right">{label}</label>
+    <div className="text-muted-foreground flex items-center gap-2 text-base">
+      <Label className="w-14 shrink-0 text-right">{label}</Label>
       <Slider
         value={[value]}
         onValueChange={([v]) => onChange(float ? v : Math.round(v))}
@@ -94,7 +96,6 @@ export function GraphToolbar({
   onClusterTightnessChange,
   onReset,
 }: GraphToolbarProps) {
-
   return (
     <div className="pointer-events-none absolute top-3 right-0 left-0 z-20 flex flex-col items-center">
       <div className="bg-card/80 border-border pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-md border px-3 py-1.5 shadow-lg backdrop-blur-sm">
@@ -109,14 +110,14 @@ export function GraphToolbar({
           <ToggleGroupItem
             value="2d"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             2D
           </ToggleGroupItem>
           <ToggleGroupItem
             value="3d"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             3D
           </ToggleGroupItem>
@@ -135,21 +136,21 @@ export function GraphToolbar({
           <ToggleGroupItem
             value="type"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             Type
           </ToggleGroupItem>
           <ToggleGroupItem
             value="cluster"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             Cluster
           </ToggleGroupItem>
           <ToggleGroupItem
             value="tag"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             Tag
           </ToggleGroupItem>
@@ -166,28 +167,28 @@ export function GraphToolbar({
           <ToggleGroupItem
             value="none"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             None
           </ToggleGroupItem>
           <ToggleGroupItem
             value="cluster"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             Cluster
           </ToggleGroupItem>
           <ToggleGroupItem
             value="tag"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             Tag
           </ToggleGroupItem>
           <ToggleGroupItem
             value="source"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-xs"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
           >
             Source
           </ToggleGroupItem>
@@ -198,7 +199,7 @@ export function GraphToolbar({
         <Toggle
           pressed={entityLayer}
           onPressedChange={onEntityLayerChange}
-          className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-xs"
+          className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-base"
         >
           Entities
         </Toggle>
@@ -207,7 +208,7 @@ export function GraphToolbar({
           <PopoverTrigger asChild>
             <Toggle
               aria-label="Toggle graph settings"
-              className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-xs"
+              className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-base"
             >
               <Settings className="h-3.5 w-3.5" />
             </Toggle>
@@ -218,13 +219,13 @@ export function GraphToolbar({
             className="bg-card/95 border-border w-[340px] rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
           >
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-foreground text-xs font-semibold">
+              <span className="text-foreground text-base font-semibold">
                 Settings
               </span>
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground w-14 shrink-0 text-right text-xs">
+                <span className="text-muted-foreground w-14 shrink-0 text-right text-base">
                   Size
                 </span>
                 <ToggleGroup
@@ -238,21 +239,21 @@ export function GraphToolbar({
                   <ToggleGroupItem
                     value="connections"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-base"
                   >
                     Connections
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="importance"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-base"
                   >
                     Importance
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="uniform"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-xs"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-base"
                   >
                     Uniform
                   </ToggleGroupItem>
@@ -297,16 +298,17 @@ export function GraphToolbar({
           </PopoverContent>
         </Popover>
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
           onClick={onReset}
           aria-label="Reset graph view"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
-
     </div>
   )
 }

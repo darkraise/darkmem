@@ -33,6 +33,24 @@ import {
 } from "darkraise-ui/components/dialog"
 import { toast } from "darkraise-ui/components/sonner"
 import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "darkraise-ui/components/select"
+import {
+  Combobox,
+  ComboboxControl,
+  ComboboxInput,
+  ComboboxTrigger,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxItemText,
+  ComboboxEmpty,
+} from "darkraise-ui/components/combobox"
+import {
   useLlmProfiles,
   useUpdateLlmProfiles,
   useDeleteLlmProfile,
@@ -284,7 +302,7 @@ export function LLMProfilesPanel() {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">LLM Profiles</CardTitle>
+          <CardTitle className="text-base">LLM Profiles</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="bg-muted h-32 animate-pulse rounded" />
@@ -296,22 +314,24 @@ export function LLMProfilesPanel() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
+        <CardTitle className="flex items-center gap-2 text-base">
           LLM Profiles
           <TooltipProvider delayDuration={150}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
                   type="button"
                   aria-label="What are LLM Profiles?"
                   className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
                 >
                   <CircleHelp className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent
                 side="top"
-                className="max-w-md text-xs leading-relaxed"
+                className="max-w-md text-base leading-relaxed"
               >
                 A Profile is a preset for one purpose: a Provider plus a model,
                 default params, and the purpose-style flags (embedding-only,
@@ -321,33 +341,39 @@ export function LLMProfilesPanel() {
             </Tooltip>
           </TooltipProvider>
         </CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-base">
           Reusable per-purpose presets. Pick a Provider, a model, and defaults;
           the purpose card uses these as starting values.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {profileNames.length === 0 && (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-base">
             No Profiles yet. Add one below.
           </p>
         )}
 
         {profileNames.length > 0 && (
           <div className="flex items-center gap-2">
-            <Label htmlFor="profiles_group_by" className="text-xs">
+            <Label htmlFor="profiles_group_by" className="text-base">
               Group by
             </Label>
-            <select
-              id="profiles_group_by"
+            <Select
               value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              className="border-border bg-background h-8 rounded border px-2 text-xs"
+              onValueChange={(value) => setGroupBy(value as GroupBy)}
             >
-              <option value="provider">Provider</option>
-              <option value="purpose">Purpose</option>
-            </select>
-            <span className="text-muted-foreground text-[10px]">
+              <SelectTrigger
+                id="profiles_group_by"
+                className="border-border bg-background h-8 rounded border px-2 text-base"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="provider">Provider</SelectItem>
+                <SelectItem value="purpose">Purpose</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-muted-foreground text-sm">
               {profileNames.length} profile
               {profileNames.length === 1 ? "" : "s"} across {groupKeys.length}{" "}
               {groupBy === "provider" ? "provider" : "purpose"}
@@ -360,9 +386,9 @@ export function LLMProfilesPanel() {
           <Tabs value={activeGroup} onValueChange={setActiveGroup}>
             <TabsList className="flex-wrap">
               {groupKeys.map((key) => (
-                <TabsTrigger key={key} value={key} className="text-xs">
+                <TabsTrigger key={key} value={key} className="text-base">
                   {key}
-                  <Badge variant="secondary" className="ml-1.5 text-[9px]">
+                  <Badge variant="secondary" className="ml-1.5 text-sm">
                     {groups[key].length}
                   </Badge>
                 </TabsTrigger>
@@ -412,7 +438,7 @@ export function LLMProfilesPanel() {
 
         <div className="border-border flex items-center justify-end gap-2 border-t pt-3">
           {dirty && (
-            <span className="text-muted-foreground mr-auto text-[10px]">
+            <span className="text-muted-foreground mr-auto text-sm">
               {Object.keys(draft).length} unsaved change
               {Object.keys(draft).length === 1 ? "" : "s"}
             </span>
@@ -458,28 +484,32 @@ function ProfileRow({
     profile.provider_ref || null,
     !!profile.provider_ref,
   )
+  const modelItems = useMemo(
+    () => (modelsResp?.models ?? []).map((m) => ({ value: m, label: m })),
+    [modelsResp?.models],
+  )
   return (
     <div className="border-border space-y-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs">{name}</span>
+          <span className="font-mono text-base">{name}</span>
           {isNew && (
-            <Badge variant="default" className="text-[9px]">
+            <Badge variant="default" className="text-sm">
               new
             </Badge>
           )}
           {!isNew && dirty && (
-            <Badge variant="secondary" className="text-[9px]">
+            <Badge variant="secondary" className="text-sm">
               edited
             </Badge>
           )}
           {profile.is_embedding && (
-            <Badge variant="outline" className="text-[9px]">
+            <Badge variant="outline" className="text-sm">
               embedding
             </Badge>
           )}
           {profile.reasoning && !profile.is_embedding && (
-            <Badge variant="outline" className="text-[9px]">
+            <Badge variant="outline" className="text-sm">
               reasoning
             </Badge>
           )}
@@ -496,51 +526,68 @@ function ProfileRow({
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <Label className="text-muted-foreground text-[10px]">Provider</Label>
-          <select
-            value={profile.provider_ref}
-            onChange={(e) =>
-              onPatch({ provider_ref: e.target.value, model: "" })
+          <Label className="text-muted-foreground text-sm">Provider</Label>
+          <Select
+            value={profile.provider_ref || "__none__"}
+            onValueChange={(value) =>
+              onPatch({
+                provider_ref: value === "__none__" ? "" : value,
+                model: "",
+              })
             }
-            className="border-border bg-background h-9 w-full rounded border px-2 text-sm"
           >
-            {providerNames.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+              <SelectValue placeholder="Select a provider…" />
+            </SelectTrigger>
+            <SelectContent>
+              {providerNames.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
-          <Label className="text-muted-foreground text-[10px]">Model</Label>
-          {/* Datalist combobox: fetched models autocomplete, but free-text
+          <Label className="text-muted-foreground text-sm">Model</Label>
+          {/* Combobox: fetched models autocomplete, but free-text
               entry still works. Vendor /v1/models endpoints are sometimes
               incomplete (e.g., z.ai omits glm-4.5-flash), so a hard select
               would lock the user out of valid models. */}
-          <Input
-            type="text"
-            list={`models-${profile.provider_ref}`}
-            value={profile.model}
-            onChange={(e) => onPatch({ model: e.target.value })}
-            placeholder={
-              modelsLoading ? "fetching models…" : "model id (e.g. gpt-4o-mini)"
-            }
-            className="font-mono"
-          />
-          {modelsResp && modelsResp.models.length > 0 && (
-            <datalist id={`models-${profile.provider_ref}`}>
-              {modelsResp.models.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-          )}
+          <Combobox
+            items={modelItems}
+            inputValue={profile.model}
+            onInputValueChange={(d) => onPatch({ model: d.value })}
+            openOnClick
+            openOnFocus
+          >
+            <ComboboxControl>
+              <ComboboxInput
+                className="font-mono"
+                placeholder={
+                  modelsLoading
+                    ? "fetching models…"
+                    : "model id (e.g. gpt-4o-mini)"
+                }
+              />
+              <ComboboxTrigger />
+            </ComboboxControl>
+            <ComboboxContent>
+              <ComboboxList>
+                {modelItems.map((it) => (
+                  <ComboboxItem key={it.value} item={it}>
+                    <ComboboxItemText>{it.label}</ComboboxItemText>
+                  </ComboboxItem>
+                ))}
+                <ComboboxEmpty>No models</ComboboxEmpty>
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
           {modelsResp?.error && (
-            <p className="text-destructive mt-1 text-[10px]">
-              {modelsResp.error}
-            </p>
+            <p className="text-destructive mt-1 text-sm">{modelsResp.error}</p>
           )}
           {modelsResp && modelsResp.models.length > 0 && (
-            <p className="text-muted-foreground mt-1 text-[10px]">
+            <p className="text-muted-foreground mt-1 text-sm">
               {modelsResp.models.length} models from vendor — type to filter or
               enter a name not in the list.
             </p>
@@ -548,20 +595,20 @@ function ProfileRow({
         </div>
       </div>
       <div>
-        <Label className="text-muted-foreground text-[10px]">
+        <Label className="text-muted-foreground text-sm">
           Default params (JSON object, optional)
         </Label>
         <Textarea
           value={profile._paramsText ?? ""}
           onChange={(e) => onPatch({ _paramsText: e.target.value })}
           rows={3}
-          className="font-mono text-xs"
+          className="font-mono text-base"
           placeholder='{"temperature": 0.2}'
         />
       </div>
       <div className="border-border grid grid-cols-1 gap-2 border-t pt-2 sm:grid-cols-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs">Embedding profile</Label>
+          <Label className="text-base">Embedding profile</Label>
           <Switch
             checked={!!profile.is_embedding}
             onCheckedChange={(v) =>
@@ -573,7 +620,7 @@ function ProfileRow({
           />
         </div>
         <div className="flex items-center justify-between">
-          <Label className="text-xs">Reasoning enabled</Label>
+          <Label className="text-base">Reasoning enabled</Label>
           <Switch
             checked={!!profile.reasoning}
             onCheckedChange={(v) => onPatch({ reasoning: v })}
@@ -617,7 +664,7 @@ function AddProfileForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-xs">Profile name</Label>
+        <Label className="text-muted-foreground text-base">Profile name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -627,40 +674,50 @@ function AddProfileForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label className="text-muted-foreground text-xs">Provider</Label>
-          <select
-            value={providerRef}
-            onChange={(e) => setProviderRef(e.target.value)}
-            className="border-border bg-background h-9 w-full rounded border px-2 text-sm"
-            required
+          <Label className="text-muted-foreground text-base">Provider</Label>
+          <Select
+            value={providerRef || "__none__"}
+            onValueChange={(value) =>
+              setProviderRef(value === "__none__" ? "" : value)
+            }
           >
-            {providerNames.length === 0 && (
-              <option value="">(no providers — add one first)</option>
-            )}
-            {providerNames.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+              <SelectValue placeholder="Select a provider…" />
+            </SelectTrigger>
+            <SelectContent>
+              {providerNames.length === 0 && (
+                <SelectItem value="__none__">
+                  (no providers — add one first)
+                </SelectItem>
+              )}
+              {providerNames.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
-          <Label className="text-muted-foreground text-xs">Purpose</Label>
-          <select
+          <Label className="text-muted-foreground text-base">Purpose</Label>
+          <Select
             value={purpose}
-            onChange={(e) => setPurpose(e.target.value as KnownPurpose)}
-            className="border-border bg-background h-9 w-full rounded border px-2 text-sm"
-            required
+            onValueChange={(value) => setPurpose(value as KnownPurpose)}
           >
-            {KNOWN_PURPOSES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {KNOWN_PURPOSES.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
-      <p className="text-muted-foreground text-[10px]">
+      <p className="text-muted-foreground text-sm">
         Strict per-purpose: this profile will only show in the Pipeline page's
         dropdown for the selected purpose. Model and params are filled in inline
         after the row appears.

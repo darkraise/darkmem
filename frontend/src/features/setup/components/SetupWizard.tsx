@@ -122,10 +122,10 @@ export function SetupWizard() {
             <h1 className="font-mono text-2xl font-bold tracking-tight">
               darkmem
             </h1>
-            <p className="text-muted-foreground text-sm">Initial Setup</p>
+            <p className="text-muted-foreground text-base">Initial Setup</p>
           </div>
 
-          <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-xs">
+          <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-base">
             {[1, 2, 3, 4].map((s) => (
               <li
                 key={s}

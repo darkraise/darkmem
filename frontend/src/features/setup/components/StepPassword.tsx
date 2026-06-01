@@ -39,7 +39,7 @@ export function StepPassword() {
         />
       </div>
       {error && (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive text-base">
           {error}
         </p>
       )}

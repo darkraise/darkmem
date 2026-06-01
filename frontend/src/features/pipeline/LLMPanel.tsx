@@ -51,8 +51,8 @@ export function LLMPanel({ state }: Props) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">LLM pipeline</CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <CardTitle className="text-base">LLM pipeline</CardTitle>
+        <p className="text-muted-foreground text-base">
           Embedding, extraction, and classification settings used during memory
           ingestion.
         </p>
@@ -80,19 +80,19 @@ export function LLMPanel({ state }: Props) {
             <DialogTitle>Embedding model changed</DialogTitle>
           </DialogHeader>
           {obsolete && (
-            <div className="space-y-3 py-2 text-sm">
+            <div className="space-y-3 py-2 text-base">
               <p>
                 The embedding changed. Existing vectors are now from the old
                 model:
               </p>
-              <ul className="list-disc space-y-1 pl-4 text-sm">
+              <ul className="list-disc space-y-1 pl-4 text-base">
                 {obsolete.memories > 0 && <li>{obsolete.memories} memories</li>}
                 {obsolete.entities > 0 && <li>{obsolete.entities} entities</li>}
                 {obsolete.code_chunks > 0 && (
                   <li>{obsolete.code_chunks} code chunks</li>
                 )}
               </ul>
-              <p className="text-muted-foreground text-[11px]">
+              <p className="text-muted-foreground text-sm">
                 Re-embedding recomputes vectors only; extraction and
                 classification stay as-is.
               </p>

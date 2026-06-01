@@ -18,8 +18,8 @@ export function AssistantServicesPanel({ state }: Props) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Assistant services</CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <CardTitle className="text-base">Assistant services</CardTitle>
+        <p className="text-muted-foreground text-base">
           LLM purposes used by chat, code enrichment, wiki generation, and
           reranking.
         </p>

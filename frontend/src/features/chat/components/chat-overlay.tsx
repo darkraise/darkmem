@@ -6,6 +6,7 @@ import { ChatInput } from "./chat-input"
 import { useConversation } from "@/hooks/api"
 import { useChatStream } from "../hooks/use-chat-stream"
 import { CHAT_GRADIENT_CLASS } from "./chat-gradient-button"
+import { Button } from "darkraise-ui/components/button"
 
 interface ChatOverlayProps {
   selectedNodeId?: string | null
@@ -52,12 +53,13 @@ export function ChatOverlay({
 
   if (!open) {
     return (
-      <button
+      <Button
+        variant="ghost"
         className={`fixed right-4 bottom-4 z-40 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all ${CHAT_GRADIENT_CLASS}`}
         onClick={() => setOpen(true)}
       >
         <MessageCircle className="h-5 w-5" />
-      </button>
+      </Button>
     )
   }
 
@@ -72,24 +74,27 @@ export function ChatOverlay({
       }}
     >
       <div className="border-border flex shrink-0 items-center justify-between border-b px-3 py-2">
-        <span className="text-sm font-semibold">Chat</span>
+        <span className="text-base font-semibold">Chat</span>
         <div className="flex items-center gap-1.5">
           {convId && (
-            <button
-              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-base"
               aria-label="Open chat in dedicated page"
               onClick={() => navigate({ to: "/chat", search: { id: convId } })}
             >
               Open <ExternalLink className="h-3 w-3" aria-hidden="true" />
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             className="text-muted-foreground hover:text-foreground p-0.5"
             aria-label="Close chat panel"
             onClick={() => setOpen(false)}
           >
             <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          </Button>
         </div>
       </div>
 

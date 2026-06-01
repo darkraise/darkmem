@@ -8,6 +8,13 @@ import {
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
 import { Badge } from "darkraise-ui/components/badge"
 import {
   Tooltip,
@@ -81,7 +88,7 @@ export function LLMProvidersPanel() {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">LLM provider profiles</CardTitle>
+          <CardTitle className="text-base">LLM provider profiles</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="bg-muted h-32 animate-pulse rounded" />
@@ -173,22 +180,24 @@ export function LLMProvidersPanel() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
+        <CardTitle className="flex items-center gap-2 text-base">
           LLM Providers
           <TooltipProvider delayDuration={150}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
                   type="button"
                   aria-label="What are LLM Providers?"
                   className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
                 >
                   <CircleHelp className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent
                 side="top"
-                className="max-w-md text-xs leading-relaxed"
+                className="max-w-md text-base leading-relaxed"
               >
                 A Provider is a connection (base URL, API key, API kind).
                 Profiles bundle a Provider with a default model and params —
@@ -198,14 +207,14 @@ export function LLMProvidersPanel() {
             </Tooltip>
           </TooltipProvider>
         </CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-base">
           Connection settings only. A Profile picks one Provider plus a model
           and default parameters; a purpose picks a Profile.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {profileNames.length === 0 && (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-base">
             No Providers yet. Add one below to start sharing connection settings
             across Profiles and purposes.
           </p>
@@ -228,7 +237,7 @@ export function LLMProvidersPanel() {
 
         <div className="border-border flex items-center gap-2 border-t pt-3">
           <div className="flex flex-1 items-center gap-2">
-            <Label htmlFor="new_provider_name" className="text-xs">
+            <Label htmlFor="new_provider_name" className="text-base">
               New Provider
             </Label>
             <Input
@@ -245,12 +254,12 @@ export function LLMProvidersPanel() {
                   addProfile()
                 }
               }}
-              className="h-8 max-w-xs text-xs"
+              className="h-8 max-w-xs text-base"
             />
           </div>
           <Button
             variant="outline"
-            className="text-xs"
+            className="text-base"
             onClick={addProfile}
             disabled={!newName.trim()}
           >
@@ -260,21 +269,21 @@ export function LLMProvidersPanel() {
 
         <div className="border-border flex items-center justify-end gap-2 border-t pt-3">
           {dirty && (
-            <span className="text-muted-foreground mr-auto text-[10px]">
+            <span className="text-muted-foreground mr-auto text-sm">
               {Object.keys(draft).length} unsaved change
               {Object.keys(draft).length === 1 ? "" : "s"}
             </span>
           )}
           <Button
             variant="ghost"
-            className="text-xs"
+            className="text-base"
             onClick={reset}
             disabled={!dirty || update.isPending}
           >
             Reset
           </Button>
           <Button
-            className="text-xs"
+            className="text-base"
             onClick={save}
             disabled={!dirty || update.isPending}
           >
@@ -331,24 +340,24 @@ function ProfileRow({
       />
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs">{name}</span>
+          <span className="font-mono text-base">{name}</span>
           {isNew && (
-            <Badge variant="default" className="text-[9px]">
+            <Badge variant="default" className="text-sm">
               new
             </Badge>
           )}
           {!isNew && dirty && (
-            <Badge variant="secondary" className="text-[9px]">
+            <Badge variant="secondary" className="text-sm">
               edited
             </Badge>
           )}
           {tokenIsMasked && (
-            <Badge variant="outline" className="text-[9px]">
+            <Badge variant="outline" className="text-sm">
               key configured
             </Badge>
           )}
           {!supportsEmbedding && (
-            <Badge variant="outline" className="text-[9px]">
+            <Badge variant="outline" className="text-sm">
               no embedding
             </Badge>
           )}
@@ -388,57 +397,61 @@ function ProfileRow({
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <Label className="text-muted-foreground text-[10px]">Provider</Label>
+          <Label className="text-muted-foreground text-sm">Provider</Label>
           <Input
             type="text"
             value={profile.provider}
             onChange={(e) => onPatch({ provider: e.target.value })}
-            className="h-8 text-xs"
+            className="h-8 text-base"
             placeholder="openai | ollama | anthropic"
           />
         </div>
         <div>
-          <Label className="text-muted-foreground text-[10px]">API kind</Label>
-          <select
+          <Label className="text-muted-foreground text-sm">API kind</Label>
+          <Select
             value={profile.api_kind || "openai"}
-            onChange={(e) => onPatch({ api_kind: e.target.value })}
-            className="border-border bg-background h-8 w-full rounded border px-2 text-xs"
+            onValueChange={(value) => onPatch({ api_kind: value })}
           >
-            {API_KIND_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-                {opt.note ? ` — ${opt.note}` : ""}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="border-border bg-background h-8 w-full rounded border px-2 text-base">
+              <SelectValue placeholder="Select API kind…" />
+            </SelectTrigger>
+            <SelectContent>
+              {API_KIND_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                  {opt.note ? ` — ${opt.note}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="sm:col-span-2">
-          <Label className="text-muted-foreground text-[10px]">Base URL</Label>
+          <Label className="text-muted-foreground text-sm">Base URL</Label>
           <Input
             type="text"
             value={profile.base_url}
             onChange={(e) => onPatch({ base_url: e.target.value })}
-            className="h-8 font-mono text-xs"
+            className="h-8 font-mono text-base"
             placeholder="https://api.openai.com/v1"
           />
         </div>
         <div className="sm:col-span-2">
-          <Label className="text-muted-foreground text-[10px]">
+          <Label className="text-muted-foreground text-sm">
             API key {tokenIsMasked && "(leave *** to keep stored)"}
           </Label>
           <Input
             type="password"
             value={profile.api_key ?? ""}
             onChange={(e) => onPatch({ api_key: e.target.value })}
-            className="h-8 font-mono text-xs"
+            className="h-8 font-mono text-base"
             placeholder="(none — local provider)"
             autoComplete="off"
           />
         </div>
         <div className="border-border flex items-center justify-between border-t pt-2 sm:col-span-2">
           <div>
-            <Label className="text-xs">Supports embedding</Label>
-            <p className="text-muted-foreground text-[10px]">
+            <Label className="text-base">Supports embedding</Label>
+            <p className="text-muted-foreground text-sm">
               Off when the vendor exposes only chat completions (Anthropic,
               DeepSeek today). Linking an off profile to the embedding purpose
               is blocked in the purpose card.

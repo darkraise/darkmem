@@ -195,7 +195,7 @@ export function CreateMemoryDialog({
             <p
               role="alert"
               aria-live="assertive"
-              className="text-destructive text-sm"
+              className="text-destructive text-base"
             >
               {(createMemory.error as Error).message}
             </p>

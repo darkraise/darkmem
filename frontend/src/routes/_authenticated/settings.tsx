@@ -18,6 +18,14 @@ import { MLProfilesPanel } from "@/features/pipeline/MLProfilesPanel"
 import { ServerPathBrowser } from "@/features/setup/components/ServerPathBrowser"
 import { useReposPath, useUpdateReposPath } from "@/hooks/api/use-setup-api"
 import {
+  NumberInput,
+  NumberInputControl,
+  NumberInputField,
+  NumberInputTriggerGroup,
+  NumberInputIncrementTrigger,
+  NumberInputDecrementTrigger,
+} from "darkraise-ui/components/number-input"
+import {
   Card,
   CardContent,
   CardHeader,
@@ -100,25 +108,32 @@ function EnrichmentCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Enrichment Worker</CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <CardTitle className="text-base">Enrichment Worker</CardTitle>
+        <p className="text-muted-foreground text-base">
           LLM-powered code symbol summarization
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label className="text-sm">Enabled</Label>
+          <Label className="text-base">Enabled</Label>
           <Switch checked={enabled} onCheckedChange={setEnabled} />
         </div>
         <div>
-          <Label className="text-muted-foreground text-xs">Batch Size</Label>
-          <Input
-            type="number"
+          <Label className="text-muted-foreground text-base">Batch Size</Label>
+          <NumberInput
             min={1}
             value={batchSize}
-            onChange={(e) => setBatchSize(Number(e.target.value))}
-          />
-          <p className="text-muted-foreground mt-1 text-[11px]">
+            onValueChange={(d) => setBatchSize(d.valueAsNumber)}
+          >
+            <NumberInputControl>
+              <NumberInputField />
+              <NumberInputTriggerGroup>
+                <NumberInputIncrementTrigger />
+                <NumberInputDecrementTrigger />
+              </NumberInputTriggerGroup>
+            </NumberInputControl>
+          </NumberInput>
+          <p className="text-muted-foreground mt-1 text-sm">
             Schedule lives on the Jobs page (job key{" "}
             <code className="font-mono">code_enrichment</code>).
           </p>
@@ -201,8 +216,8 @@ function ClassificationAreasCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Classification</CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <CardTitle className="text-base">Classification</CardTitle>
+        <p className="text-muted-foreground text-base">
           Control how memories are typed during pipeline processing.
         </p>
       </CardHeader>
@@ -218,7 +233,7 @@ function ClassificationAreasCard() {
           className="w-fit"
         >
           {(["simple", "expanded"] as const).map((m) => (
-            <ToggleGroupItem key={m} value={m} className="text-xs">
+            <ToggleGroupItem key={m} value={m} className="text-base">
               {m.charAt(0).toUpperCase() + m.slice(1)}
             </ToggleGroupItem>
           ))}
@@ -226,7 +241,7 @@ function ClassificationAreasCard() {
 
         {mode === "simple" ? (
           <div className="space-y-2">
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-base">
               7 universal types optimized for small models. Invalid LLM outputs
               are automatically remapped.
             </p>
@@ -236,10 +251,10 @@ function ClassificationAreasCard() {
                   key={t.key}
                   className="flex items-baseline gap-3 px-3 py-2"
                 >
-                  <code className="w-24 shrink-0 text-xs font-semibold">
+                  <code className="w-24 shrink-0 text-base font-semibold">
                     {t.key}
                   </code>
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground text-base">
                     {t.description}
                   </span>
                 </div>
@@ -248,7 +263,7 @@ function ClassificationAreasCard() {
           </div>
         ) : (
           <div className="space-y-1">
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-base">
               Fine-grained types from enabled domain areas. Best with larger
               models.
             </p>
@@ -259,10 +274,10 @@ function ClassificationAreasCard() {
                   className="flex items-center justify-between px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <span className="text-sm font-medium">
+                    <span className="text-base font-medium">
                       {area.display_name}
                     </span>
-                    <p className="text-muted-foreground truncate text-xs">
+                    <p className="text-muted-foreground truncate text-base">
                       {area.types.join(", ")}
                     </p>
                   </div>
@@ -333,7 +348,7 @@ function FeatureFlagsCard() {
     max,
     step,
     defaultValue,
-    width = "w-16",
+    width = "w-28",
   }: {
     label: string
     description: string
@@ -375,26 +390,35 @@ function FeatureFlagsCard() {
     return (
       <div className="border-border flex items-center justify-between border-t pt-2">
         <div>
-          <Label className="text-sm">{label}</Label>
-          <p className="text-muted-foreground text-xs">{description}</p>
+          <Label className="text-base">{label}</Label>
+          <p className="text-muted-foreground text-base">{description}</p>
         </div>
-        <Input
-          type="number"
+        <NumberInput
           min={min}
           max={max}
           step={step}
-          value={local}
-          onChange={(e) => setLocal(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              ;(e.target as HTMLInputElement).blur()
-            }
-          }}
-          className={`${width} h-8 text-center text-sm`}
+          value={Number(local)}
+          onValueChange={(d) => setLocal(String(d.valueAsNumber))}
           disabled={updateFlags.isPending}
-        />
+          className={width}
+        >
+          <NumberInputControl>
+            <NumberInputField
+              className="h-8 text-center text-base"
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  e.currentTarget.blur()
+                }
+              }}
+            />
+            <NumberInputTriggerGroup>
+              <NumberInputIncrementTrigger />
+              <NumberInputDecrementTrigger />
+            </NumberInputTriggerGroup>
+          </NumberInputControl>
+        </NumberInput>
       </div>
     )
   }
@@ -402,8 +426,8 @@ function FeatureFlagsCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Feature Flags</CardTitle>
-        <p className="text-muted-foreground text-xs">
+        <CardTitle className="text-base">Feature Flags</CardTitle>
+        <p className="text-muted-foreground text-base">
           Toggle pipeline features. Changes take effect on the next operation.
         </p>
       </CardHeader>
@@ -411,8 +435,8 @@ function FeatureFlagsCard() {
         {toggles.map((item) => (
           <div key={item.key} className="flex items-center justify-between">
             <div>
-              <Label className="text-sm">{item.label}</Label>
-              <p className="text-muted-foreground text-xs">
+              <Label className="text-base">{item.label}</Label>
+              <p className="text-muted-foreground text-base">
                 {item.description}
               </p>
             </div>
@@ -463,7 +487,7 @@ function FeatureFlagsCard() {
           max={5}
           step={0.1}
           defaultValue={0}
-          width="w-20"
+          width="w-28"
         />
       </CardContent>
     </Card>
@@ -547,88 +571,92 @@ function AssistantPromptsCard() {
 
   return (
     <>
-    <AlertDialog
-      open={!!pendingTab}
-      onOpenChange={(o) => !o && setPendingTab(null)}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Unsaved changes to &ldquo;{selected}&rdquo; will be lost.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Keep editing</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => {
-              if (pendingTab) {
-                setDirty(false)
-                setDraft(data.overrides[pendingTab] ?? data.defaults[pendingTab] ?? "")
-                setSelected(pendingTab)
+      <AlertDialog
+        open={!!pendingTab}
+        onOpenChange={(o) => !o && setPendingTab(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Unsaved changes to &ldquo;{selected}&rdquo; will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingTab) {
+                  setDirty(false)
+                  setDraft(
+                    data.overrides[pendingTab] ??
+                      data.defaults[pendingTab] ??
+                      "",
+                  )
+                  setSelected(pendingTab)
+                }
+                setPendingTab(null)
+              }}
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Assistant Prompts</CardTitle>
+          <p className="text-muted-foreground text-base">
+            Override the system prompts used by chat, cluster naming, and agent
+            instructions. Leave empty to fall back to the default.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={selected}
+            onValueChange={(p) => {
+              if (!p || p === selected) return
+              if (dirty) {
+                setPendingTab(p)
+                return
               }
-              setPendingTab(null)
+              setDraft(data.overrides[p] ?? data.defaults[p] ?? "")
+              setSelected(p)
             }}
+            className="flex-wrap justify-start"
           >
-            Discard
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Assistant Prompts</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          Override the system prompts used by chat, cluster naming, and agent
-          instructions. Leave empty to fall back to the default.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          value={selected}
-          onValueChange={(p) => {
-            if (!p || p === selected) return
-            if (dirty) {
-              setPendingTab(p)
-              return
-            }
-            setDraft(data.overrides[p] ?? data.defaults[p] ?? "")
-            setSelected(p)
-          }}
-          className="flex-wrap justify-start"
-        >
-          {ORPHAN_PROMPTS.map((p) => (
-            <ToggleGroupItem key={p} value={p} className="text-xs">
-              {p}
-              {data.overrides[p] && (
-                <Badge variant="secondary" className="ml-1 text-[10px]">
-                  custom
-                </Badge>
-              )}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <Textarea
-          className="min-h-[200px] font-mono text-xs"
-          value={draft}
-          onChange={(e) => {
-            setDraft(e.target.value)
-            setDirty(true)
-          }}
-        />
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-[10px]">
-            {draft.length.toLocaleString()} / 20,000 ·{" "}
-            {isOverridden ? "overridden" : "using default"}
-          </span>
-          <Button onClick={save} disabled={update.isPending || !dirty}>
-            {isDefault ? "Clear override" : "Save override"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            {ORPHAN_PROMPTS.map((p) => (
+              <ToggleGroupItem key={p} value={p} className="text-base">
+                {p}
+                {data.overrides[p] && (
+                  <Badge variant="secondary" className="ml-1 text-sm">
+                    custom
+                  </Badge>
+                )}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Textarea
+            className="min-h-[200px] font-mono text-base"
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setDirty(true)
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-sm">
+              {draft.length.toLocaleString()} / 20,000 ·{" "}
+              {isOverridden ? "overridden" : "using default"}
+            </span>
+            <Button onClick={save} disabled={update.isPending || !dirty}>
+              {isDefault ? "Clear override" : "Save override"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </>
   )
 }

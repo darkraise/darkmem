@@ -51,7 +51,6 @@ function sourceColor(name: string, index: number): string {
   return SOURCE_COLORS[name] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length]
 }
 
-
 function formatXAxis(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T00:00:00")
   if (days <= 7) return d.toLocaleDateString("en-US", { weekday: "short" })
@@ -80,7 +79,7 @@ function StatBlock({
       <StatLabel>{label}</StatLabel>
       <StatValue>{value}</StatValue>
       {delta != null && delta > 0 && (
-        <div className="mt-0.5 text-xs text-green-500">+{delta} today</div>
+        <div className="mt-0.5 text-base text-green-500">+{delta} today</div>
       )}
     </Stat>
   )
@@ -90,7 +89,7 @@ function PipelineHealth({ recentErrors }: { recentErrors: number }) {
   const { data: health } = useHealth()
   if (!health) return null
   return (
-    <div className="flex flex-wrap items-center gap-4 text-sm">
+    <div className="flex flex-wrap items-center gap-4 text-base">
       <span className="flex items-center gap-2">
         <ServiceDot ok={health.pipeline} />
         <span
@@ -106,7 +105,7 @@ function PipelineHealth({ recentErrors }: { recentErrors: number }) {
         <ServiceDot ok={health.services.llm} /> LLM
       </span>
       {recentErrors > 0 && (
-        <span className="text-destructive text-xs">
+        <span className="text-destructive text-base">
           {recentErrors} error{recentErrors > 1 ? "s" : ""} in recent runs
         </span>
       )}
@@ -162,20 +161,20 @@ function OverviewPage() {
         {/* Right: activity chart */}
         <Card>
           <CardHeader className="flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
               Activity
             </CardTitle>
             <div className="flex gap-1">
               <Button
                 variant={days === 7 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-xs"
+                className="h-6 px-2 text-base"
                 onClick={() => setDays(7)}
               >
                 7d
               </Button>
               <Button
                 variant={days === 30 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-xs"
+                className="h-6 px-2 text-base"
                 onClick={() => setDays(30)}
               >
                 30d
@@ -189,10 +188,10 @@ function OverviewPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                   <XAxis
                     dataKey="label"
-                    tick={{ fill: "#8b949e", fontSize: 10 }}
+                    tick={{ fill: "#8b949e", fontSize: 11 }}
                   />
                   <YAxis
-                    tick={{ fill: "#8b949e", fontSize: 10 }}
+                    tick={{ fill: "#8b949e", fontSize: 11 }}
                     allowDecimals={false}
                   />
                   <Tooltip
@@ -200,14 +199,14 @@ function OverviewPage() {
                       background: "#161b22",
                       border: "1px solid #21262d",
                       color: "#c9d1d9",
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   <Bar dataKey="count" fill="#58a6ff" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground py-8 text-center text-sm">
+              <p className="text-muted-foreground py-8 text-center text-base">
                 No activity data yet
               </p>
             )}
@@ -219,7 +218,7 @@ function OverviewPage() {
       <div className="hidden grid-cols-2 gap-4 lg:grid">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
               Sources
             </CardTitle>
           </CardHeader>
@@ -248,7 +247,7 @@ function OverviewPage() {
                         background: "#161b22",
                         border: "1px solid #21262d",
                         color: "#c9d1d9",
-                        fontSize: 12,
+                        fontSize: 13,
                       }}
                     />
                   </PieChart>
@@ -257,7 +256,7 @@ function OverviewPage() {
                   {data.sources.map((s, i) => (
                     <div
                       key={s.name}
-                      className="flex items-center gap-2 text-xs"
+                      className="flex items-center gap-2 text-base"
                     >
                       <span
                         className="h-2 w-2 shrink-0 rounded-full"
@@ -275,14 +274,14 @@ function OverviewPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground text-sm">No sources yet</p>
+              <p className="text-muted-foreground text-base">No sources yet</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
               Top Tags
             </CardTitle>
           </CardHeader>
@@ -296,7 +295,7 @@ function OverviewPage() {
                 >
                   <XAxis
                     type="number"
-                    tick={{ fill: "#8b949e", fontSize: 10 }}
+                    tick={{ fill: "#8b949e", fontSize: 11 }}
                     allowDecimals={false}
                   />
                   <YAxis
@@ -319,7 +318,7 @@ function OverviewPage() {
                           dy={4}
                           textAnchor="end"
                           fill="#c9d1d9"
-                          fontSize={11}
+                          fontSize={12}
                         >
                           {label}
                         </text>
@@ -331,14 +330,14 @@ function OverviewPage() {
                       background: "#161b22",
                       border: "1px solid #21262d",
                       color: "#c9d1d9",
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   <Bar dataKey="count" fill="#3fb950" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground text-sm">No tags yet</p>
+              <p className="text-muted-foreground text-base">No tags yet</p>
             )}
           </CardContent>
         </Card>
@@ -347,7 +346,7 @@ function OverviewPage() {
       {/* Desktop: recent memories */}
       <Card className="hidden lg:block">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+          <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
             Recent Memories
           </CardTitle>
         </CardHeader>
@@ -362,18 +361,18 @@ function OverviewPage() {
                     navigate({ to: "/memories", search: { focus: m.id } })
                   }
                 >
-                  <span className="flex-1 truncate text-sm">{m.content}</span>
-                  <Badge variant="secondary" className="shrink-0 text-xs">
+                  <span className="flex-1 truncate text-base">{m.content}</span>
+                  <Badge variant="secondary" className="shrink-0 text-base">
                     {m.source}
                   </Badge>
-                  <span className="text-muted-foreground shrink-0 text-xs">
+                  <span className="text-muted-foreground shrink-0 text-base">
                     {relativeTime(m.created_at)}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-base">
               No memories yet. Create one to get started.
             </p>
           )}
@@ -417,20 +416,20 @@ function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[3fr_2fr] lg:hidden">
         <Card>
           <CardHeader className="flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
               Activity
             </CardTitle>
             <div className="flex gap-1">
               <Button
                 variant={days === 7 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-xs"
+                className="h-6 px-2 text-base"
                 onClick={() => setDays(7)}
               >
                 7d
               </Button>
               <Button
                 variant={days === 30 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-xs"
+                className="h-6 px-2 text-base"
                 onClick={() => setDays(30)}
               >
                 30d
@@ -444,10 +443,10 @@ function OverviewPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                   <XAxis
                     dataKey="label"
-                    tick={{ fill: "#8b949e", fontSize: 10 }}
+                    tick={{ fill: "#8b949e", fontSize: 11 }}
                   />
                   <YAxis
-                    tick={{ fill: "#8b949e", fontSize: 10 }}
+                    tick={{ fill: "#8b949e", fontSize: 11 }}
                     allowDecimals={false}
                   />
                   <Tooltip
@@ -455,14 +454,14 @@ function OverviewPage() {
                       background: "#161b22",
                       border: "1px solid #21262d",
                       color: "#c9d1d9",
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   <Bar dataKey="count" fill="#58a6ff" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground py-8 text-center text-sm">
+              <p className="text-muted-foreground py-8 text-center text-base">
                 No activity data yet
               </p>
             )}
@@ -471,7 +470,7 @@ function OverviewPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
               Sources
             </CardTitle>
           </CardHeader>
@@ -500,7 +499,7 @@ function OverviewPage() {
                         background: "#161b22",
                         border: "1px solid #21262d",
                         color: "#c9d1d9",
-                        fontSize: 12,
+                        fontSize: 13,
                       }}
                     />
                   </PieChart>
@@ -509,7 +508,7 @@ function OverviewPage() {
                   {data.sources.map((s, i) => (
                     <div
                       key={s.name}
-                      className="flex items-center gap-2 text-xs"
+                      className="flex items-center gap-2 text-base"
                     >
                       <span
                         className="h-2 w-2 shrink-0 rounded-full"
@@ -527,7 +526,7 @@ function OverviewPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground text-sm">No sources yet</p>
+              <p className="text-muted-foreground text-base">No sources yet</p>
             )}
           </CardContent>
         </Card>
@@ -535,7 +534,7 @@ function OverviewPage() {
 
       <Card className="lg:hidden">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+          <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
             Top Tags
           </CardTitle>
         </CardHeader>
@@ -549,13 +548,13 @@ function OverviewPage() {
               >
                 <XAxis
                   type="number"
-                  tick={{ fill: "#8b949e", fontSize: 10 }}
+                  tick={{ fill: "#8b949e", fontSize: 11 }}
                   allowDecimals={false}
                 />
                 <YAxis
                   type="category"
                   dataKey="name"
-                  tick={{ fill: "#c9d1d9", fontSize: 11 }}
+                  tick={{ fill: "#c9d1d9", fontSize: 12 }}
                   width={70}
                 />
                 <Tooltip
@@ -563,21 +562,21 @@ function OverviewPage() {
                     background: "#161b22",
                     border: "1px solid #21262d",
                     color: "#c9d1d9",
-                    fontSize: 12,
+                    fontSize: 13,
                   }}
                 />
                 <Bar dataKey="count" fill="#3fb950" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-muted-foreground text-sm">No tags yet</p>
+            <p className="text-muted-foreground text-base">No tags yet</p>
           )}
         </CardContent>
       </Card>
 
       <Card className="lg:hidden">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+          <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
             Recent Memories
           </CardTitle>
         </CardHeader>
@@ -592,18 +591,18 @@ function OverviewPage() {
                     navigate({ to: "/memories", search: { focus: m.id } })
                   }
                 >
-                  <span className="flex-1 truncate text-sm">{m.content}</span>
-                  <Badge variant="secondary" className="shrink-0 text-xs">
+                  <span className="flex-1 truncate text-base">{m.content}</span>
+                  <Badge variant="secondary" className="shrink-0 text-base">
                     {m.source}
                   </Badge>
-                  <span className="text-muted-foreground shrink-0 text-xs">
+                  <span className="text-muted-foreground shrink-0 text-base">
                     {relativeTime(m.created_at)}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-base">
               No memories yet. Create one to get started.
             </p>
           )}
