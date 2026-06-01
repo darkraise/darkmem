@@ -155,7 +155,7 @@ async def lifespan(app: FastAPI):
         logger.exception("Failed to seed default ML profiles; continuing")
 
     # ── Job registry: replaces the previous four bare asyncio loops ──
-    from app.services.job_registry import Job, JobRegistry
+    from app.services.job_registry import FieldDescriptor, Job, JobRegistry
     from app.services.job_runners import (
         make_repo_sync_runner,
         make_code_enrichment_runner,
@@ -181,12 +181,16 @@ async def lifespan(app: FastAPI):
         display_name="Code Symbol Enrichment",
         description=(
             "Runs one batch of LLM summarisation against pending code "
-            "symbols (function / class / method docs). Batch size comes "
-            "from the legacy enrichment_config row."
+            "symbols (function / class / method docs)."
         ),
         default_cron="*/10 * * * * *",
         min_interval_seconds=1,
         runner=make_code_enrichment_runner(app, async_session_factory),
+        config_schema=[FieldDescriptor(
+            key="batch_size", label="Batch Size", default=5,
+            min=1, max=100,
+            help="Code symbols summarised per scheduled run.",
+        )],
     ))
     job_registry.register(Job(
         key="token_blocklist_cleanup",
@@ -217,6 +221,23 @@ async def lifespan(app: FastAPI):
     repo_sync_job = job_registry.get("repo_sync")
     if repo_sync_job is not None:
         app.state.repo_sync_wakeup = repo_sync_job.wakeup
+
+    # One-time copy of the legacy enrichment_config.batch_size into the
+    # code_enrichment job config, if not already set. Tolerates an absent
+    # enrichment_config row (it was created lazily by the removed
+    # PUT /config/enrichment, so most installs never had it).
+    _ce_cfg = await job_registry.load_config("code_enrichment")
+    if "batch_size" not in _ce_cfg.config:
+        from app.models.config import Config as _Config
+        from sqlalchemy import select as _select
+        async with async_session_factory() as _s:
+            _row = (await _s.execute(
+                _select(_Config).where(_Config.key == "enrichment_config")
+            )).scalar_one_or_none()
+        _legacy = _row.value if _row and isinstance(_row.value, dict) else {}
+        await job_registry.set_config(
+            "code_enrichment", {"batch_size": int(_legacy.get("batch_size", 5))}
+        )
 
     app.state.job_registry = job_registry
     await job_registry.start_all()
