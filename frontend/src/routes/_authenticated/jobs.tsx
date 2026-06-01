@@ -21,8 +21,31 @@ import {
 } from "darkraise-ui/components/select"
 import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
-import { Play, Save } from "lucide-react"
-import { useJobs, useUpdateJob, useTriggerJob, type Job } from "@/hooks/api"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "darkraise-ui/components/dialog"
+import {
+  NumberInput,
+  NumberInputControl,
+  NumberInputField,
+  NumberInputTriggerGroup,
+  NumberInputIncrementTrigger,
+  NumberInputDecrementTrigger,
+} from "darkraise-ui/components/number-input"
+import { Label } from "darkraise-ui/components/label"
+import { Play, Save, Settings } from "lucide-react"
+import {
+  useJobs,
+  useUpdateJob,
+  useTriggerJob,
+  useUpdateJobConfig,
+  type Job,
+  type FieldDescriptor,
+} from "@/hooks/api"
 import { relativeTime as _relativeTime } from "@/lib/format"
 
 const CRON_PRESETS: { label: string; value: string }[] = [
@@ -155,6 +178,107 @@ function TriggerCell({ job }: { job: Job }) {
   )
 }
 
+export function JobConfigForm({
+  job,
+  schema,
+  onClose,
+}: {
+  job: Job
+  schema: FieldDescriptor[]
+  onClose: () => void
+}) {
+  const updateConfig = useUpdateJobConfig()
+  const [draft, setDraft] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      schema.map((f) => [f.key, (job.config?.[f.key] as number) ?? f.default]),
+    ),
+  )
+
+  const handleSave = () => {
+    updateConfig.mutate(
+      { key: job.key, config: draft },
+      {
+        onSuccess: () => {
+          toast.success(`${job.display_name} settings saved`)
+          onClose()
+        },
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {schema.map((field) => (
+        <div key={field.key} className="space-y-1">
+          <Label className="text-base">{field.label}</Label>
+          <NumberInput
+            min={field.min}
+            max={field.max}
+            step={field.step ?? 1}
+            value={draft[field.key]}
+            onValueChange={(d) =>
+              setDraft((prev) => ({
+                ...prev,
+                [field.key]: Number.isNaN(d.valueAsNumber)
+                  ? prev[field.key]
+                  : d.valueAsNumber,
+              }))
+            }
+          >
+            <NumberInputControl>
+              <NumberInputField />
+              <NumberInputTriggerGroup>
+                <NumberInputIncrementTrigger />
+                <NumberInputDecrementTrigger />
+              </NumberInputTriggerGroup>
+            </NumberInputControl>
+          </NumberInput>
+          {field.help && (
+            <p className="text-muted-foreground text-sm">{field.help}</p>
+          )}
+        </div>
+      ))}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={updateConfig.isPending}>
+          {updateConfig.isPending ? "Saving..." : "Save"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function ConfigCell({ job }: { job: Job }) {
+  const [open, setOpen] = useState(false)
+  const schema = job.config_schema ?? []
+  if (schema.length === 0) return null
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label={`Configure ${job.display_name}`}
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Configure {job.display_name}</DialogTitle>
+        </DialogHeader>
+        {open && (
+          <JobConfigForm job={job} schema={schema} onClose={() => setOpen(false)} />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const columns: ColumnDef<Job>[] = [
   {
     accessorKey: "display_name",
@@ -256,7 +380,12 @@ const columns: ColumnDef<Job>[] = [
     id: "actions",
     header: "",
     size: 110,
-    cell: ({ row }) => <TriggerCell job={row.original} />,
+    cell: ({ row }) => (
+      <div className="flex items-center justify-end gap-1">
+        <ConfigCell job={row.original} />
+        <TriggerCell job={row.original} />
+      </div>
+    ),
   },
 ]
 
