@@ -4,13 +4,64 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import settings
 from app.services.job_registry import (
     Job,
     JobConfig,
     is_valid_cron,
     next_fire_delta_seconds,
 )
+
+
+def _schema_registry(key: str = "cfgjob"):
+    from app.services.job_registry import Job, JobRegistry, FieldDescriptor
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+
+    async def _noop():
+        return None
+
+    reg.register(Job(
+        key=key, display_name="Cfg", description="d",
+        default_cron="*/5 * * * *", min_interval_seconds=1, runner=_noop,
+        config_schema=[FieldDescriptor(key="batch_size", label="Batch Size",
+                                       default=5, min=1, max=100)],
+    ))
+    return reg, engine
+
+
+@pytest.mark.asyncio
+async def test_set_config_merges_and_validates():
+    reg, engine = _schema_registry("cfg_set")
+    try:
+        cfg = await reg.set_config("cfg_set", {"batch_size": 20})
+        assert cfg.config["batch_size"] == 20
+        with pytest.raises(ValueError):
+            await reg.set_config("cfg_set", {"nope": 1})
+        with pytest.raises(ValueError):
+            await reg.set_config("cfg_set", {"batch_size": 999})
+    finally:
+        await reg.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_config_survives_trigger_and_toggle():
+    reg, engine = _schema_registry("cfg_survive")
+    try:
+        await reg.set_config("cfg_survive", {"batch_size": 33})
+        await reg.trigger("cfg_survive")
+        assert (await reg.load_config("cfg_survive")).config["batch_size"] == 33
+        await reg.update_config("cfg_survive", enabled=False)
+        assert (await reg.load_config("cfg_survive")).config["batch_size"] == 33
+        await reg.update_config("cfg_survive", cron="*/2 * * * *")
+        assert (await reg.load_config("cfg_survive")).config["batch_size"] == 33
+    finally:
+        await reg.stop_all()
+        await engine.dispose()
 
 
 def test_is_valid_cron_accepts_five_field():

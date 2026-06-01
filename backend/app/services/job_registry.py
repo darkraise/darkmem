@@ -350,6 +350,30 @@ class JobRegistry:
         _ = job  # used above; satisfy linter
         return cfg
 
+    async def set_config(self, key: str, partial: dict) -> JobConfig:
+        if key not in self._jobs:
+            raise KeyError(key)
+        job = self._jobs[key]
+        schema = {fd.key: fd for fd in job.config_schema}
+        for field_key, value in partial.items():
+            fd = schema.get(field_key)
+            if fd is None:
+                raise ValueError(f"Unknown config key {field_key!r} for job {key!r}")
+            if fd.type == "int":
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise ValueError(f"Config {field_key!r} must be an integer")
+                if fd.min is not None and value < fd.min:
+                    raise ValueError(f"Config {field_key!r} must be >= {fd.min}")
+                if fd.max is not None and value > fd.max:
+                    raise ValueError(f"Config {field_key!r} must be <= {fd.max}")
+        # Share the per-job lock with _run_once so a save can't be clobbered
+        # by a concurrent scheduled run.
+        async with job.lock:
+            cfg = await self.load_config(key)
+            cfg.config = {**cfg.config, **partial}
+            await self.save_config(key, cfg)
+        return cfg
+
     async def trigger(self, key: str) -> JobConfig:
         if key not in self._jobs:
             raise KeyError(key)
