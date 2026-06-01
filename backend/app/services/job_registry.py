@@ -80,6 +80,7 @@ class JobConfig:
     last_run_at: datetime | None = None
     last_status: str | None = None
     last_error: str | None = None
+    config: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +90,7 @@ class JobConfig:
             "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
             "last_status": self.last_status,
             "last_error": self.last_error,
+            "config": self.config,
         }
 
     @classmethod
@@ -101,6 +103,7 @@ class JobConfig:
             last_run_at=datetime.fromisoformat(last_run) if last_run else None,
             last_status=data.get("last_status"),
             last_error=data.get("last_error"),
+            config=data.get("config") or {},
         )
 
 

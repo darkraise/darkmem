@@ -67,6 +67,23 @@ def test_job_config_from_dict_supplies_defaults():
     assert restored.min_interval_seconds == 1
 
 
+def test_job_config_round_trips_config_dict():
+    from app.services.job_registry import JobConfig
+
+    cfg = JobConfig(enabled=True, cron="*/5 * * * *", min_interval_seconds=1,
+                    config={"batch_size": 17})
+    assert cfg.to_dict()["config"] == {"batch_size": 17}
+    assert JobConfig.from_dict(cfg.to_dict()).config == {"batch_size": 17}
+
+
+def test_job_config_from_dict_defaults_config_to_empty():
+    from app.services.job_registry import JobConfig
+
+    cfg = JobConfig.from_dict({"enabled": True, "cron": "*/5 * * * *",
+                               "min_interval_seconds": 1})
+    assert cfg.config == {}
+
+
 def test_job_register_rejects_invalid_default_cron():
     from app.services.job_registry import JobRegistry
 
