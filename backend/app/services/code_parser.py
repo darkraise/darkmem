@@ -391,11 +391,46 @@ def _extract_symbol(node: "Node", source: bytes) -> ExtractedSymbol | None:
     )
 
 
+def _string_literal_text(node: "Node", source: bytes) -> str:
+    """Return a string-literal node's inner text, stripped of quotes.
+
+    Tree-sitter exposes the unquoted content as a ``*_fragment`` child;
+    fall back to stripping common quote characters off the raw text.
+    """
+    for child in node.children:
+        if child.type.endswith("_fragment"):
+            return _get_text(child, source)
+    return _get_text(node, source).strip("\"'`")
+
+
+def _import_specifier_name(node: "Node", source: bytes) -> str:
+    """Original (pre-alias) name of an import specifier.
+
+    Handles Python ``aliased_import`` (``dotted_name as identifier``) and
+    JS/TS ``import_specifier`` (``identifier as identifier``); the first
+    named child is the imported symbol, the trailing one is the local alias.
+    Downstream binding resolution keys off the original exported name, so we
+    return that rather than the alias.
+    """
+    named = node.named_children
+    if named:
+        return _get_text(named[0], source)
+    return _get_text(node, source)
+
+
 def _extract_import(node: "Node", source: bytes) -> ExtractedImport | None:
     text = _get_text(node, source).strip()
     if not text:
         return None
 
+    if node.type == "import_from_statement":
+        return _extract_python_from_import(node, source, text)
+    if node.type == "import_statement":
+        return _extract_es_or_python_import(node, source, text)
+
+    # Other grammars (Rust use, Go import_declaration, Java/C# scoped names,
+    # C preproc_include, ...) keep the original one-level scan plus raw-text
+    # fallback; their consumers only need ``source`` to carry the module path.
     names: list[str] = []
     module_source = text
 
@@ -413,6 +448,84 @@ def _extract_import(node: "Node", source: bytes) -> ExtractedImport | None:
         names = [text]
 
     return ExtractedImport(source=module_source, names=names)
+
+
+def _extract_python_from_import(
+    node: "Node", source: bytes, text: str
+) -> ExtractedImport:
+    """``from <module> import a, b as c, *`` (Python ``import_from_statement``).
+
+    The module ``dotted_name`` sits before the ``import`` keyword; every
+    ``dotted_name`` / ``aliased_import`` / ``wildcard_import`` after it is an
+    imported name. ``source`` always stays the module path.
+    """
+    module_source = ""
+    names: list[str] = []
+    seen_import_kw = False
+
+    for child in node.children:
+        if child.type == "import":
+            seen_import_kw = True
+            continue
+        if not seen_import_kw:
+            if child.type in ("dotted_name", "relative_import"):
+                module_source = _get_text(child, source)
+            continue
+        if child.type == "wildcard_import":
+            names.append("*")
+        elif child.type in ("dotted_name", "aliased_import"):
+            names.append(_import_specifier_name(child, source))
+        elif child.type == "import_list":
+            for grandchild in child.children:
+                if grandchild.type in ("dotted_name", "aliased_import"):
+                    names.append(_import_specifier_name(grandchild, source))
+
+    if not names:
+        names = [text]
+    return ExtractedImport(source=module_source or text, names=names)
+
+
+def _extract_es_or_python_import(
+    node: "Node", source: bytes, text: str
+) -> ExtractedImport:
+    """``import ...`` statement shared by Python, JS and TS grammars.
+
+    Python uses bare ``dotted_name`` / ``aliased_import`` children (the module
+    is also the bound name). JS/TS nest specifiers under
+    ``import_clause > named_imports > import_specifier`` with the module in a
+    trailing ``string`` literal.
+    """
+    module_source = ""
+    names: list[str] = []
+    is_es_module = False
+
+    for child in node.children:
+        if child.type == "string":
+            is_es_module = True
+            module_source = _string_literal_text(child, source)
+        elif child.type == "import_clause":
+            for grandchild in child.children:
+                if grandchild.type == "named_imports":
+                    for spec in grandchild.children:
+                        if spec.type == "import_specifier":
+                            names.append(_import_specifier_name(spec, source))
+                elif grandchild.type == "namespace_import":
+                    names.append("*")
+                elif grandchild.type == "identifier":
+                    names.append(_get_text(grandchild, source))
+        elif child.type in ("dotted_name", "aliased_import"):
+            # Python ``import x`` / ``import a.b.c as abc``: module is the bound name.
+            module_source = _get_text(
+                child.named_children[0]
+                if child.type == "aliased_import" and child.named_children
+                else child,
+                source,
+            )
+            names.append(_import_specifier_name(child, source))
+
+    if not names:
+        names = [module_source] if (is_es_module and module_source) else [text]
+    return ExtractedImport(source=module_source or text, names=names)
 
 
 def _get_text(node: "Node", source: bytes) -> str:
