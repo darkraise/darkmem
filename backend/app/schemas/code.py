@@ -21,6 +21,12 @@ class RepoUpdate(BaseModel):
     default_branch: str | None = None
 
 
+class ReindexRequest(BaseModel):
+    full: bool = False
+    enrich_symbols: bool = False
+    generate_wiki: bool = False
+
+
 class RepoResponse(BaseModel):
     id: uuid.UUID
     name: str

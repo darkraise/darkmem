@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.repositories.vector import PostgresVectorRepository
 from app.services.code_parser import (
-    ExtractedCall, ExtractedHeritage, ExtractedProperty, ExtractedRoute,
-    ExtractedSymbol, detect_language, parse_file,
+    ExtractedCall, ExtractedHeritage, ExtractedImport, ExtractedProperty,
+    ExtractedRoute, ExtractedSymbol, detect_language, parse_file,
 )
 from app.services.community_detector import CommunityDetector
 from app.services.heritage_resolver import AccessResolver, HeritageResolver
@@ -46,7 +46,7 @@ CROSS_FILE_HARD_CAP = 2000
 
 
 class CodePipeline:
-    """13-phase code indexing pipeline.
+    """Code indexing pipeline.
 
     Phases:
       01  File discovery
@@ -61,7 +61,8 @@ class CodePipeline:
       10  Process detection (entry-point scoring)
       11  Validation (confidence scoring, edge cleanup)
       12  Embeddings
-      13  Enrichment queue
+      13  Symbol enrichment (opt-in via enrich_symbols)
+      14  Wiki generation (opt-in via generate_wiki)
     """
 
     def __init__(
@@ -86,17 +87,38 @@ class CodePipeline:
 
         self._parsed: dict[str, dict] = {}
 
+        # Files whose existing chunks were already removed during phase 03
+        # (changed-existing files), plus brand-new files that never had chunks.
+        # Phase 12 consults this to skip a redundant per-fingerprint delete.
+        self._chunks_cleared_in_structure: set[str] = set()
+
         self._all_calls: dict[str, list[ExtractedCall]] = {}
         self._all_imports: dict[str, list[str]] = {}
+        # Structured form alongside _all_imports. _all_imports stores the bare
+        # module string and feeds build_import_map (which expects strings).
+        # build_named_imports / build_wildcard_imports need the full
+        # ExtractedImport so they can read the imported symbol names directly.
+        self._all_extracted_imports: dict[str, list[ExtractedImport]] = {}
         self._topological_order: list[str] = []
         self._resolved_import_map: dict[str, set[str]] = {}
+        # Per-import resolution: file -> {import_source -> resolved_file}.
+        # _resolved_import_map collapses a file's imports into one set, losing
+        # which source resolved to which file; phase 05 needs the pairing so
+        # each named binding resolves to its own source file.
+        self._per_import_resolution: dict[str, dict[str, str]] = {}
 
         self._named_import_map: dict[str, dict[str, tuple[str, str]]] = {}
         self._wildcard_import_map: dict[str, set[str]] = {}
 
         self._stats: dict = {}
 
-    async def run(self, repo_id: UUID, full: bool = False) -> dict:
+    async def run(
+        self,
+        repo_id: UUID,
+        full: bool = False,
+        enrich_symbols: bool = False,
+        generate_wiki: bool = False,
+    ) -> dict:
         from app.api.websocket import event_manager
 
         self._repo = await self.repo_manager.get(repo_id)
@@ -204,10 +226,17 @@ class CodePipeline:
             })
             await self.phase_12_embeddings()
 
-            await self._update_status("Queuing enrichment...", "repo.indexing_progress", {
-                "repo_id": self._repo_id_str, "phase": 13, "current": total, "total": total,
-            })
-            await self.phase_13_enrichment_queue()
+            if enrich_symbols:
+                await self._update_status("Enriching symbols...", "repo.indexing_progress", {
+                    "repo_id": self._repo_id_str, "phase": 13, "current": total, "total": total,
+                })
+                await self.phase_13_enrich_symbols()
+
+            if generate_wiki:
+                await self._update_status("Generating wiki...", "repo.indexing_progress", {
+                    "repo_id": self._repo_id_str, "phase": 14, "current": total, "total": total,
+                })
+                await self.phase_14_generate_wiki(repo_id)
 
             repo.last_indexed_commit = new_sha
             from datetime import datetime, timezone
@@ -438,11 +467,15 @@ class CodePipeline:
                     self._all_calls[fp] = pr.calls
                 if pr.imports:
                     self._all_imports[fp] = [imp.source for imp in pr.imports]
+                    self._all_extracted_imports[fp] = list(pr.imports)
                 self._stats["files_skipped"] += 1
                 continue
 
             if existing:
                 await self._delete_file_data(repo.id, fp)
+            # Either we just removed the old chunks (changed-existing) or the
+            # file is brand new and has none; phase 12 need not delete again.
+            self._chunks_cleared_in_structure.add(fp)
 
             code_file = CodeFile(
                 id=uuid4(),
@@ -472,6 +505,7 @@ class CodePipeline:
                 self._all_calls[fp] = pr.calls
             if pr.imports:
                 self._all_imports[fp] = [imp.source for imp in pr.imports]
+                self._all_extracted_imports[fp] = list(pr.imports)
 
         await self.session.commit()
         self._phase_done("03_structure", t0)
@@ -491,12 +525,16 @@ class CodePipeline:
         for fp, imports in self._all_imports.items():
             lang = detect_language(fp) or "unknown"
             resolved_list: list[str] = []
+            per_source: dict[str, str] = {}
             for imp in imports:
                 refined = suffix_index.lookup(imp)
                 if refined is None:
                     refined = resolve_import(fp, imp, lang, repo_root, self._all_file_paths)
-                resolved_list.append(refined if refined else imp)
+                resolved = refined if refined else imp
+                resolved_list.append(resolved)
+                per_source[imp] = resolved
             refined_imports[fp] = resolved_list
+            self._per_import_resolution[fp] = per_source
 
         self._resolved_import_map = build_import_map(self._all_file_paths, refined_imports)
 
@@ -512,8 +550,8 @@ class CodePipeline:
         from app.services.call_resolver import build_named_imports, build_wildcard_imports
         from app.services.named_bindings import propagate
 
-        self._named_import_map = build_named_imports(self._all_imports, self._all_file_paths)
-        self._wildcard_import_map = build_wildcard_imports(self._all_imports, self._all_file_paths)
+        self._named_import_map = build_named_imports(self._all_extracted_imports, self._all_file_paths)
+        self._wildcard_import_map = build_wildcard_imports(self._all_extracted_imports, self._all_file_paths)
 
         symbol_table: dict[str, list[str]] = {}
         for fp in self._all_file_paths:
@@ -529,15 +567,14 @@ class CodePipeline:
             if not parsed:
                 continue
             lang = detect_language(fp) or "unknown"
+            # Map each import source to the file IT resolved to. The previous
+            # form picked one arbitrary file from the whole resolved set for
+            # every source, so all named bindings in a file pointed at the same
+            # path. _per_import_resolution preserves the per-source pairing.
             import_map_for_file = {
-                imp: resolved
-                for imp, resolved in zip(
-                    self._all_imports.get(fp, []),
-                    [
-                        next(iter(self._resolved_import_map.get(fp, set()) - {fp}), imp)
-                        for imp in self._all_imports.get(fp, [])
-                    ],
-                )
+                source: resolved
+                for source, resolved in self._per_import_resolution.get(fp, {}).items()
+                if resolved != fp
             }
             extra = propagate(
                 fp, lang, import_map_for_file, symbol_table,
@@ -1037,58 +1074,56 @@ class CodePipeline:
                     "embedding": vector,
                 })
             if chunks_to_store:
-                await self.vector_repo.delete_code_chunks_by_file(self._repo.id, fp)
+                # Phase 03 already cleared chunks for files it wrote fresh
+                # (changed or new). Re-deleting here repeats that work once per
+                # registered fingerprint. Only unchanged files, which phase 03
+                # left untouched, still need the delete to avoid duplicates.
+                if fp not in self._chunks_cleared_in_structure:
+                    await self.vector_repo.delete_code_chunks_by_file(self._repo.id, fp)
                 await self.vector_repo.upsert_code_chunks(chunks_to_store, fingerprint=fingerprint)
                 chunk_count += len(chunks_to_store)
 
         self._stats["chunks_stored"] = chunk_count
         self._phase_done("12_embeddings", t0)
 
-    async def phase_13_enrichment_queue(self) -> None:
-        t0 = await self._phase_log("13_enrichment_queue")
+    async def phase_13_enrich_symbols(self) -> None:
+        t0 = await self._phase_log("13_enrich_symbols")
 
         if not self.llm:
-            self._phase_done("13_enrichment_queue", t0)
+            self._phase_done("13_enrich_symbols", t0)
             return
 
-        queued = 0
-        rows = await self.session.execute(
-            select(CodeSymbol)
-            .join(CodeFile)
-            .where(
-                CodeFile.repo_id == self._repo.id,
-                CodeSymbol.enrichment_priority >= 1,
-                CodeSymbol.docstring.is_(None),
-            )
-            .order_by(CodeSymbol.enrichment_priority.desc())
-            .limit(500)
-        )
-        syms = rows.scalars().all()
+        from app.api.websocket import event_manager
+        from app.services.enrichment_worker import EnrichmentWorker
 
-        if syms:
-            sym_ids = [str(s.id) for s in syms]
-            try:
-                # Single multi-row insert instead of N round-trips.
-                # ``ON CONFLICT (symbol_id) DO NOTHING`` keeps the
-                # idempotent semantics of the original loop.
-                result = await self.session.execute(
-                    text("""
-                        INSERT INTO enrichment_queue (id, symbol_id, status, created_at)
-                        SELECT gen_random_uuid(), CAST(s AS uuid), 'pending', NOW()
-                        FROM unnest(CAST(:sym_ids AS text[])) AS s
-                        ON CONFLICT (symbol_id) DO NOTHING
-                    """),
-                    {"sym_ids": sym_ids},
-                )
-                queued = result.rowcount or 0
-                await self.session.commit()
-            except Exception as exc:
-                logger.warning("Failed to queue enrichment batch: %s", exc)
-                queued = 0
+        worker = EnrichmentWorker(self.llm, broadcast=event_manager.broadcast)
+        processed = 0
+        # Symbols enter the queue with enrichment_status='pending' at creation,
+        # so the worker (which reads CodeSymbol directly) can drain them here.
+        # Loop until a batch returns no work or the safety cap is hit.
+        for _ in range(200):
+            count = await worker.process_batch()
+            if count == 0:
+                break
+            processed += count
 
-        self._stats["enrichment_queued"] = queued
-        logger.info("Phase 13 queued %d symbols for enrichment", queued)
-        self._phase_done("13_enrichment_queue", t0)
+        self._stats["enrichment_processed"] = processed
+        logger.info("Phase 13 enriched %d symbols", processed)
+        self._phase_done("13_enrich_symbols", t0)
+
+    async def phase_14_generate_wiki(self, repo_id: UUID) -> None:
+        t0 = await self._phase_log("14_generate_wiki")
+
+        from app.services.wiki_generator import WikiGenerator
+
+        try:
+            generator = WikiGenerator(self.session, self.llm)
+            await generator.generate(repo_id, force=True)
+            await self.session.commit()
+        except Exception as exc:
+            logger.warning("Wiki generation failed for repo %s: %s", repo_id, exc)
+
+        self._phase_done("14_generate_wiki", t0)
 
     async def _delete_all_repo_data(self, repo_id: UUID) -> None:
         await self.session.execute(
@@ -1255,14 +1290,22 @@ async def _diff_files(
     for line in result.strip().splitlines():
         if not line:
             continue
-        parts = line.split("\t", maxsplit=1)
+        parts = line.split("\t")
         if len(parts) < 2:
             continue
-        status, path = parts[0].strip(), parts[1].strip()
-        if status.startswith("D"):
-            deleted.append(path)
+        status = parts[0].strip()
+        # Rename (R###) and copy (C###) entries carry two paths:
+        # "STATUS\told_path\tnew_path". The new path is what was indexed;
+        # for a rename the old path no longer exists and must be deleted.
+        if status[:1] in ("R", "C") and len(parts) >= 3:
+            old_path, new_path = parts[1].strip(), parts[2].strip()
+            changed.append(new_path)
+            if status[:1] == "R":
+                deleted.append(old_path)
+        elif status.startswith("D"):
+            deleted.append(parts[1].strip())
         else:
-            changed.append(path)
+            changed.append(parts[1].strip())
     return changed, deleted
 
 

@@ -49,6 +49,7 @@ _GRAMMAR_MODULES: dict[str, str] = {
 }
 
 _loaded_languages: dict[str, object] = {}
+_failed_languages: set[str] = set()
 
 EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".py": "python",
@@ -253,6 +254,9 @@ def _get_language(lang_name: str) -> "Language | None":
     if lang_name in _loaded_languages:
         return _loaded_languages[lang_name]
 
+    if lang_name in _failed_languages:
+        return None
+
     module_name = _GRAMMAR_MODULES.get(lang_name)
     if module_name is None:
         return None
@@ -262,18 +266,23 @@ def _get_language(lang_name: str) -> "Language | None":
         mod = importlib.import_module(module_name)
         if lang_name == "typescript":
             lang = Language(mod.language_typescript())
+        elif lang_name == "php":
+            lang = Language(mod.language_php())
         elif hasattr(mod, "language"):
             lang = Language(mod.language())
         else:
             logger.warning("Grammar module %s has no language() function", module_name)
+            _failed_languages.add(lang_name)
             return None
         _loaded_languages[lang_name] = lang
         return lang
     except ImportError:
         logger.debug("Grammar package %s not installed, skipping %s", module_name, lang_name)
+        _failed_languages.add(lang_name)
         return None
     except Exception as exc:
         logger.warning("Failed to load tree-sitter language %s: %s", lang_name, exc)
+        _failed_languages.add(lang_name)
         return None
 
 
@@ -733,12 +742,16 @@ def extract_heritage(tree, source: bytes, language: str) -> list[ExtractedHerita
                     class_name = _get_text(child, source)
                 if child.type == "argument_list" and class_name:
                     for arg in child.children:
-                        if arg.type == "identifier":
+                        if arg.type in ("identifier", "attribute"):
                             base = _get_text(arg, source)
                             if base and base not in ("object", "ABC"):
                                 results.append(ExtractedHeritage(class_name, base, "extends"))
                         elif arg.type == "keyword_argument":
-                            pass
+                            value = arg.child_by_field_name("value")
+                            if value and value.type in ("identifier", "attribute"):
+                                base = _get_text(value, source)
+                                if base and base not in ("object", "ABC"):
+                                    results.append(ExtractedHeritage(class_name, base, "extends"))
 
         # TypeScript/JavaScript
         if language in ("typescript", "javascript") and node.type == "class_declaration":

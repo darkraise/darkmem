@@ -11,7 +11,7 @@ from app.api.auth import require_auth
 from app.api.deps import get_code_pipeline, get_repo_manager
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
-from app.schemas.code import RepoCreate, RepoResponse, RepoUpdate
+from app.schemas.code import ReindexRequest, RepoCreate, RepoResponse, RepoUpdate
 from app.services.code_pipeline import CodePipeline
 from app.services.repo_manager import RepoManager
 
@@ -141,12 +141,16 @@ async def delete_repo(
 @router.post("/{repo_id}/reindex")
 async def reindex_repo(
     repo_id: UUID,
-    full: bool = False,
+    body: ReindexRequest = ReindexRequest(),
     _user=Depends(require_auth),
     pipeline: CodePipeline = Depends(get_code_pipeline),
     manager: RepoManager = Depends(get_repo_manager),
 ):
     from app.database import async_session_factory
+
+    full = body.full
+    enrich_symbols = body.enrich_symbols
+    generate_wiki = body.generate_wiki
 
     repo = await manager.get(repo_id)
     if not repo:
@@ -174,7 +178,12 @@ async def reindex_repo(
                     vector_repo=fresh_vector_repo,
                     repo_manager=RepoManager(session),
                 )
-                await idx.run(repo_id, full=full)
+                await idx.run(
+                    repo_id,
+                    full=full,
+                    enrich_symbols=enrich_symbols,
+                    generate_wiki=generate_wiki,
+                )
         except Exception as e:
             logger.error(f"Background reindex failed for {repo_id}: {e}")
             from app.api.websocket import event_manager

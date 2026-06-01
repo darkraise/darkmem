@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from app.services.code_parser import ExtractedCall
+from app.services.code_parser import ExtractedCall, ExtractedImport
 from app.services.symbol_table import CALLABLE_KINDS, SymbolEntry, SymbolTable
 
 logger = logging.getLogger(__name__)
@@ -251,47 +251,55 @@ def build_import_map(
 
 
 def build_named_imports(
-    file_imports: dict[str, list[str]],
+    file_imports: dict[str, list[ExtractedImport]],
     file_paths: list[str],
 ) -> dict[str, dict[str, tuple[str, str]]]:
-    """Build named import map: file -> {local_name: (source_module, exported_name)}"""
-    path_set = set(file_paths)
-    result: dict[str, dict[str, tuple[str, str]]] = {}
+    """Build named import map: file -> {local_name: (source_module, exported_name)}.
 
+    Consumes the structured ``ExtractedImport.names`` list from the parser
+    rather than re-parsing raw ``from X import Y`` source text. Callers feed
+    the parser's ``ExtractedImport`` objects directly; the earlier
+    ``str.split("import")`` form was fed only the module portion
+    (``imp.source``, e.g. ``"os"``), which contains neither ``from`` nor
+    ``import``, so it matched nothing and silently returned ``{}``.
+    """
+    result: dict[str, dict[str, tuple[str, str]]] = {}
     for file_path, imports in file_imports.items():
         named: dict[str, tuple[str, str]] = {}
         for imp in imports:
-            if "import" in imp and "from" in imp:
-                parts = imp.split("import")
-                if len(parts) == 2:
-                    module = parts[0].replace("from", "").strip()
-                    names = parts[1].strip()
-                    for name_part in names.split(","):
-                        name_part = name_part.strip()
-                        if " as " in name_part:
-                            exported, local = name_part.split(" as ")
-                            named[local.strip()] = (module.strip(), exported.strip())
-                        elif name_part:
-                            named[name_part] = (module.strip(), name_part)
+            module = imp.source.strip()
+            if not module:
+                continue
+            for raw in imp.names:
+                name_part = raw.strip()
+                # Wildcard imports are tracked by build_wildcard_imports.
+                if not name_part or name_part == "*":
+                    continue
+                if " as " in name_part:
+                    exported, local = name_part.split(" as ", 1)
+                    named[local.strip()] = (module, exported.strip())
+                else:
+                    named[name_part] = (module, name_part)
         if named:
             result[file_path] = named
-
     return result
 
 
 def build_wildcard_imports(
-    file_imports: dict[str, list[str]],
+    file_imports: dict[str, list[ExtractedImport]],
     file_paths: list[str],
 ) -> dict[str, set[str]]:
     """Find files that use wildcard imports and map them to source files."""
     result: dict[str, set[str]] = {}
     for file_path, imports in file_imports.items():
         for imp in imports:
-            if "import *" in imp or "import *" in imp.replace(" ", ""):
-                parts = imp.split("import")
-                if len(parts) >= 2:
-                    module = parts[0].replace("from", "").strip()
-                    for fp in file_paths:
-                        if fp.endswith(module.replace(".", "/") + ".py") or fp.endswith(module.replace(".", "/") + "/__init__.py"):
-                            result.setdefault(file_path, set()).add(fp)
+            if "*" not in imp.names:
+                continue
+            module = imp.source.strip()
+            if not module:
+                continue
+            module_path = module.replace(".", "/")
+            for fp in file_paths:
+                if fp.endswith(module_path + ".py") or fp.endswith(module_path + "/__init__.py"):
+                    result.setdefault(file_path, set()).add(fp)
     return result
