@@ -71,9 +71,11 @@ export function MLProfilesPanel() {
   const names = Object.keys(profiles).sort()
 
   const handleSaveTtl = (name: string, ttl: number) => {
+    const existing = profiles[name]
+    if (!existing) return
     const next: Record<string, MlProfile> = {
       ...profiles,
-      [name]: { ...profiles[name], ttl_seconds: ttl },
+      [name]: { ...existing, ttl_seconds: ttl },
     }
     update.mutate(
       { profiles: next },
@@ -152,16 +154,20 @@ export function MLProfilesPanel() {
             </p>
           ) : (
             <div className="divide-border divide-y">
-              {names.map((name) => (
-                <MlProfileRow
-                  key={name}
-                  name={name}
-                  profile={profiles[name]}
-                  onSaveTtl={(ttl) => handleSaveTtl(name, ttl)}
-                  onDelete={() => handleDelete(name)}
-                  disabled={update.isPending || remove.isPending}
-                />
-              ))}
+              {names.map((name) => {
+                const profile = profiles[name]
+                if (!profile) return null
+                return (
+                  <MlProfileRow
+                    key={name}
+                    name={name}
+                    profile={profile}
+                    onSaveTtl={(ttl) => handleSaveTtl(name, ttl)}
+                    onDelete={() => handleDelete(name)}
+                    disabled={update.isPending || remove.isPending}
+                  />
+                )
+              })}
             </div>
           )}
         </CardContent>

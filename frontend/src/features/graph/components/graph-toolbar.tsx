@@ -64,7 +64,10 @@ function SliderRow({
       <Label className="w-14 shrink-0 text-right">{label}</Label>
       <Slider
         value={[value]}
-        onValueChange={([v]) => onChange(float ? v : Math.round(v))}
+        onValueChange={([v]) => {
+          const next = v ?? value
+          onChange(float ? next : Math.round(next))
+        }}
         min={min}
         max={max}
         step={step}

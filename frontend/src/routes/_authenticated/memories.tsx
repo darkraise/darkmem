@@ -1,11 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
-import {
-  DataTable,
-  DataTableSkeleton,
-  DataTableEmpty,
-} from "darkraise-ui/data-table"
+import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
@@ -47,7 +43,6 @@ import {
 import { CreateMemoryDialog } from "@/features/memories/components/create-memory-dialog"
 import {
   MemoryCommandPalette,
-  parseCommandPaletteQuery,
   type CommandPaletteFilter,
 } from "@/features/memories/components/memory-command-palette"
 
@@ -350,10 +345,18 @@ function MemoriesPage() {
                 if (el) rowRefs.current.set(m.id, el)
                 else rowRefs.current.delete(m.id)
               }}
+              role="button"
+              tabIndex={0}
               className={`cursor-pointer transition-colors ${
                 highlightId === m.id ? "ring-primary rounded ring-2" : ""
               }`}
               onClick={() => setDetailMemory(m)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  setDetailMemory(m)
+                }
+              }}
             >
               <p className="line-clamp-2 text-base">{m.content}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -407,8 +410,7 @@ function MemoriesPage() {
         id: "technologies",
         header: "Technologies",
         cell: ({ row }) => {
-          const techs =
-            (row.original.metadata?.technologies as string[] | undefined) ?? []
+          const techs = row.original.technologies ?? []
           const visible = techs.slice(0, 3)
           return (
             <div className="flex flex-wrap gap-1">

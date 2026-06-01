@@ -263,7 +263,12 @@ export function ChatMessages({
   }, [messages.length, streamingContent])
 
   return (
-    <div className="flex-1 space-y-6 overflow-auto px-4 py-5">
+    <div
+      className="flex-1 space-y-6 overflow-auto px-4 py-5"
+      role="log"
+      aria-live="polite"
+      aria-busy={isStreaming}
+    >
       {messages.map((msg) => (
         <div key={msg.id} className="animate-in fade-in duration-200">
           {msg.role === "user" ? (

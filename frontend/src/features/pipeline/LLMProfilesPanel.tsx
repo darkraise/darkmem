@@ -88,8 +88,9 @@ function inferPurpose(
   // routes to "embedding" (the keyword), not the trailing variant tag.
   const segments = profileName.toLowerCase().split("-")
   for (let i = segments.length - 1; i >= 0; i--) {
-    if (KNOWN_PURPOSE_SET.has(segments[i])) {
-      return segments[i] as KnownPurpose
+    const segment = segments[i]
+    if (segment && KNOWN_PURPOSE_SET.has(segment)) {
+      return segment as KnownPurpose
     }
   }
   if (isEmbedding) return "embedding"
@@ -182,7 +183,7 @@ export function LLMProfilesPanel() {
       return
     }
     setActiveGroup((prev) =>
-      prev && groupKeys.includes(prev) ? prev : groupKeys[0],
+      prev && groupKeys.includes(prev) ? prev : (groupKeys[0] ?? ""),
     )
   }, [groupKeys])
 
@@ -257,6 +258,7 @@ export function LLMProfilesPanel() {
     const profiles: Record<string, LlmProfile> = {}
     for (const name of Object.keys(merged)) {
       const p = merged[name]
+      if (!p) continue
       if (!p.provider_ref || !providerNames.includes(p.provider_ref)) {
         toast.error(`Profile '${name}' references an unknown Provider`)
         return
@@ -389,26 +391,30 @@ export function LLMProfilesPanel() {
                 <TabsTrigger key={key} value={key} className="text-base">
                   {key}
                   <Badge variant="secondary" className="ml-1.5 text-sm">
-                    {groups[key].length}
+                    {(groups[key] ?? []).length}
                   </Badge>
                 </TabsTrigger>
               ))}
             </TabsList>
             {groupKeys.map((key) => (
               <TabsContent key={key} value={key} className="mt-3 space-y-3">
-                {groups[key].map((name) => (
-                  <ProfileRow
-                    key={name}
-                    name={name}
-                    profile={merged[name]}
-                    isNew={!!draft[name]?._isNew}
-                    dirty={!!draft[name] && !merged[name]._isNew}
-                    providerNames={providerNames}
-                    onPatch={(p) => patch(name, p)}
-                    onDelete={() => drop(name)}
-                    disabled={update.isPending || remove.isPending}
-                  />
-                ))}
+                {(groups[key] ?? []).map((name) => {
+                  const profile = merged[name]
+                  if (!profile) return null
+                  return (
+                    <ProfileRow
+                      key={name}
+                      name={name}
+                      profile={profile}
+                      isNew={!!draft[name]?._isNew}
+                      dirty={!!draft[name] && !profile._isNew}
+                      providerNames={providerNames}
+                      onPatch={(p) => patch(name, p)}
+                      onDelete={() => drop(name)}
+                      disabled={update.isPending || remove.isPending}
+                    />
+                  )
+                })}
               </TabsContent>
             ))}
           </Tabs>

@@ -3,7 +3,6 @@ import { Button } from "darkraise-ui/components/button"
 import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api"
 import {
   UNIFIED_PALETTE,
-  UNCLUSTERED_COLOR,
   entityTypeColor,
   resolveNodeColor,
 } from "@/features/graph/lib/graph-colors"
@@ -238,7 +237,7 @@ function MemoryDetail({
                         {
                           cluster: -1,
                           memory_type: null,
-                          tags: memory.tags.length > 0 ? [memory.tags[0]] : [],
+                          tags: memory.tags.slice(0, 1),
                         },
                         "tag",
                       )
@@ -342,7 +341,7 @@ function GraphSummary({
     typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1)
     sourceCounts.set(m.source, (sourceCounts.get(m.source) ?? 0) + 1)
     for (const tag of m.tags) {
-      const prefix = tag.includes("/") ? tag.split("/")[0] : tag
+      const prefix = tag.includes("/") ? (tag.split("/")[0] ?? tag) : tag
       tagCategoryCounts.set(prefix, (tagCategoryCounts.get(prefix) ?? 0) + 1)
     }
   }

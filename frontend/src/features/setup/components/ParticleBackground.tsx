@@ -118,8 +118,10 @@ export function ParticleBackground({
       ctx.lineWidth = 0.7
       for (let i = 0; i < particles.length; i++) {
         const a = particles[i]
+        if (!a) continue
         for (let j = i + 1; j < particles.length; j++) {
           const b = particles[j]
+          if (!b) continue
           const dx = a.x - b.x
           const dy = a.y - b.y
           const d2 = dx * dx + dy * dy

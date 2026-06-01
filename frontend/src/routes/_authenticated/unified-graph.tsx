@@ -29,7 +29,7 @@ type ViewMode = "2d" | "3d"
 
 function UnifiedGraphPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
-  const [graphReady, setGraphReady] = useState(false)
+  const [, setGraphReady] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>("type")
 
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5)
@@ -63,7 +63,9 @@ function UnifiedGraphPage() {
     const el = containerRef.current
     if (!el) return
     const observer = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
       if (width > 0 && height > 0) {
         setDimensions((prev) =>
           prev && prev.width === width && prev.height === height
@@ -91,7 +93,6 @@ function UnifiedGraphPage() {
     layout.setSizeMode("connections")
     setColorMode("type")
     layout.setHullMode("none")
-    setShowSettings(false)
     setEntityLayerEnabled(false)
     setSelectedEntityTypes(new Set())
     selection.setSelectedEntityId(null)

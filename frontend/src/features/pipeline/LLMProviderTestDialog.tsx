@@ -57,7 +57,7 @@ export function LLMProviderTestDialog({
   // Default model selection: pick the first available once models load.
   useEffect(() => {
     if (modelsResp?.models && modelsResp.models.length > 0 && !model) {
-      setModel(modelsResp.models[0])
+      setModel(modelsResp.models[0] ?? "")
     }
   }, [modelsResp, model])
 

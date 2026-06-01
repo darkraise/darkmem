@@ -1,7 +1,6 @@
 import { useState } from "react"
 import {
   UNIFIED_PALETTE,
-  UNCLUSTERED_COLOR,
   entityTypeColor,
   resolveNodeColor,
 } from "@/features/graph/lib/graph-colors"

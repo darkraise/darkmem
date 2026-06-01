@@ -11,7 +11,7 @@ describe("llmProfileSchema", () => {
     })
     expect(r.success).toBe(false)
     if (!r.success) {
-      expect(r.error.issues[0].message).toContain("Anthropic")
+      expect(r.error.issues[0]?.message).toContain("Anthropic")
     }
   })
 

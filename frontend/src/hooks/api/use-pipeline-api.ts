@@ -112,13 +112,15 @@ export function useReprocessStream(endpoint: "/analytics/reprocess/stream") {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n")
-        buffer = lines.pop() ?? ""
+        const events = buffer.split("\n\n")
+        buffer = events.pop() ?? ""
 
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed.startsWith("data: ")) continue
-          const event = JSON.parse(trimmed.slice(6))
+        for (const block of events) {
+          const dataLine = block
+            .split("\n")
+            .find((l) => l.trim().startsWith("data: "))
+          if (!dataLine) continue
+          const event = JSON.parse(dataLine.trim().slice(6))
 
           if (event.type === "start") {
             setProgress({

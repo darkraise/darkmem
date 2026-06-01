@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
-import { useStats, useTags, useMemories, usePipelineLogs } from "@/hooks/api"
+import { useStats, useTags, useOverview, usePipelineLogs } from "@/hooks/api"
 import type { PipelineLog } from "@/hooks/api"
 import {
   BarChart,
@@ -109,23 +109,18 @@ const logColumns: ColumnDef<PipelineLog>[] = [
 function AnalyticsPage() {
   const { data: stats } = useStats()
   const { data: tags } = useTags()
-  const { data: memories } = useMemories()
+  const { data: overview } = useOverview()
   const { data: logs, isLoading: logsLoading } = usePipelineLogs(20)
 
   const tagData =
     tags?.slice(0, 10).map((t) => ({ name: t.name, count: t.memory_count })) ??
     []
 
-  const sourceData = useMemo(() => {
-    if (!memories) return []
-    const counts = new Map<string, number>()
-    for (const m of memories)
-      counts.set(m.source, (counts.get(m.source) ?? 0) + 1)
-    return Array.from(counts.entries()).map(([name, value]) => ({
-      name,
-      value,
-    }))
-  }, [memories])
+  const sourceData = useMemo(
+    () =>
+      (overview?.sources ?? []).map((s) => ({ name: s.name, value: s.count })),
+    [overview?.sources],
+  )
 
   return (
     <div className="space-y-6 p-6">

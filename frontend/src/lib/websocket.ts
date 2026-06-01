@@ -32,9 +32,12 @@ function showPipelineToast(event: string, data: PipelineStatus) {
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null)
   const retryCount = useRef<number>(0)
+  const closedByCaller = useRef<boolean>(false)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qc = useQueryClient()
 
   const connect = useCallback(() => {
+    if (closedByCaller.current) return
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
     const url = `${protocol}//${window.location.host}/ws`
     ws.current = new WebSocket(url)
@@ -56,11 +59,13 @@ export function useWebSocket() {
       ) {
         showPipelineToast(msg.event, msg.data as PipelineStatus)
         void qc.invalidateQueries({ queryKey: ["memories"] })
+        void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
         void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
       } else if (msg.event === "memory.deleted") {
         void qc.invalidateQueries({ queryKey: ["memories"] })
+        void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
       }
@@ -148,14 +153,23 @@ export function useWebSocket() {
     }
 
     ws.current.onclose = () => {
+      if (closedByCaller.current) return
       const delay = Math.min(1000 * Math.pow(2, retryCount.current), 30000)
       retryCount.current++
-      setTimeout(connect, delay)
+      reconnectTimer.current = setTimeout(connect, delay)
     }
   }, [qc])
 
   useEffect(() => {
+    closedByCaller.current = false
     connect()
-    return () => ws.current?.close()
+    return () => {
+      closedByCaller.current = true
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = null
+      }
+      ws.current?.close()
+    }
   }, [connect])
 }

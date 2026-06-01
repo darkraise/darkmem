@@ -35,7 +35,7 @@ function VectorSpacePage() {
   const { data, isLoading } = useVectorProjection()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [hovered, setHovered] = useState<
-    (VPoint & { screenX: number; screenY: number }) | null
+    (VPoint & { tooltipLeft: number; tooltipTop: number }) | null
   >(null)
 
   const points: VPoint[] = data?.points || []
@@ -46,7 +46,7 @@ function VectorSpacePage() {
     ).sort()
     const map = new Map<string, string>()
     uniqueSources.forEach((source, index) => {
-      map.set(source, PALETTE[index % PALETTE.length])
+      map.set(source, PALETTE[index % PALETTE.length] ?? FALLBACK_COLOR)
     })
     return map
   }, [points])
@@ -90,14 +90,17 @@ function VectorSpacePage() {
     ctx.fillStyle = "#484f58"
     ctx.font = "10px Inter, sans-serif"
     for (let i = 0; i <= 4; i++) {
+      const xTick = TICK_VALUES[i]
+      const yTick = TICK_VALUES[4 - i]
+      if (xTick === undefined || yTick === undefined) continue
       const gx = PAD + (i / 4) * (w - 2 * PAD)
       const gy = PAD + (i / 4) * (h - 2 * PAD)
       ctx.textAlign = "center"
       ctx.textBaseline = "top"
-      ctx.fillText(TICK_VALUES[i].toFixed(1), gx, h - PAD + 4)
+      ctx.fillText(xTick.toFixed(1), gx, h - PAD + 4)
       ctx.textAlign = "right"
       ctx.textBaseline = "middle"
-      ctx.fillText(TICK_VALUES[4 - i].toFixed(1), PAD - 6, gy)
+      ctx.fillText(yTick.toFixed(1), PAD - 6, gy)
     }
 
     ctx.fillStyle = "#484f58"
@@ -142,7 +145,9 @@ function VectorSpacePage() {
       const w = rect.width
       const h = rect.height
 
-      let closest: (VPoint & { screenX: number; screenY: number }) | null = null
+      let closest:
+        | (VPoint & { tooltipLeft: number; tooltipTop: number })
+        | null = null
       let minDist = 15
 
       for (const p of points) {
@@ -151,7 +156,11 @@ function VectorSpacePage() {
         const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2)
         if (dist < minDist) {
           minDist = dist
-          closest = { ...p, screenX: e.clientX, screenY: e.clientY }
+          closest = {
+            ...p,
+            tooltipLeft: Math.min(mx + 12, w - 260),
+            tooltipTop: my - 10,
+          }
         }
       }
       setHovered(closest)
@@ -191,17 +200,8 @@ function VectorSpacePage() {
             <div
               className="bg-card border-border pointer-events-none absolute z-10 max-w-xs rounded-lg border p-3 shadow-lg"
               style={{
-                left: Math.min(
-                  hovered.screenX -
-                    (canvasRef.current?.getBoundingClientRect().left || 0) +
-                    12,
-                  (canvasRef.current?.getBoundingClientRect().width || 300) -
-                    260,
-                ),
-                top:
-                  hovered.screenY -
-                  (canvasRef.current?.getBoundingClientRect().top || 0) -
-                  10,
+                left: hovered.tooltipLeft,
+                top: hovered.tooltipTop,
               }}
             >
               <p className="text-foreground text-base">{hovered.content}</p>

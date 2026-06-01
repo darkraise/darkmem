@@ -11,6 +11,7 @@ export interface Memory {
   memory_type: string | null
   importance: number
   metadata: Record<string, unknown>
+  technologies?: string[]
   tags: string[]
   created_at: string
   updated_at: string

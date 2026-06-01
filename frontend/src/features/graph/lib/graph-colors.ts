@@ -64,7 +64,8 @@ export const PALETTE_600 = [
 // consecutive picks: red, indigo, green, rose, blue, lime, pink, sky,
 // yellow, fuchsia, cyan, amber, purple, teal, orange, violet, emerald
 const HUE_ORDER = [0, 11, 5, 16, 10, 4, 15, 9, 3, 14, 8, 2, 13, 7, 1, 12, 6]
-const reorder = (palette: string[]) => HUE_ORDER.map((i) => palette[i])
+const reorder = (palette: string[]): string[] =>
+  HUE_ORDER.map((i) => palette[i] ?? "#8b949e")
 
 export const UNIFIED_PALETTE = [
   ...reorder(PALETTE_400),
@@ -98,20 +99,20 @@ export function resolveNodeColor(
 ): string {
   if (colorMode === "cluster") {
     if (node.cluster < 0) return UNCLUSTERED_COLOR
-    return UNIFIED_PALETTE[node.cluster % 51]
+    return UNIFIED_PALETTE[node.cluster % 51] ?? UNCLUSTERED_COLOR
   }
 
   if (colorMode === "type") {
     if (!node.memory_type) return UNCLUSTERED_COLOR
     const idx = KNOWN_TYPE_INDICES[node.memory_type]
-    if (idx !== undefined) return UNIFIED_PALETTE[idx]
-    return UNIFIED_PALETTE[stableHash(node.memory_type) % 51]
+    if (idx !== undefined) return UNIFIED_PALETTE[idx] ?? UNCLUSTERED_COLOR
+    return UNIFIED_PALETTE[stableHash(node.memory_type) % 51] ?? UNCLUSTERED_COLOR
   }
 
   // tag mode
   if (!node.tags || node.tags.length === 0) return UNCLUSTERED_COLOR
-  const prefix = node.tags[0].split("/")[0]
-  return UNIFIED_PALETTE[stableHash(prefix) % 51]
+  const prefix = (node.tags[0] ?? "").split("/")[0] ?? ""
+  return UNIFIED_PALETTE[stableHash(prefix) % 51] ?? UNCLUSTERED_COLOR
 }
 
 export function resolveGroupColor(
@@ -122,16 +123,17 @@ export function resolveGroupColor(
 ): string {
   if (colorMode === hullMode && colorMode === "cluster") {
     const id = parseInt(groupKey, 10)
-    if (!isNaN(id) && id >= 0) return UNIFIED_PALETTE[id % 51]
+    if (!isNaN(id) && id >= 0)
+      return UNIFIED_PALETTE[id % 51] ?? UNCLUSTERED_COLOR
     return UNCLUSTERED_COLOR
   }
 
   if (colorMode === hullMode && colorMode === "tag") {
-    const prefix = groupKey.split("/")[0]
-    return UNIFIED_PALETTE[stableHash(prefix) % 51]
+    const prefix = groupKey.split("/")[0] ?? ""
+    return UNIFIED_PALETTE[stableHash(prefix) % 51] ?? UNCLUSTERED_COLOR
   }
 
-  return UNIFIED_PALETTE[groupIndex % 51]
+  return UNIFIED_PALETTE[groupIndex % 51] ?? UNCLUSTERED_COLOR
 }
 
 export const ENTITY_TYPE_COLORS: Record<string, string> = {

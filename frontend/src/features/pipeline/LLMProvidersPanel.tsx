@@ -70,6 +70,7 @@ export function LLMProvidersPanel() {
     for (const name of Object.keys(draft)) {
       const next = draft[name]
       const prev = stored[name]
+      if (!next) continue
       if (!prev) return true
       if (
         next.provider !== prev.provider ||
@@ -155,6 +156,7 @@ export function LLMProvidersPanel() {
     const profiles: Record<string, LlmProviderProfile> = {}
     for (const name of Object.keys(merged)) {
       const p = merged[name]
+      if (!p) continue
       // For new rows, require base_url to be set.
       if (!p.base_url.trim()) {
         toast.error(`Profile '${name}' needs a base URL`)
@@ -221,18 +223,22 @@ export function LLMProvidersPanel() {
         )}
 
         <div className="space-y-3">
-          {profileNames.map((name) => (
-            <ProfileRow
-              key={name}
-              name={name}
-              profile={merged[name]}
-              isNew={!!draft[name]?._isNew}
-              dirty={!!draft[name] && !merged[name]._isNew}
-              onPatch={(patchObj) => patch(name, patchObj)}
-              onDelete={() => drop(name)}
-              disabled={update.isPending || remove.isPending}
-            />
-          ))}
+          {profileNames.map((name) => {
+            const profile = merged[name]
+            if (!profile) return null
+            return (
+              <ProfileRow
+                key={name}
+                name={name}
+                profile={profile}
+                isNew={!!draft[name]?._isNew}
+                dirty={!!draft[name] && !profile._isNew}
+                onPatch={(patchObj) => patch(name, patchObj)}
+                onDelete={() => drop(name)}
+                disabled={update.isPending || remove.isPending}
+              />
+            )
+          })}
         </div>
 
         <div className="border-border flex items-center gap-2 border-t pt-3">

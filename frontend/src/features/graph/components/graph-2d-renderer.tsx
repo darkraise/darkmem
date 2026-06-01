@@ -67,6 +67,7 @@ export function Graph2DRenderer({
   const sigmaRef = useRef<Sigma | null>(null)
   const graphRef = useRef<Graph | null>(null)
   const fa2Ref = useRef<FA2Layout | null>(null)
+  const fa2StopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const selectedNodeIdRef = useRef(selectedNodeId)
   const hoveredNodeRef = useRef<string | null>(null)
   const colorModeRef = useRef(colorMode)
@@ -76,6 +77,10 @@ export function Graph2DRenderer({
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
 
+    if (fa2StopTimerRef.current !== null) {
+      clearTimeout(fa2StopTimerRef.current)
+      fa2StopTimerRef.current = null
+    }
     if (fa2Ref.current) {
       fa2Ref.current.kill()
       fa2Ref.current = null
@@ -363,7 +368,8 @@ export function Graph2DRenderer({
     })
     fa2Ref.current = fa2
     fa2.start()
-    setTimeout(() => {
+    fa2StopTimerRef.current = setTimeout(() => {
+      fa2StopTimerRef.current = null
       if (fa2Ref.current) fa2Ref.current.stop()
     }, 8000)
 
@@ -385,6 +391,10 @@ export function Graph2DRenderer({
     const frame = requestAnimationFrame(() => buildGraph())
     return () => {
       cancelAnimationFrame(frame)
+      if (fa2StopTimerRef.current !== null) {
+        clearTimeout(fa2StopTimerRef.current)
+        fa2StopTimerRef.current = null
+      }
       if (fa2Ref.current) {
         fa2Ref.current.kill()
         fa2Ref.current = null

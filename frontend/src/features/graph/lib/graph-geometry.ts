@@ -23,7 +23,8 @@ export function convexHull(
   for (const p of sorted) {
     while (
       lower.length >= 2 &&
-      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+      // length >= 2 guarantees both indices are defined
+      cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0
     )
       lower.pop()
     lower.push(p)
@@ -32,7 +33,8 @@ export function convexHull(
   for (const p of [...sorted].reverse()) {
     while (
       upper.length >= 2 &&
-      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+      // length >= 2 guarantees both indices are defined
+      cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0
     )
       upper.pop()
     upper.push(p)
@@ -65,10 +67,11 @@ export function drawSmoothClosed(
   if (n < 3) return
   ctx.beginPath()
   for (let i = 0; i < n; i++) {
-    const p0 = hull[(i - 1 + n) % n]
-    const p1 = hull[i]
-    const p2 = hull[(i + 1) % n]
-    const p3 = hull[(i + 2) % n]
+    // all indices are mod n with n >= 3, so every lookup is defined
+    const p0 = hull[(i - 1 + n) % n]!
+    const p1 = hull[i]!
+    const p2 = hull[(i + 1) % n]!
+    const p3 = hull[(i + 2) % n]!
     const tension = 6
     const cp1x = p1.x + (p2.x - p0.x) / tension
     const cp1y = p1.y + (p2.y - p0.y) / tension
@@ -101,10 +104,14 @@ export function drawHullForGroup(
   if (positions.length < 2) return
 
   if (positions.length === 2) {
-    const cx = (positions[0].x + positions[1].x) / 2
-    const cy = (positions[0].y + positions[1].y) / 2
-    const dx = positions[1].x - positions[0].x
-    const dy = positions[1].y - positions[0].y
+    const [a, b] = positions as [
+      { x: number; y: number },
+      { x: number; y: number },
+    ]
+    const cx = (a.x + b.x) / 2
+    const cy = (a.y + b.y) / 2
+    const dx = b.x - a.x
+    const dy = b.y - a.y
     const dist = Math.sqrt(dx * dx + dy * dy) / 2 + 50
     ctx.save()
     ctx.beginPath()
@@ -149,10 +156,14 @@ export function drawHullForSigma(
   if (positions.length < 2) return
 
   if (positions.length === 2) {
-    const cx = (positions[0].x + positions[1].x) / 2
-    const cy = (positions[0].y + positions[1].y) / 2
-    const dx = positions[1].x - positions[0].x
-    const dy = positions[1].y - positions[0].y
+    const [a, b] = positions as [
+      { x: number; y: number },
+      { x: number; y: number },
+    ]
+    const cx = (a.x + b.x) / 2
+    const cy = (a.y + b.y) / 2
+    const dx = b.x - a.x
+    const dy = b.y - a.y
     const dist = Math.sqrt(dx * dx + dy * dy) / 2 + 30
     ctx.save()
     ctx.beginPath()

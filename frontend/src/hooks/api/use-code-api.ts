@@ -235,7 +235,7 @@ export function useCodeSymbolDetail(symbolId: string | null) {
     queryFn: () => {
       if (!symbolId) throw new Error("No symbol ID")
       if (symbolId.includes("::")) {
-        const [name, ...rest] = symbolId.split("::")
+        const [name = "", ...rest] = symbolId.split("::")
         const filePath = rest.join("::")
         return apiFetch(
           `/code/symbols/lookup?name=${encodeURIComponent(name)}&file_path=${encodeURIComponent(filePath)}`,

@@ -154,12 +154,15 @@ export function transformToGraphData(
   for (const [, members] of clusterMembers) {
     for (let i = 0; i < members.length; i++) {
       for (let j = i + 1; j < members.length; j++) {
-        const key1 = `${members[i]}-${members[j]}`
-        const key2 = `${members[j]}-${members[i]}`
+        // loop bounds guarantee both indices are within range
+        const a = members[i]!
+        const b = members[j]!
+        const key1 = `${a}-${b}`
+        const key2 = `${b}-${a}`
         if (!existingEdges.has(key1) && !existingEdges.has(key2)) {
           links.push({
-            source: members[i],
-            target: members[j],
+            source: a,
+            target: b,
             score: 0,
             hidden: true,
           })
@@ -171,8 +174,10 @@ export function transformToGraphData(
   const clusterIdList = [...clusterMembers.keys()]
   for (let i = 0; i < clusterIdList.length; i++) {
     for (let j = i + 1; j < clusterIdList.length; j++) {
-      const rep1 = clusterMembers.get(clusterIdList[i])![0]
-      const rep2 = clusterMembers.get(clusterIdList[j])![0]
+      // indices come from the key list; loop bounds keep them in range
+      const rep1 = clusterMembers.get(clusterIdList[i]!)?.[0]
+      const rep2 = clusterMembers.get(clusterIdList[j]!)?.[0]
+      if (rep1 === undefined || rep2 === undefined) continue
       const key1 = `${rep1}-${rep2}`
       const key2 = `${rep2}-${rep1}`
       if (!existingEdges.has(key1) && !existingEdges.has(key2)) {
@@ -191,7 +196,8 @@ export function transformToGraphData(
     const cy = Math.sin(phi) * Math.sin(theta) * clusterRadius
     const cz = Math.cos(phi) * clusterRadius * 0.3
     const spread = 30 + Math.sqrt(nodes.length) * 3
-    const members = clusterMembers.get(clusterIds[ci])!
+    // ci is bounded by clusterIds.length, so the id and its members exist
+    const members = clusterMembers.get(clusterIds[ci]!) ?? []
     for (const id of members) {
       const node = nodes.find((n) => n.id === id)
       if (node) {

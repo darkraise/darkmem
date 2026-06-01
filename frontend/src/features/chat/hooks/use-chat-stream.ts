@@ -54,6 +54,8 @@ export function useChatStream() {
         pendingUserMessage: content,
       })
 
+      let resultConversationId: string | null = null
+
       try {
         const res = await fetch("/api/v1/chat/completions", {
           method: "POST",
@@ -82,7 +84,6 @@ export function useChatStream() {
         const decoder = new TextDecoder()
         let buffer = ""
         let accumulated = ""
-        let resultConversationId: string | null = null
 
         while (true) {
           const { done, value } = await reader.read()
@@ -97,6 +98,9 @@ export function useChatStream() {
             const json = line.slice(6)
             try {
               const event = JSON.parse(json)
+              if (event.conversation_id) {
+                resultConversationId = event.conversation_id
+              }
               switch (event.type) {
                 case "sources":
                   setState((s) => ({
@@ -110,9 +114,6 @@ export function useChatStream() {
                 case "token":
                   accumulated += event.content
                   setState((s) => ({ ...s, streamingContent: accumulated }))
-                  break
-                case "done":
-                  resultConversationId = event.conversation_id
                   break
                 case "error":
                   setState((s) => ({ ...s, error: event.message }))
@@ -145,6 +146,13 @@ export function useChatStream() {
             pendingUserMessage: null,
             error: (err as Error).message,
           }))
+          if (resultConversationId) {
+            qc.invalidateQueries({
+              queryKey: ["conversation", resultConversationId],
+            })
+            qc.invalidateQueries({ queryKey: ["conversations"] })
+          }
+          return resultConversationId
         }
       }
     },

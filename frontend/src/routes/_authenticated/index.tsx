@@ -23,6 +23,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  type YAxisTickContentProps,
 } from "recharts"
 import { relativeTime } from "@/lib/format"
 
@@ -48,7 +49,11 @@ const FALLBACK_COLORS = [
 ]
 
 function sourceColor(name: string, index: number): string {
-  return SOURCE_COLORS[name] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length]
+  return (
+    SOURCE_COLORS[name] ??
+    FALLBACK_COLORS[index % FALLBACK_COLORS.length] ??
+    "#8b949e"
+  )
 }
 
 function formatXAxis(dateStr: string, days: number): string {
@@ -302,15 +307,10 @@ function OverviewPage() {
                     type="category"
                     dataKey="name"
                     width={100}
-                    tick={(props: {
-                      x: number
-                      y: number
-                      payload: { value: string }
-                    }) => {
+                    tick={(props: YAxisTickContentProps) => {
+                      const value = String(props.payload.value)
                       const label =
-                        props.payload.value.length > 14
-                          ? props.payload.value.slice(0, 13) + "…"
-                          : props.payload.value
+                        value.length > 14 ? value.slice(0, 13) + "…" : value
                       return (
                         <text
                           x={props.x}
@@ -356,10 +356,18 @@ function OverviewPage() {
               {data.recent_memories.map((m) => (
                 <div
                   key={m.id}
+                  role="button"
+                  tabIndex={0}
                   className="border-border hover:bg-accent/50 flex cursor-pointer items-center gap-3 rounded-md border p-2 transition-colors"
                   onClick={() =>
                     navigate({ to: "/memories", search: { focus: m.id } })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      navigate({ to: "/memories", search: { focus: m.id } })
+                    }
+                  }}
                 >
                   <span className="flex-1 truncate text-base">{m.content}</span>
                   <Badge variant="secondary" className="shrink-0 text-base">
@@ -586,10 +594,18 @@ function OverviewPage() {
               {data.recent_memories.map((m) => (
                 <div
                   key={m.id}
+                  role="button"
+                  tabIndex={0}
                   className="border-border hover:bg-accent/50 flex cursor-pointer items-center gap-3 rounded-md border p-2 transition-colors"
                   onClick={() =>
                     navigate({ to: "/memories", search: { focus: m.id } })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      navigate({ to: "/memories", search: { focus: m.id } })
+                    }
+                  }}
                 >
                   <span className="flex-1 truncate text-base">{m.content}</span>
                   <Badge variant="secondary" className="shrink-0 text-base">

@@ -435,7 +435,6 @@ function GraphTab({ data: graph, isLoading }: GraphTabProps) {
   )
 
   const nodeCount = entities.length
-  const edgeCount = relations.length
 
   return (
     <>

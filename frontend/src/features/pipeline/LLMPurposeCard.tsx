@@ -39,6 +39,17 @@ import { PROMPT_PURPOSE_MAP, type LLMPurpose } from "./prompt-map"
 import { LLMPurposePromptEditor } from "./LLMPurposePromptEditor"
 import { API_KIND_OPTIONS } from "./api-kinds"
 
+// The dropdown reflects the explicit ``profile_ref`` link the server stores
+// on the purpose row. Returns that name when it still exists in the current
+// (purpose-filtered) profile set, else "" so the placeholder shows again —
+// e.g. when the linked profile was renamed or deleted.
+export function resolveActiveProfileName(
+  profileRef: string | null | undefined,
+  profileNames: readonly string[],
+): string {
+  return profileNames.includes(profileRef ?? "") ? (profileRef ?? "") : ""
+}
+
 interface Props {
   purpose: LLMPurpose
   config: LlmPurposeConfig
@@ -70,6 +81,7 @@ export function LLMPurposeCard({
   const profileNames = Object.keys(allLlmProfiles)
     .filter((name) => {
       const p = allLlmProfiles[name]
+      if (!p) return false
       const provider = allProviders[p.provider_ref]
       if (p.purpose) {
         if (p.purpose !== purpose) return false
@@ -99,14 +111,10 @@ export function LLMPurposeCard({
   const [dirty, setDirty] = useState(false)
   const linkedToProfile = !!draft.provider_ref
 
-  // The dropdown reads ``draft.profile_ref`` directly — the explicit
-  // link the server stores on the purpose row. Manual edits to any
-  // profile-derived field clear the link so the placeholder shows again.
-  // Falls back to "" when the linked name is unknown to the current
-  // profile set (e.g., the profile was renamed or deleted).
-  const activeProfileName = profileNames.includes(draft.profile_ref ?? "")
-    ? (draft.profile_ref as string)
-    : ""
+  const activeProfileName = resolveActiveProfileName(
+    draft.profile_ref,
+    profileNames,
+  )
 
   useEffect(() => {
     // Don't stomp in-progress edits when the aggregator refetches (e.g. after
@@ -290,6 +298,7 @@ export function LLMPurposeCard({
                 <SelectContent>
                   {profileNames.map((name) => {
                     const p = allLlmProfiles[name]
+                    if (!p) return null
                     return (
                       <SelectItem key={`llm-${name}`} value={`llm:${name}`}>
                         {name} — {p.provider_ref}/{p.model}
@@ -298,6 +307,7 @@ export function LLMPurposeCard({
                   })}
                   {mlProfileNames.map((name) => {
                     const m = allMlProfiles[name]
+                    if (!m) return null
                     return (
                       <SelectItem key={`ml-${name}`} value={`ml:${name}`}>
                         [ml] {name} — {m.model_repo}

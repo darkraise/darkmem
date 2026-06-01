@@ -78,12 +78,21 @@ export function ChatSidebar({
         {filtered.map((conv) => (
           <div
             key={conv.id}
+            role="button"
+            tabIndex={0}
+            aria-pressed={conv.id === activeId}
             className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-base transition-all ${
               conv.id === activeId
                 ? "border border-[rgba(99,102,241,0.15)] bg-[rgba(99,102,241,0.08)] text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.05)]"
                 : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-[rgba(99,102,241,0.04)]"
             }`}
             onClick={() => onSelect(conv.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onSelect(conv.id)
+              }
+            }}
           >
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">
@@ -93,7 +102,7 @@ export function ChatSidebar({
                 <span className="text-base opacity-50">
                   {timeAgo(conv.updated_at)}
                 </span>
-                {conv.message_count > 0 && (
+                {(conv.message_count ?? 0) > 0 && (
                   <span className="text-base opacity-40">
                     {conv.message_count} msg
                     {conv.message_count !== 1 ? "s" : ""}

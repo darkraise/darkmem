@@ -97,13 +97,15 @@ function ChatPage() {
                   }}
                 />
               ) : (
-                <h2
-                  className="hover:text-primary flex-1 cursor-pointer truncate text-base font-semibold transition-colors"
+                <button
+                  type="button"
+                  className="hover:text-primary flex-1 cursor-pointer truncate text-left text-base font-semibold transition-colors"
                   onClick={() => setEditingTitle(true)}
                   title="Click to rename"
+                  aria-label="Rename conversation"
                 >
                   {convDetail?.title || "New Chat"}
-                </h2>
+                </button>
               )}
               {messages.length > 0 && (
                 <span className="text-muted-foreground/40 shrink-0 text-base">

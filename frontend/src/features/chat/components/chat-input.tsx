@@ -59,6 +59,7 @@ export function ChatInput({
             <Button
               variant="ghost"
               size="icon"
+              aria-label="Clear context"
               className="hover:text-foreground ml-0.5 h-4 w-4"
               onClick={onClearContext}
             >
@@ -80,6 +81,7 @@ export function ChatInput({
         {isStreaming ? (
           <Button
             variant="outline"
+            aria-label="Stop generating"
             className="mb-0.5 h-9 w-9 shrink-0 rounded-xl p-0"
             onClick={onStop}
           >
@@ -87,6 +89,7 @@ export function ChatInput({
           </Button>
         ) : (
           <ChatGradientButton
+            aria-label="Send message"
             className="mb-0.5 h-9 w-9 shrink-0 rounded-xl p-0"
             onClick={handleSubmit}
             disabled={disabled}
