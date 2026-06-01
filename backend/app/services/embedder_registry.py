@@ -186,10 +186,19 @@ def _partition_slug(fingerprint: str) -> str:
     """Convert a fingerprint to a Postgres-safe identifier suffix.
 
     Fingerprints look like ``qwen3-embedding:0.6b|1024``; per-fingerprint
-    table names need to be ASCII identifiers. We map non-word characters to
-    ``_`` and lower-case the result. Length is capped at 48 chars to keep
-    the final table name under Postgres' 63-char identifier limit even with
-    the ``ix_..._hnsw`` index suffix.
+    table names need to be ASCII identifiers, so we map non-word characters
+    to ``_`` and lower-case the result.
+
+    KNOWN LIMITATION (kept backward-compatible deliberately): the slug is
+    capped at 48 chars, but for the longest parent (``entity_embedding_cache``)
+    the derived ``ix_<parent>__<slug>_hnsw`` index name can still exceed
+    Postgres' 63-char NAMEDATALEN and is silently truncated, so two
+    fingerprints sharing a long common prefix could collide on the same child
+    table. In practice embedder fingerprints (``model|dims``) are well under
+    the budget so this does not occur. A truly collision-proof scheme (e.g. a
+    hash suffix) would rename every existing partition and orphan stored
+    embeddings, so it is deferred to a future data migration rather than
+    changed in place here.
     """
     slug = re.sub(r"[^A-Za-z0-9]+", "_", fingerprint).strip("_").lower()
     return slug[:48]

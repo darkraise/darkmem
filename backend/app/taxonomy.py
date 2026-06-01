@@ -156,3 +156,15 @@ MEMORY_TYPES: list[str] = [
     "architecture",
     "milestone",
 ]
+
+_MEMORY_TYPE_SET = set(MEMORY_TYPES)
+
+
+def normalize_memory_type(raw_type: str | None) -> str:
+    """Return a value from MEMORY_TYPES. Unknown values fall back to ``fact``."""
+    if not raw_type:
+        return "fact"
+    t = raw_type.strip().lower()
+    if t in _MEMORY_TYPE_SET:
+        return t
+    return "fact"

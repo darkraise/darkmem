@@ -3,7 +3,7 @@ import logging
 import time
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.config import FEATURE_FLAGS_DEFAULTS, settings
 from app.models.config import Config
@@ -17,6 +17,7 @@ from app.services.memory_classifier import classify as regex_classify
 from app.services.relations import TECH_TYPES
 from app.services.supersession import detect_supersessions
 from app.services import prompt
+from app.taxonomy import normalize_memory_type
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,8 @@ class ProcessingPipeline:
         self,
         entry: dict,
         vector: list[float] | None,
-        fingerprint: str,
+        content_fingerprint: str,
+        entity_fingerprint: str,
         extraction: dict | Exception,
         llm_classification: dict | None,
         name_to_embedding: dict[str, list[float]],
@@ -264,12 +266,20 @@ class ProcessingPipeline:
                         memory_id, exc,
                     )
 
+                extracted_type = (
+                    extraction.get("memory_type") if isinstance(extraction, dict) else None
+                )
+                resolved_memory_type = normalize_memory_type(memory_type or extracted_type)
+                extracted_importance = (
+                    extraction.get("importance") if isinstance(extraction, dict) else None
+                )
+
                 try:
                     async with session.begin_nested():
                         payload = {
                             "memory_id": str(memory_id), "content": content,
                             "source": source, "tags": tags,
-                            "memory_type": memory_type or (extraction.get("memory_type") if isinstance(extraction, dict) else None),
+                            "memory_type": resolved_memory_type,
                             "created_at": created_at,
                             "classified_type": regex_result.get("hall", ""),
                             "classified_confidence": regex_result.get("confidence", 0.0),
@@ -282,7 +292,7 @@ class ProcessingPipeline:
 
                         await vector_repo.upsert(
                             memory_id=memory_id, vector=vector, payload=payload,
-                            fingerprint=fingerprint,
+                            fingerprint=content_fingerprint,
                         )
                         status["vector"] = "ok"
 
@@ -301,10 +311,12 @@ class ProcessingPipeline:
                                 mem_record.llm_emotions = llm_classification.get("emotions") or None
                                 mem_record.llm_flags = llm_classification.get("flags") or None
 
-                            resolved_memory_type = (
-                                memory_type
-                                or (extraction.get("memory_type") if isinstance(extraction, dict) else None)
-                            )
+                            mem_record.memory_type = resolved_memory_type
+                            if extracted_importance is not None:
+                                try:
+                                    mem_record.importance = float(extracted_importance)
+                                except (TypeError, ValueError):
+                                    pass
                             mem_record.confidence = estimate_confidence(content, resolved_memory_type)
 
                         if status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
@@ -314,6 +326,12 @@ class ProcessingPipeline:
                             # canonical_map (e.g., "pgvector" vs "PgVector") does not
                             # cause the supersession detector or search filter to miss.
                             tech_names: set[str] = set()
+                            # Map each canonical (lower-cased) entity name to the
+                            # type it was written with, so relationships resolve
+                            # endpoints by (name, entity_type) — entity uniqueness
+                            # — instead of name alone, which can bind to a
+                            # same-named entity of a different type.
+                            name_to_type: dict[str, str] = {}
                             # Build a display-name map keyed by the canonical
                             # lower-cased name. The canonical name is what we
                             # write to ``entities.name``; the original casing
@@ -329,19 +347,24 @@ class ProcessingPipeline:
                                     name=canonical_name, entity_type=entity["type"],
                                     properties=props, memory_id=memory_id,
                                 )
+                                name_to_type[canonical_name] = entity["type"]
                                 emb = name_to_embedding.get(entity.get("_orig_lower", canonical_name))
                                 if emb and created:
                                     await graph_repo.upsert_entity_embedding(
-                                        created["id"], emb, fingerprint=fingerprint,
+                                        created["id"], emb, fingerprint=entity_fingerprint,
                                     )
                                 if entity.get("type") in TECH_TYPES:
                                     tech_names.add(canonical_name)
                             for rel in extraction.get("relationships", []):
+                                source_name = (rel["source"] or "").strip().lower()
+                                target_name = (rel["target"] or "").strip().lower()
                                 await graph_repo.create_relationship(
-                                    source_name=(rel["source"] or "").strip().lower(),
-                                    target_name=(rel["target"] or "").strip().lower(),
+                                    source_name=source_name,
+                                    target_name=target_name,
                                     rel_type=rel["type"], properties=rel.get("properties", {}),
                                     weight=rel.get("weight", 0.5), memory_id=memory_id,
+                                    source_type=name_to_type.get(source_name),
+                                    target_type=name_to_type.get(target_name),
                                 )
 
                             if mem_record is not None:
@@ -377,7 +400,7 @@ class ProcessingPipeline:
                 async with self.session_factory() as xref_session:
                     xref_repo = PostgresVectorRepository(xref_session)
                     similar = await xref_repo.find_similar_memories(
-                        memory_id, fingerprint=fingerprint, top_k=5, min_score=0.4,
+                        memory_id, fingerprint=content_fingerprint, top_k=5, min_score=0.4,
                     )
                     await xref_repo.store_crossrefs(memory_id, similar)
                     await xref_session.commit()
@@ -432,7 +455,7 @@ class ProcessingPipeline:
           4. Dedup lookup (per unique name)
           5. Per-memory writes (concurrent)
         """
-        flags = await _get_feature_flags(self.session_factory)
+        flags = await _get_feature_flags_cached(self.session_factory)
         pipeline_concurrency = flags.get("pipeline_concurrency", 5)
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
@@ -607,13 +630,21 @@ class ProcessingPipeline:
                     canonical_map[lower_name] = canonical
             logger.info("Phase 4 complete: %d canonical remappings", len(canonical_map))
 
-        # Phase 5: Per-memory writes
-        write_fingerprint = entity_fingerprint or embedding_fingerprint or ""
+        # Phase 5: Per-memory writes.
+        # Content vectors were produced in Phase 1 under ``embedding_fingerprint``;
+        # entity embeddings live under ``entity_fingerprint``, which differs when
+        # the embedder rotated mid-batch. Each vector must land in the partition
+        # matching the fingerprint it was produced under — writing the content
+        # vector into the rotated entity partition mixes dimensions across
+        # fingerprints (and breaks the cross-fingerprint-join invariant).
+        content_write_fingerprint = embedding_fingerprint or entity_fingerprint or ""
+        entity_write_fingerprint = entity_fingerprint or embedding_fingerprint or ""
 
         async def run_write(entry: dict, vector: list[float] | None, extraction, classification):
             async with semaphore:
                 return await self._write_memory(
-                    entry, vector, write_fingerprint, extraction, classification,
+                    entry, vector, content_write_fingerprint, entity_write_fingerprint,
+                    extraction, classification,
                     name_to_embedding, canonical_map, flags,
                 )
 
@@ -701,19 +732,22 @@ class ProcessingPipeline:
 
     async def semantic_search(self, query: str, limit: int = 20, semantic_weight: float = 0.7) -> list[dict]:
         try:
-            flags = await _get_feature_flags(self.session_factory)
+            flags = await _get_feature_flags_cached(self.session_factory)
             if flags["hybrid_search_enabled"]:
                 from app.services.hybrid_search import HybridSearchService
                 async with self.session_factory() as session:
                     hybrid = HybridSearchService(self.llm, session)
                     results = await hybrid.search(query, limit=limit, semantic_weight=semantic_weight)
 
-                    if flags["reranker_enabled"]:
+                    reranked = bool(flags["reranker_enabled"])
+                    if reranked:
                         from app.services.reranker import RerankerService
                         reranker = RerankerService(self.llm)
                         results = await reranker.rerank(query, results, top_k=limit)
 
-                    results = await self._apply_confidence_weighting(session, results, flags)
+                    results = await self._apply_confidence_weighting(
+                        session, results, flags, preserve_order=reranked,
+                    )
                     return results
             else:
                 vector, fingerprint = await self.llm.embed(query)
@@ -731,6 +765,7 @@ class ProcessingPipeline:
         session,
         results: list[dict],
         flags: dict,
+        preserve_order: bool = False,
     ) -> list[dict]:
         """Rescale retrieval scores by memory confidence, multiplicatively.
 
@@ -738,6 +773,10 @@ class ProcessingPipeline:
         (the default) the call is a no-op, so this stays behind the
         ``confidence_rank_gamma`` flag until we have evidence that the signal
         improves MRR.
+
+        When ``preserve_order`` is set (the reranker has already imposed a
+        ranking), scores are still rescaled but the input order is kept — the
+        reranker's order is authoritative and must not be sorted away.
         """
         gamma = float(flags.get("confidence_rank_gamma", 0.0) or 0.0)
         if gamma == 0.0 or not results:
@@ -772,6 +811,8 @@ class ProcessingPipeline:
             base = float(r.get(score_key, 0.0) or 0.0)
             r[score_key] = base * rank_fusion_factor(conf, gamma)
 
+        if preserve_order:
+            return results
         return sorted(results, key=lambda r: float(r.get(score_key, 0.0) or 0.0), reverse=True)
 
     async def find_duplicates(self, memory_id: UUID, threshold: float = 0.9) -> list[dict]:
@@ -783,15 +824,7 @@ class ProcessingPipeline:
         try:
             async with self.session_factory() as session:
                 vector_repo = PostgresVectorRepository(session)
-                fp_row = await session.execute(
-                    text("""
-                        SELECT fingerprint FROM memory_embeddings
-                        WHERE memory_id = :id
-                        ORDER BY created_at DESC LIMIT 1
-                    """),
-                    {"id": memory_id},
-                )
-                fp = fp_row.scalar_one_or_none()
+                fp = await vector_repo.find_fingerprint_for_memory(memory_id)
                 if not fp:
                     return []
                 return await vector_repo.find_similar(memory_id, fingerprint=fp, threshold=threshold)

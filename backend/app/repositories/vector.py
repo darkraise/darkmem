@@ -263,6 +263,26 @@ class PostgresVectorRepository:
         partition = g.community_multilevel(weights="weight")
         return partition.membership
 
+    async def find_fingerprint_for_memory(self, memory_id: UUID) -> str | None:
+        """Return a registered fingerprint whose child table holds this memory.
+
+        Vectors live only in per-fingerprint child tables; there is no parent
+        ``memory_embeddings`` table to scan. Walk the registry and probe each
+        child table (typically 1-2), returning the first match.
+        """
+        fingerprints = (
+            await self.session.execute(text("SELECT fingerprint FROM embedders"))
+        ).scalars().all()
+        for fp in fingerprints:
+            table = child_table("memory_embeddings", fp)
+            row = await self.session.execute(
+                text(f"SELECT 1 FROM {table} WHERE memory_id = :id LIMIT 1"),
+                {"id": memory_id},
+            )
+            if row.scalar_one_or_none() is not None:
+                return fp
+        return None
+
     async def find_similar(
         self, memory_id: UUID, fingerprint: str, threshold: float = 0.9, limit: int = 10,
     ) -> list[dict]:

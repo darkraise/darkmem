@@ -24,7 +24,7 @@ from app.taxonomy import (
     normalize_entity_type,
     normalize_relation_type,
 )
-from app.services.relations import family_key as _family_key
+from app.services.relations import REPLACES_FAMILY, family_key as _family_key
 
 logger = logging.getLogger(__name__)
 
@@ -1176,10 +1176,10 @@ def _filter_negation_only(
         name = e.get("name") or ""
         if not name:
             continue
-        escaped = re.escape(name)
+        pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])"
         positive_mention = False
         any_mention = False
-        for m in re.finditer(escaped, text, re.IGNORECASE):
+        for m in re.finditer(pattern, text, re.IGNORECASE):
             any_mention = True
             # Look at the 30 chars immediately preceding this mention. If
             # they end with a negation marker (e.g. "no ", "without ") then
@@ -1232,8 +1232,9 @@ def _dedup_entities(entities: list[dict]) -> list[dict]:
         if name in names_added:
             continue
         is_dup = False
+        name_key = name.upper().replace(" ", "")
         for other in names_added:
-            if name.upper() in other.upper().replace(" ", "") or name in other:
+            if name_key == other.upper().replace(" ", ""):
                 is_dup = True
                 break
             if _is_acronym_of(name, other) or _is_acronym_of(other, name):
@@ -1422,7 +1423,6 @@ def _drop_uses_when_replaces_exists(relationships: list[dict]) -> list[dict]:
     to catch both directions without making assumptions about which
     edge is in the right direction.
     """
-    REPLACES_FAMILY = {"REPLACES", "IMPROVES_ON"}
     replaces_pairs: set[frozenset[str]] = set()
     for r in relationships:
         rtype = (r.get("type") or "").upper()
