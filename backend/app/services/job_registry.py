@@ -217,15 +217,18 @@ class JobRegistry:
                     min_interval_seconds=job.min_interval_seconds,
                 )
             running = job.task is not None and not job.task.done()
-            out.append({
+            item = {
                 "key": job.key,
                 "display_name": job.display_name,
                 "description": job.description,
                 "default_cron": job.default_cron,
                 "min_interval_seconds": job.min_interval_seconds,
                 "running": running,
+                "config_schema": [fd.model_dump() for fd in job.config_schema],
                 **cfg.to_dict(),
-            })
+            }
+            item["config"] = {**job.default_config, **cfg.config}
+            out.append(item)
         return out
 
     # ── lifecycle ───────────────────────────────────────────────────

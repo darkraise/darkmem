@@ -151,6 +151,24 @@ def test_job_default_config_from_schema():
     assert job.config_schema[0].type == "int"
 
 
+@pytest.mark.asyncio
+async def test_list_with_config_emits_schema_and_merged_config():
+    # Distinct key so a row committed by an earlier test cannot shadow the
+    # "no saved row -> default applied" assertion below.
+    reg, engine = _schema_registry("cfg_list")
+    try:
+        items = await reg.list_with_config()
+        item = next(i for i in items if i["key"] == "cfg_list")
+        assert item["config_schema"][0]["key"] == "batch_size"
+        assert item["config"] == {"batch_size": 5}
+        await reg.set_config("cfg_list", {"batch_size": 42})
+        item = next(i for i in (await reg.list_with_config()) if i["key"] == "cfg_list")
+        assert item["config"] == {"batch_size": 42}
+    finally:
+        await reg.stop_all()
+        await engine.dispose()
+
+
 def test_job_register_rejects_invalid_default_cron():
     from app.services.job_registry import JobRegistry
 
