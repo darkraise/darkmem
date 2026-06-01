@@ -48,6 +48,23 @@ async def stubbed_jobs(client):
         runner=beta_runner,
     ))
 
+    from app.services.job_registry import FieldDescriptor
+
+    async def gamma_runner():
+        calls.setdefault("gamma", 0)
+        calls["gamma"] += 1
+
+    registry.register(Job(
+        key="gamma",
+        display_name="Gamma",
+        description="Has config.",
+        default_cron="*/10 * * * *",
+        min_interval_seconds=10,
+        runner=gamma_runner,
+        config_schema=[FieldDescriptor(key="batch_size", label="Batch Size",
+                                       default=5, min=1, max=100)],
+    ))
+
     prev_registry = app.state.job_registry
     app.state.job_registry = registry
     try:
@@ -138,6 +155,43 @@ async def test_trigger_records_runner_failure(stubbed_jobs, client, auth_headers
     assert body["last_status"] == "error"
     assert "beta-runner" in (body["last_error"] or "")
     assert stubbed_jobs["calls"]["beta"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_includes_config_schema(stubbed_jobs, client, auth_headers):
+    response = await client.get("/api/v1/jobs", headers=auth_headers)
+    gamma = next(j for j in response.json()["jobs"] if j["key"] == "gamma")
+    assert gamma["config"] == {"batch_size": 5}
+    assert gamma["config_schema"][0]["key"] == "batch_size"
+
+
+@pytest.mark.asyncio
+async def test_update_job_config_saves_value(stubbed_jobs, client, auth_headers):
+    r = await client.put("/api/v1/jobs/gamma/config",
+                         json={"config": {"batch_size": 25}}, headers=auth_headers)
+    assert r.status_code == 200
+    assert r.json()["config"]["batch_size"] == 25
+
+
+@pytest.mark.asyncio
+async def test_update_job_config_rejects_unknown_key(stubbed_jobs, client, auth_headers):
+    r = await client.put("/api/v1/jobs/gamma/config",
+                         json={"config": {"nope": 1}}, headers=auth_headers)
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_job_config_rejects_out_of_range(stubbed_jobs, client, auth_headers):
+    r = await client.put("/api/v1/jobs/gamma/config",
+                         json={"config": {"batch_size": 999}}, headers=auth_headers)
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_job_config_unknown_job_404(stubbed_jobs, client, auth_headers):
+    r = await client.put("/api/v1/jobs/missing/config",
+                         json={"config": {"batch_size": 5}}, headers=auth_headers)
+    assert r.status_code == 404
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,11 @@
 """Job management API.
 
-Exposes the in-process ``JobRegistry`` over three endpoints:
+Exposes the in-process ``JobRegistry`` over four endpoints:
 
 * ``GET  /api/v1/jobs`` — list every registered job with config + state.
 * ``PUT  /api/v1/jobs/{key}`` — update enabled / cron.
 * ``POST /api/v1/jobs/{key}/trigger`` — fire the runner immediately.
+* ``PUT  /api/v1/jobs/{key}/config`` — update per-job config values.
 
 All routes require auth.
 """
@@ -14,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api.auth import require_auth
+from app.services.job_registry import FieldDescriptor
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
@@ -30,6 +32,8 @@ class JobItem(BaseModel):
     last_status: str | None = None
     last_error: str | None = None
     running: bool
+    config: dict = {}
+    config_schema: list[FieldDescriptor] = []
 
 
 class JobsResponse(BaseModel):
@@ -39,6 +43,10 @@ class JobsResponse(BaseModel):
 class JobUpdate(BaseModel):
     enabled: bool | None = None
     cron: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class JobConfigUpdate(BaseModel):
+    config: dict
 
 
 class JobTriggerResponse(BaseModel):
@@ -81,6 +89,27 @@ async def update_job(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    items = await registry.list_with_config()
+    item = next((i for i in items if i["key"] == key), None)
+    if item is None:
+        raise HTTPException(status_code=500, detail=f"Job {key!r} disappeared mid-update")
+    return JobItem(**item)
+
+
+@router.put("/{key}/config", response_model=JobItem)
+async def update_job_config(
+    key: str,
+    body: JobConfigUpdate,
+    request: Request,
+    _user=Depends(require_auth),
+) -> JobItem:
+    registry = _get_registry(request)
+    if registry.get(key) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown job {key!r}")
+    try:
+        await registry.set_config(key, body.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     items = await registry.list_with_config()
     item = next((i for i in items if i["key"] == key), None)
     if item is None:
