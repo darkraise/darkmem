@@ -1,7 +1,6 @@
 export type SettingsTabValue =
   | "flags"
   | "classification"
-  | "workers"
   | "assistant"
   | "llm-providers"
   | "llm-profiles"
@@ -9,7 +8,6 @@ export type SettingsTabValue =
 const KNOWN: SettingsTabValue[] = [
   "flags",
   "classification",
-  "workers",
   "assistant",
   "llm-providers",
   "llm-profiles",

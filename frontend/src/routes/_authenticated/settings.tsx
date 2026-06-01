@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import {
-  useEnrichmentConfig,
-  useUpdateEnrichmentConfig,
-  useTriggerEnrichment,
   useFeatureFlags,
   useUpdateFeatureFlags,
   useClassificationAreas,
@@ -65,95 +62,6 @@ import { resolveStoredTab, type SettingsTabValue } from "@/lib/settings-tab"
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 })
-
-function EnrichmentCard() {
-  const { data: config } = useEnrichmentConfig()
-  const updateConfig = useUpdateEnrichmentConfig()
-  const trigger = useTriggerEnrichment()
-
-  const [enabled, setEnabled] = useState(false)
-  const [batchSize, setBatchSize] = useState(5)
-
-  useEffect(() => {
-    if (config) {
-      setEnabled(config.enabled)
-      setBatchSize(config.batch_size)
-    }
-  }, [config])
-
-  const handleSave = () => {
-    updateConfig.mutate(
-      { enabled, batch_size: batchSize },
-      {
-        onSuccess: () => toast.success("Enrichment config saved"),
-        onError: (err) =>
-          toast.error(`Failed to save: ${(err as Error).message}`),
-      },
-    )
-  }
-
-  const handleTrigger = () => {
-    trigger.mutate(undefined, {
-      onSuccess: (data) => {
-        if (data.processed > 0) {
-          toast.success(`Enriched ${data.processed} symbols`)
-        } else {
-          toast.info("No pending symbols")
-        }
-      },
-      onError: () => toast.error("Enrichment failed"),
-    })
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Enrichment Worker</CardTitle>
-        <p className="text-muted-foreground text-base">
-          LLM-powered code symbol summarization
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Label className="text-base">Enabled</Label>
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
-        </div>
-        <div>
-          <Label className="text-muted-foreground text-base">Batch Size</Label>
-          <NumberInput
-            min={1}
-            value={batchSize}
-            onValueChange={(d) => setBatchSize(d.valueAsNumber)}
-          >
-            <NumberInputControl>
-              <NumberInputField />
-              <NumberInputTriggerGroup>
-                <NumberInputIncrementTrigger />
-                <NumberInputDecrementTrigger />
-              </NumberInputTriggerGroup>
-            </NumberInputControl>
-          </NumberInput>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Schedule lives on the Jobs page (job key{" "}
-            <code className="font-mono">code_enrichment</code>).
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={updateConfig.isPending}>
-            {updateConfig.isPending ? "Saving..." : "Save"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleTrigger}
-            disabled={trigger.isPending}
-          >
-            {trigger.isPending ? "Running..." : "Run Now"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 function ClassificationAreasCard() {
   const { data: flags } = useFeatureFlags()
@@ -664,7 +572,6 @@ function AssistantPromptsCard() {
 const SETTINGS_TABS = [
   { value: "flags", label: "Feature Flags" },
   { value: "classification", label: "Classification" },
-  { value: "workers", label: "Workers" },
   { value: "assistant", label: "Assistant Prompts" },
   { value: "llm-providers", label: "LLM Providers" },
   { value: "llm-profiles", label: "LLM Profiles" },
@@ -690,7 +597,7 @@ function SettingsPage() {
     <div className="p-6">
       <PageHeader
         title="Settings"
-        description="Configure workers, feature flags, prompts, and classification."
+        description="Configure feature flags, prompts, and classification."
       />
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-4">
@@ -709,10 +616,6 @@ function SettingsPage() {
 
         <TabsContent value="classification" className="mt-4">
           <ClassificationAreasCard />
-        </TabsContent>
-
-        <TabsContent value="workers" className="mt-4">
-          <EnrichmentCard />
         </TabsContent>
 
         <TabsContent value="assistant" className="mt-4">
