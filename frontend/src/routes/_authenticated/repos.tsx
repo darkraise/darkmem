@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   useRepoStats,
@@ -8,7 +9,7 @@ import {
   useUpdateRepo,
   useDeleteRepo,
   useReindexRepo,
-  useTriggerEnrichment,
+  useTriggerJob,
   useRepoTasks,
   useCancelTask,
 } from "@/hooks/api"
@@ -256,7 +257,18 @@ function RepositoriesPage() {
   const deleteRepo = useDeleteRepo()
   const reindexRepo = useReindexRepo()
   const updateRepo = useUpdateRepo()
-  const triggerEnrichment = useTriggerEnrichment()
+  const triggerJob = useTriggerJob()
+  const qc = useQueryClient()
+
+  const handleRunEnrichment = () => {
+    triggerJob.mutate("code_enrichment", {
+      onSuccess: () => {
+        toast.success("Enrichment run started")
+        qc.invalidateQueries({ queryKey: ["repoStats"] })
+      },
+      onError: (err) => toast.error(`Failed: ${err.message}`),
+    })
+  }
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
@@ -451,16 +463,10 @@ function RepositoriesPage() {
       <div className="flex items-center justify-end gap-2">
         <Button
           variant="outline"
-          onClick={() =>
-            triggerEnrichment.mutate(undefined, {
-              onSuccess: (data) =>
-                toast.success(`Enriched ${data.processed} symbols`),
-              onError: () => toast.error("Enrichment failed"),
-            })
-          }
-          disabled={triggerEnrichment.isPending}
+          onClick={handleRunEnrichment}
+          disabled={triggerJob.isPending}
         >
-          {triggerEnrichment.isPending ? "Enriching..." : "Run Enrichment"}
+          {triggerJob.isPending ? "Enriching..." : "Run Enrichment"}
         </Button>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
