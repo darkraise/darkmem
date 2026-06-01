@@ -235,9 +235,8 @@ async def lifespan(app: FastAPI):
                 _select(_Config).where(_Config.key == "enrichment_config")
             )).scalar_one_or_none()
         _legacy = _row.value if _row and isinstance(_row.value, dict) else {}
-        await job_registry.set_config(
-            "code_enrichment", {"batch_size": int(_legacy.get("batch_size", 5))}
-        )
+        _bs = max(1, min(100, int(_legacy.get("batch_size", 5))))
+        await job_registry.set_config("code_enrichment", {"batch_size": _bs})
 
     app.state.job_registry = job_registry
     await job_registry.start_all()

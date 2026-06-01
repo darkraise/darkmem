@@ -195,6 +195,12 @@ async def test_update_job_config_unknown_job_404(stubbed_jobs, client, auth_head
 
 
 @pytest.mark.asyncio
+async def test_enrichment_config_route_removed(client, auth_headers):
+    r = await client.get("/api/v1/config/enrichment", headers=auth_headers)
+    assert r.status_code in (404, 405)
+
+
+@pytest.mark.asyncio
 async def test_disabling_job_stops_loop(stubbed_jobs, client, auth_headers):
     registry = stubbed_jobs["registry"]
     # Start the loop manually so we can assert disable cancels it.
