@@ -1,6 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
+export interface FieldDescriptor {
+  key: string
+  type: "int"
+  label: string
+  default: number
+  min?: number
+  max?: number
+  step?: number
+  help?: string
+}
+
 export interface Job {
   key: string
   display_name: string
@@ -13,6 +24,8 @@ export interface Job {
   last_status: "ok" | "error" | null
   last_error: string | null
   running: boolean
+  config?: Record<string, number>
+  config_schema?: FieldDescriptor[]
 }
 
 export interface JobsResponse {
@@ -57,6 +70,18 @@ export function useTriggerJob() {
   return useMutation<JobTriggerResponse, Error, string>({
     mutationFn: (key) =>
       apiFetch<JobTriggerResponse>(`/jobs/${key}/trigger`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
+  })
+}
+
+export function useUpdateJobConfig() {
+  const qc = useQueryClient()
+  return useMutation<Job, Error, { key: string; config: Record<string, number> }>({
+    mutationFn: ({ key, config }) =>
+      apiFetch<Job>(`/jobs/${key}/config`, {
+        method: "PUT",
+        body: JSON.stringify({ config }),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   })
 }
