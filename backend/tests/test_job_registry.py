@@ -84,6 +84,22 @@ def test_job_config_from_dict_defaults_config_to_empty():
     assert cfg.config == {}
 
 
+def test_job_default_config_from_schema():
+    from app.services.job_registry import Job, FieldDescriptor
+
+    async def _noop():
+        return None
+
+    job = Job(
+        key="x", display_name="X", description="d",
+        default_cron="*/5 * * * *", min_interval_seconds=1, runner=_noop,
+        config_schema=[FieldDescriptor(key="batch_size", label="Batch Size",
+                                       default=5, min=1, max=100)],
+    )
+    assert job.default_config == {"batch_size": 5}
+    assert job.config_schema[0].type == "int"
+
+
 def test_job_register_rejects_invalid_default_cron():
     from app.services.job_registry import JobRegistry
 

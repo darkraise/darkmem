@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
 from croniter import croniter
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -70,6 +71,18 @@ def next_fire_delta_seconds(expr: str, now: datetime, *, floor: int) -> float:
         nxt = nxt.replace(tzinfo=timezone.utc)
     delta = (nxt - base).total_seconds()
     return max(float(floor), delta)
+
+
+class FieldDescriptor(BaseModel):
+    """A single per-job config field the UI renders generically."""
+    key: str
+    type: str = "int"
+    label: str
+    default: int
+    min: int | None = None
+    max: int | None = None
+    step: int | None = 1
+    help: str | None = None
 
 
 @dataclass
@@ -115,10 +128,15 @@ class Job:
     default_cron: str
     min_interval_seconds: int
     runner: JobRunner
+    config_schema: list[FieldDescriptor] = field(default_factory=list)
     # Live wiring filled in by the registry at start().
     task: asyncio.Task | None = field(default=None, init=False, repr=False)
     wakeup: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+
+    @property
+    def default_config(self) -> dict:
+        return {fd.key: fd.default for fd in self.config_schema}
 
 
 class JobRegistry:
