@@ -105,26 +105,25 @@ def make_pipeline_failure_cleanup_runner(session_factory: async_sessionmaker[Asy
 def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSession]):
     """Run one batch of code-symbol summarisation through the
     EnrichmentWorker. Replaces the worker's internal run_loop so the
-    job registry owns scheduling. Honours the legacy
-    ``enrichment_config.batch_size`` row so the operator's existing
-    settings still apply.
+    job registry owns scheduling. Reads ``batch_size`` from the
+    ``code_enrichment`` job config via the registry.
     """
     async def run() -> None:
         from app.services.enrichment_worker import EnrichmentWorker
         from app.api.websocket import event_manager
-        from app.models.config import Config as ConfigModel
 
         llm = getattr(app.state, "llm", None)
         if not llm:
             logger.info("code_enrichment skipped: no LLM orchestrator")
             return
 
-        async with session_factory() as session:
-            row = (await session.execute(
-                select(ConfigModel).where(ConfigModel.key == "enrichment_config")
-            )).scalar_one_or_none()
-            cfg = row.value if row and isinstance(row.value, dict) else {}
-        batch_size = int(cfg.get("batch_size", 5)) if isinstance(cfg, dict) else 5
+        # app.state.job_registry is wired after this runner is constructed,
+        # so read it lazily here, not at construction time.
+        registry = getattr(app.state, "job_registry", None)
+        batch_size = 5
+        if registry is not None:
+            cfg = await registry.load_config("code_enrichment")
+            batch_size = int(cfg.config.get("batch_size", 5))
 
         worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
         await worker.process_batch(batch_size=batch_size)
