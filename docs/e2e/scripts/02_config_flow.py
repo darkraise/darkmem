@@ -1,6 +1,6 @@
 """Phase 2: configuration endpoints.
 
-Covers LLM config, feature flags, enrichment config, classification areas.
+Covers LLM config, feature flags, classification areas.
 """
 
 from __future__ import annotations
@@ -100,15 +100,6 @@ async def main() -> int:
                 report.fail("classification-areas shape", str(areas)[:200])
         else:
             report.fail("GET /config/classification-areas", f"status {r.status_code}")
-
-        # 2.5 Enrichment config
-        r = await client.get("/api/v1/config/enrichment")
-        if r.status_code == 200:
-            ec = r.json()
-            if all(k in ec for k in ("enabled", "batch_size", "interval_seconds")):
-                report.ok("enrichment config has all keys")
-            else:
-                report.fail("enrichment config", str(ec))
 
     return report.summary()
 

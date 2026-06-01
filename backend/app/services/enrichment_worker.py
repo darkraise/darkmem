@@ -21,9 +21,7 @@ MAX_SOURCE_CHARS = 3000
 class EnrichmentWorker:
     def __init__(self, llm: LLMOrchestrator, broadcast=None):
         self.llm = llm
-        self._running = False
         self.batch_size = 5
-        self.interval = 10
         self._broadcast = broadcast
 
     async def process_batch(self, batch_size: int | None = None) -> int:
@@ -95,22 +93,3 @@ class EnrichmentWorker:
                 await self._broadcast("enrichment.batch_completed", {"processed": processed, "pending_remaining": pending_count})
         return processed
 
-    async def run_loop(self) -> None:
-        self._running = True
-        logger.info("Enrichment worker started (interval=%ds, batch_size=%d)", self.interval, self.batch_size)
-
-        while self._running:
-            try:
-                processed = await self.process_batch()
-                if processed > 0:
-                    logger.info("Enriched %d symbols", processed)
-                else:
-                    await asyncio.sleep(self.interval)
-            except Exception:
-                logger.exception("Enrichment loop error")
-                await asyncio.sleep(self.interval)
-
-        logger.info("Enrichment worker stopped")
-
-    def stop(self) -> None:
-        self._running = False

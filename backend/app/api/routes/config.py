@@ -905,56 +905,6 @@ async def list_classification_areas(
     ]
 
 
-class EnrichmentConfigUpdate(BaseModel):
-    enabled: bool = False
-    batch_size: int = Field(default=5, ge=1, le=100)
-
-
-@router.get("/enrichment")
-async def get_enrichment_config(
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-):
-    result = await session.execute(select(Config).where(Config.key == "enrichment_config"))
-    config = result.scalar_one_or_none()
-    if not config:
-        return {"enabled": False, "batch_size": 5}
-    value = config.value if isinstance(config.value, dict) else {}
-    return {
-        "enabled": bool(value.get("enabled", False)),
-        "batch_size": int(value.get("batch_size", 5)),
-    }
-
-
-@router.put("/enrichment")
-async def update_enrichment_config(
-    body: EnrichmentConfigUpdate,
-    request: Request,
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-):
-    result = await session.execute(select(Config).where(Config.key == "enrichment_config"))
-    config = result.scalar_one_or_none()
-    new_value = body.model_dump()
-    if config:
-        config.value = new_value
-    else:
-        session.add(Config(key="enrichment_config", value=new_value))
-    await session.flush()
-
-    # Mirror the enabled flag onto the cron-driven job row so toggling
-    # enrichment from Settings still pauses the periodic loop. Scheduling
-    # is governed by the cron expression on job:code_enrichment.
-    job_registry = getattr(request.app.state, "job_registry", None)
-    if job_registry is not None and job_registry.get("code_enrichment") is not None:
-        try:
-            await job_registry.update_config("code_enrichment", enabled=body.enabled)
-        except Exception:
-            pass
-
-    return new_value
-
-
 # ── System prompts (UI-editable) ─────────────────────────────────────
 
 
@@ -1082,31 +1032,3 @@ async def update_repos_path(
     return ReposPathResponse(path=str(resolved))
 
 
-@router.post("/enrichment/trigger")
-async def trigger_enrichment(
-    request: Request,
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-):
-    from app.services.enrichment_worker import EnrichmentWorker
-
-    llm = getattr(request.app.state, "llm", None)
-    if not llm:
-        raise HTTPException(status_code=503, detail="LLM not available")
-
-    # Honour the user's persisted batch_size so "Run Now" matches the Save
-    # semantics. Fall back to the schema default when the row is missing.
-    row = (
-        await session.execute(select(Config).where(Config.key == "enrichment_config"))
-    ).scalar_one_or_none()
-    stored = row.value if row and isinstance(row.value, dict) else {}
-    try:
-        size = int(stored.get("batch_size", EnrichmentConfigUpdate().batch_size))
-    except (TypeError, ValueError):
-        size = EnrichmentConfigUpdate().batch_size
-    size = max(1, min(100, size))
-
-    worker = EnrichmentWorker(llm)
-    count = await worker.process_batch(batch_size=size)
-
-    return {"processed": count, "batch_size": size}
