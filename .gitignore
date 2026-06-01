@@ -10,3 +10,5 @@ node_modules/
 backend/data/**
 frontend/test-results/
 frontend/playwright-report/
+frontend/.tanstack/
+*.tsbuildinfo
