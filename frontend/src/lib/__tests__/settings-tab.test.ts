@@ -12,4 +12,7 @@ describe("resolveStoredTab", () => {
   it("falls back when null", () => {
     expect(resolveStoredTab(null)).toBe("flags")
   })
+  it("falls back to flags for the removed workers tab", () => {
+    expect(resolveStoredTab("workers")).toBe("flags")
+  })
 })
