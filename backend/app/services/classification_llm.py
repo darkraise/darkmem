@@ -5,6 +5,7 @@ import json
 import logging
 
 from app.services.classification_areas import get_merged_llm_types, SIMPLE_NORMALIZATION
+from app.services.extraction import _strip_json_fences
 from app.services.llm import LLMOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ class ClassificationService:
                 response_format={"type": "json_object"},
                 seed=seed,
             )
-            result = json.loads(response)
+            result = json.loads(_strip_json_fences(response))
             classified_type = result.get("type", "fact")
             if mode == "simple" and classified_type not in valid_names:
                 classified_type = SIMPLE_NORMALIZATION.get(classified_type, classified_type)

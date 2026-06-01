@@ -11,7 +11,7 @@ from app.services.llm import LLMOrchestrator
 logger = logging.getLogger(__name__)
 
 _RERANK_PROMPT = """Rate the relevance of the following document to the query on a scale of 0 to 10.
-Return ONLY a JSON object: {"score": <number>}
+Return ONLY a JSON object: {{"score": <number>}}
 
 Query: {query}
 

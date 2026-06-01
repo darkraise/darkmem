@@ -28,11 +28,21 @@ class LLMOrchestrator:
         self.config = config
         self._client = httpx.AsyncClient(timeout=300.0)
 
+    @staticmethod
+    def _fingerprint(model: str, dims: int) -> str:
+        return f"{model}|{dims}"
+
     def llm_fingerprint(self) -> str:
-        """Identifier for the configured LLM embedder."""
+        """Identifier for the configured LLM embedder.
+
+        Must agree with the fingerprint the embed methods actually emit
+        (``f"{model}|{len(vec)}"``). When ``dimensions`` is unset we cannot
+        know the real dimension without embedding, so we surface the same
+        ``0`` sentinel the empty-batch paths use; a real embed call then
+        registers the true-dimension fingerprint on demand.
+        """
         cfg = self.config["embedding"]
-        dims = cfg.dimensions or 0
-        return f"{cfg.model}|{dims}"
+        return self._fingerprint(cfg.model, cfg.dimensions or 0)
 
     async def embed(self, text: str) -> tuple[list[float], str]:
         """Return (vector, fingerprint).
@@ -67,7 +77,7 @@ class LLMOrchestrator:
                     f"LLM embedding call failed ({e.response.status_code}): {e.request.url.host}"
                 ) from e
             vec = response.json()["data"][0]["embedding"]
-        return vec, f"{cfg.model}|{len(vec)}"
+        return vec, self._fingerprint(cfg.model, len(vec))
 
     async def embed_batch(self, texts: list[str]) -> tuple[list[list[float]], str]:
         if not texts:
@@ -99,9 +109,14 @@ class LLMOrchestrator:
                     f"LLM embed_batch failed ({e.response.status_code}): {e.request.url.host}"
                 ) from e
             data = response.json()["data"]
-            vectors = [d["embedding"] for d in sorted(data, key=lambda x: x["index"])]
+            # Sort by ``index`` to restore input order, but fall back to the
+            # element's existing position when a vendor omits the field.
+            ordered = sorted(
+                enumerate(data), key=lambda pair: pair[1].get("index", pair[0])
+            )
+            vectors = [d["embedding"] for _, d in ordered]
         dims = len(vectors[0]) if vectors else (cfg.dimensions or 0)
-        return vectors, f"{cfg.model}|{dims}"
+        return vectors, self._fingerprint(cfg.model, dims)
 
     async def embed_batch_chunked(
         self,
@@ -478,5 +493,12 @@ class LLMOrchestrator:
     def _headers(cfg: LLMPurposeConfig) -> dict:
         headers = {"Content-Type": "application/json"}
         if cfg.api_key:
-            headers["Authorization"] = f"Bearer {cfg.api_key}"
+            if cfg.api_kind == "anthropic":
+                # Anthropic authenticates via x-api-key (not Bearer) and
+                # requires the anthropic-version header. The OpenAI-compat
+                # vendors all take Authorization: Bearer.
+                headers["x-api-key"] = cfg.api_key
+                headers["anthropic-version"] = "2023-06-01"
+            else:
+                headers["Authorization"] = f"Bearer {cfg.api_key}"
         return headers
