@@ -275,7 +275,24 @@ class JobRegistry:
         logger.info("Job %s loop started", key)
         try:
             while not self._stopped:
-                cfg = await self.load_config(key)
+                try:
+                    cfg = await self.load_config(key)
+                except Exception as exc:
+                    # A single malformed config row must not kill the loop
+                    # permanently. Log, sleep on the default floor, and retry.
+                    logger.error(
+                        "Job %s load_config failed; retrying in %ss: %s",
+                        key, job.min_interval_seconds, exc,
+                    )
+                    try:
+                        await asyncio.wait_for(
+                            job.wakeup.wait(),
+                            timeout=float(job.min_interval_seconds),
+                        )
+                    except asyncio.TimeoutError:
+                        pass
+                    job.wakeup.clear()
+                    continue
                 if not cfg.enabled:
                     logger.info("Job %s disabled mid-loop, exiting", key)
                     return
@@ -342,14 +359,13 @@ class JobRegistry:
                 )
             cfg.cron = cron
         await self.save_config(key, cfg)
-        # Apply enable / disable flips by restarting the loop. Cron
-        # changes are picked up on the loop's next read of load_config(),
-        # which happens on every iteration; nudging the wakeup makes the
-        # change effective immediately.
+        # Apply enable / disable flips by restarting the loop. A cron-only
+        # change is picked up on the loop's next read of load_config(),
+        # which happens on every iteration; it should take effect on the
+        # next scheduled tick, NOT fire an immediate out-of-schedule run, so
+        # we deliberately do not nudge the wakeup for a pure cron edit.
         if prev_enabled != cfg.enabled:
             await self._restart_loop(key)
-        elif cfg.enabled:
-            job.wakeup.set()
         _ = job  # used above; satisfy linter
         return cfg
 

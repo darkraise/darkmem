@@ -150,15 +150,30 @@ class PostgresGraphRepository:
         properties: dict,
         weight: float,
         memory_id: UUID,
+        source_type: str | None = None,
+        target_type: str | None = None,
     ):
+        # Entity uniqueness is (name, entity_type), so resolving endpoints by
+        # name alone can bind to the wrong entity when two share a name across
+        # types. When the caller knows the endpoint types, scope the lookup;
+        # otherwise fall back to name-only resolution for legacy callers.
+        source_cond = "s.name = :source_name"
+        target_cond = "t.name = :target_name"
+        params: dict = {"source_name": source_name, "target_name": target_name}
+        if source_type is not None:
+            source_cond += " AND s.entity_type = :source_type"
+            params["source_type"] = source_type
+        if target_type is not None:
+            target_cond += " AND t.entity_type = :target_type"
+            params["target_type"] = target_type
         pair_result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT s.id AS source_id, t.id AS target_id
                 FROM entities s, entities t
-                WHERE s.name = :source_name AND t.name = :target_name
+                WHERE {source_cond} AND {target_cond}
                 LIMIT 1
             """),
-            {"source_name": source_name, "target_name": target_name},
+            params,
         )
         pair = pair_result.mappings().first()
         if not pair:

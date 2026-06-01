@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy import select, text
 
 from app.database import async_session_factory
-from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
+from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,19 @@ def _validate_uuid(value: str) -> UUID:
         return UUID(value)
     except (ValueError, AttributeError):
         raise ValueError(f"Invalid UUID format: {value}")
+
+
+# Mirror the HTTP search bound (MemorySearchRequest: limit ge=1, le=500) so an
+# MCP caller cannot request an unbounded result set.
+_MAX_LIMIT = 500
+
+
+def _clamp_limit(limit: int, default: int) -> int:
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(limit, _MAX_LIMIT))
 
 
 @mcp.tool(
@@ -91,6 +104,9 @@ async def memory_search(
         offset: Pagination offset (default: 0).
         semantic_weight: Balance between semantic (1.0) and keyword (0.0) search (default: 0.7).
     """
+    limit = _clamp_limit(limit, default=20)
+    offset = max(0, int(offset))
+    semantic_weight = min(1.0, max(0.0, float(semantic_weight)))
     async with _memory_service_context() as service:
         params = MemorySearchRequest(
             query=query, tags_any=tags_any, tags_all=tags_all,
@@ -164,17 +180,17 @@ async def memory_delete(memory_id: str) -> str:
 async def memory_batch_add(entries: list[dict]) -> str:
     """
     Args:
-        entries: List of memory objects, each with 'content' (required), and optional 'tags', 'source', 'source_agent', 'memory_type'.
+        entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source', 'source_agent', 'memory_type'.
     """
-    if not entries:
-        raise ValueError("entries list cannot be empty")
+    # Mirror the HTTP /memories/batch cap (MemoryBatchCreate: 1-100 entries)
+    # so the MCP path cannot enqueue an unbounded batch.
+    validated = MemoryBatchCreate(entries=entries)
 
     # Step 1: Create all memory rows WITHOUT pipeline processing
     results = []
     batch_entries = []
     async with _memory_service_context() as service:
-        for entry in entries:
-            data = MemoryCreate(**entry)
+        for data in validated.entries:
             memory = await service.memory_repo.create(
                 content=data.content, source=data.source, source_agent=data.source_agent,
                 memory_type=data.memory_type, importance=data.importance,
@@ -211,6 +227,7 @@ async def memory_reason(question: str, limit: int = 10) -> str:
         question: The question to answer using stored knowledge.
         limit: Maximum number of source memories to consider (default: 10).
     """
+    limit = _clamp_limit(limit, default=10)
     async with _memory_service_context() as service:
         result = await service.reason(question, limit=limit)
         return json.dumps(result)
