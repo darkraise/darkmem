@@ -278,42 +278,6 @@ export function useClassificationAreas() {
   })
 }
 
-export interface EnrichmentConfig {
-  enabled: boolean
-  batch_size: number
-}
-
-export function useEnrichmentConfig() {
-  return useQuery<EnrichmentConfig>({
-    queryKey: ["enrichmentConfig"],
-    queryFn: () => apiFetch("/config/enrichment"),
-  })
-}
-
-export function useUpdateEnrichmentConfig() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: EnrichmentConfig) =>
-      apiFetch("/config/enrichment", {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["enrichmentConfig"] })
-      qc.invalidateQueries({ queryKey: ["pipeline"] })
-    },
-  })
-}
-
-export function useTriggerEnrichment() {
-  return useMutation({
-    mutationFn: () =>
-      apiFetch<{ processed: number }>("/config/enrichment/trigger", {
-        method: "POST",
-      }),
-  })
-}
-
 // -- System prompts (UI-editable overrides of the in-code defaults) ---------
 
 export interface SystemPromptsResponse {
