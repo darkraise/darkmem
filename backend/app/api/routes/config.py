@@ -132,9 +132,18 @@ async def update_llm_config(
         ml_profile_id_by_name = {row.name: row.id for row in ml_prof_rows}
 
         for purpose in PURPOSES:
-            if purpose not in update_data or update_data[purpose] is None:
+            purpose_update = getattr(body, purpose, None)
+            if purpose not in update_data or purpose_update is None:
                 continue
-            incoming = {k: v for k, v in update_data[purpose].items() if v is not None}
+            # Keep only the fields the client actually set, but preserve an
+            # explicit ``null`` so dimensions/provider_ref/profile_ref can be
+            # CLEARED — an omitted field stays untouched, an explicit null
+            # clears the column.
+            incoming = {
+                k: v
+                for k, v in update_data[purpose].items()
+                if k in purpose_update.model_fields_set
+            }
             # Sentinel: "***" means "don't rotate the stored API key".
             if incoming.get("api_key") == "***":
                 incoming.pop("api_key")
@@ -467,7 +476,14 @@ async def test_llm_provider_route(
 
     headers = {"Content-Type": "application/json"}
     if profile.api_key:
-        headers["Authorization"] = f"Bearer {profile.api_key}"
+        # Anthropic uses x-api-key + anthropic-version, not bearer.
+        # Everyone else (OpenAI, DeepSeek, z.ai, Google's OpenAI-compat
+        # endpoint) accepts bearer.
+        if profile.api_kind == "anthropic":
+            headers["x-api-key"] = profile.api_key
+            headers["anthropic-version"] = "2023-06-01"
+        else:
+            headers["Authorization"] = f"Bearer {profile.api_key}"
 
     if profile.api_kind == "ollama":
         root = _ollama_native_root(profile.base_url)

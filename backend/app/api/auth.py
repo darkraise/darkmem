@@ -15,6 +15,11 @@ from app.database import get_session
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 COOKIE_NAME = "darkmem_session"
+# Config row holding the Unix timestamp of the last admin password change.
+# Tokens issued strictly before this instant are rejected so a password
+# change revokes every outstanding session. Kept in sync with
+# ``app.api.routes.auth.PASSWORD_CHANGED_AT_KEY``.
+PASSWORD_CHANGED_AT_KEY = "admin_password_changed_at"
 
 
 class TokenPayload(BaseModel):
@@ -67,6 +72,26 @@ async def is_token_revoked(jti: str, session: AsyncSession) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+async def _password_changed_after(iat: int, session: AsyncSession) -> bool:
+    """True if the admin password changed after a token was issued.
+
+    Lets ``require_auth`` reject every session created before the most recent
+    password change without enumerating individual ``jti`` values.
+    """
+    from app.models.config import Config
+
+    result = await session.execute(
+        select(Config).where(Config.key == PASSWORD_CHANGED_AT_KEY)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        return False
+    changed_at = row.value.get("ts") if isinstance(row.value, dict) else None
+    if not isinstance(changed_at, int):
+        return False
+    return iat < changed_at
+
+
 def _extract_token(request: Request) -> str | None:
     cookie_token = request.cookies.get(COOKIE_NAME)
     if cookie_token:
@@ -97,6 +122,9 @@ async def require_auth(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
     if await is_token_revoked(token_data.jti, session):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
+
+    if await _password_changed_after(token_data.iat, session):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
     return token_data

@@ -7,6 +7,7 @@ returns 403, and the wizard frontend redirects new visitors to ``/login``.
 """
 from __future__ import annotations
 
+import hmac
 import os
 import sys
 import uuid
@@ -27,6 +28,7 @@ from app.api.auth import (
     require_uninitialized,
     set_auth_cookie,
 )
+from app.config import settings
 from app.database import get_session
 from app.models.audit import AuditLog
 from app.models.code import Repository
@@ -292,6 +294,7 @@ class SetupRepos(BaseModel):
 
 class SetupRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
+    setup_secret: str | None = None
     llm: SetupLLM | None = None
     repos: SetupRepos | None = None
 
@@ -313,6 +316,38 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _is_production() -> bool:
+    return settings.environment == "production" or os.path.exists("/.dockerenv")
+
+
+def _enforce_setup_secret(request: Request, body: SetupRequest) -> None:
+    """Gate the finalize endpoint behind ``SETUP_SECRET`` in production.
+
+    ``config._check_setup_secret`` guarantees ``settings.setup_secret`` is a
+    non-empty string at startup in production, but nothing actually compared
+    the caller's input against it — the prod guard was a no-op. Require the
+    caller to present the matching secret (``X-Setup-Secret`` header or the
+    request body) before any admin-bootstrap write happens.
+
+    Outside production the secret is optional: if one is configured we still
+    enforce it, otherwise the endpoint stays open (gated only by
+    ``require_uninitialized``) for the no-credentials local install path.
+    """
+    expected = settings.setup_secret
+    if not expected:
+        if _is_production():
+            # Should be unreachable: the startup validator rejects this.
+            raise HTTPException(
+                status_code=503,
+                detail="SETUP_SECRET is not configured on the server",
+            )
+        return
+
+    presented = request.headers.get("X-Setup-Secret") or body.setup_secret
+    if not presented or not hmac.compare_digest(presented, expected):
+        raise HTTPException(status_code=403, detail="Invalid or missing setup secret")
+
+
 @router.post(
     "",
     response_model=SetupResponse,
@@ -332,6 +367,8 @@ async def setup_finalize(
     """
     from app.services.config import get_llm_config as fetch_llm_config
     from app.services.llm import LLMOrchestrator
+
+    _enforce_setup_secret(request, body)
 
     repos_added: list[str] = []
     repos_failed: list[dict] = []

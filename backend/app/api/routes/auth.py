@@ -15,7 +15,7 @@ from app.api.auth import (
     set_auth_cookie,
     verify_password,
 )
-from app.database import get_session
+from app.database import async_session_factory, get_session
 from app.models.audit import AuditLog
 from app.models.config import Config
 from app.models.token_blocklist import TokenBlocklist
@@ -23,6 +23,20 @@ from app.models.token_blocklist import TokenBlocklist
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 ADMIN_PASSWORD_KEY = "admin_password_hash"
+PASSWORD_CHANGED_AT_KEY = "admin_password_changed_at"
+
+
+async def _record_audit(action: str, details: dict) -> None:
+    """Persist an audit row in its own committed session.
+
+    The request-scoped session from ``get_session`` rolls back whenever the
+    handler raises (e.g. a failed login raising 401), which silently discards
+    audit rows merely flushed into it. Writing through a fresh session commits
+    the audit trail independently of the request outcome.
+    """
+    async with async_session_factory() as audit_session:
+        audit_session.add(AuditLog(action=action, details=details))
+        await audit_session.commit()
 
 
 class PasswordRequest(BaseModel):
@@ -51,8 +65,7 @@ async def auth_login(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin password not set")
 
     if not verify_password(body.password, config.value["hash"]):
-        session.add(AuditLog(action="auth_login_failed", details={"ip": _client_ip(request)}))
-        await session.flush()
+        await _record_audit("auth_login_failed", {"ip": _client_ip(request)})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
 
     session.add(AuditLog(action="auth_login_success", details={"ip": _client_ip(request)}))
@@ -93,10 +106,26 @@ async def auth_change_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
 
     config.value = {"hash": hash_password(body.new_password)}
-    session.add(AuditLog(action="auth_password_change", details={"ip": _client_ip(request)}))
-    await session.flush()
 
-    return JSONResponse(content={"ok": True})
+    # Stamp the change time so every token issued before now is rejected by
+    # require_auth. Without this, outstanding sessions survive a password
+    # change and keep full admin access until they expire on their own.
+    changed_at = int(datetime.now(timezone.utc).timestamp())
+    stamp = (await session.execute(
+        select(Config).where(Config.key == PASSWORD_CHANGED_AT_KEY)
+    )).scalar_one_or_none()
+    if stamp:
+        stamp.value = {"ts": changed_at}
+    else:
+        session.add(Config(key=PASSWORD_CHANGED_AT_KEY, value={"ts": changed_at}))
+
+    session.add(AuditLog(action="auth_password_change", details={"ip": _client_ip(request)}))
+
+    response = JSONResponse(content={"ok": True})
+    # The caller's own current token predates changed_at and would be rejected
+    # on the next request; reissue so they stay logged in after rotating.
+    token = create_access_token({"sub": payload.sub})
+    return set_auth_cookie(response, token)
 
 
 @router.post("/refresh")

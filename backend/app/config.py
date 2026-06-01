@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -127,7 +126,7 @@ class Settings(BaseSettings):
     def _check_jwt_secret(self):
         is_default = self.jwt_secret == "darkmem-jwt-secret-change-me"
         is_short = len(self.jwt_secret) < 32
-        is_prod = self.environment == "production" or os.path.exists("/.dockerenv")
+        is_prod = self.environment == "production"
         if is_prod and (is_default or is_short):
             raise ValueError("JWT_SECRET must be at least 32 characters and not the default in production")
         if is_default or is_short:
@@ -141,7 +140,7 @@ class Settings(BaseSettings):
         # start and the operator running setup is real on a shared local
         # network — anyone reachable can claim admin first if the secret
         # guard is unset. Require a non-empty secret in production.
-        is_prod = self.environment == "production" or os.path.exists("/.dockerenv")
+        is_prod = self.environment == "production"
         if is_prod and not self.setup_secret:
             raise ValueError(
                 "SETUP_SECRET must be set in production so /setup cannot be called "
