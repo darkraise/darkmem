@@ -146,6 +146,27 @@ class EmbedderRegistry:
             )
 
             slug = _partition_slug(info.fingerprint)
+
+            # Refuse to share a child table with a different fingerprint that
+            # folds to the same slug (e.g. 'm-a|512' vs 'm.a|512'): they'd write
+            # incompatible vectors into one vector(N) column. Fail loud rather
+            # than silently corrupting cosine distances. (CREATE TABLE IF NOT
+            # EXISTS below would otherwise no-op onto the existing table.)
+            existing = (
+                await session.execute(
+                    text("SELECT fingerprint FROM embedders WHERE fingerprint != :fp"),
+                    {"fp": info.fingerprint},
+                )
+            ).scalars().all()
+            for other in existing:
+                if _partition_slug(other) == slug:
+                    raise RuntimeError(
+                        f"Partition slug collision: fingerprint {info.fingerprint!r} and "
+                        f"{other!r} both map to table suffix {slug!r}. Refusing to share a "
+                        f"vector column; rename the model so the fingerprints differ in more "
+                        f"than separator characters."
+                    )
+
             for parent, ddl_template in _TABLE_TEMPLATES.items():
                 child = f"{parent}__{slug}"
                 await session.execute(
@@ -194,11 +215,12 @@ def _partition_slug(fingerprint: str) -> str:
     the derived ``ix_<parent>__<slug>_hnsw`` index name can still exceed
     Postgres' 63-char NAMEDATALEN and is silently truncated, so two
     fingerprints sharing a long common prefix could collide on the same child
-    table. In practice embedder fingerprints (``model|dims``) are well under
-    the budget so this does not occur. A truly collision-proof scheme (e.g. a
-    hash suffix) would rename every existing partition and orphan stored
-    embeddings, so it is deferred to a future data migration rather than
-    changed in place here.
+    table — as could two models differing only by a folded separator character
+    (``m-a|512`` vs ``m.a|512``). A truly collision-proof scheme (e.g. a hash
+    suffix) would rename every existing partition and orphan stored embeddings,
+    so it is deferred to a future data migration. In the meantime ``register``
+    rejects a fingerprint whose slug collides with a different already-registered
+    one, turning silent vector-column corruption into a loud failure.
     """
     slug = re.sub(r"[^A-Za-z0-9]+", "_", fingerprint).strip("_").lower()
     return slug[:48]
