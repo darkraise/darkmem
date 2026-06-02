@@ -110,6 +110,45 @@ async def test_same_named_methods_in_one_file_get_distinct_nodes(session, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_load_symbol_index_caches_the_query(session, tmp_path, monkeypatch):
+    """Phases 06 and 08 ran the same CodeSymbol+CodeFile SELECT and rebuilt an
+    identical symbol table twice per index run. _load_symbol_index must build it
+    once and cache it, so the second consumer reuses the first's result."""
+    repo = await index_repo(session, tmp_path, {
+        "a.py": (
+            "class A:\n"
+            "    def m(self):\n"
+            "        return self.n()\n"
+            "    def n(self):\n"
+            "        return 1\n"
+        ),
+    })
+    pipe = CodePipeline(session, None, None, None)
+    pipe._repo = repo
+    pipe._repo_id_str = str(repo.id)
+
+    count = {"n": 0}
+    orig = session.execute
+
+    async def counting(stmt, *a, **k):
+        s = str(stmt)
+        if "FROM code_symbols" in s and "code_files.file_path" in s:
+            count["n"] += 1
+        return await orig(stmt, *a, **k)
+
+    monkeypatch.setattr(session, "execute", counting)
+
+    table1, by_id1, names1, enc1, tb1 = await pipe._load_symbol_index()
+    after_first = count["n"]
+    table2, by_id2, names2, enc2, tb2 = await pipe._load_symbol_index()
+    after_second = count["n"]
+
+    assert after_first == 1
+    assert after_second == 1  # cached — no second symbol-table query
+    assert table2 is table1 and by_id2 is by_id1  # same cached objects
+
+
+@pytest.mark.asyncio
 async def test_intra_class_call_edge_is_owner_qualified(session, tmp_path):
     repo = await index_repo(session, tmp_path, {
         "svc.py": (

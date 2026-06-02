@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import time
-from collections import deque
+from collections import deque, namedtuple
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -28,6 +28,11 @@ from app.services.type_env import TypeEnvironment, build_type_env, propagate_typ
 from app.utils.graph_keys import compose_key
 
 logger = logging.getLogger(__name__)
+
+# Plain scalar snapshot of a CodeSymbol, cached across the phase 06 -> 08 commit
+# boundary. Holding the ORM row instead would expire on commit (production uses
+# expire_on_commit=True) and trigger a lazy load on an AsyncSession — a crash.
+_SymbolData = namedtuple("_SymbolData", ["name", "parent_symbol_id"])
 
 IGNORED_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv",
@@ -109,6 +114,10 @@ class CodePipeline:
 
         self._named_import_map: dict[str, dict[str, tuple[str, str]]] = {}
         self._wildcard_import_map: dict[str, set[str]] = {}
+
+        # (symbol_table, symbol_by_id, id_to_name, enclosing_index) built once
+        # from the CodeSymbol rows and reused across phases 06 and 08.
+        self._symbol_index: tuple | None = None
 
         self._stats: dict = {}
 
@@ -610,14 +619,20 @@ class CodePipeline:
 
         self._phase_done("05_named_bindings", t0)
 
-    async def phase_06_call_tracing(self) -> None:
-        t0 = await self._phase_log("06_call_tracing")
+    async def _load_symbol_index(self) -> tuple:
+        """Load every symbol and derive the call-resolution structures once.
 
-        if not self._all_calls:
-            self._phase_done("06_call_tracing", t0)
-            return
+        Returns ``(symbol_table, symbol_by_id, id_to_name, enclosing_index,
+        type_bindings)`` and caches them on the instance. Phases 06 and 08 both
+        consume this and each previously ran the identical ``CodeSymbol`` SELECT
+        and rebuilt everything. ``symbol_by_id`` holds a plain ``_SymbolData``
+        snapshot rather than the ORM row so it stays valid across the commits
+        between the two phases. ``type_bindings`` (name -> return type) is used
+        only by phase 08 to seed its type envs.
+        """
+        if self._symbol_index is not None:
+            return self._symbol_index
 
-        from app.services.call_resolver import CallResolver
         from app.services.code_parser import extract_return_type_from_signature
 
         rows = (await self.session.execute(
@@ -628,10 +643,8 @@ class CodePipeline:
 
         symbol_table = SymbolTable()
         symbol_by_id: dict[str, tuple] = {}
-
-        id_to_name: dict[str, str] = {
-            str(sym.id): sym.name for sym, _fp in rows
-        }
+        type_bindings: dict[str, str] = {}
+        id_to_name: dict[str, str] = {str(sym.id): sym.name for sym, _fp in rows}
 
         for sym, fp in rows:
             param_count = None
@@ -651,22 +664,37 @@ class CodePipeline:
                 owner_name=id_to_name.get(parent_id) if parent_id else None,
                 return_type=return_type,
             ))
-            symbol_by_id[str(sym.id)] = (sym, fp)
+            symbol_by_id[str(sym.id)] = (_SymbolData(sym.name, parent_id), fp)
+            if return_type:
+                type_bindings[sym.name] = return_type
 
         # (line_start, line_end, name, owner) — owner disambiguates the caller's
         # key so a call edge's source matches the owner-qualified method node.
         enclosing_index: dict[str, list[tuple[int, int, str, str | None]]] = {}
         for sym, fp in rows:
             if sym.kind in ("function", "method"):
-                owner = (
-                    id_to_name.get(str(sym.parent_symbol_id))
-                    if sym.parent_symbol_id else None
-                )
+                owner = id_to_name.get(str(sym.parent_symbol_id)) if sym.parent_symbol_id else None
                 enclosing_index.setdefault(fp, []).append(
                     (sym.line_start, sym.line_end, sym.name, owner)
                 )
         for fp in enclosing_index:
             enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
+
+        self._symbol_index = (
+            symbol_table, symbol_by_id, id_to_name, enclosing_index, type_bindings,
+        )
+        return self._symbol_index
+
+    async def phase_06_call_tracing(self) -> None:
+        t0 = await self._phase_log("06_call_tracing")
+
+        if not self._all_calls:
+            self._phase_done("06_call_tracing", t0)
+            return
+
+        from app.services.call_resolver import CallResolver
+
+        symbol_table, symbol_by_id, id_to_name, enclosing_index, _ = await self._load_symbol_index()
 
         type_envs: dict[str, TypeEnvironment] = {}
         for fp in self._all_file_paths:
@@ -861,44 +889,11 @@ class CodePipeline:
             self._phase_done("08_cross_file_binding", t0)
             return
 
-        rows = (await self.session.execute(
-            select(CodeSymbol, CodeFile.file_path)
-            .join(CodeFile)
-            .where(CodeFile.repo_id == self._repo.id)
-        )).all()
-
         from app.services.call_resolver import CallResolver
-        from app.services.code_parser import extract_return_type_from_signature
 
-        symbol_table = SymbolTable()
-        symbol_by_id: dict[str, tuple] = {}
-        type_bindings: dict[str, str] = {}
-
-        id_to_name: dict[str, str] = {
-            str(sym.id): sym.name for sym, _fp in rows
-        }
-
-        for sym, fp in rows:
-            param_count = None
-            if sym.signature:
-                params = sym.signature.strip("()").split(",")
-                param_count = len([p for p in params if p.strip()]) if params != [""] else 0
-            parent_id = str(sym.parent_symbol_id) if sym.parent_symbol_id else None
-            return_type = extract_return_type_from_signature(sym.signature, sym.source_code)
-            entry = SymbolEntry(
-                node_id=str(sym.id),
-                file_path=fp,
-                name=sym.name,
-                kind=sym.kind,
-                param_count=param_count,
-                owner_id=parent_id,
-                owner_name=id_to_name.get(parent_id) if parent_id else None,
-                return_type=return_type,
-            )
-            symbol_table.add(entry)
-            symbol_by_id[str(sym.id)] = (sym, fp)
-            if return_type:
-                type_bindings[sym.name] = return_type
+        symbol_table, symbol_by_id, id_to_name, enclosing_index, type_bindings = (
+            await self._load_symbol_index()
+        )
 
         type_envs: dict[str, TypeEnvironment] = {}
         for fp in self._all_file_paths:
@@ -906,21 +901,6 @@ class CodePipeline:
             for name, type_name in type_bindings.items():
                 env.add(name, type_name, "seeded", "file")
             type_envs[fp] = env
-
-        # (line_start, line_end, name, owner) — owner disambiguates the caller's
-        # key so a call edge's source matches the owner-qualified method node.
-        enclosing_index: dict[str, list[tuple[int, int, str, str | None]]] = {}
-        for sym, fp in rows:
-            if sym.kind in ("function", "method"):
-                owner = (
-                    id_to_name.get(str(sym.parent_symbol_id))
-                    if sym.parent_symbol_id else None
-                )
-                enclosing_index.setdefault(fp, []).append(
-                    (sym.line_start, sym.line_end, sym.name, owner)
-                )
-        for fp in enclosing_index:
-            enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
 
         resolver = CallResolver(
             symbol_table,
