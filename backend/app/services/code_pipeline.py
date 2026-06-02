@@ -344,6 +344,25 @@ class CodePipeline:
             await self._delete_all_repo_data(self._repo.id)
         else:
             self._changed_files, self._deleted_files = await _diff_files(work_dir, old_sha, new_sha)
+            # Re-trace callers of changed/deleted files so a renamed or removed
+            # target doesn't leave an unchanged caller's edge missing until the
+            # next full reindex. Computed BEFORE the deleted-file delete loop
+            # below (which drops those edges). Added dependents hit phase_03's
+            # content-hash skip — no structure rewrite, only their calls are
+            # re-resolved in phase_06.
+            targets = self._changed_files + self._deleted_files
+            if targets:
+                deps, total = await _find_dependent_caller_files(
+                    self.session, self._repo.id, targets,
+                )
+                if total > len(deps):
+                    logger.info(
+                        "Incremental reindex: %d dependent caller files exceed cap "
+                        "%d; re-tracing %d (run a full reindex to refresh the rest)",
+                        total, DEPENDENT_RETRACE_CAP, len(deps),
+                    )
+                already = set(targets)
+                self._changed_files.extend(d for d in deps if d not in already)
 
         for rel_path in self._deleted_files:
             try:
@@ -1277,6 +1296,50 @@ def _list_all_files(work_dir: Path) -> list[str]:
             continue
         files.append(str(path.relative_to(work_dir).as_posix()))
     return files
+
+
+# Cap on dependent caller files re-traced per incremental run, so a change to a
+# widely-called utility doesn't balloon an incremental reindex into a near-full
+# one. When exceeded, the overflow is logged (not silently dropped).
+DEPENDENT_RETRACE_CAP = 500
+
+
+async def _find_dependent_caller_files(
+    session: AsyncSession,
+    repo_id,
+    changed_files: list[str],
+    cap: int = DEPENDENT_RETRACE_CAP,
+) -> tuple[list[str], int]:
+    """Files (outside ``changed_files``) whose ``calls`` edges target a symbol
+    in a changed file, so their call edges must be re-traced.
+
+    Incremental reindex parses only changed files. A caller in an unchanged file
+    that targets a renamed/moved symbol in a changed file loses its edge
+    (``_delete_file_data`` drops it when the changed file is re-indexed) and
+    never regains it until a full reindex. Re-tracing these dependents recreates
+    the edge. Returns ``(files, total)`` where ``total`` is the pre-cap count so
+    the caller can log any truncation rather than silently dropping work.
+
+    Symbol keys are ``name::file_path`` (one ``::``), so the caller file is the
+    part after ``::`` in ``source_key`` and a changed-file target matches the
+    ``%::<file>`` pattern.
+    """
+    if not changed_files:
+        return [], 0
+    changed_set = set(changed_files)
+    patterns = [f"%::{cf}" for cf in changed_files]
+    rows = (await session.execute(
+        text("""
+            SELECT DISTINCT split_part(source_key, '::', 2) AS caller_file
+            FROM code_edges
+            WHERE repo_id = :rid
+              AND edge_type = 'calls'
+              AND target_key LIKE ANY(CAST(:patterns AS text[]))
+        """),
+        {"rid": str(repo_id), "patterns": patterns},
+    )).scalars().all()
+    deps = sorted({f for f in rows if f and f not in changed_set})
+    return deps[:cap], len(deps)
 
 
 async def _diff_files(
