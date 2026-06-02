@@ -12,7 +12,7 @@ import {
   type SetupRequest,
   type SetupLLM,
 } from "@/hooks/api/use-setup-api"
-import { ParticleBackground } from "./ParticleBackground"
+import { ParticleBackground } from "@/components/particle-background"
 import { StepPassword, isStepPasswordValid } from "./StepPassword"
 import { StepLLM, isStepLLMValid } from "./StepLLM"
 import { StepRepoPath, isStepRepoPathValid } from "./StepRepoPath"
