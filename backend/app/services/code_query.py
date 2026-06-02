@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol
@@ -64,6 +64,18 @@ class CodeQueryService:
             )
             if repo_id:
                 text_query = text_query.where(CodeFile.repo_id == repo_id)
+            # Relevance order so RRF ranks mean something (and truncation is
+            # deterministic): exact name > prefix > substring > body-only match,
+            # then shorter names first.
+            text_query = text_query.order_by(
+                case(
+                    (CodeSymbol.name.ilike(escaped), 0),
+                    (CodeSymbol.name.ilike(f"{escaped}%"), 1),
+                    (CodeSymbol.name.ilike(f"%{escaped}%"), 2),
+                    else_=3,
+                ),
+                func.length(CodeSymbol.name),
+            )
             text_query = text_query.limit(limit * 2)
 
             text_results = (await self.session.execute(text_query)).all()
