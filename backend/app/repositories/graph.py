@@ -118,7 +118,7 @@ class PostgresGraphRepository:
                 INSERT INTO entities (id, name, entity_type, properties, memory_ids)
                 VALUES (:id, :name, :entity_type, CAST(:properties AS jsonb), ARRAY[CAST(:memory_id AS uuid)])
                 ON CONFLICT (name, entity_type) DO UPDATE SET
-                    properties = EXCLUDED.properties,
+                    properties = entities.properties || EXCLUDED.properties,
                     memory_ids = CASE
                         WHEN CAST(:memory_id AS uuid) = ANY(entities.memory_ids) THEN entities.memory_ids
                         ELSE array_append(entities.memory_ids, CAST(:memory_id AS uuid))
@@ -354,6 +354,7 @@ class PostgresGraphRepository:
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)
 
+        # Strip this memory's contribution from both tables first.
         await self.session.execute(
             text("""
                 UPDATE entities
@@ -364,23 +365,35 @@ class PostgresGraphRepository:
         )
         await self.session.execute(
             text("""
-                DELETE FROM entities
-                WHERE array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0
-            """),
-        )
-
-        await self.session.execute(
-            text("""
                 UPDATE entity_relations
                 SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
                 WHERE CAST(:mid AS uuid) = ANY(memory_ids)
             """),
             {"mid": mid},
         )
+
+        # Drop relations no memory asserts any more. Do this BEFORE deleting
+        # orphaned entities so the entity guard below sees only relations that
+        # truly survive.
         await self.session.execute(
             text("""
                 DELETE FROM entity_relations
                 WHERE array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0
+            """),
+        )
+
+        # Delete an orphaned entity only when no surviving relation still
+        # references it. The FK is ON DELETE CASCADE, so deleting an entity a
+        # relation still points at would silently destroy a relation that other
+        # memories assert — losing another memory's edge on re-extraction.
+        await self.session.execute(
+            text("""
+                DELETE FROM entities e
+                WHERE (array_length(e.memory_ids, 1) IS NULL OR array_length(e.memory_ids, 1) = 0)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM entity_relations r
+                      WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
+                  )
             """),
         )
 
