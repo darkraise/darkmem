@@ -75,6 +75,10 @@ function CronCell({ job }: { job: Job }) {
   const updateJob = useUpdateJob()
   const [cron, setCron] = useState<string>(job.cron)
   const dirty = cron.trim() !== job.cron
+  // Reflect the current cron in the preset trigger (or show the placeholder
+  // when it's a custom expression) instead of always rendering "Preset…".
+  const matchedPreset =
+    CRON_PRESETS.find((p) => p.value === cron.trim())?.value ?? ""
 
   const handleSave = () => {
     if (!dirty) return
@@ -89,7 +93,7 @@ function CronCell({ job }: { job: Job }) {
 
   return (
     <div className="flex items-center gap-1">
-      <Select value="" onValueChange={(v) => v && setCron(v)}>
+      <Select value={matchedPreset} onValueChange={(v) => v && setCron(v)}>
         <SelectTrigger className="h-7 w-28 text-base">
           <SelectValue placeholder="Preset…" />
         </SelectTrigger>
