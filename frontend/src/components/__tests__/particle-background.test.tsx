@@ -8,18 +8,18 @@ import { ParticleBackground } from "../particle-background"
 // makes it available at runtime.
 
 function setReducedMotion(matches: boolean) {
-  ;(window.matchMedia as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-    (query: string) => ({
-      matches,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }),
-  )
+  ;(
+    window.matchMedia as unknown as ReturnType<typeof vi.fn>
+  ).mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
 }
 
 describe("ParticleBackground", () => {
@@ -45,10 +45,16 @@ describe("ParticleBackground", () => {
 
   it("cancels the loop when the tab is hidden", () => {
     render(<ParticleBackground />)
-    Object.defineProperty(document, "hidden", { value: true, configurable: true })
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      configurable: true,
+    })
     document.dispatchEvent(new Event("visibilitychange"))
     expect(window.cancelAnimationFrame).toHaveBeenCalled()
-    Object.defineProperty(document, "hidden", { value: false, configurable: true })
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    })
   })
 
   it("removes its listeners on unmount", () => {

@@ -90,7 +90,8 @@ export function ParticleBackground({
       (navigator.hardwareConcurrency ?? 8) <= 4
     const isInteractive = interactive && !lowEnd
 
-    const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!
+    const pick = (arr: string[]) =>
+      arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!
     const spawn = (w: number, h: number): Particle => {
       const accent = Math.random() < accentRatio
       return {
@@ -177,8 +178,20 @@ export function ParticleBackground({
       for (const p of ps) {
         p.x += p.vx
         p.y += p.vy
-        if (p.x < 0) { p.x = 0; p.vx *= -1 } else if (p.x > w) { p.x = w; p.vx *= -1 }
-        if (p.y < 0) { p.y = 0; p.vy *= -1 } else if (p.y > h) { p.y = h; p.vy *= -1 }
+        if (p.x < 0) {
+          p.x = 0
+          p.vx *= -1
+        } else if (p.x > w) {
+          p.x = w
+          p.vx *= -1
+        }
+        if (p.y < 0) {
+          p.y = 0
+          p.vy *= -1
+        } else if (p.y > h) {
+          p.y = h
+          p.vy *= -1
+        }
         if (isInteractive && m.active) {
           const dx = p.x - m.x
           const dy = p.y - m.y

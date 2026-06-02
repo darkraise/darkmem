@@ -121,71 +121,71 @@ export function SetupWizard() {
   return (
     <GlassPanel className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
       <CardContent className="flex flex-col gap-6 overflow-hidden p-8">
-          <div className="shrink-0 space-y-1 text-center">
-            <h1 className="font-mono text-2xl font-bold tracking-tight">
-              darkmem
-            </h1>
-            <p className="text-muted-foreground text-base">Initial Setup</p>
-          </div>
+        <div className="shrink-0 space-y-1 text-center">
+          <h1 className="font-mono text-2xl font-bold tracking-tight">
+            darkmem
+          </h1>
+          <p className="text-muted-foreground text-base">Initial Setup</p>
+        </div>
 
-          <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-base">
-            {[1, 2, 3, 4].map((s) => (
-              <li
-                key={s}
-                className={`rounded-md border px-3 py-1 transition-colors ${
-                  s === step
-                    ? "border-primary bg-primary/10 text-primary"
-                    : s < step
-                      ? "border-muted bg-muted/30 text-muted-foreground"
-                      : "border-muted/50 text-muted-foreground"
-                }`}
-              >
-                {s}. {STEP_TITLES[s as 1 | 2 | 3 | 4]}
-              </li>
-            ))}
-          </ol>
-
-          <div className="flex-1 overflow-y-auto pr-1">
-            {step === 1 && <StepPassword />}
-            {step === 2 && <StepLLM />}
-            {step === 3 && <StepRepoPath />}
-            {step === 4 && <StepFinish />}
-          </div>
-
-          <div className="border-border/60 flex shrink-0 justify-between border-t pt-4">
-            <Button
-              variant="ghost"
-              onClick={goBack}
-              disabled={step === 1 || finalize.isPending}
+        <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-base">
+          {[1, 2, 3, 4].map((s) => (
+            <li
+              key={s}
+              className={`rounded-md border px-3 py-1 transition-colors ${
+                s === step
+                  ? "border-primary bg-primary/10 text-primary"
+                  : s < step
+                    ? "border-muted bg-muted/30 text-muted-foreground"
+                    : "border-muted/50 text-muted-foreground"
+              }`}
             >
-              Back
-            </Button>
-            <div className="flex items-center gap-3">
-              {step === 2 && !llm.skipped && missingModels.length > 0 && (
-                <span className="text-muted-foreground text-base">
-                  Add a model for: {missingModels.join(", ")}
-                </span>
-              )}
-              {(step === 2 || step === 3) && (
-                <Button
-                  variant="outline"
-                  onClick={skip}
-                  disabled={finalize.isPending}
-                >
-                  Skip
-                </Button>
-              )}
-              {step < 4 ? (
-                <Button onClick={goNext} disabled={!stepValid}>
-                  Next
-                </Button>
-              ) : (
-                <Button onClick={handleFinish} disabled={finalize.isPending}>
-                  {finalize.isPending ? "Finishing..." : "Finish"}
-                </Button>
-              )}
-            </div>
+              {s}. {STEP_TITLES[s as 1 | 2 | 3 | 4]}
+            </li>
+          ))}
+        </ol>
+
+        <div className="flex-1 overflow-y-auto pr-1">
+          {step === 1 && <StepPassword />}
+          {step === 2 && <StepLLM />}
+          {step === 3 && <StepRepoPath />}
+          {step === 4 && <StepFinish />}
+        </div>
+
+        <div className="border-border/60 flex shrink-0 justify-between border-t pt-4">
+          <Button
+            variant="ghost"
+            onClick={goBack}
+            disabled={step === 1 || finalize.isPending}
+          >
+            Back
+          </Button>
+          <div className="flex items-center gap-3">
+            {step === 2 && !llm.skipped && missingModels.length > 0 && (
+              <span className="text-muted-foreground text-base">
+                Add a model for: {missingModels.join(", ")}
+              </span>
+            )}
+            {(step === 2 || step === 3) && (
+              <Button
+                variant="outline"
+                onClick={skip}
+                disabled={finalize.isPending}
+              >
+                Skip
+              </Button>
+            )}
+            {step < 4 ? (
+              <Button onClick={goNext} disabled={!stepValid}>
+                Next
+              </Button>
+            ) : (
+              <Button onClick={handleFinish} disabled={finalize.isPending}>
+                {finalize.isPending ? "Finishing..." : "Finish"}
+              </Button>
+            )}
           </div>
+        </div>
       </CardContent>
     </GlassPanel>
   )

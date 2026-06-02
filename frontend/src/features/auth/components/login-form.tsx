@@ -78,7 +78,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       <Button
         type="submit"
         disabled={login.isPending}
-        className="dm-btn-pulse w-full bg-gradient-to-r from-[#818cf8] via-[#6366f1] to-[#38bdf8] font-semibold text-slate-950 disabled:bg-none disabled:bg-slate-700 disabled:text-slate-100 disabled:opacity-100 focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+        className="dm-btn-pulse w-full bg-gradient-to-r from-[#818cf8] via-[#6366f1] to-[#38bdf8] font-semibold text-slate-950 focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:bg-slate-700 disabled:bg-none disabled:text-slate-100 disabled:opacity-100"
       >
         {login.isPending ? "Signing in…" : "Sign in"}
       </Button>

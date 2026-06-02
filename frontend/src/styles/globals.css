@@ -74,36 +74,123 @@
   border-radius: 9999px;
   will-change: transform;
 }
-.dm-b1 { width: 62vw; height: 62vw; left: -16%; top: -22%; background: #6366f1; opacity: 0.18; filter: blur(115px); animation: dm-floatA 24s ease-in-out infinite alternate; }
-.dm-b2 { width: 58vw; height: 58vw; right: -18%; bottom: -26%; background: #7c3aed; opacity: 0.16; filter: blur(120px); animation: dm-floatB 28s ease-in-out infinite alternate; }
-.dm-b3 { width: 46vw; height: 46vw; left: 28%; top: 22%; background: #2563eb; opacity: 0.13; filter: blur(125px); animation: dm-floatC 32s ease-in-out infinite alternate; }
-.dm-b4 { width: 30vw; height: 30vw; right: 18%; top: -10%; background: #22d3ee; opacity: 0.09; filter: blur(115px); animation: dm-floatB 26s ease-in-out infinite alternate; }
-.dm-b5 { width: 48vw; height: 48vw; left: -12%; bottom: 2%; background: #4338ca; opacity: 0.15; filter: blur(125px); animation: dm-floatA 30s ease-in-out infinite alternate; }
+.dm-b1 {
+  width: 62vw;
+  height: 62vw;
+  left: -16%;
+  top: -22%;
+  background: #6366f1;
+  opacity: 0.18;
+  filter: blur(115px);
+  animation: dm-floatA 24s ease-in-out infinite alternate;
+}
+.dm-b2 {
+  width: 58vw;
+  height: 58vw;
+  right: -18%;
+  bottom: -26%;
+  background: #7c3aed;
+  opacity: 0.16;
+  filter: blur(120px);
+  animation: dm-floatB 28s ease-in-out infinite alternate;
+}
+.dm-b3 {
+  width: 46vw;
+  height: 46vw;
+  left: 28%;
+  top: 22%;
+  background: #2563eb;
+  opacity: 0.13;
+  filter: blur(125px);
+  animation: dm-floatC 32s ease-in-out infinite alternate;
+}
+.dm-b4 {
+  width: 30vw;
+  height: 30vw;
+  right: 18%;
+  top: -10%;
+  background: #22d3ee;
+  opacity: 0.09;
+  filter: blur(115px);
+  animation: dm-floatB 26s ease-in-out infinite alternate;
+}
+.dm-b5 {
+  width: 48vw;
+  height: 48vw;
+  left: -12%;
+  bottom: 2%;
+  background: #4338ca;
+  opacity: 0.15;
+  filter: blur(125px);
+  animation: dm-floatA 30s ease-in-out infinite alternate;
+}
 .dm-veil {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 42%, rgba(5, 7, 12, 0.22) 0%, rgba(3, 4, 9, 0.72) 100%);
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(5, 7, 12, 0.22) 0%,
+    rgba(3, 4, 9, 0.72) 100%
+  );
 }
 
-@keyframes dm-floatA { from { transform: translate(0, 0) scale(1); } to { transform: translate(7%, 5%) scale(1.08); } }
-@keyframes dm-floatB { from { transform: translate(0, 0) scale(1); } to { transform: translate(-6%, -4%) scale(1.1); } }
-@keyframes dm-floatC { from { transform: translate(0, 0) scale(1.05); } to { transform: translate(4%, -6%) scale(1); } }
+@keyframes dm-floatA {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(7%, 5%) scale(1.08);
+  }
+}
+@keyframes dm-floatB {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-6%, -4%) scale(1.1);
+  }
+}
+@keyframes dm-floatC {
+  from {
+    transform: translate(0, 0) scale(1.05);
+  }
+  to {
+    transform: translate(4%, -6%) scale(1);
+  }
+}
 
 /* Distinct from the existing chat `pulse-glow` (which scales/fades). Box-shadow only. */
 @keyframes dm-btn-glow {
-  0%, 100% { box-shadow: 0 0 15px rgba(56, 189, 248, 0.18), 0 4px 16px rgba(99, 102, 241, 0.32); }
-  50% { box-shadow: 0 0 28px rgba(56, 189, 248, 0.42), 0 4px 18px rgba(99, 102, 241, 0.5); }
+  0%,
+  100% {
+    box-shadow:
+      0 0 15px rgba(56, 189, 248, 0.18),
+      0 4px 16px rgba(99, 102, 241, 0.32);
+  }
+  50% {
+    box-shadow:
+      0 0 28px rgba(56, 189, 248, 0.42),
+      0 4px 18px rgba(99, 102, 241, 0.5);
+  }
 }
-.dm-btn-pulse { animation: dm-btn-glow 2.8s ease-in-out infinite; }
+.dm-btn-pulse {
+  animation: dm-btn-glow 2.8s ease-in-out infinite;
+}
 
 /* Frosted surface base + opaque fallback. The app's "default" preset leaves
    darkraise-ui's --backdrop-filter: none, so the glass relies entirely on the
    utility classes below; without this fallback the card is illegible where
    backdrop-filter is unsupported/disabled (e.g. Firefox with the pref off,
    GPU-blocklisted contexts). Unlayered rule, so it wins over Card's bg-card. */
-.dm-glass { background-color: rgb(15 18 28 / 0.55); }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .dm-glass { background-color: rgb(13 17 28 / 0.92); }
+.dm-glass {
+  background-color: rgb(15 18 28 / 0.55);
+}
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .dm-glass {
+    background-color: rgb(13 17 28 / 0.92);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
