@@ -186,36 +186,13 @@ async def memory_batch_add(entries: list[dict]) -> str:
     # so the MCP path cannot enqueue an unbounded batch.
     validated = MemoryBatchCreate(entries=entries)
 
-    # Step 1: Create all memory rows WITHOUT pipeline processing
-    results = []
-    batch_entries = []
+    # Delegate to the service so creation threads every field (notably
+    # ``project``, the supersession scope) and runs the phased batch pipeline
+    # once. Re-implementing creation here previously dropped ``project``,
+    # landing every batch-added memory in 'default'.
     async with _memory_service_context() as service:
-        for data in validated.entries:
-            memory = await service.memory_repo.create(
-                content=data.content, source=data.source, source_agent=data.source_agent,
-                memory_type=data.memory_type, importance=data.importance,
-                metadata=data.metadata, expires_at=data.expires_at,
-            )
-            if data.tags:
-                await service.memory_repo.set_tags(memory.id, data.tags)
-                await service.session.refresh(memory, ["tags"])
-            await service.audit_repo.log("create", memory.id, None, {"source": data.source})
-            results.append(_memory_to_dict(memory))
-            batch_entries.append({
-                "memory_id": memory.id,
-                "content": memory.content,
-                "source": memory.source,
-                "tags": [t.name for t in memory.tags],
-                "memory_type": memory.memory_type,
-                "created_at": str(memory.created_at),
-            })
-        await service.session.commit()
-
-    # Step 2: Batch pipeline — one embed_batch call + concurrent extraction
-    if _pipeline and batch_entries:
-        await _pipeline.process_batch(batch_entries)
-
-    return json.dumps(results)
+        memories = await service.batch_create_memories(validated.entries, api_key_id=None)
+        return json.dumps([_memory_to_dict(m) for m in memories])
 
 
 @mcp.tool(
