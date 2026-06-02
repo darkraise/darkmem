@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import UUID
 
@@ -62,6 +63,7 @@ class WikiGenerator:
                 symbols_by_file.setdefault(s.file_id, []).append(s)
 
         module_entries = []
+        to_summarize: list[tuple[dict, str, str]] = []
         for module_path, module_files in sorted(modules.items()):
             entry = {
                 "path": module_path,
@@ -95,28 +97,37 @@ class WikiGenerator:
                 file_descriptions.append(f"- {f.file_path}: {sym_list}")
 
             if self.llm and file_descriptions:
-                try:
-                    from app.services import prompt as prompt_mod
-                    system_prompt = prompt_mod.get("summarization")
-
-                    prompt = (
-                        f"Summarize what this code module does in 2-3 sentences "
-                        f"based on its files and symbols:\n\nModule: {module_path}\n"
-                        + "\n".join(file_descriptions[:20])
-                    )
-
-                    summary = await self.llm.chat_completion(
-                        "summarization",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt},
-                        ],
-                    )
-                    entry["summary"] = summary
-                except Exception as e:
-                    logger.warning("Wiki summary failed for %s: %s", module_path, e)
+                prompt = (
+                    f"Summarize what this code module does in 2-3 sentences "
+                    f"based on its files and symbols:\n\nModule: {module_path}\n"
+                    + "\n".join(file_descriptions[:20])
+                )
+                to_summarize.append((entry, module_path, prompt))
 
             module_entries.append(entry)
+
+        # Run the per-module summarization calls bounded-concurrently rather than
+        # awaiting each in sequence (wall-clock was the sum of all module
+        # latencies).
+        if to_summarize:
+            from app.services import prompt as prompt_mod
+            system_prompt = prompt_mod.get("summarization")
+            sem = asyncio.Semaphore(5)
+
+            async def _summarize(entry: dict, module_path: str, user_prompt: str) -> None:
+                async with sem:
+                    try:
+                        entry["summary"] = await self.llm.chat_completion(
+                            "summarization",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                        )
+                    except Exception as e:
+                        logger.warning("Wiki summary failed for %s: %s", module_path, e)
+
+            await asyncio.gather(*[_summarize(e, m, p) for e, m, p in to_summarize])
 
         overview = None
         if self.llm and module_entries:
