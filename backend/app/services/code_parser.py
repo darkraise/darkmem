@@ -164,6 +164,22 @@ KIND_MAP: dict[str, str] = {
 
 SYMBOL_NODE_TYPES = FUNCTION_NODE_TYPES | CLASS_NODE_TYPES
 
+# Body wrappers that tree-sitter inserts between a class/function node and its
+# nested symbols (methods, nested functions, nested classes). Methods are NOT
+# direct children of the class node — they live one level down under the body —
+# so nested-symbol collection must recurse through these.
+BODY_CONTAINER_TYPES: set[str] = {
+    "block",
+    "statement_block",
+    "declaration_list",
+    "class_body",
+    "interface_body",
+    "enum_body",
+    "object_type",
+    "field_declaration_list",
+    "compound_statement",
+}
+
 MAX_SYMBOL_LINES = 200
 LARGE_WINDOW = 100
 LARGE_OVERLAP = 20
@@ -355,6 +371,25 @@ def _walk_tree(
             _walk_tree(child, source, symbols, imports)
 
 
+def _collect_nested_symbols(node: "Node", source: bytes) -> list["ExtractedSymbol"]:
+    """Collect symbols nested under ``node``, descending through body wrappers.
+
+    A symbol child is extracted directly; a body wrapper (the ``block`` /
+    ``class_body`` etc. that holds a class's methods or a function's nested
+    defs) is recursed into so the methods/nested symbols one level down are
+    captured rather than silently dropped.
+    """
+    collected: list[ExtractedSymbol] = []
+    for child in node.children:
+        if child.type in SYMBOL_NODE_TYPES:
+            sym = _extract_symbol(child, source)
+            if sym:
+                collected.append(sym)
+        elif child.type in BODY_CONTAINER_TYPES:
+            collected.extend(_collect_nested_symbols(child, source))
+    return collected
+
+
 def _extract_symbol(node: "Node", source: bytes) -> ExtractedSymbol | None:
     name = _extract_name(node, source)
     if name is None:
@@ -368,12 +403,7 @@ def _extract_symbol(node: "Node", source: bytes) -> ExtractedSymbol | None:
     visibility = _extract_visibility(node, source)
     source_code = _get_text(node, source)
 
-    children: list[ExtractedSymbol] = []
-    for child in node.children:
-        if child.type in SYMBOL_NODE_TYPES:
-            child_sym = _extract_symbol(child, source)
-            if child_sym:
-                children.append(child_sym)
+    children = _collect_nested_symbols(node, source)
 
     return_type = _extract_return_type(node, source)
 
