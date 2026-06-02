@@ -17,6 +17,7 @@ Guards that must all pass before a candidate is flipped:
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -29,12 +30,31 @@ from app.services.relations import (
     SUPERSESSION_WINDOW_DAYS,
 )
 
+_SENTENCE_SPLIT = re.compile(r"[.!?\n]+")
+
 
 def is_speculative(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
     return any(marker in low for marker in SPECULATIVE_REPLACES_MARKERS)
+
+
+def _replacement_is_speculative(text: str | None, target: str) -> bool:
+    """True when a clause mentioning ``target`` carries a speculative marker.
+
+    Scopes the speculative gate to the replacement clause so an unrelated
+    speculative aside elsewhere in the memory ("we might also try Kafka") does
+    not suppress a definitive replacement of ``target``. Falls back to the
+    whole-text check when the target isn't located in any sentence.
+    """
+    if not text:
+        return False
+    low_target = target.lower()
+    mentioning = [s for s in _SENTENCE_SPLIT.split(text) if low_target in s.lower()]
+    if not mentioning:
+        return is_speculative(text)
+    return any(is_speculative(s) for s in mentioning)
 
 
 async def detect_supersessions(
@@ -59,17 +79,17 @@ async def detect_supersessions(
 
     Safe to call inside an existing transaction; callers commit.
     """
-    if is_speculative(new_memory_text):
-        return []
-
     # Lowercase the target so the overlap check survives canonical_map case
     # drift: `memories.technologies` are stored lowercase by the pipeline.
+    # The speculative gate is scoped per-target to the clause asserting the
+    # replacement, not the whole memory, so a definitive replacement still
+    # fires even when the memory speculates about something unrelated.
     replaces_targets: list[str] = []
     for rel in new_relations or []:
         if rel.get("type") != "REPLACES":
             continue
         target = rel.get("target")
-        if isinstance(target, str) and target:
+        if isinstance(target, str) and target and not _replacement_is_speculative(new_memory_text, target):
             replaces_targets.append(target.lower())
     if not replaces_targets:
         return []
