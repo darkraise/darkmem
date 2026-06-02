@@ -25,7 +25,7 @@ from app.services.process_tracer import ProcessTracer
 from app.services.repo_manager import RepoManager
 from app.services.symbol_table import SymbolEntry, SymbolTable
 from app.services.type_env import TypeEnvironment, build_type_env, propagate_types
-from app.utils.graph_keys import compose_key
+from app.utils.graph_keys import compose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
 
@@ -702,6 +702,28 @@ class CodePipeline:
         )
         return self._symbol_index
 
+    async def _resolve_inherited_call(
+        self, call, fp: str, enclosing_owner: str | None, heritage_resolver,
+    ) -> tuple[str, str, str | None, float] | None:
+        """Resolve a ``self.<method>()`` the call resolver couldn't pin down to an
+        inherited ancestor method, by walking the enclosing class's extends chain.
+
+        Returns ``(name, file, owner, confidence)`` or None. Fires only for
+        self/this member calls inside a class method — there the receiver is the
+        enclosing class, so its inheritance chain is the place to look.
+        """
+        if getattr(call, "call_form", None) != "member" or not enclosing_owner:
+            return None
+        if getattr(call, "receiver_name", None) not in ("self", "this", "$this"):
+            return None
+        child_class_key = compose_key("symbol", enclosing_owner, fp)
+        inh = await heritage_resolver.find_inherited_method(child_class_key, call.called_name)
+        if not inh:
+            return None
+        target_key, conf = inh
+        name, file_path, owner = split_symbol_key(target_key)
+        return name, file_path, owner, conf
+
     async def phase_06_call_tracing(self) -> None:
         t0 = await self._phase_log("06_call_tracing")
 
@@ -745,6 +767,7 @@ class CodePipeline:
             topological_order=self._topological_order,
         )
 
+        heritage_resolver = HeritageResolver(self.session, self._repo_id_str)
         call_edges: list[dict] = []
         ordered_files = self._topological_order or list(self._all_calls.keys())
 
@@ -754,9 +777,6 @@ class CodePipeline:
                 continue
             for call in calls:
                 result = resolver.resolve(call, fp)
-                if not result:
-                    continue
-                target_id, confidence = result
                 enclosing_name = None
                 enclosing_owner = None
                 for start, end, name, owner in enclosing_index.get(fp, []):
@@ -766,6 +786,24 @@ class CodePipeline:
                         break
                 if not enclosing_name:
                     continue
+                if not result:
+                    inherited = await self._resolve_inherited_call(
+                        call, fp, enclosing_owner, heritage_resolver,
+                    )
+                    if inherited:
+                        t_name, t_file, t_owner, conf = inherited
+                        call_edges.append({
+                            "src_name": enclosing_name,
+                            "src_file": fp,
+                            "src_owner": enclosing_owner,
+                            "tgt_name": t_name,
+                            "tgt_file": t_file,
+                            "tgt_owner": t_owner,
+                            "confidence": conf,
+                            "line": call.line,
+                        })
+                    continue
+                target_id, confidence = result
                 target_entry = symbol_by_id.get(target_id)
                 if not target_entry:
                     continue

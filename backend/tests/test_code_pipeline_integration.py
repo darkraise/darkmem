@@ -110,6 +110,25 @@ async def test_same_named_methods_in_one_file_get_distinct_nodes(session, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_inherited_method_call_resolves_to_ancestor(session, tmp_path):
+    """self.<method>() where the method is defined only on an ancestor must get a
+    call edge via the inheritance walk. The decoy 'greet' in other.py makes the
+    global lookup ambiguous, so the resolver returns None — only walking Child's
+    extends chain to Base can resolve it."""
+    repo = await index_repo(session, tmp_path, {
+        "base.py": "class Base:\n    def greet(self):\n        return 1\n",
+        "child.py": (
+            "class Child(Base):\n"
+            "    def run(self):\n"
+            "        return self.greet()\n"
+        ),
+        "other.py": "class Other:\n    def greet(self):\n        return 2\n",
+    })
+    edges = await call_edges(session, repo.id)
+    assert ("run::child.py::Child", "greet::base.py::Base") in edges
+
+
+@pytest.mark.asyncio
 async def test_cross_file_extends_edge_targets_real_base_node(session, tmp_path):
     """A subclass extending a base class defined in another file must point its
     extends edge at the base's real node (Base::base.py), not Base::child.py
