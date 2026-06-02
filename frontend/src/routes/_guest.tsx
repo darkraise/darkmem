@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_guest")({
     }
   },
   component: () => (
-    <div className="bg-background relative flex min-h-screen items-center justify-center px-4">
+    <div className="bg-background relative isolate flex min-h-screen items-center justify-center px-4">
       <ParticleBackground />
       <Outlet />
     </div>
