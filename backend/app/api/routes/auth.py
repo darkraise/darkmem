@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -173,3 +173,48 @@ async def auth_refresh(
 @router.get("/me")
 async def auth_me(payload: TokenPayload = Depends(require_auth)):
     return {"authenticated": True, "sub": payload.sub}
+
+
+@router.get("/audit")
+async def auth_audit(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    action: str | None = Query(None),
+    _payload: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Admin read surface for the security audit trail (auth_*/setup_* rows).
+
+    The audit rows are committed independently of the request so failed logins
+    survive a 401 rollback; this endpoint makes them visible to an operator.
+    """
+    base = select(AuditLog).where(
+        AuditLog.action.like("auth_%") | AuditLog.action.like("setup_%")
+    )
+    if action:
+        base = base.where(AuditLog.action == action)
+
+    total = (await session.execute(
+        select(func.count()).select_from(base.subquery())
+    )).scalar() or 0
+
+    rows = (await session.execute(
+        base.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )).scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "action": r.action,
+                "details": r.details or {},
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            }
+            for r in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
