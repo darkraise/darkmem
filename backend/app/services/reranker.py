@@ -28,17 +28,25 @@ class RerankerService:
         documents: list[dict],
         top_k: int = 10,
         content_key: str = "content",
+        max_candidates: int = 40,
     ) -> list[dict]:
         """Re-score documents by asking the LLM to rate query-document relevance.
 
-        Uses the reasoning LLM purpose to score each document 0-10.
-        Falls back to original ordering if scoring fails.
+        Uses the reasoning LLM purpose to score each document 0-10. Only the top
+        ``max_candidates`` (the input arrives RRF-ranked, so the tail is the
+        lowest-ranked) are scored via the LLM, bounding per-search LLM calls; the
+        unscored tail is appended in its incoming order so downstream filtering
+        still sees the full candidate set. Falls back to original ordering if
+        scoring fails.
         """
         if not documents:
             return []
 
+        head = documents[:max_candidates]
+        tail = documents[max_candidates:]
+
         try:
-            sem = asyncio.Semaphore(3)
+            sem = asyncio.Semaphore(8)
 
             async def _score_one(doc: dict) -> float:
                 # Hybrid-search fused rows keep their content under ``payload``
@@ -69,16 +77,18 @@ class RerankerService:
                 async with sem:
                     return await _score_one(doc)
 
-            scores = await asyncio.gather(*[_score_with_limit(doc) for doc in documents])
+            scores = await asyncio.gather(*[_score_with_limit(doc) for doc in head])
 
             max_score = max(scores) if scores else 1.0
             normalizer = max_score if max_score > 0 else 1.0
 
-            for i, doc in enumerate(documents):
+            for i, doc in enumerate(head):
                 doc["rerank_score"] = scores[i] / normalizer
 
-            reranked = sorted(documents, key=lambda d: d.get("rerank_score", 0), reverse=True)
-            return reranked[:top_k]
+            reranked_head = sorted(head, key=lambda d: d.get("rerank_score", 0), reverse=True)
+            for doc in tail:
+                doc.setdefault("rerank_score", 0.0)
+            return (reranked_head + tail)[:top_k]
 
         except Exception as e:
             logger.warning("Reranker failed, returning original order: %s", e)
