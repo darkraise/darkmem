@@ -17,6 +17,7 @@ import { Route as GuestLoginRouteImport } from './routes/_guest/login'
 import { Route as AuthenticatedVectorsRouteImport } from './routes/_authenticated/vectors'
 import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authenticated/unified-graph'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedSecurityRouteImport } from './routes/_authenticated/security'
 import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/repos'
 import { Route as AuthenticatedReindexRouteImport } from './routes/_authenticated/reindex'
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated/pipeline'
@@ -66,6 +67,11 @@ const AuthenticatedUnifiedGraphRoute =
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedSecurityRoute = AuthenticatedSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedReposRoute = AuthenticatedReposRouteImport.update({
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/pipeline': typeof AuthenticatedPipelineRoute
   '/reindex': typeof AuthenticatedReindexRoute
   '/repos': typeof AuthenticatedReposRoute
+  '/security': typeof AuthenticatedSecurityRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/vectors': typeof AuthenticatedVectorsRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/pipeline': typeof AuthenticatedPipelineRoute
   '/reindex': typeof AuthenticatedReindexRoute
   '/repos': typeof AuthenticatedReposRoute
+  '/security': typeof AuthenticatedSecurityRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/vectors': typeof AuthenticatedVectorsRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
   '/_authenticated/reindex': typeof AuthenticatedReindexRoute
   '/_authenticated/repos': typeof AuthenticatedReposRoute
+  '/_authenticated/security': typeof AuthenticatedSecurityRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/_authenticated/vectors': typeof AuthenticatedVectorsRoute
@@ -199,6 +208,7 @@ export interface FileRouteTypes {
     | '/pipeline'
     | '/reindex'
     | '/repos'
+    | '/security'
     | '/settings'
     | '/unified-graph'
     | '/vectors'
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
     | '/pipeline'
     | '/reindex'
     | '/repos'
+    | '/security'
     | '/settings'
     | '/unified-graph'
     | '/vectors'
@@ -238,6 +249,7 @@ export interface FileRouteTypes {
     | '/_authenticated/pipeline'
     | '/_authenticated/reindex'
     | '/_authenticated/repos'
+    | '/_authenticated/security'
     | '/_authenticated/settings'
     | '/_authenticated/unified-graph'
     | '/_authenticated/vectors'
@@ -307,6 +319,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/security': {
+      id: '/_authenticated/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof AuthenticatedSecurityRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/repos': {
@@ -401,6 +420,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
   AuthenticatedReindexRoute: typeof AuthenticatedReindexRoute
   AuthenticatedReposRoute: typeof AuthenticatedReposRoute
+  AuthenticatedSecurityRoute: typeof AuthenticatedSecurityRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
   AuthenticatedVectorsRoute: typeof AuthenticatedVectorsRoute
@@ -419,6 +439,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
   AuthenticatedReindexRoute: AuthenticatedReindexRoute,
   AuthenticatedReposRoute: AuthenticatedReposRoute,
+  AuthenticatedSecurityRoute: AuthenticatedSecurityRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
   AuthenticatedVectorsRoute: AuthenticatedVectorsRoute,

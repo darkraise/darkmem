@@ -19,6 +19,7 @@ import {
   Cpu,
   Clock,
   Settings,
+  ShieldCheck,
 } from "lucide-react"
 import {
   useLayoutStore,
@@ -63,6 +64,7 @@ const nav: NavGroup[] = [
       { label: "Pipeline", href: "/pipeline", icon: Cpu },
       { label: "Jobs", href: "/jobs", icon: Clock },
       { label: "Reindex", href: "/reindex", icon: Activity },
+      { label: "Security", href: "/security", icon: ShieldCheck },
       { label: "Settings", href: "/settings", icon: Settings },
     ],
   },
