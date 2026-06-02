@@ -47,6 +47,36 @@ PURPOSE_LITERAL = Literal[
 ]
 
 
+def _check_setup_secret(presented: str | None) -> None:
+    """Compare a presented secret against ``SETUP_SECRET``.
+
+    When a secret is configured, require a matching one (constant-time compare).
+    When none is configured the endpoint stays open for the no-credentials local
+    install path — except in production, where the startup validator guarantees a
+    secret, so an unset value here is a misconfiguration.
+    """
+    expected = settings.setup_secret
+    if not expected:
+        if _is_production():
+            raise HTTPException(
+                status_code=503,
+                detail="SETUP_SECRET is not configured on the server",
+            )
+        return
+    if not presented or not hmac.compare_digest(presented, expected):
+        raise HTTPException(status_code=403, detail="Invalid or missing setup secret")
+
+
+def require_setup_secret(request: Request) -> None:
+    """Dependency gating header-only pre-setup endpoints (fs browse, model probe).
+
+    These have no request body to carry the secret, so they accept it via the
+    ``X-Setup-Secret`` header. Like the finalize gate, this is a no-op outside
+    production when no secret is configured.
+    """
+    _check_setup_secret(request.headers.get("X-Setup-Secret"))
+
+
 # ── Status ────────────────────────────────────────────────────────────
 
 
@@ -89,7 +119,7 @@ class ProbeModelsResponse(BaseModel):
 @router.post(
     "/probe-models",
     response_model=ProbeModelsResponse,
-    dependencies=[Depends(require_uninitialized)],
+    dependencies=[Depends(require_uninitialized), Depends(require_setup_secret)],
 )
 async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
     """Live model probe used by the wizard.
@@ -237,7 +267,7 @@ def _list_directory(path: Path, *, detect_repos: bool) -> list[FsListEntry]:
 @router.get(
     "/fs/roots",
     response_model=FsRootsResponse,
-    dependencies=[Depends(require_uninitialized)],
+    dependencies=[Depends(require_uninitialized), Depends(require_setup_secret)],
 )
 async def fs_roots() -> FsRootsResponse:
     return FsRootsResponse(roots=_enumerate_roots())
@@ -246,7 +276,7 @@ async def fs_roots() -> FsRootsResponse:
 @router.get(
     "/fs/list",
     response_model=FsListResponse,
-    dependencies=[Depends(require_uninitialized)],
+    dependencies=[Depends(require_uninitialized), Depends(require_setup_secret)],
 )
 async def fs_list(path: str, detect_repos: bool = False) -> FsListResponse:
     try:
@@ -333,19 +363,7 @@ def _enforce_setup_secret(request: Request, body: SetupRequest) -> None:
     enforce it, otherwise the endpoint stays open (gated only by
     ``require_uninitialized``) for the no-credentials local install path.
     """
-    expected = settings.setup_secret
-    if not expected:
-        if _is_production():
-            # Should be unreachable: the startup validator rejects this.
-            raise HTTPException(
-                status_code=503,
-                detail="SETUP_SECRET is not configured on the server",
-            )
-        return
-
-    presented = request.headers.get("X-Setup-Secret") or body.setup_secret
-    if not presented or not hmac.compare_digest(presented, expected):
-        raise HTTPException(status_code=403, detail="Invalid or missing setup secret")
+    _check_setup_secret(request.headers.get("X-Setup-Secret") or body.setup_secret)
 
 
 @router.post(
