@@ -53,10 +53,12 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
           >
             {(isInvalid, ariaDescribedBy) => (
               <PasswordInput>
-                <PasswordInputControl>
+                <PasswordInputControl className="h-[42px] rounded-[10px] border border-white/15 bg-black/35 focus-within:ring-2 focus-within:ring-cyan-300/60">
                   <PasswordInputField
                     id={field.name}
                     autoComplete="current-password"
+                    autoFocus
+                    className="bg-transparent text-slate-100 placeholder:text-slate-400 focus:shadow-none focus-visible:shadow-none"
                     value={field.state.value}
                     aria-invalid={isInvalid}
                     aria-describedby={ariaDescribedBy}
@@ -73,12 +75,19 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         )}
       </form.Field>
 
-      <Button type="submit" disabled={login.isPending} className="w-full">
+      <Button
+        type="submit"
+        disabled={login.isPending}
+        className="dm-btn-pulse w-full bg-gradient-to-r from-[#818cf8] via-[#6366f1] to-[#38bdf8] font-semibold text-slate-950 disabled:bg-none disabled:bg-slate-700 disabled:text-slate-100 disabled:opacity-100 focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+      >
         {login.isPending ? "Signing in…" : "Sign in"}
       </Button>
 
       {login.isError && (
-        <p className="text-destructive text-base">
+        <p
+          role="alert"
+          className="rounded-md bg-red-950/60 px-3 py-2 text-base text-red-200"
+        >
           {(login.error as Error).message}
         </p>
       )}
