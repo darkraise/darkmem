@@ -819,30 +819,26 @@ class CodePipeline:
             self._phase_done("08_cross_file_binding", t0)
             return
 
-        unresolved_count = sum(
-            1 for fp, calls in self._all_calls.items()
-            if len(calls) > 0
-        )
         total_calls = sum(len(c) for c in self._all_calls.values())
         if total_calls == 0:
             self._phase_done("08_cross_file_binding", t0)
             return
 
+        # Count resolved 'calls' edges whose SOURCE is one of THIS run's files,
+        # so resolved_calls and total_calls measure the same population. Counting
+        # the whole repo's edges (against this run's call sites) made the rate
+        # exceed 1 on incremental runs and skip the phase every time.
         result = await self.session.execute(
             text("""
                 SELECT COUNT(*) FROM code_edges
                 WHERE repo_id = :repo_id AND edge_type = 'calls'
+                  AND split_part(source_key, '::', 2) = ANY(CAST(:files AS text[]))
             """),
-            {"repo_id": self._repo_id_str},
+            {"repo_id": self._repo_id_str, "files": list(self._all_file_paths)},
         )
         resolved_calls = result.scalar() or 0
 
-        if total_calls > 0 and resolved_calls > 0:
-            resolution_rate = resolved_calls / total_calls
-        else:
-            resolution_rate = 0.0
-
-        benefit_estimate = 1.0 - resolution_rate
+        benefit_estimate = _cross_file_benefit(total_calls, resolved_calls)
         if benefit_estimate < CROSS_FILE_SKIP_THRESHOLD:
             logger.info(
                 "Phase 08 skipped: estimated benefit %.1f%% < threshold %.1f%%",
@@ -1302,6 +1298,17 @@ def _list_all_files(work_dir: Path) -> list[str]:
 # widely-called utility doesn't balloon an incremental reindex into a near-full
 # one. When exceeded, the overflow is logged (not silently dropped).
 DEPENDENT_RETRACE_CAP = 500
+
+
+def _cross_file_benefit(total_calls: int, resolved_calls: int) -> float:
+    """Estimated benefit (fraction of unresolved calls) of running phase 08.
+
+    Clamped to [0, 1] so a resolved count exceeding the (same-population) call
+    count can never produce a negative benefit and skip the phase spuriously.
+    """
+    if total_calls <= 0:
+        return 0.0
+    return 1.0 - min(1.0, resolved_calls / total_calls)
 
 
 async def _find_dependent_caller_files(
