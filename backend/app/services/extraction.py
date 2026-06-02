@@ -31,26 +31,73 @@ logger = logging.getLogger(__name__)
 _MAX_CONTENT_CHARS = 6000
 
 
-def _strip_json_fences(text: str) -> str:
-    """Drop a wrapping ```json ... ``` (or bare ```) markdown fence.
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
-    Anthropic's OpenAI-compat shim does not accept the loose
-    ``response_format=json_object`` mode that other vendors use, so
-    extraction calls against Anthropic run without a JSON-mode hint
-    and the model occasionally wraps the JSON in a markdown code
-    fence. Strip the fence here so ``json.loads`` succeeds. No-op for
-    responses that aren't fenced, so safe to apply unconditionally.
+
+def _strip_json_fences(text: str) -> str:
+    """Return the first fenced ```json ... ``` (or bare ```) block, if any.
+
+    Reasoning-by-default vendors (and Anthropic's compat shim, which can't take
+    ``response_format=json_object``) often wrap the JSON in a markdown fence —
+    and frequently prepend chain-of-thought prose, so the fence is NOT at
+    position 0. Search for the first fenced block anywhere rather than requiring
+    it to wrap the whole response. No-op for responses that aren't fenced, so
+    safe to apply unconditionally.
     """
     s = text.strip()
-    if not s.startswith("```"):
-        return s
-    s = s[3:]
-    if s.lower().startswith("json"):
-        s = s[4:]
-    s = s.lstrip("\r\n")
-    if s.endswith("```"):
-        s = s[:-3]
-    return s.strip()
+    m = _FENCE_RE.search(s)
+    if m:
+        return m.group(1).strip()
+    return s
+
+
+def _salvage_json_object(text: str) -> str | None:
+    """Return the first balanced ``{...}`` object substring, or None.
+
+    Recovers a JSON body buried in prose ("Sure, here you go: {...}") by scanning
+    from the first ``{`` and tracking brace depth while respecting string and
+    escape state, so braces inside string values don't unbalance the count.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _loads_extraction(response: str) -> dict:
+    """Parse an extraction response, tolerating fenced or prose-wrapped JSON.
+
+    Tries the fence-aware path first, then falls back to a brace-balanced
+    salvage. Raises ``json.JSONDecodeError`` only when neither yields valid JSON.
+    """
+    try:
+        return json.loads(_strip_json_fences(response))
+    except json.JSONDecodeError:
+        salvaged = _salvage_json_object(response)
+        if salvaged is None:
+            raise
+        return json.loads(salvaged)
 
 
 def _build_extraction_schema() -> str:
@@ -1609,11 +1656,13 @@ class ExtractionService:
                 seed=seed,
             )
             return clean_extraction(
-                json.loads(_strip_json_fences(response)),
+                _loads_extraction(response),
                 content, relation_rescue=relation_rescue,
             )
         except json.JSONDecodeError as e:
-            logger.warning("Extraction returned invalid JSON: %s", e)
+            logger.warning(
+                "Extraction returned invalid JSON: %s; raw prefix: %r", e, response[:200]
+            )
             return self._error_result(f"Invalid JSON: {e}")
         except Exception as e:
             logger.error("Extraction failed: %s: %s", type(e).__name__, e)
