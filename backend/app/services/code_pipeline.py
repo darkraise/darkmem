@@ -1453,7 +1453,7 @@ async def _store_graph(
     await session.execute(
         text("""
             INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-            VALUES (:repo_id, 'file', :key, :label, jsonb_build_object('file_path', :file_path))
+            VALUES (:repo_id, 'file', :key, :label, jsonb_build_object('file_path', CAST(:file_path AS text)))
             ON CONFLICT (repo_id, kind, key) DO NOTHING
         """),
         {"repo_id": repo_id, "key": file_key, "label": file_path, "file_path": file_path},
