@@ -239,6 +239,16 @@ function KnowledgeTimelineTab() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* The temporal knowledge-graph backend endpoints aren't implemented yet
+          (useKnowledgeEntities/useKnowledgeTimeline are stubs), so the controls
+          below can't return data. Say so plainly rather than presenting
+          working-looking controls. */}
+      <div className="rounded-md border border-amber-400/20 bg-amber-950/30 px-3 py-2 text-base text-amber-300/90">
+        The temporal fact timeline is not yet available — the knowledge-graph
+        endpoints are still being built, so the controls below won&apos;t return
+        data yet.
+      </div>
+
       {/* Controls */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">

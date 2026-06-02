@@ -150,10 +150,12 @@ export function useKnowledgeEntities() {
   })
 }
 
-// TODO: wire up once GET /api/v1/graph/knowledge/timeline is implemented in the backend
-export function useKnowledgeTimeline(_entity: string | null, _asOf?: string) {
+// TODO: wire up once GET /api/v1/graph/knowledge/timeline is implemented in the backend.
+// Key on (entity, asOf) so distinct selections don't collide on one cache entry
+// once the queryFn returns real data.
+export function useKnowledgeTimeline(entity: string | null, asOf?: string) {
   return useQuery<KnowledgeTriple[]>({
-    queryKey: ["knowledgeTimeline"],
+    queryKey: ["knowledgeTimeline", entity, asOf ?? null],
     queryFn: () => Promise.resolve([] as KnowledgeTriple[]),
     enabled: false,
     staleTime: 30_000,

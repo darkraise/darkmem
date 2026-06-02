@@ -21,8 +21,10 @@ export function ReindexDialog({
   onConfirm: (v: ReindexInput) => Promise<void>
 }) {
   const form = useForm({
+    // Open actionable: a full reindex is always valid, so the primary button
+    // isn't disabled on open. The user can uncheck it and pick other actions.
     defaultValues: {
-      full: false,
+      full: true,
       enrich_symbols: false,
       generate_wiki: false,
     },
