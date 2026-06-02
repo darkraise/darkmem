@@ -305,21 +305,26 @@ class PostgresVectorRepository:
     async def find_similar_memories(
         self, memory_id: UUID, fingerprint: str, top_k: int = 5, min_score: float = 0.4,
     ) -> list[dict]:
+        # Fetch the source vector first, then run the ANN probe with it as a
+        # literal so the HNSW index serves the ORDER BY. The previous self-join
+        # ordered by a column-vs-column distance (me1.embedding <=> me2.embedding)
+        # which the index cannot accelerate, forcing a full partition scan on
+        # every ingest (this runs per-memory for crossrefs).
         table = child_table("memory_embeddings", fingerprint)
-        result = await self.session.execute(
-            text(f"""
-                SELECT me2.memory_id,
-                       1 - (me1.embedding <=> me2.embedding) AS score
-                FROM {table} me1, {table} me2
-                WHERE me1.memory_id = :memory_id
-                  AND me2.memory_id != :memory_id
-                  AND 1 - (me1.embedding <=> me2.embedding) > :min_score
-                ORDER BY me1.embedding <=> me2.embedding
-                LIMIT :top_k
-            """),
-            {"memory_id": memory_id, "min_score": min_score, "top_k": top_k},
-        )
-        return [{"memory_id": str(row.memory_id), "score": float(row.score)} for row in result]
+        row = (await self.session.execute(
+            text(f"SELECT embedding::text AS embedding_text FROM {table} WHERE memory_id = :memory_id"),
+            {"memory_id": memory_id},
+        )).mappings().first()
+        if row is None:
+            return []
+        vector = self._parse_vector(row["embedding_text"])
+        candidates = await self.search(vector, fingerprint=fingerprint, limit=top_k + 1)
+        out = [
+            {"memory_id": str(c["memory_id"]), "score": c["score"]}
+            for c in candidates
+            if str(c["memory_id"]) != str(memory_id) and c["score"] > min_score
+        ]
+        return out[:top_k]
 
     async def store_crossrefs(self, memory_id: UUID, crossrefs: list[dict]):
         if not crossrefs:
