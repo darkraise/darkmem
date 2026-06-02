@@ -41,7 +41,18 @@ class RerankerService:
             sem = asyncio.Semaphore(3)
 
             async def _score_one(doc: dict) -> float:
-                text = doc.get(content_key) or doc.get("chunk_content", "")
+                # Hybrid-search fused rows keep their content under ``payload``
+                # (the semantic side stores the upserted payload dict); there is
+                # no top-level ``content`` key. Fall through the shapes the
+                # search paths actually emit so the LLM scores real text, not "".
+                payload = doc.get("payload") or {}
+                text = (
+                    doc.get(content_key)
+                    or payload.get("content")
+                    or doc.get("chunk_content")
+                    or payload.get("chunk_content")
+                    or ""
+                )
                 prompt = _RERANK_PROMPT.format(query=query, document=text[:1000])
                 try:
                     response = await self.llm.chat_completion(
