@@ -347,18 +347,23 @@ class JobRegistry:
         if key not in self._jobs:
             raise KeyError(key)
         job = self._jobs[key]
-        cfg = await self.load_config(key)
-        prev_enabled = cfg.enabled
-        if enabled is not None:
-            cfg.enabled = enabled
         if cron is not None:
             cron = cron.strip()
             if not is_valid_cron(cron):
                 raise ValueError(
                     f"Cron {cron!r} is not a valid 5- or 6-field expression"
                 )
-            cfg.cron = cron
-        await self.save_config(key, cfg)
+        # Share the per-job lock with _run_once / set_config so this
+        # read-modify-write can't be clobbered by (or clobber) a concurrent
+        # scheduled run's last_run_at/status write.
+        async with job.lock:
+            cfg = await self.load_config(key)
+            prev_enabled = cfg.enabled
+            if enabled is not None:
+                cfg.enabled = enabled
+            if cron is not None:
+                cfg.cron = cron
+            await self.save_config(key, cfg)
         # Apply enable / disable flips by restarting the loop. A cron-only
         # change is picked up on the loop's next read of load_config(),
         # which happens on every iteration; it should take effect on the
