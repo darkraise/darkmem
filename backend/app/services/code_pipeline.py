@@ -478,6 +478,22 @@ class CodePipeline:
         t0 = await self._phase_log("03_structure")
         repo = self._repo
 
+        # Map each class-like symbol to the file that defines it (across all
+        # parsed files, changed or not) so cross-file base classes resolve to
+        # their real node when heritage edges are written below.
+        class_file_index: dict[str, str] = {}
+        _class_kinds = ("class", "struct", "interface", "trait")
+
+        def _index_classes(syms: list[ExtractedSymbol], fp: str) -> None:
+            for s in syms:
+                if s.kind in _class_kinds:
+                    class_file_index.setdefault(s.name, fp)
+                if s.children:
+                    _index_classes(s.children, fp)
+
+        for fp, parsed in self._parsed.items():
+            _index_classes(parsed["parse_result"].symbols, fp)
+
         for fp, parsed in self._parsed.items():
             pr = parsed["parse_result"]
             existing = (
@@ -523,6 +539,7 @@ class CodePipeline:
             await _store_graph(
                 self.session, repo, fp, pr.symbols, pr.imports,
                 heritage=pr.heritage, properties=pr.properties, routes=pr.routes,
+                base_files=class_file_index,
             )
 
             self._stats["files_changed"] += 1
@@ -1450,6 +1467,7 @@ async def _store_graph(
     heritage: list[ExtractedHeritage] | None = None,
     properties: list[ExtractedProperty] | None = None,
     routes: list[ExtractedRoute] | None = None,
+    base_files: dict[str, str] | None = None,
 ) -> None:
     repo_id = str(repo.id)
     file_key = compose_key("file", file_path)
@@ -1566,7 +1584,11 @@ async def _store_graph(
     if heritage:
         for h in heritage:
             child_key = compose_key("symbol", h.symbol_name, file_path)
-            parent_key = compose_key("symbol", h.base_name, file_path)
+            # Resolve the base class to the file that actually defines it; a
+            # cross-file base keyed under the child's file points at no node and
+            # silently breaks override / inherited-method detection.
+            base_file = (base_files or {}).get(h.base_name, file_path)
+            parent_key = compose_key("symbol", h.base_name, base_file)
             await session.execute(
                 text("""
                     INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)

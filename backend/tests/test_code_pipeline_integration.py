@@ -110,6 +110,30 @@ async def test_same_named_methods_in_one_file_get_distinct_nodes(session, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_cross_file_extends_edge_targets_real_base_node(session, tmp_path):
+    """A subclass extending a base class defined in another file must point its
+    extends edge at the base's real node (Base::base.py), not Base::child.py
+    (the child's own file). The malformed key orphaned the edge and broke
+    cross-file override / inherited-method detection."""
+    repo = await index_repo(session, tmp_path, {
+        "base.py": "class Base:\n    def greet(self):\n        return 1\n",
+        "child.py": (
+            "from base import Base\n"
+            "class Child(Base):\n"
+            "    def run(self):\n"
+            "        return 2\n"
+        ),
+    })
+    rows = (await session.execute(
+        text("SELECT source_key, target_key FROM code_edges "
+             "WHERE repo_id = :r AND edge_type = 'extends'"),
+        {"r": str(repo.id)},
+    )).mappings().all()
+    edges = [(r["source_key"], r["target_key"]) for r in rows]
+    assert ("Child::child.py", "Base::base.py") in edges
+
+
+@pytest.mark.asyncio
 async def test_load_symbol_index_caches_the_query(session, tmp_path, monkeypatch):
     """Phases 06 and 08 ran the same CodeSymbol+CodeFile SELECT and rebuilt an
     identical symbol table twice per index run. _load_symbol_index must build it
