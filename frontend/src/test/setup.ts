@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest"
 import { vi, beforeAll, afterEach } from "vitest"
 
 // jsdom provides none of these; the atmospheric backdrop needs all three.
