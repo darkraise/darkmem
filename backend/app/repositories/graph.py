@@ -14,19 +14,27 @@ class PostgresGraphRepository:
 
     async def find_similar_entity(
         self, embedding: list[float], fingerprint: str, threshold: float = 0.85,
+        entity_type: str | None = None,
     ) -> dict | None:
         table = child_table("entity_embeddings", fingerprint)
+        # Constrain the match to the probe's own type: a name embedding alone
+        # can't tell a `tool` named "react" from a `concept` named "react", and
+        # canonicalizing one onto the other corrupts the (name, type) binding.
+        type_cond = "AND e.entity_type = :etype" if entity_type is not None else ""
+        params = {"vec": str(embedding), "threshold": threshold}
+        if entity_type is not None:
+            params["etype"] = entity_type
         result = await self.session.execute(
             text(f"""
                 SELECT e.id, e.name, e.entity_type,
                        1 - (ee.embedding <=> CAST(:vec AS vector)) AS score
                 FROM {table} ee
                 JOIN entities e ON e.id = ee.entity_id
-                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) > :threshold
+                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) > :threshold {type_cond}
                 ORDER BY ee.embedding <=> CAST(:vec AS vector)
                 LIMIT 1
             """),
-            {"vec": str(embedding), "threshold": threshold},
+            params,
         )
         row = result.mappings().first()
         if not row:

@@ -191,7 +191,7 @@ class ProcessingPipeline:
         extraction: dict | Exception,
         llm_classification: dict | None,
         name_to_embedding: dict[str, list[float]],
-        canonical_map: dict[str, str],
+        canonical_map: dict[tuple[str, str], str],
         flags: dict,
     ) -> dict:
         memory_id = entry["memory_id"]
@@ -226,19 +226,31 @@ class ProcessingPipeline:
                 status["extract"] = "partial"
                 status["error"] = status["error"] or f"Extraction degraded: {extraction['_error']}"
 
-            # Apply canonical_map to entity names and relationship endpoints
+            # Apply canonical_map to entity names and relationship endpoints.
+            # The map is keyed by (name_lower, entity_type) so a canonical rewrite
+            # only collapses same-typed entities — a `concept` "react" must not be
+            # renamed onto a `tool` "react". Relationship endpoints carry no type,
+            # so resolve each endpoint's type from this extraction's own entities;
+            # if unknown, leave the endpoint untouched.
+            ent_types = {
+                (e.get("name") or "").lower(): e.get("type")
+                for e in extraction.get("entities", [])
+            }
             for entity in extraction.get("entities", []):
                 low = entity["name"].lower()
                 entity["_orig_lower"] = low
-                if low in canonical_map:
-                    entity["name"] = canonical_map[low]
+                key = (low, entity.get("type"))
+                if key in canonical_map:
+                    entity["name"] = canonical_map[key]
             for rel in extraction.get("relationships", []):
                 src_low = rel.get("source", "").lower()
                 tgt_low = rel.get("target", "").lower()
-                if src_low in canonical_map:
-                    rel["source"] = canonical_map[src_low]
-                if tgt_low in canonical_map:
-                    rel["target"] = canonical_map[tgt_low]
+                src_key = (src_low, ent_types.get(src_low))
+                tgt_key = (tgt_low, ent_types.get(tgt_low))
+                if src_key in canonical_map:
+                    rel["source"] = canonical_map[src_key]
+                if tgt_key in canonical_map:
+                    rel["target"] = canonical_map[tgt_key]
         else:
             status["extract"] = "error"
             status["error"] = status["error"] or "Extraction returned invalid data"
@@ -574,12 +586,19 @@ class ProcessingPipeline:
 
         # Phase 3: Entity embedding with cache
         unique_names: set[str] = set()
+        # Each name's set of types, so Phase 4 can probe per (name, type) and
+        # keep the dedup from collapsing same-named entities of different types.
+        name_types: dict[str, set[str]] = {}
         for ext in extractions:
             if isinstance(ext, dict):
                 for entity in ext.get("entities", []):
                     name = entity.get("name")
                     if name:
-                        unique_names.add(name.lower())
+                        low = name.lower()
+                        unique_names.add(low)
+                        etype = entity.get("type")
+                        if etype:
+                            name_types.setdefault(low, set()).add(etype)
 
         unique_names_list = sorted(unique_names)
         name_to_embedding: dict[str, list[float]] = {}
@@ -618,30 +637,41 @@ class ProcessingPipeline:
         # Probes are independent ANN queries — fan them out concurrently
         # bounded by ``pipeline_concurrency`` so a batch of 20 distinct
         # entity names doesn't serialize 20 round-trips.
-        canonical_map: dict[str, str] = {}
+        canonical_map: dict[tuple[str, str], str] = {}
         if name_to_embedding and entity_fingerprint:
             dedup_sem = asyncio.Semaphore(pipeline_concurrency)
 
-            async def _probe(lower_name: str, emb: list[float]) -> tuple[str, str | None]:
+            async def _probe(
+                lower_name: str, etype: str, emb: list[float]
+            ) -> tuple[tuple[str, str], str | None]:
                 async with dedup_sem:
                     try:
                         async with self.session_factory() as probe_session:
                             probe_repo = PostgresGraphRepository(probe_session)
                             match = await probe_repo.find_similar_entity(
                                 emb, fingerprint=entity_fingerprint, threshold=0.85,
+                                entity_type=etype,
                             )
                         if match and match["name"].lower() != lower_name:
-                            return lower_name, match["name"]
+                            return (lower_name, etype), match["name"]
                     except Exception as e:
                         logger.warning("Dedup lookup failed for %s: %s", lower_name, e)
-                    return lower_name, None
+                    return (lower_name, etype), None
 
+            # One probe per (name, type) — a name embedded once may appear under
+            # more than one type across the batch, and each type dedups separately.
+            probe_args = [
+                (low, etype, name_to_embedding[low])
+                for low, types in name_types.items()
+                if low in name_to_embedding
+                for etype in types
+            ]
             results = await asyncio.gather(
-                *[_probe(n, e) for n, e in name_to_embedding.items()]
+                *[_probe(low, etype, emb) for low, etype, emb in probe_args]
             )
-            for lower_name, canonical in results:
+            for key, canonical in results:
                 if canonical:
-                    canonical_map[lower_name] = canonical
+                    canonical_map[key] = canonical
             logger.info("Phase 4 complete: %d canonical remappings", len(canonical_map))
 
         # Phase 5: Per-memory writes.
