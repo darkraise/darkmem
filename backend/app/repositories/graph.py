@@ -354,48 +354,64 @@ class PostgresGraphRepository:
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)
 
-        # Strip this memory's contribution from both tables first.
-        await self.session.execute(
-            text("""
-                UPDATE entities
-                SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
-                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
-            """),
-            {"mid": mid},
-        )
-        await self.session.execute(
-            text("""
-                UPDATE entity_relations
-                SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
-                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
-            """),
-            {"mid": mid},
-        )
+        # Strip this memory's contribution from both tables, capturing the
+        # touched ids. Only rows this memory referenced can become orphaned, so
+        # scoping the orphan sweeps to those ids avoids two full-table scans on
+        # every memory write (the previous unscoped DELETEs on a non-sargable
+        # emptiness predicate were guaranteed sequential scans of both tables).
+        ent_ids = [
+            str(r) for r in (await self.session.execute(
+                text("""
+                    UPDATE entities
+                    SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
+                    WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                    RETURNING id
+                """),
+                {"mid": mid},
+            )).scalars().all()
+        ]
+        rel_ids = [
+            str(r) for r in (await self.session.execute(
+                text("""
+                    UPDATE entity_relations
+                    SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
+                    WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                    RETURNING id
+                """),
+                {"mid": mid},
+            )).scalars().all()
+        ]
 
-        # Drop relations no memory asserts any more. Do this BEFORE deleting
-        # orphaned entities so the entity guard below sees only relations that
-        # truly survive.
-        await self.session.execute(
-            text("""
-                DELETE FROM entity_relations
-                WHERE array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0
-            """),
-        )
+        # Drop relations no memory asserts any more (scoped to touched rows).
+        # Do this BEFORE deleting orphaned entities so the entity guard below
+        # sees only relations that truly survive.
+        if rel_ids:
+            await self.session.execute(
+                text("""
+                    DELETE FROM entity_relations
+                    WHERE id = ANY(CAST(:ids AS uuid[]))
+                      AND (array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0)
+                """),
+                {"ids": rel_ids},
+            )
 
         # Delete an orphaned entity only when no surviving relation still
         # references it. The FK is ON DELETE CASCADE, so deleting an entity a
         # relation still points at would silently destroy a relation that other
         # memories assert — losing another memory's edge on re-extraction.
-        await self.session.execute(
-            text("""
-                DELETE FROM entities e
-                WHERE (array_length(e.memory_ids, 1) IS NULL OR array_length(e.memory_ids, 1) = 0)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM entity_relations r
-                      WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
-                  )
-            """),
-        )
+        if ent_ids:
+            await self.session.execute(
+                text("""
+                    DELETE FROM entities e
+                    WHERE e.id = ANY(CAST(:ids AS uuid[]))
+                      AND (array_length(e.memory_ids, 1) IS NULL OR array_length(e.memory_ids, 1) = 0)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM entity_relations r
+                          WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
+                      )
+                """),
+                {"ids": ent_ids},
+            )
 
     async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
         result = await self.session.execute(
