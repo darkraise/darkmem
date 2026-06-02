@@ -500,7 +500,6 @@ function RepositoriesPage() {
                 name: editingRepo.name,
                 path: editingRepo.local_path ?? "",
                 branch: editingRepo.default_branch,
-                sync_cron: "0 */6 * * *",
                 auto_sync: editingRepo.auto_sync,
                 enrich_symbols: true,
                 generate_wiki: true,

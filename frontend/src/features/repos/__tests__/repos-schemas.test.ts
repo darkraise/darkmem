@@ -35,11 +35,10 @@ describe("reindexSchema", () => {
 
 describe("editRepoSchema", () => {
   it("defaults branch to main", () => {
-    const r = editRepoSchema.parse({
-      name: "x",
-      path: "/p",
-      sync_cron: "0 0 * * *",
-    })
+    const r = editRepoSchema.parse({ name: "x", path: "/p" })
     expect(r.branch).toBe("main")
+  })
+  it("has no sync_cron field (repo sync schedule is governed by the Jobs page)", () => {
+    expect("sync_cron" in editRepoSchema.shape).toBe(false)
   })
 })

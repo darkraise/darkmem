@@ -6,11 +6,12 @@ export const cronExpressionSchema = z
     message: "Cron must have 5 or 6 space-separated fields",
   })
 
+// NB: no sync_cron here — repo sync scheduling is governed by the unified
+// JobRegistry (the repo_sync job on the Jobs page), not the repo update path.
 export const editRepoSchema = z.object({
   name: z.string().min(1, "Name required"),
   path: z.string().min(1, "Path required"),
   branch: z.string().default("main"),
-  sync_cron: cronExpressionSchema,
   auto_sync: z.boolean().default(true),
   enrich_symbols: z.boolean().default(true),
   generate_wiki: z.boolean().default(true),

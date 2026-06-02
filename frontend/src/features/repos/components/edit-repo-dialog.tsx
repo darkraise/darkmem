@@ -33,7 +33,6 @@ export function EditRepoDialog({
       name: initial.name ?? "",
       path: initial.path ?? "",
       branch: initial.branch ?? "main",
-      sync_cron: initial.sync_cron ?? "0 */6 * * *",
       auto_sync: initial.auto_sync ?? true,
       enrich_symbols: initial.enrich_symbols ?? true,
       generate_wiki: initial.generate_wiki ?? true,
@@ -108,28 +107,6 @@ export function EditRepoDialog({
               <TextField
                 name={field.name}
                 label="Branch"
-                value={field.state.value}
-                onChange={(v) => field.handleChange(v)}
-                onBlur={field.handleBlur}
-                isInvalid={field.state.meta.errors.length > 0}
-                errors={makeErrors(field.state.meta.errors)}
-              />
-            )}
-          </form.Field>
-
-          <form.Field
-            name="sync_cron"
-            validators={{
-              onChange: ({ value }) => {
-                const r = editRepoSchema.shape.sync_cron.safeParse(value)
-                return r.success ? undefined : r.error.issues[0]?.message
-              },
-            }}
-          >
-            {(field) => (
-              <TextField
-                name={field.name}
-                label="Sync schedule (cron)"
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
