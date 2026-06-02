@@ -95,6 +95,8 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         project=None,
         status=None,
         technologies_any=None,
+        source_any=None,
+        memory_type_any=None,
     ):
         if query:
             stmt = stmt.where(
@@ -107,8 +109,12 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
                 stmt = stmt.where(Memory.tags.any(Tag.name == tag_name))
         if memory_type:
             stmt = stmt.where(Memory.memory_type == memory_type)
+        if memory_type_any:
+            stmt = stmt.where(Memory.memory_type.in_(list(memory_type_any)))
         if source:
             stmt = stmt.where(Memory.source == source)
+        if source_any:
+            stmt = stmt.where(Memory.source.in_(list(source_any)))
         if project is not None:
             stmt = stmt.where(Memory.project == project)
         if status:
@@ -117,25 +123,27 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             stmt = stmt.where(Memory.technologies.overlap(list(technologies_any)))
         return stmt
 
-    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, project=None, status=None, technologies_any=None):
+    async def search_by_tags(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, project=None, status=None, technologies_any=None, source_any=None, memory_type_any=None):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
         stmt = self._apply_filters(
             stmt,
             query=query, tags_any=tags_any, tags_all=tags_all,
             memory_type=memory_type, source=source,
             project=project, status=status, technologies_any=technologies_any,
+            source_any=source_any, memory_type_any=memory_type_any,
         )
         stmt = stmt.order_by(Memory.created_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, offset=0, project=None, status=None, technologies_any=None):
+    async def search_by_tags_paginated(self, query=None, tags_any=None, tags_all=None, memory_type=None, source=None, limit=20, offset=0, project=None, status=None, technologies_any=None, source_any=None, memory_type_any=None):
         base = select(Memory).options(selectinload(Memory.tags)).where(Memory.is_archived == False)  # noqa: E712
         base = self._apply_filters(
             base,
             query=query, tags_any=tags_any, tags_all=tags_all,
             memory_type=memory_type, source=source,
             project=project, status=status, technologies_any=technologies_any,
+            source_any=source_any, memory_type_any=memory_type_any,
         )
 
         count_stmt = select(func.count()).select_from(base.subquery())

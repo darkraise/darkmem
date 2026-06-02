@@ -79,6 +79,8 @@ class MemorySearchRequest(BaseModel):
     project: str | None = None
     status: list[MemoryStatus] = Field(default_factory=lambda: ["active"])
     technologies_any: list[str] | None = None
+    source_any: list[str] | None = None
+    memory_type_any: list[str] | None = None
 
 
 class MemoryBatchCreate(BaseModel):

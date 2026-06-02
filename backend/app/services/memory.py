@@ -156,7 +156,11 @@ class MemoryService:
         """
         if params.memory_type and memory.memory_type != params.memory_type:
             return False
+        if params.memory_type_any and memory.memory_type not in params.memory_type_any:
+            return False
         if params.source and memory.source != params.source:
+            return False
+        if params.source_any and memory.source not in params.source_any:
             return False
         if params.project is not None and memory.project != params.project:
             return False
@@ -199,6 +203,7 @@ class MemoryService:
 limit=params.limit,
             project=params.project, status=list(params.status) if params.status else None,
             technologies_any=params.technologies_any,
+            source_any=params.source_any, memory_type_any=params.memory_type_any,
         )
 
     async def search_memories_paginated(self, params: MemorySearchRequest) -> dict:
@@ -223,6 +228,7 @@ limit=params.limit,
 limit=params.limit, offset=params.offset,
             project=params.project, status=list(params.status) if params.status else None,
             technologies_any=params.technologies_any,
+            source_any=params.source_any, memory_type_any=params.memory_type_any,
         )
         return {"items": items, "total": total, "limit": params.limit, "offset": params.offset}
 

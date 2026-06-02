@@ -108,17 +108,15 @@ function MemoriesPage() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [confirmBulkArchive, setConfirmBulkArchive] = useState(false)
 
-  // Derive single backend params (backend accepts one source/type at a time;
-  // if the user picks multiple, client-side filter handles narrowing further).
-  const backendSource =
-    sourceFilters.length === 1 ? sourceFilters[0] : undefined
-  const backendType = typeFilters.length === 1 ? typeFilters[0] : undefined
-
+  // Multi-value filters go to the server (source_any / memory_type_any), so the
+  // page and the total count reflect the same query. Previously multiple
+  // selections were narrowed client-side over the current page only, while the
+  // count came from the unfiltered query — a misleading mismatch.
   const { data, isLoading } = usePaginatedSearch({
     query: freeQuery || undefined,
     tags_any: tagFilters.length > 0 ? tagFilters : undefined,
-    source: backendSource,
-    memory_type: backendType,
+    source_any: sourceFilters.length > 0 ? sourceFilters : undefined,
+    memory_type_any: typeFilters.length > 0 ? typeFilters : undefined,
     limit: PAGE_SIZE,
     offset,
   })
@@ -126,21 +124,7 @@ function MemoriesPage() {
   const deleteMemory = useDeleteMemory()
   const qc = useQueryClient()
 
-  // When the user picked multiple sources/types, narrow client-side.
-  const memories: Memory[] = useMemo(() => {
-    const items = data?.items ?? []
-    return items.filter((m) => {
-      if (sourceFilters.length > 1 && !sourceFilters.includes(m.source))
-        return false
-      if (
-        typeFilters.length > 1 &&
-        m.memory_type &&
-        !typeFilters.includes(m.memory_type)
-      )
-        return false
-      return true
-    })
-  }, [data?.items, sourceFilters, typeFilters])
+  const memories: Memory[] = data?.items ?? []
 
   const total = data?.total ?? 0
   const unfilteredTotal = unfilteredData?.total ?? total

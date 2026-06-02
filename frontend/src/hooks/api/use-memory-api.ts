@@ -110,6 +110,8 @@ export interface PaginatedSearchParams {
   tags_any?: string[]
   source?: string
   memory_type?: string
+  source_any?: string[]
+  memory_type_any?: string[]
   status?: MemoryStatus[]
   limit?: number
   offset?: number
@@ -134,6 +136,10 @@ export function usePaginatedSearch(params: PaginatedSearchParams) {
           tags_any: params.tags_any?.length ? params.tags_any : undefined,
           source: params.source || undefined,
           memory_type: params.memory_type || undefined,
+          source_any: params.source_any?.length ? params.source_any : undefined,
+          memory_type_any: params.memory_type_any?.length
+            ? params.memory_type_any
+            : undefined,
           // Default to showing both active and superseded so the
           // Memories page doesn't silently hide memories after a
           // REPLACES-supersession runs (the status default on the
