@@ -67,11 +67,50 @@ class ReembedService:
         """
         return anti_join if await self._table_exists(table) else "TRUE"
 
+    async def _non_active_code_chunk_tables(self, fingerprint: str) -> list[str]:
+        active = child_table("code_chunk_embeddings", fingerprint)
+        tables = (await self.session.execute(text(
+            "SELECT tablename FROM pg_tables "
+            "WHERE schemaname = 'public' AND tablename LIKE 'code_chunk_embeddings__%'"
+        ))).scalars().all()
+        return [t for t in tables if t != active]
+
+    async def _count_missing_code_chunks(self, fingerprint: str) -> int:
+        """Distinct logical code chunks present under another fingerprint but
+        absent from the active partition.
+
+        Code-chunk content lives only inside the per-fingerprint embedding
+        tables, so after a rotation the chunks exist under the old fingerprint
+        while the active partition is empty. A logical chunk is keyed by
+        ``(repo_id, file_path, line_start, line_end)`` since the row ``id`` is
+        regenerated per fingerprint.
+        """
+        others = await self._non_active_code_chunk_tables(fingerprint)
+        if not others:
+            return 0
+        union = " UNION ALL ".join(
+            f"SELECT repo_id, file_path, line_start, line_end FROM {t}" for t in others
+        )
+        active = child_table("code_chunk_embeddings", fingerprint)
+        distinct = f"SELECT DISTINCT repo_id, file_path, line_start, line_end FROM ({union}) u"
+        if await self._table_exists(active):
+            sql = f"""
+                SELECT COUNT(*) FROM ({distinct}) d
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {active} a
+                    WHERE a.repo_id = d.repo_id AND a.file_path = d.file_path
+                      AND a.line_start IS NOT DISTINCT FROM d.line_start
+                      AND a.line_end IS NOT DISTINCT FROM d.line_end
+                )
+            """
+        else:
+            sql = f"SELECT COUNT(*) FROM ({distinct}) d"
+        return int((await self.session.execute(text(sql))).scalar_one())
+
     # -- counts -------------------------------------------------------------
 
     async def count_missing(self, fingerprint: str) -> dict[str, int]:
         mem_table = child_table("memory_embeddings", fingerprint)
-        chunk_table = child_table("code_chunk_embeddings", fingerprint)
         ent_table = child_table("entity_embeddings", fingerprint)
 
         mem_filter = await self._missing_filter(
@@ -81,19 +120,9 @@ class ReembedService:
             text(f"SELECT COUNT(*) FROM memories m WHERE {mem_filter}"),
         )).scalar_one()
 
-        # Code chunks: a chunk_content row from any fingerprint table that is
-        # not yet present in the active fingerprint table.
-        chunk_count = (await self.session.execute(
-            text(f"""
-                SELECT COUNT(DISTINCT cc.id)
-                FROM code_chunk_source_view cc
-                WHERE cc.chunk_content IS NOT NULL
-                  AND NOT EXISTS (
-                      SELECT 1 FROM {chunk_table} active
-                      WHERE active.id = cc.id
-                  )
-            """),
-        )).scalar_one() if await self._chunk_source_view_exists() else 0
+        # Code chunks live only inside per-fingerprint tables; after a rotation
+        # they sit under the old fingerprint, missing from the active partition.
+        chunk_count = await self._count_missing_code_chunks(fingerprint)
 
         ent_filter = await self._missing_filter(
             ent_table, f"NOT EXISTS (SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id)"
@@ -152,11 +181,45 @@ class ReembedService:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        # Without the legacy parent table we no longer have a single source
-        # of "stale" code chunks. The new world treats this as "non-empty in
-        # any other fingerprint table". For now, return zero — code chunk
-        # backfill can be re-introduced by walking the registry table list.
-        return [], 0
+        others = await self._non_active_code_chunk_tables(fingerprint)
+        if not others:
+            return [], 0
+        total = await self._count_missing_code_chunks(fingerprint)
+        union = " UNION ALL ".join(
+            f"SELECT repo_id, file_path, symbol_name, line_start, line_end FROM {t}" for t in others
+        )
+        active = child_table("code_chunk_embeddings", fingerprint)
+        not_exists = ""
+        if await self._table_exists(active):
+            not_exists = f"""
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {active} a
+                    WHERE a.repo_id = d.repo_id AND a.file_path = d.file_path
+                      AND a.line_start IS NOT DISTINCT FROM d.line_start
+                      AND a.line_end IS NOT DISTINCT FROM d.line_end
+                )
+            """
+        rows = (await self.session.execute(
+            text(f"""
+                SELECT DISTINCT d.repo_id, d.file_path, d.symbol_name, d.line_start, d.line_end
+                FROM ({union}) d
+                {not_exists}
+                ORDER BY d.file_path
+                LIMIT :limit OFFSET :offset
+            """),
+            {"limit": limit, "offset": offset},
+        )).mappings().all()
+        items = [
+            {
+                "repo_id": str(r["repo_id"]),
+                "file_path": r["file_path"],
+                "symbol_name": r["symbol_name"],
+                "line_start": r["line_start"],
+                "line_end": r["line_end"],
+            }
+            for r in rows
+        ]
+        return items, total
 
     async def list_obsolete_entities(
         self,
@@ -328,13 +391,22 @@ class ReembedService:
         broadcast: BroadcastFn | None,
         flags: dict,
     ) -> dict:
-        # Code chunk backfill across fingerprints requires walking every
-        # registered fingerprint's child table for source rows. Out of scope
-        # for the initial Phase B landing; surface a clean no-op so the route
-        # stays usable.
-        await self._broadcast_started(broadcast, batch_id, "code_chunks", 0)
-        await self._broadcast_done(broadcast, batch_id, "code_chunks", 0, 0, 0, None)
-        return {"processed": 0, "errors": 0, "last_error": None}
+        # Cross-fingerprint code-chunk backfill (re-embedding old chunk_content
+        # under the active embedder) is not yet implemented. Rather than
+        # broadcast a fake success that leaves code search silently degraded,
+        # surface the obsolete count and direct the operator to a full reindex,
+        # which already rebuilds code embeddings under the active fingerprint.
+        total = await self._count_missing_code_chunks(current_fingerprint)
+        last_error = (
+            "Code-chunk re-embedding across fingerprints is not yet implemented; "
+            "run a full repository reindex to rebuild code embeddings under the "
+            "active embedder."
+        ) if total > 0 else None
+        await self._broadcast_started(broadcast, batch_id, "code_chunks", total)
+        await self._broadcast_done(
+            broadcast, batch_id, "code_chunks", total, 0, total, last_error,
+        )
+        return {"processed": 0, "errors": total, "last_error": last_error}
 
     async def reembed_entities(
         self,
@@ -454,9 +526,6 @@ class ReembedService:
         return {"processed": processed, "errors": errors, "last_error": last_error}
 
     # -- helpers ------------------------------------------------------------
-
-    async def _chunk_source_view_exists(self) -> bool:
-        return False  # see TODO in count_missing
 
     async def _ensure_partition(self, llm, fingerprint: str) -> None:
         from app.services.embedder_registry import (  # noqa: PLC0415
