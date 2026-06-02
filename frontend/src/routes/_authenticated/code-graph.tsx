@@ -9,6 +9,7 @@ import {
 } from "darkraise-ui/components/select"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
+import { toast } from "darkraise-ui/components/sonner"
 import { CodeGraphRenderer } from "@/features/graph/components/code-graph-renderer"
 import { CodeInspectorPanel } from "@/features/graph/components/code-inspector-panel"
 import { CodeAnalysisPanel } from "@/features/graph/components/code-analysis-panel"
@@ -250,15 +251,31 @@ function CodeGraphPage() {
 
   const handleSearchResultClick = useCallback(
     (result: CodeSearchResult) => {
-      const matchNode = filteredNodes.find(
-        (n) => n.label === result.symbol_name || n.label === result.file_path,
-      )
-      if (matchNode) {
-        setSelectedNodeId(matchNode.id)
-        handleSelect(matchNode)
+      const all = graphData?.nodes ?? []
+      // Resolve against the FULL node set (not the filtered subset) so an
+      // off-screen match is still actionable, and disambiguate same-named
+      // symbols by file_path before falling back to a name/path label match.
+      const matchNode =
+        all.find(
+          (n) => n.label === result.symbol_name && n.file_path === result.file_path,
+        ) ??
+        all.find(
+          (n) => n.label === result.symbol_name || n.label === result.file_path,
+        )
+      if (!matchNode) {
+        toast.error(`"${result.symbol_name}" isn't in the current graph`)
+        return
       }
+      // If the match is hidden by the active type/focus filters, reveal it so
+      // the selection is actually shown rather than a silent no-op.
+      if (!filteredNodes.some((n) => n.id === matchNode.id)) {
+        setFocusDepth(null)
+        setVisibleNodeTypes((prev) => new Set(prev).add(matchNode.kind || "function"))
+      }
+      setSelectedNodeId(matchNode.id)
+      handleSelect(matchNode)
     },
-    [filteredNodes, handleSelect],
+    [graphData, filteredNodes, handleSelect],
   )
 
   const handleFileSelect = useCallback(
