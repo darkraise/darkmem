@@ -30,17 +30,28 @@ class HybridSearchService:
         fetch_n = limit * 3
         vector, fingerprint = await self.llm.embed(query)
 
+        semantic_failed = False
+        keyword_failed = False
+
         try:
             semantic_results = await self._semantic_search(vector, fingerprint, fetch_n)
         except Exception as e:
             logger.error("Semantic search failed: %s", e)
             semantic_results = []
+            semantic_failed = True
 
         try:
             keyword_results = await self._keyword_search(query, fetch_n)
         except Exception as e:
             logger.error("Keyword search failed: %s", e)
             keyword_results = []
+            keyword_failed = True
+
+        # A one-sided failure degrades gracefully to the other modality, but if
+        # BOTH errored, an empty list is indistinguishable from a genuine
+        # no-match — raise so the outage is loud instead of silently masked.
+        if semantic_failed and keyword_failed:
+            raise RuntimeError("Hybrid search failed on both semantic and keyword sides")
 
         return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
 
