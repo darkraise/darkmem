@@ -50,6 +50,23 @@ class ReembedService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def _table_exists(self, table: str) -> bool:
+        return (
+            await self.session.execute(
+                text("SELECT to_regclass(:t)"), {"t": f"public.{table}"}
+            )
+        ).scalar_one_or_none() is not None
+
+    async def _missing_filter(self, table: str, anti_join: str) -> str:
+        """WHERE-clause body selecting rows absent from the active partition.
+
+        Until the partition exists (fresh install, or right after an embedder
+        rotation), no row is embedded under this fingerprint, so every row is
+        'missing'. The anti-join can't run against a non-existent relation, so
+        degrade the filter to TRUE rather than crashing with UndefinedTable.
+        """
+        return anti_join if await self._table_exists(table) else "TRUE"
+
     # -- counts -------------------------------------------------------------
 
     async def count_missing(self, fingerprint: str) -> dict[str, int]:
@@ -57,13 +74,11 @@ class ReembedService:
         chunk_table = child_table("code_chunk_embeddings", fingerprint)
         ent_table = child_table("entity_embeddings", fingerprint)
 
+        mem_filter = await self._missing_filter(
+            mem_table, f"NOT EXISTS (SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id)"
+        )
         mem_count = (await self.session.execute(
-            text(f"""
-                SELECT COUNT(*) FROM memories m
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
-                )
-            """),
+            text(f"SELECT COUNT(*) FROM memories m WHERE {mem_filter}"),
         )).scalar_one()
 
         # Code chunks: a chunk_content row from any fingerprint table that is
@@ -80,13 +95,11 @@ class ReembedService:
             """),
         )).scalar_one() if await self._chunk_source_view_exists() else 0
 
+        ent_filter = await self._missing_filter(
+            ent_table, f"NOT EXISTS (SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id)"
+        )
         entity_count = (await self.session.execute(
-            text(f"""
-                SELECT COUNT(*) FROM entities e
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
-                )
-            """),
+            text(f"SELECT COUNT(*) FROM entities e WHERE {ent_filter}"),
         )).scalar_one()
 
         return {
@@ -106,22 +119,18 @@ class ReembedService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         mem_table = child_table("memory_embeddings", fingerprint)
+        mem_filter = await self._missing_filter(
+            mem_table, f"NOT EXISTS (SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id)"
+        )
         total = (await self.session.execute(
-            text(f"""
-                SELECT COUNT(*) FROM memories m
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
-                )
-            """),
+            text(f"SELECT COUNT(*) FROM memories m WHERE {mem_filter}"),
         )).scalar_one()
 
         rows = (await self.session.execute(
             text(f"""
                 SELECT m.id AS memory_id, LEFT(m.content, 120) AS content_preview
                 FROM memories m
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id
-                )
+                WHERE {mem_filter}
                 ORDER BY m.created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
@@ -156,22 +165,18 @@ class ReembedService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         ent_table = child_table("entity_embeddings", fingerprint)
+        ent_filter = await self._missing_filter(
+            ent_table, f"NOT EXISTS (SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id)"
+        )
         total = (await self.session.execute(
-            text(f"""
-                SELECT COUNT(*) FROM entities e
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
-                )
-            """),
+            text(f"SELECT COUNT(*) FROM entities e WHERE {ent_filter}"),
         )).scalar_one()
 
         rows = (await self.session.execute(
             text(f"""
                 SELECT e.id, e.name, e.entity_type
                 FROM entities e
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id
-                )
+                WHERE {ent_filter}
                 ORDER BY e.created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
