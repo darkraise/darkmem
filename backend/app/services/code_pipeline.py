@@ -1207,6 +1207,25 @@ class CodePipeline:
             {"repo_id": str(repo_id), "file_path": file_path, "prefix": f"%::{file_path}"},
         )
 
+        # Route/tool nodes have bare keys and no file_path property, so the
+        # predicates above can't match them; the handles_* edge from this file
+        # was just deleted, so remove any route/tool node left with no inbound
+        # handler edge — otherwise phantom routes/processes accumulate.
+        await self.session.execute(
+            text("""
+                DELETE FROM code_graph_nodes n
+                WHERE n.repo_id = :repo_id
+                  AND n.kind IN ('route', 'tool')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM code_edges e
+                      WHERE e.repo_id = n.repo_id
+                        AND e.target_key = n.key
+                        AND e.edge_type IN ('handles_route', 'handles_tool')
+                  )
+            """),
+            {"repo_id": str(repo_id)},
+        )
+
         if self.vector_repo:
             await self.vector_repo.delete_code_chunks_by_file(repo_id, file_path)
 
