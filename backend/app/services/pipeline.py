@@ -274,6 +274,11 @@ class ProcessingPipeline:
                     extraction.get("importance") if isinstance(extraction, dict) else None
                 )
 
+                # Savepoint A: the content embedding + memory-row enrichment.
+                # Released independently of the graph write below so a graph
+                # failure can't roll back a successfully embedded memory (which
+                # would leave it unsearchable and misreport the failed step).
+                mem_record = None
                 try:
                     async with session.begin_nested():
                         payload = {
@@ -318,8 +323,19 @@ class ProcessingPipeline:
                                 except (TypeError, ValueError):
                                     pass
                             mem_record.confidence = estimate_confidence(content, resolved_memory_type)
+                except Exception as e:
+                    status["vector"] = "error"
+                    status["graph"] = "skipped"
+                    status["error"] = status["error"] or f"Vector write failed: {e}"
+                    logger.error(f"Vector write failed for {memory_id}: {e}")
+                    mem_record = None
 
-                        if status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
+                # Savepoint B: the entity/relationship graph. A failure here rolls
+                # back only the graph; the embedding from savepoint A survives and
+                # the failure is attributed to the graph step, not the vector one.
+                if status["vector"] == "ok" and status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
+                    try:
+                        async with session.begin_nested():
                             # Technologies are denormalised to the memory row so the
                             # GIN index on `memories.technologies` can answer retrieval
                             # filters without joining. Store lowercase so case drift in
@@ -380,15 +396,13 @@ class ProcessingPipeline:
                                         new_relations=extraction.get("relationships", []),
                                     )
 
-                            status["graph"] = "ok"
-                        else:
-                            status["graph"] = "skipped"
-
-                except Exception as e:
-                    status["vector"] = "error"
-                    status["graph"] = "error"
-                    status["error"] = status["error"] or f"Pipeline DB write failed: {e}"
-                    logger.error(f"Pipeline DB write failed for {memory_id}: {e}")
+                        status["graph"] = "ok"
+                    except Exception as e:
+                        status["graph"] = "error"
+                        status["error"] = status["error"] or f"Graph write failed: {e}"
+                        logger.error(f"Graph write failed for {memory_id}: {e}")
+                elif status["vector"] == "ok":
+                    status["graph"] = "skipped"
             else:
                 status["vector"] = "skipped"
                 status["graph"] = "skipped"
