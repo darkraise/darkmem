@@ -175,8 +175,13 @@ class MemoryService:
     async def search_memories(self, params: MemorySearchRequest) -> list[Memory]:
         # If we have a query and pipeline, try semantic search first
         if params.query and self.pipeline:
+            # Over-fetch so the in-memory archived/status/type/project/tag filters
+            # can still yield a full ``limit`` page (and honour ``offset``).
+            # Fetching exactly ``limit`` silently under-returns whenever a filter
+            # drops a row, and ignoring ``offset`` makes MCP pagination a no-op.
+            fetch_n = params.limit + params.offset + 50
             semantic_results = await self.pipeline.semantic_search(
-                params.query, limit=params.limit, semantic_weight=params.semantic_weight,
+                params.query, limit=fetch_n, semantic_weight=params.semantic_weight,
             )
             if semantic_results:
                 memory_ids = [r["memory_id"] for r in semantic_results]
@@ -185,7 +190,7 @@ class MemoryService:
                     m for m in all_memories
                     if not m.is_archived and self._matches_schema_v2_filters(m, params)
                 ]
-                return memories[:params.limit]
+                return memories[params.offset:params.offset + params.limit]
 
         # Fallback: Postgres text/tag search
         return await self.memory_repo.search_by_tags(
