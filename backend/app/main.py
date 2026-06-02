@@ -250,6 +250,14 @@ async def lifespan(app: FastAPI):
     from app.services.task_registry import TaskRegistry
     TaskRegistry.cancel_all()
 
+    # Tear down loaded HF classifier models and their idle-eviction watchdogs;
+    # otherwise they leak across reload-heavy dev loops and graceful restarts.
+    from app.services.ml_runtime import ml_model_manager
+    try:
+        await ml_model_manager.shutdown_all()
+    except Exception:
+        logger.warning("Failed to shut down ML model manager", exc_info=True)
+
     # Close whichever orchestrator is currently live, not the one from
     # startup — admin saves on the LLM Providers / LLM Config pages
     # replace ``app.state.llm`` mid-session, and the previous instance is

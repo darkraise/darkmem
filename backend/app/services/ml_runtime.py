@@ -191,6 +191,7 @@ class MLModelManager:
             return
 
 
-# Process-level singleton. ``app.state.ml_model_manager`` references
-# this same instance for routes and the classifier service.
+# Process-level singleton. Callers (the pipeline's per-batch classifier swap,
+# the classifier service) import this instance directly; the app lifespan calls
+# ``shutdown_all`` on it at teardown.
 ml_model_manager = MLModelManager()
