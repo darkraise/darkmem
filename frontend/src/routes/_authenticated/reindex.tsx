@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import {
   usePipelineLogs,
@@ -314,11 +314,23 @@ type ReembedCategory = "memories" | "code_chunks" | "entities"
 function CategoryProgressBar({
   batchId,
   category,
+  onDone,
 }: {
   batchId: string | null
   category: ReembedCategory
+  onDone?: (category: ReembedCategory) => void
 }) {
   const { data: progress } = useReembedBatchProgress(batchId, category)
+  const isDone = progress?.state === "done"
+  // Clear the parent's running state when the batch finishes; otherwise
+  // batchIds[category] never resets and every re-embed button stays disabled
+  // until a full page reload.
+  useEffect(() => {
+    if (batchId && isDone && onDone) {
+      const timer = setTimeout(() => onDone(category), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [batchId, isDone, onDone, category])
   if (!progress || progress.state === "done") return null
   const pct = progress.total > 0 ? (progress.current / progress.total) * 100 : 0
   return (
@@ -351,6 +363,10 @@ function ObsoleteEmbeddingsCard() {
     code_chunks: null,
     entities: null,
   })
+
+  const clearCategory = useCallback((category: ReembedCategory) => {
+    setBatchIds((prev) => ({ ...prev, [category]: null }))
+  }, [])
 
   if (!counts) return null
 
@@ -444,6 +460,7 @@ function ObsoleteEmbeddingsCard() {
               <CategoryProgressBar
                 batchId={batchIds.memories}
                 category="memories"
+                onDone={clearCategory}
               />
             </div>
             <Button
@@ -467,6 +484,7 @@ function ObsoleteEmbeddingsCard() {
               <CategoryProgressBar
                 batchId={batchIds.entities}
                 category="entities"
+                onDone={clearCategory}
               />
             </div>
             <Button
@@ -490,6 +508,7 @@ function ObsoleteEmbeddingsCard() {
               <CategoryProgressBar
                 batchId={batchIds.code_chunks}
                 category="code_chunks"
+                onDone={clearCategory}
               />
             </div>
             <Button
