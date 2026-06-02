@@ -33,6 +33,7 @@ import {
 } from "@/hooks/api"
 import { API_KIND_OPTIONS } from "./api-kinds"
 import { LLMProviderTestDialog } from "./LLMProviderTestDialog"
+import { firstInvalidDirty } from "./dirty-save"
 
 const TOKEN_SENTINEL = "***"
 
@@ -65,25 +66,26 @@ export function LLMProvidersPanel() {
   )
   const profileNames = Object.keys(merged).sort()
 
-  const dirty = useMemo(() => {
-    if (Object.keys(draft).length === 0) return false
+  const dirtyNames = useMemo(() => {
+    const names = new Set<string>()
     for (const name of Object.keys(draft)) {
       const next = draft[name]
       const prev = stored[name]
       if (!next) continue
-      if (!prev) return true
       if (
+        !prev ||
         next.provider !== prev.provider ||
         next.base_url !== prev.base_url ||
         next.api_key !== prev.api_key ||
         next.api_kind !== prev.api_kind ||
         next.supports_embedding !== prev.supports_embedding
       ) {
-        return true
+        names.add(name)
       }
     }
-    return false
+    return names
   }, [draft, stored])
+  const dirty = dirtyNames.size > 0
 
   if (isLoading) {
     return (
@@ -153,15 +155,17 @@ export function LLMProvidersPanel() {
 
   const save = () => {
     if (!dirty) return
+    // Validate only edited rows, so a pre-existing invalid row the user never
+    // touched can't block saving an unrelated edit.
+    const invalid = firstInvalidDirty(merged, dirtyNames, (p) => !p.base_url.trim())
+    if (invalid) {
+      toast.error(`Profile '${invalid}' needs a base URL`)
+      return
+    }
     const profiles: Record<string, LlmProviderProfile> = {}
     for (const name of Object.keys(merged)) {
       const p = merged[name]
       if (!p) continue
-      // For new rows, require base_url to be set.
-      if (!p.base_url.trim()) {
-        toast.error(`Profile '${name}' needs a base URL`)
-        return
-      }
       profiles[name] = {
         provider: p.provider.trim() || "openai",
         base_url: p.base_url.trim(),

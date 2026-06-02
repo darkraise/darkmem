@@ -187,7 +187,10 @@ export function LLMProfilesPanel() {
     )
   }, [groupKeys])
 
-  const dirty = Object.keys(draft).length > 0
+  // Rows the user actually touched (a draft entry). Validation gates on these
+  // only, so a pre-existing invalid row never blocks saving an unrelated edit.
+  const dirtyNames = useMemo(() => new Set(Object.keys(draft)), [draft])
+  const dirty = dirtyNames.size > 0
 
   const patch = (name: string, p: Partial<DraftProfile>) => {
     setDraft((prev) => ({
@@ -259,15 +262,16 @@ export function LLMProfilesPanel() {
     for (const name of Object.keys(merged)) {
       const p = merged[name]
       if (!p) continue
-      if (!p.provider_ref || !providerNames.includes(p.provider_ref)) {
+      const edited = dirtyNames.has(name)
+      if (edited && (!p.provider_ref || !providerNames.includes(p.provider_ref))) {
         toast.error(`Profile '${name}' references an unknown Provider`)
         return
       }
-      if (!p.model.trim()) {
+      if (edited && !p.model.trim()) {
         toast.error(`Profile '${name}' needs a model`)
         return
       }
-      let params: Record<string, unknown> = {}
+      let params: Record<string, unknown> = p.params ?? {}
       const text = p._paramsText?.trim() ?? ""
       if (text) {
         try {
@@ -276,10 +280,13 @@ export function LLMProfilesPanel() {
             throw new Error("must be a JSON object")
           }
         } catch (err) {
-          toast.error(
-            `Profile '${name}' has invalid params JSON: ${(err as Error).message}`,
-          )
-          return
+          if (edited) {
+            toast.error(
+              `Profile '${name}' has invalid params JSON: ${(err as Error).message}`,
+            )
+            return
+          }
+          params = p.params ?? {}
         }
       }
       profiles[name] = {
