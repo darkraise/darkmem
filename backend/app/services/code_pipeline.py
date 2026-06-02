@@ -653,11 +653,17 @@ class CodePipeline:
             ))
             symbol_by_id[str(sym.id)] = (sym, fp)
 
-        enclosing_index: dict[str, list[tuple[int, int, str]]] = {}
+        # (line_start, line_end, name, owner) — owner disambiguates the caller's
+        # key so a call edge's source matches the owner-qualified method node.
+        enclosing_index: dict[str, list[tuple[int, int, str, str | None]]] = {}
         for sym, fp in rows:
             if sym.kind in ("function", "method"):
+                owner = (
+                    id_to_name.get(str(sym.parent_symbol_id))
+                    if sym.parent_symbol_id else None
+                )
                 enclosing_index.setdefault(fp, []).append(
-                    (sym.line_start, sym.line_end, sym.name)
+                    (sym.line_start, sym.line_end, sym.name, owner)
                 )
         for fp in enclosing_index:
             enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
@@ -707,9 +713,11 @@ class CodePipeline:
                     continue
                 target_id, confidence = result
                 enclosing_name = None
-                for start, end, name in enclosing_index.get(fp, []):
+                enclosing_owner = None
+                for start, end, name, owner in enclosing_index.get(fp, []):
                     if start <= call.line <= end:
                         enclosing_name = name
+                        enclosing_owner = owner
                         break
                 if not enclosing_name:
                     continue
@@ -717,11 +725,17 @@ class CodePipeline:
                 if not target_entry:
                     continue
                 target_sym, target_file = target_entry
+                target_owner = (
+                    id_to_name.get(str(target_sym.parent_symbol_id))
+                    if target_sym.parent_symbol_id else None
+                )
                 call_edges.append({
                     "src_name": enclosing_name,
                     "src_file": fp,
+                    "src_owner": enclosing_owner,
                     "tgt_name": target_sym.name,
                     "tgt_file": target_file,
+                    "tgt_owner": target_owner,
                     "confidence": confidence,
                     "line": call.line,
                 })
@@ -733,8 +747,8 @@ class CodePipeline:
                 batch = call_edges[i:i + batch_size]
                 edge_rows = json.dumps([
                     {
-                        "src": compose_key("symbol", e["src_name"], e["src_file"]),
-                        "tgt": compose_key("symbol", e["tgt_name"], e["tgt_file"]),
+                        "src": compose_key("symbol", e["src_name"], e["src_file"], owner=e.get("src_owner")),
+                        "tgt": compose_key("symbol", e["tgt_name"], e["tgt_file"], owner=e.get("tgt_owner")),
                         "confidence": e["confidence"],
                         "line": e["line"],
                     }
@@ -893,11 +907,17 @@ class CodePipeline:
                 env.add(name, type_name, "seeded", "file")
             type_envs[fp] = env
 
-        enclosing_index: dict[str, list[tuple[int, int, str]]] = {}
+        # (line_start, line_end, name, owner) — owner disambiguates the caller's
+        # key so a call edge's source matches the owner-qualified method node.
+        enclosing_index: dict[str, list[tuple[int, int, str, str | None]]] = {}
         for sym, fp in rows:
             if sym.kind in ("function", "method"):
+                owner = (
+                    id_to_name.get(str(sym.parent_symbol_id))
+                    if sym.parent_symbol_id else None
+                )
                 enclosing_index.setdefault(fp, []).append(
-                    (sym.line_start, sym.line_end, sym.name)
+                    (sym.line_start, sym.line_end, sym.name, owner)
                 )
         for fp in enclosing_index:
             enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
@@ -920,9 +940,11 @@ class CodePipeline:
                 if confidence < 0.6:
                     continue
                 enclosing_name = None
-                for start, end, name in enclosing_index.get(fp, []):
+                enclosing_owner = None
+                for start, end, name, owner in enclosing_index.get(fp, []):
                     if start <= call.line <= end:
                         enclosing_name = name
+                        enclosing_owner = owner
                         break
                 if not enclosing_name:
                     continue
@@ -930,9 +952,13 @@ class CodePipeline:
                 if not target_entry:
                     continue
                 target_sym, target_file = target_entry
+                target_owner = (
+                    id_to_name.get(str(target_sym.parent_symbol_id))
+                    if target_sym.parent_symbol_id else None
+                )
                 new_edges.append({
-                    "src": compose_key("symbol", enclosing_name, fp),
-                    "tgt": compose_key("symbol", target_sym.name, target_file),
+                    "src": compose_key("symbol", enclosing_name, fp, owner=enclosing_owner),
+                    "tgt": compose_key("symbol", target_sym.name, target_file, owner=target_owner),
                     "confidence": confidence,
                     "line": call.line,
                 })
@@ -1187,14 +1213,13 @@ class CodePipeline:
                   AND (
                       source_key = :file_path
                       OR target_key = :file_path
-                      OR source_key LIKE :sym_suffix
-                      OR target_key LIKE :sym_suffix
+                      OR split_part(source_key, '::', 2) = :file_path
+                      OR split_part(target_key, '::', 2) = :file_path
                   )
             """),
             {
                 "repo_id": str(repo_id),
                 "file_path": file_path,
-                "sym_suffix": f"%::{file_path}",
             },
         )
         await self.session.execute(
@@ -1202,9 +1227,9 @@ class CodePipeline:
                 DELETE FROM code_graph_nodes
                 WHERE repo_id = :repo_id
                   AND (properties->>'file_path' = :file_path
-                       OR key LIKE :prefix)
+                       OR split_part(key, '::', 2) = :file_path)
             """),
-            {"repo_id": str(repo_id), "file_path": file_path, "prefix": f"%::{file_path}"},
+            {"repo_id": str(repo_id), "file_path": file_path},
         )
 
         # Route/tool nodes have bare keys and no file_path property, so the
@@ -1346,23 +1371,22 @@ async def _find_dependent_caller_files(
     the edge. Returns ``(files, total)`` where ``total`` is the pre-cap count so
     the caller can log any truncation rather than silently dropping work.
 
-    Symbol keys are ``name::file_path`` (one ``::``), so the caller file is the
-    part after ``::`` in ``source_key`` and a changed-file target matches the
-    ``%::<file>`` pattern.
+    Symbol keys are ``name::file_path`` or ``name::file_path::owner``, so the
+    file is always segment 2 of ``::`` — matched here with ``split_part`` rather
+    than a ``%::<file>`` suffix so owner-qualified method keys still match.
     """
     if not changed_files:
         return [], 0
     changed_set = set(changed_files)
-    patterns = [f"%::{cf}" for cf in changed_files]
     rows = (await session.execute(
         text("""
             SELECT DISTINCT split_part(source_key, '::', 2) AS caller_file
             FROM code_edges
             WHERE repo_id = :rid
               AND edge_type = 'calls'
-              AND target_key LIKE ANY(CAST(:patterns AS text[]))
+              AND split_part(target_key, '::', 2) = ANY(CAST(:files AS text[]))
         """),
-        {"rid": str(repo_id), "patterns": patterns},
+        {"rid": str(repo_id), "files": changed_files},
     )).scalars().all()
     deps = sorted({f for f in rows if f and f not in changed_set})
     return deps[:cap], len(deps)
@@ -1477,8 +1501,14 @@ async def _store_graph(
         {"repo_id": repo_id, "src": repo_key, "tgt": file_key},
     )
 
-    async def collect_symbols(sym: ExtractedSymbol, parent_name: str | None = None) -> None:
-        sym_key = compose_key("symbol", sym.name, file_path)
+    async def collect_symbols(
+        sym: ExtractedSymbol,
+        parent_name: str | None = None,
+        parent_key: str | None = None,
+    ) -> None:
+        # Owner-qualify the key so same-named methods of different classes in one
+        # file are distinct nodes (owner = the immediate enclosing symbol's name).
+        sym_key = compose_key("symbol", sym.name, file_path, owner=parent_name)
         props = json.dumps({
             "kind": sym.kind,
             "line_start": sym.line_start,
@@ -1503,8 +1533,7 @@ async def _store_graph(
             """),
             {"repo_id": repo_id, "src": file_key, "tgt": sym_key},
         )
-        if parent_name:
-            parent_key = compose_key("symbol", parent_name, file_path)
+        if parent_key:
             await session.execute(
                 text("""
                     INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
@@ -1514,7 +1543,7 @@ async def _store_graph(
                 {"repo_id": repo_id, "src": parent_key, "tgt": sym_key},
             )
         for child in sym.children:
-            await collect_symbols(child, sym.name)
+            await collect_symbols(child, parent_name=sym.name, parent_key=sym_key)
 
     for sym in symbols:
         await collect_symbols(sym)
@@ -1524,7 +1553,7 @@ async def _store_graph(
             parent_key = compose_key("symbol", sym.name, file_path)
             for child in sym.children:
                 if child.kind in ("method", "function"):
-                    child_key = compose_key("symbol", child.name, file_path)
+                    child_key = compose_key("symbol", child.name, file_path, owner=sym.name)
                     await session.execute(
                         text("""
                             INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)

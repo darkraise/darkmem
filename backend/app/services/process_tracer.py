@@ -9,7 +9,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.utils.graph_keys import compose_key
+from app.utils.graph_keys import compose_key, decompose_key
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class ProcessTracer:
                 continue
 
             is_exported = sym.get("visibility") not in ("private", "protected")
-            func_name = sym_key.split("::")[-2] if "::" in sym_key else sym_key
+            func_name = decompose_key("symbol", sym_key)[0]
             score = _compute_entry_score(callers, callees, func_name, is_exported, sym.get("sig"))
 
             if callers == 0:

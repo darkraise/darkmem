@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from app.models.code import Repository
 from app.services.code_pipeline import CodePipeline
+from app.services.code_query import CodeQueryService
 
 
 async def index_repo(session, tmp_path, files: dict[str, str]) -> Repository:
@@ -86,3 +87,62 @@ async def test_pipeline_extracts_methods_end_to_end(session, tmp_path):
     names = await symbol_names(session, repo.id)
     # Methods must now be persisted (the blocker fix), not just the class.
     assert {"Svc", "start", "helper"} <= names
+
+
+@pytest.mark.asyncio
+async def test_same_named_methods_in_one_file_get_distinct_nodes(session, tmp_path):
+    repo = await index_repo(session, tmp_path, {
+        "models.py": (
+            "class UserRepo:\n    def save(self):\n        return 1\n\n"
+            "class OrderRepo:\n    def save(self):\n        return 2\n"
+        ),
+    })
+    nodes = (await session.execute(
+        text("""
+            SELECT key FROM code_graph_nodes
+            WHERE repo_id = :r AND kind = 'symbol' AND label = 'save'
+        """),
+        {"r": str(repo.id)},
+    )).scalars().all()
+    # UserRepo.save and OrderRepo.save must be two distinct nodes, not one
+    # collided node keyed save::models.py.
+    assert len(nodes) == 2
+
+
+@pytest.mark.asyncio
+async def test_intra_class_call_edge_is_owner_qualified(session, tmp_path):
+    repo = await index_repo(session, tmp_path, {
+        "svc.py": (
+            "class Svc:\n"
+            "    def start(self):\n"
+            "        return self.helper()\n"
+            "    def helper(self):\n"
+            "        return 1\n"
+        ),
+    })
+    edges = await call_edges(session, repo.id)
+    # The call edge's endpoints must carry the owner segment so they match the
+    # owner-qualified method nodes; an un-owned key would orphan the edge.
+    assert ("start::svc.py::Svc", "helper::svc.py::Svc") in edges
+
+
+@pytest.mark.asyncio
+async def test_code_graph_view_has_no_orphan_method_edges(session, tmp_path):
+    repo = await index_repo(session, tmp_path, {
+        "svc.py": (
+            "class Svc:\n"
+            "    def start(self):\n"
+            "        return self.helper()\n"
+            "    def helper(self):\n"
+            "        return 1\n"
+        ),
+    })
+    graph = await CodeQueryService(session).get_code_graph(repo.id)
+    node_ids = {n["id"] for n in graph["nodes"]}
+    # Every symbol-keyed edge endpoint must resolve to a node the view emits;
+    # the method nodes and the call edge must agree on owner-qualified keys.
+    for edge in graph["edges"]:
+        if "::" in edge["source"]:
+            assert edge["source"] in node_ids
+        if "::" in edge["target"]:
+            assert edge["target"] in node_ids

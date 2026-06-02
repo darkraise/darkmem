@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.code import CodeFile, CodeSymbol
 from app.repositories.vector import PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
+from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
 
@@ -213,15 +214,16 @@ class CodeQueryService:
 
         sym_rows = (await self.session.execute(
             text("""
-                SELECT s.name, s.kind, f.file_path
+                SELECT s.name, s.kind, f.file_path, p.name AS owner
                 FROM code_symbols s
                 JOIN code_files f ON f.id = s.file_id
+                LEFT JOIN code_symbols p ON p.id = s.parent_symbol_id
                 WHERE f.repo_id = :repo_id
             """),
             {"repo_id": repo_id_str},
         )).mappings().all()
         for row in sym_rows:
-            node_id = f"{row['name']}::{row['file_path']}"
+            node_id = compose_key("symbol", row["name"], row["file_path"], owner=row["owner"])
             nodes.append({"id": node_id, "label": row["name"], "kind": row["kind"], "file_path": row["file_path"]})
 
         aux_rows = (await self.session.execute(
@@ -255,8 +257,7 @@ class CodeQueryService:
         sym = None
         file = None
         if "::" in symbol_id:
-            parts = symbol_id.split("::", 1)
-            name, file_path = parts[0], parts[1]
+            name, file_path, _owner = split_symbol_key(symbol_id)
             sym = (await self.session.execute(
                 select(CodeSymbol).join(CodeFile).where(
                     CodeSymbol.name == name, CodeFile.file_path == file_path,
@@ -283,7 +284,12 @@ class CodeQueryService:
             return None
 
         repo_id_str = str(file.repo_id) if file else ""
-        symbol_key = f"{sym.name}::{file.file_path}" if file else sym.name
+        owner = None
+        if file and sym.parent_symbol_id:
+            owner = (await self.session.execute(
+                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
+            )).scalar_one_or_none()
+        symbol_key = compose_key("symbol", sym.name, file.file_path if file else None, owner=owner)
         clamped_depth = max(1, min(max_depth, 50))
 
         rows = (await self.session.execute(
@@ -319,8 +325,7 @@ class CodeQueryService:
             dist = r["distance"]
             file_path_val = None
             if "::" in (name_val or ""):
-                parts = name_val.split("::", 1)
-                name_val, file_path_val = parts[0], parts[1]
+                name_val, file_path_val = decompose_key("symbol", name_val)
             entry = {"name": name_val, "kind": kind_val, "file_path": file_path_val, "distance": dist}
             affected.append(entry)
             if dist == 1:

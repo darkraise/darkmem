@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 from app.database import async_session_factory
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
+from app.utils.graph_keys import compose_key, decompose_key
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +461,12 @@ async def code_blast_radius(
 
         sym, file = row
         repo_id_str = str(file.repo_id)
-        symbol_key = f"{sym.name}::{file.file_path}"
+        owner = None
+        if sym.parent_symbol_id:
+            owner = (await session.execute(
+                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
+            )).scalar_one_or_none()
+        symbol_key = compose_key("symbol", sym.name, file.file_path, owner=owner)
         depth = max(1, min(int(max_depth), 50))
 
         rows = (await session.execute(
@@ -495,8 +501,7 @@ async def code_blast_radius(
         dist = r["distance"]
         file_path_val = None
         if "::" in (name_val or ""):
-            parts = name_val.split("::", 1)
-            name_val, file_path_val = parts[0], parts[1]
+            name_val, file_path_val = decompose_key("symbol", name_val)
         entry = {"name": name_val, "kind": r["kind"], "file_path": file_path_val, "distance": dist}
         affected.append(entry)
         if dist == 1:
@@ -592,7 +597,12 @@ async def code_context(
         sym, file_path = row
         file = (await session.execute(select(CodeFile).where(CodeFile.id == sym.file_id))).scalar_one_or_none()
         repo_id_str = str(file.repo_id) if file else ""
-        symbol_key = f"{sym.name}::{file_path}"
+        owner = None
+        if sym.parent_symbol_id:
+            owner = (await session.execute(
+                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
+            )).scalar_one_or_none()
+        symbol_key = compose_key("symbol", sym.name, file_path, owner=owner)
 
         context: dict = {
             "symbol": {
@@ -625,7 +635,7 @@ async def code_context(
             name_val = r["source_key"]
             fp_val = None
             if "::" in (name_val or ""):
-                name_val, fp_val = name_val.split("::", 1)
+                name_val, fp_val = decompose_key("symbol", name_val)
             context["callers"].append({"name": name_val, "file_path": fp_val})
 
         # Callees: symbols this symbol calls
@@ -643,7 +653,7 @@ async def code_context(
             name_val = r["target_key"]
             fp_val = None
             if "::" in (name_val or ""):
-                name_val, fp_val = name_val.split("::", 1)
+                name_val, fp_val = decompose_key("symbol", name_val)
             context["callees"].append({"name": name_val, "file_path": fp_val})
 
         # Heritage: extends
@@ -899,8 +909,7 @@ async def code_rename(
         )).mappings().all()
         for r in call_rows:
             src = r["source_key"]
-            caller_name = src.split("::")[0] if "::" in src else src
-            caller_fp = src.split("::", 1)[1] if "::" in src else None
+            caller_name, caller_fp = decompose_key("symbol", src) if "::" in src else (src, None)
             props = r["properties"] or {}
             references.append({
                 "file_path": caller_fp,
@@ -927,8 +936,7 @@ async def code_rename(
         )).mappings().all()
         for r in heritage_rows:
             src = r["source_key"]
-            child_name = src.split("::")[0] if "::" in src else src
-            child_fp = src.split("::", 1)[1] if "::" in src else None
+            child_name, child_fp = decompose_key("symbol", src) if "::" in src else (src, None)
             references.append({
                 "file_path": child_fp,
                 "line": None,
