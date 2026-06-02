@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "darkraise-ui/components/button"
-import { Card, CardContent } from "darkraise-ui/components/card"
+import { CardContent } from "darkraise-ui/components/card"
+import { GlassPanel } from "@/components/glass-panel"
 import { toast } from "darkraise-ui/components/sonner"
 import {
   useSetupWizardStore,
@@ -12,7 +13,6 @@ import {
   type SetupRequest,
   type SetupLLM,
 } from "@/hooks/api/use-setup-api"
-import { ParticleBackground } from "@/components/particle-background"
 import { StepPassword, isStepPasswordValid } from "./StepPassword"
 import { StepLLM, isStepLLMValid } from "./StepLLM"
 import { StepRepoPath, isStepRepoPathValid } from "./StepRepoPath"
@@ -119,10 +119,8 @@ export function SetupWizard() {
   }
 
   return (
-    <>
-      <ParticleBackground />
-      <Card className="border-border/60 bg-card/85 flex max-h-[90vh] w-full max-w-2xl flex-col shadow-2xl backdrop-blur-md">
-        <CardContent className="flex flex-col gap-6 overflow-hidden p-8">
+    <GlassPanel className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
+      <CardContent className="flex flex-col gap-6 overflow-hidden p-8">
           <div className="shrink-0 space-y-1 text-center">
             <h1 className="font-mono text-2xl font-bold tracking-tight">
               darkmem
@@ -188,8 +186,7 @@ export function SetupWizard() {
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </>
+      </CardContent>
+    </GlassPanel>
   )
 }

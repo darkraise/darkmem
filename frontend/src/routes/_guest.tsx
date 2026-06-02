@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 import { useAuthStore } from "@/features/auth"
 import { checkSetupStatus } from "@/lib/api"
+import { ParticleBackground } from "@/components/particle-background"
 
 export const Route = createFileRoute("/_guest")({
   beforeLoad: async ({ location }) => {
@@ -16,7 +17,8 @@ export const Route = createFileRoute("/_guest")({
     }
   },
   component: () => (
-    <div className="bg-background flex min-h-screen items-center justify-center">
+    <div className="bg-background relative flex min-h-screen items-center justify-center px-4">
+      <ParticleBackground />
       <Outlet />
     </div>
   ),
