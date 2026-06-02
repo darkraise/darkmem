@@ -113,6 +113,17 @@ async def client(session):
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture(autouse=True)
+def _reset_login_rate_limiter():
+    """Login rate-limiter state is a process-global singleton; clear it between
+    tests so failed-login attempts from the shared test-client IP don't
+    accumulate across tests and trip a spurious lockout."""
+    from app.services.login_rate_limit import login_rate_limiter
+    login_rate_limiter.reset()
+    yield
+    login_rate_limiter.reset()
+
+
 @pytest_asyncio.fixture
 async def auth_headers(session):
     hashed = hash_password("test-admin-password")

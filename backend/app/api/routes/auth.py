@@ -19,6 +19,7 @@ from app.database import async_session_factory, get_session
 from app.models.audit import AuditLog
 from app.models.config import Config
 from app.models.token_blocklist import TokenBlocklist
+from app.services.login_rate_limit import login_rate_limiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -58,6 +59,19 @@ async def auth_login(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
+    ip = _client_ip(request)
+
+    # A single shared admin password on a reachable LAN needs an attempt-rate
+    # boundary; bcrypt slows each guess but doesn't bound the rate. Reject early
+    # when the IP is locked out, before touching the DB or hashing.
+    retry_after = login_rate_limiter.retry_after(ip)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed login attempts; retry in {retry_after}s",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     result = await session.execute(select(Config).where(Config.key == ADMIN_PASSWORD_KEY))
     config = result.scalar_one_or_none()
 
@@ -65,10 +79,12 @@ async def auth_login(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin password not set")
 
     if not verify_password(body.password, config.value["hash"]):
-        await _record_audit("auth_login_failed", {"ip": _client_ip(request)})
+        login_rate_limiter.record_failure(ip)
+        await _record_audit("auth_login_failed", {"ip": ip})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
 
-    session.add(AuditLog(action="auth_login_success", details={"ip": _client_ip(request)}))
+    login_rate_limiter.record_success(ip)
+    session.add(AuditLog(action="auth_login_success", details={"ip": ip}))
     await session.flush()
 
     token = create_access_token({"sub": "admin"})
