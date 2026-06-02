@@ -592,6 +592,11 @@ function PipelinePage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        {reprocessAll.isPending && (
+          <Button variant="ghost" onClick={() => reprocessAll.cancel()}>
+            Cancel
+          </Button>
+        )}
       </div>
 
       <div className="mb-6">
