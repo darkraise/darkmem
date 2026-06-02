@@ -32,6 +32,23 @@ class LLMOrchestrator:
     def _fingerprint(model: str, dims: int) -> str:
         return f"{model}|{dims}"
 
+    @staticmethod
+    def _check_dims(cfg, actual: int) -> None:
+        """Fail loud when the real vector length contradicts configured dims.
+
+        llm_fingerprint() names the partition from cfg.dimensions, but embeds
+        emit ``model|len(vec)``. If the stored value is wrong the two disagree
+        and reads route to a partition writes never populated, so reject the
+        misconfiguration here instead of silently mislabeling the partition.
+        """
+        configured = cfg.dimensions
+        if configured and actual != configured:
+            raise RuntimeError(
+                f"Embedding dimension mismatch for model {cfg.model!r}: "
+                f"configured dimensions={configured} but the embedder returned "
+                f"{actual}. Fix the embedding purpose's dimensions (or clear it)."
+            )
+
     def llm_fingerprint(self) -> str:
         """Identifier for the configured LLM embedder.
 
@@ -77,6 +94,7 @@ class LLMOrchestrator:
                     f"LLM embedding call failed ({e.response.status_code}): {e.request.url.host}"
                 ) from e
             vec = response.json()["data"][0]["embedding"]
+        self._check_dims(cfg, len(vec))
         return vec, self._fingerprint(cfg.model, len(vec))
 
     async def embed_batch(self, texts: list[str]) -> tuple[list[list[float]], str]:
@@ -116,6 +134,8 @@ class LLMOrchestrator:
             )
             vectors = [d["embedding"] for _, d in ordered]
         dims = len(vectors[0]) if vectors else (cfg.dimensions or 0)
+        if vectors:
+            self._check_dims(cfg, dims)
         return vectors, self._fingerprint(cfg.model, dims)
 
     async def embed_batch_chunked(
