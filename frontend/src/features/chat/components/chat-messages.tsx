@@ -4,6 +4,7 @@ import { Bot, User, FileText, Diamond } from "lucide-react"
 import { Avatar, AvatarFallback } from "darkraise-ui/components/avatar"
 import { Button } from "darkraise-ui/components/button"
 import { SourceBadges } from "./source-badges"
+import { findEntityMatches } from "../lib/entity-match"
 import type { ChatMessage } from "@/hooks/api"
 
 interface MemoryRef {
@@ -209,35 +210,24 @@ function replaceEntityNames(
   entityNames: EntityRef[],
   onNodeSelect?: (type: "memory" | "entity", id: string) => void,
 ): React.ReactNode {
-  const lowerText = text.toLowerCase()
-  const matches: { start: number; end: number; entity: EntityRef }[] = []
-  const matched = new Set<string>()
-
-  for (const entity of entityNames) {
-    const lowerName = entity.name.toLowerCase()
-    if (matched.has(lowerName)) continue
-    const idx = lowerText.indexOf(lowerName)
-    if (idx === -1) continue
-    matched.add(lowerName)
-    matches.push({ start: idx, end: idx + entity.name.length, entity })
-  }
-
+  const byName = new Map(entityNames.map((e) => [e.name, e]))
+  const matches = findEntityMatches(text, entityNames)
   if (matches.length === 0) return text
-
-  matches.sort((a, b) => a.start - b.start)
 
   const fragments: React.ReactNode[] = []
   let cursor = 0
   for (const m of matches) {
     if (m.start < cursor) continue
+    const entity = byName.get(m.name)
+    if (!entity) continue
     if (m.start > cursor) fragments.push(text.slice(cursor, m.start))
     fragments.push(
       <EntityBadge
-        key={`entity-${m.entity.id}-${m.start}`}
-        entity={m.entity}
+        key={`entity-${entity.id}-${m.start}`}
+        entity={entity}
         onClick={
-          m.entity.id && onNodeSelect
-            ? () => onNodeSelect("entity", m.entity.id!)
+          entity.id && onNodeSelect
+            ? () => onNodeSelect("entity", entity.id!)
             : undefined
         }
       />,
