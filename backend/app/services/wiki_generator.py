@@ -48,6 +48,19 @@ class WikiGenerator:
             module = "/".join(parts[:-1]) if len(parts) > 1 else "root"
             modules.setdefault(module, []).append(f)
 
+        # Fetch every symbol for the repo in one query and group by file, instead
+        # of one SELECT per file (an N+1 that scaled queries with repo size).
+        symbols_by_file: dict = {}
+        file_ids = [f.id for f in files]
+        if file_ids:
+            all_symbols = (await self.session.execute(
+                select(CodeSymbol)
+                .where(CodeSymbol.file_id.in_(file_ids))
+                .order_by(CodeSymbol.file_id, CodeSymbol.line_start)
+            )).scalars().all()
+            for s in all_symbols:
+                symbols_by_file.setdefault(s.file_id, []).append(s)
+
         module_entries = []
         for module_path, module_files in sorted(modules.items()):
             entry = {
@@ -59,9 +72,7 @@ class WikiGenerator:
 
             file_descriptions = []
             for f in module_files:
-                symbols = (await self.session.execute(
-                    select(CodeSymbol).where(CodeSymbol.file_id == f.id).order_by(CodeSymbol.line_start)
-                )).scalars().all()
+                symbols = symbols_by_file.get(f.id, [])
 
                 file_entry = {
                     "path": f.file_path,
