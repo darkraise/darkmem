@@ -137,6 +137,13 @@ async def auth_change_password(
 
     session.add(AuditLog(action="auth_password_change", details={"ip": _client_ip(request)}))
 
+    # Rotate: revoke the presented token so it can't be reused after the
+    # reissue (belt-and-suspenders with the changed_at epoch).
+    session.add(TokenBlocklist(
+        jti=payload.jti,
+        expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
+    ))
+
     response = JSONResponse(content={"ok": True})
     # The caller's own current token predates changed_at and would be rejected
     # on the next request; reissue so they stay logged in after rotating.
@@ -145,7 +152,19 @@ async def auth_change_password(
 
 
 @router.post("/refresh")
-async def auth_refresh(payload: TokenPayload = Depends(require_auth)):
+async def auth_refresh(
+    payload: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    # Rotating refresh: blocklist the presented jti before issuing a new token
+    # so a captured pre-refresh token can't keep working until its 24h exp.
+    # Refresh has no changed_at epoch backstop, so this is the only revocation.
+    session.add(TokenBlocklist(
+        jti=payload.jti,
+        expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
+    ))
+    await session.commit()
+
     token = create_access_token({"sub": payload.sub})
     response = JSONResponse(content={"ok": True})
     return set_auth_cookie(response, token)
