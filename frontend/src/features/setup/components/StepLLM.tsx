@@ -34,6 +34,7 @@ import {
 import {
   PURPOSES,
   REQUIRED_PURPOSES_NON_EMBEDDING,
+  missingRequiredModels,
   type Purpose,
   useSetupWizardStore,
 } from "@/features/setup/setupWizardStore"
@@ -276,10 +277,5 @@ export function isStepLLMValid(
   if (llm.skipped) return true
   if (!llm.api_kind.trim()) return false
   if (!llm.base_url.trim()) return false
-  if (llm.supports_embedding && !llm.perPurpose.embedding.model.trim())
-    return false
-  for (const p of REQUIRED_PURPOSES_NON_EMBEDDING) {
-    if (!llm.perPurpose[p].model.trim()) return false
-  }
-  return true
+  return missingRequiredModels(llm).length === 0
 }

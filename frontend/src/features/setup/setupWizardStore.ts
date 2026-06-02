@@ -69,6 +69,21 @@ type SetupWizardState = {
   reset: () => void
 }
 
+export type LlmDraft = SetupWizardState["llm"]
+
+/** Required purposes (embedding when supported, plus the non-embedding set)
+ * that still lack a model, so the wizard can name exactly what's blocking. */
+export function missingRequiredModels(llm: LlmDraft): Purpose[] {
+  if (llm.skipped) return []
+  const missing: Purpose[] = []
+  if (llm.supports_embedding && !llm.perPurpose.embedding.model.trim())
+    missing.push("embedding")
+  for (const p of REQUIRED_PURPOSES_NON_EMBEDDING) {
+    if (!llm.perPurpose[p].model.trim()) missing.push(p)
+  }
+  return missing
+}
+
 const emptyPurposeDraft: PurposeDraft = { model: "", reasoning: false }
 
 const initial = () => ({

@@ -5,6 +5,7 @@ import { toast } from "darkraise-ui/components/sonner"
 import {
   useSetupWizardStore,
   PURPOSES,
+  missingRequiredModels,
 } from "@/features/setup/setupWizardStore"
 import {
   useFinalizeSetup,
@@ -44,6 +45,10 @@ export function SetupWizard() {
         : step === 3
           ? isStepRepoPathValid(repos)
           : true
+
+  // Names of the required purposes still missing a model, so the disabled Next
+  // button can say exactly what's blocking instead of just greying out.
+  const missingModels = missingRequiredModels(llm)
 
   const goNext = () => {
     if (step === 1 && !isStepPasswordValid(password)) return
@@ -157,7 +162,12 @@ export function SetupWizard() {
             >
               Back
             </Button>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
+              {step === 2 && !llm.skipped && missingModels.length > 0 && (
+                <span className="text-muted-foreground text-base">
+                  Add a model for: {missingModels.join(", ")}
+                </span>
+              )}
               {(step === 2 || step === 3) && (
                 <Button
                   variant="outline"
