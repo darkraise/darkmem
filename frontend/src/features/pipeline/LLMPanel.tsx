@@ -13,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
-import { useNavigate } from "@tanstack/react-router"
 import { toast } from "darkraise-ui/components/sonner"
 import { useReembedAll, type PipelineState } from "@/hooks/api"
 import { LLMPurposeCard } from "./LLMPurposeCard"
@@ -28,7 +27,6 @@ interface Props {
 }
 
 export function LLMPanel({ state }: Props) {
-  const navigate = useNavigate()
   const reembedAll = useReembedAll()
   const [obsolete, setObsolete] = useState<{
     memories: number
@@ -39,9 +37,8 @@ export function LLMPanel({ state }: Props) {
   const startReembed = () => {
     reembedAll.mutate(undefined, {
       onSuccess: () => {
-        toast.info("Re-embed started — progress on /reindex")
+        toast.info("Re-embed started — track progress in the Maintenance tab")
         setObsolete(null)
-        navigate({ to: "/reindex" })
       },
       onError: (err) =>
         toast.error(`Re-embed failed: ${(err as Error).message}`),

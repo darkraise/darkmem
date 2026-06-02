@@ -9,7 +9,7 @@ vi.mock("darkraise-ui/components/sonner", () => ({
 }))
 
 import { apiFetch } from "@/lib/api"
-import { JobConfigForm } from "../jobs"
+import { JobConfigForm } from "@/features/jobs/components/jobs-panel"
 import type { Job } from "@/hooks/api"
 
 function wrap(ui: React.ReactNode) {
@@ -31,7 +31,14 @@ const job = {
   running: false,
   config: { batch_size: 7 },
   config_schema: [
-    { key: "batch_size", type: "int", label: "Batch Size", default: 5, min: 1, max: 100 },
+    {
+      key: "batch_size",
+      type: "int",
+      label: "Batch Size",
+      default: 5,
+      min: 1,
+      max: 100,
+    },
   ],
 } as Job
 
@@ -40,7 +47,9 @@ describe("JobConfigForm", () => {
 
   it("saves the seeded config via PUT /jobs/{key}/config", async () => {
     const onClose = vi.fn()
-    wrap(<JobConfigForm job={job} schema={job.config_schema!} onClose={onClose} />)
+    wrap(
+      <JobConfigForm job={job} schema={job.config_schema!} onClose={onClose} />,
+    )
     await userEvent.click(screen.getByRole("button", { name: /save/i }))
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith(

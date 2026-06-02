@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { createFileRoute } from "@tanstack/react-router"
 import {
   Card,
   CardContent,
@@ -8,13 +7,8 @@ import {
 } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { PageHeader } from "darkraise-ui/layout"
 import { useAuditLog, type AuditEntry } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
-
-export const Route = createFileRoute("/_authenticated/security")({
-  component: SecurityPage,
-})
 
 const PAGE_SIZE = 50
 
@@ -25,7 +19,9 @@ const FILTERS: { label: string; action?: string }[] = [
   { label: "Password changes", action: "auth_password_change" },
 ]
 
-function actionVariant(action: string): "default" | "destructive" | "secondary" {
+function actionVariant(
+  action: string,
+): "default" | "destructive" | "secondary" {
   if (action === "auth_login_failed") return "destructive"
   if (action === "auth_login_success") return "default"
   return "secondary"
@@ -37,7 +33,7 @@ function detailText(details: Record<string, unknown>): string {
   return ""
 }
 
-function SecurityPage() {
+export function SecurityPanel() {
   const [filterIdx, setFilterIdx] = useState(0)
   const [offset, setOffset] = useState(0)
   const action = FILTERS[filterIdx]?.action
@@ -53,11 +49,6 @@ function SecurityPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Security"
-        description="Authentication and setup audit trail — logins, failed attempts, password changes."
-      />
-
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -95,7 +86,10 @@ function SecurityPage() {
                   className="flex items-center justify-between gap-3 px-3 py-2"
                 >
                   <div className="flex items-center gap-3">
-                    <Badge variant={actionVariant(e.action)} className="text-base">
+                    <Badge
+                      variant={actionVariant(e.action)}
+                      className="text-base"
+                    >
                       {e.action.replace(/^auth_|^setup_/, "")}
                     </Badge>
                     <span className="text-muted-foreground text-base">

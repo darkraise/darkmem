@@ -66,6 +66,13 @@ import {
   AlertDialogTitle,
 } from "darkraise-ui/components/alert-dialog"
 import { ReindexDialog } from "@/features/repos/components/reindex-dialog"
+import { CodeWikiPanel } from "@/features/repos/components/code-wiki-panel"
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "darkraise-ui/components/tabs"
 import type { EditRepoInput, ReindexInput } from "@/features/repos/schemas"
 
 export const Route = createFileRoute("/_authenticated/repos")({
@@ -270,6 +277,7 @@ function RepositoriesPage() {
     })
   }
 
+  const [tab, setTab] = useState<"repositories" | "wiki">("repositories")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
   const [reindexingRepo, setReindexingRepo] = useState<Repo | null>(null)
@@ -460,135 +468,152 @@ function RepositoriesPage() {
     <div className="space-y-4 p-6">
       <PageHeader title="Repositories" />
 
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          variant="outline"
-          onClick={handleRunEnrichment}
-          disabled={triggerJob.isPending}
-        >
-          {triggerJob.isPending ? "Enriching..." : "Run Enrichment"}
-        </Button>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-1 h-4 w-4" />
-              Add Repo
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Repository</DialogTitle>
-            </DialogHeader>
-            <AddRepoDialog onClose={() => setDialogOpen(false)} />
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatValue label="Repos" value={stats?.total_repos ?? "—"} />
-        <StatValue label="Files" value={stats?.total_files ?? "—"} />
-        <StatValue label="Symbols" value={stats?.total_symbols ?? "—"} />
-        <StatValue label="Enrichment" value={enrichmentLabel} />
-      </div>
-
-      <EditRepoDialog
-        open={!!editingRepo}
-        onOpenChange={(o) => !o && setEditingRepo(null)}
-        initial={
-          editingRepo
-            ? {
-                name: editingRepo.name,
-                path: editingRepo.local_path ?? "",
-                branch: editingRepo.default_branch,
-                auto_sync: editingRepo.auto_sync,
-                enrich_symbols: true,
-                generate_wiki: true,
-              }
-            : {}
-        }
-        onSave={async (v: EditRepoInput) => {
-          if (!editingRepo) return
-          const data: RepoUpdateParams = {}
-          if (v.name !== editingRepo.name) data.name = v.name
-          if (v.branch !== editingRepo.default_branch)
-            data.default_branch = v.branch
-          if (v.auto_sync !== editingRepo.auto_sync)
-            data.auto_sync = v.auto_sync
-          data.enrich_symbols = v.enrich_symbols
-          data.generate_wiki = v.generate_wiki
-          if (Object.keys(data).length === 0) {
-            toast.info("No changes to save")
-            return
-          }
-          await updateRepo.mutateAsync(
-            { id: editingRepo.id, data },
-            {
-              onSuccess: () => toast.success("Repository updated"),
-              onError: (err) => toast.error(`Failed to update: ${err.message}`),
-            },
-          )
-        }}
-      />
-      <ReindexDialog
-        open={!!reindexingRepo}
-        onOpenChange={(o) => !o && setReindexingRepo(null)}
-        onConfirm={async (v: ReindexInput) => {
-          if (!reindexingRepo) return
-          await reindexRepo.mutateAsync(
-            { id: reindexingRepo.id, options: v },
-            {
-              onSuccess: () => toast.success("Reindex triggered"),
-              onError: () => toast.error("Reindex failed"),
-            },
-          )
-        }}
-      />
-
-      <AlertDialog
-        open={!!confirmDeleteRepo}
-        onOpenChange={(o) => !o && setConfirmDeleteRepo(null)}
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as "repositories" | "wiki")}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete &ldquo;{confirmDeleteRepo?.name}&rdquo;?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the repository and all its indexed data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (confirmDeleteRepo) confirmDelete(confirmDeleteRepo.id)
-                setConfirmDeleteRepo(null)
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <TabsList>
+          <TabsTrigger value="repositories">Repositories</TabsTrigger>
+          <TabsTrigger value="wiki">Code Wiki</TabsTrigger>
+        </TabsList>
 
-      {isLoading ? (
-        <DataTableSkeleton columnCount={9} />
-      ) : repos?.length === 0 ? (
-        <p className="text-muted-foreground">
-          No repositories yet. Add one to get started.
-        </p>
-      ) : (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
-              Repositories
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <DataTable columns={columns} data={repos ?? []} />
-          </CardContent>
-        </Card>
-      )}
+        <TabsContent value="repositories" className="mt-4 space-y-4">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={handleRunEnrichment}
+              disabled={triggerJob.isPending}
+            >
+              {triggerJob.isPending ? "Enriching..." : "Run Enrichment"}
+            </Button>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add Repo
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Repository</DialogTitle>
+                </DialogHeader>
+                <AddRepoDialog onClose={() => setDialogOpen(false)} />
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <StatValue label="Repos" value={stats?.total_repos ?? "—"} />
+            <StatValue label="Files" value={stats?.total_files ?? "—"} />
+            <StatValue label="Symbols" value={stats?.total_symbols ?? "—"} />
+            <StatValue label="Enrichment" value={enrichmentLabel} />
+          </div>
+
+          <EditRepoDialog
+            open={!!editingRepo}
+            onOpenChange={(o) => !o && setEditingRepo(null)}
+            initial={
+              editingRepo
+                ? {
+                    name: editingRepo.name,
+                    path: editingRepo.local_path ?? "",
+                    branch: editingRepo.default_branch,
+                    auto_sync: editingRepo.auto_sync,
+                    enrich_symbols: true,
+                    generate_wiki: true,
+                  }
+                : {}
+            }
+            onSave={async (v: EditRepoInput) => {
+              if (!editingRepo) return
+              const data: RepoUpdateParams = {}
+              if (v.name !== editingRepo.name) data.name = v.name
+              if (v.branch !== editingRepo.default_branch)
+                data.default_branch = v.branch
+              if (v.auto_sync !== editingRepo.auto_sync)
+                data.auto_sync = v.auto_sync
+              data.enrich_symbols = v.enrich_symbols
+              data.generate_wiki = v.generate_wiki
+              if (Object.keys(data).length === 0) {
+                toast.info("No changes to save")
+                return
+              }
+              await updateRepo.mutateAsync(
+                { id: editingRepo.id, data },
+                {
+                  onSuccess: () => toast.success("Repository updated"),
+                  onError: (err) =>
+                    toast.error(`Failed to update: ${err.message}`),
+                },
+              )
+            }}
+          />
+          <ReindexDialog
+            open={!!reindexingRepo}
+            onOpenChange={(o) => !o && setReindexingRepo(null)}
+            onConfirm={async (v: ReindexInput) => {
+              if (!reindexingRepo) return
+              await reindexRepo.mutateAsync(
+                { id: reindexingRepo.id, options: v },
+                {
+                  onSuccess: () => toast.success("Reindex triggered"),
+                  onError: () => toast.error("Reindex failed"),
+                },
+              )
+            }}
+          />
+
+          <AlertDialog
+            open={!!confirmDeleteRepo}
+            onOpenChange={(o) => !o && setConfirmDeleteRepo(null)}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Delete &ldquo;{confirmDeleteRepo?.name}&rdquo;?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will remove the repository and all its indexed data.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    if (confirmDeleteRepo) confirmDelete(confirmDeleteRepo.id)
+                    setConfirmDeleteRepo(null)
+                  }}
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {isLoading ? (
+            <DataTableSkeleton columnCount={9} />
+          ) : repos?.length === 0 ? (
+            <p className="text-muted-foreground">
+              No repositories yet. Add one to get started.
+            </p>
+          ) : (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+                  Repositories
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <DataTable columns={columns} data={repos ?? []} />
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="wiki" className="mt-4">
+          <CodeWikiPanel onGoToRepos={() => setTab("repositories")} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

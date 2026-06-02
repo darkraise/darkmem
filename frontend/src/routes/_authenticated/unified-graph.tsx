@@ -141,7 +141,7 @@ function UnifiedGraphPage() {
 
   return (
     <div className="flex h-full" style={{ minHeight: 0 }}>
-      <h1 className="sr-only">Unified Graph</h1>
+      <h1 className="sr-only">Memory Graph</h1>
       <div className="flex min-w-0 flex-1 flex-col">
         {isLoading && <GraphSkeleton />}
         {!isLoading && memoryCount === 0 && (

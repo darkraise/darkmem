@@ -12,6 +12,10 @@ import { ORPHAN_PROMPTS } from "@/features/pipeline/prompt-map"
 import { LLMProvidersPanel } from "@/features/pipeline/LLMProvidersPanel"
 import { LLMProfilesPanel } from "@/features/pipeline/LLMProfilesPanel"
 import { MLProfilesPanel } from "@/features/pipeline/MLProfilesPanel"
+import { PipelineSettingsPanel } from "@/features/pipeline/PipelineSettingsPanel"
+import { MaintenancePanel } from "@/features/pipeline/MaintenancePanel"
+import { JobsPanel } from "@/features/jobs/components/jobs-panel"
+import { SecurityPanel } from "@/features/settings/components/security-panel"
 import { ServerPathBrowser } from "@/features/setup/components/ServerPathBrowser"
 import { useReposPath, useUpdateReposPath } from "@/hooks/api/use-setup-api"
 import {
@@ -37,6 +41,11 @@ import {
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
 import { Badge } from "darkraise-ui/components/badge"
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "darkraise-ui/components/collapsible"
 import {
   Tabs,
   TabsList,
@@ -209,28 +218,33 @@ function FeatureFlagsCard() {
 
   if (isLoading || !flags) return null
 
-  const toggles = [
+  const productToggles = [
     {
-      label: "Hybrid Search (BM25 + RRF)",
+      label: "Hybrid Search",
       key: "hybrid_search_enabled" as const,
       description:
-        "Combines vector similarity with full-text search via Reciprocal Rank Fusion",
+        "Blend semantic (vector) search with keyword search for better recall.",
     },
     {
       label: "LLM Enrichment",
       key: "llm_enrichment_enabled" as const,
-      description: "Run LLM classification alongside regex for A/B comparison",
+      description:
+        "Classify and enrich each memory with an LLM — adds type, summary, emotions, and flags.",
     },
     {
       label: "Reranker",
       key: "reranker_enabled" as const,
-      description: "Re-score search results using LLM relevance scoring",
+      description:
+        "Re-score the top search results for relevance. Requires a configured Reranker model on the LLM Pipeline tab.",
     },
+  ]
+
+  const advancedToggles = [
     {
       label: "Relation Rescue",
       key: "relation_rescue" as const,
       description:
-        "Pattern-based relation synthesis (adjacency + subject tracking + REPLACES) added on top of LLM relations",
+        "Pattern-based relation synthesis (adjacency + subject tracking + REPLACES) layered on top of LLM relations. Disable only to evaluate raw LLM recall.",
     },
   ]
 
@@ -333,13 +347,13 @@ function FeatureFlagsCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">Feature Flags</CardTitle>
+        <CardTitle className="text-base">Features</CardTitle>
         <p className="text-muted-foreground text-base">
           Toggle pipeline features. Changes take effect on the next operation.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {toggles.map((item) => (
+        {productToggles.map((item) => (
           <div key={item.key} className="flex items-center justify-between">
             <div>
               <Label className="text-base">{item.label}</Label>
@@ -354,48 +368,75 @@ function FeatureFlagsCard() {
             />
           </div>
         ))}
-        <NumericRow
-          label="Pipeline Concurrency"
-          description="Max parallel LLM calls during batch processing"
-          flagKey="pipeline_concurrency"
-          min={1}
-          max={20}
-          defaultValue={5}
-        />
-        <NumericRow
-          label="Embedding Batch Size"
-          description="Texts per embed call"
-          flagKey="embedding_batch_size"
-          min={1}
-          max={200}
-          defaultValue={20}
-        />
-        <NumericRow
-          label="Embedding Concurrency"
-          description="Parallel embed calls"
-          flagKey="embedding_concurrency"
-          min={1}
-          max={10}
-          defaultValue={1}
-        />
-        <NumericRow
-          label="Entity Cache TTL (minutes)"
-          description="How long entity lookups are cached during extraction"
-          flagKey="entity_cache_ttl_minutes"
-          min={1}
-          max={1440}
-          defaultValue={60}
-        />
-        <NumericRow
-          label="Confidence Rank γ"
-          description="Multiplicative weight of memory confidence in retrieval rank fusion. 0 disables. Try 0.2–0.5."
-          flagKey="confidence_rank_gamma"
-          min={0}
-          max={5}
-          step={0.1}
-          defaultValue={0}
-          width="w-28"
-        />
+
+        <Collapsible className="border-border border-t pt-3">
+          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground cursor-pointer text-base font-medium">
+            Advanced
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3 space-y-3">
+            <p className="text-muted-foreground text-base">
+              Tuning knobs with sensible defaults. Leave these unless you are
+              evaluating retrieval quality or throughput.
+            </p>
+            {advancedToggles.map((item) => (
+              <div key={item.key} className="flex items-center justify-between">
+                <div>
+                  <Label className="text-base">{item.label}</Label>
+                  <p className="text-muted-foreground text-base">
+                    {item.description}
+                  </p>
+                </div>
+                <Switch
+                  checked={flags[item.key]}
+                  onCheckedChange={(v) => handleToggle(item.key, v)}
+                  disabled={updateFlags.isPending}
+                />
+              </div>
+            ))}
+            <NumericRow
+              label="Pipeline Concurrency"
+              description="Max parallel LLM calls during batch processing"
+              flagKey="pipeline_concurrency"
+              min={1}
+              max={20}
+              defaultValue={5}
+            />
+            <NumericRow
+              label="Embedding Batch Size"
+              description="Texts per embed call"
+              flagKey="embedding_batch_size"
+              min={1}
+              max={200}
+              defaultValue={20}
+            />
+            <NumericRow
+              label="Embedding Concurrency"
+              description="Parallel embed calls"
+              flagKey="embedding_concurrency"
+              min={1}
+              max={10}
+              defaultValue={1}
+            />
+            <NumericRow
+              label="Entity Cache TTL (minutes)"
+              description="How long entity lookups are cached during extraction"
+              flagKey="entity_cache_ttl_minutes"
+              min={1}
+              max={1440}
+              defaultValue={60}
+            />
+            <NumericRow
+              label="Confidence Rank γ"
+              description="Multiplicative weight of memory confidence in retrieval rank fusion. 0 disables. Try 0.2–0.5."
+              flagKey="confidence_rank_gamma"
+              min={0}
+              max={5}
+              step={0.1}
+              defaultValue={0}
+              width="w-28"
+            />
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   )
@@ -569,12 +610,16 @@ function AssistantPromptsCard() {
 }
 
 const SETTINGS_TABS = [
-  { value: "flags", label: "Feature Flags" },
+  { value: "flags", label: "Features" },
   { value: "classification", label: "Classification" },
   { value: "assistant", label: "Assistant Prompts" },
+  { value: "llm-pipeline", label: "LLM Pipeline" },
   { value: "llm-providers", label: "LLM Providers" },
   { value: "llm-profiles", label: "LLM Profiles" },
   { value: "ml-profiles", label: "Darkmem ML Profiles" },
+  { value: "jobs", label: "Jobs" },
+  { value: "security", label: "Security" },
+  { value: "maintenance", label: "Maintenance" },
 ] as const satisfies readonly { value: SettingsTabValue; label: string }[]
 
 function SettingsPage() {
@@ -631,6 +676,22 @@ function SettingsPage() {
 
         <TabsContent value="ml-profiles" className="mt-4">
           <MLProfilesPanel />
+        </TabsContent>
+
+        <TabsContent value="llm-pipeline" className="mt-4">
+          <PipelineSettingsPanel />
+        </TabsContent>
+
+        <TabsContent value="jobs" className="mt-4">
+          <JobsPanel />
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-4">
+          <SecurityPanel />
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="mt-4">
+          <MaintenancePanel />
         </TabsContent>
       </Tabs>
     </div>

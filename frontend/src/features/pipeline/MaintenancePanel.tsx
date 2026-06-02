@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { createFileRoute } from "@tanstack/react-router"
 import {
   usePipelineLogs,
   useHealth,
@@ -38,12 +37,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "darkraise-ui/components/alert-dialog"
-import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
-
-export const Route = createFileRoute("/_authenticated/reindex")({
-  component: PipelinePage,
-})
 
 function ServiceDot({ ok }: { ok: boolean }) {
   return (
@@ -529,7 +523,7 @@ function ObsoleteEmbeddingsCard() {
   )
 }
 
-function PipelinePage() {
+export function MaintenancePanel() {
   const { data: health } = useHealth()
   const { data: logs, isLoading } = usePipelineLogs(50)
   const reprocessAll = useReprocessStream("/analytics/reprocess/stream")
@@ -565,9 +559,7 @@ function PipelinePage() {
   const anyPending = reprocessAll.isPending
 
   return (
-    <div className="p-6">
-      <PageHeader title="Pipeline Logs" />
-
+    <div>
       <div className="mb-4 flex items-center justify-end gap-2">
         <AlertDialog>
           <AlertDialogTrigger asChild>

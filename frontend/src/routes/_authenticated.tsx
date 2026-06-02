@@ -9,17 +9,9 @@ import {
   Brain,
   MessageSquare,
   Share2,
-  GitBranch,
-  Orbit,
   Network,
   FolderGit2,
-  BookOpen,
-  BarChart3,
-  Activity,
-  Cpu,
-  Clock,
   Settings,
-  ShieldCheck,
 } from "lucide-react"
 import {
   useLayoutStore,
@@ -34,7 +26,7 @@ import { useWebSocket } from "@/lib/websocket"
 
 const nav: NavGroup[] = [
   {
-    label: "Overview",
+    label: "Workspace",
     items: [
       { label: "Dashboard", href: "/", icon: Home },
       { label: "Memories", href: "/memories", icon: Brain },
@@ -42,31 +34,16 @@ const nav: NavGroup[] = [
     ],
   },
   {
-    label: "Visualization",
+    label: "Explore",
     items: [
-      { label: "Knowledge Graph", href: "/graph", icon: Share2 },
-      { label: "Unified Graph", href: "/unified-graph", icon: GitBranch },
-      { label: "Vector Space", href: "/vectors", icon: Orbit },
+      { label: "Memory Graph", href: "/unified-graph", icon: Share2 },
+      { label: "Repositories", href: "/repos", icon: FolderGit2 },
       { label: "Code Graph", href: "/code-graph", icon: Network },
     ],
   },
   {
-    label: "Code Intelligence",
-    items: [
-      { label: "Repositories", href: "/repos", icon: FolderGit2 },
-      { label: "Code Wiki", href: "/code-wiki", icon: BookOpen },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
-      { label: "Pipeline", href: "/pipeline", icon: Cpu },
-      { label: "Jobs", href: "/jobs", icon: Clock },
-      { label: "Reindex", href: "/reindex", icon: Activity },
-      { label: "Security", href: "/security", icon: ShieldCheck },
-      { label: "Settings", href: "/settings", icon: Settings },
-    ],
+    label: "Admin",
+    items: [{ label: "Settings", href: "/settings", icon: Settings }],
   },
 ]
 

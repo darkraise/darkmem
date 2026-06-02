@@ -14,21 +14,12 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as GuestSetupRouteImport } from './routes/_guest/setup'
 import { Route as GuestLoginRouteImport } from './routes/_guest/login'
-import { Route as AuthenticatedVectorsRouteImport } from './routes/_authenticated/vectors'
 import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authenticated/unified-graph'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedSecurityRouteImport } from './routes/_authenticated/security'
 import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/repos'
-import { Route as AuthenticatedReindexRouteImport } from './routes/_authenticated/reindex'
-import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated/pipeline'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
-import { Route as AuthenticatedLlmRouteImport } from './routes/_authenticated/llm'
-import { Route as AuthenticatedJobsRouteImport } from './routes/_authenticated/jobs'
-import { Route as AuthenticatedGraphRouteImport } from './routes/_authenticated/graph'
-import { Route as AuthenticatedCodeWikiRouteImport } from './routes/_authenticated/code-wiki'
 import { Route as AuthenticatedCodeGraphRouteImport } from './routes/_authenticated/code-graph'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
-import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -53,11 +44,6 @@ const GuestLoginRoute = GuestLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => GuestRoute,
 } as any)
-const AuthenticatedVectorsRoute = AuthenticatedVectorsRouteImport.update({
-  id: '/vectors',
-  path: '/vectors',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedUnifiedGraphRoute =
   AuthenticatedUnifiedGraphRouteImport.update({
     id: '/unified-graph',
@@ -69,49 +55,14 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedSecurityRoute = AuthenticatedSecurityRouteImport.update({
-  id: '/security',
-  path: '/security',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedReposRoute = AuthenticatedReposRouteImport.update({
   id: '/repos',
   path: '/repos',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedReindexRoute = AuthenticatedReindexRouteImport.update({
-  id: '/reindex',
-  path: '/reindex',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedPipelineRoute = AuthenticatedPipelineRouteImport.update({
-  id: '/pipeline',
-  path: '/pipeline',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedMemoriesRoute = AuthenticatedMemoriesRouteImport.update({
   id: '/memories',
   path: '/memories',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedLlmRoute = AuthenticatedLlmRouteImport.update({
-  id: '/llm',
-  path: '/llm',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedJobsRoute = AuthenticatedJobsRouteImport.update({
-  id: '/jobs',
-  path: '/jobs',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedGraphRoute = AuthenticatedGraphRouteImport.update({
-  id: '/graph',
-  path: '/graph',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedCodeWikiRoute = AuthenticatedCodeWikiRouteImport.update({
-  id: '/code-wiki',
-  path: '/code-wiki',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedCodeGraphRoute = AuthenticatedCodeGraphRouteImport.update({
@@ -124,49 +75,26 @@ const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
-  id: '/analytics',
-  path: '/analytics',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
-  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code-graph': typeof AuthenticatedCodeGraphRoute
-  '/code-wiki': typeof AuthenticatedCodeWikiRoute
-  '/graph': typeof AuthenticatedGraphRoute
-  '/jobs': typeof AuthenticatedJobsRoute
-  '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
-  '/pipeline': typeof AuthenticatedPipelineRoute
-  '/reindex': typeof AuthenticatedReindexRoute
   '/repos': typeof AuthenticatedReposRoute
-  '/security': typeof AuthenticatedSecurityRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
-  '/vectors': typeof AuthenticatedVectorsRoute
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
-  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code-graph': typeof AuthenticatedCodeGraphRoute
-  '/code-wiki': typeof AuthenticatedCodeWikiRoute
-  '/graph': typeof AuthenticatedGraphRoute
-  '/jobs': typeof AuthenticatedJobsRoute
-  '/llm': typeof AuthenticatedLlmRoute
   '/memories': typeof AuthenticatedMemoriesRoute
-  '/pipeline': typeof AuthenticatedPipelineRoute
-  '/reindex': typeof AuthenticatedReindexRoute
   '/repos': typeof AuthenticatedReposRoute
-  '/security': typeof AuthenticatedSecurityRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
-  '/vectors': typeof AuthenticatedVectorsRoute
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
 }
@@ -174,21 +102,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_guest': typeof GuestRouteWithChildren
-  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/chat': typeof AuthenticatedChatRoute
   '/_authenticated/code-graph': typeof AuthenticatedCodeGraphRoute
-  '/_authenticated/code-wiki': typeof AuthenticatedCodeWikiRoute
-  '/_authenticated/graph': typeof AuthenticatedGraphRoute
-  '/_authenticated/jobs': typeof AuthenticatedJobsRoute
-  '/_authenticated/llm': typeof AuthenticatedLlmRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
-  '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
-  '/_authenticated/reindex': typeof AuthenticatedReindexRoute
   '/_authenticated/repos': typeof AuthenticatedReposRoute
-  '/_authenticated/security': typeof AuthenticatedSecurityRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/unified-graph': typeof AuthenticatedUnifiedGraphRoute
-  '/_authenticated/vectors': typeof AuthenticatedVectorsRoute
   '/_guest/login': typeof GuestLoginRoute
   '/_guest/setup': typeof GuestSetupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -197,62 +116,35 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/analytics'
     | '/chat'
     | '/code-graph'
-    | '/code-wiki'
-    | '/graph'
-    | '/jobs'
-    | '/llm'
     | '/memories'
-    | '/pipeline'
-    | '/reindex'
     | '/repos'
-    | '/security'
     | '/settings'
     | '/unified-graph'
-    | '/vectors'
     | '/login'
     | '/setup'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/analytics'
     | '/chat'
     | '/code-graph'
-    | '/code-wiki'
-    | '/graph'
-    | '/jobs'
-    | '/llm'
     | '/memories'
-    | '/pipeline'
-    | '/reindex'
     | '/repos'
-    | '/security'
     | '/settings'
     | '/unified-graph'
-    | '/vectors'
     | '/login'
     | '/setup'
   id:
     | '__root__'
     | '/_authenticated'
     | '/_guest'
-    | '/_authenticated/analytics'
     | '/_authenticated/chat'
     | '/_authenticated/code-graph'
-    | '/_authenticated/code-wiki'
-    | '/_authenticated/graph'
-    | '/_authenticated/jobs'
-    | '/_authenticated/llm'
     | '/_authenticated/memories'
-    | '/_authenticated/pipeline'
-    | '/_authenticated/reindex'
     | '/_authenticated/repos'
-    | '/_authenticated/security'
     | '/_authenticated/settings'
     | '/_authenticated/unified-graph'
-    | '/_authenticated/vectors'
     | '/_guest/login'
     | '/_guest/setup'
     | '/_authenticated/'
@@ -300,13 +192,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GuestLoginRouteImport
       parentRoute: typeof GuestRoute
     }
-    '/_authenticated/vectors': {
-      id: '/_authenticated/vectors'
-      path: '/vectors'
-      fullPath: '/vectors'
-      preLoaderRoute: typeof AuthenticatedVectorsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/unified-graph': {
       id: '/_authenticated/unified-graph'
       path: '/unified-graph'
@@ -321,13 +206,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/security': {
-      id: '/_authenticated/security'
-      path: '/security'
-      fullPath: '/security'
-      preLoaderRoute: typeof AuthenticatedSecurityRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/repos': {
       id: '/_authenticated/repos'
       path: '/repos'
@@ -335,53 +213,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReposRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/reindex': {
-      id: '/_authenticated/reindex'
-      path: '/reindex'
-      fullPath: '/reindex'
-      preLoaderRoute: typeof AuthenticatedReindexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/pipeline': {
-      id: '/_authenticated/pipeline'
-      path: '/pipeline'
-      fullPath: '/pipeline'
-      preLoaderRoute: typeof AuthenticatedPipelineRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/memories': {
       id: '/_authenticated/memories'
       path: '/memories'
       fullPath: '/memories'
       preLoaderRoute: typeof AuthenticatedMemoriesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/llm': {
-      id: '/_authenticated/llm'
-      path: '/llm'
-      fullPath: '/llm'
-      preLoaderRoute: typeof AuthenticatedLlmRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/jobs': {
-      id: '/_authenticated/jobs'
-      path: '/jobs'
-      fullPath: '/jobs'
-      preLoaderRoute: typeof AuthenticatedJobsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/graph': {
-      id: '/_authenticated/graph'
-      path: '/graph'
-      fullPath: '/graph'
-      preLoaderRoute: typeof AuthenticatedGraphRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/code-wiki': {
-      id: '/_authenticated/code-wiki'
-      path: '/code-wiki'
-      fullPath: '/code-wiki'
-      preLoaderRoute: typeof AuthenticatedCodeWikiRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/code-graph': {
@@ -398,51 +234,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/analytics': {
-      id: '/_authenticated/analytics'
-      path: '/analytics'
-      fullPath: '/analytics'
-      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
   }
 }
 
 interface AuthenticatedRouteChildren {
-  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedChatRoute: typeof AuthenticatedChatRoute
   AuthenticatedCodeGraphRoute: typeof AuthenticatedCodeGraphRoute
-  AuthenticatedCodeWikiRoute: typeof AuthenticatedCodeWikiRoute
-  AuthenticatedGraphRoute: typeof AuthenticatedGraphRoute
-  AuthenticatedJobsRoute: typeof AuthenticatedJobsRoute
-  AuthenticatedLlmRoute: typeof AuthenticatedLlmRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
-  AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
-  AuthenticatedReindexRoute: typeof AuthenticatedReindexRoute
   AuthenticatedReposRoute: typeof AuthenticatedReposRoute
-  AuthenticatedSecurityRoute: typeof AuthenticatedSecurityRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
-  AuthenticatedVectorsRoute: typeof AuthenticatedVectorsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedChatRoute: AuthenticatedChatRoute,
   AuthenticatedCodeGraphRoute: AuthenticatedCodeGraphRoute,
-  AuthenticatedCodeWikiRoute: AuthenticatedCodeWikiRoute,
-  AuthenticatedGraphRoute: AuthenticatedGraphRoute,
-  AuthenticatedJobsRoute: AuthenticatedJobsRoute,
-  AuthenticatedLlmRoute: AuthenticatedLlmRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
-  AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
-  AuthenticatedReindexRoute: AuthenticatedReindexRoute,
   AuthenticatedReposRoute: AuthenticatedReposRoute,
-  AuthenticatedSecurityRoute: AuthenticatedSecurityRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
-  AuthenticatedVectorsRoute: AuthenticatedVectorsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 

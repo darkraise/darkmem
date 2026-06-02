@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { createFileRoute } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
 import {
@@ -19,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
 import {
   Dialog,
@@ -60,10 +58,6 @@ const CRON_PRESETS: { label: string; value: string }[] = [
   { label: "Daily at 03:00", value: "0 3 * * *" },
   { label: "Weekdays at 09:00", value: "0 9 * * 1-5" },
 ]
-
-export const Route = createFileRoute("/_authenticated/jobs")({
-  component: JobsPage,
-})
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never"
@@ -272,7 +266,11 @@ export function ConfigCell({ job }: { job: Job }) {
           <DialogTitle>Configure {job.display_name}</DialogTitle>
         </DialogHeader>
         {open && (
-          <JobConfigForm job={job} schema={schema} onClose={() => setOpen(false)} />
+          <JobConfigForm
+            job={job}
+            schema={schema}
+            onClose={() => setOpen(false)}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -389,12 +387,11 @@ const columns: ColumnDef<Job>[] = [
   },
 ]
 
-function JobsPage() {
+export function JobsPanel() {
   const { data, isLoading, error } = useJobs()
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader title="Jobs" />
+    <div className="space-y-4">
       {error && (
         <p className="text-destructive">
           Failed to load jobs: {(error as Error).message}

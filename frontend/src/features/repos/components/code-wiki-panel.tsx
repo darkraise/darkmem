@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useRepos } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import {
@@ -17,13 +16,8 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
-import { PageHeader } from "darkraise-ui/layout"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { useQuery } from "@tanstack/react-query"
-
-export const Route = createFileRoute("/_authenticated/code-wiki")({
-  component: CodeWikiPage,
-})
 
 interface WikiData {
   repo_name: string
@@ -57,17 +51,14 @@ function useWiki(repoId: string | null) {
   })
 }
 
-function CodeWikiPage() {
+export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
   const { data: repos } = useRepos()
-  const navigate = useNavigate()
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
   const { data: wiki, isLoading } = useWiki(selectedRepoId)
   const [expandedModule, setExpandedModule] = useState<string | null>(null)
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader title="Code Wiki" />
-
+    <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Select
           value={selectedRepoId || "__none__"}
@@ -196,12 +187,8 @@ function CodeWikiPage() {
       {selectedRepoId && !isLoading && !wiki && (
         <EmptyState
           title="No code wiki yet"
-          description="Trigger a reindex with generate_wiki enabled to populate this page."
-          action={
-            <Button onClick={() => navigate({ to: "/reindex" })}>
-              Open reindex
-            </Button>
-          }
+          description="Reindex this repository with “Generate wiki” enabled from the Repositories tab to populate this page."
+          action={<Button onClick={onGoToRepos}>Go to Repositories</Button>}
         />
       )}
 
@@ -211,11 +198,7 @@ function CodeWikiPage() {
           <EmptyState
             title="No repositories indexed yet"
             description="Add a repository to get started."
-            action={
-              <Button asChild>
-                <Link to="/repos">Add a repo</Link>
-              </Button>
-            }
+            action={<Button onClick={onGoToRepos}>Add a repo</Button>}
           />
         ) : (
           <EmptyState
