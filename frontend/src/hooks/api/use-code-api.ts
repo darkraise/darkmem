@@ -53,6 +53,7 @@ export interface CodeGraphNode {
   language?: string
   file_path?: string
   symbol_count?: number
+  properties?: Record<string, unknown> | null
 }
 
 export interface CodeGraphEdge {

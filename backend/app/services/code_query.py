@@ -228,7 +228,7 @@ class CodeQueryService:
 
         aux_rows = (await self.session.execute(
             text("""
-                SELECT key, kind, label, properties->>'file_path' AS file_path
+                SELECT key, kind, label, properties, properties->>'file_path' AS file_path
                 FROM code_graph_nodes
                 WHERE repo_id = :repo_id
             """),
@@ -238,6 +238,8 @@ class CodeQueryService:
             node = {"id": row["key"], "label": row["label"] or row["key"], "kind": row["kind"]}
             if row["file_path"]:
                 node["file_path"] = row["file_path"]
+            if row["properties"]:
+                node["properties"] = row["properties"]
             nodes.append(node)
 
         edge_rows = (await self.session.execute(
