@@ -236,6 +236,9 @@ function CodeGraphPage() {
       if (!node) {
         setBlastRadiusIds(undefined)
         setBlastRadiusData(null)
+        // Deselecting the stage also clears any process emphasis; without this
+        // the emphasis (gated on !sel) would re-reveal once the selection drops.
+        setSelectedProcess(null)
       }
     },
     [],
@@ -310,14 +313,46 @@ function CodeGraphPage() {
     [selectedProcess],
   )
 
-  const handleProcessSelect = useCallback((process: CodeProcess) => {
-    setSelectedProcess(process)
-    setProcessModalOpen(true)
-  }, [])
+  const handleProcessSelect = useCallback(
+    (process: CodeProcess) => {
+      // Re-clicking the active row turns the emphasis off rather than reopening
+      // the modal with no way back to a clear stage.
+      if (selectedProcess?.id === process.id) {
+        setSelectedProcess(null)
+        return
+      }
+      setSelectedProcess(process)
+      setProcessModalOpen(true)
+    },
+    [selectedProcess],
+  )
 
-  const handleProcessFocus = useCallback((process: CodeProcess) => {
-    setSelectedProcess(process)
-  }, [])
+  const handleProcessFocus = useCallback(
+    (process: CodeProcess) => {
+      // Clear the node selection first: the renderer gates process emphasis on
+      // `!sel`, so an active selection would mask the highlight entirely.
+      handleSelect(null)
+      // Reveal flow nodes hidden by the active type/focus filters, mirroring
+      // handleSearchResultClick/handlePalettePick, so the focus is never a no-op.
+      const flowNodes = (graphData?.nodes ?? []).filter((n) =>
+        process.nodeIds.includes(n.id),
+      )
+      const hiddenKinds = flowNodes
+        .filter((n) => !filteredNodes.some((f) => f.id === n.id))
+        .map((n) => n.kind || "function")
+      if (hiddenKinds.length > 0) {
+        setFocusDepth(null)
+        setVisibleNodeTypes((prev) => {
+          const next = new Set(prev)
+          for (const kind of hiddenKinds) next.add(kind)
+          return next
+        })
+      }
+      setSelectedProcess(process)
+      rendererRef.current?.fitView()
+    },
+    [graphData, filteredNodes, handleSelect],
+  )
 
   const handlePalettePick = useCallback(
     (id: string) => {
