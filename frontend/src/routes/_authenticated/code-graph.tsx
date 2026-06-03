@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { useState, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import {
   Select,
   SelectTrigger,
@@ -21,6 +21,7 @@ import {
 } from "@/features/graph/components/code-graph-renderer"
 import { CodeInspectorPanel } from "@/features/graph/components/code-inspector-panel"
 import { CodeAnalysisPanel } from "@/features/graph/components/code-analysis-panel"
+import { CodeGraphSearch } from "@/features/graph/components/code-graph-search"
 import {
   useRepos,
   useCodeGraph,
@@ -117,6 +118,7 @@ function CodeGraphPage() {
   const [showAnalysis, setShowAnalysis] = useState(true)
   const [layout, setLayout] = useState<CodeGraphLayout>("force")
   const [isPlaying, setIsPlaying] = useState(true)
+  const [searchPaletteOpen, setSearchPaletteOpen] = useState(false)
 
   const rendererRef = useRef<CodeGraphHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -274,6 +276,35 @@ function CodeGraphPage() {
     [graphData, filteredNodes, handleSelect],
   )
 
+  const searchNodes = useMemo(
+    () =>
+      (graphData?.nodes ?? []).map((n) => ({
+        id: n.id,
+        label: n.label,
+        kind: n.kind || "function",
+      })),
+    [graphData],
+  )
+
+  const handlePalettePick = useCallback(
+    (id: string) => {
+      const matchNode = (graphData?.nodes ?? []).find((n) => n.id === id)
+      if (!matchNode) return
+      // Reveal a node hidden by the active type/focus filters before selecting,
+      // mirroring handleSearchResultClick so the quick-jump is never a no-op.
+      if (!filteredNodes.some((n) => n.id === matchNode.id)) {
+        setFocusDepth(null)
+        setVisibleNodeTypes((prev) =>
+          new Set(prev).add(matchNode.kind || "function"),
+        )
+      }
+      setSelectedNodeId(matchNode.id)
+      handleSelect(matchNode)
+      rendererRef.current?.focusNode(matchNode.id)
+    },
+    [graphData, filteredNodes, handleSelect],
+  )
+
   const handleFileSelect = useCallback(
     (id: string) => {
       setSelectedNodeId(id)
@@ -331,6 +362,18 @@ function CodeGraphPage() {
     rendererRef.current?.clearSelection()
   }, [])
 
+  // ⌘K / Ctrl+K toggles the graph-node quick-jump palette.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        setSearchPaletteOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
+
   return (
     <div ref={rootRef} className="code-graph-root flex h-full flex-col">
       <h1 className="sr-only">Code Graph</h1>
@@ -380,6 +423,16 @@ function CodeGraphPage() {
               <Loader2 className="absolute top-1/2 right-2.5 h-3 w-3 -translate-y-1/2 animate-spin text-primary" />
             )}
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-1 h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => setSearchPaletteOpen(true)}
+            title="Jump to node (⌘K)"
+            aria-label="Jump to node"
+          >
+            <Search className="h-3.5 w-3.5" />
+          </Button>
         </div>
 
         {/* Layout switcher */}
@@ -641,6 +694,14 @@ function CodeGraphPage() {
           </div>
         )}
       </div>
+
+      <CodeGraphSearch
+        open={searchPaletteOpen}
+        onOpenChange={setSearchPaletteOpen}
+        nodes={searchNodes}
+        nodeColors={nodeColors}
+        onPick={handlePalettePick}
+      />
     </div>
   )
 }
