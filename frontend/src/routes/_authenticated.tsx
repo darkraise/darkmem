@@ -94,7 +94,6 @@ function AuthenticatedLayout() {
       nav={nav}
       user={{ name: "Admin", email: "" }}
       onLogout={handleLogout}
-      showLayoutSwitcher
     >
       <Outlet />
     </Shell>
