@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useUnifiedGraph } from "@/hooks/api"
+import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Filter, PanelRightClose } from "lucide-react"
@@ -28,6 +29,7 @@ export const Route = createFileRoute("/_authenticated/unified-graph")({
 type ViewMode = "2d" | "3d"
 
 function UnifiedGraphPage() {
+  useFullBleedContent()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
   const [, setGraphReady] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>("type")

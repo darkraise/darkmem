@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState, useMemo, useCallback, useRef, useEffect } from "react"
+import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
 import {
   Select,
   SelectTrigger,
@@ -105,6 +106,8 @@ const ALL_EDGE_TYPES = [
 function CodeGraphPage() {
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  useFullBleedContent()
+
   const [selectedNode, setSelectedNode] = useState<{
     id: string
     label: string

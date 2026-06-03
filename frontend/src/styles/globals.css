@@ -206,3 +206,13 @@
     will-change: auto; /* release the compositing layer when nothing animates */
   }
 }
+
+/* Full-bleed pages (graph canvases) cancel the layout shell's p-6 content
+   padding so the content spreads edge-to-edge. Unlayered, so it overrides the
+   @layer components `.dr-*-layout-content` padding regardless of layout mode. */
+body.content-full-bleed .dr-sidebar-layout-content,
+body.content-full-bleed .dr-stacked-layout-content,
+body.content-full-bleed .dr-top-nav-layout-content,
+body.content-full-bleed .dr-split-panel-layout-content {
+  padding: 0;
+}
