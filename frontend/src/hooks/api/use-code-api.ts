@@ -59,6 +59,7 @@ export interface CodeGraphEdge {
   source: string
   target: string
   type: string
+  properties?: Record<string, unknown> | null
 }
 
 export interface CodeGraphData {

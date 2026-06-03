@@ -242,14 +242,19 @@ class CodeQueryService:
 
         edge_rows = (await self.session.execute(
             text("""
-                SELECT source_key, target_key, edge_type
+                SELECT source_key, target_key, edge_type, properties
                 FROM code_edges
                 WHERE repo_id = :repo_id
+                ORDER BY edge_type, (properties->>'step')::int NULLS LAST, source_key, target_key
             """),
             {"repo_id": repo_id_str},
         )).mappings().all()
         for row in edge_rows:
-            edges.append({"source": row["source_key"], "target": row["target_key"], "type": row["edge_type"]})
+            edge = {"source": row["source_key"], "target": row["target_key"], "type": row["edge_type"]}
+            props = row["properties"]
+            if props:
+                edge["properties"] = props
+            edges.append(edge)
 
         return {"nodes": nodes, "edges": edges}
 
