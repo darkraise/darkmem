@@ -2,10 +2,20 @@ import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { Label } from "darkraise-ui/components/label"
+import { Badge } from "darkraise-ui/components/badge"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
+import { Boxes } from "lucide-react"
 import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api"
 import { ProcessPanel } from "./process-panel"
 import type { CodeProcess } from "../lib/code-processes"
+
+export interface CommunityNavigatorItem {
+  id: string
+  label: string
+  size: number
+  nodeIds: string[]
+  color: string
+}
 
 interface CodeAnalysisPanelProps {
   selectedNode: {
@@ -33,6 +43,9 @@ interface CodeAnalysisPanelProps {
   processes: CodeProcess[]
   selectedProcessId: string | null
   onProcessSelect: (process: CodeProcess) => void
+  communities: CommunityNavigatorItem[]
+  selectedCommunityId: string | null
+  onCommunitySelect: (community: CommunityNavigatorItem) => void
 }
 
 function SectionHeader({ label }: { label: string }) {
@@ -76,6 +89,68 @@ function CollapsibleSection({
   )
 }
 
+// The backend emits risk as a free-form string (low/medium/high/critical in
+// any casing); normalize to a small set so the badge color and label are
+// stable regardless of vendor casing.
+type RiskLevel = "low" | "medium" | "high" | "critical"
+
+function normalizeRisk(raw: string): RiskLevel {
+  const r = raw.trim().toLowerCase()
+  if (r === "critical") return "critical"
+  if (r === "high") return "high"
+  if (r === "medium") return "medium"
+  return "low"
+}
+
+// LOW -> muted, MEDIUM -> primary, HIGH/CRITICAL -> destructive.
+const RISK_STYLES: Record<RiskLevel, { box: string; text: string }> = {
+  low: { box: "border-border bg-muted", text: "text-muted-foreground" },
+  medium: { box: "border-primary/20 bg-primary/10", text: "text-primary" },
+  high: {
+    box: "border-destructive/20 bg-destructive/10",
+    text: "text-destructive",
+  },
+  critical: {
+    box: "border-destructive/40 bg-destructive/20",
+    text: "text-destructive",
+  },
+}
+
+function BlastDepthHistogram({ byDepth }: { byDepth: BlastRadiusResult["by_depth"] }) {
+  const buckets: Array<{ label: string; count: number }> = [
+    { label: "d1", count: byDepth["1"]?.length ?? 0 },
+    { label: "d2", count: byDepth["2"]?.length ?? 0 },
+    { label: "d3+", count: byDepth["3+"]?.length ?? 0 },
+  ]
+  const max = Math.max(1, ...buckets.map((b) => b.count))
+
+  return (
+    <div className="space-y-1">
+      <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+        By Depth
+      </div>
+      <div className="space-y-1">
+        {buckets.map((b) => (
+          <div key={b.label} className="flex items-center gap-2">
+            <span className="w-7 shrink-0 font-mono text-sm text-destructive/70">
+              {b.label}
+            </span>
+            <div className="h-2 flex-1 overflow-hidden rounded-sm bg-muted">
+              <div
+                className="h-full rounded-sm bg-destructive/70"
+                style={{ width: `${(b.count / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-8 shrink-0 text-right font-mono text-sm text-foreground tabular-nums">
+              {b.count}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function CodeAnalysisPanel({
   selectedNode,
   symbolDetail,
@@ -97,6 +172,9 @@ export function CodeAnalysisPanel({
   processes,
   selectedProcessId,
   onProcessSelect,
+  communities,
+  selectedCommunityId,
+  onCommunitySelect,
 }: CodeAnalysisPanelProps) {
   const isAnalyzableSymbol =
     selectedNode &&
@@ -198,41 +276,37 @@ export function CodeAnalysisPanel({
                 </div>
 
                 {blastRadiusData && (
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="rounded-sm border border-destructive/20 bg-destructive/10 px-2.5 py-1.5">
-                        <div className="font-mono text-base font-bold text-destructive">
+                        <div className="font-mono text-base font-bold text-destructive tabular-nums">
                           {blastRadiusData.total}
                         </div>
                         <div className="font-mono text-sm tracking-[0.2em] text-destructive/70 uppercase">
                           Affected
                         </div>
                       </div>
-                      <div
-                        className={`rounded-sm border px-2.5 py-1.5 ${
-                          blastRadiusData.risk === "high"
-                            ? "border-destructive/20 bg-destructive/10"
-                            : blastRadiusData.risk === "medium"
-                              ? "border-primary/20 bg-primary/10"
-                              : "border-border bg-muted"
-                        }`}
-                      >
-                        <div
-                          className={`font-mono text-base font-bold ${
-                            blastRadiusData.risk === "high"
-                              ? "text-destructive"
-                              : blastRadiusData.risk === "medium"
-                                ? "text-primary"
-                                : "text-muted-foreground"
-                          }`}
-                        >
-                          {blastRadiusData.risk}
-                        </div>
-                        <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
-                          Risk
-                        </div>
-                      </div>
+                      {(() => {
+                        const risk = normalizeRisk(blastRadiusData.risk)
+                        const style = RISK_STYLES[risk]
+                        return (
+                          <div className={`rounded-sm border px-2.5 py-1.5 ${style.box}`}>
+                            <div
+                              className={`font-mono text-base font-bold uppercase ${style.text}`}
+                            >
+                              {risk}
+                            </div>
+                            <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                              Risk
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
+
+                    {blastRadiusData.by_depth && (
+                      <BlastDepthHistogram byDepth={blastRadiusData.by_depth} />
+                    )}
 
                     {blastRadiusData.affected.length > 0 && (
                       <ScrollArea className="mt-2 max-h-40">
@@ -313,6 +387,43 @@ export function CodeAnalysisPanel({
             onSelect={onProcessSelect}
           />
         </CollapsibleSection>
+
+        {/* Communities (cluster navigator) — only when Leiden found clusters */}
+        {communities.length > 0 && (
+          <CollapsibleSection label="Communities" defaultOpen={false}>
+            <div className="space-y-1">
+              {communities.map((c) => {
+                const active = c.id === selectedCommunityId
+                return (
+                  <Button
+                    key={c.id}
+                    variant="ghost"
+                    onClick={() => onCommunitySelect(c)}
+                    className={`flex h-auto w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-colors ${
+                      active
+                        ? "bg-primary/15 text-primary"
+                        : "text-foreground hover:bg-accent"
+                    }`}
+                  >
+                    <Boxes
+                      className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: c.color }}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium">
+                      {c.label}
+                    </span>
+                    <Badge variant="secondary" size="sm" className="shrink-0">
+                      {c.size}
+                    </Badge>
+                  </Button>
+                )
+              })}
+            </div>
+          </CollapsibleSection>
+        )}
 
         {/* Node Type Filters */}
         <CollapsibleSection label="Node Types" defaultOpen={false}>

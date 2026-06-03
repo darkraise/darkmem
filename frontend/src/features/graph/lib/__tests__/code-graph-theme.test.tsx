@@ -8,6 +8,7 @@ import {
   resolveGraphTokens,
   nodeKindColor,
   edgeTypeColor,
+  communityColor,
   buildCodeGraphColorMaps,
   useCodeGraphTheme,
   type GraphThemeTokens,
@@ -231,6 +232,36 @@ describe("useCodeGraphTheme", () => {
       expect(result.current.tokens.primary).toBe(hslToHex(30, 91, 60)),
     )
     expect(result.current.tokens.primaryHue).toBe(30)
+  })
+})
+
+describe("communityColor", () => {
+  it("returns a valid #rrggbb", () => {
+    const t = darkT()
+    expect(communityColor(0, t)).toMatch(HEX)
+    expect(communityColor("7", t)).toMatch(HEX)
+  })
+
+  it("is deterministic for the same id across calls", () => {
+    const t = darkT()
+    expect(communityColor(3, t)).toBe(communityColor(3, t))
+    expect(communityColor("abc", t)).toBe(communityColor("abc", t))
+  })
+
+  it("treats a numeric id and its string form identically", () => {
+    const t = darkT()
+    expect(communityColor(12, t)).toBe(communityColor("12", t))
+  })
+
+  it("distinguishes different community ids", () => {
+    const t = darkT()
+    expect(communityColor(1, t)).not.toBe(communityColor(2, t))
+  })
+
+  it("tracks the accent: changing primaryHue changes the color", () => {
+    const a = darkT({ primaryHue: 217 })
+    const b = darkT({ primaryHue: 30 })
+    expect(communityColor(5, a)).not.toBe(communityColor(5, b))
   })
 })
 

@@ -18,6 +18,7 @@ import {
   CodeGraphRenderer,
   type CodeGraphHandle,
   type CodeGraphLayout,
+  type CodeGraphColorMode,
 } from "@/features/graph/components/code-graph-renderer"
 import { CodeInspectorPanel } from "@/features/graph/components/code-inspector-panel"
 import { CodeAnalysisPanel } from "@/features/graph/components/code-analysis-panel"
@@ -51,8 +52,13 @@ import {
   Network,
   GitBranch,
   CircleDot,
+  Tag,
+  Boxes,
 } from "lucide-react"
-import { useCodeGraphTheme } from "@/features/graph/lib/code-graph-theme"
+import {
+  useCodeGraphTheme,
+  communityColor,
+} from "@/features/graph/lib/code-graph-theme"
 
 export const Route = createFileRoute("/_authenticated/code-graph")({
   component: CodeGraphPage,
@@ -122,6 +128,10 @@ function CodeGraphPage() {
   const [showInspector, setShowInspector] = useState(true)
   const [showAnalysis, setShowAnalysis] = useState(true)
   const [layout, setLayout] = useState<CodeGraphLayout>("force")
+  const [colorMode, setColorMode] = useState<CodeGraphColorMode>("type")
+  const [selectedCommunityId, setSelectedCommunityId] = useState<string | null>(
+    null,
+  )
   const [isPlaying, setIsPlaying] = useState(true)
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false)
   const [selectedProcess, setSelectedProcess] = useState<CodeProcess | null>(
@@ -236,9 +246,11 @@ function CodeGraphPage() {
       if (!node) {
         setBlastRadiusIds(undefined)
         setBlastRadiusData(null)
-        // Deselecting the stage also clears any process emphasis; without this
-        // the emphasis (gated on !sel) would re-reveal once the selection drops.
+        // Deselecting the stage also clears any process/community emphasis;
+        // without this the emphasis (gated on !sel) would re-reveal once the
+        // selection drops.
         setSelectedProcess(null)
+        setSelectedCommunityId(null)
       }
     },
     [],
@@ -342,12 +354,72 @@ function CodeGraphPage() {
     [graphData],
   )
 
-  // Emphasis set drives the renderer's primary-ring highlight; it is the
-  // selected process's node ids, kept independent of blast-radius (destructive).
-  const emphasisNodeIds = useMemo(
-    () => (selectedProcess ? new Set(selectedProcess.nodeIds) : undefined),
-    [selectedProcess],
+  // Communities derive from `member_of` edges (member symbol -> community node)
+  // plus the community nodes themselves. Size prefers the backend's
+  // properties.size when present, else falls back to the counted membership.
+  const communities = useMemo(() => {
+    const nodes = graphData?.nodes ?? []
+    const edges = graphData?.edges ?? []
+    const communityNodes = nodes.filter((n) => n.kind === "community")
+    if (communityNodes.length === 0) return []
+
+    const ids = new Set(communityNodes.map((n) => n.id))
+    const members = new Map<string, string[]>()
+    for (const e of edges) {
+      if (e.type !== "member_of" || !ids.has(e.target)) continue
+      if (!members.has(e.target)) members.set(e.target, [])
+      members.get(e.target)!.push(e.source)
+    }
+
+    return communityNodes
+      .map((n) => {
+        const memberIds = members.get(n.id) ?? []
+        const props = (n as { properties?: Record<string, unknown> | null })
+          .properties
+        const declaredSize = props ? Number(props.size) : NaN
+        const size = Number.isFinite(declaredSize)
+          ? declaredSize
+          : memberIds.length
+        // The renderer anchors a community's hue on the community node id, so
+        // the navigator does too — keeping the swatch and the node color in
+        // sync. The community node is highlighted alongside its members so the
+        // navigator selection and the renderer's emphasis ring agree.
+        return {
+          id: n.id,
+          label: n.label,
+          size,
+          nodeIds: [n.id, ...memberIds],
+        }
+      })
+      .sort((a, b) => b.size - a.size)
+  }, [graphData])
+
+  // Pre-resolve each community's swatch so the navigator and the renderer's
+  // community-mode node colors share one accent-derived source.
+  const communityList = useMemo(
+    () =>
+      communities.map((c) => ({
+        id: c.id,
+        label: c.label,
+        size: c.size,
+        nodeIds: c.nodeIds,
+        color: communityColor(c.id, tokens),
+      })),
+    [communities, tokens],
   )
+
+  // Emphasis set drives the renderer's primary-ring highlight; it carries the
+  // selected process's nodes or the selected community's members, kept
+  // independent of blast-radius (destructive). The two selections are mutually
+  // exclusive — picking one clears the other.
+  const emphasisNodeIds = useMemo(() => {
+    if (selectedProcess) return new Set(selectedProcess.nodeIds)
+    if (selectedCommunityId) {
+      const community = communities.find((c) => c.id === selectedCommunityId)
+      if (community) return new Set(community.nodeIds)
+    }
+    return undefined
+  }, [selectedProcess, selectedCommunityId, communities])
 
   const handleProcessSelect = useCallback(
     (process: CodeProcess) => {
@@ -357,11 +429,50 @@ function CodeGraphPage() {
         setSelectedProcess(null)
         return
       }
+      // Process and community emphasis are mutually exclusive.
+      setSelectedCommunityId(null)
       setSelectedProcess(process)
       setProcessModalOpen(true)
     },
     [selectedProcess],
   )
+
+  const handleCommunitySelect = useCallback(
+    (community: { id: string; nodeIds: string[] }) => {
+      // Re-clicking the active community clears its emphasis.
+      if (selectedCommunityId === community.id) {
+        setSelectedCommunityId(null)
+        return
+      }
+      // The renderer gates emphasis on `!sel`, so clear any node selection and
+      // the (mutually exclusive) process emphasis first, then reveal members
+      // hidden by the active type/focus filters so the highlight is visible.
+      handleSelect(null)
+      setSelectedProcess(null)
+      const memberNodes = (graphData?.nodes ?? []).filter((n) =>
+        community.nodeIds.includes(n.id),
+      )
+      const hiddenKinds = memberNodes
+        .filter((n) => !filteredNodes.some((f) => f.id === n.id))
+        .map((n) => n.kind || "function")
+      if (hiddenKinds.length > 0) {
+        setFocusDepth(null)
+        setVisibleNodeTypes((prev) => {
+          const next = new Set(prev)
+          for (const kind of hiddenKinds) next.add(kind)
+          return next
+        })
+      }
+      setSelectedCommunityId(community.id)
+      rendererRef.current?.fitView()
+    },
+    [selectedCommunityId, graphData, filteredNodes, handleSelect],
+  )
+
+  const handleColorModeChange = useCallback((value: string) => {
+    if (!value) return
+    setColorMode(value as CodeGraphColorMode)
+  }, [])
 
   const handleProcessFocus = useCallback(
     (process: CodeProcess) => {
@@ -575,6 +686,33 @@ function CodeGraphPage() {
           </ToggleGroupItem>
         </ToggleGroup>
 
+        {/* Color-by switcher */}
+        <ToggleGroup
+          type="single"
+          value={colorMode}
+          onValueChange={handleColorModeChange}
+          className="shrink-0 gap-0"
+        >
+          <ToggleGroupItem
+            value="type"
+            variant="outline"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+            title="Color by type"
+            aria-label="Color by type"
+          >
+            <Tag className="h-3.5 w-3.5" />
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="community"
+            variant="outline"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+            title="Color by community"
+            aria-label="Color by community"
+          >
+            <Boxes className="h-3.5 w-3.5" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+
         {/* Camera controls + play/pause */}
         <div className="flex shrink-0 items-center gap-0.5">
           <Button
@@ -765,6 +903,7 @@ function CodeGraphPage() {
               edgeColors={edgeColors}
               tokens={tokens}
               layout={layout}
+              colorMode={colorMode}
             />
           )}
 
@@ -802,6 +941,9 @@ function CodeGraphPage() {
               processes={processes}
               selectedProcessId={selectedProcess?.id ?? null}
               onProcessSelect={handleProcessSelect}
+              communities={communityList}
+              selectedCommunityId={selectedCommunityId}
+              onCommunitySelect={handleCommunitySelect}
             />
           </div>
         )}

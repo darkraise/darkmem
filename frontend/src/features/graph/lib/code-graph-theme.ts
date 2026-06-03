@@ -236,6 +236,21 @@ export function nodeKindColor(kind: string, t: GraphThemeTokens): string {
   return hslToHex(generatedNodeHue(k, t.primaryHue), s, l)
 }
 
+// Deterministic accent-anchored color for a community cluster, mirroring the
+// node long-tail tier: rotate the accent hue by a stable per-id offset so every
+// community keeps a fixed, distinct hue that still tracks the active accent.
+export function communityColor(
+  communityId: string | number,
+  t: GraphThemeTokens,
+): string {
+  const key = String(communityId)
+  const offset = stableHash(key) % 360
+  const hue = (((t.primaryHue + offset) % 360) + 360) % 360
+  const s = t.isDark ? 70 : 62
+  const l = t.isDark ? 62 : 45
+  return hslToHex(hue, s, l)
+}
+
 export function edgeTypeColor(type: string, t: GraphThemeTokens): string {
   const e = type.toLowerCase()
   let seed: string

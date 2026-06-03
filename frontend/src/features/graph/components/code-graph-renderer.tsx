@@ -11,7 +11,7 @@ import EdgeCurveProgram, { indexParallelEdgesIndex } from "@sigma/edge-curve"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import noverlap from "graphology-layout-noverlap"
-import type { GraphThemeTokens } from "../lib/code-graph-theme"
+import { communityColor, type GraphThemeTokens } from "../lib/code-graph-theme"
 
 // ── Color helpers (matching GitNexus) ─────────────────────────
 
@@ -323,6 +323,8 @@ function assignTreeLayout(graph: Graph, depth: Map<string, number>): void {
 
 export type CodeGraphLayout = "force" | "tree" | "circles"
 
+export type CodeGraphColorMode = "type" | "community"
+
 export interface CodeGraphHandle {
   zoomIn: () => void
   zoomOut: () => void
@@ -358,6 +360,7 @@ interface CodeGraphRendererProps {
   edgeColors: Record<string, string>
   tokens: GraphThemeTokens
   layout?: CodeGraphLayout
+  colorMode?: CodeGraphColorMode
 }
 
 export const CodeGraphRenderer = forwardRef<
@@ -376,6 +379,7 @@ export const CodeGraphRenderer = forwardRef<
     edgeColors,
     tokens,
     layout = "force",
+    colorMode = "type",
   },
   ref,
 ) {
@@ -403,7 +407,7 @@ export const CodeGraphRenderer = forwardRef<
   // dim base, labels, and hover/selection chrome are all baked at build time,
   // so they must recompute when the accent or mode flips.
   const themeKey = `${tokens.primary}:${tokens.background}:${tokens.isDark}`
-  const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}:${themeKey}`
+  const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}:${themeKey}:${colorMode}`
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
@@ -430,6 +434,38 @@ export const CodeGraphRenderer = forwardRef<
     const bg = tokens.background
 
     const nodeCount = nodes.length
+
+    // ── Community membership map (community mode) ─────────────
+    // Each `member_of` edge points a member symbol at its community node, so
+    // the source resolves to a community id and the community node itself is
+    // keyed on its own id. Members with no edge fall back to mutedForeground.
+    const nodeToCommunity = new Map<string, string>()
+    if (colorMode === "community") {
+      const communityIds = new Set(
+        nodes
+          .filter((n) => n.kind?.toLowerCase() === "community")
+          .map((n) => n.id),
+      )
+      for (const e of edges) {
+        if ((e.type?.toLowerCase() ?? "") !== "member_of") continue
+        if (communityIds.has(e.target)) nodeToCommunity.set(e.source, e.target)
+      }
+    }
+
+    const colorForNode = (node: {
+      id: string
+      kind?: string
+    }): string => {
+      const kind = node.kind?.toLowerCase() ?? ""
+      if (colorMode === "community") {
+        if (kind === "community") return communityColor(node.id, tokens)
+        const communityId = nodeToCommunity.get(node.id)
+        return communityId !== undefined
+          ? communityColor(communityId, tokens)
+          : defaultNodeColor
+      }
+      return nodeColors[kind] ?? defaultNodeColor
+    }
     const edgeBaseSize = nodeCount > 20000 ? 0.4 : nodeCount > 5000 ? 0.6 : 1.0
 
     // ── Build parent-child hierarchy from edges ───────────────
@@ -496,7 +532,7 @@ export const CodeGraphRenderer = forwardRef<
         y,
         label: node.label,
         size,
-        color: nodeColors[kind] ?? defaultNodeColor,
+        color: colorForNode(node),
         mass: getNodeMass(kind, nodeCount),
         _kind: node.kind,
         _filePath: node.file_path,
@@ -517,7 +553,7 @@ export const CodeGraphRenderer = forwardRef<
         y: pos.y,
         label: node.label,
         size,
-        color: nodeColors[kind] ?? defaultNodeColor,
+        color: colorForNode(node),
         mass: getNodeMass(kind, nodeCount),
         _kind: node.kind,
         _filePath: node.file_path,
