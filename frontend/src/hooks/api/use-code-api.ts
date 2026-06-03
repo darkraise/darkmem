@@ -78,6 +78,21 @@ export interface CodeSearchResult {
   score: number
 }
 
+export interface CodeSymbolResponse {
+  id: string
+  name: string
+  kind: string
+  file_path: string
+  line_start: number
+  line_end: number
+  signature: string | null
+  docstring: string | null
+  visibility: string | null
+  source_code: string
+  summary: string | null
+  enrichment_status: string
+}
+
 export interface CodeSymbolDetail {
   id: string
   name: string
@@ -91,6 +106,20 @@ export interface CodeSymbolDetail {
   source_code: string
   summary: string | null
   enrichment_status: string
+}
+
+export interface CodeSymbolListResult {
+  items: CodeSymbolResponse[]
+  total: number
+}
+
+export interface CodeSymbolsParams {
+  repoId: string | null
+  q?: string
+  kind?: string
+  filePath?: string
+  offset?: number
+  limit?: number
 }
 
 export interface BlastRadiusResult {
@@ -211,6 +240,30 @@ export function useCodeGraph(repoId: string | null) {
   return useQuery<CodeGraphData>({
     queryKey: ["codeGraph", repoId],
     queryFn: () => apiFetch(`/code/graph/${repoId}`),
+    enabled: !!repoId,
+  })
+}
+
+export function useCodeSymbols({
+  repoId,
+  q,
+  kind,
+  filePath,
+  offset = 0,
+  limit = 50,
+}: CodeSymbolsParams) {
+  return useQuery<CodeSymbolListResult>({
+    queryKey: ["codeSymbols", repoId, q, kind, filePath, offset, limit],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (repoId) params.set("repo_id", repoId)
+      if (q) params.set("q", q)
+      if (kind) params.set("kind", kind)
+      if (filePath) params.set("file_path", filePath)
+      params.set("offset", String(offset))
+      params.set("limit", String(limit))
+      return apiFetch(`/code/symbols?${params.toString()}`)
+    },
     enabled: !!repoId,
   })
 }

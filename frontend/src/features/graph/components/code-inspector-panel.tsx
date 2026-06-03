@@ -1,6 +1,15 @@
-import { useState, useMemo, type ReactNode } from "react"
+import { useState, useMemo, useEffect, type ReactNode } from "react"
 import { Button } from "darkraise-ui/components/button"
+import { Input } from "darkraise-ui/components/input"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "darkraise-ui/components/select"
+import { useCodeSymbols } from "@/hooks/api"
 import type { CodeSymbolDetail, CodeSearchResult } from "@/hooks/api"
 
 interface CodeInspectorPanelProps {
@@ -9,9 +18,16 @@ interface CodeInspectorPanelProps {
   fileList: string[]
   onFileSelect: (id: string) => void
   onSearchResultClick: (result: CodeSearchResult) => void
+  repoId: string | null
+  nodeColors: Record<string, string>
+  symbolKinds: string[]
+  onSymbolSelect: (name: string, filePath: string) => void
 }
 
-type InspectorTab = "source" | "files" | "results"
+type InspectorTab = "source" | "files" | "results" | "symbols"
+
+const SYMBOLS_PAGE_SIZE = 25
+const ALL_KINDS = "__all__"
 
 function FileTree({
   files,
@@ -75,17 +91,169 @@ function FileTree({
   return <div>{renderTree(tree)}</div>
 }
 
+function SymbolsTab({
+  repoId,
+  nodeColors,
+  symbolKinds,
+  onSymbolSelect,
+}: {
+  repoId: string | null
+  nodeColors: Record<string, string>
+  symbolKinds: string[]
+  onSymbolSelect: (name: string, filePath: string) => void
+}) {
+  const [rawQuery, setRawQuery] = useState("")
+  const [debouncedQuery, setDebouncedQuery] = useState("")
+  const [kind, setKind] = useState(ALL_KINDS)
+  const [offset, setOffset] = useState(0)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(rawQuery.trim()), 300)
+    return () => clearTimeout(t)
+  }, [rawQuery])
+
+  // A new query or kind filter resets to the first page so the offset window
+  // never points past a shrunken result set.
+  useEffect(() => {
+    setOffset(0)
+  }, [debouncedQuery, kind])
+
+  const { data, isFetching } = useCodeSymbols({
+    repoId,
+    q: debouncedQuery || undefined,
+    kind: kind === ALL_KINDS ? undefined : kind,
+    offset,
+    limit: SYMBOLS_PAGE_SIZE,
+  })
+
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const rangeStart = total === 0 ? 0 : offset + 1
+  const rangeEnd = Math.min(offset + items.length, total)
+  const hasPrev = offset > 0
+  const hasNext = offset + SYMBOLS_PAGE_SIZE < total
+
+  if (!repoId) {
+    return (
+      <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
+        <p className="font-mono text-sm text-muted-foreground">
+          Select a repository to browse symbols
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border p-3">
+        <Input
+          placeholder="Filter symbols…"
+          className="h-8 border-border bg-transparent font-mono text-sm"
+          value={rawQuery}
+          onChange={(e) => setRawQuery(e.target.value)}
+        />
+        <Select value={kind} onValueChange={setKind}>
+          <SelectTrigger className="h-8 border-border bg-transparent font-mono text-sm">
+            <SelectValue placeholder="All kinds" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_KINDS}>All</SelectItem>
+            {symbolKinds.map((k) => (
+              <SelectItem key={k} value={k}>
+                {k}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-0.5 p-2">
+          {items.length > 0 ? (
+            items.map((sym) => (
+              <Button
+                variant="ghost"
+                key={sym.id}
+                className="group w-full rounded-md border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent"
+                onClick={() => onSymbolSelect(sym.name, sym.file_path)}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor:
+                        nodeColors[sym.kind] ?? "hsl(var(--muted-foreground))",
+                    }}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">
+                    {sym.name}
+                  </span>
+                  <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                    {sym.kind}
+                  </span>
+                </div>
+                <div className="mt-1 truncate font-mono text-sm text-muted-foreground">
+                  {sym.file_path}
+                  {sym.line_start > 0 && (
+                    <span> · L{sym.line_start}–{sym.line_end}</span>
+                  )}
+                </div>
+              </Button>
+            ))
+          ) : (
+            <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
+              <p className="font-mono text-sm text-muted-foreground">
+                {isFetching ? "Loading symbols…" : "No symbols found"}
+              </p>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-2">
+        <span className="font-mono text-sm text-muted-foreground tabular-nums">
+          {rangeStart}-{rangeEnd} of {total}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            className="h-7 px-2 font-mono text-sm"
+            disabled={!hasPrev}
+            onClick={() => setOffset((o) => Math.max(0, o - SYMBOLS_PAGE_SIZE))}
+          >
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            className="h-7 px-2 font-mono text-sm"
+            disabled={!hasNext}
+            onClick={() => setOffset((o) => o + SYMBOLS_PAGE_SIZE)}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CodeInspectorPanel({
   symbolDetail,
   searchResults,
   fileList,
   onFileSelect,
   onSearchResultClick,
+  repoId,
+  nodeColors,
+  symbolKinds,
+  onSymbolSelect,
 }: CodeInspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<InspectorTab>("source")
 
   const tabs: { id: InspectorTab; label: string; count?: number }[] = [
     { id: "source", label: "Source" },
+    { id: "symbols", label: "Symbols" },
     { id: "files", label: "Files", count: fileList.length || undefined },
     {
       id: "results",
@@ -126,6 +294,16 @@ export function CodeInspectorPanel({
         ))}
       </div>
 
+      {activeTab === "symbols" && (
+        <SymbolsTab
+          repoId={repoId}
+          nodeColors={nodeColors}
+          symbolKinds={symbolKinds}
+          onSymbolSelect={onSymbolSelect}
+        />
+      )}
+
+      {activeTab !== "symbols" && (
       <ScrollArea className="min-h-0 flex-1">
         {activeTab === "source" && (
           <div className="p-3">
@@ -254,6 +432,7 @@ export function CodeInspectorPanel({
           </div>
         )}
       </ScrollArea>
+      )}
     </div>
   )
 }

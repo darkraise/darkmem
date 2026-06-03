@@ -288,6 +288,42 @@ function CodeGraphPage() {
     [graphData, filteredNodes, handleSelect],
   )
 
+  const handleSymbolSelect = useCallback(
+    (name: string, filePath: string) => {
+      const all = graphData?.nodes ?? []
+      // Symbol browser rows carry the canonical name + file_path; resolve the
+      // node the same way handleSearchResultClick does, preferring an exact
+      // name::file_path match before a looser label fallback.
+      const matchNode =
+        all.find((n) => n.label === name && n.file_path === filePath) ??
+        all.find((n) => n.label === name)
+      if (!matchNode) {
+        toast.error(`"${name}" isn't in the current graph`)
+        return
+      }
+      if (!filteredNodes.some((n) => n.id === matchNode.id)) {
+        setFocusDepth(null)
+        setVisibleNodeTypes((prev) =>
+          new Set(prev).add(matchNode.kind || "function"),
+        )
+      }
+      setSelectedNodeId(matchNode.id)
+      handleSelect(matchNode)
+      rendererRef.current?.focusNode(matchNode.id)
+    },
+    [graphData, filteredNodes, handleSelect],
+  )
+
+  const symbolKinds = useMemo(() => {
+    const kinds = new Set<string>()
+    for (const n of graphData?.nodes ?? []) {
+      if (n.kind && n.kind !== "community" && n.kind !== "process") {
+        kinds.add(n.kind)
+      }
+    }
+    return Array.from(kinds).sort()
+  }, [graphData])
+
   const searchNodes = useMemo(
     () =>
       (graphData?.nodes ?? []).map((n) => ({
@@ -673,6 +709,10 @@ function CodeGraphPage() {
               fileList={fileList}
               onFileSelect={handleFileSelect}
               onSearchResultClick={handleSearchResultClick}
+              repoId={selectedRepoId}
+              nodeColors={nodeColors}
+              symbolKinds={symbolKinds}
+              onSymbolSelect={handleSymbolSelect}
             />
           </div>
         )}
