@@ -286,12 +286,12 @@ function CodeGraphPage() {
     <div ref={rootRef} className="code-graph-root flex h-full flex-col">
       <h1 className="sr-only">Code Graph</h1>
       {/* ── Toolbar ─────────────────────────────────────────────── */}
-      <div className="code-graph-toolbar flex shrink-0 items-center gap-3 border-b border-cyan-900/15 px-4 py-2">
+      <div className="code-graph-toolbar flex shrink-0 items-center gap-3 border-b border-border px-4 py-2">
         {/* Left: panel toggle + repo */}
         <Button
           variant="ghost"
           size="icon"
-          className={`rounded p-1.5 transition-colors ${showInspector ? "bg-cyan-500/8 text-cyan-400/70" : "text-zinc-600 hover:text-zinc-400"}`}
+          className={`rounded p-1.5 transition-colors ${showInspector ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
           onClick={() => setShowInspector(!showInspector)}
           title="Toggle code inspector"
           aria-label="Toggle code inspector"
@@ -303,7 +303,7 @@ function CodeGraphPage() {
           value={selectedRepoId ?? "__none__"}
           onValueChange={(v) => setSelectedRepoId(v === "__none__" ? null : v)}
         >
-          <SelectTrigger className="h-7 w-44 border-cyan-900/20 bg-transparent font-mono text-sm text-zinc-300 hover:border-cyan-500/20 focus:border-cyan-500/30">
+          <SelectTrigger className="h-7 w-44 border-border bg-transparent font-mono text-sm text-foreground hover:border-primary/40 focus:border-primary/50">
             <SelectValue placeholder="Select repo" />
           </SelectTrigger>
           <SelectContent>
@@ -319,31 +319,31 @@ function CodeGraphPage() {
         {/* Center: search */}
         <div className="flex flex-1 justify-center">
           <div className="relative w-full max-w-md">
-            <Search className="absolute top-1/2 left-2.5 h-3 w-3 -translate-y-1/2 text-cyan-500/30" />
+            <Search className="absolute top-1/2 left-2.5 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search symbols…"
-              className="h-7 border-cyan-900/20 bg-transparent pl-8 font-mono text-sm text-zinc-300 placeholder:text-zinc-700 hover:border-cyan-500/20 focus:border-cyan-500/30 focus:shadow-[0_0_8px_rgba(34,211,238,0.08)]"
+              className="h-7 border-border bg-transparent pl-8 font-mono text-sm text-foreground placeholder:text-muted-foreground hover:border-primary/40 focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearch}
             />
             {codeSearch.isPending && (
-              <Loader2 className="absolute top-1/2 right-2.5 h-3 w-3 -translate-y-1/2 animate-spin text-cyan-500/40" />
+              <Loader2 className="absolute top-1/2 right-2.5 h-3 w-3 -translate-y-1/2 animate-spin text-primary" />
             )}
           </div>
         </div>
 
         {/* Right: depth + stats + panel toggle */}
         <div className="flex shrink-0 items-center gap-1 font-mono text-sm">
-          <span className="mr-1 text-zinc-600">Depth</span>
+          <span className="mr-1 text-muted-foreground">Depth</span>
           {([null, 1, 2, 3, 5] as const).map((d) => (
             <Button
               variant="ghost"
               key={d ?? "all"}
               className={`rounded-sm px-1.5 py-0.5 transition-colors ${
                 focusDepth === d
-                  ? "bg-cyan-500/15 text-cyan-300/80 shadow-[0_0_4px_rgba(34,211,238,0.15)]"
-                  : "text-zinc-600 hover:bg-white/[0.03] hover:text-zinc-400"
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
               onClick={() => setFocusDepth(d)}
             >
@@ -352,23 +352,23 @@ function CodeGraphPage() {
           ))}
         </div>
 
-        <div className="h-4 w-px bg-cyan-900/15" />
+        <div className="h-4 w-px bg-border" />
 
         {filteredNodes.length > 0 && (
-          <div className="shrink-0 font-mono text-sm text-zinc-600 tabular-nums">
-            <span className="text-cyan-500/50">{filteredNodes.length}</span>
-            <span className="mx-0.5 text-zinc-700">n</span>
-            <span className="ml-1 text-cyan-500/50">
+          <div className="shrink-0 font-mono text-sm text-muted-foreground tabular-nums">
+            <span className="text-primary">{filteredNodes.length}</span>
+            <span className="mx-0.5 text-muted-foreground">n</span>
+            <span className="ml-1 text-primary">
               {filteredEdges.length}
             </span>
-            <span className="mx-0.5 text-zinc-700">e</span>
+            <span className="mx-0.5 text-muted-foreground">e</span>
           </div>
         )}
 
         <Button
           variant="ghost"
           size="icon"
-          className={`rounded p-1.5 transition-colors ${showAnalysis ? "bg-violet-500/8 text-violet-400/70" : "text-zinc-600 hover:text-zinc-400"}`}
+          className={`rounded p-1.5 transition-colors ${showAnalysis ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
           onClick={() => setShowAnalysis(!showAnalysis)}
           title="Toggle analysis panel"
           aria-label="Toggle analysis panel"
@@ -402,32 +402,32 @@ function CodeGraphPage() {
         <div className="relative min-w-0 flex-1">
           {!selectedRepoId && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-cyan-500/8 bg-cyan-500/[0.02]">
-                <span className="font-mono text-2xl text-cyan-500/20">◇</span>
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card">
+                <span className="font-mono text-2xl text-muted-foreground">◇</span>
               </div>
-              <p className="font-mono text-base text-zinc-500">
+              <p className="font-mono text-base text-foreground">
                 Select a repository
               </p>
-              <p className="mt-1 font-mono text-sm text-zinc-700">
+              <p className="mt-1 font-mono text-sm text-muted-foreground">
                 to visualize its code graph
               </p>
             </div>
           )}
           {selectedRepoId && isLoading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
-              <Loader2 className="mb-3 h-6 w-6 animate-spin text-cyan-500/40" />
-              <p className="font-mono text-base text-zinc-500">
+              <Loader2 className="mb-3 h-6 w-6 animate-spin text-primary" />
+              <p className="font-mono text-base text-foreground">
                 Loading graph…
               </p>
             </div>
           )}
           {selectedRepoId && !isLoading && filteredNodes.length === 0 && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-amber-500/8 bg-amber-500/[0.02]">
-                <span className="font-mono text-2xl text-amber-500/20">!</span>
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card">
+                <span className="font-mono text-2xl text-muted-foreground">!</span>
               </div>
-              <p className="font-mono text-base text-zinc-500">No graph data</p>
-              <p className="mt-1 font-mono text-sm text-zinc-700">
+              <p className="font-mono text-base text-foreground">No graph data</p>
+              <p className="mt-1 font-mono text-sm text-muted-foreground">
                 Index this repo from the Repositories page
               </p>
             </div>
@@ -447,13 +447,7 @@ function CodeGraphPage() {
           )}
 
           {/* Floating graph background (behind renderer) */}
-          <div
-            className="absolute inset-0 -z-10"
-            style={{
-              background:
-                "radial-gradient(ellipse at 50% 50%, rgba(34,211,238,0.015) 0%, transparent 70%), linear-gradient(135deg, #06060a 0%, #0a0a12 50%, #0d0b18 100%)",
-            }}
-          />
+          <div className="absolute inset-0 -z-10 bg-background" />
         </div>
 
         {/* Right: Analysis */}

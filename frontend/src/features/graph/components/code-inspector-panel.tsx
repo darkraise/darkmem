@@ -49,14 +49,14 @@ function FileTree({
             <div
               className={`flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 font-mono text-sm transition-colors ${
                 isLeaf
-                  ? "text-cyan-300/70 hover:bg-cyan-500/8 hover:text-cyan-200"
-                  : "font-medium text-zinc-500"
+                  ? "text-foreground hover:bg-accent hover:text-foreground"
+                  : "font-medium text-muted-foreground"
               }`}
               style={{ paddingLeft: `${depth * 14 + 8}px` }}
               onClick={() => (isLeaf ? onSelect(fullPath) : undefined)}
             >
               <span
-                className={`text-sm ${isLeaf ? "text-cyan-500/50" : "text-zinc-600"}`}
+                className={`text-sm ${isLeaf ? "text-primary" : "text-muted-foreground"}`}
               >
                 {isLeaf ? "◈" : "▸"}
               </span>
@@ -95,32 +95,32 @@ export function CodeInspectorPanel({
   ]
 
   return (
-    <div className="code-inspector-panel flex h-full flex-col border-r border-cyan-900/15">
-      <div className="flex shrink-0 items-center gap-2 border-b border-cyan-900/15 px-4 py-2.5">
-        <div className="h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.5)]" />
-        <span className="font-mono text-sm font-semibold tracking-[0.2em] text-cyan-300/70 uppercase">
+    <div className="code-inspector-panel flex h-full flex-col border-r border-border">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
+        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+        <span className="font-mono text-sm font-semibold tracking-[0.2em] text-foreground uppercase">
           Code Inspector
         </span>
       </div>
 
-      <div className="flex shrink-0 border-b border-cyan-900/15">
+      <div className="flex shrink-0 border-b border-border">
         {tabs.map((tab) => (
           <Button
             variant="ghost"
             key={tab.id}
             className={`relative flex-1 px-3 py-2 font-mono text-sm tracking-widest uppercase transition-colors ${
               activeTab === tab.id
-                ? "bg-cyan-500/5 text-cyan-300"
-                : "text-zinc-600 hover:bg-white/[0.02] hover:text-zinc-400"
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
             {tab.count !== undefined && (
-              <span className="ml-1 text-sm text-cyan-500/50">{tab.count}</span>
+              <span className="ml-1 text-sm text-primary">{tab.count}</span>
             )}
             {activeTab === tab.id && (
-              <div className="absolute right-2 bottom-0 left-2 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+              <div className="absolute right-2 bottom-0 left-2 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
             )}
           </Button>
         ))}
@@ -131,55 +131,55 @@ export function CodeInspectorPanel({
           <div className="p-3">
             {symbolDetail ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 rounded-md border border-cyan-500/8 bg-cyan-500/5 px-3 py-1.5">
-                  <span className="font-mono text-sm text-cyan-500/50">◈</span>
-                  <span className="flex-1 truncate font-mono text-sm text-cyan-300/60">
+                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">
+                  <span className="font-mono text-sm text-primary">◈</span>
+                  <span className="flex-1 truncate font-mono text-sm text-foreground">
                     {symbolDetail.file_path ?? symbolDetail.name}
                   </span>
                   {symbolDetail.line_start > 0 && (
-                    <span className="shrink-0 font-mono text-sm text-cyan-500/30">
+                    <span className="shrink-0 font-mono text-sm text-muted-foreground">
                       L{symbolDetail.line_start}–{symbolDetail.line_end}
                     </span>
                   )}
                 </div>
 
                 {symbolDetail.signature && (
-                  <div className="overflow-hidden rounded-md border border-cyan-500/8 bg-[#0a0a14]">
-                    <div className="border-b border-cyan-500/5 px-3 py-1">
-                      <span className="font-mono text-sm tracking-[0.2em] text-cyan-500/35 uppercase">
+                  <div className="overflow-hidden rounded-md border border-border bg-card">
+                    <div className="border-b border-border px-3 py-1">
+                      <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                         Signature
                       </span>
                     </div>
-                    <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-cyan-100/80">
+                    <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                       {symbolDetail.signature}
                     </pre>
                   </div>
                 )}
 
                 {symbolDetail.source_code && (
-                  <div className="overflow-hidden rounded-md border border-cyan-500/8 bg-[#0a0a14]">
-                    <div className="flex items-center justify-between border-b border-cyan-500/5 px-3 py-1">
-                      <span className="font-mono text-sm tracking-[0.2em] text-cyan-500/35 uppercase">
+                  <div className="overflow-hidden rounded-md border border-border bg-card">
+                    <div className="flex items-center justify-between border-b border-border px-3 py-1">
+                      <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                         Source
                       </span>
-                      <span className="font-mono text-sm text-zinc-700">
+                      <span className="font-mono text-sm text-muted-foreground">
                         {symbolDetail.source_code.split("\n").length} lines
                       </span>
                     </div>
-                    <pre className="max-h-[65vh] overflow-x-auto overflow-y-auto px-3 py-2 font-mono text-sm leading-[1.6] text-zinc-300/80">
+                    <pre className="max-h-[65vh] overflow-x-auto overflow-y-auto px-3 py-2 font-mono text-sm leading-[1.6] text-foreground">
                       {symbolDetail.source_code}
                     </pre>
                   </div>
                 )}
 
                 {symbolDetail.docstring && (
-                  <div className="overflow-hidden rounded-md border border-violet-500/8 bg-violet-500/[0.02]">
-                    <div className="border-b border-violet-500/5 px-3 py-1">
-                      <span className="font-mono text-sm tracking-[0.2em] text-violet-500/35 uppercase">
+                  <div className="overflow-hidden rounded-md border border-border bg-card">
+                    <div className="border-b border-border px-3 py-1">
+                      <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                         Docstring
                       </span>
                     </div>
-                    <p className="px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-violet-200/60">
+                    <p className="px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
                       {symbolDetail.docstring}
                     </p>
                   </div>
@@ -187,13 +187,13 @@ export function CodeInspectorPanel({
               </div>
             ) : (
               <div className="flex h-48 flex-col items-center justify-center text-center">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-500/8 bg-cyan-500/[0.03]">
-                  <span className="font-mono text-lg text-cyan-500/25">◇</span>
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card">
+                  <span className="font-mono text-lg text-muted-foreground">◇</span>
                 </div>
-                <p className="font-mono text-sm text-zinc-600">
+                <p className="font-mono text-sm text-muted-foreground">
                   Select a symbol to inspect
                 </p>
-                <p className="mt-1 font-mono text-sm text-zinc-700">
+                <p className="mt-1 font-mono text-sm text-muted-foreground">
                   Click a node in the graph
                 </p>
               </div>
@@ -207,7 +207,7 @@ export function CodeInspectorPanel({
               <FileTree files={fileList} onSelect={onFileSelect} />
             ) : (
               <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
-                <p className="font-mono text-sm text-zinc-600">
+                <p className="font-mono text-sm text-muted-foreground">
                   No files loaded
                 </p>
               </div>
@@ -222,31 +222,31 @@ export function CodeInspectorPanel({
                 <Button
                   variant="ghost"
                   key={`${r.file_path}:${r.symbol_name ?? ""}:${i}`}
-                  className="group w-full rounded-md border border-transparent px-3 py-2.5 text-left transition-colors hover:border-cyan-500/8 hover:bg-cyan-500/[0.03]"
+                  className="group w-full rounded-md border border-transparent px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent"
                   onClick={() => onSearchResultClick(r)}
                 >
-                  <div className="truncate font-mono text-sm text-cyan-300/60 group-hover:text-cyan-200/80">
+                  <div className="truncate font-mono text-sm text-foreground">
                     {r.file_path}
                   </div>
                   {r.symbol_name && (
-                    <div className="mt-0.5 font-mono text-sm text-cyan-500/40">
+                    <div className="mt-0.5 font-mono text-sm text-primary">
                       {r.symbol_name}
                     </div>
                   )}
-                  <div className="mt-1 line-clamp-2 font-mono text-sm leading-relaxed text-zinc-600">
+                  <div className="mt-1 line-clamp-2 font-mono text-sm leading-relaxed text-muted-foreground">
                     {r.chunk_content.slice(0, 140)}
                   </div>
-                  <div className="mt-1 font-mono text-sm text-zinc-700">
+                  <div className="mt-1 font-mono text-sm text-muted-foreground">
                     score {r.score.toFixed(3)}
                   </div>
                 </Button>
               ))
             ) : (
               <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
-                <p className="font-mono text-sm text-zinc-600">
+                <p className="font-mono text-sm text-muted-foreground">
                   No search results
                 </p>
-                <p className="mt-1 font-mono text-sm text-zinc-700">
+                <p className="mt-1 font-mono text-sm text-muted-foreground">
                   Press Enter in the search bar
                 </p>
               </div>

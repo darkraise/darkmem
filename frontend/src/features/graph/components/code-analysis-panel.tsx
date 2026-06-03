@@ -30,17 +30,11 @@ interface CodeAnalysisPanelProps {
   allEdgeTypes: string[]
 }
 
-function SectionHeader({ color, label }: { color: string; label: string }) {
+function SectionHeader({ label }: { label: string }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <div
-        className="h-1 w-1 rounded-full"
-        style={{
-          backgroundColor: color,
-          boxShadow: `0 0 4px ${color}80`,
-        }}
-      />
-      <span className="font-mono text-sm font-semibold tracking-[0.2em] text-zinc-500 uppercase">
+      <div className="h-1 w-1 rounded-full bg-primary" />
+      <span className="font-mono text-sm font-semibold tracking-[0.2em] text-muted-foreground uppercase">
         {label}
       </span>
     </div>
@@ -48,35 +42,27 @@ function SectionHeader({ color, label }: { color: string; label: string }) {
 }
 
 function CollapsibleSection({
-  color,
   label,
   defaultOpen = true,
   children,
 }: {
-  color: string
   label: string
   defaultOpen?: boolean
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="border-b border-cyan-900/10">
+    <div className="border-b border-border">
       <Button
         variant="ghost"
-        className="flex w-full items-center gap-2 px-4 py-3 transition-colors hover:bg-white/[0.01]"
+        className="flex w-full items-center gap-2 px-4 py-3 transition-colors hover:bg-accent"
         onClick={() => setOpen(!open)}
       >
-        <div
-          className="h-1 w-1 shrink-0 rounded-full"
-          style={{
-            backgroundColor: color,
-            boxShadow: `0 0 4px ${color}80`,
-          }}
-        />
-        <span className="flex-1 text-left font-mono text-sm font-semibold tracking-[0.2em] text-zinc-500 uppercase">
+        <div className="h-1 w-1 shrink-0 rounded-full bg-primary" />
+        <span className="flex-1 text-left font-mono text-sm font-semibold tracking-[0.2em] text-muted-foreground uppercase">
           {label}
         </span>
-        <span className="font-mono text-sm text-zinc-700">
+        <span className="font-mono text-sm text-muted-foreground">
           {open ? "▾" : "▸"}
         </span>
       </Button>
@@ -110,14 +96,14 @@ export function CodeAnalysisPanel({
     selectedNode.kind !== "module"
 
   return (
-    <div className="code-analysis-panel flex h-full flex-col border-l border-cyan-900/15">
-      <div className="flex shrink-0 items-center gap-2 border-b border-cyan-900/15 px-4 py-2.5">
-        <div className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]" />
-        <span className="font-mono text-sm font-semibold tracking-[0.2em] text-violet-300/70 uppercase">
+    <div className="code-analysis-panel flex h-full flex-col border-l border-border">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
+        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+        <span className="font-mono text-sm font-semibold tracking-[0.2em] text-foreground uppercase">
           Analysis
         </span>
         {selectedNode && (
-          <span className="ml-auto max-w-[120px] truncate font-mono text-sm text-zinc-600">
+          <span className="ml-auto max-w-[120px] truncate font-mono text-sm text-muted-foreground">
             {selectedNode.label}
           </span>
         )}
@@ -127,18 +113,18 @@ export function CodeAnalysisPanel({
         {selectedNode ? (
           <>
             {/* Symbol Header */}
-            <div className="border-b border-cyan-900/10 p-4">
-              <h3 className="truncate font-mono text-base font-semibold text-cyan-100/90">
+            <div className="border-b border-border p-4">
+              <h3 className="truncate font-mono text-base font-semibold text-foreground">
                 {selectedNode.label}
               </h3>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {selectedNode.kind && (
-                  <span className="rounded-sm border border-cyan-500/15 bg-cyan-500/5 px-2 py-0.5 font-mono text-sm tracking-wider text-cyan-400/70 uppercase">
+                  <span className="rounded-sm border border-primary/30 bg-primary/15 px-2 py-0.5 font-mono text-sm tracking-wider text-primary uppercase">
                     {selectedNode.kind}
                   </span>
                 )}
                 {symbolDetail?.visibility && (
-                  <span className="rounded-sm border border-violet-500/15 bg-violet-500/5 px-2 py-0.5 font-mono text-sm tracking-wider text-violet-400/70 uppercase">
+                  <span className="rounded-sm border border-border bg-muted px-2 py-0.5 font-mono text-sm tracking-wider text-muted-foreground uppercase">
                     {symbolDetail.visibility}
                   </span>
                 )}
@@ -146,8 +132,8 @@ export function CodeAnalysisPanel({
                   <span
                     className={`rounded-sm border px-2 py-0.5 font-mono text-sm tracking-wider uppercase ${
                       symbolDetail.enrichment_status === "completed"
-                        ? "border-emerald-500/15 bg-emerald-500/5 text-emerald-400/70"
-                        : "border-amber-500/15 bg-amber-500/5 text-amber-400/70"
+                        ? "border-primary/30 bg-primary/15 text-primary"
+                        : "border-border bg-muted text-muted-foreground"
                     }`}
                   >
                     {symbolDetail.enrichment_status}
@@ -157,10 +143,10 @@ export function CodeAnalysisPanel({
 
               {symbolDetail?.file_path && (
                 <div className="mt-3 flex items-center gap-2">
-                  <span className="shrink-0 font-mono text-sm tracking-[0.2em] text-zinc-600 uppercase">
+                  <span className="shrink-0 font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                     Path
                   </span>
-                  <span className="truncate font-mono text-sm text-zinc-400/80">
+                  <span className="truncate font-mono text-sm text-foreground">
                     {symbolDetail.file_path}
                     {symbolDetail.line_start > 0 &&
                       `:${symbolDetail.line_start}–${symbolDetail.line_end}`}
@@ -171,9 +157,9 @@ export function CodeAnalysisPanel({
 
             {/* AI Summary */}
             {symbolDetail?.summary && (
-              <div className="border-b border-cyan-900/10 p-4">
-                <SectionHeader color="#22d3ee" label="AI Summary" />
-                <p className="font-mono text-sm leading-[1.7] text-zinc-300/70">
+              <div className="border-b border-border p-4">
+                <SectionHeader label="AI Summary" />
+                <p className="font-mono text-sm leading-[1.7] text-foreground">
                   {symbolDetail.summary}
                 </p>
               </div>
@@ -181,12 +167,12 @@ export function CodeAnalysisPanel({
 
             {/* Blast Radius */}
             {isAnalyzableSymbol && (
-              <div className="border-b border-cyan-900/10 p-4">
-                <SectionHeader color="#f43f5e" label="Impact Analysis" />
+              <div className="border-b border-border p-4">
+                <SectionHeader label="Impact Analysis" />
                 <div className="flex gap-2">
                   <Button
                     variant="ghost"
-                    className="flex-1 rounded-sm border border-rose-500/15 bg-rose-500/[0.03] px-3 py-1.5 font-mono text-sm tracking-wider text-rose-400/70 uppercase transition-colors hover:border-rose-500/25 hover:bg-rose-500/8 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="flex-1 rounded-sm border border-destructive/30 bg-destructive/10 px-3 py-1.5 font-mono text-sm tracking-wider text-destructive uppercase transition-colors hover:border-destructive/50 hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-30"
                     onClick={onBlastRadius}
                     disabled={isBlastRadiusLoading}
                   >
@@ -195,7 +181,7 @@ export function CodeAnalysisPanel({
                   {blastRadiusIds && (
                     <Button
                       variant="outline"
-                      className="rounded-sm border border-zinc-700/50 px-3 py-1.5 font-mono text-sm tracking-wider text-zinc-500 uppercase transition-colors hover:bg-zinc-800/50"
+                      className="rounded-sm border border-border px-3 py-1.5 font-mono text-sm tracking-wider text-muted-foreground uppercase transition-colors hover:bg-accent"
                       onClick={onClearBlastRadius}
                     >
                       Clear
@@ -206,35 +192,35 @@ export function CodeAnalysisPanel({
                 {blastRadiusData && (
                   <div className="mt-3 space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-sm border border-rose-500/10 bg-rose-500/5 px-2.5 py-1.5">
-                        <div className="font-mono text-base font-bold text-rose-300/80">
+                      <div className="rounded-sm border border-destructive/20 bg-destructive/10 px-2.5 py-1.5">
+                        <div className="font-mono text-base font-bold text-destructive">
                           {blastRadiusData.total}
                         </div>
-                        <div className="font-mono text-sm tracking-[0.2em] text-rose-500/40 uppercase">
+                        <div className="font-mono text-sm tracking-[0.2em] text-destructive/70 uppercase">
                           Affected
                         </div>
                       </div>
                       <div
                         className={`rounded-sm border px-2.5 py-1.5 ${
                           blastRadiusData.risk === "high"
-                            ? "border-rose-500/10 bg-rose-500/5"
+                            ? "border-destructive/20 bg-destructive/10"
                             : blastRadiusData.risk === "medium"
-                              ? "border-amber-500/10 bg-amber-500/5"
-                              : "border-emerald-500/10 bg-emerald-500/5"
+                              ? "border-primary/20 bg-primary/10"
+                              : "border-border bg-muted"
                         }`}
                       >
                         <div
                           className={`font-mono text-base font-bold ${
                             blastRadiusData.risk === "high"
-                              ? "text-rose-300/80"
+                              ? "text-destructive"
                               : blastRadiusData.risk === "medium"
-                                ? "text-amber-300/80"
-                                : "text-emerald-300/80"
+                                ? "text-primary"
+                                : "text-muted-foreground"
                           }`}
                         >
                           {blastRadiusData.risk}
                         </div>
-                        <div className="font-mono text-sm tracking-[0.2em] text-zinc-500 uppercase">
+                        <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                           Risk
                         </div>
                       </div>
@@ -246,21 +232,21 @@ export function CodeAnalysisPanel({
                           {blastRadiusData.affected.slice(0, 20).map((a, i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-sm transition-colors hover:bg-rose-500/[0.03]"
+                              className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-sm transition-colors hover:bg-accent"
                             >
-                              <span className="shrink-0 text-rose-500/30">
+                              <span className="shrink-0 text-destructive/70">
                                 d{a.distance}
                               </span>
-                              <span className="w-14 shrink-0 truncate text-zinc-500">
+                              <span className="w-14 shrink-0 truncate text-muted-foreground">
                                 {a.kind}
                               </span>
-                              <span className="truncate text-zinc-400/70">
+                              <span className="truncate text-foreground">
                                 {a.name}
                               </span>
                             </div>
                           ))}
                           {blastRadiusData.affected.length > 20 && (
-                            <div className="px-2 py-1 font-mono text-sm text-zinc-600">
+                            <div className="px-2 py-1 font-mono text-sm text-muted-foreground">
                               +{blastRadiusData.affected.length - 20} more
                             </div>
                           )}
@@ -273,12 +259,12 @@ export function CodeAnalysisPanel({
             )}
           </>
         ) : (
-          <div className="border-b border-cyan-900/10 p-4">
+          <div className="border-b border-border p-4">
             <div className="flex h-32 flex-col items-center justify-center text-center">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-violet-500/8 bg-violet-500/[0.03]">
-                <span className="font-mono text-lg text-violet-500/25">◆</span>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card">
+                <span className="font-mono text-lg text-muted-foreground">◆</span>
               </div>
-              <p className="font-mono text-sm text-zinc-600">
+              <p className="font-mono text-sm text-muted-foreground">
                 Select a node for analysis
               </p>
             </div>
@@ -286,22 +272,22 @@ export function CodeAnalysisPanel({
         )}
 
         {/* Graph Statistics */}
-        <div className="border-b border-cyan-900/10 p-4">
-          <SectionHeader color="#22d3ee" label="Graph Statistics" />
+        <div className="border-b border-border p-4">
+          <SectionHeader label="Graph Statistics" />
           <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-sm border border-cyan-500/8 bg-cyan-500/[0.03] px-3 py-2">
-              <div className="font-mono text-lg font-bold text-cyan-300/80 tabular-nums">
+            <div className="rounded-sm border border-border bg-card px-3 py-2">
+              <div className="font-mono text-lg font-bold text-foreground tabular-nums">
                 {nodeCount.toLocaleString()}
               </div>
-              <div className="font-mono text-sm tracking-[0.2em] text-cyan-500/35 uppercase">
+              <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                 Nodes
               </div>
             </div>
-            <div className="rounded-sm border border-cyan-500/8 bg-cyan-500/[0.03] px-3 py-2">
-              <div className="font-mono text-lg font-bold text-cyan-300/80 tabular-nums">
+            <div className="rounded-sm border border-border bg-card px-3 py-2">
+              <div className="font-mono text-lg font-bold text-foreground tabular-nums">
                 {edgeCount.toLocaleString()}
               </div>
-              <div className="font-mono text-sm tracking-[0.2em] text-cyan-500/35 uppercase">
+              <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
                 Edges
               </div>
             </div>
@@ -309,11 +295,7 @@ export function CodeAnalysisPanel({
         </div>
 
         {/* Node Type Filters */}
-        <CollapsibleSection
-          color="#22d3ee"
-          label="Node Types"
-          defaultOpen={false}
-        >
+        <CollapsibleSection label="Node Types" defaultOpen={false}>
           <div className="space-y-0.5">
             {allNodeTypes.map((type) => (
               <Label
@@ -323,17 +305,14 @@ export function CodeAnalysisPanel({
                 <Checkbox
                   checked={visibleNodeTypes.has(type)}
                   onCheckedChange={() => onToggleNodeType(type)}
-                  className="h-3 w-3 border-zinc-700"
+                  className="h-3 w-3 border-border"
                 />
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor: nodeColors[type],
-                    boxShadow: `0 0 3px ${nodeColors[type]}50`,
-                  }}
+                  style={{ backgroundColor: nodeColors[type] }}
                 />
                 <span
-                  className={`capitalize ${visibleNodeTypes.has(type) ? "text-zinc-300/80" : "text-zinc-600"}`}
+                  className={`capitalize ${visibleNodeTypes.has(type) ? "text-foreground" : "text-muted-foreground"}`}
                 >
                   {type}
                 </span>
@@ -343,11 +322,7 @@ export function CodeAnalysisPanel({
         </CollapsibleSection>
 
         {/* Edge Type Filters */}
-        <CollapsibleSection
-          color="#8b5cf6"
-          label="Edge Types"
-          defaultOpen={false}
-        >
+        <CollapsibleSection label="Edge Types" defaultOpen={false}>
           <div className="space-y-0.5">
             {allEdgeTypes.map((type) => (
               <Label
@@ -357,17 +332,14 @@ export function CodeAnalysisPanel({
                 <Checkbox
                   checked={visibleEdgeTypes.has(type)}
                   onCheckedChange={() => onToggleEdgeType(type)}
-                  className="h-3 w-3 border-zinc-700"
+                  className="h-3 w-3 border-border"
                 />
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor: edgeColors[type],
-                    boxShadow: `0 0 3px ${edgeColors[type]}50`,
-                  }}
+                  style={{ backgroundColor: edgeColors[type] }}
                 />
                 <span
-                  className={`capitalize ${visibleEdgeTypes.has(type) ? "text-zinc-300/80" : "text-zinc-600"}`}
+                  className={`capitalize ${visibleEdgeTypes.has(type) ? "text-foreground" : "text-muted-foreground"}`}
                 >
                   {type}
                 </span>
