@@ -10,7 +10,15 @@ import {
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { toast } from "darkraise-ui/components/sonner"
-import { CodeGraphRenderer } from "@/features/graph/components/code-graph-renderer"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "darkraise-ui/components/toggle-group"
+import {
+  CodeGraphRenderer,
+  type CodeGraphHandle,
+  type CodeGraphLayout,
+} from "@/features/graph/components/code-graph-renderer"
 import { CodeInspectorPanel } from "@/features/graph/components/code-inspector-panel"
 import { CodeAnalysisPanel } from "@/features/graph/components/code-analysis-panel"
 import {
@@ -22,7 +30,22 @@ import {
   type CodeSearchResult,
   type BlastRadiusResult,
 } from "@/hooks/api"
-import { PanelLeft, PanelRight, Search, Loader2 } from "lucide-react"
+import {
+  PanelLeft,
+  PanelRight,
+  Search,
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  Crosshair,
+  Eraser,
+  Play,
+  Pause,
+  Network,
+  GitBranch,
+  CircleDot,
+} from "lucide-react"
 import { useCodeGraphTheme } from "@/features/graph/lib/code-graph-theme"
 
 export const Route = createFileRoute("/_authenticated/code-graph")({
@@ -92,7 +115,10 @@ function CodeGraphPage() {
   const [focusDepth, setFocusDepth] = useState<number | null>(null)
   const [showInspector, setShowInspector] = useState(true)
   const [showAnalysis, setShowAnalysis] = useState(true)
+  const [layout, setLayout] = useState<CodeGraphLayout>("force")
+  const [isPlaying, setIsPlaying] = useState(true)
 
+  const rendererRef = useRef<CodeGraphHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const { tokens, nodeColors, edgeColors } = useCodeGraphTheme(
     rootRef,
@@ -282,6 +308,29 @@ function CodeGraphPage() {
     setBlastRadiusData(null)
   }, [])
 
+  const handleLayoutChange = useCallback((value: string) => {
+    if (!value) return
+    const next = value as CodeGraphLayout
+    setLayout(next)
+    // Manual layouts hold the FA2 worker stopped; reflect that in the toggle so
+    // play/pause and the running state stay in sync after a layout switch.
+    setIsPlaying(next === "force")
+  }, [])
+
+  const handleTogglePlay = useCallback(() => {
+    const next = !isPlaying
+    rendererRef.current?.setLayoutRunning(next)
+    setIsPlaying(next)
+  }, [isPlaying])
+
+  const handleFocusSelected = useCallback(() => {
+    if (selectedNodeId) rendererRef.current?.focusNode(selectedNodeId)
+  }, [selectedNodeId])
+
+  const handleClearSelection = useCallback(() => {
+    rendererRef.current?.clearSelection()
+  }, [])
+
   return (
     <div ref={rootRef} className="code-graph-root flex h-full flex-col">
       <h1 className="sr-only">Code Graph</h1>
@@ -332,6 +381,115 @@ function CodeGraphPage() {
             )}
           </div>
         </div>
+
+        {/* Layout switcher */}
+        <ToggleGroup
+          type="single"
+          value={layout}
+          onValueChange={handleLayoutChange}
+          className="shrink-0 gap-0"
+        >
+          <ToggleGroupItem
+            value="force"
+            variant="outline"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+            title="Force layout"
+            aria-label="Force layout"
+          >
+            <Network className="h-3.5 w-3.5" />
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="tree"
+            variant="outline"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+            title="Tree layout"
+            aria-label="Tree layout"
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="circles"
+            variant="outline"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+            title="Concentric layout"
+            aria-label="Concentric layout"
+          >
+            <CircleDot className="h-3.5 w-3.5" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        {/* Camera controls + play/pause */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => rendererRef.current?.zoomIn()}
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => rendererRef.current?.zoomOut()}
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => rendererRef.current?.fitView()}
+            title="Fit to view"
+            aria-label="Fit to view"
+          >
+            <Maximize className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={!selectedNodeId}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-40"
+            onClick={handleFocusSelected}
+            title="Focus selected node"
+            aria-label="Focus selected node"
+          >
+            <Crosshair className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={!selectedNodeId}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-40"
+            onClick={handleClearSelection}
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            <Eraser className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={layout !== "force"}
+            className={`h-7 w-7 disabled:opacity-40 ${isPlaying ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={handleTogglePlay}
+            title={isPlaying ? "Pause layout" : "Play layout"}
+            aria-label={isPlaying ? "Pause layout" : "Play layout"}
+          >
+            {isPlaying ? (
+              <Pause className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
+
+        <div className="h-4 w-px bg-border" />
 
         {/* Right: depth + stats + panel toggle */}
         <div className="flex shrink-0 items-center gap-1 font-mono text-sm">
@@ -434,6 +592,7 @@ function CodeGraphPage() {
           )}
           {filteredNodes.length > 0 && (
             <CodeGraphRenderer
+              ref={rendererRef}
               nodes={filteredNodes}
               edges={filteredEdges}
               selectedId={selectedNodeId}
@@ -443,6 +602,7 @@ function CodeGraphPage() {
               nodeColors={nodeColors}
               edgeColors={edgeColors}
               tokens={tokens}
+              layout={layout}
             />
           )}
 

@@ -1,4 +1,10 @@
-import { useRef, useEffect, useCallback } from "react"
+import {
+  useRef,
+  useEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import EdgeCurveProgram, { indexParallelEdgesIndex } from "@sigma/edge-curve"
@@ -203,7 +209,129 @@ const NOVERLAP_SETTINGS = {
   },
 }
 
+// ── Manual layouts (tree / concentric) ────────────────────────
+// No external layout libs beyond FA2 + noverlap; tree/circles positions
+// are computed by BFS over the structural hierarchy.
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+
+// Edges that flow outward from a structural root toward its members. Used to
+// seed depth for both manual layouts; broader than HIERARCHY_EDGE_TYPES so a
+// class's methods and a module's imports land on the next ring/band.
+const STRUCTURAL_OUTWARD_EDGES = new Set([
+  "contains",
+  "defines",
+  "has_method",
+  "has_property",
+  "imports",
+])
+
+// BFS depth from structural roots following outward edges. Nodes unreachable
+// from any root (orphans) get the max-depth + 1 so they ring the outside.
+function computeStructuralDepths(
+  nodeIds: string[],
+  edges: Array<{ source: string; target: string; type: string }>,
+  rootIds: string[],
+): Map<string, number> {
+  const adjacency = new Map<string, string[]>()
+  for (const e of edges) {
+    if (!STRUCTURAL_OUTWARD_EDGES.has(e.type?.toLowerCase() ?? "")) continue
+    if (!adjacency.has(e.source)) adjacency.set(e.source, [])
+    adjacency.get(e.source)!.push(e.target)
+  }
+
+  const depth = new Map<string, number>()
+  const queue: string[] = []
+  for (const root of rootIds) {
+    if (!depth.has(root)) {
+      depth.set(root, 0)
+      queue.push(root)
+    }
+  }
+
+  let head = 0
+  while (head < queue.length) {
+    const current = queue[head++]!
+    const d = depth.get(current)!
+    for (const next of adjacency.get(current) ?? []) {
+      if (!depth.has(next)) {
+        depth.set(next, d + 1)
+        queue.push(next)
+      }
+    }
+  }
+
+  let maxDepth = 0
+  for (const d of depth.values()) if (d > maxDepth) maxDepth = d
+  const orphanDepth = maxDepth + 1
+  for (const id of nodeIds) {
+    if (!depth.has(id)) depth.set(id, orphanDepth)
+  }
+  return depth
+}
+
+// Concentric rings by depth; ring radius grows linearly, within-ring spread by
+// golden angle so successive nodes do not stack.
+function assignConcentricLayout(
+  graph: Graph,
+  depth: Map<string, number>,
+): void {
+  const ringSpacing = Math.max(60, Math.sqrt(graph.order) * 12)
+  const withinRingIndex = new Map<number, number>()
+
+  graph.forEachNode((nodeId) => {
+    const d = depth.get(nodeId) ?? 0
+    const idx = withinRingIndex.get(d) ?? 0
+    withinRingIndex.set(d, idx + 1)
+
+    if (d === 0) {
+      graph.setNodeAttribute(nodeId, "x", 0)
+      graph.setNodeAttribute(nodeId, "y", 0)
+      return
+    }
+
+    const radius = (d + 1) * ringSpacing
+    const angle = idx * GOLDEN_ANGLE
+    graph.setNodeAttribute(nodeId, "x", radius * Math.cos(angle))
+    graph.setNodeAttribute(nodeId, "y", radius * Math.sin(angle))
+  })
+}
+
+// Depth-banded tree: roots at the top, each depth a horizontal band, nodes
+// within a band spread along x and centered around the origin.
+function assignTreeLayout(graph: Graph, depth: Map<string, number>): void {
+  const gap = Math.max(60, Math.sqrt(graph.order) * 12)
+
+  const byDepth = new Map<number, string[]>()
+  graph.forEachNode((nodeId) => {
+    const d = depth.get(nodeId) ?? 0
+    if (!byDepth.has(d)) byDepth.set(d, [])
+    byDepth.get(d)!.push(nodeId)
+  })
+
+  for (const [d, ids] of byDepth) {
+    const count = ids.length
+    const offset = ((count - 1) * gap) / 2
+    ids.forEach((nodeId, i) => {
+      graph.setNodeAttribute(nodeId, "x", i * gap - offset)
+      graph.setNodeAttribute(nodeId, "y", d * gap)
+    })
+  }
+}
+
 // ── Component ─────────────────────────────────────────────────
+
+export type CodeGraphLayout = "force" | "tree" | "circles"
+
+export interface CodeGraphHandle {
+  zoomIn: () => void
+  zoomOut: () => void
+  fitView: () => void
+  focusNode: (id: string) => void
+  clearSelection: () => void
+  setLayoutRunning: (running: boolean) => void
+  isLayoutRunning: () => boolean
+}
 
 interface CodeGraphRendererProps {
   nodes: Array<{
@@ -228,19 +356,27 @@ interface CodeGraphRendererProps {
   nodeColors: Record<string, string>
   edgeColors: Record<string, string>
   tokens: GraphThemeTokens
+  layout?: CodeGraphLayout
 }
 
-export function CodeGraphRenderer({
-  nodes,
-  edges,
-  selectedId,
-  onSelect,
-  highlightedIds,
-  visibleEdgeTypes,
-  nodeColors,
-  edgeColors,
-  tokens,
-}: CodeGraphRendererProps) {
+export const CodeGraphRenderer = forwardRef<
+  CodeGraphHandle,
+  CodeGraphRendererProps
+>(function CodeGraphRenderer(
+  {
+    nodes,
+    edges,
+    selectedId,
+    onSelect,
+    highlightedIds,
+    visibleEdgeTypes,
+    nodeColors,
+    edgeColors,
+    tokens,
+    layout = "force",
+  },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const graphRef = useRef<Graph | null>(null)
@@ -252,6 +388,13 @@ export function CodeGraphRenderer({
   const visibleEdgeTypesRef = useRef(visibleEdgeTypes)
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
+  // Tracks whether the FA2 worker is actively running, so play/pause and the
+  // imperative handle report the real state rather than the last command.
+  const layoutRunningRef = useRef(false)
+  const edgesRef = useRef(edges)
+  edgesRef.current = edges
 
   // Theme identity in the key forces a full rebuild — node/edge colors, the
   // dim base, labels, and hover/selection chrome are all baked at build time,
@@ -654,21 +797,39 @@ export function CodeGraphRenderer({
 
     sigmaRef.current = sigma
 
-    // ── Layout: FA2 then noverlap cleanup ─────────────────────
+    // The FA2 worker is always instantiated so play/pause can resume it, but it
+    // only auto-starts for the force layout. Tree/circles get manual positions
+    // applied by the layout effect that runs right after this build.
     const fa2Settings = getFA2Settings(nodeCount)
     const fa2 = new FA2Layout(graph, {
       settings: { ...inferSettings(graph), ...fa2Settings },
     })
     fa2Ref.current = fa2
+
+    if (layoutRef.current !== "force") {
+      layoutRunningRef.current = false
+      // Apply manual positions now so a rebuild (data/filter/theme change) while
+      // tree/circles is active keeps the chosen layout instead of the FA2 seed.
+      const rootIds = graph.filterNodes((_, attrs) =>
+        STRUCTURAL_TYPES.has((attrs._kind as string)?.toLowerCase() ?? ""),
+      )
+      const depth = computeStructuralDepths(graph.nodes(), edges, rootIds)
+      if (layoutRef.current === "circles") assignConcentricLayout(graph, depth)
+      else assignTreeLayout(graph, depth)
+      sigma.refresh()
+      return
+    }
+
     fa2.start()
+    layoutRunningRef.current = true
 
     const duration = getLayoutDuration(nodeCount)
 
     layoutTimeoutRef.current = setTimeout(() => {
       if (fa2Ref.current) {
         fa2Ref.current.stop()
-        fa2Ref.current = null
       }
+      layoutRunningRef.current = false
       if (!graphRef.current || !sigmaRef.current) return
 
       noverlap.assign(graphRef.current, NOVERLAP_SETTINGS)
@@ -739,6 +900,90 @@ export function CodeGraphRenderer({
     sigmaRef.current?.refresh()
   }, [visibleEdgeTypes])
 
+  const fitView = useCallback(() => {
+    sigmaRef.current?.getCamera().animatedReset({ duration: 400 })
+  }, [])
+
+  // Re-layout on switch (or after a rebuild) without touching graph data, node
+  // sizes, or colors — only x/y are reassigned. Force restarts the FA2 worker;
+  // tree/circles stop it and apply manual positions, then fit the camera.
+  useEffect(() => {
+    const sigma = sigmaRef.current
+    const graph = graphRef.current
+    if (!sigma || !graph) return
+
+    if (layout === "force") {
+      if (layoutTimeoutRef.current) {
+        clearTimeout(layoutTimeoutRef.current)
+        layoutTimeoutRef.current = null
+      }
+      if (fa2Ref.current && !layoutRunningRef.current) {
+        fa2Ref.current.start()
+        layoutRunningRef.current = true
+      }
+      return
+    }
+
+    if (layoutTimeoutRef.current) {
+      clearTimeout(layoutTimeoutRef.current)
+      layoutTimeoutRef.current = null
+    }
+    if (fa2Ref.current) {
+      fa2Ref.current.stop()
+    }
+    layoutRunningRef.current = false
+
+    const rootIds = graph.filterNodes((_, attrs) =>
+      STRUCTURAL_TYPES.has((attrs._kind as string)?.toLowerCase() ?? ""),
+    )
+    const depth = computeStructuralDepths(graph.nodes(), edgesRef.current, rootIds)
+
+    if (layout === "circles") assignConcentricLayout(graph, depth)
+    else assignTreeLayout(graph, depth)
+
+    sigma.refresh()
+    fitView()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, graphKey, fitView])
+
+  useImperativeHandle(
+    ref,
+    (): CodeGraphHandle => ({
+      zoomIn: () => sigmaRef.current?.getCamera().animatedZoom({ duration: 200 }),
+      zoomOut: () =>
+        sigmaRef.current?.getCamera().animatedUnzoom({ duration: 200 }),
+      fitView,
+      focusNode: (id: string) => {
+        const sigma = sigmaRef.current
+        if (!sigma || !graphRef.current?.hasNode(id)) return
+        const pos = sigma.getNodeDisplayData(id)
+        if (pos) {
+          sigma
+            .getCamera()
+            .animate({ x: pos.x, y: pos.y, ratio: 0.15 }, { duration: 400 })
+        }
+      },
+      clearSelection: () => onSelectRef.current(null),
+      setLayoutRunning: (running: boolean) => {
+        const fa2 = fa2Ref.current
+        if (!fa2 || layoutRef.current !== "force") return
+        if (running && !layoutRunningRef.current) {
+          if (layoutTimeoutRef.current) {
+            clearTimeout(layoutTimeoutRef.current)
+            layoutTimeoutRef.current = null
+          }
+          fa2.start()
+          layoutRunningRef.current = true
+        } else if (!running && layoutRunningRef.current) {
+          fa2.stop()
+          layoutRunningRef.current = false
+        }
+      },
+      isLayoutRunning: () => layoutRunningRef.current,
+    }),
+    [fitView],
+  )
+
   return (
     <div
       ref={containerRef}
@@ -746,4 +991,4 @@ export function CodeGraphRenderer({
       style={{ cursor: "grab" }}
     />
   )
-}
+})
