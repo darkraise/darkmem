@@ -66,4 +66,41 @@ describe("CodeGraphSearch", () => {
 
     expect(screen.getByText("No matching nodes.")).toBeInTheDocument()
   })
+
+  it("exposes an accessible name and description on the dialog", () => {
+    renderPalette()
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAccessibleName("Jump to graph node")
+    expect(dialog).toHaveAccessibleDescription(
+      "Search code graph nodes by name, kind, or id and jump to one.",
+    )
+  })
+
+  it("caps how many nodes mount at once for large graphs", () => {
+    const many: CodeGraphSearchNode[] = Array.from(
+      { length: 5000 },
+      (_, i) => ({ id: `n${i}`, label: `sym_${i}`, kind: "function" }),
+    )
+    renderPalette({ nodes: many })
+    // The palette must never mount the entire node set; it renders a bounded
+    // slice so opening it on a huge graph does not fire thousands of updates.
+    expect(screen.getAllByRole("option").length).toBeLessThanOrEqual(50)
+  })
+
+  it("narrows the bounded slice to nodes matching the typed query", async () => {
+    const user = userEvent.setup()
+    const many: CodeGraphSearchNode[] = Array.from(
+      { length: 5000 },
+      (_, i) => ({ id: `n${i}`, label: `sym_${i}`, kind: "function" }),
+    )
+    renderPalette({ nodes: many })
+
+    await user.type(
+      screen.getByPlaceholderText("Jump to a graph node…"),
+      "sym_4242",
+    )
+
+    expect(screen.getByText("sym_4242")).toBeInTheDocument()
+    expect(screen.getAllByRole("option").length).toBeLessThanOrEqual(50)
+  })
 })
