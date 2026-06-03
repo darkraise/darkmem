@@ -22,6 +22,11 @@ import {
 import { CodeInspectorPanel } from "@/features/graph/components/code-inspector-panel"
 import { CodeAnalysisPanel } from "@/features/graph/components/code-analysis-panel"
 import { CodeGraphSearch } from "@/features/graph/components/code-graph-search"
+import { ProcessFlowModal } from "@/features/graph/components/process-flow-modal"
+import {
+  deriveProcesses,
+  type CodeProcess,
+} from "@/features/graph/lib/code-processes"
 import {
   useRepos,
   useCodeGraph,
@@ -119,6 +124,10 @@ function CodeGraphPage() {
   const [layout, setLayout] = useState<CodeGraphLayout>("force")
   const [isPlaying, setIsPlaying] = useState(true)
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false)
+  const [selectedProcess, setSelectedProcess] = useState<CodeProcess | null>(
+    null,
+  )
+  const [processModalOpen, setProcessModalOpen] = useState(false)
 
   const rendererRef = useRef<CodeGraphHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -285,6 +294,30 @@ function CodeGraphPage() {
       })),
     [graphData],
   )
+
+  const processes = useMemo(
+    () =>
+      graphData
+        ? deriveProcesses(graphData.nodes, graphData.edges)
+        : [],
+    [graphData],
+  )
+
+  // Emphasis set drives the renderer's primary-ring highlight; it is the
+  // selected process's node ids, kept independent of blast-radius (destructive).
+  const emphasisNodeIds = useMemo(
+    () => (selectedProcess ? new Set(selectedProcess.nodeIds) : undefined),
+    [selectedProcess],
+  )
+
+  const handleProcessSelect = useCallback((process: CodeProcess) => {
+    setSelectedProcess(process)
+    setProcessModalOpen(true)
+  }, [])
+
+  const handleProcessFocus = useCallback((process: CodeProcess) => {
+    setSelectedProcess(process)
+  }, [])
 
   const handlePalettePick = useCallback(
     (id: string) => {
@@ -651,6 +684,7 @@ function CodeGraphPage() {
               selectedId={selectedNodeId}
               onSelect={handleSelect}
               highlightedIds={blastRadiusIds}
+              emphasisNodeIds={emphasisNodeIds}
               visibleEdgeTypes={visibleEdgeTypes}
               nodeColors={nodeColors}
               edgeColors={edgeColors}
@@ -690,6 +724,9 @@ function CodeGraphPage() {
               edgeColors={edgeColors}
               allNodeTypes={ALL_NODE_TYPES}
               allEdgeTypes={ALL_EDGE_TYPES}
+              processes={processes}
+              selectedProcessId={selectedProcess?.id ?? null}
+              onProcessSelect={handleProcessSelect}
             />
           </div>
         )}
@@ -701,6 +738,14 @@ function CodeGraphPage() {
         nodes={searchNodes}
         nodeColors={nodeColors}
         onPick={handlePalettePick}
+      />
+
+      <ProcessFlowModal
+        process={selectedProcess}
+        open={processModalOpen}
+        onOpenChange={setProcessModalOpen}
+        nodeColors={nodeColors}
+        onFocus={handleProcessFocus}
       />
     </div>
   )

@@ -352,6 +352,7 @@ interface CodeGraphRendererProps {
     } | null,
   ) => void
   highlightedIds?: Set<string>
+  emphasisNodeIds?: Set<string>
   visibleEdgeTypes?: Set<string>
   nodeColors: Record<string, string>
   edgeColors: Record<string, string>
@@ -369,6 +370,7 @@ export const CodeGraphRenderer = forwardRef<
     selectedId,
     onSelect,
     highlightedIds,
+    emphasisNodeIds,
     visibleEdgeTypes,
     nodeColors,
     edgeColors,
@@ -385,6 +387,7 @@ export const CodeGraphRenderer = forwardRef<
   const selectedIdRef = useRef(selectedId)
   const hoveredNodeRef = useRef<string | null>(null)
   const highlightedIdsRef = useRef(highlightedIds)
+  const emphasisNodeIdsRef = useRef(emphasisNodeIds)
   const visibleEdgeTypesRef = useRef(visibleEdgeTypes)
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
@@ -640,6 +643,8 @@ export const CodeGraphRenderer = forwardRef<
         const baseSize = (data._baseSize as number) || DEFAULT_NODE_SIZE
         const hl = highlightedIdsRef.current
         const hasHighlights = hl && hl.size > 0
+        const emph = emphasisNodeIdsRef.current
+        const hasEmphasis = emph && emph.size > 0
         const sel = selectedIdRef.current
         const hov = hoveredNodeRef.current
 
@@ -652,6 +657,23 @@ export const CodeGraphRenderer = forwardRef<
           } else {
             res.color = dimColor(data.color || defaultNodeColor, 0.15, bg)
             res.size = baseSize * 0.4
+            res.zIndex = 0
+          }
+          return res
+        }
+
+        // Process emphasis: ring the flow's nodes in --primary and dim the rest.
+        // Kept independent of the destructive blast-radius branch above so the
+        // two highlight modes never bleed into each other.
+        if (hasEmphasis && !sel) {
+          if (emph.has(node)) {
+            res.color = tokens.primary
+            res.size = baseSize * 1.6
+            res.zIndex = 3
+            res.highlighted = true
+          } else {
+            res.color = dimColor(data.color || defaultNodeColor, 0.18, bg)
+            res.size = baseSize * 0.45
             res.zIndex = 0
           }
           return res
@@ -712,6 +734,8 @@ export const CodeGraphRenderer = forwardRef<
 
         const hl = highlightedIdsRef.current
         const hasHighlights = hl && hl.size > 0
+        const emph = emphasisNodeIdsRef.current
+        const hasEmphasis = emph && emph.size > 0
         const sel = selectedIdRef.current
         const hov = hoveredNodeRef.current
         const [src, tgt] = graph.extremities(edge)
@@ -722,6 +746,26 @@ export const CodeGraphRenderer = forwardRef<
 
           if (srcActive && tgtActive) {
             res.color = tokens.destructive
+            res.size = Math.max(2, (data.size || 1) * 3)
+            res.zIndex = 2
+          } else if (srcActive || tgtActive) {
+            res.color = dimColor(tokens.primary, 0.4, bg)
+            res.size = 1
+            res.zIndex = 1
+          } else {
+            res.color = dimColor(data.color || defaultEdgeColor, 0.08, bg)
+            res.size = 0.2
+            res.zIndex = 0
+          }
+          return res
+        }
+
+        if (hasEmphasis && !sel) {
+          const srcActive = emph.has(src)
+          const tgtActive = emph.has(tgt)
+
+          if (srcActive && tgtActive) {
+            res.color = tokens.primary
             res.size = Math.max(2, (data.size || 1) * 3)
             res.zIndex = 2
           } else if (srcActive || tgtActive) {
@@ -894,6 +938,11 @@ export const CodeGraphRenderer = forwardRef<
     highlightedIdsRef.current = highlightedIds
     sigmaRef.current?.refresh()
   }, [highlightedIds])
+
+  useEffect(() => {
+    emphasisNodeIdsRef.current = emphasisNodeIds
+    sigmaRef.current?.refresh()
+  }, [emphasisNodeIds])
 
   useEffect(() => {
     visibleEdgeTypesRef.current = visibleEdgeTypes

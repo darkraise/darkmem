@@ -4,6 +4,8 @@ import { Checkbox } from "darkraise-ui/components/checkbox"
 import { Label } from "darkraise-ui/components/label"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api"
+import { ProcessPanel } from "./process-panel"
+import type { CodeProcess } from "../lib/code-processes"
 
 interface CodeAnalysisPanelProps {
   selectedNode: {
@@ -28,6 +30,9 @@ interface CodeAnalysisPanelProps {
   edgeColors: Record<string, string>
   allNodeTypes: string[]
   allEdgeTypes: string[]
+  processes: CodeProcess[]
+  selectedProcessId: string | null
+  onProcessSelect: (process: CodeProcess) => void
 }
 
 function SectionHeader({ label }: { label: string }) {
@@ -89,6 +94,9 @@ export function CodeAnalysisPanel({
   edgeColors,
   allNodeTypes,
   allEdgeTypes,
+  processes,
+  selectedProcessId,
+  onProcessSelect,
 }: CodeAnalysisPanelProps) {
   const isAnalyzableSymbol =
     selectedNode &&
@@ -293,6 +301,18 @@ export function CodeAnalysisPanel({
             </div>
           </div>
         </div>
+
+        {/* Execution Flows */}
+        <CollapsibleSection
+          label="Execution Flows"
+          defaultOpen={processes.length > 0}
+        >
+          <ProcessPanel
+            processes={processes}
+            selectedProcessId={selectedProcessId}
+            onSelect={onProcessSelect}
+          />
+        </CollapsibleSection>
 
         {/* Node Type Filters */}
         <CollapsibleSection label="Node Types" defaultOpen={false}>
