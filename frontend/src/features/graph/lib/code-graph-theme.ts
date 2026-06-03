@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type RefObject } from "react"
-import { useTheme } from "darkraise-ui/theme"
 import { darkenHex } from "./graph-colors"
 
 export interface GraphThemeTokens {
@@ -303,25 +302,36 @@ export interface CodeGraphTheme {
 /**
  * Resolve graph theme tokens from the page root and re-resolve whenever the
  * active darkraise-ui theme changes (accent, surface, mode, preset, gradient,
- * and any preset-specific axis values). The provider commits CSS variables to
- * the DOM in its own effect, so this hook re-resolves in an effect keyed on the
- * theme identity, guaranteeing it reads the freshly-committed values.
+ * and any preset-specific axis values).
+ *
+ * The provider commits the CSS custom properties to documentElement inside its
+ * own passive effect. React flushes passive effects child-before-parent, so a
+ * consumer effect keyed on theme state (even a layout effect) runs before the
+ * provider has written the new variables and would read the stale values. To
+ * stay correct regardless of effect ordering we observe the documentElement
+ * `style` attribute and re-resolve once the provider actually mutates the DOM.
  */
 export function useCodeGraphTheme(
   rootRef: RefObject<HTMLElement | null>,
   nodeTypes: readonly string[],
   edgeTypes: readonly string[],
 ): CodeGraphTheme {
-  const theme = useTheme()
-  const themeKey = `${theme.accentColor}|${theme.surfaceColor}|${theme.resolvedMode}|${theme.preset}|${theme.backgroundStyle}|${theme.backgroundIntensity}|${theme.gradientPattern}|${JSON.stringify(theme.presetAxisValues)}`
-
   const [tokens, setTokens] = useState<GraphThemeTokens>(FALLBACK_TOKENS)
 
   useEffect(() => {
     const el = rootRef.current
     if (!el) return
-    setTokens(resolveGraphTokens(el))
-  }, [rootRef, themeKey])
+
+    const resolve = () => setTokens(resolveGraphTokens(el))
+    resolve()
+
+    const observer = new MutationObserver(resolve)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style"],
+    })
+    return () => observer.disconnect()
+  }, [rootRef])
 
   return useMemo(() => {
     const { nodeColors, edgeColors } = buildCodeGraphColorMaps(

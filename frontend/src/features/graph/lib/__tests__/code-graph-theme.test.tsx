@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
+import { renderHook, act, waitFor } from "@testing-library/react"
+import { createRef } from "react"
 import {
   hslToHex,
   parseHsl,
@@ -7,6 +9,7 @@ import {
   nodeKindColor,
   edgeTypeColor,
   buildCodeGraphColorMaps,
+  useCodeGraphTheme,
   type GraphThemeTokens,
 } from "../code-graph-theme"
 
@@ -14,6 +17,7 @@ const HEX = /^#[0-9a-f]{6}$/
 
 afterEach(() => {
   vi.restoreAllMocks()
+  document.documentElement.style.removeProperty("--primary")
 })
 
 // A token element whose getPropertyValue returns scripted values. Mirrors the
@@ -182,6 +186,51 @@ describe("edgeTypeColor", () => {
     const t = darkT()
     // structural edges seed from chart[0]; the darkened edge must differ.
     expect(edgeTypeColor("contains", t)).not.toBe(t.chart[0])
+  })
+})
+
+describe("useCodeGraphTheme", () => {
+  // Drives getComputedStyle from a mutable map so the test can flip the
+  // "committed" CSS variables after mount, the way ThemeProvider does in its
+  // own passive effect. Exercises the MutationObserver path: keying off React
+  // theme state would read stale values because passive effects flush
+  // child-before-parent.
+  function mockComputed(map: Record<string, string>) {
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          getPropertyValue: (prop: string) => map[prop] ?? "",
+        }) as unknown as CSSStyleDeclaration,
+    )
+  }
+
+  it("re-resolves when documentElement style mutates after mount", async () => {
+    const computed: Record<string, string> = { ...DARK_TOKENS }
+    mockComputed(computed)
+
+    const root = createRef<HTMLElement>()
+    root.current = document.createElement("div")
+
+    const { result } = renderHook(() =>
+      useCodeGraphTheme(root, ["file"], ["calls"]),
+    )
+
+    await waitFor(() =>
+      expect(result.current.tokens.primary).toBe(hslToHex(217, 91, 60)),
+    )
+
+    // Simulate the provider committing a new accent in its passive effect:
+    // first the computed values change, then the inline style attribute is
+    // mutated (which is what the hook observes).
+    act(() => {
+      computed["--primary"] = "30 91% 60%"
+      document.documentElement.style.setProperty("--primary", "30 91% 60%")
+    })
+
+    await waitFor(() =>
+      expect(result.current.tokens.primary).toBe(hslToHex(30, 91, 60)),
+    )
+    expect(result.current.tokens.primaryHue).toBe(30)
   })
 })
 
