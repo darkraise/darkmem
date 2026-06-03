@@ -5,6 +5,7 @@ import EdgeCurveProgram, { indexParallelEdgesIndex } from "@sigma/edge-curve"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import noverlap from "graphology-layout-noverlap"
+import type { GraphThemeTokens } from "../lib/code-graph-theme"
 
 // ── Color helpers (matching GitNexus) ─────────────────────────
 
@@ -33,9 +34,12 @@ function rgbToHex(r: number, g: number, b: number): string {
   )
 }
 
-function dimColor(hex: string, amount: number): string {
+// Fade `hex` toward the live surface background by `amount` (0 = full bg,
+// 1 = original). `bgHex` comes from the resolved --background token so dimmed
+// nodes blend into whatever surface the active theme paints.
+function dimColor(hex: string, amount: number, bgHex: string): string {
   const rgb = hexToRgb(hex)
-  const bg = { r: 18, g: 18, b: 28 }
+  const bg = hexToRgb(bgHex)
   return rgbToHex(
     bg.r + (rgb.r - bg.r) * amount,
     bg.g + (rgb.g - bg.g) * amount,
@@ -85,58 +89,6 @@ const NODE_SIZES: Record<string, number> = {
   static: 2,
 }
 const DEFAULT_NODE_SIZE = 3
-
-const NODE_COLORS: Record<string, string> = {
-  project: "#a855f7",
-  package: "#8b5cf6",
-  module: "#7c3aed",
-  folder: "#6366f1",
-  file: "#3b82f6",
-  class: "#f59e0b",
-  struct: "#f59e0b",
-  record: "#f59e0b",
-  function: "#10b981",
-  method: "#14b8a6",
-  constructor: "#10b981",
-  variable: "#64748b",
-  import: "#475569",
-  decorator: "#eab308",
-  interface: "#ec4899",
-  trait: "#ec4899",
-  enum: "#f97316",
-  type: "#a78bfa",
-  impl: "#14b8a6",
-  namespace: "#7c3aed",
-  property: "#64748b",
-  route: "#f43f5e",
-  tool: "#a855f7",
-  model: "#f59e0b",
-  community: "#818cf8",
-  process: "#f43f5e",
-}
-const DEFAULT_NODE_COLOR = "#6b7280"
-
-const EDGE_COLORS: Record<string, string> = {
-  contains: "#2d5a3d",
-  defines: "#0e7490",
-  imports: "#1d4ed8",
-  calls: "#7c3aed",
-  extends: "#c2410c",
-  implements: "#be185d",
-  has_method: "#0e7490",
-  has_property: "#64748b",
-  handles_route: "#f43f5e",
-  handles_tool: "#a855f7",
-  method_overrides: "#c2410c",
-  method_implements: "#be185d",
-  accesses: "#64748b",
-  member_of: "#818cf8",
-  step_in_process: "#f43f5e",
-  entry_point_of: "#f43f5e",
-  queries: "#eab308",
-  fetches: "#06b6d4",
-}
-const DEFAULT_EDGE_COLOR = "#2a2a3a"
 
 const EDGE_SIZE_MULTIPLIERS: Record<string, number> = {
   contains: 0.4,
@@ -273,6 +225,9 @@ interface CodeGraphRendererProps {
   ) => void
   highlightedIds?: Set<string>
   visibleEdgeTypes?: Set<string>
+  nodeColors: Record<string, string>
+  edgeColors: Record<string, string>
+  tokens: GraphThemeTokens
 }
 
 export function CodeGraphRenderer({
@@ -282,6 +237,9 @@ export function CodeGraphRenderer({
   onSelect,
   highlightedIds,
   visibleEdgeTypes,
+  nodeColors,
+  edgeColors,
+  tokens,
 }: CodeGraphRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
@@ -295,7 +253,11 @@ export function CodeGraphRenderer({
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
 
-  const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}`
+  // Theme identity in the key forces a full rebuild — node/edge colors, the
+  // dim base, labels, and hover/selection chrome are all baked at build time,
+  // so they must recompute when the accent or mode flips.
+  const themeKey = `${tokens.primary}:${tokens.background}:${tokens.isDark}`
+  const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}:${themeKey}`
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
@@ -316,6 +278,10 @@ export function CodeGraphRenderer({
 
     const graph = new Graph()
     graphRef.current = graph
+
+    const defaultNodeColor = tokens.mutedForeground
+    const defaultEdgeColor = dimColor(tokens.border, 0.6, tokens.background)
+    const bg = tokens.background
 
     const nodeCount = nodes.length
     const edgeBaseSize = nodeCount > 20000 ? 0.4 : nodeCount > 5000 ? 0.6 : 1.0
@@ -384,7 +350,7 @@ export function CodeGraphRenderer({
         y,
         label: node.label,
         size,
-        color: NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR,
+        color: nodeColors[kind] ?? defaultNodeColor,
         mass: getNodeMass(kind, nodeCount),
         _kind: node.kind,
         _filePath: node.file_path,
@@ -405,7 +371,7 @@ export function CodeGraphRenderer({
         y: pos.y,
         label: node.label,
         size,
-        color: NODE_COLORS[kind] ?? DEFAULT_NODE_COLOR,
+        color: nodeColors[kind] ?? defaultNodeColor,
         mass: getNodeMass(kind, nodeCount),
         _kind: node.kind,
         _filePath: node.file_path,
@@ -442,7 +408,7 @@ export function CodeGraphRenderer({
       try {
         const edgeType = e.type?.toLowerCase() ?? ""
         graph.addEdge(e.source, e.target, {
-          color: EDGE_COLORS[edgeType] || DEFAULT_EDGE_COLOR,
+          color: edgeColors[edgeType] || defaultEdgeColor,
           size:
             edgeBaseSize *
             (EDGE_SIZE_MULTIPLIERS[edgeType] || DEFAULT_EDGE_SIZE),
@@ -467,16 +433,16 @@ export function CodeGraphRenderer({
       renderEdgeLabels: false,
       labelSize: 11,
       labelWeight: "500",
-      labelFont: "JetBrains Mono, monospace",
-      labelColor: { color: "#e4e4ed" },
+      labelFont: tokens.fontMono,
+      labelColor: { color: tokens.foreground },
       labelRenderedSizeThreshold: 8,
       labelDensity: 0.1,
       labelGridCellSize: 70,
       defaultEdgeType: "curve",
       edgeProgramClasses: { curve: EdgeCurveProgram },
       stagePadding: 60,
-      defaultNodeColor: DEFAULT_NODE_COLOR,
-      defaultEdgeColor: DEFAULT_EDGE_COLOR,
+      defaultNodeColor: defaultNodeColor,
+      defaultEdgeColor: defaultEdgeColor,
       minCameraRatio: 0.002,
       maxCameraRatio: 50,
       hideEdgesOnMove: true,
@@ -488,7 +454,7 @@ export function CodeGraphRenderer({
         if (!label) return
 
         const size = settings.labelSize || 11
-        const font = settings.labelFont || "JetBrains Mono, monospace"
+        const font = settings.labelFont || tokens.fontMono
         const weight = settings.labelWeight || "500"
 
         context.font = `${weight} ${size}px ${font}`
@@ -503,23 +469,23 @@ export function CodeGraphRenderer({
         const width = textWidth + paddingX * 2
         const radius = 4
 
-        context.fillStyle = "#12121c"
+        context.fillStyle = tokens.popover
         context.beginPath()
         context.roundRect(x - width / 2, y - height / 2, width, height, radius)
         context.fill()
 
-        context.strokeStyle = data.color || "#6366f1"
+        context.strokeStyle = data.color || tokens.primary
         context.lineWidth = 2
         context.stroke()
 
-        context.fillStyle = "#f5f5f7"
+        context.fillStyle = tokens.popoverForeground
         context.textAlign = "center"
         context.textBaseline = "middle"
         context.fillText(label, x, y)
 
         context.beginPath()
         context.arc(data.x, data.y, nodeSize + 4, 0, Math.PI * 2)
-        context.strokeStyle = data.color || "#6366f1"
+        context.strokeStyle = data.color || tokens.primary
         context.lineWidth = 2
         context.globalAlpha = 0.5
         context.stroke()
@@ -536,12 +502,12 @@ export function CodeGraphRenderer({
 
         if (hasHighlights && !sel) {
           if (hl.has(node)) {
-            res.color = "#ef4444"
+            res.color = tokens.destructive
             res.size = baseSize * 1.8
             res.zIndex = 3
             res.highlighted = true
           } else {
-            res.color = dimColor(data.color || DEFAULT_NODE_COLOR, 0.15)
+            res.color = dimColor(data.color || defaultNodeColor, 0.15, bg)
             res.size = baseSize * 0.4
             res.zIndex = 0
           }
@@ -563,7 +529,7 @@ export function CodeGraphRenderer({
             res.size = baseSize * 1.3
             res.zIndex = 1
           } else {
-            res.color = dimColor(data.color || DEFAULT_NODE_COLOR, 0.25)
+            res.color = dimColor(data.color || defaultNodeColor, 0.25, bg)
             res.size = baseSize * 0.6
             res.zIndex = 0
           }
@@ -571,7 +537,7 @@ export function CodeGraphRenderer({
         }
 
         if (hov === node) {
-          res.color = brightenColor(data.color || DEFAULT_NODE_COLOR, 1.5)
+          res.color = brightenColor(data.color || defaultNodeColor, 1.5)
           res.size = baseSize * 1.4
           res.zIndex = 2
           res.highlighted = true
@@ -612,15 +578,15 @@ export function CodeGraphRenderer({
           const tgtActive = hl.has(tgt)
 
           if (srcActive && tgtActive) {
-            res.color = "#ef4444"
+            res.color = tokens.destructive
             res.size = Math.max(2, (data.size || 1) * 3)
             res.zIndex = 2
           } else if (srcActive || tgtActive) {
-            res.color = dimColor("#06b6d4", 0.4)
+            res.color = dimColor(tokens.primary, 0.4, bg)
             res.size = 1
             res.zIndex = 1
           } else {
-            res.color = dimColor(data.color || DEFAULT_EDGE_COLOR, 0.08)
+            res.color = dimColor(data.color || defaultEdgeColor, 0.08, bg)
             res.size = 0.2
             res.zIndex = 0
           }
@@ -630,11 +596,11 @@ export function CodeGraphRenderer({
         if (sel) {
           const isConnected = src === sel || tgt === sel
           if (isConnected) {
-            res.color = brightenColor(data.color || DEFAULT_EDGE_COLOR, 1.5)
+            res.color = brightenColor(data.color || defaultEdgeColor, 1.5)
             res.size = Math.max(3, (data.size || 1) * 4)
             res.zIndex = 2
           } else {
-            res.color = dimColor(data.color || DEFAULT_EDGE_COLOR, 0.1)
+            res.color = dimColor(data.color || defaultEdgeColor, 0.1, bg)
             res.size = 0.3
             res.zIndex = 0
           }
@@ -646,7 +612,7 @@ export function CodeGraphRenderer({
           const neighborNode = src === hov ? tgt : src
           res.color = brightenColor(
             (graph.getNodeAttribute(neighborNode, "color") as string) ||
-              DEFAULT_NODE_COLOR,
+              defaultNodeColor,
             1.3,
           )
         }

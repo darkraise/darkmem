@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useState, type RefObject } from "react"
+import { useTheme } from "darkraise-ui/theme"
 import { darkenHex } from "./graph-colors"
 
 export interface GraphThemeTokens {
@@ -259,4 +261,74 @@ export function buildCodeGraphColorMaps(
   const edgeColors: Record<string, string> = {}
   for (const type of edgeTypes) edgeColors[type] = edgeTypeColor(type, t)
   return { nodeColors, edgeColors }
+}
+
+const FALLBACK_TOKENS: GraphThemeTokens = {
+  background: hslToHex(FALLBACK.background.h, FALLBACK.background.s, FALLBACK.background.l),
+  foreground: hslToHex(FALLBACK.foreground.h, FALLBACK.foreground.s, FALLBACK.foreground.l),
+  card: hslToHex(FALLBACK.card.h, FALLBACK.card.s, FALLBACK.card.l),
+  cardForeground: hslToHex(
+    FALLBACK.cardForeground.h,
+    FALLBACK.cardForeground.s,
+    FALLBACK.cardForeground.l,
+  ),
+  popover: hslToHex(FALLBACK.popover.h, FALLBACK.popover.s, FALLBACK.popover.l),
+  popoverForeground: hslToHex(
+    FALLBACK.popoverForeground.h,
+    FALLBACK.popoverForeground.s,
+    FALLBACK.popoverForeground.l,
+  ),
+  muted: hslToHex(FALLBACK.muted.h, FALLBACK.muted.s, FALLBACK.muted.l),
+  mutedForeground: hslToHex(
+    FALLBACK.mutedForeground.h,
+    FALLBACK.mutedForeground.s,
+    FALLBACK.mutedForeground.l,
+  ),
+  border: hslToHex(FALLBACK.border.h, FALLBACK.border.s, FALLBACK.border.l),
+  primary: hslToHex(FALLBACK.primary.h, FALLBACK.primary.s, FALLBACK.primary.l),
+  ring: hslToHex(FALLBACK.ring.h, FALLBACK.ring.s, FALLBACK.ring.l),
+  destructive: hslToHex(FALLBACK.destructive.h, FALLBACK.destructive.s, FALLBACK.destructive.l),
+  chart: FALLBACK.chart.map((c) => hslToHex(c.h, c.s, c.l)),
+  primaryHue: FALLBACK.primary.h,
+  isDark: FALLBACK.background.l < 50,
+  fontMono: FALLBACK_FONT_MONO,
+}
+
+export interface CodeGraphTheme {
+  tokens: GraphThemeTokens
+  nodeColors: Record<string, string>
+  edgeColors: Record<string, string>
+}
+
+/**
+ * Resolve graph theme tokens from the page root and re-resolve whenever the
+ * active darkraise-ui theme changes (accent, surface, mode, preset, gradient,
+ * and any preset-specific axis values). The provider commits CSS variables to
+ * the DOM in its own effect, so this hook re-resolves in an effect keyed on the
+ * theme identity, guaranteeing it reads the freshly-committed values.
+ */
+export function useCodeGraphTheme(
+  rootRef: RefObject<HTMLElement | null>,
+  nodeTypes: readonly string[],
+  edgeTypes: readonly string[],
+): CodeGraphTheme {
+  const theme = useTheme()
+  const themeKey = `${theme.accentColor}|${theme.surfaceColor}|${theme.resolvedMode}|${theme.preset}|${theme.backgroundStyle}|${theme.backgroundIntensity}|${theme.gradientPattern}|${JSON.stringify(theme.presetAxisValues)}`
+
+  const [tokens, setTokens] = useState<GraphThemeTokens>(FALLBACK_TOKENS)
+
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    setTokens(resolveGraphTokens(el))
+  }, [rootRef, themeKey])
+
+  return useMemo(() => {
+    const { nodeColors, edgeColors } = buildCodeGraphColorMaps(
+      [...nodeTypes],
+      [...edgeTypes],
+      tokens,
+    )
+    return { tokens, nodeColors, edgeColors }
+  }, [tokens, nodeTypes, edgeTypes])
 }

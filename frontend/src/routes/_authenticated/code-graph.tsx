@@ -23,48 +23,11 @@ import {
   type BlastRadiusResult,
 } from "@/hooks/api"
 import { PanelLeft, PanelRight, Search, Loader2 } from "lucide-react"
+import { useCodeGraphTheme } from "@/features/graph/lib/code-graph-theme"
 
 export const Route = createFileRoute("/_authenticated/code-graph")({
   component: CodeGraphPage,
 })
-
-const NODE_COLORS: Record<string, string> = {
-  file: "#3b82f6",
-  module: "#8b5cf6",
-  class: "#f59e0b",
-  struct: "#fb923c",
-  interface: "#ec4899",
-  trait: "#f472b6",
-  enum: "#f97316",
-  function: "#10b981",
-  method: "#14b8a6",
-  type: "#64748b",
-  impl: "#7c3aed",
-  property: "#64748b",
-  route: "#f43f5e",
-  tool: "#a855f7",
-  community: "#818cf8",
-  process: "#f43f5e",
-}
-
-const EDGE_COLORS: Record<string, string> = {
-  calls: "#7c3aed",
-  imports: "#1d4ed8",
-  contains: "#2d5a3d",
-  defines: "#0e7490",
-  extends: "#c2410c",
-  implements: "#be185d",
-  has_method: "#0e7490",
-  has_property: "#64748b",
-  handles_route: "#f43f5e",
-  handles_tool: "#a855f7",
-  method_overrides: "#c2410c",
-  method_implements: "#be185d",
-  accesses: "#64748b",
-  member_of: "#818cf8",
-  step_in_process: "#f43f5e",
-  entry_point_of: "#f43f5e",
-}
 
 const ALL_NODE_TYPES = [
   "file",
@@ -129,6 +92,13 @@ function CodeGraphPage() {
   const [focusDepth, setFocusDepth] = useState<number | null>(null)
   const [showInspector, setShowInspector] = useState(true)
   const [showAnalysis, setShowAnalysis] = useState(true)
+
+  const rootRef = useRef<HTMLDivElement>(null)
+  const { tokens, nodeColors, edgeColors } = useCodeGraphTheme(
+    rootRef,
+    ALL_NODE_TYPES,
+    ALL_EDGE_TYPES,
+  )
 
   const toggleEdgeType = useCallback((type: string) => {
     setVisibleEdgeTypes((prev) => {
@@ -313,7 +283,7 @@ function CodeGraphPage() {
   }, [])
 
   return (
-    <div className="code-graph-root flex h-full flex-col">
+    <div ref={rootRef} className="code-graph-root flex h-full flex-col">
       <h1 className="sr-only">Code Graph</h1>
       {/* ── Toolbar ─────────────────────────────────────────────── */}
       <div className="code-graph-toolbar flex shrink-0 items-center gap-3 border-b border-cyan-900/15 px-4 py-2">
@@ -470,6 +440,9 @@ function CodeGraphPage() {
               onSelect={handleSelect}
               highlightedIds={blastRadiusIds}
               visibleEdgeTypes={visibleEdgeTypes}
+              nodeColors={nodeColors}
+              edgeColors={edgeColors}
+              tokens={tokens}
             />
           )}
 
@@ -506,8 +479,8 @@ function CodeGraphPage() {
               visibleEdgeTypes={visibleEdgeTypes}
               onToggleNodeType={toggleNodeType}
               onToggleEdgeType={toggleEdgeType}
-              nodeColors={NODE_COLORS}
-              edgeColors={EDGE_COLORS}
+              nodeColors={nodeColors}
+              edgeColors={edgeColors}
               allNodeTypes={ALL_NODE_TYPES}
               allEdgeTypes={ALL_EDGE_TYPES}
             />
