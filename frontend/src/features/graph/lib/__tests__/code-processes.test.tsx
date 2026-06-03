@@ -118,11 +118,13 @@ describe("deriveProcesses", () => {
     const a = deriveProcesses(nodes, edges).find(
       (p) => p.id === "process:scored:main::app.py",
     )!
-    // entry main is also step 1, so it must not appear twice.
+    // entry main is also step 1, so it must not appear twice; the process
+    // node itself is appended so it is emphasized along with its flow.
     expect(a.nodeIds).toEqual([
       "main::app.py",
       "save::db.py",
       "render::ui.py",
+      "process:scored:main::app.py",
     ])
   })
 

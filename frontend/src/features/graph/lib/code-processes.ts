@@ -104,6 +104,7 @@ export function deriveProcesses(
     }
     push(entryNode?.id)
     for (const s of steps) push(s.nodeId)
+    push(proc.id) // emphasize the process node itself (root of the flow)
 
     const label =
       entryNode?.label || proc.label || proc.id

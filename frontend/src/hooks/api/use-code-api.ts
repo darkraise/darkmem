@@ -126,6 +126,7 @@ export interface CodeSymbolsParams {
 export interface BlastRadiusResult {
   symbol: { id: string; name: string; file_path: string | null }
   affected: Array<{
+    key?: string
     name: string
     kind: string
     file_path: string

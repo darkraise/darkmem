@@ -167,6 +167,11 @@ function CodeGraphPage() {
 
   const { data: repos } = useRepos()
   const { data: graphData, isLoading } = useCodeGraph(selectedRepoId)
+  // buildGraph auto-starts the FA2 worker whenever it (re)builds in force mode
+  // (e.g. on a repo switch), so keep the play/pause toggle in sync with it.
+  useEffect(() => {
+    if (layout === "force") setIsPlaying(true)
+  }, [graphData, layout])
   const codeSearch = useCodeSearch()
   const codeSearchRef = useRef(codeSearch)
   codeSearchRef.current = codeSearch
@@ -539,7 +544,7 @@ function CodeGraphPage() {
       {
         onSuccess: (data) => {
           const ids = new Set(
-            data.affected.map((a) => `${a.name}::${a.file_path}`),
+            data.affected.map((a) => a.key ?? `${a.name}::${a.file_path}`),
           )
           if (selectedNode) ids.add(selectedNode.id)
           setBlastRadiusIds(ids)

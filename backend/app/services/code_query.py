@@ -327,13 +327,15 @@ class CodeQueryService:
         by_depth: dict[str, list] = {"1": [], "2": [], "3+": []}
         affected = []
         for r in rows:
-            name_val = r["name"]
+            raw_key = r["name"]  # full composite source_key (may include ::owner)
+            name_val = raw_key
             kind_val = r["kind"]
             dist = r["distance"]
             file_path_val = None
-            if "::" in (name_val or ""):
-                name_val, file_path_val = decompose_key("symbol", name_val)
-            entry = {"name": name_val, "kind": kind_val, "file_path": file_path_val, "distance": dist}
+            if "::" in (raw_key or ""):
+                name_val, file_path_val = decompose_key("symbol", raw_key)
+            # `key` is the graph node id (owner-qualified); name/file_path are for display.
+            entry = {"key": raw_key, "name": name_val, "kind": kind_val, "file_path": file_path_val, "distance": dist}
             affected.append(entry)
             if dist == 1:
                 by_depth["1"].append(entry)
