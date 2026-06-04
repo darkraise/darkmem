@@ -102,6 +102,26 @@ def make_pipeline_failure_cleanup_runner(session_factory: async_sessionmaker[Asy
     return run
 
 
+def make_graph_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
+    """Prune entity-graph ghosts: entities/relations no live memory asserts.
+
+    Backstops the per-delete cleanup against swallowed errors and historical
+    accumulation, so the Phase-4 dedup never collapses fresh entities onto a
+    stale ghost left by an earlier deleted memory."""
+    async def run() -> None:
+        from app.repositories.graph import PostgresGraphRepository
+        async with session_factory() as session:
+            repo = PostgresGraphRepository(session)
+            stats = await repo.prune_orphan_entities()
+            await session.commit()
+        if stats["entities_pruned"] or stats["relations_pruned"]:
+            logger.info(
+                "Graph orphan cleanup: entities=%s relations=%s",
+                stats["entities_pruned"], stats["relations_pruned"],
+            )
+    return run
+
+
 def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSession]):
     """Run one batch of code-symbol summarisation through the
     EnrichmentWorker. Replaces the worker's internal run_loop so the

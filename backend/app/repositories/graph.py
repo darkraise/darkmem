@@ -390,29 +390,39 @@ class PostgresGraphRepository:
             )).scalars().all()
         ]
 
-        # Drop relations no memory asserts any more (scoped to touched rows).
-        # Do this BEFORE deleting orphaned entities so the entity guard below
-        # sees only relations that truly survive.
+        # Drop relations no LIVE memory asserts any more (scoped to touched
+        # rows). Checking "no live memory" rather than "array empty" also
+        # self-heals dangling memory_ids — ids left pointing at memories that
+        # were deleted without graph cleanup. Do this BEFORE deleting orphaned
+        # entities so the entity guard below sees only relations that survive.
         if rel_ids:
             await self.session.execute(
                 text("""
                     DELETE FROM entity_relations
                     WHERE id = ANY(CAST(:ids AS uuid[]))
-                      AND (array_length(memory_ids, 1) IS NULL OR array_length(memory_ids, 1) = 0)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM memories m
+                          WHERE m.id = ANY(entity_relations.memory_ids)
+                      )
                 """),
                 {"ids": rel_ids},
             )
 
-        # Delete an orphaned entity only when no surviving relation still
-        # references it. The FK is ON DELETE CASCADE, so deleting an entity a
-        # relation still points at would silently destroy a relation that other
-        # memories assert — losing another memory's edge on re-extraction.
+        # Delete an entity no live memory asserts, but only when no surviving
+        # relation still references it. The FK is ON DELETE CASCADE, so deleting
+        # an entity a relation still points at would silently destroy a relation
+        # that other memories assert — losing another memory's edge on
+        # re-extraction. The "no live memory" predicate also drops an entity
+        # kept alive only by dangling memory_ids (ghost), which is what the
+        # Phase-4 dedup would otherwise collapse fresh entities onto.
         if ent_ids:
             await self.session.execute(
                 text("""
                     DELETE FROM entities e
                     WHERE e.id = ANY(CAST(:ids AS uuid[]))
-                      AND (array_length(e.memory_ids, 1) IS NULL OR array_length(e.memory_ids, 1) = 0)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM memories m WHERE m.id = ANY(e.memory_ids)
+                      )
                       AND NOT EXISTS (
                           SELECT 1 FROM entity_relations r
                           WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
@@ -420,6 +430,35 @@ class PostgresGraphRepository:
                 """),
                 {"ids": ent_ids},
             )
+
+    async def prune_orphan_entities(self) -> dict:
+        """Remove entities and relations that no LIVE memory asserts any more.
+
+        Ghosts accumulate when a memory is deleted via a path that skips
+        ``delete_by_memory_id`` (e.g. a swallowed cleanup error, a raw DB
+        delete) or when a row is kept alive only by ``memory_ids`` that point at
+        already-deleted memories. Such ghosts otherwise survive forever and the
+        Phase-4 ANN dedup collapses fresh entities onto them (a fresh
+        ``february outage`` snapped onto a stale ``march outage``). Unscoped
+        full-table sweep — meant for the periodic maintenance job, not the write
+        path. Relations are pruned first so the entity guard sees only surviving
+        relations; the ``entity_embeddings__*`` FK is ON DELETE CASCADE, so an
+        entity's embeddings go with it (which is what stops the dedup match)."""
+        rel_ids = (await self.session.execute(text("""
+            DELETE FROM entity_relations r
+            WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ANY(r.memory_ids))
+            RETURNING r.id
+        """))).scalars().all()
+        ent_ids = (await self.session.execute(text("""
+            DELETE FROM entities e
+            WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ANY(e.memory_ids))
+              AND NOT EXISTS (
+                  SELECT 1 FROM entity_relations r
+                  WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
+              )
+            RETURNING e.id
+        """))).scalars().all()
+        return {"relations_pruned": len(rel_ids), "entities_pruned": len(ent_ids)}
 
     async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
         result = await self.session.execute(

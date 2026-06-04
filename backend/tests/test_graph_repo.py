@@ -12,7 +12,16 @@ from uuid import uuid4
 
 from sqlalchemy import text
 
+from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
+
+
+async def _mk_memory(session, mid):
+    """Insert a minimal live memory row so memory_ids referencing it resolve as
+    'live' under the orphan checks (the ORM applies the python-side defaults a
+    raw INSERT would miss)."""
+    session.add(Memory(id=mid, content="x", source="test"))
+    await session.flush()
 
 
 async def test_create_entity_merges_properties_across_memories(session):
@@ -39,6 +48,10 @@ async def test_create_entity_merges_properties_across_memories(session):
 async def test_delete_by_memory_id_preserves_relations_other_memories_assert(session):
     repo = PostgresGraphRepository(session)
     m1, m2 = uuid4(), uuid4()
+    # Both are real memories: the orphan checks keep a row only while a LIVE
+    # memory still asserts it, so the relation must be backed by a live m2.
+    await _mk_memory(session, m1)
+    await _mk_memory(session, m2)
 
     # Entity e is asserted only by m1; entity f and the relation e->f are
     # asserted by both. (create_relationship appends to the relation's
@@ -70,3 +83,81 @@ async def test_delete_by_memory_id_preserves_relations_other_memories_assert(ses
         )
     ).scalar_one()
     assert [str(x) for x in surviving] == [str(m2)]
+
+
+async def _entity_names(session) -> set[str]:
+    rows = (await session.execute(text("SELECT name FROM entities"))).scalars().all()
+    return set(rows)
+
+
+async def test_delete_by_memory_id_self_heals_dangling_memory_ids(session):
+    """An entity kept alive only by a dangling memory_id (an id whose memory was
+    deleted without graph cleanup) must be removed when delete_by_memory_id next
+    touches it — otherwise it lingers as a ghost the dedup collapses onto."""
+    repo = PostgresGraphRepository(session)
+    live, dangling = uuid4(), uuid4()  # only `live` is a real memory
+    await _mk_memory(session, live)
+
+    await repo.create_entity(name="ghost-x", entity_type="concept", properties={}, memory_id=live)
+    # Simulate prior accumulation: a dangling id (its memory already deleted)
+    # got appended to this entity, so the old emptiness check never fired.
+    await session.execute(
+        text("UPDATE entities SET memory_ids = array_append(memory_ids, :d) WHERE name = 'ghost-x'"),
+        {"d": dangling},
+    )
+
+    await repo.delete_by_memory_id(live)
+
+    # After stripping `live`, only the dangling id remains -> no live memory ->
+    # ghost removed (self-heal).
+    assert "ghost-x" not in await _entity_names(session)
+
+
+async def test_prune_orphan_entities_removes_ghosts_keeps_live(session):
+    repo = PostgresGraphRepository(session)
+    live, dead = uuid4(), uuid4()  # `dead` is never inserted as a memory
+    await _mk_memory(session, live)
+
+    await repo.create_entity(name="keep-me", entity_type="tool", properties={}, memory_id=live)
+    await repo.create_entity(name="ghost-a", entity_type="tool", properties={}, memory_id=dead)
+    await repo.create_entity(name="ghost-b", entity_type="tool", properties={}, memory_id=dead)
+    await repo.create_relationship(
+        source_name="ghost-a", target_name="ghost-b", rel_type="RELATED_TO",
+        properties={}, weight=0.5, memory_id=dead,
+        source_type="tool", target_type="tool",
+    )
+
+    stats = await repo.prune_orphan_entities()
+
+    names = await _entity_names(session)
+    assert "keep-me" in names
+    assert "ghost-a" not in names and "ghost-b" not in names
+    assert stats["entities_pruned"] == 2
+    assert stats["relations_pruned"] == 1
+    # The dangling relation is gone too.
+    rel_count = (await session.execute(text("SELECT count(*) FROM entity_relations"))).scalar_one()
+    assert rel_count == 0
+
+
+async def test_prune_orphan_entities_keeps_entity_with_surviving_relation(session):
+    """A relation backed by a live memory protects an otherwise-orphaned
+    endpoint entity from deletion (FK is ON DELETE CASCADE)."""
+    repo = PostgresGraphRepository(session)
+    live = uuid4()
+    await _mk_memory(session, live)
+
+    # Endpoint `p` has no live memory_id of its own, but the live relation p->q
+    # asserts it, so prune must keep p (and the relation).
+    await repo.create_entity(name="p", entity_type="concept", properties={}, memory_id=uuid4())
+    await repo.create_entity(name="q", entity_type="concept", properties={}, memory_id=live)
+    await repo.create_relationship(
+        source_name="p", target_name="q", rel_type="RELATED_TO",
+        properties={}, weight=0.5, memory_id=live,
+        source_type="concept", target_type="concept",
+    )
+
+    stats = await repo.prune_orphan_entities()
+
+    names = await _entity_names(session)
+    assert {"p", "q"} <= names
+    assert stats["relations_pruned"] == 0

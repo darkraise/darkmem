@@ -161,6 +161,7 @@ async def lifespan(app: FastAPI):
         make_code_enrichment_runner,
         make_token_blocklist_cleanup_runner,
         make_pipeline_failure_cleanup_runner,
+        make_graph_orphan_cleanup_runner,
     )
 
     job_registry = JobRegistry(async_session_factory)
@@ -213,6 +214,19 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_pipeline_failure_cleanup_runner(async_session_factory),
+    ))
+    job_registry.register(Job(
+        key="graph_orphan_cleanup",
+        display_name="Graph Orphan Cleanup",
+        description=(
+            "Prunes entity-graph ghosts — entities and relations that no "
+            "live memory asserts any more (left by deleted memories). Keeps "
+            "entity dedup from collapsing fresh entities onto stale ghosts. "
+            "Safe to leave on."
+        ),
+        default_cron="0 * * * *",
+        min_interval_seconds=60,
+        runner=make_graph_orphan_cleanup_runner(async_session_factory),
     ))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
