@@ -134,6 +134,23 @@ def normalize_entity_type(raw_type: str) -> str:
     return "concept"
 
 
+# A `project`-typed entity whose NAME ends in a clear library/SDK suffix is
+# really a `tool` (a reusable dependency). The extractor over-applies `project`
+# to first-party UI kits like "darkraise-ui"; keeping them `tool` is what lets
+# them flow into the TECH_TYPES-based ``memories.technologies`` denorm that
+# supersession and retrieval read.
+_LIBRARY_NAME_SUFFIXES: tuple[str, ...] = ("-ui", "-kit", "-sdk", ".js", "-js")
+
+
+def refine_entity_type(name: str, etype: str) -> str:
+    """Name-aware nudge applied after :func:`normalize_entity_type`. A `project`
+    whose name is unmistakably a library/SDK is re-typed `tool`."""
+    if etype == "project" and name:
+        if name.strip().lower().endswith(_LIBRARY_NAME_SUFFIXES):
+            return "tool"
+    return etype
+
+
 def normalize_relation_type(raw_type: str) -> str:
     """Return a value from RELATIONSHIP_TYPES. Unknown values fall back to ``RELATED_TO``."""
     if not raw_type:
@@ -160,11 +177,50 @@ MEMORY_TYPES: list[str] = [
 _MEMORY_TYPE_SET = set(MEMORY_TYPES)
 
 
+# Caller- or model-supplied aliases mapped to a canonical MEMORY_TYPE so a hint
+# like ``debug`` lands on ``problem`` instead of silently defaulting to ``fact``.
+LEGACY_MEMORY_TYPE_MAP: dict[str, str] = {
+    # problem family (bugs, errors, root causes, workarounds, gotchas)
+    "debug": "problem",
+    "bug": "problem",
+    "gotcha": "problem",
+    "workaround": "problem",
+    "root_cause": "problem",
+    "root-cause": "problem",
+    "issue": "problem",
+    "error": "problem",
+    # milestone family (completed / shipped / released)
+    "release": "milestone",
+    "shipped": "milestone",
+    "completed": "milestone",
+    "achievement": "milestone",
+    # decision family
+    "choice": "decision",
+    "tradeoff": "decision",
+    "trade-off": "decision",
+    # preference family (recurring rules / habits / style)
+    "habit": "preference",
+    "rule": "preference",
+    "style": "preference",
+    # reference family (named standards / specs / docs)
+    "spec": "reference",
+    "standard": "reference",
+    "citation": "reference",
+    # architecture family
+    "design": "architecture",
+}
+
+
 def normalize_memory_type(raw_type: str | None) -> str:
-    """Return a value from MEMORY_TYPES. Unknown values fall back to ``fact``."""
+    """Return a value from MEMORY_TYPES. Known aliases (e.g. ``debug`` →
+    ``problem``) are mapped first; otherwise unknown values fall back to
+    ``fact``."""
     if not raw_type:
         return "fact"
     t = raw_type.strip().lower()
     if t in _MEMORY_TYPE_SET:
         return t
+    mapped = LEGACY_MEMORY_TYPE_MAP.get(t)
+    if mapped:
+        return mapped
     return "fact"

@@ -73,7 +73,7 @@ async def memory_add(
         tags: Categorization tags using slash notation (e.g., "project/darkmem", "debug/root-cause", "infra/services").
         source: Origin identifier (default: "mcp").
         source_agent: Optional agent/session identifier.
-        memory_type: Classification: fact, decision, preference, debug, architecture, workflow, or session.
+        memory_type: One of fact, decision, preference, problem, architecture, reference, milestone. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
     """
     async with _memory_service_context() as service:
         data = MemoryCreate(content=content, tags=tags or [], source=source, source_agent=source_agent, memory_type=memory_type)
@@ -99,7 +99,7 @@ async def memory_search(
         query: Natural language search query. Uses semantic search if available, falls back to text matching.
         tags_any: Return memories matching ANY of these tags.
         tags_all: Return memories matching ALL of these tags.
-        memory_type: Filter by type: fact, decision, preference, debug, architecture, workflow, session.
+        memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone.
         source: Filter by origin (e.g., "claude-code", "mcp", "api").
         limit: Maximum number of results (default: 20).
         offset: Pagination offset (default: 0).

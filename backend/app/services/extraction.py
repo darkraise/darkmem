@@ -23,6 +23,7 @@ from app.taxonomy import (
     RELATIONSHIP_TYPES,
     normalize_entity_type,
     normalize_relation_type,
+    refine_entity_type,
 )
 from app.services.relations import REPLACES_FAMILY, family_key as _family_key
 
@@ -191,6 +192,16 @@ _SHORT_TOOL_ALLOWLIST: frozenset[str] = frozenset({
     "rg", "fd", "ls", "ps", "vi", "vim", "tar", "git", "ssh", "scp", "sed",
     "awk", "jq", "yq", "wc", "uv", "pip", "npm", "pnpm", "yarn", "bun", "go",
     "tox", "hg", "ko", "kn", "k8s", "kc", "cd",
+    # short language names ('written in C', 'built in R')
+    "c", "r", "d",
+})
+
+# Short allowlisted tokens that are also common English words/letters. Safe to
+# KEEP when the LLM emits them with an entity type, but unsafe to AUTO-RESCUE
+# from prose ('all writes now go through' -> 'go' as a tool). Excluded from the
+# rescue scan only; the LLM's own typed mentions still survive.
+_RESCUE_SKIP_SHORT: frozenset[str] = frozenset({
+    "go", "c", "r", "d", "cd", "ls", "ps", "wc", "ko", "kn", "kc", "hg",
 })
 
 # Known type overrides: the LLM occasionally confuses tools/services/databases
@@ -200,21 +211,23 @@ _TYPE_OVERRIDES: dict[str, str] = {
     # Self-projects
     "darkmem": "project",
     "darkraise": "project",
-    "darkraise-ui": "project",
     # Services we run / call
     "mem0": "service", "memora": "service",
     "ollama": "service", "openai": "service", "anthropic": "service",
     "vllm": "service", "jenkins": "service", "github actions": "service",
     "github": "service", "gitlab": "service",
     "grafana": "service", "loki": "service", "promtail": "service",
-    "proxmox": "service", "searxng": "service", "qdrant": "service",
+    "searxng": "service", "kafka": "service",
     # Libraries / runtimes / extensions (tools)
     "pgvector": "tool", "asyncio": "tool",
     "bge": "tool", "tree-sitter": "tool", "sentence-transformers": "tool",
+    # darkraise-ui is a first-party UI component library — a `tool` dependency,
+    # not the `project`, so it flows into the technologies denorm.
+    "darkraise-ui": "tool",
     "react": "tool", "fastapi": "tool", "sqlalchemy": "tool", "alembic": "tool",
     "docker": "tool", "docker-compose": "tool", "kubernetes": "tool",
     "kube-proxy": "tool", "kube-apiserver": "tool", "kube-scheduler": "tool",
-    "traefik": "tool",
+    "traefik": "tool", "proxmox": "tool", "trpc": "tool",
     "lxc": "tool", "uvicorn": "tool", "celery": "tool",
     "grafana-agent": "tool", "prometheus": "tool", "node-exporter": "tool",
     "otel-collector": "tool", "fluent-bit": "tool", "fluentd": "tool",
@@ -226,7 +239,10 @@ _TYPE_OVERRIDES: dict[str, str] = {
     "mysql": "database", "sqlite": "database",
     "redis": "database", "redis-stack": "database",
     "mongodb": "database", "cassandra": "database",
-    "dynamodb": "database", "kafka": "database", "elasticsearch": "database",
+    "dynamodb": "database", "elasticsearch": "database", "opensearch": "database",
+    "meilisearch": "database",
+    # Vector stores are databases; pgvector stays a `tool` (a Postgres extension).
+    "qdrant": "database", "milvus": "database", "weaviate": "database", "chroma": "database",
     # Algorithms / patterns
     "leiden": "algorithm", "louvain": "algorithm",
     "c3": "algorithm", "dijkstra": "algorithm", "rrf": "algorithm",
@@ -270,6 +286,19 @@ def _is_acronym_of(short: str, long: str) -> bool:
     return False
 
 
+# Strip a trailing infra role-noun so cross-memory names stay canonical:
+# 'Postgres cluster' -> 'postgres', 'Proxmox host' -> 'proxmox'.
+_DESCRIPTOR_SUFFIX_RE = re.compile(
+    r"\s+(?:host|cluster|node|vm|instance|box|daemon|hypervisor"
+    r"|source\s+connector|sink\s+connector|connector|exporter|broker)$",
+    re.IGNORECASE,
+)
+# Strip a leading duration/quantifier: '30-minute outage' -> 'outage'.
+_LEADING_DURATION_RE = re.compile(
+    r"^\d+[-\s]?(?:minute|min|hour|hr|day|week|month|second|sec)s?[-\s]+", re.IGNORECASE
+)
+
+
 def _normalize_names(entities: list[dict]) -> list[dict]:
     out = []
     for e in entities:
@@ -286,10 +315,22 @@ def _normalize_names(entities: list[dict]) -> list[dict]:
         # everything else under 3 chars is too noisy.
         if len(name) < 3 and name.lower() not in _SHORT_TOOL_ALLOWLIST:
             continue
-        name = _TRAILING_SUFFIXES.sub("", name).strip()
+        trimmed = _TRAILING_SUFFIXES.sub("", name).strip()
+        # Don't let suffix-stripping collapse a real multi-word entity into a
+        # generic noise word that _filter_noise then deletes ('auth module' ->
+        # 'auth' -> dropped, which orphans every edge anchored to it). Keep the
+        # fuller name when the trimmed head is noise or too short.
+        if trimmed and len(trimmed) >= 3 and trimmed.lower() not in _NOISE_NAMES:
+            name = trimmed
+        stripped = _DESCRIPTOR_SUFFIX_RE.sub("", name).strip()
+        if stripped:
+            name = stripped
+        led = _LEADING_DURATION_RE.sub("", name).strip()
+        if led:
+            name = led
         if not name:
             continue
-        etype = normalize_entity_type(e.get("type") or "concept")
+        etype = refine_entity_type(name, normalize_entity_type(e.get("type") or "concept"))
         out.append({**e, "name": name, "type": etype})
     return out
 
@@ -486,6 +527,8 @@ def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
     for name in _HARDWARE_TOKENS:
         candidates.setdefault(name, "tool")
     for name in _SHORT_TOOL_ALLOWLIST:
+        if name in _RESCUE_SKIP_SHORT:
+            continue
         candidates.setdefault(name, "tool")
     for name, etype in candidates.items():
         if name in have:
@@ -1543,6 +1586,321 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
 # ── Main cleanup orchestrator ────────────────────────────────────────
 
 
+_IP_LITERAL_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$")
+# Generic config-path stems the LLM splits out of dotted/snake keys
+# (``client.backoff`` -> ``client``). Dropped only when they appear in dotted
+# form in the content, so a real entity named the same word still survives.
+_CONFIG_STEMS = frozenset({
+    "client", "limits", "server", "config", "settings", "options", "params",
+    "hooks", "env", "logs", "log", "cache", "queue", "pool", "app", "auth",
+})
+
+
+def _filter_literals(entities: list[dict], content: str) -> list[dict]:
+    """Drop IP/port literals and dotted config-key stems that are not entities."""
+    low = content.lower()
+    out = []
+    for e in entities:
+        n = (e.get("name") or "").strip()
+        nl = n.lower()
+        if _IP_LITERAL_RE.match(n):
+            continue
+        if nl in _CONFIG_STEMS and (nl + ".") in low:
+            continue
+        # Generalized dotted config-key stem: drop a single-token entity that is
+        # the leading segment of a 2+-dot config path in the text
+        # ('producer.linger.ms' -> 'producer'). Single-dot forms (module.attr,
+        # github.com, redis.conf) are left alone so 'asyncio.create_task' still
+        # collapses to the legitimate 'asyncio' root.
+        if nl and " " not in nl and re.search(r"(?<![\w.])" + re.escape(nl) + r"\.\w+\.\w", low):
+            continue
+        out.append(e)
+    return out
+
+
+_FIDELITY_STOPWORDS: frozenset[str] = frozenset({
+    "the", "a", "an", "and", "or", "of", "for", "with", "from", "into", "over",
+    "to", "in", "on", "at", "by", "our", "your", "its", "this", "that", "new", "old",
+})
+
+
+def _filter_hallucinated_names(entities: list[dict], content: str) -> list[dict]:
+    """Value-fidelity guard: drop entities whose text is not grounded in the
+    source. Only police MULTI-word phrases (a single token may be a canonical
+    short form, e.g. 'postgres' from 'PostgreSQL') and standalone dates (a date
+    value absent from the text is a fabrication, e.g. a stored '2026-05-12' when
+    the source says '2026-05-20'). Catches non-deterministic LLM value
+    hallucinations ('February outage' emitted as 'March outage'). Edges to
+    dropped entities are removed downstream by ``_remap_relationships``."""
+    if not content:
+        return entities
+    low = content.lower()
+
+    def _present(tok: str) -> bool:
+        return tok in low or (tok.endswith("s") and tok[:-1] in low) or (tok + "s") in low
+
+    out = []
+    for e in entities:
+        nl = (e.get("name") or "").strip().lower()
+        if not nl:
+            continue
+        if _DATE_ONLY_RE.fullmatch(nl) and nl not in low:
+            continue
+        toks = [re.sub(r"[^\w]", "", t) for t in re.split(r"[\s/]+", nl)]
+        sig = [t for t in toks if len(t) >= 3 and t not in _FIDELITY_STOPWORDS]
+        if len(sig) >= 2 and not all(_present(t) for t in sig):
+            continue
+        out.append(e)
+    return out
+
+
+_DATE_ISO_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+
+
+def _rescue_happened_on(
+    entities: list[dict], relationships: list[dict], content: str
+) -> tuple[list[dict], list[dict]]:
+    """Keep ISO dates alive for HAPPENED_ON. ``_filter_noise`` strips dates as
+    values, which orphans a correct LLM ``X HAPPENED_ON <date>`` edge, and the
+    LLM also frequently drops the relation entirely (most-missed relation)."""
+    dates_in_content = set(_DATE_ISO_RE.findall(content))
+    if not dates_in_content:
+        return entities, relationships
+    out_e, out_r = list(entities), list(relationships)
+    names = {(e.get("name") or "") for e in out_e}
+    # 1) Re-add a date entity the value-filter stripped but an existing
+    #    HAPPENED_ON edge still points at.
+    for r in relationships:
+        t = r.get("target") or ""
+        if r.get("type") == "HAPPENED_ON" and t in dates_in_content and t not in names:
+            out_e.append({"name": t, "type": "concept", "properties": {}})
+            names.add(t)
+    # 2) Anchor dates the LLM left unlinked to the nearest preceding
+    #    event/release/service entity.
+    low = content.lower()
+    anchorable = {"event", "service", "artifact", "project", "milestone"}
+    spots = [(low.find((e.get("name") or "").lower()), e.get("name"))
+             for e in entities if e.get("type") in anchorable]
+    spots = [(p, n) for p, n in spots if p >= 0]
+    linked = {r.get("target") for r in out_r if r.get("type") == "HAPPENED_ON"}
+    for m in _DATE_ISO_RE.finditer(content):
+        d, dpos = m.group(1), m.start()
+        if d in linked or not spots:
+            continue
+        cands = sorted((dpos - p, n) for p, n in spots if 0 <= dpos - p <= 90)
+        if not cands:
+            continue
+        subj = cands[0][1]
+        if d not in names:
+            out_e.append({"name": d, "type": "concept", "properties": {}})
+            names.add(d)
+        out_r.append({"source": subj, "target": d, "type": "HAPPENED_ON", "weight": 0.7, "properties": {}})
+        linked.add(d)
+    return out_e, out_r
+
+
+_SELECTION_RE = re.compile(
+    r"\b(chose|choose|chosen|pick(?:ed)?|select(?:ed)?|went with|going with|opt(?:ed)?\s+for|prefer(?:red)?)\b.*?\b(over|instead of|rather than|versus|vs\.?)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_MIGRATION_RE = re.compile(
+    r"\b(replac\w+|switch\w*|migrat\w+|moved\s+(?:from|off|out)|superseded?|swapped|ported\s+(?:from|to))\b",
+    re.IGNORECASE,
+)
+
+
+def _gate_replaces_selection(relationships: list[dict], content: str) -> list[dict]:
+    """A pure selection ('chose X over Y') is IMPROVES_ON, not REPLACES — the
+    latter triggers supersession and must be reserved for real migrations."""
+    if not _SELECTION_RE.search(content) or _MIGRATION_RE.search(content):
+        return relationships
+    return [
+        {**r, "type": "IMPROVES_ON"} if r.get("type") == "REPLACES" else r
+        for r in relationships
+    ]
+
+
+# Any verb/phrase that legitimately backs a REPLACES (migration, supersession,
+# or improvement-family). REPLACES with NONE of these in the text is unsupported.
+_REPLACE_EVIDENCE_RE = re.compile(
+    r"\b(?:replac\w+|switch\w*|migrat\w+|moved\s+(?:from|off|out)|supersed\w+"
+    r"|deprecat\w+|obsolete\w*|swapped|ported|improves?\s+(?:on|upon|over)"
+    r"|builds?\s+on|instead\s+of|in\s+favou?r\s+of|phas\w+\s+out)\b",
+    re.IGNORECASE,
+)
+
+
+def _gate_replaces_requires_verb(relationships: list[dict], content: str) -> list[dict]:
+    """A REPLACES edge must be backed by a replacement/migration verb in the
+    text. The LLM sometimes emits REPLACES from a bare rewrite/negation sentence
+    ('all writes now go through the event bus' -> 'event bus REPLACES legacy
+    ledger') with no such verb, which carries false-supersession risk. Downgrade
+    those unsupported edges to RELATED_TO."""
+    if _REPLACE_EVIDENCE_RE.search(content):
+        return relationships
+    return [
+        {**r, "type": "RELATED_TO"} if r.get("type") == "REPLACES" else r
+        for r in relationships
+    ]
+
+
+_TEMPORAL_BETWEEN_RE = re.compile(r"\b(after|before|since|following|prior to|then|once|later)\b", re.IGNORECASE)
+_CAUSAL_BETWEEN_RE = re.compile(r"\b(caus\w*|led to|result\w*|trigger\w*|because|due to|produc\w*)\b", re.IGNORECASE)
+
+
+def _suppress_temporal_edges(relationships: list[dict], content: str) -> list[dict]:
+    """Drop RELATED_TO / CAUSES edges whose two endpoints are joined in the text
+    only by a temporal connector ('after the outage') with no causal verb."""
+    low = content.lower()
+    out = []
+    for r in relationships:
+        if r.get("type") in ("RELATED_TO", "CAUSES"):
+            s, t = (r.get("source") or "").lower(), (r.get("target") or "").lower()
+            si, ti = low.find(s), low.find(t)
+            if si >= 0 and ti >= 0:
+                a, b = (si + len(s), ti) if si < ti else (ti + len(t), si)
+                between = low[a:b]
+                if _TEMPORAL_BETWEEN_RE.search(between) and not _CAUSAL_BETWEEN_RE.search(between):
+                    continue
+        out.append(r)
+    return out
+
+
+_FUTURE_RE = re.compile(
+    r"\b(plan(?:s|ned|ning)?\s+to|will\s+(?:add|support|build|introduce|ship)|going\s+to|intend(?:s|ed)?\s+to|upcoming|on\s+the\s+roadmap|considering|may\s+add|to\s+be\s+added)\b",
+    re.IGNORECASE,
+)
+
+
+def _downgrade_future_to_mentions(relationships: list[dict], content: str) -> list[dict]:
+    """Future/planned things are MENTIONS, not USES/IMPLEMENTS/etc."""
+    m = _FUTURE_RE.search(content)
+    if not m:
+        return relationships
+    future_zone = content.lower()[m.start():]
+    out = []
+    for r in relationships:
+        if r.get("type") in ("USES", "IMPLEMENTS", "EXTENDS", "DEPENDS_ON") and (r.get("target") or "").lower() in future_zone:
+            out.append({**r, "type": "MENTIONS", "weight": min(r.get("weight", 0.5), 0.5)})
+        else:
+            out.append(r)
+    return out
+
+
+# Connector between two coordinated entity mentions: comma / "and" / semicolon,
+# optionally followed by an article ("dashboard, the admin console, and the ...").
+_DATE_ONLY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _drop_date_misuse(relationships: list[dict]) -> list[dict]:
+    """A date can only be a HAPPENED_ON target. Drop any other edge that has an
+    ISO date as an endpoint ('X DEPLOYED_ON <date>', '<date> AUTHORED_BY Y')."""
+    out = []
+    for r in relationships:
+        if r.get("type") != "HAPPENED_ON":
+            s, t = r.get("source") or "", r.get("target") or ""
+            if _DATE_ONLY_RE.fullmatch(s.strip()) or _DATE_ONLY_RE.fullmatch(t.strip()):
+                continue
+        out.append(r)
+    return out
+
+
+# comma or "and" (+ optional article). ';' separates clauses, not subjects.
+_COORD_CONN_RE = re.compile(r"^\s*(?:,\s*(?:and\s+)?|and\s+)(?:the\s+|a\s+|an\s+)?$")
+
+
+def _fan_out_coordinated(
+    relationships: list[dict], entities: list[dict], content: str
+) -> list[dict]:
+    """When a relation's subject is one of a coordinated set ('A, B, and C all
+    use X'), replicate the predicate-object edge across every conjunct subject.
+    Runs LAST so _dedup_by_target_predicate doesn't collapse the multi-source set."""
+    name_by_lower = {(e.get("name") or "").lower(): e.get("name") for e in entities}
+    if len(name_by_lower) < 2:
+        return relationships
+    low = content.lower()
+    ordered = sorted((n for n in name_by_lower if n), key=len, reverse=True)
+    name_re = re.compile("(?:" + "|".join(re.escape(n) for n in ordered) + r")")
+    matches = list(name_re.finditer(low))
+    groups: list[set[str]] = []
+    i = 0
+    while i < len(matches):
+        group = [matches[i].group()]
+        end = matches[i].end()
+        j = i + 1
+        while j < len(matches) and _COORD_CONN_RE.match(low[end:matches[j].start()]):
+            group.append(matches[j].group())
+            end = matches[j].end()
+            j += 1
+        if len(group) >= 2:
+            groups.append(set(group))
+        i = j if j > i + 1 else i + 1
+    if not groups:
+        return relationships
+    existing = {((r.get("source") or "").lower(), r.get("type"), (r.get("target") or "").lower()) for r in relationships}
+    out = list(relationships)
+    for r in list(relationships):
+        s, t = (r.get("source") or "").lower(), (r.get("target") or "").lower()
+        for g in groups:
+            if s in g and t not in g:
+                for member in g:
+                    if member == s or _DATE_ONLY_RE.fullmatch(member):
+                        continue
+                    key = (member, r.get("type"), t)
+                    if key not in existing:
+                        out.append({**r, "source": name_by_lower.get(member, member)})
+                        existing.add(key)
+    return out
+
+
+# An `event` entity (outage, incident, release, migration) is a passive temporal
+# node, not a software agent or dependency. These are the ONLY relation types an
+# event may be an endpoint of. Enforces prompt rule 16a, which this extraction
+# model does not reliably follow on its own (it emits 'incident USES disk',
+# 'incident DEPLOYED_ON node'). Keyed on the entity TYPE, not on any name — holds
+# for every future event.
+_EVENT_ALLOWED_RELS: frozenset[str] = frozenset({
+    "HAPPENED_ON", "CAUSES", "AUTHORED_BY", "MENTIONS",
+})
+
+
+def _drop_unlinked_dates(entities: list[dict], relationships: list[dict]) -> list[dict]:
+    """A date entity exists ONLY to be a HAPPENED_ON target (taxonomy: a date is
+    never a standalone node). If no HAPPENED_ON edge points at it — e.g. the event
+    subject was never extracted, so _rescue_happened_on had nothing to anchor to —
+    it is a dangling value node; drop it. General, keyed on the date shape."""
+    happened_targets = {
+        (r.get("target") or "").strip().lower()
+        for r in relationships if (r.get("type") or "").upper() == "HAPPENED_ON"
+    }
+    return [
+        e for e in entities
+        if not (
+            _DATE_ONLY_RE.fullmatch((e.get("name") or "").strip().lower())
+            and (e.get("name") or "").strip().lower() not in happened_targets
+        )
+    ]
+
+
+def _filter_event_edges(relationships: list[dict], entities: list[dict]) -> list[dict]:
+    """Drop any edge with an `event`-typed endpoint whose relation type is not in
+    the event-legal set. General structural guard, not an ad-hoc carve-out."""
+    events = {
+        (e.get("name") or "").strip().lower()
+        for e in entities if e.get("type") == "event"
+    }
+    if not events:
+        return relationships
+    out = []
+    for r in relationships:
+        s = (r.get("source") or "").strip().lower()
+        t = (r.get("target") or "").strip().lower()
+        if (s in events or t in events) and (r.get("type") or "").upper() not in _EVENT_ALLOWED_RELS:
+            continue
+        out.append(r)
+    return out
+
+
 def clean_extraction(
     result: dict,
     content: str = "",
@@ -1563,6 +1921,8 @@ def clean_extraction(
     entities = _filter_noise(entities)
     entities = _snap_hardware_types(entities)
     entities = _apply_type_overrides(entities)
+    entities = _filter_literals(entities, content)
+    entities = _filter_hallucinated_names(entities, content)
     entities, negated_names = _filter_negation_only(entities, content)
     entities = _dedup_entities(entities)
     # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
@@ -1574,6 +1934,9 @@ def clean_extraction(
     # relocation memories. Plain dotted forms (``classA.method1()``)
     # are intentionally NOT matched — see ``_FILE_PATH_RE`` docstring.
     entities = _rescue_file_path_entities(entities, content)
+    # Attach ISO dates to their event/release entity (HAPPENED_ON) before
+    # ``valid_names`` is computed, so the date node + edge survive remap.
+    entities, relationships = _rescue_happened_on(entities, relationships, content)
     # Pattern-based relation synthesis. Adds DEPLOYED_ON / USES / REPLACES
     # triples for adjacent entity pairs joined by a connector phrase the
     # LLM misses (``X on Y``, ``X with Y``, ``X via Y``, ``X uses Y``,
@@ -1593,8 +1956,19 @@ def clean_extraction(
             r for r in relationships
             if r.get("source") not in negated_names and r.get("target") not in negated_names
         ]
+    # Reserve REPLACES for real migrations; a selection ('chose X over Y') is
+    # IMPROVES_ON. Drop edges joined only by a temporal connector. Future/planned
+    # references are MENTIONS, not USES.
+    relationships = _gate_replaces_selection(relationships, content)
+    relationships = _gate_replaces_requires_verb(relationships, content)
+    relationships = _suppress_temporal_edges(relationships, content)
+    relationships = _downgrade_future_to_mentions(relationships, content)
+    relationships = _drop_date_misuse(relationships)
     relationships = _validate_directions(relationships, content)
     relationships = _validate_hosting_direction(relationships)
+    # Events are passive temporal nodes: strip any non-temporal/causal edge the
+    # model hung off an incident/outage/release (rule 16a; model under-complies).
+    relationships = _filter_event_edges(relationships, entities)
     # Suppress USES between a pair already covered by REPLACES (any
     # direction). Runs after the direction validators so the REPLACES
     # is in the right shape, and before the 10->5 collapse so we still
@@ -1609,6 +1983,12 @@ def clean_extraction(
     # to the most-recent technology entity in addition to (or instead
     # of) the correct project subject.
     relationships = _dedup_by_target_predicate(relationships)
+    # Fan-out runs LAST: replicating a predicate across coordinated subjects
+    # ('A, B and C all use X') must happen after _dedup_by_target_predicate,
+    # which would otherwise collapse the multi-source set back to one edge.
+    relationships = _fan_out_coordinated(relationships, entities, content)
+    # Drop any date entity left without a HAPPENED_ON edge (dangling value node).
+    entities = _drop_unlinked_dates(entities, relationships)
 
     return {
         **result,
