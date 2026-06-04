@@ -1,0 +1,5 @@
+.llm_cache/
+.cache/
+results.json
+*.results.json
+_live_trace.jsonl

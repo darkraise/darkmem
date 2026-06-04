@@ -1,0 +1,134 @@
+{
+  "_notes": "Gold annotations for extraction F1 benchmark. Names lowercase (entities are stored lowercase). Entity types from ENTITY_TYPES; relation types from RELATIONSHIP_TYPES. Deliberate decisions: 'chose X over Y' (selection) -> IMPROVES_ON (winner over loser), NOT REPLACES (REPLACES is reserved for migration: switched/migrated/replaced, to keep supersession safe). 'follows/conforms to <spec>' -> IMPLEMENTS. Vector store qdrant -> database; pgvector -> tool (Postgres extension). Config-key stems, IP/port/version literals, CSS/value literals, and language builtins are NOT entities.",
+  "memories": [
+    {"id": "e1", "content": "We migrated the search backend from Elasticsearch to Meilisearch to cut memory usage.",
+     "hint": "decision",
+     "entities": [{"name": "elasticsearch", "type": "database"}, {"name": "meilisearch", "type": "database"}],
+     "relations": [{"source": "meilisearch", "type": "REPLACES", "target": "elasticsearch"}]},
+
+    {"id": "e2", "content": "darkmem depends on Postgres as a hard dependency and uses Redis for optional caching.",
+     "hint": "architecture",
+     "entities": [{"name": "darkmem", "type": "project"}, {"name": "postgres", "type": "database"}, {"name": "redis", "type": "database"}],
+     "relations": [{"source": "darkmem", "type": "DEPENDS_ON", "target": "postgres"}, {"source": "darkmem", "type": "USES", "target": "redis"}]},
+
+    {"id": "e3", "content": "The PostgresVectorRepo class implements the VectorRepo protocol.",
+     "hint": "fact",
+     "entities": [{"name": "postgresvectorrepo", "type": "artifact"}, {"name": "vectorrepo", "type": "artifact"}],
+     "relations": [{"source": "postgresvectorrepo", "type": "IMPLEMENTS", "target": "vectorrepo"}]},
+
+    {"id": "e4", "content": "AdminUser extends the BaseUser model in the auth module.",
+     "hint": "fact",
+     "entities": [{"name": "adminuser", "type": "artifact"}, {"name": "baseuser", "type": "artifact"}],
+     "relations": [{"source": "adminuser", "type": "EXTENDS", "target": "baseuser"}]},
+
+    {"id": "e5", "content": "The Leiden algorithm improves on Louvain by guaranteeing connected communities; darkmem uses it for clustering.",
+     "hint": "fact",
+     "entities": [{"name": "leiden", "type": "algorithm"}, {"name": "louvain", "type": "algorithm"}, {"name": "darkmem", "type": "project"}],
+     "relations": [{"source": "leiden", "type": "IMPROVES_ON", "target": "louvain"}, {"source": "darkmem", "type": "USES", "target": "leiden"}]},
+
+    {"id": "e6", "content": "Grafana runs on a dedicated Proxmox host and is written in Go.",
+     "hint": "fact",
+     "entities": [{"name": "grafana", "type": "service"}, {"name": "proxmox", "type": "tool"}, {"name": "go", "type": "language"}],
+     "relations": [{"source": "grafana", "type": "DEPLOYED_ON", "target": "proxmox"}, {"source": "grafana", "type": "USES", "target": "go"}]},
+
+    {"id": "e7", "content": "The Helios migration completed on 2026-04-09; the runbook was written by Dana Kim.",
+     "hint": "milestone",
+     "entities": [{"name": "helios migration", "type": "event"}, {"name": "dana kim", "type": "person"}, {"name": "runbook", "type": "artifact"}, {"name": "2026-04-09", "type": "concept"}],
+     "relations": [{"source": "helios migration", "type": "HAPPENED_ON", "target": "2026-04-09"}, {"source": "runbook", "type": "AUTHORED_BY", "target": "dana kim"}]},
+
+    {"id": "e8", "content": "We upgraded to Phoenix v2 after the March outage.",
+     "hint": "milestone",
+     "entities": [{"name": "phoenix v2", "type": "service"}, {"name": "march outage", "type": "event"}],
+     "relations": []},
+
+    {"id": "e9", "content": "We chose Qdrant over pgvector for the vector store after benchmarking payload filtering.",
+     "hint": "decision",
+     "entities": [{"name": "qdrant", "type": "database"}, {"name": "pgvector", "type": "tool"}],
+     "relations": [{"source": "qdrant", "type": "IMPROVES_ON", "target": "pgvector"}]},
+
+    {"id": "e10", "content": "The dashboard, the admin console, and the billing portal all use chakra-ui and fetch data through tRPC.",
+     "hint": "architecture",
+     "entities": [{"name": "dashboard", "type": "artifact"}, {"name": "admin console", "type": "artifact"}, {"name": "billing portal", "type": "artifact"}, {"name": "chakra-ui", "type": "tool"}, {"name": "trpc", "type": "tool"}],
+     "relations": [{"source": "dashboard", "type": "USES", "target": "chakra-ui"}, {"source": "admin console", "type": "USES", "target": "chakra-ui"}, {"source": "billing portal", "type": "USES", "target": "chakra-ui"}, {"source": "dashboard", "type": "USES", "target": "trpc"}, {"source": "admin console", "type": "USES", "target": "trpc"}, {"source": "billing portal", "type": "USES", "target": "trpc"}]},
+
+    {"id": "e11", "content": "Both Promtail and Fluent Bit ship logs to Loki.",
+     "hint": "architecture",
+     "entities": [{"name": "promtail", "type": "service"}, {"name": "fluent bit", "type": "tool"}, {"name": "loki", "type": "service"}],
+     "relations": [{"source": "promtail", "type": "USES", "target": "loki"}, {"source": "fluent bit", "type": "USES", "target": "loki"}]},
+
+    {"id": "e12", "content": "Set client.backoff and limits.readline_rate on Promtail; it listens at 192.168.0.50:9080.",
+     "hint": "reference",
+     "entities": [{"name": "promtail", "type": "service"}],
+     "relations": []},
+
+    {"id": "e13", "content": "Always run black with line-length 100 and isort before committing; never use a bare except.",
+     "hint": "preference",
+     "entities": [{"name": "black", "type": "tool"}, {"name": "isort", "type": "tool"}],
+     "relations": []},
+
+    {"id": "e14", "content": "The gateway's JWT auth follows RFC 7519 and signs tokens with RS256.",
+     "hint": "reference",
+     "entities": [{"name": "jwt", "type": "protocol"}, {"name": "rfc 7519", "type": "paper"}, {"name": "rs256", "type": "algorithm"}, {"name": "gateway", "type": "service"}],
+     "relations": [{"source": "jwt", "type": "IMPLEMENTS", "target": "rfc 7519"}, {"source": "jwt", "type": "USES", "target": "rs256"}, {"source": "gateway", "type": "USES", "target": "jwt"}]},
+
+    {"id": "e15", "content": "Shipped Phoenix v2 to production on 2026-05-30.",
+     "hint": "milestone",
+     "entities": [{"name": "phoenix v2", "type": "service"}, {"name": "2026-05-30", "type": "concept"}],
+     "relations": [{"source": "phoenix v2", "type": "HAPPENED_ON", "target": "2026-05-30"}]},
+
+    {"id": "e16", "content": "pgvector ships an HNSW index type and an IVFFlat index type.",
+     "hint": "fact",
+     "entities": [{"name": "pgvector", "type": "tool"}, {"name": "hnsw", "type": "algorithm"}, {"name": "ivfflat", "type": "algorithm"}],
+     "relations": [{"source": "pgvector", "type": "HAS_PART", "target": "hnsw"}, {"source": "pgvector", "type": "HAS_PART", "target": "ivfflat"}]},
+
+    {"id": "e17", "content": "The design doc cites RFC 7519 and PEP 484.",
+     "hint": "reference",
+     "entities": [{"name": "design doc", "type": "artifact"}, {"name": "rfc 7519", "type": "paper"}, {"name": "pep 484", "type": "paper"}],
+     "relations": [{"source": "design doc", "type": "CITES", "target": "rfc 7519"}, {"source": "design doc", "type": "CITES", "target": "pep 484"}]},
+
+    {"id": "e18", "content": "The finalize handler does NOT use savepoints; it was refactored to commit-per-block.",
+     "hint": "decision",
+     "entities": [{"name": "finalize handler", "type": "artifact"}, {"name": "savepoints", "type": "concept"}, {"name": "commit-per-block", "type": "concept"}],
+     "relations": [{"source": "commit-per-block", "type": "REPLACES", "target": "savepoints"}, {"source": "finalize handler", "type": "USES", "target": "commit-per-block"}]},
+
+    {"id": "e19", "content": "Grafana and Loki both run on the Proxmox host.",
+     "hint": "architecture",
+     "entities": [{"name": "grafana", "type": "service"}, {"name": "loki", "type": "service"}, {"name": "proxmox", "type": "tool"}],
+     "relations": [{"source": "grafana", "type": "DEPLOYED_ON", "target": "proxmox"}, {"source": "loki", "type": "DEPLOYED_ON", "target": "proxmox"}]},
+
+    {"id": "e20", "content": "The audit report was written by Priya Nair from the SRE team.",
+     "hint": "reference",
+     "entities": [{"name": "audit report", "type": "artifact"}, {"name": "priya nair", "type": "person"}, {"name": "sre team", "type": "organization"}],
+     "relations": [{"source": "audit report", "type": "AUTHORED_BY", "target": "priya nair"}]},
+
+    {"id": "e21", "content": "darkmem is written in Python, and its CLI is built in Go.",
+     "hint": "fact",
+     "entities": [{"name": "darkmem", "type": "project"}, {"name": "python", "type": "language"}, {"name": "cli", "type": "artifact"}, {"name": "go", "type": "language"}],
+     "relations": [{"source": "darkmem", "type": "USES", "target": "python"}, {"source": "cli", "type": "USES", "target": "go"}]},
+
+    {"id": "e22", "content": "Redis is an in-memory key-value store written in C.",
+     "hint": "fact",
+     "entities": [{"name": "redis", "type": "database"}, {"name": "c", "type": "language"}],
+     "relations": [{"source": "redis", "type": "USES", "target": "c"}]},
+
+    {"id": "e23", "content": "Qdrant and Milvus are both vector databases we evaluated.",
+     "hint": "fact",
+     "entities": [{"name": "qdrant", "type": "database"}, {"name": "milvus", "type": "database"}],
+     "relations": []},
+
+    {"id": "e24", "content": "darkmem plans to add a Kafka source connector in v3.1.",
+     "hint": "fact",
+     "entities": [{"name": "darkmem", "type": "project"}, {"name": "kafka", "type": "service"}],
+     "relations": [{"source": "darkmem", "type": "MENTIONS", "target": "kafka"}]},
+
+    {"id": "e25", "content": "We replaced Celery with a custom asyncio worker because Celery's broker added latency.",
+     "hint": "decision",
+     "entities": [{"name": "celery", "type": "tool"}, {"name": "asyncio", "type": "tool"}],
+     "relations": [{"source": "asyncio", "type": "REPLACES", "target": "celery"}]},
+
+    {"id": "e26", "content": "darkraise-ui's Select component renders the raw value until the dropdown is opened.",
+     "hint": "problem",
+     "entities": [{"name": "darkraise-ui", "type": "tool"}, {"name": "select", "type": "artifact"}],
+     "relations": [{"source": "darkraise-ui", "type": "HAS_PART", "target": "select"}]}
+  ]
+}

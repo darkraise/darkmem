@@ -1,0 +1,139 @@
+{
+  "_about": "Round-4 validation set (2026-06-04), simple -> complicated, on a server with ALL fixes live (5 extraction guards + ghost-cleanup + dedup discriminator). Added in array order; supersession + dedup setups depend on order (s1 before s3; c3 before c4). gold = evaluator expectation; graders judge against content + taxonomy.",
+  "memories": [
+    {
+      "id": "s1",
+      "content": "PostgreSQL is our primary relational database.",
+      "type_hint": "fact",
+      "tags": ["eval/2026-06-04-r4", "tier/simple"],
+      "gold": {
+        "memory_type": "fact",
+        "technologies": ["postgres"],
+        "entities": [{"name": "postgres", "type": "database"}],
+        "relations": []
+      },
+      "probe": "SIMPLE baseline + dedup-merge SETUP: s3 ('Postgres') must merge onto this one entity."
+    },
+    {
+      "id": "s2",
+      "content": "I prefer pnpm over npm for installing dependencies.",
+      "type_hint": "preference",
+      "tags": ["eval/2026-06-04-r4", "tier/simple"],
+      "gold": {
+        "memory_type": "preference",
+        "technologies": ["pnpm", "npm"],
+        "entities": [{"name": "pnpm", "type": "tool"}, {"name": "npm", "type": "tool"}],
+        "relations": [{"source": "pnpm", "type": "IMPROVES_ON", "target": "npm"}]
+      },
+      "probe": "SIMPLE selection: 'prefer X over Y' -> IMPROVES_ON, NOT REPLACES (no false supersession)."
+    },
+    {
+      "id": "s3",
+      "content": "Postgres stores the audit log for compliance.",
+      "type_hint": "fact",
+      "tags": ["eval/2026-06-04-r4", "tier/simple"],
+      "gold": {
+        "memory_type": "fact",
+        "technologies": ["postgres"],
+        "entities": [{"name": "postgres", "type": "database"}, {"name": "audit log", "type": "concept"}],
+        "relations": [{"source": "postgres", "type": "RELATED_TO", "target": "audit log"}]
+      },
+      "probe": "DEDUP-ALLOW (live): 'Postgres' must MERGE onto s1's 'postgres' (no discriminator) -> ONE postgres entity carrying both memory_ids. Confirms the discriminator gate still permits legit merges."
+    },
+    {
+      "id": "s4",
+      "content": "We shipped v2.0 of the analytics dashboard on 2026-03-15.",
+      "type_hint": "milestone",
+      "tags": ["eval/2026-06-04-r4", "tier/simple"],
+      "gold": {
+        "memory_type": "milestone",
+        "technologies": [],
+        "entities": [{"name": "analytics dashboard", "type": "artifact"}],
+        "relations": [{"source": "analytics dashboard", "type": "HAPPENED_ON", "target": "2026-03-15"}]
+      },
+      "probe": "SIMPLE milestone: version literal 'v2.0' is NOT an entity; HAPPENED_ON to the date; date must be the literal 2026-03-15 (value-fidelity)."
+    },
+    {
+      "id": "c1",
+      "content": "The web app, the mobile client, and the partner integration all authenticate through Keycloak.",
+      "type_hint": "design",
+      "tags": ["eval/2026-06-04-r4", "tier/complex"],
+      "gold": {
+        "memory_type": "architecture",
+        "technologies": ["keycloak"],
+        "entities": [{"name": "web app", "type": "artifact"}, {"name": "mobile client", "type": "artifact"}, {"name": "partner integration", "type": "service"}, {"name": "keycloak", "type": "service"}],
+        "relations": [
+          {"source": "web app", "type": "USES", "target": "keycloak"},
+          {"source": "mobile client", "type": "USES", "target": "keycloak"},
+          {"source": "partner integration", "type": "USES", "target": "keycloak"}
+        ]
+      },
+      "probe": "COORDINATED-SUBJECT FAN-OUT: three subjects -> three USES edges to keycloak."
+    },
+    {
+      "id": "c2",
+      "content": "The ingestion worker no longer writes to Kafka directly; it now depends on the schema registry and fails to start if the registry is down.",
+      "type_hint": "gotcha",
+      "tags": ["eval/2026-06-04-r4", "tier/complex"],
+      "gold": {
+        "memory_type": "problem",
+        "technologies": ["kafka", "schema registry"],
+        "entities": [{"name": "ingestion worker", "type": "service"}, {"name": "kafka", "type": "service"}, {"name": "schema registry", "type": "service"}],
+        "relations": [{"source": "ingestion worker", "type": "DEPENDS_ON", "target": "schema registry"}]
+      },
+      "probe": "NEGATION ('no longer writes to Kafka' -> NO ingestion->kafka USES/DEPENDS_ON) + hard dep ('fails to start if down' -> DEPENDS_ON schema registry, not USES)."
+    },
+    {
+      "id": "c3",
+      "content": "Elasticsearch powers our product search.",
+      "type_hint": "design",
+      "tags": ["eval/2026-06-04-r4", "tier/complex"],
+      "gold": {
+        "memory_type": "architecture",
+        "technologies": ["elasticsearch"],
+        "entities": [{"name": "elasticsearch", "type": "database"}, {"name": "product search", "type": "concept"}],
+        "relations": [{"source": "product search", "type": "USES", "target": "elasticsearch"}]
+      },
+      "probe": "SUPERSESSION TARGET: must be active until c4; c4's migration should flip it to superseded."
+    },
+    {
+      "id": "c4",
+      "content": "Last month we migrated the product search from Elasticsearch to OpenSearch to escape the license change.",
+      "type_hint": "tradeoff",
+      "tags": ["eval/2026-06-04-r4", "tier/complex"],
+      "gold": {
+        "memory_type": "decision",
+        "technologies": ["elasticsearch", "opensearch"],
+        "entities": [{"name": "product search", "type": "concept"}, {"name": "elasticsearch", "type": "database"}, {"name": "opensearch", "type": "database"}],
+        "relations": [{"source": "opensearch", "type": "REPLACES", "target": "elasticsearch"}]
+      },
+      "probe": "REAL migration ('migrated from X to Y') -> opensearch REPLACES elasticsearch; should SUPERSEDE c3 (same project, elasticsearch in technologies, c3 older+active)."
+    },
+    {
+      "id": "c5a",
+      "content": "The January incident was traced to a memory leak in the cache layer.",
+      "type_hint": "gotcha",
+      "tags": ["eval/2026-06-04-r4", "tier/complex"],
+      "gold": {
+        "memory_type": "problem",
+        "technologies": [],
+        "entities": [{"name": "january incident", "type": "event"}, {"name": "cache layer", "type": "concept"}],
+        "relations": []
+      },
+      "probe": "DEDUP DISCRIMINATOR A: 'january incident' entity (cosine ~0.885 to 'february incident')."
+    },
+    {
+      "id": "c5b",
+      "content": "The February incident was traced to a disk-full error on the primary database node.",
+      "type_hint": "gotcha",
+      "tags": ["eval/2026-06-04-r4", "tier/complex"],
+      "gold": {
+        "memory_type": "problem",
+        "technologies": [],
+        "entities": [{"name": "february incident", "type": "event"}, {"name": "primary database node", "type": "concept"}],
+        "relations": []
+      },
+      "probe": "DEDUP DISCRIMINATOR B (live, the headline new-fix check): 'february incident' must NOT merge onto c5a's 'january incident' despite ~0.885 cosine. Both must exist as distinct entities."
+    }
+  ]
+}

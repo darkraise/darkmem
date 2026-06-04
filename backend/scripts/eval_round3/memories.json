@@ -1,0 +1,176 @@
+{
+  "_about": "Round-3 end-to-end extraction eval (2026-06-04). Fresh, held-out content (not in gold.json). Each memory probes a specific item from the residual fix backlog plus general quality. Added in array order via HTTP MCP so supersession ordering is deterministic. gold = the evaluator's expectation; graders verify independently against the taxonomy contract.",
+  "memories": [
+    {
+      "id": "m01",
+      "content": "Redis is our primary cache layer; every API node reads session state from it on each request.",
+      "type_hint": "design",
+      "tags": ["eval/2026-06-04-r3", "domain/infra"],
+      "gold": {
+        "memory_type": "architecture",
+        "technologies": ["redis"],
+        "entities": [{"name": "redis", "type": "database"}, {"name": "api node", "type": "service"}, {"name": "session state", "type": "concept"}],
+        "relations": [{"source": "api node", "type": "DEPENDS_ON", "target": "redis"}]
+      },
+      "probe": "Supersession TARGET setup (must stay active after m02). redis typed database via override -> technologies populated."
+    },
+    {
+      "id": "m02",
+      "content": "We chose Valkey over Redis for the cache to avoid the new licensing terms.",
+      "type_hint": "tradeoff",
+      "tags": ["eval/2026-06-04-r3", "domain/infra"],
+      "gold": {
+        "memory_type": "decision",
+        "technologies": ["valkey", "redis"],
+        "entities": [{"name": "valkey", "type": "service"}, {"name": "redis", "type": "database"}],
+        "relations": [{"source": "valkey", "type": "IMPROVES_ON", "target": "redis"}]
+      },
+      "probe": "BACKLOG-7 (HIGH): 'chose X over Y' is SELECTION -> IMPROVES_ON, NOT REPLACES. CRITICAL: must NOT supersede m01 (redis stays active). Valkey is uncurated -> watch its type."
+    },
+    {
+      "id": "m03",
+      "content": "Last sprint we migrated the job queue from RabbitMQ to NATS to cut operational overhead.",
+      "type_hint": "milestone",
+      "tags": ["eval/2026-06-04-r3", "domain/infra"],
+      "gold": {
+        "memory_type": "milestone",
+        "technologies": ["rabbitmq", "nats"],
+        "entities": [{"name": "job queue", "type": "concept"}, {"name": "rabbitmq", "type": "service"}, {"name": "nats", "type": "service"}],
+        "relations": [{"source": "nats", "type": "REPLACES", "target": "rabbitmq"}, {"source": "job queue", "type": "USES", "target": "nats"}]
+      },
+      "probe": "REAL migration language ('migrated from X to Y') -> REPLACES fires correctly (isolated; no pre-existing rabbitmq target so no flip). Contrast with m02 selection."
+    },
+    {
+      "id": "m04",
+      "content": "The export job crashes whenever the S3 bucket is unreachable, because it buffers the entire dataset in memory before flushing.",
+      "type_hint": "gotcha",
+      "tags": ["eval/2026-06-04-r3", "domain/backend"],
+      "gold": {
+        "memory_type": "problem",
+        "technologies": ["s3"],
+        "entities": [{"name": "export job", "type": "service"}, {"name": "s3", "type": "service"}],
+        "relations": [{"source": "export job", "type": "DEPENDS_ON", "target": "s3"}]
+      },
+      "probe": "BACKLOG-4 (HIGH): hard dependency ('crashes whenever unreachable') -> DEPENDS_ON not USES. Causal core (in-memory buffering -> crash) is the known-unrepresented case; note whether captured."
+    },
+    {
+      "id": "m05",
+      "content": "After the February outage, Priya Nair's load test showed the API gateway dropping requests above 5,000 RPS.",
+      "type_hint": "fact",
+      "tags": ["eval/2026-06-04-r3", "domain/perf"],
+      "gold": {
+        "memory_type": "fact",
+        "technologies": [],
+        "entities": [{"name": "priya nair", "type": "person"}, {"name": "load test", "type": "concept"}, {"name": "api gateway", "type": "service"}],
+        "relations": [{"source": "load test", "type": "AUTHORED_BY", "target": "priya nair"}]
+      },
+      "probe": "BACKLOG-3 (HIGH): temporal 'after the February outage' must NOT fabricate a CAUSES edge; authorship must NOT fabricate 'priya nair MENTIONS api gateway'. '5,000 RPS' is a literal, not an entity."
+    },
+    {
+      "id": "m06",
+      "content": "Set producer.linger.ms to 50 and point the broker at 10.2.0.14:9092 before load testing.",
+      "type_hint": "rule",
+      "tags": ["eval/2026-06-04-r3", "domain/config"],
+      "gold": {
+        "memory_type": "preference",
+        "technologies": [],
+        "entities": [],
+        "relations": []
+      },
+      "probe": "BACKLOG-5/6 (MEDIUM): dotted config-key stems ('producer','linger') must NOT become concept entities; IP '10.2.0.14', port '9092', value '50' must be blocklisted; NO bogus DEPLOYED_ON to the IP."
+    },
+    {
+      "id": "m07",
+      "content": "On 2026-05-20, Marcus Lee shipped the auth module written in Go; it follows RFC 7519 for signing tokens.",
+      "type_hint": "milestone",
+      "tags": ["eval/2026-06-04-r3", "domain/backend"],
+      "gold": {
+        "memory_type": "milestone",
+        "technologies": ["go"],
+        "entities": [{"name": "marcus lee", "type": "person"}, {"name": "auth module", "type": "artifact"}, {"name": "go", "type": "language"}, {"name": "rfc 7519", "type": "protocol"}],
+        "relations": [
+          {"source": "auth module", "type": "IMPLEMENTS", "target": "rfc 7519"},
+          {"source": "auth module", "type": "AUTHORED_BY", "target": "marcus lee"},
+          {"source": "auth module", "type": "HAPPENED_ON", "target": "2026-05-20"},
+          {"source": "auth module", "type": "USES", "target": "go"}
+        ]
+      },
+      "probe": "BACKLOG-LOW: 'follows RFC 7519' -> IMPLEMENTS/IS_A not CITES; short language 'Go' survives the <3-char filter; HAPPENED_ON(date) + AUTHORED_BY both extracted."
+    },
+    {
+      "id": "m08",
+      "content": "I always run the formatter with --write before opening a pull request, never by hand.",
+      "type_hint": "preference",
+      "tags": ["eval/2026-06-04-r3", "domain/workflow"],
+      "gold": {
+        "memory_type": "preference",
+        "technologies": [],
+        "entities": [{"name": "formatter", "type": "tool"}],
+        "relations": []
+      },
+      "probe": "Value-literal restraint: '--write' is a flag, not an entity. Preference classification. 'never by hand' must not spawn odd edges."
+    },
+    {
+      "id": "m09",
+      "content": "The recommendation engine runs on Kubernetes and pulls feature vectors from Feast at inference time.",
+      "type_hint": "design",
+      "tags": ["eval/2026-06-04-r3", "domain/ml"],
+      "gold": {
+        "memory_type": "architecture",
+        "technologies": ["kubernetes", "feast"],
+        "entities": [{"name": "recommendation engine", "type": "service"}, {"name": "kubernetes", "type": "tool"}, {"name": "feast", "type": "service"}],
+        "relations": [
+          {"source": "recommendation engine", "type": "DEPLOYED_ON", "target": "kubernetes"},
+          {"source": "recommendation engine", "type": "USES", "target": "feast"}
+        ]
+      },
+      "probe": "'runs on' -> DEPLOYED_ON vs 'pulls from' -> USES. kubernetes typed tool via override; feast uncurated (watch type)."
+    },
+    {
+      "id": "m10",
+      "content": "The Raft paper by Diego Ongaro and John Ousterhout is our canonical reference for the consensus layer.",
+      "type_hint": "reference",
+      "tags": ["eval/2026-06-04-r3", "domain/distsys"],
+      "gold": {
+        "memory_type": "reference",
+        "technologies": [],
+        "entities": [{"name": "raft", "type": "paper"}, {"name": "diego ongaro", "type": "person"}, {"name": "john ousterhout", "type": "person"}, {"name": "consensus layer", "type": "concept"}],
+        "relations": [
+          {"source": "raft", "type": "AUTHORED_BY", "target": "diego ongaro"},
+          {"source": "raft", "type": "AUTHORED_BY", "target": "john ousterhout"}
+        ]
+      },
+      "probe": "Author FAN-OUT over 2 people ('by A and B' -> 2 AUTHORED_BY edges). reference classification."
+    },
+    {
+      "id": "m11",
+      "content": "The billing service does not use the legacy ledger; all writes now go through the event bus.",
+      "type_hint": "fact",
+      "tags": ["eval/2026-06-04-r3", "domain/backend"],
+      "gold": {
+        "memory_type": "fact",
+        "technologies": [],
+        "entities": [{"name": "billing service", "type": "service"}, {"name": "event bus", "type": "service"}, {"name": "legacy ledger", "type": "service"}],
+        "relations": [{"source": "billing service", "type": "USES", "target": "event bus"}]
+      },
+      "probe": "NEGATION (rule 10 + regex): 'does not use the legacy ledger' must NOT yield billing->legacy ledger USES/DEPENDS_ON. The positive 'event bus' edge must survive."
+    },
+    {
+      "id": "m12",
+      "content": "The web dashboard, the mobile app, and the partner API all authenticate through Keycloak.",
+      "type_hint": "design",
+      "tags": ["eval/2026-06-04-r3", "domain/auth"],
+      "gold": {
+        "memory_type": "architecture",
+        "technologies": ["keycloak"],
+        "entities": [{"name": "web dashboard", "type": "artifact"}, {"name": "mobile app", "type": "artifact"}, {"name": "partner api", "type": "service"}, {"name": "keycloak", "type": "service"}],
+        "relations": [
+          {"source": "web dashboard", "type": "USES", "target": "keycloak"},
+          {"source": "mobile app", "type": "USES", "target": "keycloak"},
+          {"source": "partner api", "type": "USES", "target": "keycloak"}
+        ]
+      },
+      "probe": "BACKLOG-1 (HIGH, headline): coordinated-subject FAN-OUT. 'A, B and C all use X' must yield 3 edges, one per subject. Also: web dashboard/mobile app are named app surfaces -> artifact, must be extracted despite common head nouns."
+    }
+  ]
+}

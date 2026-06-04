@@ -1,0 +1,54 @@
+{
+  "_notes": "HELD-OUT set: brand-new memories the extraction was NOT tuned on (novel entities are intentionally NOT in _TYPE_OVERRIDES). Same annotation policy as gold.json. Tests whether the tuned F1 generalizes.",
+  "memories": [
+    {"id": "h1", "content": "The team migrated the message bus from RabbitMQ to NATS to lower tail latency.",
+     "hint": "decision",
+     "entities": [{"name": "rabbitmq", "type": "service"}, {"name": "nats", "type": "service"}],
+     "relations": [{"source": "nats", "type": "REPLACES", "target": "rabbitmq"}]},
+
+    {"id": "h2", "content": "After a bake-off, we picked ClickHouse over TimescaleDB for the analytics store.",
+     "hint": "decision",
+     "entities": [{"name": "clickhouse", "type": "database"}, {"name": "timescaledb", "type": "database"}],
+     "relations": [{"source": "clickhouse", "type": "IMPROVES_ON", "target": "timescaledb"}]},
+
+    {"id": "h3", "content": "The web app, the mobile app, and the CLI all authenticate through Auth0 and report metrics to Datadog.",
+     "hint": "architecture",
+     "entities": [{"name": "web app", "type": "artifact"}, {"name": "mobile app", "type": "artifact"}, {"name": "cli", "type": "artifact"}, {"name": "auth0", "type": "service"}, {"name": "datadog", "type": "service"}],
+     "relations": [{"source": "web app", "type": "USES", "target": "auth0"}, {"source": "mobile app", "type": "USES", "target": "auth0"}, {"source": "cli", "type": "USES", "target": "auth0"}, {"source": "web app", "type": "USES", "target": "datadog"}, {"source": "mobile app", "type": "USES", "target": "datadog"}, {"source": "cli", "type": "USES", "target": "datadog"}]},
+
+    {"id": "h4", "content": "Grafana depends on Prometheus and runs on a dedicated Kubernetes node.",
+     "hint": "architecture",
+     "entities": [{"name": "grafana", "type": "service"}, {"name": "prometheus", "type": "tool"}, {"name": "kubernetes", "type": "tool"}],
+     "relations": [{"source": "grafana", "type": "DEPENDS_ON", "target": "prometheus"}, {"source": "grafana", "type": "DEPLOYED_ON", "target": "kubernetes"}]},
+
+    {"id": "h5", "content": "The RedisCache class implements the Cache interface and extends the BaseStore.",
+     "hint": "fact",
+     "entities": [{"name": "rediscache", "type": "artifact"}, {"name": "cache", "type": "artifact"}, {"name": "basestore", "type": "artifact"}],
+     "relations": [{"source": "rediscache", "type": "IMPLEMENTS", "target": "cache"}, {"source": "rediscache", "type": "EXTENDS", "target": "basestore"}]},
+
+    {"id": "h6", "content": "Faiss provides an IVF index type and an HNSW index type for approximate search.",
+     "hint": "fact",
+     "entities": [{"name": "faiss", "type": "tool"}, {"name": "ivf", "type": "algorithm"}, {"name": "hnsw", "type": "algorithm"}],
+     "relations": [{"source": "faiss", "type": "HAS_PART", "target": "ivf"}, {"source": "faiss", "type": "HAS_PART", "target": "hnsw"}]},
+
+    {"id": "h7", "content": "The cache stampede on 2026-05-12 caused a 30-minute outage; Sam Park wrote the postmortem.",
+     "hint": "problem",
+     "entities": [{"name": "cache stampede", "type": "event"}, {"name": "2026-05-12", "type": "concept"}, {"name": "outage", "type": "concept"}, {"name": "sam park", "type": "person"}, {"name": "postmortem", "type": "artifact"}],
+     "relations": [{"source": "cache stampede", "type": "HAPPENED_ON", "target": "2026-05-12"}, {"source": "cache stampede", "type": "CAUSES", "target": "outage"}, {"source": "postmortem", "type": "AUTHORED_BY", "target": "sam park"}]},
+
+    {"id": "h8", "content": "The design doc cites RFC 9114 and the Raft paper.",
+     "hint": "reference",
+     "entities": [{"name": "design doc", "type": "artifact"}, {"name": "rfc 9114", "type": "paper"}, {"name": "raft paper", "type": "paper"}],
+     "relations": [{"source": "design doc", "type": "CITES", "target": "rfc 9114"}, {"source": "design doc", "type": "CITES", "target": "raft paper"}]},
+
+    {"id": "h9", "content": "Pin Ruff to 0.4 and run it before mypy; never disable the line-length rule.",
+     "hint": "preference",
+     "entities": [{"name": "ruff", "type": "tool"}, {"name": "mypy", "type": "tool"}],
+     "relations": []},
+
+    {"id": "h10", "content": "darkmem will add a Kafka consumer in v4; the staging box is 10.0.0.7.",
+     "hint": "fact",
+     "entities": [{"name": "darkmem", "type": "project"}, {"name": "kafka", "type": "service"}],
+     "relations": [{"source": "darkmem", "type": "MENTIONS", "target": "kafka"}]}
+  ]
+}
