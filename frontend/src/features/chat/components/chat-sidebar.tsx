@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Plus, Trash2, MessageCircle, Search } from "lucide-react"
 import type { ChatConversation } from "@/hooks/api"
 import { ChatGradientButton } from "./chat-gradient-button"
@@ -11,6 +12,9 @@ interface ChatSidebarProps {
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
+  isLoading?: boolean
+  isError?: boolean
+  onRetry?: () => void
 }
 
 function timeAgo(dateStr: string): string {
@@ -31,6 +35,9 @@ export function ChatSidebar({
   onSelect,
   onCreate,
   onDelete,
+  isLoading = false,
+  isError = false,
+  onRetry,
 }: ChatSidebarProps) {
   const [search, setSearch] = useState("")
 
@@ -41,12 +48,12 @@ export function ChatSidebar({
     : conversations
 
   return (
-    <div className="border-border flex h-full w-[280px] shrink-0 flex-col border-r bg-gradient-to-b from-[#0f1318] to-[#0a0e14]">
+    <div className="border-border flex h-full w-full max-h-56 flex-col overflow-y-auto border-b bg-gradient-to-b from-[#0f1318] to-[#0a0e14] md:w-72 md:max-h-none md:shrink-0 md:overflow-visible md:border-r md:border-b-0">
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-base font-semibold">Conversations</span>
           <ChatGradientButton
-            className="h-7 gap-1 text-base text-white"
+            className="h-9 gap-1 text-base text-white"
             onClick={onCreate}
           >
             <Plus className="h-3.5 w-3.5" /> New
@@ -65,7 +72,26 @@ export function ChatSidebar({
         )}
       </div>
       <div className="flex-1 space-y-0.5 overflow-auto p-2">
-        {conversations.length === 0 && (
+        {isLoading && (
+          <div className="space-y-2 p-1">
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+          </div>
+        )}
+        {!isLoading && isError && (
+          <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-8">
+            <p className="text-center text-base">
+              Failed to load conversations.
+            </p>
+            {onRetry && (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
+        {!isLoading && !isError && conversations.length === 0 && (
           <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-8">
             <MessageCircle className="h-8 w-8 text-indigo-500/30" />
             <p className="text-center text-base">
@@ -113,7 +139,8 @@ export function ChatSidebar({
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+              aria-label="Delete conversation"
+              className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100"
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete(conv.id)

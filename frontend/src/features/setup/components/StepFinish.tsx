@@ -84,7 +84,10 @@ export function StepFinish() {
               ) : (
                 <div className="space-y-1">
                   {repos.detected.map((r) => (
-                    <div key={r.subPath} className="flex items-center gap-2">
+                    <div
+                      key={r.subPath}
+                      className="flex min-w-0 items-center gap-2"
+                    >
                       <Checkbox
                         checked={r.selected}
                         onCheckedChange={() => toggle(r.subPath)}
@@ -94,7 +97,7 @@ export function StepFinish() {
                         value={r.name}
                         onChange={(e) => rename(r.subPath, e.target.value)}
                       />
-                      <span className="text-muted-foreground font-mono text-base">
+                      <span className="text-muted-foreground truncate font-mono text-base">
                         {r.subPath}
                       </span>
                     </div>

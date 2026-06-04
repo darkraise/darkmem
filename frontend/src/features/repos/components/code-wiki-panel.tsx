@@ -52,23 +52,34 @@ function useWiki(repoId: string | null) {
 }
 
 export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
-  const { data: repos } = useRepos()
+  const {
+    data: repos,
+    isLoading: reposLoading,
+    isError: reposError,
+  } = useRepos()
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
-  const { data: wiki, isLoading } = useWiki(selectedRepoId)
+  const { data: wiki, isLoading, isError, refetch } = useWiki(selectedRepoId)
   const [expandedModule, setExpandedModule] = useState<string | null>(null)
+
+  const repoSelectPlaceholder = reposError
+    ? "Failed to load repos"
+    : reposLoading
+      ? "Loading repos..."
+      : "Select a repo"
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Select
           value={selectedRepoId || "__none__"}
+          disabled={reposLoading || reposError}
           onValueChange={(v) => {
             setSelectedRepoId(v === "__none__" ? null : v)
             setExpandedModule(null)
           }}
         >
-          <SelectTrigger className="h-8 w-48">
-            <SelectValue placeholder="Select a repo" />
+          <SelectTrigger className="h-9 w-full max-w-full sm:w-48">
+            <SelectValue placeholder={repoSelectPlaceholder} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Select a repo</SelectItem>
@@ -83,6 +94,14 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
 
       {isLoading && (
         <p className="text-muted-foreground">Generating documentation...</p>
+      )}
+
+      {isError && (
+        <EmptyState
+          title="Failed to load wiki"
+          description="Something went wrong while loading the generated documentation."
+          action={<Button onClick={() => refetch()}>Retry</Button>}
+        />
       )}
 
       {wiki && (
@@ -105,24 +124,26 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
           <div className="space-y-2">
             {wiki.modules.map((mod) => (
               <Card key={mod.path}>
-                <div
-                  className="hover:bg-accent/30 cursor-pointer px-4 py-3 transition-colors"
+                <button
+                  type="button"
+                  aria-expanded={expandedModule === mod.path}
+                  className="hover:bg-accent/30 w-full cursor-pointer px-4 py-3 text-left transition-colors"
                   onClick={() =>
                     setExpandedModule(
                       expandedModule === mod.path ? null : mod.path,
                     )
                   }
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-base font-medium">
+                  <div className="flex min-w-0 items-center justify-between">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-mono text-base font-medium">
                         {mod.path}
                       </span>
-                      <Badge variant="secondary" className="text-sm">
+                      <Badge variant="secondary" className="shrink-0 text-sm">
                         {mod.symbol_count} symbols
                       </Badge>
                     </div>
-                    <span className="text-muted-foreground text-base">
+                    <span className="text-muted-foreground shrink-0 text-base">
                       {mod.files.length} files
                     </span>
                   </div>
@@ -131,18 +152,21 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                       {mod.summary}
                     </p>
                   )}
-                </div>
+                </button>
 
                 {expandedModule === mod.path && (
                   <CardContent className="border-border border-t pt-3">
                     {mod.files.map((file) => (
                       <div key={file.path} className="mb-4">
-                        <div className="mb-2 flex items-center gap-2">
-                          <span className="font-mono text-base font-medium">
+                        <div className="mb-2 flex min-w-0 items-center gap-2">
+                          <span className="truncate font-mono text-base font-medium">
                             {file.path}
                           </span>
                           {file.language && (
-                            <Badge variant="outline" className="text-sm">
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 text-sm"
+                            >
                               {file.language}
                             </Badge>
                           )}
@@ -152,7 +176,7 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                             {file.symbols.map((sym, i) => (
                               <div
                                 key={`${sym.name}-${i}`}
-                                className="text-base"
+                                className="text-base break-words"
                               >
                                 <span className="text-muted-foreground">
                                   {sym.kind}
@@ -184,7 +208,7 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
         </>
       )}
 
-      {selectedRepoId && !isLoading && !wiki && (
+      {selectedRepoId && !isLoading && !isError && !wiki && (
         <EmptyState
           title="No code wiki yet"
           description="Reindex this repository with “Generate wiki” enabled from the Repositories tab to populate this page."

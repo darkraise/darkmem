@@ -9,6 +9,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from "darkraise-ui/components/dialog"
 
 export interface CommandPaletteFilter {
@@ -61,6 +62,7 @@ export function MemoryCommandPalette({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0">
+        <DialogTitle className="sr-only">Search memories</DialogTitle>
         <Command
           shouldFilter={false}
           onKeyDown={(e) => {
@@ -77,6 +79,12 @@ export function MemoryCommandPalette({
             onValueChange={setValue}
             placeholder="Search memories (source:claude-code tag:python …)"
           />
+          <p className="text-muted-foreground border-border border-b px-3 py-2 text-sm">
+            Filter with{" "}
+            <code className="text-foreground">source:</code>,{" "}
+            <code className="text-foreground">type:</code>, or{" "}
+            <code className="text-foreground">tag:</code> prefixes.
+          </p>
           <CommandList>
             <CommandEmpty>Press Enter to search.</CommandEmpty>
             <CommandItem

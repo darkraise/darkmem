@@ -62,22 +62,26 @@ function FileTree({
         const isLeaf = Object.keys(children).length === 0
         return (
           <div key={fullPath}>
-            <div
-              className={`flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 font-mono text-sm transition-colors ${
-                isLeaf
-                  ? "text-foreground hover:bg-accent hover:text-foreground"
-                  : "font-medium text-muted-foreground"
-              }`}
-              style={{ paddingLeft: `${depth * 14 + 8}px` }}
-              onClick={() => (isLeaf ? onSelect(fullPath) : undefined)}
-            >
-              <span
-                className={`text-sm ${isLeaf ? "text-primary" : "text-muted-foreground"}`}
+            {isLeaf ? (
+              <button
+                type="button"
+                aria-label={fullPath}
+                className="flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-left font-mono text-sm text-foreground transition-colors hover:bg-accent hover:text-foreground"
+                style={{ paddingLeft: `${depth * 14 + 8}px` }}
+                onClick={() => onSelect(fullPath)}
               >
-                {isLeaf ? "◈" : "▸"}
-              </span>
-              <span className="truncate">{key}</span>
-            </div>
+                <span className="text-sm text-primary">◈</span>
+                <span className="truncate">{key}</span>
+              </button>
+            ) : (
+              <div
+                className="flex items-center gap-1.5 rounded px-2 py-1 font-mono text-sm font-medium text-muted-foreground transition-colors"
+                style={{ paddingLeft: `${depth * 14 + 8}px` }}
+              >
+                <span className="text-sm text-muted-foreground">▸</span>
+                <span className="truncate">{key}</span>
+              </div>
+            )}
             {!isLeaf &&
               renderTree(
                 children as Record<string, unknown>,

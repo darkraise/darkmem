@@ -331,7 +331,7 @@ function MemoriesPage() {
               }}
               role="button"
               tabIndex={0}
-              className={`cursor-pointer transition-colors ${
+              className={`min-w-0 cursor-pointer transition-colors ${
                 highlightId === m.id ? "ring-primary rounded ring-2" : ""
               }`}
               onClick={() => setDetailMemory(m)}
@@ -342,7 +342,7 @@ function MemoriesPage() {
                 }
               }}
             >
-              <p className="line-clamp-2 text-base">{m.content}</p>
+              <p className="line-clamp-2 text-base break-words">{m.content}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {m.status === "superseded" && (
                   <Badge
@@ -447,15 +447,17 @@ function MemoriesPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-4 px-6 pt-6 pb-0">
-        <PageHeader
-          title="Memories"
-          description={
-            unfilteredTotal > 0
-              ? `${unfilteredTotal.toLocaleString()} total`
-              : undefined
-          }
-        />
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 gap-y-2 px-6 pt-6 pb-0">
+        <div className="min-w-0">
+          <PageHeader
+            title="Memories"
+            description={
+              unfilteredTotal > 0
+                ? `${unfilteredTotal.toLocaleString()} total`
+                : undefined
+            }
+          />
+        </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -603,7 +605,7 @@ function MemoriesPage() {
                   resetPagination()
                 }}
                 placeholder="All sources"
-                className="h-8 w-40 text-base"
+                className="h-8 w-full text-base sm:w-40"
               />
 
               {/* Type multi-select */}
@@ -615,7 +617,7 @@ function MemoriesPage() {
                   resetPagination()
                 }}
                 placeholder="All types"
-                className="h-8 w-36 text-base"
+                className="h-8 w-full text-base sm:w-36"
               />
 
               {hasActiveFilter && (
@@ -635,6 +637,7 @@ function MemoriesPage() {
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Clear search"
                 className="text-muted-foreground hover:text-foreground"
                 onClick={() => {
                   setFreeQuery("")
@@ -708,7 +711,7 @@ function MemoriesPage() {
 
           {/* Bulk action bar */}
           {selected.size > 0 && (
-            <div className="bg-card border-border mt-3 flex shrink-0 items-center gap-4 rounded-lg border p-3 text-base">
+            <div className="bg-card border-border mt-3 flex shrink-0 flex-wrap items-center gap-4 gap-y-2 rounded-lg border p-3 text-base">
               <span className="text-primary font-medium">
                 {selected.size} selected
               </span>
@@ -766,7 +769,7 @@ function MemoriesPage() {
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3 text-base">
+              <div className="grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
                 <div>
                   <div className="text-muted-foreground mb-0.5 text-base font-medium tracking-wider uppercase">
                     Source

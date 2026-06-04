@@ -20,6 +20,7 @@ import {
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -161,9 +162,11 @@ function UnresolvedFailuresCard() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Unresolved Failures</CardTitle>
+      <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-lg uppercase tracking-wide">
+            Unresolved Failures
+          </CardTitle>
           <Button
             variant="outline"
             onClick={handleRetryAll}
@@ -174,43 +177,45 @@ function UnresolvedFailuresCard() {
             {activeBatchId !== null ? "Retrying..." : "Retry all"}
           </Button>
         </div>
-        <div className="border-border mt-3 flex w-fit gap-1 rounded-md border p-0.5">
-          <Button
-            variant="ghost"
-            onClick={() => setFilter("all")}
-            className={`rounded px-3 py-1 text-base font-medium transition-colors ${
-              filter === "all"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All ({totalCount})
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => setFilter("memory_ingest")}
-            className={`rounded px-3 py-1 text-base font-medium transition-colors ${
-              filter === "memory_ingest"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Memory ({memoryCount})
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => setFilter("code_index")}
-            className={`rounded px-3 py-1 text-base font-medium transition-colors ${
-              filter === "code_index"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Code ({codeCount})
-          </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="border-border flex w-fit flex-wrap gap-1 rounded-md border p-0.5">
+            <Button
+              variant="ghost"
+              onClick={() => setFilter("all")}
+              className={`rounded px-3 py-1 text-base font-medium transition-colors ${
+                filter === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              All ({totalCount})
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setFilter("memory_ingest")}
+              className={`rounded px-3 py-1 text-base font-medium transition-colors ${
+                filter === "memory_ingest"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Memory ({memoryCount})
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setFilter("code_index")}
+              className={`rounded px-3 py-1 text-base font-medium transition-colors ${
+                filter === "code_index"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Code ({codeCount})
+            </Button>
+          </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         {batchProgress &&
           activeBatchId !== null &&
           batchProgress.state !== "done" && (
@@ -417,10 +422,12 @@ function ObsoleteEmbeddingsCard() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Obsolete Embeddings</CardTitle>
-          <div className="flex gap-2">
+      <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-lg uppercase tracking-wide">
+            Obsolete Embeddings
+          </CardTitle>
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               onClick={handleReembedAll}
@@ -439,11 +446,11 @@ function ObsoleteEmbeddingsCard() {
             </Button>
           </div>
         </div>
-        <p className="text-muted-foreground mt-1 font-mono text-base">
+        <CardDescription className="font-mono">
           Current: {counts.current_fingerprint}
-        </p>
+        </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <div className="divide-border border-border divide-y rounded-md border">
           <div className="flex items-center justify-between px-3 py-2">
             <div className="flex-1">
@@ -525,7 +532,7 @@ function ObsoleteEmbeddingsCard() {
 
 export function MaintenancePanel() {
   const { data: health } = useHealth()
-  const { data: logs, isLoading } = usePipelineLogs(50)
+  const { data: logs, isLoading, isError, error } = usePipelineLogs(50)
   const reprocessAll = useReprocessStream("/analytics/reprocess/stream")
 
   const totalRuns = logs?.length ?? 0
@@ -659,12 +666,20 @@ export function MaintenancePanel() {
       </div>
 
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">
+        <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+          <CardTitle className="text-lg uppercase tracking-wide">
             Recent Pipeline Executions
           </CardTitle>
+          <CardDescription>
+            The latest pipeline runs and their per-step status.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
+          {isError && (
+            <p className="text-destructive">
+              Failed to load pipeline logs: {(error as Error).message}
+            </p>
+          )}
           {isLoading && (
             <p className="text-muted-foreground text-base">Loading...</p>
           )}

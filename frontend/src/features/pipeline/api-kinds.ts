@@ -27,3 +27,11 @@ export const API_KIND_OPTIONS: ApiKindOption[] = [
   { value: "deepseek", label: "DeepSeek", note: "via OpenAI compat" },
   { value: "zai", label: "z.ai (Zhipu / GLM)", note: "via OpenAI compat" },
 ]
+
+export function findApiKind(kind: string | undefined): ApiKindOption | undefined {
+  return API_KIND_OPTIONS.find((o) => o.value === kind)
+}
+
+export function apiKindLabel(kind: string | undefined): string {
+  return findApiKind(kind)?.label ?? kind ?? ""
+}

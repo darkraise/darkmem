@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useStore } from "@tanstack/react-store"
 import { TextField, SelectField, SwitchField } from "darkraise-ui/forms"
@@ -36,6 +37,7 @@ export function LLMProfileForm({
   initial: Partial<LLMProfileInput>
   onSave: (p: LLMProfileInput) => Promise<void>
 }) {
+  const [saveError, setSaveError] = useState<string | null>(null)
   const form = useForm({
     defaultValues: {
       name: initial.name ?? "",
@@ -59,11 +61,17 @@ export function LLMProfileForm({
       }
       const parsed = llmProfileSchema.safeParse(normalized)
       if (!parsed.success) return
-      await onSave(parsed.data)
+      setSaveError(null)
+      try {
+        await onSave(parsed.data)
+      } catch (e) {
+        setSaveError((e as Error).message)
+      }
     },
   })
 
   const isDirty = useStore(form.store, (s) => s.isDirty)
+  const isSubmitting = useStore(form.store, (s) => s.isSubmitting)
 
   return (
     <form
@@ -179,9 +187,18 @@ export function LLMProfileForm({
         )}
       </form.Field>
 
-      <Button type="submit" disabled={!isDirty}>
-        Save
+      <Button type="submit" disabled={!isDirty || isSubmitting}>
+        {isSubmitting ? "Saving…" : "Save"}
       </Button>
+
+      {saveError && (
+        <p
+          role="alert"
+          className="bg-destructive/15 text-destructive rounded-md px-3 py-2 text-base"
+        >
+          {saveError}
+        </p>
+      )}
     </form>
   )
 }

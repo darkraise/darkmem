@@ -189,7 +189,7 @@ export function CodeAnalysisPanel({
           Analysis
         </span>
         {selectedNode && (
-          <span className="ml-auto max-w-[120px] truncate font-mono text-sm text-muted-foreground">
+          <span className="ml-auto min-w-0 flex-1 truncate text-right font-mono text-sm text-muted-foreground">
             {selectedNode.label}
           </span>
         )}

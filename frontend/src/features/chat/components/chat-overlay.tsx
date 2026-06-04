@@ -68,7 +68,7 @@ export function ChatOverlay({
       role="dialog"
       aria-modal="false"
       aria-label="Chat panel"
-      className="bg-card fixed right-4 bottom-16 z-40 flex h-[680px] max-h-[calc(100vh-5rem)] w-[480px] flex-col overflow-hidden rounded-xl border border-[rgba(99,102,241,0.15)] shadow-[0_0_30px_rgba(99,102,241,0.08)]"
+      className="bg-card fixed right-4 bottom-16 z-40 flex h-[680px] max-h-[calc(100vh-5rem)] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-[rgba(99,102,241,0.15)] shadow-[0_0_30px_rgba(99,102,241,0.08)]"
       onKeyDown={(e) => {
         if (e.key === "Escape") setOpen(false)
       }}

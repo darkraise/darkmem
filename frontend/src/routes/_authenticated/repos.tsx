@@ -43,6 +43,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
+  DialogClose,
 } from "darkraise-ui/components/dialog"
 import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
@@ -164,7 +166,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
           value={form.provider ?? "github"}
           onValueChange={(v) => set("provider", v)}
         >
-          <SelectTrigger className="h-8 w-full">
+          <SelectTrigger className="h-9 w-full">
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
           <SelectContent>
@@ -207,9 +209,16 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-      <Button type="submit" className="w-full" disabled={createRepo.isPending}>
-        {createRepo.isPending ? "Adding..." : "Add Repository"}
-      </Button>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button type="button" variant="ghost">
+            Cancel
+          </Button>
+        </DialogClose>
+        <Button type="submit" disabled={createRepo.isPending}>
+          {createRepo.isPending ? "Adding..." : "Add Repository"}
+        </Button>
+      </DialogFooter>
     </form>
   )
 }
@@ -238,7 +247,7 @@ function RepoTaskList({ repo }: { repo: Repo }) {
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-foreground hover:text-destructive shrink-0"
+            className="text-muted-foreground hover:text-destructive h-9 w-9 shrink-0"
             aria-label={`Cancel ${task.kind} task`}
             onClick={() =>
               cancelTask.mutate(
@@ -351,7 +360,7 @@ function RepositoriesPage() {
       id: "location",
       header: "Location",
       cell: ({ row }) => (
-        <span className="text-muted-foreground block max-w-[240px] truncate text-base">
+        <span className="text-muted-foreground block max-w-60 truncate text-base">
           {row.original.url ?? row.original.local_path ?? "—"}
         </span>
       ),
@@ -431,7 +440,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-base"
+            className="h-9 px-2 text-base"
             disabled={
               row.original.status === "cloning" ||
               row.original.status === "indexing"
@@ -446,7 +455,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-base"
+            className="h-9 px-2 text-base"
             onClick={() => setEditingRepo(row.original)}
           >
             Edit
@@ -454,7 +463,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-destructive hover:text-destructive h-7 px-2 text-base"
+            className="text-destructive hover:text-destructive h-9 px-2 text-base"
             onClick={() => handleDelete(row.original)}
           >
             Delete
@@ -478,7 +487,7 @@ function RepositoriesPage() {
         </TabsList>
 
         <TabsContent value="repositories" className="mt-4 space-y-4">
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 gap-y-2">
             <Button
               variant="outline"
               onClick={handleRunEnrichment}

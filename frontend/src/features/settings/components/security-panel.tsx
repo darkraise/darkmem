@@ -2,6 +2,7 @@ import { useState } from "react"
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -50,10 +51,12 @@ export function SecurityPanel() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Audit log</CardTitle>
-            <div className="border-border flex w-fit gap-1 rounded-md border p-0.5">
+        <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-lg uppercase tracking-wide">
+              Audit log
+            </CardTitle>
+            <div className="border-border flex w-fit flex-wrap gap-1 rounded-md border p-0.5">
               {FILTERS.map((f, i) => (
                 <Button
                   key={f.label}
@@ -70,8 +73,11 @@ export function SecurityPanel() {
               ))}
             </div>
           </div>
+          <CardDescription>
+            Authentication and account-security events, most recent first.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {isLoading ? (
             <div className="bg-muted h-40 animate-pulse rounded" />
           ) : items.length === 0 ? (

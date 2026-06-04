@@ -152,7 +152,7 @@ export function SetupWizard() {
           {step === 4 && <StepFinish />}
         </div>
 
-        <div className="border-border/60 flex shrink-0 justify-between border-t pt-4">
+        <div className="border-border/60 flex shrink-0 flex-wrap justify-between gap-2 border-t pt-4">
           <Button
             variant="ghost"
             onClick={goBack}
@@ -160,7 +160,7 @@ export function SetupWizard() {
           >
             Back
           </Button>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {step === 2 && !llm.skipped && missingModels.length > 0 && (
               <span className="text-muted-foreground text-base">
                 Add a model for: {missingModels.join(", ")}

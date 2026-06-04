@@ -1,6 +1,7 @@
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -17,14 +18,16 @@ interface Props {
 export function AssistantServicesPanel({ state }: Props) {
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Assistant services</CardTitle>
-        <p className="text-muted-foreground text-base">
+      <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+        <CardTitle className="text-lg uppercase tracking-wide">
+          Assistant services
+        </CardTitle>
+        <CardDescription>
           LLM purposes used by chat, code enrichment, wiki generation, and
           reranking.
-        </p>
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-2 pt-4">
         {ORDER.map((p) => (
           <LLMPurposeCard
             key={p}

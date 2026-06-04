@@ -95,11 +95,23 @@ export function ReindexDialog({
           </form.Field>
 
           {wholeFormError && (
-            <p className="text-destructive text-base">{wholeFormError}</p>
+            <p
+              id="reindex-form-error"
+              role="alert"
+              className="text-destructive text-base"
+            >
+              {wholeFormError}
+            </p>
           )}
 
           <DialogFooter>
-            <Button type="submit" disabled={!!wholeFormError}>
+            <Button
+              type="submit"
+              disabled={!!wholeFormError}
+              aria-describedby={
+                wholeFormError ? "reindex-form-error" : undefined
+              }
+            >
               Reindex
             </Button>
           </DialogFooter>

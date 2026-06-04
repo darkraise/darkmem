@@ -29,6 +29,7 @@ import {
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -65,7 +66,11 @@ import {
   AlertDialogTitle,
 } from "darkraise-ui/components/alert-dialog"
 import { PageHeader } from "darkraise-ui/layout"
-import { resolveStoredTab, type SettingsTabValue } from "@/lib/settings-tab"
+import {
+  resolveStoredTab,
+  SETTINGS_TAB_EVENT,
+  type SettingsTabValue,
+} from "@/lib/settings-tab"
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -131,13 +136,15 @@ function ClassificationAreasCard() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Classification</CardTitle>
-        <p className="text-muted-foreground text-base">
+      <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+        <CardTitle className="text-lg uppercase tracking-wide">
+          Classification
+        </CardTitle>
+        <CardDescription>
           Control how memories are typed during pipeline processing.
-        </p>
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-4">
         <ToggleGroup
           type="single"
           variant="outline"
@@ -201,6 +208,7 @@ function ClassificationAreasCard() {
                     checked={enabled.has(area.key)}
                     onCheckedChange={() => toggleArea(area.key)}
                     disabled={area.key === "general" || updateFlags.isPending}
+                    className="shrink-0"
                   />
                 </div>
               ))}
@@ -310,7 +318,7 @@ function FeatureFlagsCard() {
 
     return (
       <div className="border-border flex items-center justify-between border-t pt-2">
-        <div>
+        <div className="min-w-0">
           <Label className="text-base">{label}</Label>
           <p className="text-muted-foreground text-base">{description}</p>
         </div>
@@ -346,13 +354,13 @@ function FeatureFlagsCard() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Features</CardTitle>
-        <p className="text-muted-foreground text-base">
+      <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+        <CardTitle className="text-lg uppercase tracking-wide">Features</CardTitle>
+        <CardDescription>
           Toggle pipeline features. Changes take effect on the next operation.
-        </p>
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 pt-4">
         {productToggles.map((item) => (
           <div key={item.key} className="flex items-center justify-between">
             <div>
@@ -463,10 +471,12 @@ function ReposPathCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Default code repo path</CardTitle>
+      <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+        <CardTitle className="text-lg uppercase tracking-wide">
+          Default code repo path
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         {isLoading ? (
           <Skeleton className="h-32 rounded" />
         ) : (
@@ -552,14 +562,16 @@ function AssistantPromptsCard() {
         </AlertDialogContent>
       </AlertDialog>
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Assistant Prompts</CardTitle>
-          <p className="text-muted-foreground text-base">
+        <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+          <CardTitle className="text-lg uppercase tracking-wide">
+            Assistant Prompts
+          </CardTitle>
+          <CardDescription>
             Override the system prompts used by chat, cluster naming, and agent
             instructions. Leave empty to fall back to the default.
-          </p>
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 pt-4">
           <ToggleGroup
             type="single"
             variant="outline"
@@ -589,13 +601,16 @@ function AssistantPromptsCard() {
           <Textarea
             className="min-h-[200px] font-mono text-base"
             value={draft}
+            maxLength={20000}
             onChange={(e) => {
               setDraft(e.target.value)
               setDirty(true)
             }}
           />
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span
+              className={`min-w-0 text-sm ${draft.length > 20000 ? "text-destructive" : "text-muted-foreground"}`}
+            >
               {draft.length.toLocaleString()} / 20,000 ·{" "}
               {isOverridden ? "overridden" : "using default"}
             </span>
@@ -636,6 +651,18 @@ function SettingsPage() {
       window.localStorage.setItem("darkmem.settings.tab", match.value)
     }
   }
+
+  // Lets a deep child jump tabs (e.g. "Manage Profiles →" inside the pipeline
+  // panel) via navigateToSettingsTab, which broadcasts this event.
+  useEffect(() => {
+    const onJump = (e: Event) => {
+      const next = (e as CustomEvent<string>).detail
+      const match = SETTINGS_TABS.find((t) => t.value === next)
+      if (match) setTab(match.value)
+    }
+    window.addEventListener(SETTINGS_TAB_EVENT, onJump)
+    return () => window.removeEventListener(SETTINGS_TAB_EVENT, onJump)
+  }, [])
 
   return (
     <div className="p-6">

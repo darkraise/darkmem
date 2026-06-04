@@ -86,7 +86,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       {login.isError && (
         <p
           role="alert"
-          className="rounded-md bg-red-950/60 px-3 py-2 text-base text-red-200"
+          className="bg-destructive/15 text-destructive rounded-md px-3 py-2 text-base"
         >
           {(login.error as Error).message}
         </p>

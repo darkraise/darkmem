@@ -263,11 +263,11 @@ export function ChatMessages({
         <div key={msg.id} className="animate-in fade-in duration-200">
           {msg.role === "user" ? (
             <div className="flex justify-end gap-3">
-              <div className="flex max-w-[75%] flex-col items-end gap-1">
+              <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
                 <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-base">
                   {msg.content}
                 </div>
-                <span className="text-muted-foreground/40 px-1 text-base">
+                <span className="text-muted-foreground/70 px-1 text-base">
                   {formatTime(msg.created_at)}
                 </span>
               </div>
@@ -282,7 +282,7 @@ export function ChatMessages({
       {isStreaming && pendingUserMessage && (
         <div className="animate-in fade-in duration-200">
           <div className="flex justify-end gap-3">
-            <div className="flex max-w-[75%] flex-col items-end gap-1">
+            <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
               <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-base">
                 {pendingUserMessage}
               </div>
@@ -354,7 +354,7 @@ function AssistantMessage({
           <ReactMarkdown components={components}>{processed}</ReactMarkdown>
         </div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="text-muted-foreground/40 text-base">
+          <span className="text-muted-foreground/70 text-base">
             {formatTime(msg.created_at)}
           </span>
         </div>

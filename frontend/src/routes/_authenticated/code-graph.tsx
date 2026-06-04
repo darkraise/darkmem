@@ -649,7 +649,7 @@ function CodeGraphPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="ml-1 h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="ml-1 h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setSearchPaletteOpen(true)}
             title="Jump to node (⌘K)"
             aria-label="Jump to node"
@@ -726,7 +726,7 @@ function CodeGraphPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => rendererRef.current?.zoomIn()}
             title="Zoom in"
             aria-label="Zoom in"
@@ -736,7 +736,7 @@ function CodeGraphPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => rendererRef.current?.zoomOut()}
             title="Zoom out"
             aria-label="Zoom out"
@@ -746,7 +746,7 @@ function CodeGraphPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => rendererRef.current?.fitView()}
             title="Fit to view"
             aria-label="Fit to view"
@@ -757,7 +757,7 @@ function CodeGraphPage() {
             variant="ghost"
             size="icon"
             disabled={!selectedNodeId}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-40"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40"
             onClick={handleFocusSelected}
             title="Focus selected node"
             aria-label="Focus selected node"
@@ -768,7 +768,7 @@ function CodeGraphPage() {
             variant="ghost"
             size="icon"
             disabled={!selectedNodeId}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-40"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40"
             onClick={handleClearSelection}
             title="Clear selection"
             aria-label="Clear selection"
@@ -779,7 +779,7 @@ function CodeGraphPage() {
             variant="ghost"
             size="icon"
             disabled={layout !== "force"}
-            className={`h-7 w-7 disabled:opacity-40 ${isPlaying ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            className={`h-8 w-8 disabled:opacity-40 ${isPlaying ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
             onClick={handleTogglePlay}
             title={isPlaying ? "Pause layout" : "Play layout"}
             aria-label={isPlaying ? "Pause layout" : "Play layout"}
@@ -801,6 +801,7 @@ function CodeGraphPage() {
             <Button
               variant="ghost"
               key={d ?? "all"}
+              aria-pressed={focusDepth === d}
               className={`rounded-sm px-1.5 py-0.5 transition-colors ${
                 focusDepth === d
                   ? "bg-primary/15 text-primary"

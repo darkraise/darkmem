@@ -322,7 +322,7 @@ function UnifiedGraphPage() {
       </div>
 
       {selection.showPanel && memoryCount > 0 && (
-        <div className="border-border bg-card flex w-[320px] shrink-0 flex-col overflow-hidden border-l">
+        <div className="border-border bg-card flex w-[320px] max-w-[85vw] shrink-0 flex-col overflow-hidden border-l">
           <GraphDetailPanel
             colorMode={colorMode}
             selectedMemory={selectedMemory}

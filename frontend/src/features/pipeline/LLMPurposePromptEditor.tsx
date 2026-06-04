@@ -52,7 +52,7 @@ export function LLMPurposePromptEditor({ keys, prompts }: Props) {
   }
 
   return (
-    <div className="border-border mt-2 border-t pt-2">
+    <div>
       <Label className="text-muted-foreground text-sm uppercase">
         System prompts
       </Label>

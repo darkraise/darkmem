@@ -5,6 +5,7 @@ import { ChatMessages } from "@/features/chat/components/chat-messages"
 import { ChatInput } from "@/features/chat/components/chat-input"
 import { Input } from "darkraise-ui/components/input"
 import { Button } from "darkraise-ui/components/button"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   useConversations,
   useConversation,
@@ -27,8 +28,18 @@ function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(initialId ?? null)
   const [editingTitle, setEditingTitle] = useState(false)
 
-  const { data: convList } = useConversations()
-  const { data: convDetail } = useConversation(activeId)
+  const {
+    data: convList,
+    isLoading: convListLoading,
+    isError: convListError,
+    refetch: refetchConvList,
+  } = useConversations()
+  const {
+    data: convDetail,
+    isLoading: convDetailLoading,
+    isError: convDetailError,
+    refetch: refetchConvDetail,
+  } = useConversation(activeId)
   const createConv = useCreateConversation()
   const updateConv = useUpdateConversation()
   const deleteConv = useDeleteConversation()
@@ -71,13 +82,16 @@ function ChatPage() {
   )
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col md:flex-row">
       <ChatSidebar
         conversations={conversations}
         activeId={activeId}
         onSelect={setActiveId}
         onCreate={handleCreate}
         onDelete={handleDelete}
+        isLoading={convListLoading}
+        isError={convListError}
+        onRetry={refetchConvList}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -88,7 +102,7 @@ function ChatPage() {
                 <Input
                   autoFocus
                   defaultValue={convDetail?.title || ""}
-                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 text-base font-semibold focus:border-indigo-400 focus:ring-0"
+                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 text-base font-semibold focus:border-primary"
                   onBlur={(e) => handleTitleSubmit(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter")
@@ -108,19 +122,38 @@ function ChatPage() {
                 </button>
               )}
               {messages.length > 0 && (
-                <span className="text-muted-foreground/40 shrink-0 text-base">
+                <span className="text-muted-foreground/70 shrink-0 text-base">
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
                 </span>
               )}
             </div>
 
-            <ChatMessages
-              messages={messages}
-              streamingContent={stream.streamingContent}
-              streamingSources={stream.sources}
-              isStreaming={stream.isStreaming}
-              pendingUserMessage={stream.pendingUserMessage}
-            />
+            {convDetailLoading && !stream.isStreaming ? (
+              <div className="flex-1 space-y-6 overflow-auto px-4 py-5">
+                <Skeleton className="h-16 w-3/4" />
+                <Skeleton className="ml-auto h-12 w-1/2" />
+                <Skeleton className="h-20 w-2/3" />
+              </div>
+            ) : convDetailError && !stream.isStreaming ? (
+              <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-4">
+                <p className="text-base">Failed to load this conversation.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchConvDetail()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <ChatMessages
+                messages={messages}
+                streamingContent={stream.streamingContent}
+                streamingSources={stream.sources}
+                isStreaming={stream.isStreaming}
+                pendingUserMessage={stream.pendingUserMessage}
+              />
+            )}
             <ChatInput
               onSend={handleSend}
               onStop={stream.abort}
@@ -159,7 +192,7 @@ function ChatPage() {
                 <Button
                   variant="ghost"
                   key={prompt}
-                  className="rounded-full border border-[rgba(99,102,241,0.1)] bg-[rgba(99,102,241,0.04)] px-4 py-2 text-base text-slate-300 transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
+                  className="bg-muted/40 text-muted-foreground rounded-full border border-[rgba(99,102,241,0.1)] px-4 py-2 text-base whitespace-normal transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
                   onClick={async () => {
                     const resultId = await stream.sendMessage(null, prompt)
                     if (resultId) setActiveId(resultId)

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -22,16 +23,34 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
-import { CircleHelp, Trash2 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
+import { CircleHelp, Plus, Trash2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "darkraise-ui/components/dialog"
 import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
 import {
   useLlmProviders,
   useUpdateLlmProviders,
   useDeleteLlmProvider,
+  useLlmProfiles,
   type LlmProviderProfile,
 } from "@/hooks/api"
-import { API_KIND_OPTIONS } from "./api-kinds"
+import { API_KIND_OPTIONS, apiKindLabel, findApiKind } from "./api-kinds"
 import { LLMProviderTestDialog } from "./LLMProviderTestDialog"
 import { firstInvalidDirty } from "./dirty-save"
 
@@ -42,11 +61,12 @@ type DraftMap = Record<string, DraftProfile>
 
 export function LLMProvidersPanel() {
   const { data, isLoading } = useLlmProviders()
+  const { data: profilesResp } = useLlmProfiles()
   const update = useUpdateLlmProviders()
   const remove = useDeleteLlmProvider()
 
   const [draft, setDraft] = useState<DraftMap>({})
-  const [newName, setNewName] = useState("")
+  const [addOpen, setAddOpen] = useState(false)
 
   const stored: DraftMap = useMemo(() => {
     const out: DraftMap = {}
@@ -65,6 +85,16 @@ export function LLMProvidersPanel() {
     [stored, draft],
   )
   const profileNames = Object.keys(merged).sort()
+
+  // Which Profiles reference each Provider — surfaced in the delete confirm so
+  // the operator sees the blast radius before removing a connection.
+  const referencingByProvider = useMemo(() => {
+    const out: Record<string, string[]> = {}
+    for (const [pname, prof] of Object.entries(profilesResp?.profiles ?? {})) {
+      if (prof.provider_ref) (out[prof.provider_ref] ??= []).push(pname)
+    }
+    return out
+  }, [profilesResp])
 
   const dirtyNames = useMemo(() => {
     const names = new Set<string>()
@@ -90,10 +120,12 @@ export function LLMProvidersPanel() {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">LLM provider profiles</CardTitle>
+        <CardHeader className="bg-foreground/5 border-border rounded-t-[calc(var(--radius)-1px)] border-b pb-4">
+          <CardTitle className="text-lg tracking-wide uppercase">
+            LLM Providers
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           <div className="bg-muted h-32 animate-pulse rounded" />
         </CardContent>
       </Card>
@@ -107,15 +139,15 @@ export function LLMProvidersPanel() {
     }))
   }
 
-  const addProfile = () => {
-    const trimmed = newName.trim()
+  const addProvider = (name: string) => {
+    const trimmed = name.trim()
     if (!trimmed) return
     if (trimmed.includes("/") || trimmed.length > 64) {
-      toast.error("Profile name must omit '/' and stay under 64 chars")
+      toast.error("Provider name must omit '/' and stay under 64 chars")
       return
     }
     if (merged[trimmed]) {
-      toast.error(`Profile '${trimmed}' already exists`)
+      toast.error(`Provider '${trimmed}' already exists`)
       return
     }
     setDraft((prev) => ({
@@ -129,7 +161,7 @@ export function LLMProvidersPanel() {
         _isNew: true,
       },
     }))
-    setNewName("")
+    setAddOpen(false)
   }
 
   const drop = (name: string) => {
@@ -157,7 +189,11 @@ export function LLMProvidersPanel() {
     if (!dirty) return
     // Validate only edited rows, so a pre-existing invalid row the user never
     // touched can't block saving an unrelated edit.
-    const invalid = firstInvalidDirty(merged, dirtyNames, (p) => !p.base_url.trim())
+    const invalid = firstInvalidDirty(
+      merged,
+      dirtyNames,
+      (p) => !p.base_url.trim(),
+    )
     if (invalid) {
       toast.error(`Profile '${invalid}' needs a base URL`)
       return
@@ -185,96 +221,88 @@ export function LLMProvidersPanel() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
-          LLM Providers
-          <TooltipProvider delayDuration={150}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  aria-label="What are LLM Providers?"
-                  className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  <CircleHelp className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                className="max-w-md text-base leading-relaxed"
-              >
-                A Provider is a connection (base URL, API key, API kind).
-                Profiles bundle a Provider with a default model and params —
-                those are managed in the LLM Profiles panel. Rotating an API key
-                here updates every Profile (and every linked purpose) at once.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </CardTitle>
-        <p className="text-muted-foreground text-base">
-          Connection settings only. A Profile picks one Provider plus a model
-          and default parameters; a purpose picks a Profile.
-        </p>
+      <CardHeader className="bg-foreground/5 border-border rounded-t-[calc(var(--radius)-1px)] border-b pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2 text-lg tracking-wide uppercase">
+              LLM Providers
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      type="button"
+                      aria-label="What are LLM Providers?"
+                      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    className="max-w-md text-base leading-relaxed normal-case"
+                  >
+                    A Provider is a connection (base URL, API key, API kind).
+                    Profiles bundle a Provider with a default model and params —
+                    those are managed in the LLM Profiles panel. Rotating an API
+                    key here updates every Profile (and every linked purpose) at
+                    once.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </CardTitle>
+            <CardDescription>
+              Connection settings only. A Profile picks one Provider plus a
+              model and default parameters; a purpose picks a Profile.
+            </CardDescription>
+          </div>
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Add Provider
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add LLM Provider</DialogTitle>
+              </DialogHeader>
+              <AddProviderForm
+                existingNames={profileNames}
+                onClose={() => setAddOpen(false)}
+                onCreate={addProvider}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-4">
         {profileNames.length === 0 && (
           <p className="text-muted-foreground text-base">
-            No Providers yet. Add one below to start sharing connection settings
-            across Profiles and purposes.
+            No Providers yet. Use “Add Provider” above to start sharing
+            connection settings across Profiles and purposes.
           </p>
         )}
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {profileNames.map((name) => {
             const profile = merged[name]
             if (!profile) return null
             return (
-              <ProfileRow
+              <ProviderRow
                 key={name}
                 name={name}
                 profile={profile}
                 isNew={!!draft[name]?._isNew}
                 dirty={!!draft[name] && !profile._isNew}
+                referencingProfiles={referencingByProvider[name] ?? []}
                 onPatch={(patchObj) => patch(name, patchObj)}
                 onDelete={() => drop(name)}
                 disabled={update.isPending || remove.isPending}
               />
             )
           })}
-        </div>
-
-        <div className="border-border flex items-center gap-2 border-t pt-3">
-          <div className="flex flex-1 items-center gap-2">
-            <Label htmlFor="new_provider_name" className="text-base">
-              New Provider
-            </Label>
-            <Input
-              id="new_provider_name"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="e.g. openai-prod"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  addProfile()
-                }
-              }}
-              className="h-8 max-w-xs text-base"
-            />
-          </div>
-          <Button
-            variant="outline"
-            className="text-base"
-            onClick={addProfile}
-            disabled={!newName.trim()}
-          >
-            Add
-          </Button>
         </div>
 
         <div className="border-border flex items-center justify-end gap-2 border-t pt-3">
@@ -310,25 +338,31 @@ interface RowProps {
   profile: DraftProfile
   isNew: boolean
   dirty: boolean
+  referencingProfiles: string[]
   onPatch: (patch: Partial<LlmProviderProfile>) => void
   onDelete: () => void
   disabled: boolean
 }
 
-function ProfileRow({
+function ProviderRow({
   name,
   profile,
   isNew,
   dirty,
+  referencingProfiles,
   onPatch,
   onDelete,
   disabled,
 }: RowProps) {
   const tokenIsMasked = profile.api_key === TOKEN_SENTINEL
   const supportsEmbedding = profile.supports_embedding ?? true
+  const [open, setOpen] = useState(isNew)
   const [testDialog, setTestDialog] = useState<"chat" | "embedding" | null>(
     null,
   )
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const panelId = `llm-provider-${name}-panel`
+  const note = findApiKind(profile.api_kind)?.note
 
   const openTest = (mode: "chat" | "embedding") => {
     if (isNew) {
@@ -338,8 +372,17 @@ function ProfileRow({
     setTestDialog(mode)
   }
 
+  const handleDeleteClick = () => {
+    // Unsaved rows have nothing on the server — clear locally with no confirm.
+    if (isNew) {
+      onDelete()
+      return
+    }
+    setConfirmDelete(true)
+  }
+
   return (
-    <div className="border-border space-y-2 rounded-md border p-3">
+    <Card className={open ? "border-primary" : ""}>
       <LLMProviderTestDialog
         providerName={isNew ? null : name}
         mode={testDialog ?? "chat"}
@@ -348,34 +391,77 @@ function ProfileRow({
           if (!o) setTestDialog(null)
         }}
       />
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-base">{name}</span>
-          {isNew && (
-            <Badge variant="default" className="text-sm">
-              new
-            </Badge>
-          )}
-          {!isNew && dirty && (
-            <Badge variant="secondary" className="text-sm">
-              edited
-            </Badge>
-          )}
-          {tokenIsMasked && (
-            <Badge variant="outline" className="text-sm">
-              key configured
-            </Badge>
-          )}
-          {!supportsEmbedding && (
-            <Badge variant="outline" className="text-sm">
-              no embedding
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete provider “{name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Profiles that reference it will fail validation until repointed.
+              {referencingProfiles.length > 0 &&
+                ` ${referencingProfiles.length} Profile${
+                  referencingProfiles.length === 1 ? "" : "s"
+                } reference this provider.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDelete(false)
+                onDelete()
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="flex items-start justify-between gap-2 p-2">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          className="hover:bg-muted/40 flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md p-1 text-left"
+        >
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-base font-semibold">
+              {open ? "▾" : "▸"} {name}
+            </span>
+            {isNew && (
+              <Badge variant="default" className="text-sm">
+                new
+              </Badge>
+            )}
+            {!isNew && dirty && (
+              <Badge variant="secondary" className="text-sm">
+                edited
+              </Badge>
+            )}
+            {tokenIsMasked && (
+              <Badge variant="outline" className="text-sm">
+                key configured
+              </Badge>
+            )}
+            {!supportsEmbedding && (
+              <Badge variant="outline" className="text-sm">
+                no embedding
+              </Badge>
+            )}
+          </span>
+          <span className="text-muted-foreground truncate font-mono text-sm">
+            {apiKindLabel(profile.api_kind)}
+            {profile.base_url ? ` · ${profile.base_url}` : ""}
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="outline"
-            onClick={() => openTest("chat")}
+            onClick={(e) => {
+              e.stopPropagation()
+              openTest("chat")
+            }}
             disabled={disabled || isNew}
             aria-label={`Test chat probe for ${name}`}
           >
@@ -383,7 +469,10 @@ function ProfileRow({
           </Button>
           <Button
             variant="outline"
-            onClick={() => openTest("embedding")}
+            onClick={(e) => {
+              e.stopPropagation()
+              openTest("embedding")
+            }}
             disabled={disabled || isNew || !supportsEmbedding}
             aria-label={`Test embedding probe for ${name}`}
             title={
@@ -397,7 +486,10 @@ function ProfileRow({
           <Button
             variant="ghost"
             className="text-destructive hover:text-destructive"
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDeleteClick()
+            }}
             disabled={disabled}
             aria-label={`Delete Provider ${name}`}
           >
@@ -405,74 +497,148 @@ function ProfileRow({
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <div>
-          <Label className="text-muted-foreground text-sm">Provider</Label>
-          <Input
-            type="text"
-            value={profile.provider}
-            onChange={(e) => onPatch({ provider: e.target.value })}
-            className="h-8 text-base"
-            placeholder="openai | ollama | anthropic"
-          />
-        </div>
-        <div>
-          <Label className="text-muted-foreground text-sm">API kind</Label>
-          <Select
-            value={profile.api_kind || "openai"}
-            onValueChange={(value) => onPatch({ api_kind: value })}
+
+      {open && (
+        <CardContent className="p-0">
+          <div
+            id={panelId}
+            className="grid grid-cols-1 gap-2 p-4 pt-0 sm:grid-cols-2"
+            aria-label={`${name} connection settings`}
           >
-            <SelectTrigger className="border-border bg-background h-8 w-full rounded border px-2 text-base">
-              <SelectValue placeholder="Select API kind…" />
-            </SelectTrigger>
-            <SelectContent>
-              {API_KIND_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                  {opt.note ? ` — ${opt.note}` : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="sm:col-span-2">
-          <Label className="text-muted-foreground text-sm">Base URL</Label>
-          <Input
-            type="text"
-            value={profile.base_url}
-            onChange={(e) => onPatch({ base_url: e.target.value })}
-            className="h-8 font-mono text-base"
-            placeholder="https://api.openai.com/v1"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Label className="text-muted-foreground text-sm">
-            API key {tokenIsMasked && "(leave *** to keep stored)"}
-          </Label>
-          <Input
-            type="password"
-            value={profile.api_key ?? ""}
-            onChange={(e) => onPatch({ api_key: e.target.value })}
-            className="h-8 font-mono text-base"
-            placeholder="(none — local provider)"
-            autoComplete="off"
-          />
-        </div>
-        <div className="border-border flex items-center justify-between border-t pt-2 sm:col-span-2">
-          <div>
-            <Label className="text-base">Supports embedding</Label>
-            <p className="text-muted-foreground text-sm">
-              Off when the vendor exposes only chat completions (Anthropic,
-              DeepSeek today). Linking an off profile to the embedding purpose
-              is blocked in the purpose card.
-            </p>
+            <div className="sm:col-span-2">
+              <Label className="text-muted-foreground text-sm">API kind</Label>
+              <Select
+                value={profile.api_kind || "openai"}
+                onValueChange={(value) => onPatch({ api_kind: value })}
+              >
+                <SelectTrigger
+                  className="border-border bg-background h-9 w-full rounded border px-2 text-base"
+                  title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds currently route through the OpenAI-compatible path."
+                >
+                  <SelectValue placeholder="Select API kind…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {API_KIND_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                      {opt.note ? ` — ${opt.note}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {note && (
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Routes through the OpenAI-compatible path.
+                </p>
+              )}
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-muted-foreground text-sm">
+                Display label (cosmetic)
+              </Label>
+              <Input
+                type="text"
+                value={profile.provider}
+                onChange={(e) => onPatch({ provider: e.target.value })}
+                className="h-9 text-base"
+                placeholder="e.g. OpenAI prod"
+              />
+              <p className="text-muted-foreground mt-1 text-sm">
+                Shown in the Pipeline resolved summary; has no effect on
+                connectivity.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-muted-foreground text-sm">Base URL</Label>
+              <Input
+                type="text"
+                value={profile.base_url}
+                onChange={(e) => onPatch({ base_url: e.target.value })}
+                className="h-9 font-mono text-base"
+                placeholder="https://api.openai.com/v1"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-muted-foreground text-sm">
+                API key {tokenIsMasked && "(leave *** to keep stored)"}
+              </Label>
+              <Input
+                type="password"
+                value={profile.api_key ?? ""}
+                onChange={(e) => onPatch({ api_key: e.target.value })}
+                className="h-9 font-mono text-base"
+                placeholder="(none — local provider)"
+                autoComplete="off"
+              />
+            </div>
+            <div className="border-border flex items-center justify-between border-t pt-2 sm:col-span-2">
+              <div>
+                <Label className="text-base">Supports embedding</Label>
+                <p className="text-muted-foreground text-sm">
+                  Off when the vendor exposes only chat completions (Anthropic,
+                  DeepSeek today). Linking an off profile to the embedding
+                  purpose is blocked in the purpose card.
+                </p>
+              </div>
+              <Switch
+                checked={supportsEmbedding}
+                onCheckedChange={(v) => onPatch({ supports_embedding: v })}
+              />
+            </div>
           </div>
-          <Switch
-            checked={supportsEmbedding}
-            onCheckedChange={(v) => onPatch({ supports_embedding: v })}
-          />
-        </div>
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
+function AddProviderForm({
+  existingNames,
+  onClose,
+  onCreate,
+}: {
+  existingNames: string[]
+  onClose: () => void
+  onCreate: (name: string) => void
+}) {
+  const [name, setName] = useState("")
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = name.trim()
+    if (!trimmed) return
+    if (existingNames.includes(trimmed)) {
+      toast.error(`Provider "${trimmed}" already exists`)
+      return
+    }
+    onCreate(trimmed)
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <div>
+        <Label className="text-muted-foreground text-base">Provider name</Label>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. openai-prod"
+          autoComplete="off"
+          spellCheck={false}
+          required
+        />
+        <p className="text-muted-foreground mt-1 text-sm">
+          A short identifier. Set the base URL, API key, and API kind after it’s
+          created.
+        </p>
       </div>
-    </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!name.trim()}>
+          Add
+        </Button>
+      </div>
+    </form>
   )
 }

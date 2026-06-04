@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "darkraise-ui/components/dialog"
 import { TextField, SwitchField } from "darkraise-ui/forms"
 import { Button } from "darkraise-ui/components/button"
@@ -153,6 +154,11 @@ export function EditRepoDialog({
           </form.Field>
 
           <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">
+                Cancel
+              </Button>
+            </DialogClose>
             <Button type="submit">Save</Button>
           </DialogFooter>
         </form>

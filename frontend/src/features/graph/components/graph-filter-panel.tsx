@@ -76,7 +76,7 @@ export function GraphFilterPanel({
     selectedClusters.size > 0
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" style={{ width: 280 }}>
+    <div className="flex min-h-0 flex-1 flex-col w-[280px] max-w-[calc(100vw-1.5rem)]">
       <div className="border-border shrink-0 border-b p-3 pb-2">
         <p className="text-muted-foreground mb-1.5 text-base font-semibold tracking-wider uppercase">
           Search

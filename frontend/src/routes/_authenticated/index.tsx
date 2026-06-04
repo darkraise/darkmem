@@ -10,6 +10,7 @@ import {
 } from "darkraise-ui/components/card"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageHeader } from "darkraise-ui/layout"
 import { Stat, StatLabel, StatValue } from "darkraise-ui/components/stat"
 import {
@@ -120,8 +121,45 @@ function PipelineHealth({ recentErrors }: { recentErrors: number }) {
 
 function OverviewPage() {
   const [days, setDays] = useState(7)
-  const { data } = useOverview(days)
+  const { data, isLoading, isError, refetch } = useOverview(days)
   const navigate = useNavigate()
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 p-6">
+        <PageHeader title="Overview" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-md" />
+          ))}
+        </div>
+        <Skeleton className="h-12 w-full rounded-md" />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-48 w-full rounded-md" />
+          <Skeleton className="h-48 w-full rounded-md" />
+        </div>
+        <Skeleton className="h-48 w-full rounded-md" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-4 p-6">
+        <PageHeader title="Overview" />
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <p role="alert" className="text-destructive text-base">
+              Failed to load overview data.
+            </p>
+            <Button variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const counts = data?.counts
   const todayCount =

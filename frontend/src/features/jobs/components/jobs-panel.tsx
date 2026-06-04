@@ -4,6 +4,7 @@ import { DataTable, DataTableSkeleton } from "darkraise-ui/data-table"
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -88,7 +89,7 @@ function CronCell({ job }: { job: Job }) {
   return (
     <div className="flex items-center gap-1">
       <Select value={matchedPreset} onValueChange={(v) => v && setCron(v)}>
-        <SelectTrigger className="h-7 w-28 text-base">
+        <SelectTrigger className="h-9 w-28 text-base">
           <SelectValue placeholder="Preset…" />
         </SelectTrigger>
         <SelectContent>
@@ -101,7 +102,7 @@ function CronCell({ job }: { job: Job }) {
       </Select>
       <Input
         type="text"
-        className="h-7 w-36 font-mono text-base"
+        className="h-9 w-36 font-mono text-base"
         value={cron}
         onChange={(e) => setCron(e.target.value)}
         placeholder="*/5 * * * *"
@@ -110,7 +111,7 @@ function CronCell({ job }: { job: Job }) {
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 px-2 text-base"
+        className="h-9 px-2 text-base"
         onClick={handleSave}
         disabled={!dirty || updateJob.isPending}
       >
@@ -166,7 +167,7 @@ function TriggerCell({ job }: { job: Job }) {
     <Button
       variant="outline"
       size="sm"
-      className="h-7 px-2 text-base"
+      className="h-9 px-2 text-base"
       onClick={handleTrigger}
       disabled={triggerJob.isPending}
     >
@@ -255,7 +256,7 @@ export function ConfigCell({ job }: { job: Job }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-8 w-8"
           aria-label={`Configure ${job.display_name}`}
         >
           <Settings className="h-3.5 w-3.5" />
@@ -403,12 +404,16 @@ export function JobsPanel() {
         <p className="text-muted-foreground">No jobs registered.</p>
       ) : (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+          <CardHeader className="bg-foreground/5 rounded-t-[calc(var(--radius)-1px)] border-border border-b pb-4">
+            <CardTitle className="text-lg uppercase tracking-wide">
               Background Jobs
             </CardTitle>
+            <CardDescription>
+              Scheduled work driven by cron expressions. Toggle, reschedule, or
+              trigger each job on demand.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 pt-4">
             <DataTable columns={columns} data={data?.jobs ?? []} />
           </CardContent>
         </Card>

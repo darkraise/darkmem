@@ -2,6 +2,7 @@ import { useState } from "react"
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -57,10 +58,12 @@ export function MLProfilesPanel() {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Darkmem ML Profiles</CardTitle>
+        <CardHeader className="bg-foreground/5 border-border rounded-t-[calc(var(--radius)-1px)] border-b pb-4">
+          <CardTitle className="text-lg tracking-wide uppercase">
+            Darkmem ML Profiles
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           <Skeleton className="h-32 rounded" />
         </CardContent>
       </Card>
@@ -103,49 +106,53 @@ export function MLProfilesPanel() {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <div>
-            <CardTitle className="text-base">Darkmem ML Profiles</CardTitle>
-            <p className="text-muted-foreground mt-1 text-base">
-              HuggingFace classifiers loaded into the backend for in-process
-              inference. CPU-only. TTL of 0 means "never unload until backend
-              stops".
-            </p>
-          </div>
-          <Dialog open={addOpen} onOpenChange={setAddOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                Add ML Profile
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add ML Profile</DialogTitle>
-              </DialogHeader>
-              <AddMlProfileForm
-                existingNames={names}
-                onClose={() => setAddOpen(false)}
-                onCreate={(name, repo, ttl) => {
-                  const next: Record<string, MlProfile> = {
-                    ...profiles,
-                    [name]: { model_repo: repo, ttl_seconds: ttl },
-                  }
-                  update.mutate(
-                    { profiles: next },
-                    {
-                      onSuccess: () => {
-                        toast.success(`${name} created`)
-                        setAddOpen(false)
+        <CardHeader className="bg-foreground/5 border-border rounded-t-[calc(var(--radius)-1px)] border-b pb-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <CardTitle className="text-lg tracking-wide uppercase">
+                Darkmem ML Profiles
+              </CardTitle>
+              <CardDescription>
+                HuggingFace classifiers loaded into the backend for in-process
+                inference. CPU-only. TTL of 0 means "never unload until backend
+                stops".
+              </CardDescription>
+            </div>
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Add ML Profile
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add ML Profile</DialogTitle>
+                </DialogHeader>
+                <AddMlProfileForm
+                  existingNames={names}
+                  onClose={() => setAddOpen(false)}
+                  onCreate={(name, repo, ttl) => {
+                    const next: Record<string, MlProfile> = {
+                      ...profiles,
+                      [name]: { model_repo: repo, ttl_seconds: ttl },
+                    }
+                    update.mutate(
+                      { profiles: next },
+                      {
+                        onSuccess: () => {
+                          toast.success(`${name} created`)
+                          setAddOpen(false)
+                        },
+                        onError: (err) =>
+                          toast.error(`Create failed: ${err.message}`),
                       },
-                      onError: (err) =>
-                        toast.error(`Create failed: ${err.message}`),
-                    },
-                  )
-                }}
-              />
-            </DialogContent>
-          </Dialog>
+                    )
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {names.length === 0 ? (
@@ -223,7 +230,10 @@ function MlProfileRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-base font-bold">{name}</span>
-          <Badge variant="outline" className="font-mono text-sm">
+          <Badge
+            variant="outline"
+            className="max-w-full truncate font-mono text-sm"
+          >
             {profile.model_repo}
           </Badge>
           <Badge variant="secondary" className="text-sm">
@@ -241,7 +251,7 @@ function MlProfileRow({
           min={0}
           value={ttl}
           onValueChange={(d) => setTtl(d.valueAsNumber)}
-          className="h-8 w-28"
+          className="h-9 w-28"
         >
           <NumberInputControl>
             <NumberInputField className="text-base" />
@@ -255,7 +265,7 @@ function MlProfileRow({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-base"
+          className="h-9 px-2 text-base"
           onClick={() => onSaveTtl(ttl)}
           disabled={!dirty || disabled}
         >
@@ -264,7 +274,7 @@ function MlProfileRow({
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive h-7 px-2 text-base"
+          className="text-destructive hover:text-destructive h-9 px-2 text-base"
           onClick={onDelete}
           disabled={disabled}
           aria-label={`Delete ML profile ${name}`}

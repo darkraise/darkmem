@@ -210,7 +210,7 @@ export function StepLLM() {
             return (
               <div
                 key={purpose}
-                className="grid grid-cols-[140px,1fr,auto] items-center gap-3"
+                className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-center"
               >
                 <div>
                   <div className="text-base font-medium capitalize">

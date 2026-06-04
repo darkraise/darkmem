@@ -32,6 +32,7 @@ export function ServerPathBrowser({
   const [isGit, setIsGit] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [manual, setManual] = useState(value)
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     setManual(value)
@@ -40,6 +41,7 @@ export function ServerPathBrowser({
   useEffect(() => {
     if (!value) return
     let cancelled = false
+    setIsLoading(true)
     fsList(apiBase, value, false)
       .then((res) => {
         if (cancelled) return
@@ -54,6 +56,10 @@ export function ServerPathBrowser({
         setEntries([])
         setParent(null)
         setIsGit(false)
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsLoading(false)
       })
     return () => {
       cancelled = true
@@ -139,12 +145,28 @@ export function ServerPathBrowser({
                 <Folder className="h-4 w-4" />
               )}
               <span className="flex-1 truncate">{entry.name}</span>
-              {entry.is_git && <Badge variant="secondary">git</Badge>}
-              {entry.has_repos && <Badge>{`repos:${entry.repo_count}`}</Badge>}
-              <ChevronRight className="text-muted-foreground h-4 w-4" />
+              {entry.is_git && (
+                <Badge variant="secondary" className="shrink-0">
+                  git
+                </Badge>
+              )}
+              {entry.has_repos && (
+                <Badge className="shrink-0">{`repos:${entry.repo_count}`}</Badge>
+              )}
+              <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
             </Button>
           ))}
-          {entries.length === 0 && !error && (
+          {isLoading && (
+            <div className="text-muted-foreground px-3 py-6 text-center text-base">
+              Loading folders…
+            </div>
+          )}
+          {!isLoading && !value && (
+            <div className="text-muted-foreground px-3 py-6 text-center text-base">
+              Pick a root above to start browsing
+            </div>
+          )}
+          {!isLoading && value && entries.length === 0 && !error && (
             <div className="text-muted-foreground px-3 py-6 text-center text-base">
               No subfolders.
             </div>
