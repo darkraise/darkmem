@@ -6,6 +6,8 @@ module re-exports the canonical sets for back-compat.
 """
 from __future__ import annotations
 
+import re
+
 from app.taxonomy import RELATIONSHIP_TYPES
 
 
@@ -45,6 +47,53 @@ TECH_TYPES: frozenset[str] = frozenset({
     "language",
     "protocol",
 })
+
+
+# ── Entity-merge discriminator ──────────────────────────────────────────
+# Phase-4 dedup probes the global entity set with an ANN query at cosine 0.85
+# and canonicalizes a fresh entity onto a near neighbour. That recall is right
+# for surface variants ('postgres'/'postgresql', typos, casing) but WRONG for
+# entities that differ only by a discriminating token — 'february outage' vs
+# 'march outage', two ISO dates, 'v2' vs 'v3', 'us-east-1' vs 'us-west-2' —
+# which embed almost identically yet are distinct. ``names_distinct`` is the
+# lexical precision gate the embedding recall lacks.
+_MONTHS: frozenset[str] = frozenset({
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+})
+_TOKEN_SPLIT = re.compile(r"[\s\-_./:]+")
+
+
+def _tokens(name: str) -> list[str]:
+    return [t for t in _TOKEN_SPLIT.split((name or "").lower()) if t]
+
+
+def _norm_alnum(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
+
+
+def names_distinct(a: str, b: str) -> bool:
+    """True when ``a`` and ``b`` are DISTINCT entities that must not be merged
+    despite a high embedding similarity, because they differ by a discriminating
+    token: a numeric/date/version component or a month.
+
+    Returns False (mergeable) for pure formatting variants ('gpt-4'/'gpt4',
+    'darkraise-ui'/'darkraise ui') and for embedding-similar surface variants
+    that carry no discriminator ('postgres'/'postgresql', typos) — so the ANN
+    dedup keeps its recall while losing the false collapses."""
+    if _norm_alnum(a) == _norm_alnum(b):
+        return False  # same string modulo punctuation/case -> one entity
+    ta, tb = _tokens(a), _tokens(b)
+    num_a = frozenset(t for t in ta if any(c.isdigit() for c in t))
+    num_b = frozenset(t for t in tb if any(c.isdigit() for c in t))
+    if num_a != num_b:
+        return True  # different numbers / dates / versions
+    month_a = frozenset(t for t in ta if t in _MONTHS)
+    month_b = frozenset(t for t in tb if t in _MONTHS)
+    if month_a != month_b:
+        return True  # different months
+    return False
 
 
 REPLACES_CONFIDENCE_THRESHOLD: float = 0.7

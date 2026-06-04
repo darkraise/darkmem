@@ -14,7 +14,7 @@ from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import estimate_confidence, rank_fusion_factor
 from app.services.memory_classifier import classify as regex_classify
-from app.services.relations import TECH_TYPES
+from app.services.relations import TECH_TYPES, names_distinct
 from app.services.supersession import detect_supersessions
 from app.services import prompt
 from app.taxonomy import normalize_memory_type
@@ -652,7 +652,11 @@ class ProcessingPipeline:
                                 emb, fingerprint=entity_fingerprint, threshold=0.85,
                                 entity_type=etype,
                             )
-                        if match and match["name"].lower() != lower_name:
+                        if (
+                            match
+                            and match["name"].lower() != lower_name
+                            and not names_distinct(lower_name, match["name"])
+                        ):
                             return (lower_name, etype), match["name"]
                     except Exception as e:
                         logger.warning("Dedup lookup failed for %s: %s", lower_name, e)
