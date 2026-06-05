@@ -162,6 +162,7 @@ async def lifespan(app: FastAPI):
         make_token_blocklist_cleanup_runner,
         make_pipeline_failure_cleanup_runner,
         make_graph_orphan_cleanup_runner,
+        make_tag_orphan_cleanup_runner,
     )
 
     job_registry = JobRegistry(async_session_factory)
@@ -227,6 +228,18 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_graph_orphan_cleanup_runner(async_session_factory),
+    ))
+    job_registry.register(Job(
+        key="tag_orphan_cleanup",
+        display_name="Tag Orphan Cleanup",
+        description=(
+            "Prunes tags no live memory carries any more (left behind when "
+            "memories are deleted). Keeps the dashboard tag count and the tag "
+            "filter from showing unused tags. Safe to leave on."
+        ),
+        default_cron="0 * * * *",
+        min_interval_seconds=60,
+        runner=make_tag_orphan_cleanup_runner(async_session_factory),
     ))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop

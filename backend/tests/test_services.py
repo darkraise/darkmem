@@ -48,6 +48,39 @@ async def test_delete_memory(session):
     assert await svc.get_memory(created.id) is None
 
 
+async def test_delete_memory_prunes_orphaned_tags(session):
+    from sqlalchemy import func, select
+    from app.models.memory import Tag
+
+    svc = MemoryService(session)
+    created = await svc.create_memory(
+        MemoryCreate(content="only memory", tags=["solo-tag"], source="test"),
+        api_key_id=None,
+    )
+
+    await svc.delete_memory(created.id, api_key_id=None)
+
+    tag_count = (await session.execute(select(func.count()).select_from(Tag))).scalar()
+    assert tag_count == 0
+
+
+async def test_delete_memory_keeps_tag_used_by_another_memory(session):
+    from app.repositories.relational import PostgresTagRepository
+
+    svc = MemoryService(session)
+    m1 = await svc.create_memory(
+        MemoryCreate(content="first", tags=["shared"], source="test"), api_key_id=None
+    )
+    await svc.create_memory(
+        MemoryCreate(content="second", tags=["shared"], source="test"), api_key_id=None
+    )
+
+    await svc.delete_memory(m1.id, api_key_id=None)
+
+    remaining = {t.name for t in await PostgresTagRepository(session).list_all()}
+    assert "shared" in remaining
+
+
 async def test_search_memories(session):
     svc = MemoryService(session)
     await svc.create_memory(MemoryCreate(content="Alpha", tags=["scope/a"], source="test"), api_key_id=None)

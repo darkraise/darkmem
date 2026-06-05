@@ -206,6 +206,26 @@ class PostgresTagRepository(TagRepositoryBase):
         result = await self.session.execute(stmt)
         return [(row[0], row[1]) for row in result.all()]
 
+    async def prune_orphans(self) -> int:
+        """Delete tags no memory references any more, returning the count.
+
+        Tags are auto-created from memory tag strings and linked only through
+        ``memory_tags`` (ON DELETE CASCADE). Deleting a memory drops the link
+        rows but leaves the tag row behind, so the ``tags`` table — and every
+        count derived from it (dashboard stat, tag filter dropdown) — keeps
+        showing tags that no live memory carries. Mirrors
+        ``PostgresGraphRepository.prune_orphan_entities`` for the graph."""
+        result = await self.session.execute(
+            sa_text("""
+                DELETE FROM tags t
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM memory_tags mt WHERE mt.tag_id = t.id
+                )
+                RETURNING t.id
+            """)
+        )
+        return len(result.scalars().all())
+
 
 class PostgresAuditRepository(AuditRepositoryBase):
     def __init__(self, session: AsyncSession):

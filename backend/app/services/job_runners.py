@@ -122,6 +122,26 @@ def make_graph_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSe
     return run
 
 
+def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
+    """Prune tags no live memory carries any more.
+
+    Tags are auto-created from memory tag strings and linked only through
+    ``memory_tags`` (ON DELETE CASCADE), so a deleted memory drops the link
+    but leaves the tag row behind. The per-delete self-heal in
+    ``MemoryService.delete_memory`` covers new deletes; this backstops
+    historical orphans and any delete path that skipped it, so the dashboard
+    tag count and the tag filter never show tags nothing uses."""
+    async def run() -> None:
+        from app.repositories.relational import PostgresTagRepository
+        async with session_factory() as session:
+            repo = PostgresTagRepository(session)
+            removed = await repo.prune_orphans()
+            await session.commit()
+        if removed:
+            logger.info("Tag orphan cleanup: tags=%s", removed)
+    return run
+
+
 def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSession]):
     """Run one batch of code-symbol summarisation through the
     EnrichmentWorker. Replaces the worker's internal run_loop so the

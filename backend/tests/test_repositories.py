@@ -75,3 +75,23 @@ async def test_tag_get_or_create(session):
     assert tag1.category == "project"
 
 
+async def test_prune_orphans_removes_unreferenced_tags(session):
+    mem_repo = PostgresMemoryRepository(session)
+    tag_repo = PostgresTagRepository(session)
+
+    memory = await mem_repo.create(
+        content="kept", source="test", source_agent=None,
+        memory_type=None, importance=0.5, metadata={},
+    )
+    await mem_repo.set_tags(memory.id, ["in-use"])
+    await tag_repo.get_or_create("orphan-a")
+    await tag_repo.get_or_create("orphan-b")
+    await session.flush()
+
+    removed = await tag_repo.prune_orphans()
+
+    assert removed == 2
+    remaining = {t.name for t in await tag_repo.list_all()}
+    assert remaining == {"in-use"}
+
+

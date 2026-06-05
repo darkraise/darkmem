@@ -5,7 +5,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
-from app.repositories.relational import PostgresAuditRepository, PostgresMemoryRepository
+from app.repositories.relational import (
+    PostgresAuditRepository,
+    PostgresMemoryRepository,
+    PostgresTagRepository,
+)
 from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.pipeline import ProcessingPipeline
@@ -18,6 +22,7 @@ class MemoryService:
     def __init__(self, session: AsyncSession, pipeline: ProcessingPipeline | None = None):
         self.memory_repo = PostgresMemoryRepository(session)
         self.audit_repo = PostgresAuditRepository(session)
+        self.tag_repo = PostgresTagRepository(session)
         self.session = session
         self.pipeline = pipeline
 
@@ -136,6 +141,10 @@ class MemoryService:
         result = await self.memory_repo.delete(memory_id)
         if result:
             await self.audit_repo.log("delete", memory_id, api_key_id, {})
+            # The memory's memory_tags links are gone (ON DELETE CASCADE) after
+            # the delete flush, so prune any tag now carried by no memory before
+            # committing — keeps the dashboard tag count and tag filter honest.
+            await self.tag_repo.prune_orphans()
             # Commit before pipeline cleanup: pipeline.delete_memory opens a
             # fresh session and would otherwise deadlock against this
             # transaction's row/CASCADE locks on the deleted memory.
