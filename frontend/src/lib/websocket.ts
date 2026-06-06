@@ -59,14 +59,18 @@ export function useWebSocket() {
       ) {
         showPipelineToast(msg.event, msg.data as PipelineStatus)
         void qc.invalidateQueries({ queryKey: ["memories"] })
+        void qc.invalidateQueries({ queryKey: ["memory"] })
         void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
+        void qc.invalidateQueries({ queryKey: ["overview"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
         void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
       } else if (msg.event === "memory.deleted") {
         void qc.invalidateQueries({ queryKey: ["memories"] })
+        void qc.invalidateQueries({ queryKey: ["memory"] })
         void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
+        void qc.invalidateQueries({ queryKey: ["overview"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
       }
 

@@ -207,6 +207,14 @@ export function LLMPurposeCard({
     const prof = allLlmProfiles[profileName]
     if (!prof) return
     const linkedProvider = allProviders[prof.provider_ref]
+    if (!linkedProvider) {
+      // A dangling provider_ref must not leave the previous connection fields in
+      // place under a "Resolved from Profile X" caption — that misrepresents what
+      // the purpose will actually use.
+      toast.error(
+        `Profile "${profileName}" points at a missing provider; set the connection manually.`,
+      )
+    }
     patch({
       profile_ref: profileName,
       ml_profile_ref: null,
@@ -221,7 +229,7 @@ export function LLMPurposeCard({
             api_kind: linkedProvider.api_kind as LlmPurposeConfig["api_kind"],
             api_key: linkedProvider.api_key ?? "",
           }
-        : {}),
+        : { provider: "", base_url: "", api_key: "" }),
     })
     setParamsText(
       Object.keys(prof.params || {}).length

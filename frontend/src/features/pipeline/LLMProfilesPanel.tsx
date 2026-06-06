@@ -557,9 +557,11 @@ function ProfileRow({
     if (v === LEGACY_PURPOSE) return { purpose: null }
     if (v === "embedding")
       return { purpose: v, is_embedding: true, reasoning: false }
+    // Non-embedding purposes must clear is_embedding so the flag and the purpose
+    // column can never disagree (only purpose==='embedding' sets is_embedding).
     if (v === "reasoning")
-      return { purpose: v, reasoning: !profile.is_embedding }
-    return { purpose: v }
+      return { purpose: v, is_embedding: false, reasoning: true }
+    return { purpose: v, is_embedding: false }
   }
 
   const handleDeleteClick = () => {

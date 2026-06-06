@@ -51,6 +51,7 @@ export function KnowledgeGraphRenderer({
   const sigmaRef = useRef<Sigma | null>(null)
   const graphRef = useRef<Graph | null>(null)
   const fa2Ref = useRef<FA2Layout | null>(null)
+  const fa2StopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const selectedIdRef = useRef(selectedId)
   const hoveredNodeRef = useRef<string | null>(null)
 
@@ -214,7 +215,8 @@ export function KnowledgeGraphRenderer({
     })
     fa2Ref.current = fa2
     fa2.start()
-    setTimeout(() => {
+    fa2StopTimerRef.current = setTimeout(() => {
+      fa2StopTimerRef.current = null
       if (fa2Ref.current) fa2Ref.current.stop()
     }, 5000)
   }, [entities, relations, onSelect])
@@ -223,6 +225,10 @@ export function KnowledgeGraphRenderer({
     const frame = requestAnimationFrame(() => buildGraph())
     return () => {
       cancelAnimationFrame(frame)
+      if (fa2StopTimerRef.current) {
+        clearTimeout(fa2StopTimerRef.current)
+        fa2StopTimerRef.current = null
+      }
       if (fa2Ref.current) {
         fa2Ref.current.kill()
         fa2Ref.current = null

@@ -266,6 +266,10 @@ function MemoriesPage() {
     setSelected(new Set())
     setDetailMemory(null)
     qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+    qc.invalidateQueries({ queryKey: ["memories"] })
+    qc.invalidateQueries({ queryKey: ["stats"] })
+    qc.invalidateQueries({ queryKey: ["overview"] })
+    qc.invalidateQueries({ queryKey: ["tags"] })
     if (firstError) {
       toast.error(
         `Archived ${succeeded}/${ids.length}; first error: ${(firstError as Error).message}`,

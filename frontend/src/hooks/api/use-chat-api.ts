@@ -78,8 +78,11 @@ export function useUpdateConversation() {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["conversations"] })
+      // The open detail pane is keyed ['conversation', id]; without this a
+      // rename/archive leaves the open view stale.
+      qc.invalidateQueries({ queryKey: ["conversation", variables.id] })
     },
   })
 }

@@ -75,14 +75,17 @@ export const UNIFIED_PALETTE = [
 
 export const UNCLUSTERED_COLOR = "#8b949e"
 
+// Keys must match the current MEMORY_TYPES (app/taxonomy.py); LEGACY_MEMORY_TYPE_MAP
+// rewrites legacy names at ingest (debug -> problem), so the stored memory_type is
+// the post-legacy value.
 const KNOWN_TYPE_INDICES: Record<string, number> = {
   fact: 4, // blue
   decision: 15, // violet
-  debug: 0, // red
+  problem: 0, // red
   architecture: 2, // green
   preference: 14, // orange
-  session: 10, // cyan
-  workflow: 16, // emerald
+  reference: 10, // cyan
+  milestone: 16, // emerald
 }
 
 function stableHash(str: string): number {

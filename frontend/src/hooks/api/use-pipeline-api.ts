@@ -149,8 +149,16 @@ export function useReprocessStream(endpoint: "/analytics/reprocess/stream") {
         }
       }
 
+      // Reprocess re-runs extraction/classification across the set (changing
+      // technologies, llm_* fields, entity/relation counts and possibly status),
+      // and is its own SSE stream — not the per-memory pipeline.* WS path — so
+      // refresh the grid/tag views here too.
       qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
       qc.invalidateQueries({ queryKey: ["stats"] })
+      qc.invalidateQueries({ queryKey: ["overview"] })
+      qc.invalidateQueries({ queryKey: ["memories"] })
+      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+      qc.invalidateQueries({ queryKey: ["tags"] })
     } finally {
       setIsPending(false)
       abortRef.current = null
@@ -222,8 +230,19 @@ export function useRetryFailure() {
         `/pipeline-failures/${id}/retry`,
         { method: "POST" },
       ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+    // Outcome normally arrives via the pipeline.failure.updated WS event. But an
+    // accepted:false response never emits one, and a dropped WS has no replay —
+    // so refresh on rejection and add a delayed safety refetch.
+    onSuccess: (data) => {
+      if (!data?.accepted) {
+        qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+        qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+      }
+    },
+    onSettled: () => {
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+      }, 4000)
     },
   })
 }
@@ -258,12 +277,19 @@ export function useRetryAllFailures() {
         },
       )
     },
-    // Per-row progress arrives via WebSocket (PipelineRetryBatchProgress),
-    // but if the WS is disconnected the failures table goes stale forever.
-    // Invalidate immediately so at minimum the count badge refetches.
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
-      qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+    // Outcomes/final refresh normally arrive via pipeline.retry_batch.progress
+    // ("done"). Guard the no-WS-event cases: refresh on rejection / empty batch,
+    // plus a delayed safety refetch against a dropped WS (no event replay).
+    onSuccess: (data) => {
+      if (!data?.accepted || data.total === 0) {
+        qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
+        qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+      }
+    },
+    onSettled: () => {
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
+      }, 5000)
     },
   })
 }
