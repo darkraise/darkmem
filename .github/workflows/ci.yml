@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_DB: darkmem
+          POSTGRES_USER: darkmem
+          POSTGRES_PASSWORD: darkmem
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U darkmem"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
+      TEST_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (pinned)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock
+          pip install --no-deps .
+          pip install pytest pytest-asyncio ruff
+      - name: Create test database
+        run: PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_test;"
+      - name: Lint (ruff, advisory)
+        run: ruff check app/ --select F --output-format=github
+        continue-on-error: true
+      - name: Test
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend (tsc + vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+      - name: Unit tests
+        run: npx vitest run
+      - name: Build
+        run: npm run build
+
+  images:
+    name: Build & scan images
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t darkmem-api:ci ./backend
+      - name: Build UI image
+        run: docker build -t darkmem-ui:ci ./frontend
+      - name: Scan API image (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: darkmem-api:ci
+          severity: HIGH,CRITICAL
+          exit-code: "0"   # advisory until the dependency tree is triaged; flip to "1" to enforce
+          ignore-unfixed: true
+      - name: Scan UI image (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: darkmem-ui:ci
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          ignore-unfixed: true
