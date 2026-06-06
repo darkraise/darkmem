@@ -1,31 +1,63 @@
 services:
   darkmem-api:
-    image: darkraise/darkmem-api:latest
+    image: darkraise/darkmem-api:${DARKMEM_VERSION:-latest}
+    init: true
+    # Loopback-only: reach it through the UI's nginx proxy, or a TLS reverse proxy.
     ports:
       - "127.0.0.1:8000:8000"
     environment:
+      # ENVIRONMENT=production arms the fail-fast validators (JWT strength,
+      # SETUP_SECRET required) and the Secure cookie flag. Do NOT remove it.
+      - ENVIRONMENT=production
       - DATABASE_URL=postgresql+asyncpg://darkmem:${DB_PASSWORD}@postgres:5432/darkmem
       - JWT_SECRET=${JWT_SECRET}
-      - API_KEY_HMAC_SECRET=${API_KEY_HMAC_SECRET}
+      - SETUP_SECRET=${SETUP_SECRET}
+      # Same-origin behind the bundled nginx (UI uses relative /api/v1), so CORS
+      # is usually irrelevant; set this only if a browser hits the API cross-origin.
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      # The API is always fronted by nginx here; honor its X-Forwarded-For so the
+      # login rate limiter sees the real client IP.
+      - TRUST_PROXY_HEADERS=true
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Raised from 512m: code indexing loads file text + tree-sitter ASTs;
+          # 512m OOM-killed large-repo reindexes. Tune to your largest repo.
+          memory: 1g
+          cpus: "1.5"
+
+  darkmem-ui:
+    image: darkraise/darkmem-ui:${DARKMEM_VERSION:-latest}
+    init: true
+    # Loopback-only. Put your own TLS-terminating reverse proxy in front for any
+    # access beyond localhost — the session cookie is only sent Secure over HTTPS.
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      darkmem-api:
         condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 512m
-
-  darkmem-ui:
-    image: darkraise/darkmem-ui:latest
-    ports:
-      - "3000:80"
-    depends_on:
-      - darkmem-api
-    restart: unless-stopped
+          memory: 128m
+          cpus: "0.5"
 
   postgres:
     image: pgvector/pgvector:0.8.2-pg17
+    # max_connections sized for the API pool (30/process) plus headroom.
+    command: ["postgres", "-c", "max_connections=120"]
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
@@ -35,11 +67,15 @@ services:
       - POSTGRES_USER=darkmem
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "darkmem" ]
+      test: ["CMD", "pg_isready", "-U", "darkmem"]
       interval: 5s
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
 volumes:
   postgres_data:
