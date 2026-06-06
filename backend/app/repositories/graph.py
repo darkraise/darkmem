@@ -20,6 +20,10 @@ class PostgresGraphRepository:
         entity_type: str | None = None,
     ) -> dict | None:
         table = child_table("entity_embeddings", fingerprint)
+        # The ORDER BY ... <=> uses the HNSW index for ranking; the threshold in
+        # WHERE is a cheap post-filter on the single nearest row (LIMIT 1). A
+        # similarity threshold cannot be pushed into an HNSW index scan, so this
+        # recomputed-distance predicate is inherent, not an oversight.
         # Constrain the match to the probe's own type: a name embedding alone
         # can't tell a `tool` named "react" from a `concept` named "react", and
         # canonicalizing one onto the other corrupts the (name, type) binding.
@@ -546,6 +550,10 @@ class PostgresGraphRepository:
         return dict(result.mappings().one())
 
     async def insert_entity_stub(self, name: str) -> None:
+        # Stub entities carry no memory_ids, so the periodic graph_orphan_cleanup
+        # sweep will reclaim them unless a memory later asserts them. This is
+        # acceptable for the experimental knowledge-triple path that calls this;
+        # the main extraction write path always sets memory_ids.
         await self.session.execute(
             text("""
                 INSERT INTO entities (name, entity_type)

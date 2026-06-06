@@ -363,9 +363,14 @@ export function useReembedAll() {
 }
 
 export function usePruneObsoleteCache() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: () =>
       apiFetch<{ deleted: number }>("/reembed/prune-cache", { method: "POST" }),
+    // Synchronous result (not a batch-progress WS event), so refresh the counts here.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["obsoleteCounts"] })
+    },
   })
 }
 
