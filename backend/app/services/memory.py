@@ -170,6 +170,33 @@ class MemoryService:
                 )
         return result
 
+    async def bulk_delete_memories(self, ids: list[UUID], api_key_id: UUID | None) -> dict:
+        """Delete many memories in ONE request, SEQUENTIALLY. Each delete runs an
+        independent graph-cleanup pass (``delete_by_memory_id``) that mutates
+        shared ``entities`` / ``entity_relations`` rows; concurrent passes on the
+        same rows deadlock — exactly what the per-row UI delete loop hit. Running
+        them in series here lets the client fire one request instead of N racing
+        ones. De-duplicates ids and reuses the tested single-delete path."""
+        deleted = 0
+        not_found: list[UUID] = []
+        errored: list[UUID] = []
+        seen: set[UUID] = set()
+        for mid in ids:
+            if mid in seen:
+                continue
+            seen.add(mid)
+            # Isolate each delete: one row raising mid-loop must not abort the
+            # whole batch and lose the report for the rows already committed.
+            try:
+                if await self.delete_memory(mid, api_key_id):
+                    deleted += 1
+                else:
+                    not_found.append(mid)
+            except Exception as e:
+                logger.warning("Bulk delete failed for memory %s: %s", mid, e)
+                errored.append(mid)
+        return {"deleted": deleted, "not_found": not_found, "errored": errored}
+
     def _matches_schema_v2_filters(self, memory: Memory, params: MemorySearchRequest) -> bool:
         """Schema-v2 filters applied in-memory after semantic search returns IDs.
 

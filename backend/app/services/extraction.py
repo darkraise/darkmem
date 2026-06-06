@@ -940,7 +940,7 @@ def _rescue_relations(
     # ``promtail USES grpc`` + ``promtail USES loki`` instead of the
     # adjacency-only misreads (``loki USES grpc``).
     out = _rescue_relations_subject_tracking(
-        text_lower, name_to_entity, occurrences, out, existing,
+        text_lower, name_to_entity, occurrences, out, existing, clauses,
     )
 
     # Third pass: generic REPLACES from transition-verb patterns. Catches
@@ -948,7 +948,7 @@ def _rescue_relations(
     # "swapped X for Y", "Y supersedes X", etc. without case-by-case
     # connector phrases for every English verb form.
     out = _rescue_relations_replaces(
-        text_lower, name_to_entity, occurrences, out, existing,
+        text_lower, name_to_entity, occurrences, out, existing, clauses,
     )
     return out
 
@@ -959,6 +959,7 @@ def _rescue_relations_replaces(
     occurrences: list[tuple[str, int, int]],
     current: list[dict],
     existing: set,
+    clauses: list | None = None,
 ) -> list[dict]:
     """Generic REPLACES extractor for transition-verb patterns.
 
@@ -999,7 +1000,7 @@ def _rescue_relations_replaces(
                 return occ
         return None
 
-    for clause_start, clause_end in _split_clauses(text_lower):
+    for clause_start, clause_end in (clauses if clauses is not None else _split_clauses(text_lower)):
         clause = text_lower[clause_start:clause_end]
         if re.search(r"\b(?:no|not|without|never)\b", clause):
             # Skip outright; cheap negation guard at clause level.
@@ -1156,6 +1157,7 @@ def _rescue_relations_subject_tracking(
     occurrences: list[tuple[str, int, int]],
     current: list[dict],
     existing: set,
+    clauses: list | None = None,
 ) -> list[dict]:
     """Emit triples keyed on the clause's grammatical subject, not nearest entity.
 
@@ -1168,7 +1170,7 @@ def _rescue_relations_subject_tracking(
 
     Negation between the subject and the connector still suppresses.
     """
-    clauses = _split_clauses(text_lower)
+    clauses = clauses if clauses is not None else _split_clauses(text_lower)
     out = list(current)
     MAX_TAIL_GAP = 15
 
@@ -2028,6 +2030,10 @@ def clean_extraction(
     # ('A, B and C all use X') must happen after _dedup_by_target_predicate,
     # which would otherwise collapse the multi-source set back to one edge.
     relationships = _fan_out_coordinated(relationships, entities, content)
+    # Re-apply the event-legality guard: fan-out can mint edges with an
+    # event-typed entity as an endpoint for a relation type the guard forbids,
+    # and the earlier pass already ran before these edges existed.
+    relationships = _filter_event_edges(relationships, entities)
     # Drop any date entity left without a HAPPENED_ON edge (dangling value node).
     entities = _drop_unlinked_dates(entities, relationships)
 

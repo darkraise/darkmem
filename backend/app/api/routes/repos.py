@@ -138,7 +138,7 @@ async def delete_repo(
         raise HTTPException(status_code=404, detail="Repository not found")
 
 
-@router.post("/{repo_id}/reindex")
+@router.post("/{repo_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
 async def reindex_repo(
     repo_id: UUID,
     body: ReindexRequest = ReindexRequest(),
@@ -157,7 +157,10 @@ async def reindex_repo(
         raise HTTPException(status_code=404, detail="Repository not found")
 
     if repo.status in ("indexing", "cloning"):
-        return {"status": "already_running", "repo_id": str(repo_id)}
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Repository is already indexing",
+        )
 
     repo.status = "indexing"
     repo.status_message = "Queued for indexing..."
@@ -203,8 +206,18 @@ async def reindex_repo(
                 logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
     from app.services.task_registry import TaskRegistry
-    task = asyncio.create_task(_run_index())
-    TaskRegistry.register(repo_id, "reindex", task, "Indexing repository...")
+    try:
+        task = asyncio.create_task(_run_index())
+        TaskRegistry.register(repo_id, "reindex", task, "Indexing repository...")
+    except Exception as e:
+        # The 'indexing' status was already committed above; if scheduling fails
+        # the repo would be stuck there with no task. Reset it so the UI isn't
+        # wedged and the user can retry.
+        logger.error("Failed to schedule reindex for %s: %s", repo_id, e)
+        repo.status = "error"
+        repo.status_message = "Failed to start indexing"
+        await manager.session.commit()
+        raise HTTPException(status_code=500, detail="Failed to start indexing")
     return {"status": "indexing", "repo_id": str(repo_id)}
 
 

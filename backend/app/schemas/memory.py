@@ -87,5 +87,15 @@ class MemoryBatchCreate(BaseModel):
     entries: list[MemoryCreate] = Field(min_length=1, max_length=100)
 
 
+class MemoryBulkDelete(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class MemoryBulkDeleteResponse(BaseModel):
+    deleted: int
+    not_found: list[uuid.UUID] = Field(default_factory=list)
+    errored: list[uuid.UUID] = Field(default_factory=list)
+
+
 class MemoryMergeRequest(BaseModel):
     target_id: uuid.UUID

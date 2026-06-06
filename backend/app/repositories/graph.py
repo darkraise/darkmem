@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -6,6 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedder_registry import child_table
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresGraphRepository:
@@ -185,6 +188,10 @@ class PostgresGraphRepository:
         )
         pair = pair_result.mappings().first()
         if not pair:
+            logger.debug(
+                "create_relationship dropped: endpoint not resolvable (%s -%s-> %s)",
+                source_name, rel_type, target_name,
+            )
             return
 
         await self.session.execute(

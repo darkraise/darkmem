@@ -216,8 +216,11 @@ async def retry_all(
                     })
             except Exception:
                 logger.exception("Bulk memory retry failed")
-                errors += len(entries_with_failures) - processed
-                processed = len(entries_with_failures)
+                # process_batch raised before the per-entry zip loop ran, so none
+                # of THIS chunk is in `processed` yet; count the whole chunk as
+                # attempted-and-errored (cumulative across chunks).
+                errors += len(entries_with_failures)
+                processed += len(entries_with_failures)
             finally:
                 for f, _ in entries_with_failures:
                     retry_locks.release(UUID(f["id"]))
@@ -257,7 +260,7 @@ async def retry_all(
     return {"accepted": True, "batch_id": batch_id, "total": total}
 
 
-@router.delete("/{failure_id}")
+@router.delete("/{failure_id}", status_code=204)
 async def forget_failure(
     failure_id: UUID,
     _user=Depends(require_auth),
@@ -267,4 +270,3 @@ async def forget_failure(
     deleted = await svc.forget_by_id(failure_id)
     if deleted is None:
         raise HTTPException(status_code=404, detail="Failure not found")
-    return {"ok": True}
