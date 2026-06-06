@@ -13,8 +13,6 @@ export const editRepoSchema = z.object({
   path: z.string().min(1, "Path required"),
   branch: z.string().default("main"),
   auto_sync: z.boolean().default(true),
-  enrich_symbols: z.boolean().default(true),
-  generate_wiki: z.boolean().default(true),
 })
 export type EditRepoInput = z.infer<typeof editRepoSchema>
 

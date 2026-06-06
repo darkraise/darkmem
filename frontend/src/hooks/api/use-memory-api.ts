@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
-export type MemoryStatus = "active" | "superseded" | "archived" | "deleted"
+// Mirrors backend MEMORY_STATUS_VALUES (app/models/memory.py). Archival is a
+// separate `is_archived` boolean, not a status.
+export type MemoryStatus = "active" | "superseded" | "deprecated"
 
 export interface Memory {
   id: string

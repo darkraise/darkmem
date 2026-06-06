@@ -20,14 +20,18 @@ import {
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
-import { createMemorySchema } from "../schemas"
+import { createMemorySchema, type CreateMemoryInput } from "../schemas"
+
+type MemoryTypeValue = CreateMemoryInput["memory_type"]
 
 const MEMORY_TYPE_OPTIONS = [
   { value: "fact", label: "Fact" },
   { value: "decision", label: "Decision" },
   { value: "preference", label: "Preference" },
+  { value: "problem", label: "Problem" },
   { value: "reference", label: "Reference" },
-  { value: "context", label: "Context" },
+  { value: "architecture", label: "Architecture" },
+  { value: "milestone", label: "Milestone" },
 ]
 
 interface CreateMemoryDialogProps {
@@ -45,12 +49,7 @@ export function CreateMemoryDialog({
     defaultValues: {
       content: "",
       project: "default",
-      memory_type: "fact" as
-        | "fact"
-        | "decision"
-        | "preference"
-        | "reference"
-        | "context",
+      memory_type: "fact" as MemoryTypeValue,
       tags: [] as string[],
     },
     onSubmit: async ({ value }) => {
@@ -126,16 +125,7 @@ export function CreateMemoryDialog({
                 name={field.name}
                 label="Memory Type"
                 value={field.state.value}
-                onChange={(v) =>
-                  field.handleChange(
-                    v as
-                      | "fact"
-                      | "decision"
-                      | "preference"
-                      | "reference"
-                      | "context",
-                  )
-                }
+                onChange={(v) => field.handleChange(v as MemoryTypeValue)}
                 onBlur={field.handleBlur}
                 options={MEMORY_TYPE_OPTIONS}
                 isInvalid={field.state.meta.errors.length > 0}

@@ -35,8 +35,6 @@ export function EditRepoDialog({
       path: initial.path ?? "",
       branch: initial.branch ?? "main",
       auto_sync: initial.auto_sync ?? true,
-      enrich_symbols: initial.enrich_symbols ?? true,
-      generate_wiki: initial.generate_wiki ?? true,
     },
     onSubmit: async ({ value }) => {
       const parsed = editRepoSchema.safeParse(value)
@@ -122,30 +120,6 @@ export function EditRepoDialog({
               <SwitchField
                 name={field.name}
                 label="Auto-sync"
-                value={field.state.value}
-                onChange={(v) => field.handleChange(v)}
-                onBlur={field.handleBlur}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="enrich_symbols">
-            {(field) => (
-              <SwitchField
-                name={field.name}
-                label="Enrich symbols"
-                value={field.state.value}
-                onChange={(v) => field.handleChange(v)}
-                onBlur={field.handleBlur}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="generate_wiki">
-            {(field) => (
-              <SwitchField
-                name={field.name}
-                label="Generate wiki"
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}

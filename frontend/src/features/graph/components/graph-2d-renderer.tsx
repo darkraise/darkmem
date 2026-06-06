@@ -57,6 +57,8 @@ export function Graph2DRenderer({
   onReady,
   sizeMode,
   colorMode,
+  spacing,
+  clusterTightness,
   hullMode,
   entityLayerEnabled,
   entities,
@@ -362,7 +364,12 @@ export function Graph2DRenderer({
         linLogMode: true,
         outboundAttractionDistribution: false,
         strongGravityMode: true,
-        gravity: 1,
+        // Drive the two toolbar sliders: higher spacing spreads nodes out
+        // (scalingRatio), higher tightness pulls them to the centre (gravity).
+        // Defaults (spacing 100, tightness 300) reproduce the previous
+        // hardcoded gravity:1 / scalingRatio:10.
+        gravity: Math.max(0.1, clusterTightness / 300),
+        scalingRatio: Math.max(1, spacing / 10),
         slowDown: 12,
       },
     })
@@ -379,6 +386,8 @@ export function Graph2DRenderer({
     filteredEdges,
     sizeMode,
     colorMode,
+    spacing,
+    clusterTightness,
     entityLayerEnabled,
     entities,
     entityRelations,

@@ -250,7 +250,9 @@ function MlProfileRow({
         <NumberInput
           min={0}
           value={ttl}
-          onValueChange={(d) => setTtl(d.valueAsNumber)}
+          onValueChange={(d) =>
+            setTtl(Number.isNaN(d.valueAsNumber) ? 0 : d.valueAsNumber)
+          }
           className="h-9 w-28"
         >
           <NumberInputControl>
@@ -344,7 +346,9 @@ function AddMlProfileForm({
         <NumberInput
           min={0}
           value={ttl}
-          onValueChange={(d) => setTtl(d.valueAsNumber)}
+          onValueChange={(d) =>
+            setTtl(Number.isNaN(d.valueAsNumber) ? 0 : d.valueAsNumber)
+          }
         >
           <NumberInputControl>
             <NumberInputField />

@@ -42,8 +42,6 @@ export interface RepoUpdateParams {
   default_branch?: string
   auth_token?: string
   auto_sync?: boolean
-  enrich_symbols?: boolean
-  generate_wiki?: boolean
 }
 
 export interface CodeGraphNode {

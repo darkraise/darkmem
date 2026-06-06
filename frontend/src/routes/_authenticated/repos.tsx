@@ -519,6 +519,7 @@ function RepositoriesPage() {
           </div>
 
           <EditRepoDialog
+            key={editingRepo?.id}
             open={!!editingRepo}
             onOpenChange={(o) => !o && setEditingRepo(null)}
             initial={
@@ -528,8 +529,6 @@ function RepositoriesPage() {
                     path: editingRepo.local_path ?? "",
                     branch: editingRepo.default_branch,
                     auto_sync: editingRepo.auto_sync,
-                    enrich_symbols: true,
-                    generate_wiki: true,
                   }
                 : {}
             }
@@ -541,8 +540,6 @@ function RepositoriesPage() {
                 data.default_branch = v.branch
               if (v.auto_sync !== editingRepo.auto_sync)
                 data.auto_sync = v.auto_sync
-              data.enrich_symbols = v.enrich_symbols
-              data.generate_wiki = v.generate_wiki
               if (Object.keys(data).length === 0) {
                 toast.info("No changes to save")
                 return
