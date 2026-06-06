@@ -179,11 +179,29 @@ image scan) gating a tagged push; commit a backend lockfile.
 
 ---
 
-## Next step
-I'll start remediating the code/config blockers and high items I can resolve
-deterministically (ENVIRONMENT + compose hardening, `.dockerignore`, nginx headers,
-healthcheck, logging config, MCP gating, `.env.example`, README, backup script + CI,
-and the reliability/perf/durability code fixes). Two items need **your** input
-because they're genuine product/ops decisions: which **license** to apply, and the
-**deployment topology** (is the UI meant to be public behind your own TLS proxy, or
-strictly LAN/loopback?). Everything else I can take to green.
+## Remediation status (2026-06-07, branch `prod/readiness-2026-06-07`)
+
+Decisions taken: **Apache-2.0** license; **LAN / single-operator** topology.
+
+**All 9 launch-blockers fixed:**
+- LB1 — `ENVIRONMENT=production` set in compose (+ documented + `.env.example`); validators now fail-fast.
+- LB2 — `LICENSE` (Apache-2.0) added; declared in `pyproject.toml` + `package.json`.
+- LB3 — production `README.md` (quickstart, config reference, setup-wizard flow, backup/upgrade runbook, security checklist).
+- LB4 — `/mcp` removed from the nginx proxy + UI bound to `127.0.0.1`; MCP stays loopback-only.
+- LB5 — `backend/.dockerignore` + `frontend/.dockerignore` (keep `frontend/.env` out of the build context).
+- LB6 — `scripts/backup.sh` + `restore.sh` + runbook.
+- LB7 — migration behavior documented (single-replica, backup-before-upgrade, 0003 graph rebuild noted).
+- LB8 — nginx security headers + CSP (+ gzip, asset caching, `/ws` timeout).
+- LB9 — `.github/workflows/ci.yml` (pytest on a pgvector service, tsc/vitest/build, docker build + Trivy); pinned `requirements.lock`; Dockerfile installs from it.
+
+**High items fixed:** removed dead `API_KEY_HMAC_SECRET`; `CORS_ORIGINS`/`TRUST_PROXY_HEADERS` wired via compose; app **logging config** (LOG_LEVEL) so logs emit; **strong-ref background tasks** (no GC mid-run); **expired-memory sweep** job (honors `expires_at`); **pool vs max_connections** reconciled (`max_connections=120`); api **memory limit 512m→1g** (code-indexing OOM mitigation); api **healthcheck** (compose + Dockerfile); fixed invalid `mcp[server]` extra; version drift resolved (0.2.0); `.env.example` rewritten.
+
+**Deferred / mitigated (appropriate for the LAN single-operator topology):**
+- Secrets at rest (git tokens, provider api_keys) remain plaintext — documented in the README security checklist (keep the volume + backups access-controlled/encrypted). Encrypt-at-rest is the follow-up if the trust model widens.
+- Orphan embedding partition tables on embedder **model rotation** — low-frequency for a single operator; documented. Follow-up: write `retired_at` + drop stale partitions in the reembed flow.
+- DB-startup-green-when-down — mitigated by compose `depends_on: postgres healthy` + entrypoint `alembic upgrade` fail-fast + the new logging surfacing the boot error.
+- Code-indexing memory footprint — mitigated by the 1g limit + tuning note; freeing `parsed["content"]` mid-pipeline is the further optimization.
+- Observability enhancements (structured/JSON logs, request-ID correlation, Sentry/Prometheus) — basic logging is now configured; these are post-launch improvements.
+- WebSocket reconnect-resync — events missed during a disconnect aren't replayed; the higher-value reliability follow-up.
+
+**Verification:** backend **568 tests pass**, frontend **tsc clean + 106 tests pass** after all changes. Branch **not merged**.
