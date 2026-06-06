@@ -321,6 +321,9 @@ class RepoManager:
 
     async def pull_repo(self, repo: Repository) -> str | None:
         cwd = self.repo_working_dir(repo)
+        # local_path repos point at the operator's OWN checkout; that working
+        # tree must never be rmtree'd or re-cloned (the reclone fallback below).
+        is_local = bool(repo.local_path)
 
         needs_clone = not cwd.exists() or not (cwd / ".git").exists()
 
@@ -342,10 +345,15 @@ class RepoManager:
                 result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"], env=env)
                 return result.strip() if result else None
             except RuntimeError as e:
+                if is_local:
+                    # Leave the operator's working tree intact; the caller reads
+                    # HEAD from the existing checkout.
+                    logger.warning("Pull failed for local repo %s (working tree left intact): %s", repo.name, e)
+                    return None
                 logger.warning("Pull failed for %s, will re-clone: %s", repo.name, e)
                 needs_clone = True
 
-        if needs_clone and repo.url:
+        if needs_clone and repo.url and not is_local:
             if cwd.exists():
                 shutil.rmtree(cwd, onexc=_force_remove)
             await self._clone_repo(repo)
@@ -366,6 +374,12 @@ class RepoManager:
     async def _clone_repo(self, repo: Repository) -> None:
         if not repo.url:
             return
+
+        # Defence-in-depth: rows can be created via paths other than RepoCreate,
+        # so re-validate the URL and branch before they reach the git argv.
+        from app.schemas.code import validate_git_ref, validate_repo_url
+        validate_repo_url(repo.url)
+        validate_git_ref(repo.default_branch)
 
         dest = self._clone_path(repo)
         if dest.exists():

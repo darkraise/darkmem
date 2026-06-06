@@ -39,6 +39,7 @@ def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeCon
         params=cfg.params,
         provider_ref=getattr(cfg, "provider_ref", None),
         profile_ref=getattr(cfg, "profile_ref", None),
+        ml_profile_ref=getattr(cfg, "ml_profile_ref", None),
     )
 
 

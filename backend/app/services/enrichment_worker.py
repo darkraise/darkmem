@@ -17,6 +17,10 @@ SUMMARY_PROMPT = """Summarize what this {kind} does in 1-2 sentences. Be specifi
 
 MAX_SOURCE_CHARS = 3000
 
+# A transient LLM error (timeout/rate-limit/5xx) must not permanently strand a
+# symbol: keep it 'pending' and retry until this many attempts, then give up.
+MAX_ENRICH_ATTEMPTS = 3
+
 
 class EnrichmentWorker:
     def __init__(self, llm: LLMOrchestrator, broadcast=None):
@@ -35,7 +39,13 @@ class EnrichmentWorker:
             stmt = (
                 select(CodeSymbol)
                 .where(CodeSymbol.enrichment_status == "pending")
-                .order_by(CodeSymbol.enrichment_priority.desc())
+                # Already-retried symbols sink below untried ones so a
+                # persistently-failing symbol can't starve fresh work within a
+                # single drain.
+                .order_by(
+                    CodeSymbol.enrichment_attempts.asc(),
+                    CodeSymbol.enrichment_priority.desc(),
+                )
                 .limit(size)
             )
             result = await session.execute(stmt)
@@ -79,9 +89,17 @@ class EnrichmentWorker:
                     symbol.summary = result_val
                     symbol.enrichment_status = "completed"
                     processed += 1
+                elif isinstance(result_val, Exception):
+                    # Transient (timeout/rate-limit/5xx): retry until the cap,
+                    # only then make it terminal, so one blip doesn't lose the
+                    # summary for the life of the row.
+                    logger.warning("Enrich attempt failed for symbol %s: %s", symbol.id, result_val)
+                    symbol.enrichment_attempts = (symbol.enrichment_attempts or 0) + 1
+                    if symbol.enrichment_attempts >= MAX_ENRICH_ATTEMPTS:
+                        symbol.enrichment_status = "failed"
                 else:
-                    if isinstance(result_val, Exception):
-                        logger.exception("Failed to enrich symbol %s: %s", symbol.id, result_val)
+                    # Clean non-summary result (model returned nothing usable):
+                    # not a transient error, so don't burn retries on it.
                     symbol.enrichment_status = "failed"
 
             await session.commit()

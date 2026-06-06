@@ -346,7 +346,7 @@ class TestCallResolverCache:
         assert result1 is None
         result2 = resolver.resolve(call, "main.py")
         assert result2 is None
-        assert ("main.py", "nonexistent", None) in resolver._cache
+        assert ("main.py", "nonexistent", None, "free", 0) in resolver._cache
 
     def test_different_files_cached_separately(self, resolver):
         call = ExtractedCall(called_name="helper", call_form="free", line=10, arg_count=1)
@@ -356,8 +356,8 @@ class TestCallResolverCache:
         assert result1 is not None
         assert result2 is not None
         assert result1[1] > result2[1]  # import-scoped > global
-        assert ("main.py", "helper", None) in resolver._cache
-        assert ("other.py", "helper", None) in resolver._cache
+        assert ("main.py", "helper", None, "free", 1) in resolver._cache
+        assert ("other.py", "helper", None, "free", 1) in resolver._cache
 
     def test_builtins_not_cached(self, resolver):
         call = ExtractedCall(called_name="print", call_form="free", line=1, arg_count=1)

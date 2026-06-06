@@ -82,6 +82,15 @@ async def update_memory(
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
+    # 'superseded' requires an atomically-set superseded_by (enforced by
+    # chk_superseded_has_pointer) and is only ever produced by the pipeline's
+    # detect_supersessions. Setting it through this generic update would violate
+    # the CHECK and 500, so reject it here.
+    if body.status == "superseded":
+        raise HTTPException(
+            status_code=400,
+            detail="status 'superseded' is managed by the pipeline and cannot be set directly",
+        )
     memory = await service.update_memory(memory_id, body, api_key_id=None)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")

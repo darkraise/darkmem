@@ -1,7 +1,34 @@
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+# git accepts transport helpers (`ext::sh -c ...` = arbitrary command execution)
+# and `file://` / bare local paths (local-file read / SSRF). Only allow real
+# network transports for a clone URL.
+ALLOWED_REPO_URL_SCHEMES = {"https", "http", "ssh", "git"}
+
+
+def validate_repo_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in ALLOWED_REPO_URL_SCHEMES:
+        raise ValueError(
+            "repo url must use one of "
+            f"{sorted(ALLOWED_REPO_URL_SCHEMES)} (e.g. https://… or ssh://git@host/repo); "
+            "scp-style and ext::/file:// targets are rejected"
+        )
+    if not parsed.netloc:
+        raise ValueError("repo url must include a host")
+    return url
+
+
+def validate_git_ref(ref: str) -> str:
+    # A branch starting with '-' is an argument-injection vector into the git
+    # clone/fetch/reset argv; whitespace/control chars are never valid refs.
+    if ref.startswith("-") or any(c.isspace() for c in ref):
+        raise ValueError("invalid branch name")
+    return ref
 
 
 class RepoCreate(BaseModel):
@@ -13,12 +40,27 @@ class RepoCreate(BaseModel):
     auth_token: str | None = None
     auto_sync: bool = True
 
+    @field_validator("url")
+    @classmethod
+    def _check_url(cls, v: str | None) -> str | None:
+        return validate_repo_url(v) if v else v
+
+    @field_validator("default_branch")
+    @classmethod
+    def _check_branch(cls, v: str) -> str:
+        return validate_git_ref(v)
+
 
 class RepoUpdate(BaseModel):
     name: str | None = None
     auto_sync: bool | None = None
     auth_token: str | None = None
     default_branch: str | None = None
+
+    @field_validator("default_branch")
+    @classmethod
+    def _check_branch(cls, v: str | None) -> str | None:
+        return validate_git_ref(v) if v else v
 
 
 class ReindexRequest(BaseModel):

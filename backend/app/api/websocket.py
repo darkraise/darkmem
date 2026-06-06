@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -10,10 +11,20 @@ from app.schemas.events import EVENT_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
+# A frozen/backgrounded browser tab stops draining its socket; without a cap a
+# producer awaiting the broadcast (the indexing / memory pipeline) would block
+# on TCP backpressure behind the slowest consumer.
+SEND_TIMEOUT_SECONDS = 5.0
+
 
 class EventManager:
     def __init__(self):
         self.connections: list[WebSocket] = []
+        # Serialize the per-connection send fan-out: broadcast() is awaited from
+        # many concurrent coroutines (pipeline fan-out, indexing, jobs, reembed)
+        # and Starlette's WebSocket.send is not safe for concurrent senders on
+        # one socket — interleaved ASGI sends raise and kill the connection.
+        self._send_lock = asyncio.Lock()
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
@@ -32,13 +43,14 @@ class EventManager:
                 logger.warning("Event '%s' data does not match schema: %s", event_type, e)
         message = json.dumps({"event": event_type, "data": data})
         dead: list[WebSocket] = []
-        for ws in list(self.connections):
-            try:
-                await ws.send_text(message)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(ws)
+        async with self._send_lock:
+            for ws in list(self.connections):
+                try:
+                    await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT_SECONDS)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self.disconnect(ws)
 
 
 event_manager = EventManager()
@@ -71,4 +83,11 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
+        pass
+    except Exception:
+        # Any other receive error (e.g. the socket was already torn down by a
+        # failed broadcast send) must still evict the connection so the list
+        # self-heals instead of leaking a dead socket.
+        logger.debug("WebSocket receive loop ended abnormally", exc_info=True)
+    finally:
         event_manager.disconnect(ws)

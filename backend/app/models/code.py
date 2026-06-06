@@ -62,6 +62,7 @@ class CodeSymbol(Base):
     summary: Mapped[str | None] = mapped_column(Text)
     enrichment_status: Mapped[str] = mapped_column(String(20), default="pending")
     enrichment_priority: Mapped[int] = mapped_column(Integer, default=0)
+    enrichment_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     file: Mapped["CodeFile"] = relationship(back_populates="symbols")
 

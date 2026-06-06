@@ -138,6 +138,19 @@ class MemoryService:
         except Exception as e:
             logger.warning("Failed to forget pipeline failure for memory %s: %s", memory_id, e)
 
+        # Demote any memory this one superseded BEFORE deleting it. superseded_by
+        # is ON DELETE SET NULL, so deleting the superseder would otherwise null
+        # the dependent's pointer while its status stays 'superseded', violating
+        # chk_superseded_has_pointer and aborting the delete with an IntegrityError.
+        from sqlalchemy import text as _sql_text
+        await self.session.execute(
+            _sql_text(
+                "UPDATE memories SET status='deprecated', superseded_by=NULL "
+                "WHERE superseded_by = CAST(:mid AS uuid)"
+            ),
+            {"mid": str(memory_id)},
+        )
+
         result = await self.memory_repo.delete(memory_id)
         if result:
             await self.audit_repo.log("delete", memory_id, api_key_id, {})

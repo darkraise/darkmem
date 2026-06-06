@@ -124,6 +124,7 @@ class CommunityDetector:
                         leidenalg.RBConfigurationVertexPartition,
                         resolution_parameter=resolution,
                         n_iterations=max_iterations,
+                        seed=0,
                     ),
                 ),
                 timeout=60.0,
@@ -171,19 +172,23 @@ class CommunityDetector:
                 continue
 
             label = comm_labels.get(comm_id, f"community_{comm_id}")
-            comm_key = compose_key("community", label)
+            # Key must be unique per Leiden community; the directory-derived label
+            # is not (two communities can share a dominant directory), and an
+            # ON CONFLICT DO UPDATE on a colliding key silently merges them.
+            comm_key = compose_key("community", f"{label}_{comm_id}")
             comm_props = json.dumps({"community_id": comm_id, "size": len(members)})
 
             await self.session.execute(
                 text("""
                     INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                    VALUES (:repo_id, 'community', :key, :key, CAST(:props AS jsonb))
+                    VALUES (:repo_id, 'community', :key, :label, CAST(:props AS jsonb))
                     ON CONFLICT (repo_id, kind, key) DO UPDATE
                         SET properties = EXCLUDED.properties
                 """),
                 {
                     "repo_id": self.repo_id,
                     "key": comm_key,
+                    "label": label,
                     "props": comm_props,
                 },
             )

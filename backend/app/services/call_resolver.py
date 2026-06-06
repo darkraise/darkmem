@@ -49,13 +49,24 @@ class CallResolver:
         self.named_imports = named_import_map or named_imports or {}
         self.wildcard_imports = wildcard_import_map or wildcard_imports or {}
         self.topological_order = topological_order
-        self._cache: dict[tuple[str, str, str | None], tuple[str, float] | None] = {}
+        self._cache: dict[
+            tuple[str, str, str | None, str | None, int | None], tuple[str, float] | None
+        ] = {}
 
     def resolve(self, call: ExtractedCall, from_file: str) -> tuple[str, float] | None:
         if call.called_name in BUILTIN_SKIP:
             return None
 
-        cache_key = (from_file, call.called_name, getattr(call, "receiver_name", None))
+        # Include call_form and arg_count: _filter disambiguates candidates by
+        # arity and constructor-vs-member, so two calls sharing name+receiver but
+        # differing in those must not share a cached resolution.
+        cache_key = (
+            from_file,
+            call.called_name,
+            getattr(call, "receiver_name", None),
+            getattr(call, "call_form", None),
+            getattr(call, "arg_count", None),
+        )
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -253,8 +264,9 @@ def build_import_map(
 def build_named_imports(
     file_imports: dict[str, list[ExtractedImport]],
     file_paths: list[str],
+    per_import_resolution: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, dict[str, tuple[str, str]]]:
-    """Build named import map: file -> {local_name: (source_module, exported_name)}.
+    """Build named import map: file -> {local_name: (source_file, exported_name)}.
 
     Consumes the structured ``ExtractedImport.names`` list from the parser
     rather than re-parsing raw ``from X import Y`` source text. Callers feed
@@ -262,14 +274,23 @@ def build_named_imports(
     ``str.split("import")`` form was fed only the module portion
     (``imp.source``, e.g. ``"os"``), which contains neither ``from`` nor
     ``import``, so it matched nothing and silently returned ``{}``.
+
+    ``resolve()`` treats the first tuple element as a repo-relative FILE PATH
+    (it feeds it to ``lookup_local``/``file_path`` filtering against the
+    path-keyed symbol table). Storing the raw module string there can never
+    match, so when ``per_import_resolution`` (phase-04's source->path map) is
+    supplied we rewrite the module to its resolved file path; otherwise we keep
+    the raw module so ``propagate()`` can still overwrite the entry downstream.
     """
     result: dict[str, dict[str, tuple[str, str]]] = {}
     for file_path, imports in file_imports.items():
+        per_source = (per_import_resolution or {}).get(file_path, {})
         named: dict[str, tuple[str, str]] = {}
         for imp in imports:
             module = imp.source.strip()
             if not module:
                 continue
+            module = per_source.get(imp.source.strip(), module)
             for raw in imp.names:
                 name_part = raw.strip()
                 # Wildcard imports are tracked by build_wildcard_imports.

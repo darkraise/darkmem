@@ -385,7 +385,11 @@ def _collect_nested_symbols(node: "Node", source: bytes) -> list["ExtractedSymbo
             sym = _extract_symbol(child, source)
             if sym:
                 collected.append(sym)
-        elif child.type in BODY_CONTAINER_TYPES:
+        elif child.type in BODY_CONTAINER_TYPES or child.type == "decorated_definition":
+            # tree-sitter wraps a decorated def/class in ``decorated_definition``;
+            # the real symbol node sits one level down, so a class's
+            # @property/@staticmethod/@pytest.fixture methods are skipped unless
+            # we recurse through the wrapper (matching _walk_tree's recursion).
             collected.extend(_collect_nested_symbols(child, source))
     return collected
 

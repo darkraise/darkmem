@@ -300,6 +300,12 @@ class CodePipeline:
             return self._stats
 
         except Exception as exc:
+            # If the original failure was a DB error the session is in a
+            # need-rollback state; mutating repo.status and committing without
+            # rolling back first raises PendingRollbackError and masks the real
+            # exception. Roll back so the cleanup runs in a clean transaction.
+            await self.session.rollback()
+            repo = await self.repo_manager.get(repo_id) or repo
             repo.status = "error"
             repo.status_message = str(exc)[:500]
             try:
@@ -595,7 +601,9 @@ class CodePipeline:
         from app.services.call_resolver import build_named_imports, build_wildcard_imports
         from app.services.named_bindings import propagate
 
-        self._named_import_map = build_named_imports(self._all_extracted_imports, self._all_file_paths)
+        self._named_import_map = build_named_imports(
+            self._all_extracted_imports, self._all_file_paths, self._per_import_resolution
+        )
         self._wildcard_import_map = build_wildcard_imports(self._all_extracted_imports, self._all_file_paths)
 
         symbol_table: dict[str, list[str]] = {}
