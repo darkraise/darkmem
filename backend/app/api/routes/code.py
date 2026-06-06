@@ -121,18 +121,18 @@ async def code_graph(
     return await svc.get_code_graph(repo_id)
 
 
-@router.get("/wiki/{repo_id}")
+@router.get("/wiki/{repo_id}", response_model=dict | None)
 async def get_wiki(
     repo_id: UUID,
-    force: bool = False,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
-    request: Request = None,
 ):
+    """Read-only: returns the cached wiki, or null if none has been generated.
+    Generating the wiki is an explicit, state-changing action — reindex the repo
+    with generate_wiki=true (POST /repos/{repo_id}/reindex). A GET must never
+    trigger generation."""
     from app.services.wiki_generator import WikiGenerator
-    llm = getattr(request.app.state, "llm", None) if request else None
-    generator = WikiGenerator(session, llm)
-    return await generator.generate(repo_id, force=force)
+    return await WikiGenerator(session, None).read(repo_id)
 
 
 @router.post("/blast-radius")

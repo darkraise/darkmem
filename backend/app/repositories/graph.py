@@ -310,8 +310,16 @@ class PostgresGraphRepository:
         return {"entity": entity_dict, "neighbors": neighbors, "relations": relations}
 
     async def get_neighbors_by_name(self, name: str) -> dict:
+        # Entity uniqueness is (name, entity_type), so a bare name can match
+        # several types. This by-name read path can't disambiguate type, so it
+        # picks the most-referenced one deterministically (callers that know the
+        # type should use get_neighbors_by_id).
         result = await self.session.execute(
-            text("SELECT id, name, entity_type, properties, memory_ids FROM entities WHERE name = :name LIMIT 1"),
+            text(
+                "SELECT id, name, entity_type, properties, memory_ids FROM entities "
+                "WHERE name = :name "
+                "ORDER BY COALESCE(array_length(memory_ids, 1), 0) DESC, id LIMIT 1"
+            ),
             {"name": name},
         )
         return await self._build_neighbors(result.mappings().first())

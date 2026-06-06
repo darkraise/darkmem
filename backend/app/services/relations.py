@@ -62,6 +62,11 @@ _MONTHS: frozenset[str] = frozenset({
     "september", "october", "november", "december",
     "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
 })
+_MONTH_CANON: dict[str, str] = {
+    "jan": "january", "feb": "february", "mar": "march", "apr": "april",
+    "jun": "june", "jul": "july", "aug": "august", "sep": "september",
+    "sept": "september", "oct": "october", "nov": "november", "dec": "december",
+}
 _TOKEN_SPLIT = re.compile(r"[\s\-_./:]+")
 
 
@@ -89,8 +94,10 @@ def names_distinct(a: str, b: str) -> bool:
     num_b = frozenset(t for t in tb if any(c.isdigit() for c in t))
     if num_a != num_b:
         return True  # different numbers / dates / versions
-    month_a = frozenset(t for t in ta if t in _MONTHS)
-    month_b = frozenset(t for t in tb if t in _MONTHS)
+    # Canonicalize abbreviations so 'jan' and 'january' are the SAME month
+    # (not a spurious discriminator) while 'february' vs 'march' still differ.
+    month_a = frozenset(_MONTH_CANON.get(t, t) for t in ta if t in _MONTHS)
+    month_b = frozenset(_MONTH_CANON.get(t, t) for t in tb if t in _MONTHS)
     if month_a != month_b:
         return True  # different months
     return False

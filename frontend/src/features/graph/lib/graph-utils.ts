@@ -6,6 +6,7 @@ import type {
 } from "@/hooks/api"
 import { resolveNodeColor, entityTypeColor } from "./graph-colors"
 import type { ColorMode } from "./graph-colors"
+import { seededUnit } from "./code-graph-theme"
 export { resolveNodeColor, entityTypeColor }
 export type { ColorMode }
 export {
@@ -190,20 +191,23 @@ export function transformToGraphData(
   const nClusters = clusterIds.length
   const clusterRadius = 60 + nClusters * 12
   for (let ci = 0; ci < clusterIds.length; ci++) {
+    // ci is bounded by clusterIds.length, so the id and its members exist
+    const clusterId = clusterIds[ci]!
     const theta = (2 * Math.PI * ci) / nClusters
-    const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.5
+    // Seed jitter deterministically (by cluster/node id) so the layout is stable
+    // across rebuilds instead of reshuffling on every render.
+    const phi = Math.PI / 2 + (seededUnit(String(clusterId)) - 0.5) * 0.5
     const cx = Math.sin(phi) * Math.cos(theta) * clusterRadius
     const cy = Math.sin(phi) * Math.sin(theta) * clusterRadius
     const cz = Math.cos(phi) * clusterRadius * 0.3
     const spread = 30 + Math.sqrt(nodes.length) * 3
-    // ci is bounded by clusterIds.length, so the id and its members exist
-    const members = clusterMembers.get(clusterIds[ci]!) ?? []
+    const members = clusterMembers.get(clusterId) ?? []
     for (const id of members) {
       const node = nodes.find((n) => n.id === id)
       if (node) {
-        node.x = cx + (Math.random() - 0.5) * spread
-        node.y = cy + (Math.random() - 0.5) * spread
-        node.z = cz + (Math.random() - 0.5) * spread
+        node.x = cx + (seededUnit(id, 1) - 0.5) * spread
+        node.y = cy + (seededUnit(id, 2) - 0.5) * spread
+        node.z = cz + (seededUnit(id, 3) - 0.5) * spread
       }
     }
   }
