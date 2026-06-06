@@ -1397,7 +1397,12 @@ _IMPROVES_PATTERNS: list[tuple[re.Pattern, str, str]] = [
 
 
 def _entity_matches(entity_name: str, text_fragment: str) -> bool:
-    return entity_name.lower() in text_fragment.lower()
+    # Word-boundary match, not bare substring: 'postgres' must not match inside
+    # 'postgres 17' when validating relation directions, which would make both
+    # the expected and wrong-direction tests pass and trigger a spurious swap.
+    if not entity_name:
+        return False
+    return re.search(rf"\b{re.escape(entity_name.lower())}\b", text_fragment.lower()) is not None
 
 
 def _dedup_by_target_predicate(relationships: list[dict]) -> list[dict]:
@@ -1538,6 +1543,12 @@ def _drop_uses_when_replaces_exists(relationships: list[dict]) -> list[dict]:
         if rtype == "USES":
             src = (r.get("source") or "").strip().lower()
             tgt = (r.get("target") or "").strip().lower()
+            # Intentional pair-based (direction-agnostic) dedup: a REPLACES on the
+            # same unordered pair already conveys the relationship, so the USES is
+            # dropped in either direction. See
+            # test_drop_uses_when_replaces_present_reverse_direction — the rare
+            # "both edges genuinely distinct" case is a deliberately accepted
+            # trade-off, not a bug.
             if src and tgt and frozenset({src, tgt}) in replaces_pairs:
                 continue
         out.append(r)
@@ -1580,7 +1591,14 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
 
             if src_matches_expected and tgt_matches_expected:
                 break
-            if src_matches_wrong and tgt_matches_wrong:
+            # Only swap on an UNAMBIGUOUS wrong-direction match: both endpoints
+            # match their swapped roles and neither matches its expected role.
+            if (
+                src_matches_wrong
+                and tgt_matches_wrong
+                and not src_matches_expected
+                and not tgt_matches_expected
+            ):
                 r["source"], r["target"] = tgt, src
                 swapped = True
                 break
@@ -1618,8 +1636,14 @@ def _filter_literals(entities: list[dict], content: str) -> list[dict]:
         # ('producer.linger.ms' -> 'producer'). Single-dot forms (module.attr,
         # github.com, redis.conf) are left alone so 'asyncio.create_task' still
         # collapses to the legitimate 'asyncio' root.
-        if nl and " " not in nl and re.search(r"(?<![\w.])" + re.escape(nl) + r"\.\w+\.\w", low):
-            continue
+        if nl and " " not in nl:
+            has_dotted = re.search(r"(?<![\w.])" + re.escape(nl) + r"\.\w+\.\w", low) is not None
+            # A bare standalone mention (word-boundary, not a dotted continuation)
+            # means it's a real entity, not just a config-key stem — only drop
+            # when EVERY mention is the leading segment of a dotted path.
+            has_bare = re.search(r"\b" + re.escape(nl) + r"\b(?!\.\w)", low) is not None
+            if has_dotted and not has_bare:
+                continue
         out.append(e)
     return out
 
@@ -1762,12 +1786,23 @@ def _suppress_temporal_edges(relationships: list[dict], content: str) -> list[di
     for r in relationships:
         if r.get("type") in ("RELATED_TO", "CAUSES"):
             s, t = (r.get("source") or "").lower(), (r.get("target") or "").lower()
-            si, ti = low.find(s), low.find(t)
-            if si >= 0 and ti >= 0:
-                a, b = (si + len(s), ti) if si < ti else (ti + len(t), si)
-                between = low[a:b]
-                if _TEMPORAL_BETWEEN_RE.search(between) and not _CAUSAL_BETWEEN_RE.search(between):
-                    continue
+            if s and t:
+                # Evaluate the guard on the CLOSEST s/t mention pair, not the
+                # first occurrence of each: a name that recurs (common for the
+                # project/service subject) would otherwise span an unrelated
+                # mention window and suppress a legitimate edge.
+                s_spans = [m.span() for m in re.finditer(re.escape(s), low)]
+                t_spans = [m.span() for m in re.finditer(re.escape(t), low)]
+                best: tuple[int, int, int] | None = None
+                for ss in s_spans:
+                    for ts in t_spans:
+                        a, b = (ss[1], ts[0]) if ss[0] < ts[0] else (ts[1], ss[0])
+                        if a <= b and (best is None or (b - a) < best[0]):
+                            best = (b - a, a, b)
+                if best is not None:
+                    between = low[best[1]:best[2]]
+                    if _TEMPORAL_BETWEEN_RE.search(between) and not _CAUSAL_BETWEEN_RE.search(between):
+                        continue
         out.append(r)
     return out
 
