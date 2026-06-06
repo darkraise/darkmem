@@ -124,6 +124,7 @@ class Settings(BaseSettings):
     setup_secret: str | None = None
     db_pool_size: int = 20
     db_max_overflow: int = 10
+    log_level: str = "INFO"
 
     @model_validator(mode="after")
     def _check_jwt_secret(self):

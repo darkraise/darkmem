@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.websocket import event_manager
+from app.utils.background import spawn
 from app.database import async_session_factory, get_session
 from app.services.pipeline_failures import (
     PipelineFailureService,
@@ -146,7 +147,7 @@ async def retry_failure(
         finally:
             retry_locks.release(failure_id)
 
-    asyncio.create_task(_run())
+    spawn(_run(), name="retry-failure")
     return {"accepted": True, "failure_id": str(failure_id)}
 
 
@@ -256,7 +257,7 @@ async def retry_all(
             "entity_type": None, "entity_id": None, "state": "done",
         })
 
-    asyncio.create_task(_run_bulk())
+    spawn(_run_bulk(), name="retry-bulk")
     return {"accepted": True, "batch_id": batch_id, "total": total}
 
 

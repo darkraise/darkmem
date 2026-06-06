@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
+from app.utils.background import spawn
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
@@ -81,7 +82,7 @@ def _replace_orchestrator(request: Request, new_llm) -> None:
     if pipeline is not None:
         _swap_pipeline_llm(pipeline, new_llm)
     if old_llm is not None and old_llm is not new_llm:
-        asyncio.create_task(_close_orchestrator_safely(old_llm))
+        spawn(_close_orchestrator_safely(old_llm), name="close-orchestrator")
 
 
 @router.get("/llm", response_model=LLMConfigResponse)

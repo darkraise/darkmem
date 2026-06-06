@@ -19,6 +19,26 @@ from app.services.pipeline import ProcessingPipeline
 logger = logging.getLogger(__name__)
 
 
+def _configure_logging() -> None:
+    """Configure application logging once at import.
+
+    Without this, app loggers inherit uvicorn's defaults (root at WARNING), so
+    most ``logger.info`` lines — pipeline lifecycle, LLM token telemetry — are
+    silently dropped. ``force=True`` reconfigures even if uvicorn already added
+    handlers. Level is driven by LOG_LEVEL.
+    """
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
+    )
+    logging.getLogger("app").setLevel(level)
+
+
+_configure_logging()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database import async_session_factory
@@ -163,6 +183,7 @@ async def lifespan(app: FastAPI):
         make_pipeline_failure_cleanup_runner,
         make_graph_orphan_cleanup_runner,
         make_tag_orphan_cleanup_runner,
+        make_expired_memory_cleanup_runner,
     )
 
     job_registry = JobRegistry(async_session_factory)
@@ -240,6 +261,17 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_tag_orphan_cleanup_runner(async_session_factory),
+    ))
+    job_registry.register(Job(
+        key="expired_memory_cleanup",
+        display_name="Expired Memory Cleanup",
+        description=(
+            "Deletes memories past their expires_at TTL. Without this a "
+            "client-set TTL is never honored. Safe to leave on."
+        ),
+        default_cron="0 * * * *",
+        min_interval_seconds=60,
+        runner=make_expired_memory_cleanup_runner(async_session_factory),
     ))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop

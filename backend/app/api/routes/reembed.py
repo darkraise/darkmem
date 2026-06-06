@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.websocket import event_manager
+from app.utils.background import spawn
 from app.database import async_session_factory, get_session
 from app.services.reembed import ReembedService, reembed_locks
 
@@ -152,7 +153,7 @@ async def _dispatch_single_category(
             finally:
                 reembed_locks.release(category)
 
-        asyncio.create_task(_run())
+        spawn(_run(), name="reembed-category")
     except Exception:
         reembed_locks.release(category)
         raise
@@ -256,7 +257,7 @@ async def reembed_all(
                 for cat in ("memories", "entities", "code_chunks"):
                     reembed_locks.release(cat)
 
-        asyncio.create_task(_run_all())
+        spawn(_run_all(), name="reembed-all")
     except Exception:
         for cat in ("memories", "entities", "code_chunks"):
             reembed_locks.release(cat)

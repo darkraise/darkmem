@@ -142,6 +142,26 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
     return run
 
 
+def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
+    """Delete memories past their ``expires_at`` TTL.
+
+    Without this, a client-set TTL is silently never honored (the column was
+    accepted, stored, and never swept). Embedding partition rows go with the
+    memory via ON DELETE CASCADE; orphaned graph entities and tags left behind
+    are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup."""
+    from sqlalchemy import text
+    async def run() -> None:
+        async with session_factory() as session:
+            result = await session.execute(
+                text("DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW() RETURNING id")
+            )
+            deleted = len(result.scalars().all())
+            await session.commit()
+        if deleted:
+            logger.info("Expired memory cleanup: deleted=%s", deleted)
+    return run
+
+
 def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSession]):
     """Run one batch of code-symbol summarisation through the
     EnrichmentWorker. Replaces the worker's internal run_loop so the
