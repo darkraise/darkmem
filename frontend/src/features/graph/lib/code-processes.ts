@@ -59,21 +59,37 @@ export function deriveProcesses(
   const nodeById = new Map<string, GraphNodeInput>()
   for (const n of nodes) nodeById.set(n.id, n)
 
+  // Pre-bucket edges once by target so each process node reads its own edges in
+  // O(1) instead of re-scanning every edge per process (was O(P·E)). The `seq`
+  // captured here is the original edge order, keeping the step-sort tie-break
+  // deterministic.
+  const entryEdgesByTarget = new Map<string, GraphEdgeInput>()
+  const stepEdgesByTarget = new Map<
+    string,
+    { e: GraphEdgeInput; seq: number }[]
+  >()
+  edges.forEach((e, seq) => {
+    if (e.type === "entry_point_of") {
+      if (!entryEdgesByTarget.has(e.target)) entryEdgesByTarget.set(e.target, e)
+    } else if (e.type === "step_in_process") {
+      const bucket = stepEdgesByTarget.get(e.target)
+      if (bucket) bucket.push({ e, seq })
+      else stepEdgesByTarget.set(e.target, [{ e, seq }])
+    }
+  })
+
   const processes: CodeProcess[] = []
 
   for (const proc of nodes) {
     if (proc.kind !== "process") continue
 
-    const entryEdge = edges.find(
-      (e) => e.type === "entry_point_of" && e.target === proc.id,
-    )
+    const entryEdge = entryEdgesByTarget.get(proc.id)
     const entryNode = entryEdge ? nodeById.get(entryEdge.source) : undefined
 
     // Pair each step edge with its insertion order so explicit indices win but
     // ties (or missing indices) fall back to encounter order deterministically.
-    const stepEdges = edges
-      .map((e, seq) => ({ e, seq }))
-      .filter(({ e }) => e.type === "step_in_process" && e.target === proc.id)
+    const stepEdges = (stepEdgesByTarget.get(proc.id) ?? [])
+      .slice()
       .sort((a, b) => {
         const ai = stepIndexOf(a.e)
         const bi = stepIndexOf(b.e)

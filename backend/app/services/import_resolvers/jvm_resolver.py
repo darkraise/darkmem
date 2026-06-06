@@ -60,8 +60,12 @@ def _resolve_jvm_member(
     """Resolve a member/static import by stripping the member name.
 
     Handles ``com.example.Constants.VALUE`` → ``com/example/Constants.java``.
-    The last segment is considered a member name when it starts with a lowercase
-    letter, is ALL_CAPS (constant), or is ``*`` (wildcard member import).
+
+    A direct resolution of the full ``import_path`` (treating the whole path as a
+    class) is attempted first; only if no file matches do we strip the last
+    segment and resolve the remainder as the class. This avoids misclassifying a
+    lowercase-first class name (e.g. ``com.example.myClass``) as a member purely
+    from the segment's casing.
 
     Args:
         import_path: Dotted import path (no trailing ``.*`` wildcard).
@@ -75,13 +79,10 @@ def _resolve_jvm_member(
     if len(segments) < 3:
         return None
 
-    last_seg = segments[-1]
-    is_member = (
-        last_seg == "*"
-        or (last_seg and last_seg[0].islower())
-        or last_seg.isupper()
-    )
-    if not is_member:
+    # Prefer an exact class-file resolution of the full path; the last segment is
+    # only a member name when there is no file for the whole dotted path.
+    direct = _resolve_direct(import_path, file_paths, extensions)
+    if direct:
         return None
 
     class_path = "/".join(segments[:-1])

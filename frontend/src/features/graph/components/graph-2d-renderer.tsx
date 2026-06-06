@@ -24,15 +24,14 @@ import {
   darkenHex,
 } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
+import { seededUnit } from "@/features/graph/lib/code-graph-theme"
 import type {
   UnifiedMemory,
-  UnifiedGraphData,
   GraphEntity,
   EntityRelation,
 } from "@/hooks/api"
 
 interface Graph2DRendererProps {
-  data: UnifiedGraphData
   filteredMemories: UnifiedMemory[]
   filteredEdges: { source: string; target: string; score: number }[]
   selectedNodeId: string | null
@@ -109,8 +108,8 @@ export function Graph2DRenderer({
       const size = computeSize(sizeMode, conns, m.importance)
       allNodeIds.add(m.id)
       graph.addNode(m.id, {
-        x: (Math.random() - 0.5) * 10,
-        y: (Math.random() - 0.5) * 10,
+        x: (seededUnit(m.id, 0) - 0.5) * 10,
+        y: (seededUnit(m.id, 1) - 0.5) * 10,
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
         color,
@@ -144,8 +143,8 @@ export function Graph2DRenderer({
       for (const ent of visibleEntities) {
         const bg = entityTypeColor(ent.entity_type)
         graph.addNode(`entity:${ent.id}`, {
-          x: (Math.random() - 0.5) * 10,
-          y: (Math.random() - 0.5) * 10,
+          x: (seededUnit(`entity:${ent.id}`, 0) - 0.5) * 10,
+          y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
           label: ent.name,
           size: 10,
           color: bg,

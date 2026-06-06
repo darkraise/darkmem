@@ -106,6 +106,12 @@ async def _dispatch_single_category(
     pipeline,
     session: AsyncSession,
 ):
+    # Guard the embedder before taking the lock or computing a fingerprint, so a
+    # missing LLM surfaces as a clean 503 rather than an AttributeError (and
+    # batch_id can never be referenced before assignment).
+    if pipeline is None or pipeline.llm is None:
+        raise HTTPException(503, "Pipeline not initialized")
+
     if not reembed_locks.try_acquire(category):
         return JSONResponse(
             status_code=409,

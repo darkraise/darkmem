@@ -230,6 +230,25 @@ export function Graph3DRenderer({
     }
   }, [graphData, colorMode, hullMode])
 
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "default"
+      const scene = fgRef.current?.scene()
+      if (ringRef.current) {
+        scene?.remove(ringRef.current)
+        ringRef.current.geometry.dispose()
+        ;(ringRef.current.material as THREE.Material).dispose()
+        ringRef.current = null
+      }
+      for (const m of hullMeshesRef.current) {
+        scene?.remove(m)
+        m.geometry.dispose()
+        ;(m.material as THREE.Material).dispose()
+      }
+      hullMeshesRef.current = []
+    }
+  }, [])
+
   const nodeThreeObject = useCallback((node: Node3D) => {
     const radius = 1 + node.val * 1.5
     const geometry =

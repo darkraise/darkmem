@@ -230,6 +230,10 @@ export interface FeatureFlags {
   hybrid_search_enabled: boolean
   reranker_enabled: boolean
   pipeline_concurrency: number
+  // classification_areas / classification_mode are classification tuning
+  // parameters, not behavioral on/off flags; they live in this row for
+  // transport convenience but don't gate a pipeline phase the way the boolean
+  // flags above do.
   classification_areas: string[]
   classification_mode: "simple" | "expanded"
   embedding_batch_size: number

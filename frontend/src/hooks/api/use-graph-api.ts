@@ -40,7 +40,7 @@ export interface MemoryContextData {
     id: string
     name: string
     entity_type: string
-    properties: string
+    properties: Record<string, unknown>
     memory_ids: string[]
   }[]
   relations: { source: string; target: string; type: string; weight: number }[]

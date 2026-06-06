@@ -82,6 +82,7 @@ const ALL_NODE_TYPES = [
   "tool",
   "community",
   "process",
+  "unknown",
 ]
 
 const ALL_EDGE_TYPES = [
@@ -190,7 +191,7 @@ function CodeGraphPage() {
   const filteredNodes = useMemo(() => {
     if (!graphData?.nodes) return []
     let nodes = graphData.nodes.filter((n) =>
-      visibleNodeTypes.has(n.kind || "function"),
+      visibleNodeTypes.has(n.kind || "unknown"),
     )
 
     if (focusDepth !== null && selectedNodeId) {

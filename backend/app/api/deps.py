@@ -18,6 +18,14 @@ async def get_memory_service(request: Request, session: AsyncSession = Depends(g
     return MemoryService(session, pipeline=pipeline)
 
 
+# LLM-dependent dependency policy:
+#   - get_chat_service raises 503 when app.state.llm is None — chat cannot do
+#     anything useful without the orchestrator, so fail fast at the boundary.
+#   - get_graph_service and get_code_pipeline intentionally pass llm=None
+#     through. They back read-only endpoints (graph reads, wiki/symbol reads)
+#     that work without the LLM; the LLM-requiring paths inside those services
+#     guard llm themselves and surface their own 503. Do not add a blanket
+#     503 here without auditing every read path those services serve.
 async def get_chat_service(request: Request, session: AsyncSession = Depends(get_session)) -> ChatService:
     llm = getattr(request.app.state, "llm", None)
     if not llm:

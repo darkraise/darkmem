@@ -73,26 +73,31 @@ def _c3_linearize(
 
 
 def _leftmost_base(class_key: str, parent_map: dict[str, list[str]]) -> list[str]:
-    """C++ DFS left-to-right, keep last occurrence for diamond dedup."""
+    """C++ DFS left-to-right, keep FIRST occurrence for diamond dedup.
+
+    Real C++ unqualified name lookup resolves to the first base reached along the
+    leftmost-depth-first walk, so a diamond's shared base must keep its earliest
+    position, not be pushed to the end.
+    """
     visited_order: list[str] = []
-    visited: set[str] = set()
+    expanded: set[str] = set()
     stack = [class_key]
     while stack:
         current = stack.pop()
-        if current in visited:
-            continue
-        visited.add(current)
         visited_order.append(current)
+        if current in expanded:  # cycle guard: don't re-expand a node's parents
+            continue
+        expanded.add(current)
         parents = parent_map.get(current, [])
         for p in reversed(parents):
             stack.append(p)
+
     seen: set[str] = set()
     result: list[str] = []
-    for key in reversed(visited_order):
+    for key in visited_order:
         if key not in seen:
             seen.add(key)
             result.append(key)
-    result.reverse()
     return result
 
 

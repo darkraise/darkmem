@@ -40,7 +40,15 @@ class EventManager:
             try:
                 schema.model_validate(data)
             except ValidationError as e:
-                logger.warning("Event '%s' data does not match schema: %s", event_type, e)
+                # Send anyway (clients tolerate extra/missing fields), but make
+                # it loud that the payload diverged from the declared schema —
+                # this usually means a producer drifted from schemas/events.py.
+                logger.warning(
+                    "Broadcasting event '%s' whose payload failed schema "
+                    "validation (sent regardless): %s",
+                    event_type,
+                    e,
+                )
         message = json.dumps({"event": event_type, "data": data})
         dead: list[WebSocket] = []
         async with self._send_lock:

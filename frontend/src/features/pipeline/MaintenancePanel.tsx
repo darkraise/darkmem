@@ -41,10 +41,16 @@ import {
 import { toast } from "darkraise-ui/components/sonner"
 
 function ServiceDot({ ok }: { ok: boolean }) {
+  const label = ok ? "online" : "offline"
   return (
-    <span
-      className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-green-500" : "bg-red-500"}`}
-    />
+    <span className="inline-flex items-center">
+      <span
+        className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-green-500" : "bg-red-500"}`}
+        role="img"
+        aria-label={label}
+      />
+      <span className="sr-only">{label}</span>
+    </span>
   )
 }
 

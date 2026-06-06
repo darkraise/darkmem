@@ -83,7 +83,16 @@ async def get_llm_profiles(session: AsyncSession) -> dict[str, LLMProfile]:
 
 
 def _apply_provider(purpose: LLMPurposeConfig, provider: LLMProviderProfile) -> LLMPurposeConfig:
-    """Overlay a provider's connection fields onto a purpose config."""
+    """Overlay a provider's connection fields onto a purpose config.
+
+    Note: ``provider.supports_embedding`` is intentionally NOT threaded into the
+    resolved ``LLMPurposeConfig`` — it is a UI-advisory flag (greys out the
+    embedding profile picker for vendors without an embeddings endpoint), and
+    ``LLMPurposeConfig`` carries no embedding-capability field. The runtime guard
+    against an embed call landing on a no-embeddings vendor lives in
+    ``LLMOrchestrator._assert_can_embed`` (keyed off ``api_kind``), so the
+    overlay only needs the connection fields below.
+    """
     return purpose.model_copy(update={
         "provider": provider.provider,
         "base_url": provider.base_url,

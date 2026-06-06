@@ -413,16 +413,22 @@ def _disambiguate(scores: dict[str, float], text: str) -> Optional[str]:
     if max_type != "problem":
         return None
 
+    # ``emotional`` only appears in ``scores`` in expanded mode; the simple-mode
+    # marker set (``SIMPLE_TYPES``) has no ``emotional`` type — it folds into
+    # ``preference`` — so the ``emotional`` branches below are inert under the
+    # default ``simple`` mode and only fire for expanded-mode area sets.
+    has_emotional = scores.get("emotional", 0) > 0
+
     sentiment = _get_sentiment(text)
     if _has_resolution(text):
-        if scores.get("emotional", 0) > 0 and sentiment == "positive":
+        if has_emotional and sentiment == "positive":
             return "emotional"
         return "milestone"
 
     if sentiment == "positive":
         if scores.get("milestone", 0) > 0:
             return "milestone"
-        if scores.get("emotional", 0) > 0:
+        if has_emotional:
             return "emotional"
 
     return None

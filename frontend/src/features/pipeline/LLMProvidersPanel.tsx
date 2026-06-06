@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Card,
   CardContent,
@@ -33,7 +33,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "darkraise-ui/components/alert-dialog"
-import { CircleHelp, Plus, Trash2 } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Plus,
+  Trash2,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -76,10 +82,6 @@ export function LLMProvidersPanel() {
     return out
   }, [data])
 
-  useEffect(() => {
-    setDraft({})
-  }, [stored])
-
   const merged: DraftMap = useMemo(
     () => ({ ...stored, ...draft }),
     [stored, draft],
@@ -116,6 +118,17 @@ export function LLMProvidersPanel() {
     return names
   }, [draft, stored])
   const dirty = dirtyNames.size > 0
+
+  // Mirror dirty state into a ref so the stored-sync effect can read it without
+  // depending on draft (which would re-run and wipe the edit it just captured).
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  useEffect(() => {
+    // Don't stomp in-progress edits when the query refetches (e.g. after
+    // window-focus invalidation). Reset only when there are no unsaved rows.
+    if (dirtyRef.current) return
+    setDraft({})
+  }, [stored])
 
   if (isLoading) {
     return (
@@ -183,7 +196,15 @@ export function LLMProvidersPanel() {
     }
   }
 
-  const reset = () => setDraft({})
+  const reset = () => {
+    if (
+      dirty &&
+      !window.confirm("Discard all unsaved Provider changes?")
+    ) {
+      return
+    }
+    setDraft({})
+  }
 
   const save = () => {
     if (!dirty) return
@@ -426,8 +447,13 @@ function ProviderRow({
           className="hover:bg-muted/40 flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md p-1 text-left"
         >
           <span className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-base font-semibold">
-              {open ? "▾" : "▸"} {name}
+            <span className="flex items-center gap-1 font-mono text-base font-semibold">
+              {open ? (
+                <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              {name}
             </span>
             {isNew && (
               <Badge variant="default" className="text-sm">
@@ -544,8 +570,9 @@ function ProviderRow({
                 placeholder="e.g. OpenAI prod"
               />
               <p className="text-muted-foreground mt-1 text-sm">
-                Shown in the Pipeline resolved summary; has no effect on
-                connectivity.
+                Display-only: shown in the Pipeline resolved summary. Changing it
+                has no effect on connectivity and does not detach linked
+                Profiles or purposes.
               </p>
             </div>
             <div className="sm:col-span-2">

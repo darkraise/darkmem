@@ -107,6 +107,11 @@ async def get_llm_config(
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
 
 
+# Known REST deviation: this is an idempotent full-replace of the six-purpose
+# LLM config, so for symmetry with its PUT siblings (llm-providers, llm-profiles,
+# feature-flags) it should be PUT /config/llm. Left as POST because changing it
+# would break existing frontend clients. See docs/api-rest-conventions.md
+# ("Known deviations").
 @router.post("/llm", response_model=LLMConfigUpdateResponse)
 async def update_llm_config(
     body: LLMConfigUpdate,
@@ -226,7 +231,13 @@ async def update_llm_config(
         if pipeline is not None and new_embedding_dims:
             from app.services.reembed import ReembedService
             reembed_svc = ReembedService(session)
-            new_fp = f"{updated_config['embedding'].model}|{new_embedding_dims}"
+            # Build the partition fingerprint with the canonical helper so the
+            # ``model|dims`` format can never drift from what the embed methods
+            # emit. ``new_embedding_dims`` is the probed/explicit dimension,
+            # which may differ from the (possibly-unset) configured value.
+            new_fp = LLMOrchestrator._fingerprint(
+                updated_config["embedding"].model, new_embedding_dims
+            )
             obsolete_after_change = await reembed_svc.count_missing(new_fp)
 
     purpose_payload = {p: cfg_to_schema(c) for p, c in updated_config.items()}
@@ -252,11 +263,15 @@ def _provider_to_schema(row: LLMProvider) -> LLMProviderProfileSchema:
 
 
 def _validate_name(name: str, *, kind: str) -> None:
-    cleaned = name.strip()
-    if not cleaned or cleaned != name:
+    if name != name.strip():
         raise HTTPException(
             status_code=422,
-            detail=f"{kind} name must be non-empty and untrimmed-equal: {name!r}",
+            detail=f"{kind} name must not have leading or trailing whitespace: {name!r}",
+        )
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{kind} name must be non-empty",
         )
     if "/" in name or len(name) > 64:
         raise HTTPException(

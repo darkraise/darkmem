@@ -320,7 +320,7 @@ class CodeQueryService:
                         AND e.edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
                     WHERE c.distance < :max_depth
                 )
-                SELECT DISTINCT name, kind, MIN(distance) AS distance
+                SELECT name, kind, MIN(distance) AS distance
                 FROM callers
                 GROUP BY name, kind
                 ORDER BY distance

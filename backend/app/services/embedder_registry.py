@@ -14,6 +14,7 @@ hit the in-process cache, and return without DDL.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -173,7 +174,12 @@ class EmbedderRegistry:
                     text(ddl_template.format(name=child, dims=info.dims))
                 )
                 # HNSW index: cosine ops match the application query plans.
-                hnsw_idx = f"ix_{child}_hnsw"
+                # The index NAME is derived from a short hash of the child table
+                # so it can't blow past Postgres' 63-char NAMEDATALEN limit (the
+                # naive ``ix_{child}_hnsw`` would, for the longest parent + a
+                # 48-char slug, silently truncate and could collide across two
+                # partitions). The table name is unchanged.
+                hnsw_idx = _hnsw_index_name(child)
                 await session.execute(
                     text(
                         f"CREATE INDEX IF NOT EXISTS {hnsw_idx} "
@@ -211,19 +217,33 @@ def _partition_slug(fingerprint: str) -> str:
     to ``_`` and lower-case the result.
 
     KNOWN LIMITATION (kept backward-compatible deliberately): the slug is
-    capped at 48 chars, but for the longest parent (``entity_embedding_cache``)
-    the derived ``ix_<parent>__<slug>_hnsw`` index name can still exceed
-    Postgres' 63-char NAMEDATALEN and is silently truncated, so two
-    fingerprints sharing a long common prefix could collide on the same child
-    table — as could two models differing only by a folded separator character
-    (``m-a|512`` vs ``m.a|512``). A truly collision-proof scheme (e.g. a hash
-    suffix) would rename every existing partition and orphan stored embeddings,
-    so it is deferred to a future data migration. In the meantime ``register``
-    rejects a fingerprint whose slug collides with a different already-registered
-    one, turning silent vector-column corruption into a loud failure.
+    capped at 48 chars, so two fingerprints sharing a long common prefix — or
+    two models differing only by a folded separator character (``m-a|512`` vs
+    ``m.a|512``) — fold to the same child-table suffix. A truly collision-proof
+    scheme (e.g. a hash suffix on the TABLE name) would rename every existing
+    partition and orphan stored embeddings, so it is deferred to a future data
+    migration. In the meantime ``register`` rejects a fingerprint whose slug
+    collides with a different already-registered one, turning silent
+    vector-column corruption into a loud failure. (The derived HNSW INDEX name
+    is separately hashed in ``_hnsw_index_name`` so it can't overrun NAMEDATALEN
+    even for the longest parent + a full-length slug.)
     """
     slug = re.sub(r"[^A-Za-z0-9]+", "_", fingerprint).strip("_").lower()
     return slug[:48]
+
+
+def _hnsw_index_name(child_table: str) -> str:
+    """Derive a NAMEDATALEN-safe HNSW index name for ``child_table``.
+
+    ``ix_<child_table>_hnsw`` can exceed Postgres' 63-char identifier limit for
+    the longest parent plus a 48-char slug, where the server silently truncates
+    and two distinct partitions could collide on one index name. Anchor on a
+    short blake2b digest of the full child-table name so the name stays unique
+    and bounded (``ix_hnsw_`` + 16 hex chars = 24 chars) regardless of slug
+    length. The table name itself is unchanged.
+    """
+    digest = hashlib.blake2b(child_table.encode("utf-8"), digest_size=8).hexdigest()
+    return f"ix_hnsw_{digest}"
 
 
 def child_table(parent: str, fingerprint: str) -> str:

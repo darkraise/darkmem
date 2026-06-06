@@ -91,11 +91,13 @@ export function StepFinish() {
                       <Checkbox
                         checked={r.selected}
                         onCheckedChange={() => toggle(r.subPath)}
+                        aria-label={`Import ${r.name}`}
                       />
                       <Input
                         className="h-8 flex-1"
                         value={r.name}
                         onChange={(e) => rename(r.subPath, e.target.value)}
+                        aria-label={`Rename ${r.subPath}`}
                       />
                       <span className="text-muted-foreground truncate font-mono text-base">
                         {r.subPath}

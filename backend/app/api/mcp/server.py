@@ -316,7 +316,14 @@ async def code_search(
         limit: Maximum number of results (default: 10).
     """
     if not _pipeline or not _pipeline.llm:
-        raise ValueError("Pipeline not initialized")
+        # Return a typed, machine-readable result rather than raising a tool
+        # error so the MCP client can degrade gracefully (e.g. fall back to a
+        # text search) instead of treating an unconfigured embedder as a crash.
+        return json.dumps({
+            "status": "unavailable",
+            "reason": "embedder not configured",
+            "results": [],
+        })
 
     from app.models.code import Repository
     from app.repositories.vector import PostgresVectorRepository

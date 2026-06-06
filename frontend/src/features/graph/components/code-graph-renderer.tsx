@@ -11,7 +11,11 @@ import EdgeCurveProgram, { indexParallelEdgesIndex } from "@sigma/edge-curve"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import noverlap from "graphology-layout-noverlap"
-import { communityColor, type GraphThemeTokens } from "../lib/code-graph-theme"
+import {
+  communityColor,
+  seededUnit,
+  type GraphThemeTokens,
+} from "../lib/code-graph-theme"
 
 // ── Color helpers (matching GitNexus) ─────────────────────────
 
@@ -498,8 +502,8 @@ export const CodeGraphRenderer = forwardRef<
         structuralSpread *
         Math.sqrt((index + 1) / Math.max(structuralNodes.length, 1))
       const jitter = structuralSpread * 0.15
-      const x = radius * Math.cos(angle) + (Math.random() - 0.5) * jitter
-      const y = radius * Math.sin(angle) + (Math.random() - 0.5) * jitter
+      const x = radius * Math.cos(angle) + (seededUnit(node.id, 0) - 0.5) * jitter
+      const y = radius * Math.sin(angle) + (seededUnit(node.id, 1) - 0.5) * jitter
       nodePositions.set(node.id, { x, y })
     })
 
@@ -514,11 +518,11 @@ export const CodeGraphRenderer = forwardRef<
       const parentPos = parentId ? nodePositions.get(parentId) : null
 
       if (parentPos) {
-        x = parentPos.x + (Math.random() - 0.5) * childJitter
-        y = parentPos.y + (Math.random() - 0.5) * childJitter
+        x = parentPos.x + (seededUnit(nodeId, 0) - 0.5) * childJitter
+        y = parentPos.y + (seededUnit(nodeId, 1) - 0.5) * childJitter
       } else {
-        x = (Math.random() - 0.5) * structuralSpread * 0.5
-        y = (Math.random() - 0.5) * structuralSpread * 0.5
+        x = (seededUnit(nodeId, 0) - 0.5) * structuralSpread * 0.5
+        y = (seededUnit(nodeId, 1) - 0.5) * structuralSpread * 0.5
       }
 
       nodePositions.set(nodeId, { x, y })
@@ -595,7 +599,7 @@ export const CodeGraphRenderer = forwardRef<
             edgeBaseSize *
             (EDGE_SIZE_MULTIPLIERS[edgeType] || DEFAULT_EDGE_SIZE),
           type: "curve",
-          curvature: 0.12 + Math.random() * 0.08,
+          curvature: 0.12 + seededUnit(`${e.source}->${e.target}`, 2) * 0.08,
           _relType: edgeType,
         })
       } catch {
@@ -952,9 +956,13 @@ export const CodeGraphRenderer = forwardRef<
     const sigma = sigmaRef.current
     if (!sigma) return
 
-    // Camera nudge to force edge re-render (Sigma edge caching workaround)
-    const camera = sigma.getCamera()
-    camera.animate({ ratio: camera.ratio * 1.0001 }, { duration: 50 })
+    // Camera nudge to force edge re-render (Sigma edge caching workaround).
+    // Only nudge on an actual selection; deselect just needs a plain refresh so
+    // the camera does not drift when the user clicks empty stage.
+    if (selectedId) {
+      const camera = sigma.getCamera()
+      camera.animate({ ratio: camera.ratio * 1.0001 }, { duration: 50 })
+    }
     sigma.refresh()
 
     if (selectedId && graphRef.current?.hasNode(selectedId)) {

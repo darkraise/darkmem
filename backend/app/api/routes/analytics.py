@@ -1,9 +1,10 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -24,7 +25,6 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 async def get_stats(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
-    request: Request = None,
 ):
     memory_count = (await session.execute(select(func.count()).select_from(Memory))).scalar()
     tag_count = (await session.execute(select(func.count()).select_from(Tag))).scalar()
@@ -38,8 +38,12 @@ async def get_stats(
         stats = await graph_repo.get_stats()
         entity_count = stats["entity_count"]
         rel_count = stats["relationship_count"]
-    except Exception:
-        logger.debug("Graph stats unavailable")
+    except SQLAlchemyError:
+        # An aborted graph COUNT leaves the session in a failed-transaction
+        # state; roll back so the response (and any later reuse of this
+        # session) doesn't inherit the poison.
+        logger.warning("Graph stats unavailable", exc_info=True)
+        await session.rollback()
 
     return StatsResponse(
         memories=memory_count, tags=tag_count,

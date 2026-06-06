@@ -24,13 +24,40 @@ class LLMOrchestrator:
     ``LLMApiKind`` in ``app/config.py``.
     """
 
+    # Conservative transport-level retries for idempotent connection/transient
+    # failures. httpx only retries on connection errors and a closed pool here,
+    # not on response status, so this never replays a request the server already
+    # accepted — it just smooths over transient 429/5xx-adjacent network blips
+    # and DNS/connect flakiness against cloud vendors. Timeouts are unchanged.
+    _TRANSPORT_RETRIES = 2
+
     def __init__(self, config: dict[str, LLMPurposeConfig]):
         self.config = config
-        self._client = httpx.AsyncClient(timeout=300.0)
+        self._client = httpx.AsyncClient(
+            timeout=300.0,
+            transport=httpx.AsyncHTTPTransport(retries=self._TRANSPORT_RETRIES),
+        )
+
+    # Vendors that have no embeddings endpoint on their OpenAI-compat layer.
+    # An embed call against one of these would 404 on every request; fail loud
+    # naming the vendor instead. The ``supports_embedding`` flag on the provider
+    # profile is the UI-side guard for the same fact; this is the runtime guard
+    # for the case where a config slips past it. (``openai``/``google``/``zai``
+    # do expose embeddings via the compat path, so they are not listed.)
+    _NO_EMBEDDING_VENDORS: frozenset[str] = frozenset({"anthropic", "deepseek"})
 
     @staticmethod
     def _fingerprint(model: str, dims: int) -> str:
         return f"{model}|{dims}"
+
+    @classmethod
+    def _assert_can_embed(cls, cfg) -> None:
+        if cfg.api_kind in cls._NO_EMBEDDING_VENDORS:
+            raise RuntimeError(
+                f"Vendor {cfg.api_kind!r} has no embeddings endpoint; the "
+                f"embedding purpose cannot use this provider (model={cfg.model!r}). "
+                f"Point the embedding purpose at a provider that supports embeddings."
+            )
 
     @staticmethod
     def _check_dims(cfg, actual: int) -> None:
@@ -82,6 +109,7 @@ class LLMOrchestrator:
                 ) from e
             vec = response.json()["embeddings"][0]
         else:
+            self._assert_can_embed(cfg)
             response = await self._client.post(
                 f"{cfg.base_url}/embeddings",
                 headers=headers,
@@ -115,6 +143,7 @@ class LLMOrchestrator:
                 ) from e
             vectors = response.json()["embeddings"]
         else:
+            self._assert_can_embed(cfg)
             response = await self._client.post(
                 f"{cfg.base_url}/embeddings",
                 headers=headers,
@@ -203,56 +232,9 @@ class LLMOrchestrator:
                 cfg, purpose, messages, response_format, headers, seed=seed,
             )
 
-        # OpenAI-compatible path. ``/no_think`` is a soft directive — works
-        # for some qwen variants but is silently ignored by others. The
-        # ``ollama`` api_kind path uses ``"think": false`` instead.
-        if not cfg.reasoning:
-            messages = self._append_no_think(messages)
-
-        body: dict = {"model": cfg.model, "messages": messages}
-        # Apply standard params
-        for key, value in cfg.params.items():
-            if key != "extra_body":
-                body[key] = value
-        # Apply extra_body params (provider-specific)
-        if "extra_body" in cfg.params:
-            body.update(cfg.params["extra_body"])
-        if response_format:
-            # Anthropic's OpenAI-compat shim only accepts
-            # ``response_format.type == "json_schema"`` with strict=True
-            # and a fully-defined schema. The loose ``json_object`` form
-            # that OpenAI/DeepSeek/z.ai accept is rejected with HTTP 400.
-            # Our extraction path encodes the schema in the prompt rather
-            # than a structured Pydantic schema, so we cannot supply a
-            # strict json_schema. Drop the field entirely for Anthropic
-            # and rely on the in-prompt schema instructions; the parser
-            # in extraction.py strips the markdown fences Anthropic
-            # sometimes wraps JSON in.
-            if cfg.api_kind != "anthropic":
-                body["response_format"] = response_format
-        # Reasoning-by-default models (z.ai's GLM-4.5/5 family,
-        # DeepSeek v4) silently consume the entire ``max_tokens`` budget
-        # on a hidden chain-of-thought before emitting any visible
-        # output. With max_tokens=2048 and a long extraction prompt the
-        # reasoning trace pegs the cap, ``finish_reason`` is ``length``,
-        # and ``content`` comes back empty — the parser then fails with
-        # "Invalid JSON: Expecting value: line 1 column 1". Inject the
-        # thinking flag so non-reasoning purposes get a real response.
-        # Both vendors accept the same ``thinking`` field shape; for
-        # DeepSeek v4 this is the only flag empirically observed to
-        # zero out ``reasoning_tokens`` (the documented
-        # ``reasoning_effort=low|high`` and ``enable_thinking=false``
-        # only reduce, not eliminate, the hidden trace).
-        if cfg.api_kind in {"zai", "deepseek"} and "thinking" not in body:
-            body["thinking"] = {
-                "type": "enabled" if cfg.reasoning else "disabled",
-            }
-
-        # Per-call seed override (Anthropic ignores; everyone else honours).
-        # The cfg.params.seed value, if present, can also pin the seed —
-        # this overrides it so callers can supply per-content seeds.
-        if seed is not None and cfg.api_kind != "anthropic":
-            body["seed"] = int(seed)
+        body = self._build_openai_chat_body(
+            cfg, messages, response_format=response_format, seed=seed,
+        )
 
         try:
             response = await self._client.post(
@@ -424,6 +406,76 @@ class LLMOrchestrator:
             base = base[:-4]
         return f"{base}{path}"
 
+    def _build_openai_chat_body(
+        self,
+        cfg: LLMPurposeConfig,
+        messages: list[dict],
+        *,
+        response_format: dict | None = None,
+        seed: int | None = None,
+        stream: bool = False,
+    ) -> dict:
+        """Assemble the OpenAI-compat ``/chat/completions`` request body.
+
+        Shared by ``chat_completion`` and ``chat_completion_stream`` so both
+        paths apply the same params merge, ``extra_body`` overlay, Anthropic
+        ``response_format`` drop, the zai/deepseek hidden-reasoning disable, and
+        the per-call ``seed``. Mutates a local copy of ``messages`` only.
+        """
+        # ``/no_think`` is a soft directive — works for some qwen variants but
+        # is silently ignored by others. The ``ollama`` path uses
+        # ``"think": false`` instead.
+        if not cfg.reasoning:
+            messages = self._append_no_think(messages)
+
+        body: dict = {"model": cfg.model, "messages": messages}
+        if stream:
+            body["stream"] = True
+        # Apply standard params.
+        for key, value in cfg.params.items():
+            if key != "extra_body":
+                body[key] = value
+        # Apply extra_body params (provider-specific).
+        if "extra_body" in cfg.params:
+            body.update(cfg.params["extra_body"])
+        if response_format:
+            # Anthropic's OpenAI-compat shim only accepts
+            # ``response_format.type == "json_schema"`` with strict=True
+            # and a fully-defined schema. The loose ``json_object`` form
+            # that OpenAI/DeepSeek/z.ai accept is rejected with HTTP 400.
+            # Our extraction path encodes the schema in the prompt rather
+            # than a structured Pydantic schema, so we cannot supply a
+            # strict json_schema. Drop the field entirely for Anthropic
+            # and rely on the in-prompt schema instructions; the parser
+            # in extraction.py strips the markdown fences Anthropic
+            # sometimes wraps JSON in.
+            if cfg.api_kind != "anthropic":
+                body["response_format"] = response_format
+        # Reasoning-by-default models (z.ai's GLM-4.5/5 family,
+        # DeepSeek v4) silently consume the entire ``max_tokens`` budget
+        # on a hidden chain-of-thought before emitting any visible
+        # output. With max_tokens=2048 and a long extraction prompt the
+        # reasoning trace pegs the cap, ``finish_reason`` is ``length``,
+        # and ``content`` comes back empty — the parser then fails with
+        # "Invalid JSON: Expecting value: line 1 column 1". Inject the
+        # thinking flag so non-reasoning purposes get a real response.
+        # Both vendors accept the same ``thinking`` field shape; for
+        # DeepSeek v4 this is the only flag empirically observed to
+        # zero out ``reasoning_tokens`` (the documented
+        # ``reasoning_effort=low|high`` and ``enable_thinking=false``
+        # only reduce, not eliminate, the hidden trace).
+        if cfg.api_kind in {"zai", "deepseek"} and "thinking" not in body:
+            body["thinking"] = {
+                "type": "enabled" if cfg.reasoning else "disabled",
+            }
+
+        # Per-call seed override (Anthropic ignores; everyone else honours).
+        # The cfg.params.seed value, if present, can also pin the seed —
+        # this overrides it so callers can supply per-content seeds.
+        if seed is not None and cfg.api_kind != "anthropic":
+            body["seed"] = int(seed)
+        return body
+
     async def chat_completion_stream(
         self,
         purpose: str,
@@ -468,15 +520,7 @@ class LLMOrchestrator:
                         yield content
             return
 
-        if not cfg.reasoning:
-            messages = self._append_no_think(messages)
-
-        body = {"model": cfg.model, "messages": messages, "stream": True}
-        for key, value in cfg.params.items():
-            if key != "extra_body":
-                body[key] = value
-        if "extra_body" in cfg.params:
-            body.update(cfg.params["extra_body"])
+        body = self._build_openai_chat_body(cfg, messages, stream=True)
 
         async with self._client.stream(
             "POST",

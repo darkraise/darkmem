@@ -254,8 +254,9 @@ def _detect_entities_in_text(
     text: str, entity_codes: dict[str, str]
 ) -> list[str]:
     found: list[str] = []
+    text_lower = text.lower()
     for name, code in entity_codes.items():
-        if not name.islower() and name.lower() in text.lower():
+        if name.lower() in text_lower:
             if code not in found:
                 found.append(code)
     if found:

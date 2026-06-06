@@ -48,9 +48,11 @@ class SuffixIndex:
                 # Slash-separated: utils/helpers
                 slash_suffix = "/".join(no_ext_parts[i:])
                 self._exact.setdefault(slash_suffix, []).append(normalized)
+                self._lower.setdefault(slash_suffix.lower(), []).append(normalized)
                 # Dot-separated: utils.helpers
                 dot_suffix = ".".join(no_ext_parts[i:])
                 self._exact.setdefault(dot_suffix, []).append(normalized)
+                self._lower.setdefault(dot_suffix.lower(), []).append(normalized)
 
             # Directory index
             dir_path = str(PurePosixPath(normalized).parent)

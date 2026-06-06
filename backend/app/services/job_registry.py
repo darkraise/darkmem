@@ -110,7 +110,11 @@ class JobConfig:
     def from_dict(cls, data: dict) -> "JobConfig":
         last_run = data.get("last_run_at")
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            # Default True to match the install-enabled intent and the
+            # synthesized defaults in ``load_config`` / ``list_with_config`` —
+            # a persisted row missing the key should be treated as enabled, not
+            # silently disabled.
+            enabled=bool(data.get("enabled", True)),
             cron=str(data.get("cron", "*/5 * * * *")),
             min_interval_seconds=int(data.get("min_interval_seconds", 1)),
             last_run_at=datetime.fromisoformat(last_run) if last_run else None,
@@ -246,8 +250,14 @@ class JobRegistry:
             if job.task is not None:
                 try:
                     await job.task
-                except (asyncio.CancelledError, Exception):
+                except asyncio.CancelledError:
+                    # Expected: we cancelled the task above. Awaiting it here
+                    # re-raises the cancellation from the task; swallow it.
                     pass
+                except Exception:
+                    # An unexpected teardown error inside the loop — log it
+                    # instead of hiding it, but keep stopping the rest.
+                    logger.exception("Job %s loop raised during shutdown", job.key)
                 job.task = None
 
     async def _restart_loop(self, key: str) -> None:
@@ -258,8 +268,12 @@ class JobRegistry:
             job.task.cancel()
             try:
                 await job.task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                # Expected: we just cancelled this task. Swallow the
+                # re-raised cancellation from the awaited task.
                 pass
+            except Exception:
+                logger.exception("Job %s loop raised while restarting", key)
             job.task = None
 
         cfg = await self.load_config(key)

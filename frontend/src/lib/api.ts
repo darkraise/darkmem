@@ -2,6 +2,25 @@ import { useAuthStore } from "@/features/auth"
 
 const API_BASE = "/api/v1"
 
+// Guards a 401 burst (background queries can fire many at once) so a single
+// expired session triggers exactly one logout + redirect instead of N
+// full-page reloads. Reset once we're on /login so a later re-login works.
+let handling401 = false
+
+function handleUnauthorized() {
+  useAuthStore.getState().logout()
+  if (handling401) return
+  handling401 = true
+  // Router beforeLoad guards redirect on the next navigation once the store
+  // flips, but a user idle on a page triggers none — fall back to a single
+  // location change, skipped if we're already on /login to avoid a loop.
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login"
+  } else {
+    handling401 = false
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -17,8 +36,7 @@ export async function apiFetch<T>(
     credentials: "include",
   })
   if (response.status === 401) {
-    useAuthStore.getState().logout()
-    window.location.href = "/login"
+    handleUnauthorized()
     throw new Error("Unauthorized")
   }
   if (!response.ok) {

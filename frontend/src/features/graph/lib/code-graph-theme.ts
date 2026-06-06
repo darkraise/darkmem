@@ -99,6 +99,20 @@ export function stableHash(str: string): number {
   return Math.abs(hash)
 }
 
+// Deterministic [0,1) value derived from a string seed, replacing Math.random()
+// for layout jitter/curvature so rebuilds and theme switches reposition nodes
+// identically. `salt` distinguishes multiple draws for the same seed (e.g. x vs
+// y). Mixing follows the splitmix32 finalizer for good avalanche behaviour.
+export function seededUnit(seed: string, salt = 0): number {
+  let h = (stableHash(seed) ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0
+  h ^= h >>> 16
+  h = Math.imul(h, 0x21f0aaad)
+  h ^= h >>> 15
+  h = Math.imul(h, 0x735a2d97)
+  h ^= h >>> 15
+  return (h >>> 0) / 4294967296
+}
+
 export function resolveGraphTokens(rootEl: HTMLElement): GraphThemeTokens {
   const cs = getComputedStyle(rootEl)
   const read = (prop: string) => cs.getPropertyValue(prop).trim()

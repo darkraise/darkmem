@@ -18,6 +18,7 @@ import {
   lightenHex,
   darkenHex,
 } from "@/features/graph/lib/graph-colors"
+import { seededUnit } from "@/features/graph/lib/code-graph-theme"
 
 export interface KGSelection {
   kind: "node" | "edge"
@@ -76,8 +77,8 @@ export function KnowledgeGraphRenderer({
       if (graph.hasNode(nodeId)) continue
       const color = entityTypeColor(e.entity_type)
       graph.addNode(nodeId, {
-        x: (Math.random() - 0.5) * 10,
-        y: (Math.random() - 0.5) * 10,
+        x: (seededUnit(nodeId, 0) - 0.5) * 10,
+        y: (seededUnit(nodeId, 1) - 0.5) * 10,
         label: e.name,
         size: 14,
         color,

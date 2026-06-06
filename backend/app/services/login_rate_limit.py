@@ -15,6 +15,11 @@ from typing import Callable
 
 
 class LoginRateLimiter:
+    # Scope is one process: the failure map lives in this instance's memory and
+    # is not shared across workers or replicas (a multi-process / HA deployment
+    # would back it with Redis). The ``ip`` key is supplied by the caller —
+    # auth.py's ``_client_ip`` derives it proxy-aware (honoring a trusted
+    # X-Forwarded-For) — so this class never inspects the request itself.
     def __init__(
         self,
         max_failures: int = 5,

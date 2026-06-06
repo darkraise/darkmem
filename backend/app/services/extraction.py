@@ -580,8 +580,9 @@ def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
 
 # Connector phrases that imply a relation when sandwiched between two
 # entities in close text proximity. Order matters: multi-word phrases come
-# first so ``deployed on`` wins over ``on``. ``hardware_only=True`` means
-# the rule only fires when the target is a known hardware token.
+# first so ``deployed on`` wins over ``on``. The 4th tuple element is a
+# vestigial ``hardware_only`` flag — always False and no longer read (unpacked
+# as ``_legacy_hardware_only`` below); the hardware-gating behavior was removed.
 _RESCUE_CONNECTORS: list[tuple[str, str, float, bool]] = [
     # Multi-word / unambiguous connectors. Fire via the adjacency pass
     # (src immediately before connector). Single-word "implicit subject"

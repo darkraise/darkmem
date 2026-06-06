@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useStore } from "@tanstack/react-store"
 import {
@@ -36,6 +37,13 @@ export function ReindexDialog({
     },
   })
 
+  // The dialog stays mounted at its parent, so react-form keeps the last
+  // selections across reopens. Reset to defaults once it closes so a reopen
+  // starts fresh.
+  useEffect(() => {
+    if (!open) form.reset()
+  }, [open, form])
+
   const values = useStore(form.store, (s) => s.values)
   const wholeFormError =
     !values.full && !values.enrich_symbols && !values.generate_wiki
@@ -60,7 +68,7 @@ export function ReindexDialog({
               <CheckboxField
                 name={field.name}
                 label="Full reindex"
-                description="Re-clone and rebuild the entire index from scratch."
+                description="Rebuild the entire index from scratch — re-parses and re-embeds every file. Pulls the latest commit first."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}

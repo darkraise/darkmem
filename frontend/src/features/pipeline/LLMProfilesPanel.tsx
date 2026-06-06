@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Card,
   CardContent,
@@ -24,7 +24,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
-import { CircleHelp, Plus, Search, Trash2 } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -109,7 +116,15 @@ export function LLMProfilesPanel() {
     return out
   }, [profilesResp])
 
+  // Mirror the draft into a ref so the stored-sync effect can read the current
+  // dirty state without listing draft as a dependency (which would re-run on
+  // every keystroke and wipe the edit it just captured).
+  const draftRef = useRef(draft)
+  draftRef.current = draft
   useEffect(() => {
+    // Don't stomp in-progress edits when the query refetches (e.g. after
+    // window-focus invalidation). Reset only when there are no unsaved rows.
+    if (Object.keys(draftRef.current).length > 0) return
     setDraft({})
   }, [stored])
 
@@ -255,7 +270,15 @@ export function LLMProfilesPanel() {
     }
   }
 
-  const reset = () => setDraft({})
+  const reset = () => {
+    if (
+      dirty &&
+      !window.confirm("Discard all unsaved Profile changes?")
+    ) {
+      return
+    }
+    setDraft({})
+  }
 
   const save = () => {
     if (!dirty) return
@@ -270,6 +293,20 @@ export function LLMProfilesPanel() {
       }
       if (edited && !p.model.trim()) {
         toast.error(`Profile '${name}' needs a model`)
+        return
+      }
+      const providerSupportsEmbedding =
+        providersResp?.profiles[p.provider_ref]?.supports_embedding ?? true
+      if (
+        edited &&
+        (p.purpose === "embedding" || p.is_embedding) &&
+        !providerSupportsEmbedding
+      ) {
+        toast.error(
+          `Profile '${name}' is an embedding profile but Provider '${
+            p.provider_ref || "(none)"
+          }' has no embeddings endpoint`,
+        )
         return
       }
       let params: Record<string, unknown> = p.params ?? {}
@@ -606,8 +643,13 @@ function ProfileRow({
           className="hover:bg-muted/40 flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md p-1 text-left"
         >
           <span className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-base font-semibold">
-              {open ? "▾" : "▸"} {name}
+            <span className="flex items-center gap-1 font-mono text-base font-semibold">
+              {open ? (
+                <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              {name}
             </span>
             {isNew && (
               <Badge variant="default" className="text-sm">
@@ -698,7 +740,7 @@ function ProfileRow({
                 <Combobox
                   items={modelItems}
                   inputValue={profile.model}
-                  onInputValueChange={(d) => onPatch({ model: d.value })}
+                  onInputValueChange={(d) => onPatch({ model: d.value.trim() })}
                   openOnClick
                   openOnFocus
                 >

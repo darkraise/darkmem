@@ -124,8 +124,17 @@ async def trigger_job(
     _user=Depends(require_auth),
 ) -> JobTriggerResponse:
     registry = _get_registry(request)
-    if registry.get(key) is None:
+    job = registry.get(key)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"Unknown job {key!r}")
+    # A scheduled or earlier manual run already holds the per-job lock. Without
+    # this 409 the request would block until that run finished (the trigger()
+    # call awaits the same lock), so surface the conflict instead of hanging.
+    if job.lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job {key!r} is already running",
+        )
     # Synchronous by design: the manual "Run" surfaces the run's result, and the
     # per-job lock (shared with the scheduler loop) already prevents a manual and
     # a scheduled run from racing. Long jobs (repo_sync) are bounded by the git

@@ -266,6 +266,14 @@ def _list_directory(path: Path, *, detect_repos: bool) -> list[FsListEntry]:
     return entries
 
 
+# Intentional exposure: on a no-secret, non-production install these two
+# filesystem-browse endpoints are reachable before an admin password exists, so
+# any client on the network can enumerate host drives. This is the documented
+# local-install convenience path (the wizard needs to browse for a repo folder
+# before credentials are set). require_setup_secret blocks it once a
+# SETUP_SECRET is configured, and the startup validator forces a secret in
+# production — so the open window only exists for the explicit local trust
+# model. See docs/api-rest-conventions.md and config._check_setup_secret.
 @router.get(
     "/fs/roots",
     response_model=FsRootsResponse,
@@ -349,6 +357,13 @@ def _client_ip(request: Request) -> str:
 
 
 def _is_production() -> bool:
+    # NOTE: this predicate is broader than config.py's startup validators
+    # (_check_jwt_secret / _check_setup_secret), which gate solely on
+    # ``settings.environment == "production"``. The extra ``/.dockerenv`` probe
+    # here can classify a containerized non-prod install as production and
+    # demand a SETUP_SECRET the startup validator never required — a self-
+    # lockout. Keep the two definitions in sync; prefer config.py's as the
+    # source of truth if they are ever unified.
     return settings.environment == "production" or os.path.exists("/.dockerenv")
 
 
@@ -547,10 +562,16 @@ async def setup_finalize(
                     pcfg.updated_at = datetime.now(timezone.utc)
 
                 await session.commit()
-            except Exception as exc:
+            except Exception:
                 await session.rollback()
                 logger.exception("Setup LLM finalize failed")
-                llm_status = SetupSectionStatus(ok=False, message=str(exc))
+                # Don't leak the raw exception (could carry a DB DSN, host
+                # path, or vendor error body) to an unauthenticated caller;
+                # the detail is in the server log.
+                llm_status = SetupSectionStatus(
+                    ok=False,
+                    message="LLM configuration failed; see server logs for details.",
+                )
 
         # 3. Repos block — optional, per-row isolated.
         if body.repos is not None:
@@ -569,9 +590,14 @@ async def setup_finalize(
                         value={"path": str(base_resolved)},
                     ))
                 await session.commit()
-            except Exception as exc:
+            except Exception:
                 await session.rollback()
-                repos_status = SetupSectionStatus(ok=False, message=str(exc))
+                logger.exception("Setup repos base-path finalize failed")
+                repos_status = SetupSectionStatus(
+                    ok=False,
+                    message="Repository base path could not be configured; "
+                    "see server logs for details.",
+                )
             else:
                 from app.services.repo_manager import add_git_safe_directory
                 for entry in body.repos.repos:
@@ -603,9 +629,19 @@ async def setup_finalize(
                         ))
                         await session.commit()
                         repos_added.append(entry.name)
-                    except Exception as exc:
+                    except ValueError as exc:
+                        # validate_local_path raises user-actionable validation
+                        # messages (bad/dubious path); surfacing those helps the
+                        # operator fix the input.
                         await session.rollback()
                         repos_failed.append({"name": entry.name, "error": str(exc)})
+                    except Exception:
+                        await session.rollback()
+                        logger.exception("Setup repo %r finalize failed", entry.name)
+                        repos_failed.append({
+                            "name": entry.name,
+                            "error": "could not be added; see server logs for details.",
+                        })
 
         # 4. Rebuild the live orchestrator if the LLM block landed.
         if body.llm is not None and llm_status.ok:

@@ -57,6 +57,10 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             elif hasattr(memory, key):
                 setattr(memory, key, value)
         await self.session.flush()
+        # Full refresh loads server-side columns (e.g. updated_at) so later
+        # attribute access during response serialization doesn't trigger a lazy
+        # load outside the async greenlet (MissingGreenlet); the second refresh
+        # reloads the tags relationship.
         await self.session.refresh(memory)
         await self.session.refresh(memory, ["tags"])
         return memory
@@ -162,6 +166,13 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             await self.session.flush()
             return
 
+        # ``on_conflict_do_nothing`` upserts the tag rows but returns nothing for
+        # the rows that already existed, so we cannot read the Tag instances back
+        # from the INSERT. Re-select by name after the flush to get the full set
+        # (newly-inserted + pre-existing) as managed ORM objects, then assign the
+        # relationship. The ``Tag.memories`` side is ``lazy='noload'`` (see the
+        # model), so this assignment writes only the ``memory_tags`` link rows and
+        # never triggers a back-populate load of every memory carrying each tag.
         for name in tag_names:
             category = name.split("/")[0] if "/" in name else None
             await self.session.execute(

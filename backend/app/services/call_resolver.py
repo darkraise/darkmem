@@ -154,11 +154,30 @@ class CallResolver:
         """Pick the single interface/abstract declaration among ambiguous candidates."""
         iface_hits = [
             c for c in candidates
-            if c.kind in ("method", "function") and c.owner_id is None
+            if c.kind in ("method", "function") and self._owner_is_abstract(c)
         ]
         if len(iface_hits) == 1:
             return (iface_hits[0].node_id, CONFIDENCE["interface-dispatch"])
         return None
+
+    def _owner_is_abstract(self, entry: SymbolEntry) -> bool:
+        """Whether ``entry``'s declaring symbol is an interface/trait/abstract class.
+
+        Identifying the declaration site by the owner's KIND is more reliable
+        than ``owner_id is None``: a top-level (module-scoped) function also has
+        no owner, yet is concrete; conversely an interface method does carry an
+        owner_id. Falls back to the previous ``owner_id is None`` heuristic when
+        the owner symbol can't be located.
+        """
+        if not entry.owner_name:
+            return entry.owner_id is None
+        owners = [
+            e for e in self.symbols.lookup_global(entry.owner_name)
+            if e.kind in ("interface", "trait", "class")
+        ]
+        if not owners:
+            return entry.owner_id is None
+        return any(o.kind in ("interface", "trait") for o in owners)
 
     def _filter(self, candidates: list[SymbolEntry], call: ExtractedCall) -> list[SymbolEntry]:
         if call.call_form == "constructor":
@@ -202,6 +221,13 @@ class CallResolver:
             result = self.resolve(call, from_file)
             if result:
                 results.append(result)
+                # Re-derive the return type by scanning lookup_global for the
+                # resolved node_id. This is a best-effort recovery of the entry
+                # `resolve()` already found: lookup_global is name-keyed, so a
+                # member call resolved via a receiver/import path (whose name may
+                # differ from the global key) can miss here and leave
+                # current_type=None, breaking the chain at that link. Acceptable
+                # because the next call then falls back to the full resolve().
                 entry = next(
                     (e for e in self.symbols.lookup_global(call.called_name) if e.node_id == result[0]),
                     None,
@@ -249,8 +275,13 @@ def build_import_map(
                     candidate = str(relative) + ext
                     normalized = candidate.replace("\\", "/")
                     tail = normalized.split("/", 1)[-1] if "/" in normalized else normalized
+                    # Anchor the tail to a path-segment boundary so `foo/bar.py`
+                    # does not satisfy a tail of `bar.py` belonging to a sibling
+                    # tree. Accept either an exact match or a match preceded by
+                    # `/`, never a bare substring suffix.
                     for fp in file_paths:
-                        if fp.replace("\\", "/").endswith(tail):
+                        fp_norm = fp.replace("\\", "/")
+                        if fp_norm == tail or fp_norm.endswith("/" + tail):
                             resolved.add(fp)
                             break
             else:
@@ -310,11 +341,25 @@ def build_named_imports(
     return result
 
 
+_WILDCARD_MODULE_SUFFIXES: tuple[str, ...] = (
+    ".py", "/__init__.py",  # Python
+    ".ts", ".tsx", ".js", ".jsx",  # TS/JS (`export *`)
+    "/index.ts", "/index.tsx", "/index.js", "/index.jsx",
+)
+
+
 def build_wildcard_imports(
     file_imports: dict[str, list[ExtractedImport]],
     file_paths: list[str],
 ) -> dict[str, set[str]]:
-    """Find files that use wildcard imports and map them to source files."""
+    """Find files that use wildcard imports and map them to source files.
+
+    Wildcard re-export tracking matches the dotted module path against the
+    language extensions in ``_WILDCARD_MODULE_SUFFIXES`` (Python ``from x import *``
+    and TS/JS ``export *``). Languages whose modules are not file-stem addressable
+    (Go/Rust/Java/Kotlin package imports) are not covered here; their wildcard
+    resolution lives in the per-language import resolvers.
+    """
     result: dict[str, set[str]] = {}
     for file_path, imports in file_imports.items():
         for imp in imports:
@@ -325,6 +370,7 @@ def build_wildcard_imports(
                 continue
             module_path = module.replace(".", "/")
             for fp in file_paths:
-                if fp.endswith(module_path + ".py") or fp.endswith(module_path + "/__init__.py"):
+                fp_norm = fp.replace("\\", "/")
+                if any(fp_norm.endswith(module_path + sfx) for sfx in _WILDCARD_MODULE_SUFFIXES):
                     result.setdefault(file_path, set()).add(fp)
     return result

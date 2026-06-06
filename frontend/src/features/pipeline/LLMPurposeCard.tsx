@@ -15,6 +15,7 @@ import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Badge } from "darkraise-ui/components/badge"
 import { toast } from "darkraise-ui/components/sonner"
+import { ChevronDown, ChevronRight } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -53,6 +54,35 @@ export function resolveActiveProfileName(
 
 function apiKindLabel(kind: string | undefined): string {
   return API_KIND_OPTIONS.find((o) => o.value === kind)?.label ?? kind ?? ""
+}
+
+// Stable JSON stringify (sorted keys) so object equality ignores key order,
+// matching how the server persists JSONB params.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`
+  const obj = value as Record<string, unknown>
+  const body = Object.keys(obj)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(",")
+  return `{${body}}`
+}
+
+// True when the edited params text parses to something that differs from the
+// linked Profile's params. Unparseable (transient) text is treated as "no
+// change yet" so the link survives mid-edit.
+function paramsDifferFromLinked(
+  text: string,
+  linkedParams: Record<string, unknown> | undefined,
+): boolean {
+  let parsed: unknown
+  try {
+    parsed = text.trim() ? JSON.parse(text) : {}
+  } catch {
+    return false
+  }
+  return stableStringify(parsed) !== stableStringify(linkedParams ?? {})
 }
 
 interface Props {
@@ -287,7 +317,12 @@ export function LLMPurposeCard({
         aria-controls={panelId}
       >
         <span className="flex items-center gap-2 text-base font-semibold capitalize">
-          {open ? "▾" : "▸"} {purpose}
+          {open ? (
+            <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+          )}
+          {purpose}
         </span>
         <span className="text-muted-foreground truncate font-mono text-sm">
           {config.model}
@@ -467,9 +502,13 @@ export function LLMPurposeCard({
                 className="border-border border-t pt-3"
               >
                 <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 text-base font-medium">
-                  <span>
-                    {overrideOpen ? "▾" : "▸"} Override connection for this
-                    purpose
+                  <span className="flex items-center gap-1">
+                    {overrideOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                    )}
+                    Override connection for this purpose
                   </span>
                   <span
                     className={
@@ -590,11 +629,23 @@ export function LLMPurposeCard({
                     <Textarea
                       value={paramsText}
                       onChange={(e) => {
-                        setParamsText(e.target.value)
-                        // Editing params manually breaks the profile link, same
-                        // as the field-level patches. The save still sends
-                        // profile_ref:"" so the server clears the FK.
-                        setDraft((d) => ({ ...d, profile_ref: null }))
+                        const text = e.target.value
+                        setParamsText(text)
+                        // Only break the profile link when the params actually
+                        // diverge from the linked Profile's. Transient invalid
+                        // JSON mid-edit, or text that still matches the Profile,
+                        // keeps the link intact (no spurious detach on every
+                        // keystroke). Save still sends profile_ref:"" when null
+                        // so the server clears the FK.
+                        const linkedParams = draft.profile_ref
+                          ? allLlmProfiles[draft.profile_ref]?.params
+                          : undefined
+                        if (
+                          draft.profile_ref &&
+                          paramsDifferFromLinked(text, linkedParams)
+                        ) {
+                          setDraft((d) => ({ ...d, profile_ref: null }))
+                        }
                         setDirty(true)
                       }}
                       rows={3}

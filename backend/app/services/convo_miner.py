@@ -184,6 +184,8 @@ def mine_text(
     text: str,
     extract_mode: str = "exchange",
     source_file: str = "",
+    enabled_areas: list[str] | None = None,
+    mode: str = "simple",
 ) -> list[dict]:
     """Mine plain text into memory chunks with room labels.
 
@@ -192,6 +194,11 @@ def mine_text(
         extract_mode: "exchange" for Q+A pair chunking, or "general" to
                       use memory_classifier for typed memory extraction.
         source_file: Optional source file name recorded in chunk metadata.
+        enabled_areas: Classification area keys forwarded to the classifier
+                       in general mode so mined memories use the configured
+                       taxonomy. Defaults to the classifier's own default.
+        mode: Classification mode ("simple"/"expanded") forwarded to the
+              classifier in general mode.
 
     Returns:
         List of chunk dicts. Each dict includes "content", "chunk_index",
@@ -203,7 +210,13 @@ def mine_text(
     if extract_mode == "general":
         from .memory_classifier import extract_memories
 
-        raw_chunks = extract_memories(text)
+        raw_chunks = extract_memories(
+            text, enabled_areas=enabled_areas, mode=mode,
+        )
+        # ``room`` is a topic slug from keyword scoring; ``memory_type`` is the
+        # classifier's taxonomy label. They are distinct axes — keep them apart
+        # rather than aliasing the room to the type.
+        room = detect_room(text)
         chunks: list[dict] = []
         for chunk in raw_chunks:
             memory_type = chunk.get("memory_type", "general")
@@ -212,7 +225,7 @@ def mine_text(
                     "content": chunk["content"],
                     "chunk_index": len(chunks),
                     "mode": "general",
-                    "room": memory_type,
+                    "room": room,
                     "memory_type": memory_type,
                     "source_file": source_file,
                 }

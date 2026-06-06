@@ -30,7 +30,7 @@ class PostgresGraphRepository:
                        1 - (ee.embedding <=> CAST(:vec AS vector)) AS score
                 FROM {table} ee
                 JOIN entities e ON e.id = ee.entity_id
-                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) > :threshold {type_cond}
+                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) >= :threshold {type_cond}
                 ORDER BY ee.embedding <=> CAST(:vec AS vector)
                 LIMIT 1
             """),

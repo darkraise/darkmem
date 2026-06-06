@@ -158,7 +158,6 @@ function UnifiedGraphPage() {
             <div className="absolute inset-0 bg-[#0d1117]">
               {dimensions && viewMode === "2d" && data && (
                 <Graph2DRenderer
-                  data={data}
                   filteredMemories={filters.filteredMemories}
                   filteredEdges={filters.filteredEdges}
                   selectedNodeId={selection.selectedNodeId}

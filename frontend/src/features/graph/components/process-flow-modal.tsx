@@ -81,7 +81,9 @@ export function ProcessFlowModal({
                       className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
                       style={{
                         backgroundColor:
-                          nodeColors[step.kind] ?? nodeColors[step.kind.toLowerCase()],
+                          nodeColors[step.kind] ??
+                          nodeColors[step.kind.toLowerCase()] ??
+                          "var(--muted-foreground)",
                       }}
                     />
                     <span className="min-w-0 flex-1">
