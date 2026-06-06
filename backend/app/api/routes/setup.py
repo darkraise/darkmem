@@ -8,6 +8,7 @@ returns 403, and the wizard frontend redirects new visitors to ``/login``.
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import sys
 import uuid
@@ -37,6 +38,7 @@ from app.models.llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
 from app.services.repo_manager import validate_local_path
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
+logger = logging.getLogger(__name__)
 
 ADMIN_PASSWORD_KEY = "admin_password_hash"
 REPOS_PATH_KEY = "repos_default_local_path"
@@ -495,14 +497,31 @@ async def setup_finalize(
                 user_base_url = body.llm.base_url or (
                     user_provider_seed.base_url if user_provider_seed else ""
                 )
+                from app.services.llm_seed import DEFAULT_PROFILES
+
                 for purpose_key, spec in body.llm.purposes.items():
                     is_embedding = (purpose_key == "embedding")
+
+                    # Inherit the vendor's reasoning-control params for this
+                    # purpose (reasoning_effort / thinking / max_tokens) from the
+                    # seed instead of blanking to {}, which the orchestrator
+                    # depends on to disable hidden CoT (e.g. google/gpt-5).
+                    seed_candidates = [
+                        p for p in DEFAULT_PROFILES
+                        if p.name.startswith(f"{body.llm.api_kind}-")
+                        and p.name.endswith(purpose_key)
+                    ]
+                    seed_match = next(
+                        (c for c in seed_candidates if c.model == spec.model),
+                        seed_candidates[0] if seed_candidates else None,
+                    )
+                    seed_params = dict(seed_match.params) if seed_match else {}
 
                     user_profile = LLMProfile(
                         name=f"default-{purpose_key}",
                         provider_id=user_provider_id,
                         model=spec.model,
-                        params={},
+                        params=seed_params,
                         is_embedding=is_embedding,
                         reasoning=False if is_embedding else spec.reasoning,
                     )
@@ -524,12 +543,13 @@ async def setup_finalize(
                     pcfg.provider = body.llm.api_kind
                     pcfg.base_url = user_base_url
                     pcfg.api_key = body.llm.api_key
-                    pcfg.params = {}
+                    pcfg.params = seed_params
                     pcfg.updated_at = datetime.now(timezone.utc)
 
                 await session.commit()
             except Exception as exc:
                 await session.rollback()
+                logger.exception("Setup LLM finalize failed")
                 llm_status = SetupSectionStatus(ok=False, message=str(exc))
 
         # 3. Repos block — optional, per-row isolated.

@@ -15,6 +15,7 @@ from app.api.auth import (
     set_auth_cookie,
     verify_password,
 )
+from app.config import settings
 from app.database import async_session_factory, get_session
 from app.models.audit import AuditLog
 from app.models.config import Config
@@ -50,6 +51,14 @@ class ChangePasswordRequest(BaseModel):
 
 
 def _client_ip(request: Request) -> str:
+    # Behind a reverse proxy every request's client.host is the proxy, so all
+    # logins would share one rate-limit bucket. Honor the real client from
+    # X-Forwarded-For, but only when explicitly told a trusted proxy fronts us
+    # (the header is client-spoofable otherwise).
+    if settings.trust_proxy_headers:
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # git accepts transport helpers (`ext::sh -c ...` = arbitrary command execution)
 # and `file://` / bare local paths (local-file read / SSRF). Only allow real
@@ -114,13 +114,13 @@ class CodeSearchRequest(BaseModel):
     query: str
     repo_id: uuid.UUID | None = None
     language: str | None = None
-    limit: int = 20
+    limit: int = Field(default=20, ge=1, le=200)
 
 
 class CodeSearchResult(BaseModel):
     chunk_content: str
     file_path: str
-    repo_id: uuid.UUID
+    repo_id: uuid.UUID | None
     language: str | None
     symbol_name: str | None
     line_start: int
@@ -130,4 +130,4 @@ class CodeSearchResult(BaseModel):
 
 class BlastRadiusRequest(BaseModel):
     symbol_id: str
-    max_depth: int = 10
+    max_depth: int = Field(default=10, ge=1, le=25)

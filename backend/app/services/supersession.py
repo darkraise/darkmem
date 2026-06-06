@@ -21,7 +21,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
@@ -102,7 +102,21 @@ async def detect_supersessions(
         .where(Memory.project == project)
         .where(Memory.status == "active")
         .where(Memory.created_at >= cutoff)
-        .where(Memory.created_at < new_memory_created_at)
+        # Strictly-older, with a deterministic id tie-break for equal timestamps.
+        # Same-batch memories share an identical server-side created_at (one
+        # transaction), so a bare `<` never fires within a batch; the id tie-break
+        # lets exactly one of an equal-timestamp pair supersede the other, which
+        # both enables within-batch supersession and preserves the no-mutual-flip
+        # guarantee the strict guard was added for.
+        .where(
+            or_(
+                Memory.created_at < new_memory_created_at,
+                and_(
+                    Memory.created_at == new_memory_created_at,
+                    Memory.id < new_memory_id,
+                ),
+            )
+        )
         .where(Memory.id != new_memory_id)
         .where(Memory.technologies.overlap(replaces_targets))
     )

@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     embedding_dimensions: int = 1024
     cors_origins: list[str] = []
+    # Only honor X-Forwarded-For (e.g. for the login rate limiter) when fronted by
+    # a trusted reverse proxy; otherwise a client could spoof the header.
+    trust_proxy_headers: bool = False
     setup_secret: str | None = None
     db_pool_size: int = 20
     db_max_overflow: int = 10

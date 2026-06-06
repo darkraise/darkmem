@@ -238,10 +238,10 @@ class ProcessTracer:
             await self.session.execute(
                 text("""
                     INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                    VALUES (:repo_id, 'symbol', :entry_key, 'process', :proc_key, 'entry_point_of', '{}')
+                    VALUES (:repo_id, :source_kind, :entry_key, 'process', :proc_key, 'entry_point_of', '{}')
                     ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
                 """),
-                {"repo_id": self.repo_id, "entry_key": entry_key, "proc_key": proc_key},
+                {"repo_id": self.repo_id, "source_kind": source_kind, "entry_key": entry_key, "proc_key": proc_key},
             )
 
             sorted_steps = sorted(steps, key=lambda x: x[1])[:dynamic_cap]

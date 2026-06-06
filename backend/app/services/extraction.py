@@ -265,7 +265,9 @@ _NEGATION_WINDOW = re.compile(
     r"|didn't\s+use"
     r"|did\s+not\s+use"
     r"|without"
-    r"|instead\s+of"
+    # 'instead of' is a comparative/selection cue ("chose X instead of Y"), not a
+    # use-negation; the selection gate keeps both endpoints as X IMPROVES_ON Y, so
+    # dropping Y here would orphan that edge.
     r"|never"
     r"|avoid(?:s|ing|ed)?"
     r"|skip(?:ped|ping)?"
@@ -307,9 +309,12 @@ def _normalize_names(entities: list[dict]) -> list[dict]:
             continue
         # Strip trailing ``.method`` / ``.attribute`` chains so the entity
         # collapses to its module/library root (``asyncio.create_task`` ->
-        # ``asyncio``). Only safe when the head looks like an identifier.
+        # ``asyncio``). Only safe when the head looks like an identifier, and
+        # never for a curated dotted name (``next.js``) whose tail is part of
+        # the real entity — stripping it would corrupt the name and lose the
+        # curated type before _apply_type_overrides runs.
         dotted = _DOTTED_METHOD.match(name)
-        if dotted:
+        if dotted and name.lower() not in _TYPE_OVERRIDES:
             name = dotted.group(1)
         # Allow 2-char tools that are otherwise canonical (rg, fd, vi, …);
         # everything else under 3 chars is too noisy.

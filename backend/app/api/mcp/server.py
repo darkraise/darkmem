@@ -66,6 +66,7 @@ async def memory_add(
     source: str = "mcp",
     source_agent: str | None = None,
     memory_type: str | None = None,
+    project: str | None = None,
 ) -> str:
     """
     Args:
@@ -74,9 +75,13 @@ async def memory_add(
         source: Origin identifier (default: "mcp").
         source_agent: Optional agent/session identifier.
         memory_type: One of fact, decision, preference, problem, architecture, reference, milestone. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
+        project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
     """
     async with _memory_service_context() as service:
-        data = MemoryCreate(content=content, tags=tags or [], source=source, source_agent=source_agent, memory_type=memory_type)
+        data = MemoryCreate(
+            content=content, tags=tags or [], source=source,
+            source_agent=source_agent, memory_type=memory_type, project=project,
+        )
         memory = await service.create_memory(data, api_key_id=None)
         return json.dumps(_memory_to_dict(memory))
 
@@ -181,7 +186,7 @@ async def memory_delete(memory_id: str) -> str:
 async def memory_batch_add(entries: list[dict]) -> str:
     """
     Args:
-        entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source', 'source_agent', 'memory_type'.
+        entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source', 'source_agent', 'memory_type', 'project' (supersession scope).
     """
     # Mirror the HTTP /memories/batch cap (MemoryBatchCreate: 1-100 entries)
     # so the MCP path cannot enqueue an unbounded batch.

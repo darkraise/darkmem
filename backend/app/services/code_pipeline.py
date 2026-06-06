@@ -1182,17 +1182,34 @@ class CodePipeline:
 
         worker = EnrichmentWorker(self.llm, broadcast=event_manager.broadcast)
         processed = 0
-        # Symbols enter the queue with enrichment_status='pending' at creation,
-        # so the worker (which reads CodeSymbol directly) can drain them here.
-        # Loop until a batch returns no work or the safety cap is hit.
+        # Symbols enter the queue with enrichment_status='pending' at creation.
+        # Scope to THIS repo so the inline budget isn't spent draining another
+        # repo's backlog. Loop until a batch returns no work or the cap is hit.
         for _ in range(200):
-            count = await worker.process_batch()
+            count = await worker.process_batch(repo_id=self._repo.id)
             if count == 0:
                 break
             processed += count
 
+        # Surface silent truncation: if the cap was hit with symbols still
+        # pending for this repo, the background code_enrichment job drains the rest.
+        remaining = (await self.session.execute(
+            text("""
+                SELECT count(*) FROM code_symbols s
+                JOIN code_files f ON f.id = s.file_id
+                WHERE f.repo_id = :rid AND s.enrichment_status = 'pending'
+            """),
+            {"rid": str(self._repo.id)},
+        )).scalar() or 0
         self._stats["enrichment_processed"] = processed
-        logger.info("Phase 13 enriched %d symbols", processed)
+        if remaining:
+            logger.info(
+                "Phase 13 enriched %d symbols; %d still pending for repo %s "
+                "(background code_enrichment job will drain the rest)",
+                processed, remaining, self._repo.id,
+            )
+        else:
+            logger.info("Phase 13 enriched %d symbols", processed)
         self._phase_done("13_enrich_symbols", t0)
 
     async def phase_14_generate_wiki(self, repo_id: UUID) -> None:

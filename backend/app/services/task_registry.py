@@ -40,10 +40,11 @@ class TaskRegistry:
 
     @classmethod
     def _on_done(cls, task_id: str) -> None:
-        info = cls._tasks.get(task_id)
-        if info:
-            info.status = "completed"
-            info.task = None
+        # Readers (get_repo_tasks / get_all_running) only ever surface 'running'
+        # tasks, so a finished task has no further use; drop it immediately
+        # instead of leaving a 'completed' entry that the >100-gated cleanup may
+        # never reach (unbounded growth on low-volume deployments).
+        cls._tasks.pop(task_id, None)
 
     @classmethod
     def cancel(cls, task_id: str) -> bool:

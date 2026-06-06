@@ -28,16 +28,24 @@ class EnrichmentWorker:
         self.batch_size = 5
         self._broadcast = broadcast
 
-    async def process_batch(self, batch_size: int | None = None) -> int:
+    async def process_batch(self, batch_size: int | None = None, repo_id=None) -> int:
         from app.database import async_session_factory
         from app.config import FEATURE_FLAGS_DEFAULTS
+        from app.models.code import CodeFile
         from app.models.config import Config
 
         size = batch_size if batch_size is not None else self.batch_size
 
         async with async_session_factory() as session:
+            stmt = select(CodeSymbol)
+            if repo_id is not None:
+                # Scope to one repo so a reindex of repo A can't spend its whole
+                # enrichment budget draining repo B's pending backlog.
+                stmt = stmt.join(CodeFile, CodeSymbol.file_id == CodeFile.id).where(
+                    CodeFile.repo_id == repo_id
+                )
             stmt = (
-                select(CodeSymbol)
+                stmt
                 .where(CodeSymbol.enrichment_status == "pending")
                 # Already-retried symbols sink below untried ones so a
                 # persistently-failing symbol can't starve fresh work within a

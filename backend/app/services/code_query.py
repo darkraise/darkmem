@@ -56,7 +56,7 @@ class CodeQueryService:
         try:
             escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             text_query = (
-                select(CodeSymbol, CodeFile.file_path, CodeFile.repo_id)
+                select(CodeSymbol, CodeFile.file_path, CodeFile.repo_id, CodeFile.language)
                 .join(CodeFile)
                 .where(
                     (CodeSymbol.name.ilike(f"%{escaped}%"))
@@ -65,6 +65,10 @@ class CodeQueryService:
             )
             if repo_id:
                 text_query = text_query.where(CodeFile.repo_id == repo_id)
+            if language:
+                # The vector branch filters by language; without this the keyword
+                # side fuses in other-language matches and defeats the filter.
+                text_query = text_query.where(CodeFile.language == language)
             # Relevance order so RRF ranks mean something (and truncation is
             # deterministic): exact name > prefix > substring > body-only match,
             # then shorter names first.
@@ -80,14 +84,14 @@ class CodeQueryService:
             text_query = text_query.limit(limit * 2)
 
             text_results = (await self.session.execute(text_query)).all()
-            for rank, (sym, file_path, rid) in enumerate(text_results, start=1):
+            for rank, (sym, file_path, rid, lang) in enumerate(text_results, start=1):
                 key = f"{file_path}:{sym.line_start}"
                 if key not in results_map:
                     results_map[key] = {
                         "chunk_content": sym.source_code[:500] if sym.source_code else "",
                         "file_path": file_path,
                         "repo_id": str(rid),
-                        "language": None,
+                        "language": lang,
                         "symbol_name": sym.name,
                         "line_start": sym.line_start,
                         "line_end": sym.line_end,

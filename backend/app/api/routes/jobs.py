@@ -126,6 +126,10 @@ async def trigger_job(
     registry = _get_registry(request)
     if registry.get(key) is None:
         raise HTTPException(status_code=404, detail=f"Unknown job {key!r}")
+    # Synchronous by design: the manual "Run" surfaces the run's result, and the
+    # per-job lock (shared with the scheduler loop) already prevents a manual and
+    # a scheduled run from racing. Long jobs (repo_sync) are bounded by the git
+    # subprocess timeouts inside the runner.
     cfg = await registry.trigger(key)
     return JobTriggerResponse(
         key=key,

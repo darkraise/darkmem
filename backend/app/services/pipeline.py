@@ -397,7 +397,15 @@ class ProcessingPipeline:
 
                             if mem_record is not None:
                                 mem_record.technologies = sorted(tech_names)
-                                if mem_record.technologies:
+                                # Trigger on a REPLACES relation, not on this
+                                # memory's own technologies: the detector keys off
+                                # the REPLACES *target* overlapping a candidate's
+                                # technologies, which is independent of whether the
+                                # new memory produced a tech entity of its own.
+                                if any(
+                                    r.get("type") == "REPLACES"
+                                    for r in extraction.get("relationships", [])
+                                ):
                                     await session.flush([mem_record])
                                     await detect_supersessions(
                                         session,

@@ -119,10 +119,13 @@ class ChatService:
                 yield {"type": "error", "message": "Conversation not found"}
                 return
 
-        # Save user message
+        # Save user message and commit it BEFORE the long LLM stream: the
+        # request-scoped session otherwise only commits when the StreamingResponse
+        # generator finishes, so a mid-stream client disconnect rolls back and
+        # the user's turn vanishes from history.
         user_msg = Message(conversation_id=conversation_id, role="user", content=content)
         self.session.add(user_msg)
-        await self.session.flush()
+        await self.session.commit()
 
         # Retrieve context
         retrieval = await self._retrieve(content, context)
@@ -191,7 +194,9 @@ class ChatService:
             .where(Conversation.id == conversation_id)
             .values(updated_at=sa_func.now())
         )
-        await self.session.flush()
+        # Persist the assistant turn now so it survives a disconnect that fires
+        # right after the stream completes.
+        await self.session.commit()
 
         yield {
             "type": "done",

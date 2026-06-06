@@ -54,7 +54,11 @@ class CallResolver:
         ] = {}
 
     def resolve(self, call: ExtractedCall, from_file: str) -> tuple[str, float] | None:
-        if call.called_name in BUILTIN_SKIP:
+        # Skip language builtins only when the repo doesn't define its own symbol
+        # of that name — a user `def map(...)` / `class Set` must still resolve.
+        if call.called_name in BUILTIN_SKIP and not self.symbols.lookup_local(
+            from_file, call.called_name
+        ):
             return None
 
         # Include call_form and arg_count: _filter disambiguates candidates by

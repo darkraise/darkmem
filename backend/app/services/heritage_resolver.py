@@ -236,7 +236,7 @@ class HeritageResolver:
                     FROM code_edges
                     WHERE repo_id = :repo_id
                       AND source_key = :class_key
-                      AND edge_type = 'extends'
+                      AND edge_type IN ('extends', 'implements')
                 """),
                 {"repo_id": self.repo_id, "class_key": current},
             )

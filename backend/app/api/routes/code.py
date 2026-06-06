@@ -38,7 +38,7 @@ async def search_code(
         CodeSearchResult(
             chunk_content=r["chunk_content"],
             file_path=r["file_path"],
-            repo_id=UUID(r["repo_id"]) if r["repo_id"] else UUID("00000000-0000-0000-0000-000000000000"),
+            repo_id=UUID(r["repo_id"]) if r["repo_id"] else None,
             language=r["language"],
             symbol_name=r["symbol_name"],
             line_start=r["line_start"],
