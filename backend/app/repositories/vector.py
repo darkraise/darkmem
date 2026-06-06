@@ -300,7 +300,11 @@ class PostgresVectorRepository:
             return []
         vector = self._parse_vector(row["embedding_text"])
         results = await self.search(vector, fingerprint=fingerprint, limit=limit + 1)
-        return [r for r in results if r["memory_id"] != memory_id and r["score"] >= threshold]
+        # Slice back to ``limit``: the +1 over-fetch only leaves room to drop the
+        # source row, but when the source isn't in the ANN result nothing is
+        # dropped and up to limit+1 rows would be returned.
+        filtered = [r for r in results if r["memory_id"] != memory_id and r["score"] >= threshold]
+        return filtered[:limit]
 
     async def find_similar_memories(
         self, memory_id: UUID, fingerprint: str, top_k: int = 5, min_score: float = 0.4,

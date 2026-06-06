@@ -4,7 +4,6 @@ import json
 import logging
 import re
 from collections import deque
-from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

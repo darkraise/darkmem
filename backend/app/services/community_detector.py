@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 from collections import Counter
-from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

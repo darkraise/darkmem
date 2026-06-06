@@ -73,7 +73,7 @@ class EnrichmentWorker:
 
             async def _enrich_one(idx: int, symbol) -> None:
                 async with sem:
-                    prompt = SUMMARY_PROMPT.format(
+                    user_prompt = SUMMARY_PROMPT.format(
                         kind=symbol.kind,
                         source_code=symbol.source_code[:MAX_SOURCE_CHARS],
                     )
@@ -81,7 +81,7 @@ class EnrichmentWorker:
                         "summarization",
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt},
+                            {"role": "user", "content": user_prompt},
                         ],
                     )
 

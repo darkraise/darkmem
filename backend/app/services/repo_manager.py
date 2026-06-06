@@ -109,7 +109,7 @@ async def add_git_safe_directory(path: Path) -> bool:
     import subprocess
     cmd = ["git", "config", "--global", "--add", "safe.directory", str(path)]
     try:
-        result = await asyncio.get_event_loop().run_in_executor(
+        result = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: subprocess.run(cmd, capture_output=True, timeout=10),
         )
@@ -331,16 +331,19 @@ class RepoManager:
             try:
                 token = await self.get_auth_token(repo)
                 env: dict[str, str] = {}
+                # Fetch from an explicit (optionally authed) URL rather than
+                # persisting the token into .git/config via `remote set-url`;
+                # reset to FETCH_HEAD since the remote-tracking ref isn't updated
+                # when fetching from a bare URL.
+                fetch_target = "origin"
                 if token and repo.url:
-                    auth_url = self._auth_url(repo.url, token)
-                    env["GIT_ASKPASS"] = "echo"
-                    try:
-                        await self._run_git(cwd, ["git", "remote", "set-url", "origin", auth_url], env=env)
-                    except RuntimeError:
-                        await self._run_git(cwd, ["git", "remote", "add", "origin", auth_url], env=env)
+                    fetch_target = self._auth_url(repo.url, token)
+                    # Fail fast instead of hanging on an interactive credential
+                    # prompt if the embedded token is rejected.
+                    env["GIT_TERMINAL_PROMPT"] = "0"
 
-                await self._run_git(cwd, ["git", "fetch", "origin", repo.default_branch], env=env)
-                await self._run_git(cwd, ["git", "reset", "--hard", f"origin/{repo.default_branch}"], env=env)
+                await self._run_git(cwd, ["git", "fetch", fetch_target, repo.default_branch], env=env)
+                await self._run_git(cwd, ["git", "reset", "--hard", "FETCH_HEAD"], env=env)
 
                 result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"], env=env)
                 return result.strip() if result else None
@@ -395,6 +398,13 @@ class RepoManager:
         abs_dest = str(dest.resolve())
         cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", url, abs_dest]
         await self._run_git(dest.parent, cmd)
+        # git clone records the (token-bearing) URL in .git/config; reset the
+        # remote to the bare URL so the credential isn't persisted on disk.
+        if token:
+            try:
+                await self._run_git(dest, ["git", "remote", "set-url", "origin", repo.url])
+            except RuntimeError:
+                logger.warning("Failed to scrub auth token from %s remote URL", repo.name)
 
     @staticmethod
     def _auth_url(url: str, token: str) -> str:
@@ -410,7 +420,7 @@ class RepoManager:
         import subprocess
         full_env = {**os.environ, **(env or {})}
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None,
                 lambda: subprocess.run(
                     cmd, cwd=str(cwd), capture_output=True, env=full_env,
