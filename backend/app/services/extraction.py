@@ -784,8 +784,8 @@ def _rescue_relations(
     - ``head_gap`` (src end → connector start) <= 15 chars: the source
       must be the immediate subject of the connector, not an earlier
       sentence's noun.
-    - ``tail_gap`` (connector end → tgt start) <= 5 chars: the target
-      must be the immediate object.
+    - ``tail_gap`` (connector end → tgt start) <= MAX_TAIL_GAP (15) chars: the
+      target must be close to the connector.
 
     These constraints rule out the most common false-positive pattern —
     pairing the *closest preceding entity* with a connector that

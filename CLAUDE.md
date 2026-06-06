@@ -121,7 +121,7 @@ is lowercase; do not change either side without the other.
 Pgvector requires a fixed-dim `vector(N)` column, so every fingerprint
 gets its own child table:
 `memory_embeddings__<slug>`, `entity_embeddings__<slug>`,
-`code_chunk_embeddings__<slug>`, `entity_embeddings_cache__<slug>`.
+`code_chunk_embeddings__<slug>`, `entity_embedding_cache__<slug>`.
 The `embedders` table is the registry; `embedder_registry.register`
 inserts the row and runs the four `CREATE TABLE IF NOT EXISTS` once,
 idempotently. Application code never names a child table directly —

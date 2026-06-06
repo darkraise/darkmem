@@ -855,7 +855,7 @@ class ProcessingPipeline:
 
         from sqlalchemy import text as sa_text
         row_result = await session.execute(
-            sa_text("SELECT id, confidence FROM memories WHERE id = ANY(:ids)"),
+            sa_text("SELECT id, confidence FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
             {"ids": memory_ids},
         )
         conf_map: dict[str, float] = {str(row[0]): float(row[1]) for row in row_result}
