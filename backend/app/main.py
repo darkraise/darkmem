@@ -10,7 +10,7 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, config_llm_registry, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.services.llm import LLMOrchestrator
@@ -313,6 +313,7 @@ app.include_router(tags.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(config.router)
+app.include_router(config_llm_registry.router)
 app.include_router(pipeline_routes.router)
 app.include_router(vectors.router)
 app.include_router(chat.router)
