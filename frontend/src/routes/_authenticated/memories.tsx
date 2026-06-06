@@ -26,7 +26,7 @@ import {
   TagsInputItemText,
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
-import { usePaginatedSearch, useDeleteMemory } from "@/hooks/api"
+import { usePaginatedSearch, useDeleteMemory, useBulkDeleteMemory } from "@/hooks/api"
 import type { Memory } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import { relativeTime } from "@/lib/format"
@@ -108,6 +108,10 @@ function MemoriesPage() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [confirmBulkArchive, setConfirmBulkArchive] = useState(false)
 
+  const hasActiveFilter = Boolean(
+    freeQuery || sourceFilters.length || tagFilters.length || typeFilters.length,
+  )
+
   // Multi-value filters go to the server (source_any / memory_type_any), so the
   // page and the total count reflect the same query. Previously multiple
   // selections were narrowed client-side over the current page only, while the
@@ -120,35 +124,50 @@ function MemoriesPage() {
     limit: PAGE_SIZE,
     offset,
   })
-  const { data: unfilteredData } = usePaginatedSearch({ limit: 1, offset: 0 })
+  // The unfiltered "N total" count only differs from `data.total` when a filter
+  // is active; skip the second query otherwise so a delete refetches one query,
+  // not two. ``unfilteredTotal`` falls back to ``total`` when this is disabled.
+  const { data: unfilteredData } = usePaginatedSearch(
+    { limit: 1, offset: 0 },
+    { enabled: hasActiveFilter },
+  )
   const deleteMemory = useDeleteMemory()
+  const bulkDelete = useBulkDeleteMemory()
   const qc = useQueryClient()
 
   const memories: Memory[] = data?.items ?? []
 
   const total = data?.total ?? 0
-  const unfilteredTotal = unfilteredData?.total ?? total
+  // The header shows the true library size: the unfiltered count when a filter is
+  // active (undefined until that query resolves, so we don't briefly mislabel the
+  // filtered total as "total"), otherwise the page total.
+  const unfilteredTotal = hasActiveFilter ? unfilteredData?.total : total
   const pageStart = offset + 1
   const pageEnd = Math.min(offset + PAGE_SIZE, total)
 
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
+  const processedFocusRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!focusId || memories.length === 0) return
+    // Run once per focusId: the effect clears the `focus` search param (which
+    // re-runs the loader) and depends on `memories`, so without this guard a
+    // refetch re-triggers the scroll/highlight and the timer churns.
+    if (!focusId || focusId === processedFocusRef.current || memories.length === 0)
+      return
     const target = memories.find((m) => m.id === focusId)
     if (!target) return
     const node = rowRefs.current.get(focusId)
-    if (node) {
-      node.scrollIntoView({ behavior: "smooth", block: "center" })
-      setHighlightId(focusId)
-      const timer = setTimeout(() => setHighlightId(null), 1500)
-      navigate({
-        search: (prev) => ({ ...prev, focus: undefined }),
-        replace: true,
-      })
-      return () => clearTimeout(timer)
-    }
+    if (!node) return
+    processedFocusRef.current = focusId
+    node.scrollIntoView({ behavior: "smooth", block: "center" })
+    setHighlightId(focusId)
+    const timer = setTimeout(() => setHighlightId(null), 1500)
+    navigate({
+      search: (prev) => ({ ...prev, focus: undefined }),
+      replace: true,
+    })
+    return () => clearTimeout(timer)
   }, [focusId, memories, navigate])
 
   // ⌘K / Ctrl+K opens palette
@@ -227,7 +246,7 @@ function MemoriesPage() {
             return next
           })
           if (detailMemory?.id === id) setDetailMemory(null)
-          qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+          // Invalidation handled by useDeleteMemory's onSuccess (both keys).
         },
       })
     },
@@ -238,18 +257,20 @@ function MemoriesPage() {
 
   const confirmBulkDeleteAction = async () => {
     const ids = Array.from(selected)
-    const { succeeded, firstError } = await runInBatches(ids, (id) =>
-      deleteMemory.mutateAsync(id),
-    )
-    setSelected(new Set())
-    setDetailMemory(null)
-    qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
-    if (firstError) {
-      toast.error(
-        `Deleted ${succeeded}/${ids.length}; first error: ${(firstError as Error).message}`,
+    try {
+      // One request; the server deletes sequentially so concurrent graph
+      // cleanups can't deadlock on shared entity rows.
+      const { deleted, not_found } = await bulkDelete.mutateAsync(ids)
+      setSelected(new Set())
+      setDetailMemory(null)
+      const missing = not_found?.length ?? 0
+      toast.success(
+        missing
+          ? `Deleted ${deleted} memories (${missing} already gone)`
+          : `Deleted ${deleted} memories`,
       )
-    } else {
-      toast.success(`Deleted ${succeeded} memories`)
+    } catch (e) {
+      toast.error(`Bulk delete failed: ${(e as Error).message}`)
     }
   }
 
@@ -278,13 +299,6 @@ function MemoriesPage() {
       toast.success(`Archived ${succeeded} memories`)
     }
   }
-
-  const hasActiveFilter = Boolean(
-    freeQuery ||
-    sourceFilters.length ||
-    tagFilters.length ||
-    typeFilters.length,
-  )
 
   const sourceItems = useMemo(
     () => distinctSources.map((s) => ({ value: s, label: s })),
@@ -456,7 +470,7 @@ function MemoriesPage() {
           <PageHeader
             title="Memories"
             description={
-              unfilteredTotal > 0
+              unfilteredTotal != null && unfilteredTotal > 0
                 ? `${unfilteredTotal.toLocaleString()} total`
                 : undefined
             }

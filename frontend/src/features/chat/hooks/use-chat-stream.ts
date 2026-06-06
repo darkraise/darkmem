@@ -56,6 +56,18 @@ export function useChatStream() {
 
       let resultConversationId: string | null = null
 
+      // The conversation detail always changes after a stream; the sidebar LIST
+      // only changes structurally when a brand-new conversation was created
+      // (incoming conversationId was null). Refetching the whole list on every
+      // message in an existing thread is wasted work, so gate it.
+      const refreshAfterStream = () => {
+        if (!resultConversationId) return
+        qc.invalidateQueries({ queryKey: ["conversation", resultConversationId] })
+        // The sidebar list also shows each conversation's updated_at/message_count,
+        // which change on every message — refresh it too, not only for new threads.
+        qc.invalidateQueries({ queryKey: ["conversations"] })
+      }
+
       try {
         const res = await fetch("/api/v1/chat/completions", {
           method: "POST",
@@ -130,12 +142,7 @@ export function useChatStream() {
           isStreaming: false,
           pendingUserMessage: null,
         }))
-        if (resultConversationId) {
-          qc.invalidateQueries({
-            queryKey: ["conversation", resultConversationId],
-          })
-          qc.invalidateQueries({ queryKey: ["conversations"] })
-        }
+        refreshAfterStream()
 
         return resultConversationId
       } catch (err) {
@@ -146,12 +153,7 @@ export function useChatStream() {
             pendingUserMessage: null,
             error: (err as Error).message,
           }))
-          if (resultConversationId) {
-            qc.invalidateQueries({
-              queryKey: ["conversation", resultConversationId],
-            })
-            qc.invalidateQueries({ queryKey: ["conversations"] })
-          }
+          refreshAfterStream()
           return resultConversationId
         }
       }
