@@ -7,6 +7,7 @@ import { resolveGroupColor } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { computeHullGroups } from "@/features/graph/lib/graph-geometry"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
+import { resolveGraphTokens } from "@/features/graph/lib/code-graph-theme"
 
 interface Graph3DRendererProps {
   graphData: GraphData3D
@@ -37,6 +38,11 @@ export function Graph3DRenderer({
   const hullMeshesRef = useRef<THREE.Mesh[]>([])
 
   const isEntitySelected = selectedNodeId?.startsWith("entity:") ?? false
+
+  const chrome = useMemo(() => {
+    const t = resolveGraphTokens(document.documentElement)
+    return { background: t.background, highlight: t.foreground }
+  }, [])
 
   const neighborSet = useMemo(() => {
     if (!selectedNodeId) return null
@@ -102,8 +108,8 @@ export function Graph3DRenderer({
         mat.opacity = 0.9
         obj.scale.set(1, 1, 1)
       } else if (node.id === selectedNodeId) {
-        mat.color.set("#ffffff")
-        mat.emissive.set("#ffffff")
+        mat.color.set(chrome.highlight)
+        mat.emissive.set(chrome.highlight)
         mat.emissiveIntensity = 0.6
         mat.opacity = 1.0
         obj.scale.set(1.5, 1.5, 1.5)
@@ -135,7 +141,7 @@ export function Graph3DRenderer({
         obj.scale.set(1, 1, 1)
       }
     }
-  }, [neighborSet, selectedNodeId, graphData.nodes])
+  }, [neighborSet, selectedNodeId, graphData.nodes, chrome])
 
   const buildHulls = useCallback(() => {
     const scene = fgRef.current?.scene()
@@ -271,7 +277,7 @@ export function Graph3DRenderer({
       graphData={graphData}
       width={width}
       height={height}
-      backgroundColor="#0d1117"
+      backgroundColor={chrome.background}
       nodeThreeObject={nodeThreeObject}
       nodeLabel={(node: Node3D) =>
         node.nodeKind === "entity"

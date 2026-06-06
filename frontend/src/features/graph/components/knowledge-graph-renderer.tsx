@@ -18,7 +18,10 @@ import {
   lightenHex,
   darkenHex,
 } from "@/features/graph/lib/graph-colors"
-import { seededUnit } from "@/features/graph/lib/code-graph-theme"
+import {
+  seededUnit,
+  resolveGraphTokens,
+} from "@/features/graph/lib/code-graph-theme"
 
 export interface KGSelection {
   kind: "node" | "edge"
@@ -69,6 +72,11 @@ export function KnowledgeGraphRenderer({
       graphRef.current = null
     }
 
+    const t = resolveGraphTokens(document.documentElement)
+    const mutedColor = t.mutedForeground
+    const dimColor = t.border
+    const labelColorToken = t.foreground
+
     const graph = new Graph()
     graphRef.current = graph
 
@@ -111,10 +119,10 @@ export function KnowledgeGraphRenderer({
       renderLabels: true,
       renderEdgeLabels: true,
       labelSize: 12,
-      labelColor: { color: "#c9d1d9" },
+      labelColor: { color: labelColorToken },
       labelFont: "Inter, sans-serif",
       edgeLabelSize: 10,
-      edgeLabelColor: { color: "#6e7681" },
+      edgeLabelColor: { color: mutedColor },
       defaultEdgeType: "curvedArrow",
       edgeProgramClasses: { curvedArrow: EdgeCurvedArrowProgram },
       defaultDrawEdgeLabel: createDrawCurvedEdgeLabel({
@@ -124,26 +132,26 @@ export function KnowledgeGraphRenderer({
       defaultDrawNodeHover: drawDiscNodeHover,
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
-      defaultNodeColor: "#8b949e",
+      defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedIdRef.current
         if (hov === node) {
-          res.color = lightenHex(data.color || "#8b949e", 0.4)
+          res.color = lightenHex(data.color || mutedColor, 0.4)
           res.size = (data.size || 14) * 1.4
           res.highlighted = true
         } else if (sel === node) {
-          res.color = lightenHex(data.color || "#8b949e", 0.4)
+          res.color = lightenHex(data.color || mutedColor, 0.4)
           res.size = (data.size || 14) * 1.4
           res.highlighted = true
-          res.borderColor = "#ffffff"
+          res.borderColor = labelColorToken
           res.borderSize = 3
         } else if (sel && sel !== node) {
           const isNeighbor =
             graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
           if (!isNeighbor) {
-            res.color = "#444444"
+            res.color = dimColor
             res.label = ""
           }
         }
@@ -161,10 +169,10 @@ export function KnowledgeGraphRenderer({
             res.size = (data.size || 1.5) * 2
             const neighborColor =
               graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              "#8b949e"
+              mutedColor
             res.color = lightenHex(neighborColor, 0.3)
           } else {
-            res.color = "#444444"
+            res.color = dimColor
             res.size = (data.size || 1.5) * 0.5
           }
         }
@@ -173,7 +181,7 @@ export function KnowledgeGraphRenderer({
           res.size = (data.size || 1.5) * 2
           const neighborColor =
             graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            "#8b949e"
+            mutedColor
           res.color = lightenHex(neighborColor, 0.3)
         }
 

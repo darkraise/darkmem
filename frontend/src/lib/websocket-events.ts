@@ -13,6 +13,10 @@ export interface MemoryDeleted {
   memory_id: string
 }
 
+export interface MemoryBulkDeleted {
+  deleted: number
+}
+
 export interface RepoCloneStarted {
   repo_id: string
   name: string
@@ -97,6 +101,7 @@ export type WebSocketEventMap = {
   "pipeline.retry_batch.progress": PipelineRetryBatchProgress
   "pipeline.reembed_batch.progress": PipelineReembedBatchProgress
   "memory.deleted": MemoryDeleted
+  "memory.bulk_deleted": MemoryBulkDeleted
   "repo.clone_started": RepoCloneStarted
   "repo.clone_completed": RepoCloneCompleted
   "repo.clone_failed": RepoCloneFailed

@@ -770,7 +770,7 @@ class ProcessingPipeline:
 
         return normalized
 
-    async def delete_memory(self, memory_id: UUID):
+    async def delete_memory(self, memory_id: UUID, broadcast: bool = True):
         try:
             async with self.session_factory() as session:
                 vector_repo = PostgresVectorRepository(session)
@@ -778,7 +778,7 @@ class ProcessingPipeline:
                 await vector_repo.delete(memory_id)
                 await graph_repo.delete_by_memory_id(memory_id)
                 await session.commit()
-            if self._broadcast:
+            if broadcast and self._broadcast:
                 try:
                     await self._broadcast("memory.deleted", {"memory_id": str(memory_id)})
                 except Exception as broadcast_err:

@@ -24,7 +24,10 @@ import {
   darkenHex,
 } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
-import { seededUnit } from "@/features/graph/lib/code-graph-theme"
+import {
+  seededUnit,
+  resolveGraphTokens,
+} from "@/features/graph/lib/code-graph-theme"
 import type {
   UnifiedMemory,
   GraphEntity,
@@ -92,6 +95,11 @@ export function Graph2DRenderer({
       graphRef.current = null
     }
 
+    const t = resolveGraphTokens(document.documentElement)
+    const mutedColor = t.mutedForeground
+    const dimColor = t.border
+    const labelColorToken = t.foreground
+
     const graph = new Graph()
     graphRef.current = graph
 
@@ -122,7 +130,7 @@ export function Graph2DRenderer({
       if (graph.hasNode(e.source) && graph.hasNode(e.target)) {
         try {
           const srcColor =
-            graph.getNodeAttribute(e.source, "color") || "#8b949e"
+            graph.getNodeAttribute(e.source, "color") || mutedColor
           const edgeColor = darkenHex(srcColor, 0.6)
           graph.addEdge(e.source, e.target, {
             color: edgeColor,
@@ -190,7 +198,7 @@ export function Graph2DRenderer({
       renderLabels: true,
       renderEdgeLabels: false,
       labelSize: 12,
-      labelColor: { color: "#c9d1d9" },
+      labelColor: { color: labelColorToken },
       labelFont: "Inter, sans-serif",
       defaultEdgeType: "curve",
       nodeProgramClasses: { diamond: NodeDiamondProgram },
@@ -204,28 +212,28 @@ export function Graph2DRenderer({
       },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
-      defaultNodeColor: "#8b949e",
+      defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedNodeIdRef.current
         if (hov === node) {
-          res.color = lightenHex(data.color || "#8b949e", 0.4)
+          res.color = lightenHex(data.color || mutedColor, 0.4)
           res.size = (data.size || 5) * 1.4
           res.highlighted = true
         } else if (sel === node) {
-          res.color = lightenHex(data.color || "#8b949e", 0.4)
+          res.color = lightenHex(data.color || mutedColor, 0.4)
           res.size = (data.size || 5) * 1.4
           res.highlighted = true
           if (data.type !== "diamond") {
-            res.borderColor = "#ffffff"
+            res.borderColor = labelColorToken
             res.borderSize = 3
           }
         } else if (sel && sel !== node) {
           const isNeighbor =
             graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
           if (!isNeighbor) {
-            res.color = "#444444"
+            res.color = dimColor
             res.label = ""
           }
         }
@@ -243,10 +251,10 @@ export function Graph2DRenderer({
             res.size = (data.size || 2.5) * 2
             const neighborColor =
               graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              "#8b949e"
+              mutedColor
             res.color = lightenHex(neighborColor, 0.3)
           } else {
-            res.color = "#444444"
+            res.color = dimColor
             res.size = (data.size || 2.5) * 0.5
           }
         }
@@ -255,7 +263,7 @@ export function Graph2DRenderer({
           res.size = (data.size || 2.5) * 2
           const neighborColor =
             graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            "#8b949e"
+            mutedColor
           res.color = lightenHex(neighborColor, 0.3)
         }
 
@@ -348,7 +356,7 @@ export function Graph2DRenderer({
         hullCtx.lineTo(vp.x, vp.y + r)
         hullCtx.lineTo(vp.x - r, vp.y)
         hullCtx.closePath()
-        hullCtx.strokeStyle = "#ffffff"
+        hullCtx.strokeStyle = labelColorToken
         hullCtx.lineWidth = border
         hullCtx.stroke()
       }

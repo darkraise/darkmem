@@ -18,6 +18,10 @@ class MemoryDeleted(BaseModel):
     memory_id: str
 
 
+class MemoryBulkDeleted(BaseModel):
+    deleted: int
+
+
 class RepoCloneStarted(BaseModel):
     repo_id: str
     name: str
@@ -102,6 +106,7 @@ EVENT_SCHEMAS: dict[str, type[BaseModel]] = {
     "pipeline.retry_batch.progress": PipelineRetryBatchProgress,
     "pipeline.reembed_batch.progress": PipelineReembedBatchProgress,
     "memory.deleted": MemoryDeleted,
+    "memory.bulk_deleted": MemoryBulkDeleted,
     "repo.clone_started": RepoCloneStarted,
     "repo.clone_completed": RepoCloneCompleted,
     "repo.clone_failed": RepoCloneFailed,

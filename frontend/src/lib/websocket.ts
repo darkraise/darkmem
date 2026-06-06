@@ -65,7 +65,12 @@ export function useWebSocket() {
         void qc.invalidateQueries({ queryKey: ["overview"] })
         void qc.invalidateQueries({ queryKey: ["tags"] })
         void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
-      } else if (msg.event === "memory.deleted") {
+      } else if (
+        msg.event === "memory.deleted" ||
+        msg.event === "memory.bulk_deleted"
+      ) {
+        // A bulk delete emits one terminal memory.bulk_deleted instead of N
+        // per-row memory.deleted events, so the cache invalidates once.
         void qc.invalidateQueries({ queryKey: ["memories"] })
         void qc.invalidateQueries({ queryKey: ["memory"] })
         void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
@@ -126,9 +131,16 @@ export function useWebSocket() {
         msg.event === "repo.indexing_completed" ||
         msg.event === "repo.indexing_failed"
       ) {
+        // repo.status_message is rewritten on every indexing-progress tick
+        // (code_pipeline._update_status), so [repos] must refetch to show the
+        // live phase label. But the task list and aggregate stats only change
+        // at the terminal events, so refetching them on each of the ~13 phase
+        // ticks per index is pure waste — skip them mid-progress.
         void qc.invalidateQueries({ queryKey: ["repos"] })
-        void qc.invalidateQueries({ queryKey: ["repoTasks"] })
-        void qc.invalidateQueries({ queryKey: ["repoStats"] })
+        if (msg.event !== "repo.indexing_progress") {
+          void qc.invalidateQueries({ queryKey: ["repoTasks"] })
+          void qc.invalidateQueries({ queryKey: ["repoStats"] })
+        }
 
         if (msg.event === "repo.clone_completed") {
           const d = msg.data as WebSocketEventMap["repo.clone_completed"]

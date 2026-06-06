@@ -128,7 +128,9 @@ class MemoryService:
 
         return memory
 
-    async def delete_memory(self, memory_id: UUID, api_key_id: UUID | None) -> bool:
+    async def delete_memory(
+        self, memory_id: UUID, api_key_id: UUID | None, broadcast: bool = True
+    ) -> bool:
         try:
             from app.services.pipeline_failures import PipelineFailureService
             from app.api.websocket import event_manager
@@ -163,7 +165,7 @@ class MemoryService:
             # transaction's row/CASCADE locks on the deleted memory.
             await self.session.commit()
             if self.pipeline:
-                await self.pipeline.delete_memory(memory_id)
+                await self.pipeline.delete_memory(memory_id, broadcast=broadcast)
             else:
                 logger.warning(
                     "Graph cleanup skipped for memory %s: pipeline is None", memory_id
@@ -187,14 +189,24 @@ class MemoryService:
             seen.add(mid)
             # Isolate each delete: one row raising mid-loop must not abort the
             # whole batch and lose the report for the rows already committed.
+            # Suppress the per-row memory.deleted broadcast; one terminal
+            # memory.bulk_deleted fires after the loop so clients invalidate once.
             try:
-                if await self.delete_memory(mid, api_key_id):
+                if await self.delete_memory(mid, api_key_id, broadcast=False):
                     deleted += 1
                 else:
                     not_found.append(mid)
             except Exception as e:
                 logger.warning("Bulk delete failed for memory %s: %s", mid, e)
                 errored.append(mid)
+
+        if deleted:
+            try:
+                from app.api.websocket import event_manager
+                await event_manager.broadcast("memory.bulk_deleted", {"deleted": deleted})
+            except Exception as broadcast_err:
+                logger.warning("WebSocket broadcast failed: %s", broadcast_err)
+
         return {"deleted": deleted, "not_found": not_found, "errored": errored}
 
     def _matches_schema_v2_filters(self, memory: Memory, params: MemorySearchRequest) -> bool:
