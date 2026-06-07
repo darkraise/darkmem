@@ -11,7 +11,30 @@ import pytest
 from sqlalchemy import text
 
 from app.models.code import CodeFile, CodeSymbol, Repository
+from app.models.config import Config
 from app.services.wiki_generator import WikiGenerator
+
+
+@pytest.mark.asyncio
+async def test_wiki_read_is_readonly(session):
+    """GET /code/wiki must be safe: WikiGenerator.read returns the cache or None
+    and NEVER writes (generation is an explicit reindex action)."""
+    repo = Repository(name="ro")
+    session.add(repo)
+    await session.flush()
+    gen = WikiGenerator(session, llm=None)
+
+    # No cache -> None, and nothing was generated/persisted.
+    assert await gen.read(repo.id) is None
+    n = (await session.execute(
+        text("SELECT count(*) FROM config WHERE key = :k"), {"k": f"wiki_{repo.id}"}
+    )).scalar_one()
+    assert n == 0
+
+    # With a cache -> returns it minus internal (underscore-prefixed) keys.
+    session.add(Config(key=f"wiki_{repo.id}", value={"overview": "hi", "_cached_at": "x"}))
+    await session.flush()
+    assert await gen.read(repo.id) == {"overview": "hi"}
 
 
 @pytest.mark.asyncio

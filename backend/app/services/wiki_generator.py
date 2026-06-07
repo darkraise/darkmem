@@ -17,6 +17,18 @@ class WikiGenerator:
         self.session = session
         self.llm = llm
 
+    async def read(self, repo_id: UUID) -> dict | None:
+        """Read-only wiki fetch: return the cached wiki (minus internal keys) or
+        None when none exists. NEVER generates — generation is an explicit action
+        run by the reindex pipeline (POST /repos/{id}/reindex with
+        generate_wiki=true), which keeps GET /code/wiki safe and idempotent."""
+        cached = (await self.session.execute(
+            select(Config).where(Config.key == f"wiki_{repo_id}")
+        )).scalar_one_or_none()
+        if not cached:
+            return None
+        return {k: v for k, v in cached.value.items() if not k.startswith("_")}
+
     async def generate(self, repo_id: UUID, force: bool = False) -> dict:
         """Generate wiki documentation for a repository."""
         repo = (await self.session.execute(
