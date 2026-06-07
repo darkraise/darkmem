@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.auth import require_auth
 from app.api.deps import get_memory_service
 from app.models.memory import Memory
-from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
+from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.services.memory import MemoryService
 
@@ -105,6 +105,19 @@ async def delete_memory(
 ):
     if not await service.delete_memory(memory_id, api_key_id=None):
         raise HTTPException(status_code=404, detail="Memory not found")
+
+
+@router.post("/delete", response_model=MemoryBulkDeleteResponse)
+async def bulk_delete(
+    body: MemoryBulkDelete,
+    _user=Depends(require_auth),
+    service: MemoryService = Depends(get_memory_service),
+):
+    """Delete multiple memories in one request (processed server-side in series
+    to avoid the deadlock that concurrent per-row deletes hit on shared graph
+    rows). Missing ids are reported, not fatal."""
+    result = await service.bulk_delete_memories(body.ids, api_key_id=None)
+    return MemoryBulkDeleteResponse(**result)
 
 
 @router.post("/search", response_model=list[MemoryResponse])

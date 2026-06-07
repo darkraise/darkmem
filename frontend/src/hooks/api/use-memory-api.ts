@@ -82,7 +82,35 @@ export function useDeleteMemory() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/memories/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
+    // Invalidate both keys here so callers never need a second manual
+    // invalidate (a duplicate invalidate of the same key = a duplicate refetch).
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] })
+      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+    },
+  })
+}
+
+export interface BulkDeleteResult {
+  deleted: number
+  not_found: string[]
+}
+
+// Deletes many memories in ONE request. The server processes them in series so
+// concurrent graph cleanups don't deadlock on shared entity rows — which is why
+// looping the single-delete endpoint client-side failed.
+export function useBulkDeleteMemory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch<BulkDeleteResult>("/memories/delete", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] })
+      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+    },
   })
 }
 
@@ -127,8 +155,12 @@ export interface PaginatedMemories {
   offset: number
 }
 
-export function usePaginatedSearch(params: PaginatedSearchParams) {
+export function usePaginatedSearch(
+  params: PaginatedSearchParams,
+  options?: { enabled?: boolean },
+) {
   return useQuery<PaginatedMemories>({
+    enabled: options?.enabled ?? true,
     queryKey: ["memoriesPaginated", params],
     queryFn: () =>
       apiFetch("/memories/search/paginated", {
