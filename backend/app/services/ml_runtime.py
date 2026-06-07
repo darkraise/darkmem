@@ -38,6 +38,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Ceilings on the blocking thread-pool work. The worker thread can't actually be
+# cancelled, but bounding the await frees the calling coroutine (and any job lock
+# it holds) instead of hanging forever on a stalled HF download or a pathological
+# inference.
+_MODEL_LOAD_TIMEOUT = 300.0
+_CLASSIFY_TIMEOUT = 30.0
+
 
 class MLRuntimeUnavailable(RuntimeError):
     """Raised when transformers / torch isn't importable in this
@@ -75,7 +82,16 @@ class MLModelManager:
         async with load_lock:
             entry = self._models.get(model_repo)
             if entry is None:
-                entry = await asyncio.to_thread(self._load_model_sync, model_repo)
+                try:
+                    entry = await asyncio.wait_for(
+                        asyncio.to_thread(self._load_model_sync, model_repo),
+                        timeout=_MODEL_LOAD_TIMEOUT,
+                    )
+                except asyncio.TimeoutError as exc:
+                    raise MLRuntimeUnavailable(
+                        f"Loading ML model {model_repo!r} exceeded "
+                        f"{_MODEL_LOAD_TIMEOUT}s; falling back to regex."
+                    ) from exc
                 self._models[model_repo] = entry
                 if ttl_seconds > 0:
                     entry.eviction_task = asyncio.create_task(
@@ -93,9 +109,15 @@ class MLModelManager:
     ) -> tuple[str, float]:
         """Run a single-text classification. Returns (label, score)."""
         entry = await self.get(model_repo, ttl_seconds)
-        return await asyncio.to_thread(
-            self._classify_sync, entry, text, max_length,
-        )
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._classify_sync, entry, text, max_length),
+                timeout=_CLASSIFY_TIMEOUT,
+            )
+        except asyncio.TimeoutError as exc:
+            raise MLRuntimeUnavailable(
+                f"Classification with {model_repo!r} exceeded {_CLASSIFY_TIMEOUT}s"
+            ) from exc
 
     async def shutdown_all(self) -> None:
         self._stopped = True
@@ -185,6 +207,11 @@ class MLModelManager:
                         "Evicting ML model %s (idle %.1fs >= ttl %ds)",
                         model_repo, idle, ttl_seconds,
                     )
+                    # Pop only the model, NOT _load_locks. get() caches the
+                    # per-repo lock reference outside self._lock, so removing the
+                    # lock here would let a concurrent reload create a second
+                    # lock and double-load the same weights. A retained idle Lock
+                    # per ever-evicted repo is negligible by comparison.
                     self._models.pop(model_repo, None)
                     return
         except asyncio.CancelledError:

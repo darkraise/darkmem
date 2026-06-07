@@ -34,12 +34,27 @@ class TaskRegistry:
             task=task,
         )
         cls._tasks[task_id] = info
-        task.add_done_callback(lambda t: cls._on_done(task_id))
+        task.add_done_callback(lambda t: cls._on_done(task_id, t))
         logger.info("Registered task %s: %s for repo %s", task_id, kind, repo_id)
         return task_id
 
     @classmethod
-    def _on_done(cls, task_id: str) -> None:
+    def _on_done(cls, task_id: str, task: asyncio.Task) -> None:
+        # Retrieve the task's exception so a crash that escaped the task body's
+        # own try/except isn't swallowed into an "exception was never retrieved"
+        # warning at GC time, which leaves the repo stuck in indexing/cloning
+        # with no error surfaced anywhere.
+        if not task.cancelled():
+            try:
+                exc = task.exception()
+            except asyncio.CancelledError:
+                exc = None
+            if exc is not None:
+                info = cls._tasks.get(task_id)
+                kind = info.kind if info is not None else "?"
+                logger.error(
+                    "Background task %s (%s) crashed", task_id, kind, exc_info=exc,
+                )
         # Readers (get_repo_tasks / get_all_running) only ever surface 'running'
         # tasks, so a finished task has no further use; drop it immediately
         # instead of leaving a 'completed' entry that the >100-gated cleanup may

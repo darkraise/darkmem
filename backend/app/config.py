@@ -122,8 +122,8 @@ class Settings(BaseSettings):
     # a trusted reverse proxy; otherwise a client could spoof the header.
     trust_proxy_headers: bool = False
     setup_secret: str | None = None
-    db_pool_size: int = 20
-    db_max_overflow: int = 10
+    db_pool_size: int = 30
+    db_max_overflow: int = 20
     log_level: str = "INFO"
 
     @model_validator(mode="after")

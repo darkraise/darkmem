@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api.auth import require_auth
-from app.services.job_registry import FieldDescriptor
+from app.services.job_registry import FieldDescriptor, JobBusyError
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
@@ -137,9 +137,14 @@ async def trigger_job(
         )
     # Synchronous by design: the manual "Run" surfaces the run's result, and the
     # per-job lock (shared with the scheduler loop) already prevents a manual and
-    # a scheduled run from racing. Long jobs (repo_sync) are bounded by the git
-    # subprocess timeouts inside the runner.
-    cfg = await registry.trigger(key)
+    # a scheduled run from racing. Long jobs are bounded by the runner's
+    # max_run_seconds ceiling. trigger() re-checks the lock and raises
+    # JobBusyError if a run slipped in after the pre-check above, so a lost race
+    # surfaces as 409 instead of blocking the request.
+    try:
+        cfg = await registry.trigger(key)
+    except JobBusyError:
+        raise HTTPException(status_code=409, detail=f"Job {key!r} is already running")
     return JobTriggerResponse(
         key=key,
         last_status=cfg.last_status,

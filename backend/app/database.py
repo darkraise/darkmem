@@ -3,7 +3,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=False, pool_size=settings.db_pool_size, max_overflow=settings.db_max_overflow)
+engine = create_async_engine(
+    settings.database_url,
+    echo=False,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    # Validate a pooled connection before handing it out, so a server-side idle
+    # disconnect surfaces as a transparent reconnect rather than a mid-query
+    # failure that wedges the caller.
+    pool_pre_ping=True,
+)
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

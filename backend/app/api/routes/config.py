@@ -48,6 +48,13 @@ def _swap_pipeline_llm(pipeline, new_llm) -> None:
     classification_svc = getattr(pipeline, "classification", None)
     if classification_svc is not None:
         classification_svc.llm = new_llm
+    # The pipeline caches its per-batch classifier resolution (LLM vs in-process
+    # ML, keyed on the classification purpose's ml_profile_ref) for a short TTL.
+    # A config save can flip that ref, so drop the cache here — the same place
+    # the LLM references are swapped — to honor the per-batch contract instead of
+    # serving the stale classifier until the TTL lapses.
+    if hasattr(pipeline, "_classifier_cache"):
+        pipeline._classifier_cache = None
 
 
 async def _close_orchestrator_safely(old_llm) -> None:

@@ -34,7 +34,16 @@ class LLMOrchestrator:
     def __init__(self, config: dict[str, LLMPurposeConfig]):
         self.config = config
         self._client = httpx.AsyncClient(
-            timeout=300.0,
+            # Split timeout instead of a single 300s scalar. connect/write/pool
+            # fail fast so a black-hole endpoint or an exhausted connection pool
+            # can't wedge a caller (and any job lock it holds) for five minutes;
+            # only the read budget stays generous because a long completion or a
+            # large embedding batch on a slow local model legitimately needs it.
+            timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0),
+            # Make the connection cap explicit and bounded so a high
+            # pipeline_concurrency can't fan out an unbounded number of
+            # simultaneous requests at a rate-limited vendor.
+            limits=httpx.Limits(max_connections=64, max_keepalive_connections=16),
             transport=httpx.AsyncHTTPTransport(retries=self._TRANSPORT_RETRIES),
         )
 

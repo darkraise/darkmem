@@ -158,6 +158,78 @@ async def test_trigger_records_runner_failure(stubbed_jobs, client, auth_headers
 
 
 @pytest.mark.asyncio
+async def test_trigger_raises_jobbusyerror_when_locked():
+    """trigger() must not block on an in-flight run: with the per-job lock held
+    it raises JobBusyError so the route can return 409 instead of hanging for the
+    full runner duration."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.config import settings
+    from app.services.job_registry import Job, JobRegistry, JobBusyError
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    registry = JobRegistry(factory)
+
+    async def noop_runner():
+        pass
+
+    registry.register(Job(
+        key="busy_job", display_name="Busy", description="x",
+        default_cron="*/10 * * * *", min_interval_seconds=10, runner=noop_runner,
+    ))
+    job = registry.get("busy_job")
+    await job.lock.acquire()
+    try:
+        with pytest.raises(JobBusyError):
+            await registry.trigger("busy_job")
+    finally:
+        job.lock.release()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_trigger_returns_409_when_running(stubbed_jobs, client, auth_headers):
+    """When a run already holds the per-job lock, POST /trigger returns 409
+    instead of blocking the request for the runner's duration."""
+    job = stubbed_jobs["registry"].get("alpha")
+    await job.lock.acquire()
+    try:
+        response = await client.post(
+            "/api/v1/jobs/alpha/trigger", headers=auth_headers,
+        )
+        assert response.status_code == 409
+    finally:
+        job.lock.release()
+
+
+@pytest.mark.asyncio
+async def test_runner_timeout_records_error_and_frees_lock():
+    """A runner that blows past max_run_seconds is cancelled, recorded as an
+    error, and must leave the per-job lock released so the next tick can run."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.config import settings
+    from app.services.job_registry import Job, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    registry = JobRegistry(factory)
+
+    async def slow_runner():
+        await asyncio.sleep(5)
+
+    registry.register(Job(
+        key="slow_job", display_name="Slow", description="x",
+        default_cron="*/10 * * * *", min_interval_seconds=10,
+        runner=slow_runner, max_run_seconds=0.1,
+    ))
+    cfg = await registry.trigger("slow_job")
+    assert cfg.last_status == "error"
+    assert "max_run_seconds" in (cfg.last_error or "")
+    assert registry.get("slow_job").lock.locked() is False
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_list_jobs_includes_config_schema(stubbed_jobs, client, auth_headers):
     response = await client.get("/api/v1/jobs", headers=auth_headers)
     gamma = next(j for j in response.json()["jobs"] if j["key"] == "gamma")

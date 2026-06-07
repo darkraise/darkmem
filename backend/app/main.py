@@ -198,6 +198,7 @@ async def lifespan(app: FastAPI):
         default_cron="*/5 * * * *",
         min_interval_seconds=30,
         runner=make_repo_sync_runner(app, async_session_factory),
+        max_run_seconds=1800,
     ))
     job_registry.register(Job(
         key="code_enrichment",
@@ -209,6 +210,7 @@ async def lifespan(app: FastAPI):
         default_cron="*/10 * * * * *",
         min_interval_seconds=1,
         runner=make_code_enrichment_runner(app, async_session_factory),
+        max_run_seconds=600,
         config_schema=[FieldDescriptor(
             key="batch_size", label="Batch Size", default=5,
             min=1, max=100,
@@ -225,6 +227,7 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_token_blocklist_cleanup_runner(async_session_factory),
+        max_run_seconds=300,
     ))
     job_registry.register(Job(
         key="pipeline_failure_cleanup",
@@ -236,6 +239,7 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_pipeline_failure_cleanup_runner(async_session_factory),
+        max_run_seconds=300,
     ))
     job_registry.register(Job(
         key="graph_orphan_cleanup",
@@ -249,6 +253,7 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_graph_orphan_cleanup_runner(async_session_factory),
+        max_run_seconds=300,
     ))
     job_registry.register(Job(
         key="tag_orphan_cleanup",
@@ -261,6 +266,7 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_tag_orphan_cleanup_runner(async_session_factory),
+        max_run_seconds=300,
     ))
     job_registry.register(Job(
         key="expired_memory_cleanup",
@@ -272,6 +278,7 @@ async def lifespan(app: FastAPI):
         default_cron="0 * * * *",
         min_interval_seconds=60,
         runner=make_expired_memory_cleanup_runner(async_session_factory),
+        max_run_seconds=300,
     ))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop

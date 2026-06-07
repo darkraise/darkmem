@@ -54,6 +54,16 @@ logger = logging.getLogger(__name__)
 JobRunner = Callable[[], Awaitable[None]]
 
 
+class JobBusyError(RuntimeError):
+    """Raised by ``trigger`` when a run is already in flight for the job, so the
+    route can map it to a 409 instead of the caller blocking on the per-job
+    lock for the full runner duration."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(f"Job {key!r} is already running")
+        self.key = key
+
+
 def is_valid_cron(expr: str) -> bool:
     """Validate a 5- or 6-field cron expression. Six-field puts the
     seconds field first (Quartz-style)."""
@@ -133,6 +143,10 @@ class Job:
     min_interval_seconds: int
     runner: JobRunner
     config_schema: list[FieldDescriptor] = field(default_factory=list)
+    # Hard ceiling on a single runner invocation (seconds). None = no ceiling.
+    # Without it a runner that blocks on a hung upstream (LLM, parse) holds the
+    # per-job lock indefinitely and every scheduled tick queues behind it.
+    max_run_seconds: float | None = None
     # Live wiring filled in by the registry at start().
     task: asyncio.Task | None = field(default=None, init=False, repr=False)
     wakeup: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
@@ -337,17 +351,45 @@ class JobRegistry:
     async def _run_once(self, key: str) -> None:
         job = self._jobs[key]
         async with job.lock:
-            cfg = await self.load_config(key)
+            try:
+                cfg = await self.load_config(key)
+            except Exception:
+                # A transient failure loading the config row must not escape
+                # _run_once and kill the loop task; skip this run and let the
+                # next tick retry.
+                logger.exception("Job %s load_config failed; skipping run", key)
+                return
             cfg.last_run_at = datetime.now(timezone.utc)
             try:
-                await job.runner()
+                if job.max_run_seconds is not None:
+                    await asyncio.wait_for(job.runner(), timeout=job.max_run_seconds)
+                else:
+                    await job.runner()
                 cfg.last_status = "ok"
                 cfg.last_error = None
+            except asyncio.TimeoutError:
+                # The runner blew past its ceiling — typically a hung upstream.
+                # wait_for cancelled it; the per-job lock releases on block exit
+                # as long as the runner lets CancelledError propagate at its
+                # await points (none of ours swallow it). The executor thread or
+                # subprocess behind a blocking call isn't force-killed — it winds
+                # down at its own internal timeout — but the lock is freed here.
+                cfg.last_status = "error"
+                cfg.last_error = f"runner exceeded max_run_seconds={job.max_run_seconds}"
+                logger.error(
+                    "Job %s runner timed out after %ss", key, job.max_run_seconds,
+                )
             except Exception as exc:
                 cfg.last_status = "error"
                 cfg.last_error = str(exc)[:500]
                 logger.exception("Job %s runner raised", key)
-            await self.save_config(key, cfg)
+            try:
+                await self.save_config(key, cfg)
+            except Exception:
+                # Persisting the outcome failed (DB blip). The loop must survive
+                # so the job keeps firing on its next tick; the prior copy of
+                # this write outside the try is what could kill the loop forever.
+                logger.exception("Job %s save_config failed after run", key)
 
     # ── operations ──────────────────────────────────────────────────
 
@@ -415,6 +457,13 @@ class JobRegistry:
     async def trigger(self, key: str) -> JobConfig:
         if key not in self._jobs:
             raise KeyError(key)
+        job = self._jobs[key]
+        # Non-blocking: if a scheduled or earlier manual run already holds the
+        # per-job lock, report busy instead of queueing behind it (which would
+        # hang the caller for the full runner duration). Closes the check-then-
+        # act window the route's pre-check leaves open.
+        if job.lock.locked():
+            raise JobBusyError(key)
         await self._run_once(key)
         return await self.load_config(key)
 

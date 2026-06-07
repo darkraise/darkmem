@@ -43,6 +43,11 @@ IGNORED_EXTENSIONS = {
     ".pyc", ".pyo", ".exe", ".dll", ".so", ".dylib",
 }
 MAX_FILE_SIZE = 500_000
+# Ceiling on a single file's read+parse. tree-sitter parsing runs in the default
+# executor and can't truly be cancelled, but bounding the await frees the
+# coroutine (and the repo_sync job lock above it) instead of hanging forever on a
+# pathological file rather than starving the pool one stuck thread at a time.
+PARSE_TIMEOUT = 60.0
 SIZE_BUDGET_BYTES = 20 * 1024 * 1024
 PARALLEL_MIN_FILES = 15
 PARALLEL_MIN_BYTES = 512 * 1024
@@ -464,12 +469,25 @@ class CodePipeline:
                 return None
             return (content, hashlib.sha256(content.encode()).hexdigest())
 
-        read_result = await loop.run_in_executor(None, _read_file)
+        try:
+            read_result = await asyncio.wait_for(
+                loop.run_in_executor(None, _read_file), timeout=PARSE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Reading %s timed out after %ss; skipping", rel_path, PARSE_TIMEOUT)
+            return None
         if read_result is None:
             return None
 
         content, content_hash = read_result
-        parse_result = await loop.run_in_executor(None, parse_file, rel_path, content)
+        try:
+            parse_result = await asyncio.wait_for(
+                loop.run_in_executor(None, parse_file, rel_path, content),
+                timeout=PARSE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Parsing %s timed out after %ss; skipping", rel_path, PARSE_TIMEOUT)
+            return None
         if not parse_result:
             return None
 

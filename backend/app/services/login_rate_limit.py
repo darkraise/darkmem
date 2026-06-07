@@ -20,6 +20,12 @@ class LoginRateLimiter:
     # would back it with Redis). The ``ip`` key is supplied by the caller —
     # auth.py's ``_client_ip`` derives it proxy-aware (honoring a trusted
     # X-Forwarded-For) — so this class never inspects the request itself.
+    # Cap on tracked IPs. The key space is hostile (every spoofable
+    # X-Forwarded-For value), so sweep expired entries once the map grows past
+    # this rather than letting it accumulate one permanent entry per IP that
+    # ever failed a single login and then went quiet.
+    _MAX_TRACKED: int = 10_000
+
     def __init__(
         self,
         max_failures: int = 5,
@@ -46,6 +52,7 @@ class LoginRateLimiter:
 
     def record_failure(self, ip: str) -> None:
         now = self._clock()
+        self._maybe_sweep(now)
         st = self._state.setdefault(ip, {"failures": [], "locked_until": 0.0})
         st["failures"] = [t for t in st["failures"] if now - t < self.window_seconds]
         st["failures"].append(now)
@@ -55,6 +62,21 @@ class LoginRateLimiter:
 
     def record_success(self, ip: str) -> None:
         self._state.pop(ip, None)
+
+    def _maybe_sweep(self, now: float) -> None:
+        """Drop entries whose lockout has passed and whose failures have all
+        aged out of the window. Runs only once the map exceeds the cap, so the
+        common path stays O(1)."""
+        if len(self._state) <= self._MAX_TRACKED:
+            return
+        stale = [
+            ip
+            for ip, st in self._state.items()
+            if st.get("locked_until", 0.0) <= now
+            and not any(now - t < self.window_seconds for t in st.get("failures", ()))
+        ]
+        for ip in stale:
+            self._state.pop(ip, None)
 
     def reset(self) -> None:
         """Test hook: drop all tracked state."""

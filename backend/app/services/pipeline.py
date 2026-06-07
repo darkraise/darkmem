@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from collections import OrderedDict
 from uuid import UUID
 
 from sqlalchemy import select
@@ -92,9 +93,70 @@ class ProcessingPipeline:
         self._broadcast = broadcast
         # Cache key is (name_lower, fingerprint); fingerprint is provided per
         # call rather than frozen at __init__, so flag flips don't poison the
-        # cache.
-        self._entity_cache: dict[tuple[str, str], tuple[list[float], float]] = {}
+        # cache. Bounded LRU: this pipeline is a process-lifetime singleton, so
+        # an unbounded dict here leaks a float vector per distinct entity name
+        # for the life of the process. The DB cache backstops any eviction.
+        self._entity_cache: "OrderedDict[tuple[str, str], tuple[list[float], float]]" = OrderedDict()
+        self._entity_cache_max = 10_000
         self._entity_cache_lock = asyncio.Lock()
+        # Short-TTL cache of the per-batch classifier resolution so process_batch
+        # doesn't open a session + run two queries on every batch just to learn
+        # whether the (rarely-set) ml_profile_ref points it at the in-process ML
+        # classifier. None means "use self.classification".
+        self._classifier_cache: tuple[float, object | None] | None = None
+        self._classifier_cache_ttl = 30.0
+
+    def _cache_put(
+        self,
+        key: tuple[str, str],
+        value: tuple[list[float], float],
+    ) -> None:
+        """Insert/refresh an entity-cache entry as most-recently-used and evict
+        the oldest entries past the cap. Caller holds ``_entity_cache_lock``."""
+        self._entity_cache[key] = value
+        self._entity_cache.move_to_end(key)
+        while len(self._entity_cache) > self._entity_cache_max:
+            self._entity_cache.popitem(last=False)
+
+    async def _resolve_classifier(self):
+        """Pick the batch classifier: the in-process MLClassificationService
+        when the classification purpose has an ml_profile_ref, else the
+        LLM-backed ClassificationService. The surface
+        (``classify(content, areas, prompt, mode)`` returning
+        ``{hall, summary, emotions, flags}``) is identical. Resolved once per
+        ``_classifier_cache_ttl`` so a settings flip is picked up within that
+        window without a per-batch DB round-trip."""
+        now = time.monotonic()
+        if self._classifier_cache is not None:
+            cached_at, cached = self._classifier_cache
+            if now - cached_at <= self._classifier_cache_ttl:
+                return cached if cached is not None else self.classification
+        resolved: object | None = None
+        try:
+            from app.services.config import get_llm_config as _fetch_cfg
+            from app.models.llm_config import MLProfile as _MLProfile
+            from sqlalchemy import select as _sa_select
+            async with self.session_factory() as session:
+                live_cfg = await _fetch_cfg(session)
+                classifier_cfg = live_cfg.get("classification")
+                ml_ref = getattr(classifier_cfg, "ml_profile_ref", None) if classifier_cfg else None
+                if ml_ref:
+                    ml_row = (await session.execute(
+                        _sa_select(_MLProfile).where(_MLProfile.name == ml_ref)
+                    )).scalar_one_or_none()
+                    if ml_row is not None:
+                        from app.services.classification_ml import MLClassificationService
+                        from app.services.ml_runtime import ml_model_manager
+                        resolved = MLClassificationService(
+                            ml_model_manager,
+                            ml_row.model_repo,
+                            ml_row.ttl_seconds,
+                        )
+        except Exception:
+            logger.exception("Failed to resolve classifier; falling back to LLM service")
+            resolved = None
+        self._classifier_cache = (now, resolved)
+        return resolved if resolved is not None else self.classification
 
     async def _register_fingerprint(self, fingerprint: str) -> None:
         """Idempotently register the fingerprint so its partition exists."""
@@ -135,6 +197,7 @@ class ProcessingPipeline:
                     if entry is not None:
                         emb, cached_at = entry
                         if now - cached_at <= ttl_seconds:
+                            self._entity_cache.move_to_end((name, fingerprint))
                             hits[name] = emb
                             continue
                         else:
@@ -151,7 +214,7 @@ class ProcessingPipeline:
                 if use_memory_cache:
                     async with self._entity_cache_lock:
                         for name, emb in db_hits.items():
-                            self._entity_cache[(name, fingerprint)] = (emb, now)
+                            self._cache_put((name, fingerprint), (emb, now))
                 hits.update(db_hits)
                 still_missing = [n for n in still_missing if n not in db_hits]
 
@@ -180,7 +243,7 @@ class ProcessingPipeline:
             now = time.monotonic()
             async with self._entity_cache_lock:
                 for name, emb in name_to_embedding.items():
-                    self._entity_cache[(name, fingerprint)] = (emb, now)
+                    self._cache_put((name, fingerprint), (emb, now))
 
     async def _write_memory(
         self,
@@ -538,34 +601,10 @@ class ProcessingPipeline:
                 except Exception as exc:
                     return exc
 
-        # Pick the classifier implementation: if the classifier purpose
-        # config has an ml_profile_ref set, dispatch to the in-process
-        # MLClassificationService instead of the LLM-backed one. The
-        # surface (``classify(content, areas, prompt, mode)`` returning
-        # ``{hall, summary, emotions, flags}``) is identical.
-        classifier = self.classification
-        try:
-            from app.services.config import get_llm_config as _fetch_cfg
-            from app.models.llm_config import MLProfile as _MLProfile
-            from sqlalchemy import select as _sa_select
-            async with self.session_factory() as _classifier_session:
-                _live_cfg = await _fetch_cfg(_classifier_session)
-                _classifier_cfg = _live_cfg.get("classification")
-                _ml_ref = getattr(_classifier_cfg, "ml_profile_ref", None) if _classifier_cfg else None
-                if _ml_ref:
-                    _ml_row = (await _classifier_session.execute(
-                        _sa_select(_MLProfile).where(_MLProfile.name == _ml_ref)
-                    )).scalar_one_or_none()
-                    if _ml_row is not None:
-                        from app.services.classification_ml import MLClassificationService
-                        from app.services.ml_runtime import ml_model_manager
-                        classifier = MLClassificationService(
-                            ml_model_manager,
-                            _ml_row.model_repo,
-                            _ml_row.ttl_seconds,
-                        )
-        except Exception:
-            logger.exception("Failed to resolve classifier; falling back to LLM service")
+        # Pick the classifier implementation (LLM-backed, or in-process ML when
+        # the classification purpose has an ml_profile_ref). Cached for a short
+        # TTL so it isn't re-resolved with a DB round-trip on every batch.
+        classifier = await self._resolve_classifier()
 
         async def run_classify(content: str):
             async with semaphore:

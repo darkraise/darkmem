@@ -121,31 +121,50 @@ class AnalyticsService:
 
         tasks = [asyncio.create_task(_process_one(m)) for m in memories]
 
-        while completed_count < total:
-            memory_id, status_label, status = await results_queue.get()
-            completed_count += 1
-            if status_label == "error":
-                errors += 1
-            else:
-                processed += 1
+        try:
+            while completed_count < total:
+                try:
+                    memory_id, status_label, status = await asyncio.wait_for(
+                        results_queue.get(), timeout=30.0,
+                    )
+                except asyncio.TimeoutError:
+                    # A producer cancelled before its `finally` ran (e.g. the SSE
+                    # client disconnected) never puts. If every task has finished,
+                    # stop waiting for puts that aren't coming instead of blocking
+                    # on results_queue.get() forever.
+                    if all(t.done() for t in tasks):
+                        break
+                    continue
+                completed_count += 1
+                if status_label == "error":
+                    errors += 1
+                else:
+                    processed += 1
 
-            try:
-                await self.audit_repo.log("pipeline", memory_id, None, status if isinstance(status, dict) else {})
-            except Exception as e:
-                logger.warning("Audit log failed: %s", e)
+                try:
+                    await self.audit_repo.log("pipeline", memory_id, None, status if isinstance(status, dict) else {})
+                except Exception as e:
+                    logger.warning("Audit log failed: %s", e)
 
-            yield {
-                "type": "progress",
-                "current": completed_count,
-                "total": total,
-                "memory_id": str(memory_id),
-                "status": status_label,
-                "processed": processed,
-                "errors": errors,
-            }
+                yield {
+                    "type": "progress",
+                    "current": completed_count,
+                    "total": total,
+                    "memory_id": str(memory_id),
+                    "status": status_label,
+                    "processed": processed,
+                    "errors": errors,
+                }
 
-        await asyncio.gather(*tasks, return_exceptions=True)
-        yield {"type": "done", "processed": processed, "errors": errors, "total": total}
+            await asyncio.gather(*tasks, return_exceptions=True)
+            yield {"type": "done", "processed": processed, "errors": errors, "total": total}
+        finally:
+            # On normal completion these are all done; on client disconnect
+            # (GeneratorExit raised at a yield) cancel the stragglers so they
+            # don't keep running detached, draining into a queue nobody reads.
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
 
     async def get_overview(self, days: int = 7) -> dict:
         # Counts
