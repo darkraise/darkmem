@@ -152,8 +152,29 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     from sqlalchemy import text
     async def run() -> None:
         async with session_factory() as session:
+            expired = (await session.execute(text(
+                "SELECT id FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW()"
+            ))).scalars().all()
+            if not expired:
+                return
+            ids = list(expired)
+            # Demote any memory still pointing at an expiring superseder before
+            # the delete. fk_memories_superseded_by is ON DELETE SET NULL, so
+            # deleting a superseding memory would null a dependent's
+            # superseded_by while its status stays 'superseded' — violating
+            # chk_superseded_has_pointer and aborting the whole sweep batch
+            # (TTL'd memories would then never be reclaimed). MemoryService.
+            # delete_memory does the same demotion for the interactive path.
+            await session.execute(
+                text(
+                    "UPDATE memories SET status='deprecated', superseded_by=NULL "
+                    "WHERE superseded_by = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": ids},
+            )
             result = await session.execute(
-                text("DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW() RETURNING id")
+                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
+                {"ids": ids},
             )
             deleted = len(result.scalars().all())
             await session.commit()
