@@ -65,7 +65,7 @@ production-critical ones:
 | `DB_PASSWORD` | **yes** | Postgres password (used in `DATABASE_URL`). |
 | `JWT_SECRET` | **yes** | Session-token signing key. Must be ≥ 32 chars and not a placeholder, or the app refuses to boot. |
 | `SETUP_SECRET` | **yes** | Gates the `/setup` admin bootstrap. |
-| `TRUST_PROXY_HEADERS` | recommended `true` | Honor `X-Forwarded-For` from the bundled nginx so the login rate limiter sees real client IPs. Keep `false` only if the API has no trusted proxy in front. |
+| `TRUST_PROXY_HEADERS` | recommended `true` | Let the login rate limiter attribute attempts to the real client via the trusted proxy's `X-Real-IP` (the bundled nginx sets it to the connecting address; client-supplied `X-Forwarded-For` is not trusted for the bucket key). Keep `false` only if the API has no trusted proxy in front. |
 | `CORS_ORIGINS` | only if cross-origin | Comma-separated browser origins. Usually empty (UI is same-origin behind nginx). |
 | `DARKMEM_VERSION` | recommended | Image tag for compose; pin to a release. |
 | `LOG_LEVEL` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR` (default `INFO`). |

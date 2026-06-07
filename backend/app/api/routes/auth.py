@@ -52,13 +52,22 @@ class ChangePasswordRequest(BaseModel):
 
 def _client_ip(request: Request) -> str:
     # Behind a reverse proxy every request's client.host is the proxy, so all
-    # logins would share one rate-limit bucket. Honor the real client from
-    # X-Forwarded-For, but only when explicitly told a trusted proxy fronts us
-    # (the header is client-spoofable otherwise).
+    # logins would share one rate-limit bucket. When a trusted proxy fronts us,
+    # use the address IT observed — NOT the leftmost X-Forwarded-For entry, which
+    # the client supplies and can rotate per request to land every guess in a
+    # fresh bucket and defeat the lockout. The bundled nginx sets X-Real-IP to
+    # its own $remote_addr (an overwrite the client can't forge through nginx);
+    # fall back to the rightmost XFF hop (the value the trusted proxy appended,
+    # not the spoofable leftmost) when X-Real-IP is absent.
     if settings.trust_proxy_headers:
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip and real_ip.strip():
+            return real_ip.strip()
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
-            return fwd.split(",")[0].strip()
+            parts = [p.strip() for p in fwd.split(",") if p.strip()]
+            if parts:
+                return parts[-1]
     return request.client.host if request.client else "unknown"
 
 
