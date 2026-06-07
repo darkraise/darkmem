@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   useRepoStats,
@@ -274,13 +273,14 @@ function RepositoriesPage() {
   const reindexRepo = useReindexRepo()
   const updateRepo = useUpdateRepo()
   const triggerJob = useTriggerJob()
-  const qc = useQueryClient()
 
   const handleRunEnrichment = () => {
     triggerJob.mutate("code_enrichment", {
       onSuccess: () => {
+        // Don't refetch repoStats here — enrichment was only just enqueued, so
+        // counts are unchanged. The enrichment.batch_completed WS event
+        // refreshes repoStats once the run actually finishes.
         toast.success("Enrichment run started")
-        qc.invalidateQueries({ queryKey: ["repoStats"] })
       },
       onError: (err) => toast.error(`Failed: ${err.message}`),
     })

@@ -11,7 +11,10 @@ import { themeConfig } from "@/theme.config"
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 60 * 1000, retry: 1 },
+    // Freshness comes from the WebSocket + explicit mutation invalidations, so a
+    // window refocus shouldn't refetch every mounted query (notably the
+    // expensive GET /code/graph/:id). Opt specific queries back in if needed.
+    queries: { staleTime: 60 * 1000, retry: 1, refetchOnWindowFocus: false },
   },
 })
 
