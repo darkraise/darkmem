@@ -2,18 +2,20 @@ services:
   darkmem-api:
     image: darkraise/darkmem-api:${DARKMEM_VERSION:-latest}
     init: true
-    # Exposed on the LXC LAN so other homelab machines can reach the API and
-    # its MCP endpoint (/mcp). Front it with a TLS reverse proxy for HTTPS.
-    ports:
-      - "8000:8000"
+    # Host networking: the API binds directly to the host's :8000 (LAN + MCP
+    # /mcp). No Docker service-name DNS, so DB_HOST below points at localhost.
+    network_mode: host
+    # Port mappings are ignored under host networking; kept for bridge reference:
+    # ports:
+    #   - "8000:8000"
     environment:
       # Arms the fail-fast validators (JWT strength, SETUP_SECRET) and the
       # Secure-cookie default. Keep this 'production'.
       - ENVIRONMENT=production
-      # Database connection. DB_HOST defaults to the bundled postgres service;
-      # override any of these in .env to point at an external Postgres.
-      # config.py builds DATABASE_URL from them (or set DATABASE_URL directly).
-      - DB_HOST=${DB_HOST:-postgres}
+      # Database connection. Under host networking Postgres is on the host's
+      # loopback, so DB_HOST defaults to localhost (override in .env for an
+      # external Postgres). config.py builds DATABASE_URL from these.
+      - DB_HOST=${DB_HOST:-localhost}
       - DB_PORT=${DB_PORT:-5432}
       - DB_USER=${DB_USER:-darkmem}
       - DB_NAME=${DB_NAME:-darkmem}
@@ -47,10 +49,13 @@ services:
   darkmem-ui:
     image: darkraise/darkmem-ui:${DARKMEM_VERSION:-latest}
     init: true
-    # Exposed on the LXC LAN. The session cookie is Secure-only unless you set
-    # COOKIE_SECURE=false, so put HTTPS (a reverse proxy) in front for real use.
-    ports:
-      - "3000:80"
+    # Host networking: nginx binds the host's :80 directly. (To serve on :3000,
+    # change `listen 80` to `listen 3000` in frontend/nginx.conf and rebuild.)
+    # The session cookie is Secure-only unless COOKIE_SECURE=false.
+    network_mode: host
+    # Port mapping is ignored under host networking; kept for bridge reference:
+    # ports:
+    #   - "3000:80"
     depends_on:
       darkmem-api:
         condition: service_healthy
@@ -63,12 +68,15 @@ services:
 
   postgres:
     image: pgvector/pgvector:0.8.2-pg17
+    network_mode: host
+    # Host networking puts Postgres on the host's :5432. listen_addresses pins
+    # it to loopback so it is NOT reachable from the LAN.
     # max_connections sized for the API pool (30/process) plus headroom.
-    command: ["postgres", "-c", "max_connections=120"]
-    # Loopback only — never exposed to the LAN. The API reaches it over the
-    # private compose network; this host port is for admin / pytest.
-    ports:
-      - "127.0.0.1:5433:5432"
+    command: ["postgres", "-c", "max_connections=120", "-c", "listen_addresses=127.0.0.1"]
+    # Port mapping is ignored under host networking; kept for bridge reference
+    # (it bound the host's loopback :5433 to the container's :5432):
+    # ports:
+    #   - "127.0.0.1:5433:5432"
     # pgvector index builds and parallel scans use /dev/shm; the 64MB container
     # default can trip "could not resize shared memory segment".
     shm_size: 256mb
