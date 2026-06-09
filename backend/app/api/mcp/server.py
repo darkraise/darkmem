@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import select, text
 
 from app.database import async_session_factory
@@ -13,7 +14,18 @@ from app.utils.graph_keys import compose_key, decompose_key
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("darkmem", json_response=True, stateless_http=True, streamable_http_path="/", instructions="")
+# DNS-rebinding protection (the SDK default) only allows a localhost Host
+# header, which 421-rejects LAN agents hitting the host's IP. The MCP endpoint
+# is a local-network tool surface reached directly by its host address, so the
+# protection (a browser-rebinding defence) does not apply here — disable it.
+mcp = FastMCP(
+    "darkmem",
+    json_response=True,
+    stateless_http=True,
+    streamable_http_path="/",
+    instructions="",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 
 _pipeline = None
 
