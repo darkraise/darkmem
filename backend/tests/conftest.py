@@ -4,6 +4,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Pin the in-process engine to the test database before any app module imports
+# it. database.py builds its engine from settings.database_url at import time;
+# with DATABASE_URL unset that now derives the deployment default
+# (postgres:5432), which is unreachable from a host-side test run.
+os.environ["DATABASE_URL"] = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test",
+)
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event, text

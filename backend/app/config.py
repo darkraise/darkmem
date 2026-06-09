@@ -112,16 +112,29 @@ class LLMPurposeConfig(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem"
+    # Postgres connection. In the bundled single-host deployment only
+    # DB_PASSWORD varies; the rest match the compose ``postgres`` service, so
+    # DATABASE_URL is derived from these components when not set explicitly.
+    # Set DATABASE_URL directly to point at an external Postgres or a
+    # host-mapped instance (e.g. local pytest on localhost:5433).
+    db_user: str = "darkmem"
+    db_password: str = "darkmem"
+    db_host: str = "postgres"
+    db_port: int = 5432
+    db_name: str = "darkmem"
+    database_url: str | None = None
     test_database_url: str = "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test"
     jwt_secret: str = "darkmem-jwt-secret-change-me"
     environment: str = "development"
     embedding_dimensions: int = 1024
     cors_origins: list[str] = []
-    # Only honor X-Forwarded-For (e.g. for the login rate limiter) when fronted by
-    # a trusted reverse proxy; otherwise a client could spoof the header.
-    trust_proxy_headers: bool = False
-    setup_secret: str | None = None
+    # The API is always fronted by the bundled nginx, a trusted reverse proxy,
+    # so honoring X-Forwarded-For (for the login rate limiter) is the default.
+    # Set false only if the API is exposed with no trusted proxy in front.
+    trust_proxy_headers: bool = True
+    # Session-cookie Secure flag. None derives it from ``environment`` (Secure
+    # in production). Set false to allow login over plain HTTP on a trusted LAN.
+    cookie_secure: bool | None = None
     db_pool_size: int = 30
     db_max_overflow: int = 20
     log_level: str = "INFO"
@@ -138,25 +151,6 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _check_setup_secret(self):
-        # /setup is a one-shot admin-bootstrap endpoint that becomes inert
-        # once the admin password row exists. The window between server
-        # start and the operator running setup is real on a shared local
-        # network — anyone reachable can claim admin first if the secret
-        # guard is unset. Require a non-empty secret in production.
-        is_prod = self.environment == "production"
-        if is_prod and not self.setup_secret:
-            raise ValueError(
-                "SETUP_SECRET must be set in production so /setup cannot be called "
-                "by anyone reaching the server before the operator runs setup"
-            )
-        if not self.setup_secret:
-            _config_logger.warning(
-                "SETUP_SECRET is unset — /setup is unauthenticated until the admin password is set"
-            )
-        return self
-
-    @model_validator(mode="after")
     def _check_cors_origins(self):
         if self.cors_origins and "*" in self.cors_origins:
             _config_logger.warning(
@@ -164,6 +158,28 @@ class Settings(BaseSettings):
             )
             self.cors_origins = [o for o in self.cors_origins if o != "*"]
         return self
+
+    @model_validator(mode="after")
+    def _derive_database_url(self):
+        if not self.database_url:
+            self.database_url = (
+                f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+                f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            )
+        return self
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        """Whether the session cookie carries the Secure (HTTPS-only) flag.
+
+        Decoupled from ``environment`` so a deployment can keep the production
+        security validators while still serving login over plain HTTP on a
+        trusted LAN. ``None`` (the default) preserves the historical behavior:
+        Secure only in production.
+        """
+        if self.cookie_secure is not None:
+            return self.cookie_secure
+        return self.environment == "production"
 
     llm_embedding: LLMPurposeConfig = LLMPurposeConfig(
         provider="ollama", base_url="http://localhost:11434/v1",

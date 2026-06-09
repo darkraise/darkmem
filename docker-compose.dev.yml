@@ -4,7 +4,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://darkmem:${DB_PASSWORD:-darkmem}@postgres:5432/darkmem
+      # ENVIRONMENT is unset → 'development' (relaxed validators, insecure
+      # cookie). DATABASE_URL is derived in config.py from these defaults
+      # (postgres:5432/darkmem); only the password is threaded through.
+      - DB_PASSWORD=${DB_PASSWORD:-darkmem}
       - TEST_DATABASE_URL=postgresql+asyncpg://darkmem:${DB_PASSWORD:-darkmem}@postgres:5432/darkmem_test
     volumes:
       - ./backend/app:/app/app
@@ -24,6 +27,7 @@ services:
     image: pgvector/pgvector:0.8.2-pg17
     ports:
       - "127.0.0.1:5433:5432"
+    shm_size: 256mb
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:

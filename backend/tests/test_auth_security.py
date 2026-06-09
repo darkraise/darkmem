@@ -2,9 +2,9 @@
 
 Covers three fixes that were previously no-ops or silently rolled back:
 
-1. ``setup_secret`` enforcement — in production the finalize endpoint must
-   reject a request that does not present the configured secret, and accept
-   one that does.
+1. /setup trust-on-first-use — with no setup secret, the finalize endpoint is
+   open (gated only by ``require_uninitialized``) and the first caller claims
+   admin, even in production.
 2. Failed-login audit persistence — a failed login records an
    ``auth_login_failed`` row that survives the 401 (it is written through a
    fresh, independently committed session, not the request session that the
@@ -22,52 +22,23 @@ from sqlalchemy import select
 
 from app.api import auth as auth_module
 from app.api.auth import hash_password
-from app.api.routes import setup as setup_routes
 from app.config import settings
 from app.models.audit import AuditLog
 from app.models.config import Config
 
 
-# ── setup_secret enforcement ──────────────────────────────────────────
+# ── setup is open trust-on-first-use (no SETUP_SECRET) ────────────────
 
 
 @pytest.mark.asyncio
-async def test_production_setup_rejected_without_secret(client, monkeypatch):
-    """In production a finalize request lacking the secret is rejected (403)."""
+async def test_setup_succeeds_without_secret_in_production(client, session, monkeypatch):
+    """/setup is gated only by ``require_uninitialized``: the first caller claims
+    admin, no secret required even in production (LAN trust-on-first-use)."""
     monkeypatch.setattr(settings, "environment", "production")
-    monkeypatch.setattr(settings, "setup_secret", "the-real-secret")
 
     response = await client.post(
         "/api/v1/setup",
         json={"password": "test-pw-12345"},
-    )
-    assert response.status_code == 403
-    assert "setup secret" in response.json()["detail"].lower()
-
-
-@pytest.mark.asyncio
-async def test_production_setup_rejected_with_wrong_secret(client, monkeypatch):
-    monkeypatch.setattr(settings, "environment", "production")
-    monkeypatch.setattr(settings, "setup_secret", "the-real-secret")
-
-    response = await client.post(
-        "/api/v1/setup",
-        json={"password": "test-pw-12345", "setup_secret": "wrong"},
-    )
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_production_setup_allowed_with_correct_secret_in_body(
-    client, session, monkeypatch
-):
-    """With the correct secret in the body, production setup completes."""
-    monkeypatch.setattr(settings, "environment", "production")
-    monkeypatch.setattr(settings, "setup_secret", "the-real-secret")
-
-    response = await client.post(
-        "/api/v1/setup",
-        json={"password": "test-pw-12345", "setup_secret": "the-real-secret"},
     )
     assert response.status_code == 200, response.text
     assert response.json()["password"]["ok"] is True
@@ -76,38 +47,6 @@ async def test_production_setup_allowed_with_correct_secret_in_body(
         select(Config).where(Config.key == "admin_password_hash")
     )).scalar_one_or_none()
     assert config is not None
-
-
-@pytest.mark.asyncio
-async def test_production_setup_allowed_with_correct_secret_header(
-    client, session, monkeypatch
-):
-    """The X-Setup-Secret header is an accepted way to present the secret."""
-    monkeypatch.setattr(settings, "environment", "production")
-    monkeypatch.setattr(settings, "setup_secret", "the-real-secret")
-
-    response = await client.post(
-        "/api/v1/setup",
-        json={"password": "test-pw-12345"},
-        headers={"X-Setup-Secret": "the-real-secret"},
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["password"]["ok"] is True
-
-
-@pytest.mark.asyncio
-async def test_nonproduction_setup_open_without_secret(client, monkeypatch):
-    """Outside production with no secret configured the endpoint stays open."""
-    monkeypatch.setattr(settings, "environment", "development")
-    monkeypatch.setattr(settings, "setup_secret", None)
-    # Guard against a stray /.dockerenv on the host flipping _is_production.
-    monkeypatch.setattr(setup_routes, "_is_production", lambda: False)
-
-    response = await client.post(
-        "/api/v1/setup",
-        json={"password": "test-pw-12345"},
-    )
-    assert response.status_code == 200, response.text
 
 
 # ── failed-login audit persistence ────────────────────────────────────

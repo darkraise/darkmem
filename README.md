@@ -21,22 +21,23 @@ Prerequisites: Docker + Docker Compose v2.
 
 ```bash
 cp .env.example .env
-# Edit .env: set ENVIRONMENT=production and generate strong secrets:
+# Edit .env and generate the two secrets:
 #   DB_PASSWORD   = openssl rand -base64 24
 #   JWT_SECRET    = openssl rand -hex 32      (must be >= 32 chars)
-#   SETUP_SECRET  = openssl rand -hex 32
+# If you reach the UI over plain HTTP on your LAN, also set COOKIE_SECURE=false.
 # Pin the image tag for a real deploy:  DARKMEM_VERSION=0.2.0
 
 docker compose up -d
 ```
 
 The API boots only after Postgres is healthy, runs database migrations
-automatically, then serves on `127.0.0.1:8000`. The UI is on `127.0.0.1:3000`.
+automatically, then serves on `:8000` (the MCP endpoint lives here too). The UI
+is on `:3000`. Both are published on the LAN; Postgres stays on loopback.
 
-Both services bind to **loopback** by design (single-operator / LAN model). To
-reach the UI from another machine, put your own **TLS-terminating reverse proxy**
-(nginx/Caddy/Traefik) in front of `127.0.0.1:3000` — the session cookie is only
-sent with the `Secure` flag over HTTPS.
+The session cookie is `Secure` (HTTPS-only) by default. To serve over plain HTTP
+on the LAN, set `COOKIE_SECURE=false` — note the cookie then travels in cleartext.
+For real use, front the UI with a **TLS-terminating reverse proxy** (nginx/Caddy/
+Traefik) and keep `COOKIE_SECURE=true`.
 
 ### First-run setup
 
@@ -48,9 +49,9 @@ Open the UI and complete the setup wizard (`/setup`):
    lives in the database — it is **not** set via environment variables.
 3. Optionally register a repository path to index.
 
-`/setup` is gated by `SETUP_SECRET` in production (supply it via the
-`X-Setup-Secret` header / wizard), so the admin bootstrap can't be claimed by
-anyone else on the network.
+`/setup` is **trust-on-first-use**: it stays open only until the admin password
+exists, so the first caller to finish the wizard claims the admin account. Run
+setup promptly after first boot on a trusted network.
 
 ---
 
@@ -61,17 +62,18 @@ production-critical ones:
 
 | Variable | Required in prod | Purpose |
 | --- | --- | --- |
-| `ENVIRONMENT` | **yes** (`production`) | Arms fail-fast validators (JWT strength, SETUP_SECRET) and the `Secure` cookie. Without it the app runs in dev posture with guards off. |
-| `DB_PASSWORD` | **yes** | Postgres password (used in `DATABASE_URL`). |
+| `ENVIRONMENT` | set in compose (`production`) | Arms fail-fast validators (JWT strength) and the default `Secure` cookie. The compose file hardcodes this; you don't set it in `.env`. |
+| `DB_PASSWORD` | **yes** | Postgres password. The API derives `DATABASE_URL` from it (host/port/db/user are fixed for the bundled stack). |
 | `JWT_SECRET` | **yes** | Session-token signing key. Must be ≥ 32 chars and not a placeholder, or the app refuses to boot. |
-| `SETUP_SECRET` | **yes** | Gates the `/setup` admin bootstrap. |
-| `TRUST_PROXY_HEADERS` | recommended `true` | Let the login rate limiter attribute attempts to the real client via the trusted proxy's `X-Real-IP` (the bundled nginx sets it to the connecting address; client-supplied `X-Forwarded-For` is not trusted for the bucket key). Keep `false` only if the API has no trusted proxy in front. |
-| `CORS_ORIGINS` | only if cross-origin | Comma-separated browser origins. Usually empty (UI is same-origin behind nginx). |
+| `COOKIE_SECURE` | no (default `true`) | Set `false` to allow login over plain HTTP on a trusted LAN; leave `true` behind HTTPS. |
 | `DARKMEM_VERSION` | recommended | Image tag for compose; pin to a release. |
 | `LOG_LEVEL` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR` (default `INFO`). |
 
-Runtime **LLM configuration is stored in the database** via the setup wizard and
-the Settings → LLM Pipeline UI; there are no `LLM_*` environment variables.
+`DATABASE_URL` is derived from `DB_PASSWORD`; set it explicitly only to point at
+an external Postgres. The nginx-fronted defaults for proxy trust and CORS are
+baked into the image, so there are no `TRUST_PROXY_HEADERS`/`CORS_ORIGINS` knobs
+to set. Runtime **LLM configuration is stored in the database** via the setup
+wizard and the Settings → LLM Pipeline UI; there are no `LLM_*` env variables.
 
 ---
 
@@ -120,7 +122,7 @@ logged (token counts and scrubbed git URLs only).
 
 ### Security checklist (before exposing beyond loopback)
 
-- [ ] `ENVIRONMENT=production`, strong `JWT_SECRET` (≥32 chars) and `SETUP_SECRET`, non-default `DB_PASSWORD`.
+- [ ] `ENVIRONMENT=production` (compose default), strong `JWT_SECRET` (≥32 chars), non-default `DB_PASSWORD`. Run `/setup` promptly — it is open until the admin password is set.
 - [ ] UI reached only through your TLS reverse proxy (HTTPS); do not publish port 3000 publicly.
 - [ ] `/mcp` is the **unauthenticated** agent tool endpoint — keep it on loopback (it is not proxied by the bundled UI). Never expose it to untrusted networks.
 - [ ] FastAPI `/docs`, `/redoc`, `/openapi.json` are served unauthenticated — keep them behind the loopback bind / your proxy's auth.

@@ -53,7 +53,7 @@ def set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
         value=token,
         httponly=True,
         samesite="strict",
-        secure=settings.environment == "production",
+        secure=settings.session_cookie_secure,
         max_age=ACCESS_TOKEN_EXPIRE_HOURS * 3600,
         path="/",
     )

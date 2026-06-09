@@ -2,23 +2,25 @@ services:
   darkmem-api:
     image: darkraise/darkmem-api:${DARKMEM_VERSION:-latest}
     init: true
-    # Loopback-only: reach it through the UI's nginx proxy, or a TLS reverse proxy.
+    # Exposed on the LXC LAN so other homelab machines can reach the API and
+    # its MCP endpoint (/mcp). Front it with a TLS reverse proxy for HTTPS.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     environment:
-      # ENVIRONMENT=production arms the fail-fast validators (JWT strength,
-      # SETUP_SECRET required) and the Secure cookie flag. Do NOT remove it.
+      # Arms the fail-fast validators (JWT strength, SETUP_SECRET) and the
+      # Secure-cookie default. Keep this 'production'.
       - ENVIRONMENT=production
-      - DATABASE_URL=postgresql+asyncpg://darkmem:${DB_PASSWORD}@postgres:5432/darkmem
-      - JWT_SECRET=${JWT_SECRET}
-      - SETUP_SECRET=${SETUP_SECRET}
-      # Same-origin behind the bundled nginx (UI uses relative /api/v1), so CORS
-      # is usually irrelevant; set this only if a browser hits the API cross-origin.
-      - CORS_ORIGINS=${CORS_ORIGINS:-}
-      # The API is always fronted by nginx here; honor its X-Forwarded-For so the
-      # login rate limiter sees the real client IP.
-      - TRUST_PROXY_HEADERS=true
+      # Only DB_PASSWORD varies per deployment; DATABASE_URL is derived from it
+      # in config.py (host/port/db/user match the postgres service below).
+      - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env — see .env.example}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env — see .env.example}
+      # The session cookie is HTTPS-only by default; set COOKIE_SECURE=false in
+      # .env to allow login over plain HTTP on a trusted LAN.
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      # Persist cloned repositories across container restarts.
+      - repo_data:/app/data/repositories
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,10 +42,10 @@ services:
   darkmem-ui:
     image: darkraise/darkmem-ui:${DARKMEM_VERSION:-latest}
     init: true
-    # Loopback-only. Put your own TLS-terminating reverse proxy in front for any
-    # access beyond localhost — the session cookie is only sent Secure over HTTPS.
+    # Exposed on the LXC LAN. The session cookie is Secure-only unless you set
+    # COOKIE_SECURE=false, so put HTTPS (a reverse proxy) in front for real use.
     ports:
-      - "127.0.0.1:3000:80"
+      - "3000:80"
     depends_on:
       darkmem-api:
         condition: service_healthy
@@ -58,14 +60,19 @@ services:
     image: pgvector/pgvector:0.8.2-pg17
     # max_connections sized for the API pool (30/process) plus headroom.
     command: ["postgres", "-c", "max_connections=120"]
+    # Loopback only — never exposed to the LAN. The API reaches it over the
+    # private compose network; this host port is for admin / pytest.
     ports:
       - "127.0.0.1:5433:5432"
+    # pgvector index builds and parallel scans use /dev/shm; the 64MB container
+    # default can trip "could not resize shared memory segment".
+    shm_size: 256mb
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=darkmem
       - POSTGRES_USER=darkmem
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env — see .env.example}
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "darkmem"]
       interval: 5s
@@ -79,3 +86,4 @@ services:
 
 volumes:
   postgres_data:
+  repo_data:

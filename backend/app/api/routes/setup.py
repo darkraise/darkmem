@@ -7,7 +7,6 @@ returns 403, and the wizard frontend redirects new visitors to ``/login``.
 """
 from __future__ import annotations
 
-import hmac
 import logging
 import os
 import sys
@@ -47,36 +46,6 @@ PURPOSE_LITERAL = Literal[
     "embedding", "extraction", "classification",
     "reasoning", "summarization", "reranker",
 ]
-
-
-def _check_setup_secret(presented: str | None) -> None:
-    """Compare a presented secret against ``SETUP_SECRET``.
-
-    When a secret is configured, require a matching one (constant-time compare).
-    When none is configured the endpoint stays open for the no-credentials local
-    install path — except in production, where the startup validator guarantees a
-    secret, so an unset value here is a misconfiguration.
-    """
-    expected = settings.setup_secret
-    if not expected:
-        if _is_production():
-            raise HTTPException(
-                status_code=503,
-                detail="SETUP_SECRET is not configured on the server",
-            )
-        return
-    if not presented or not hmac.compare_digest(presented, expected):
-        raise HTTPException(status_code=403, detail="Invalid or missing setup secret")
-
-
-def require_setup_secret(request: Request) -> None:
-    """Dependency gating header-only pre-setup endpoints (fs browse, model probe).
-
-    These have no request body to carry the secret, so they accept it via the
-    ``X-Setup-Secret`` header. Like the finalize gate, this is a no-op outside
-    production when no secret is configured.
-    """
-    _check_setup_secret(request.headers.get("X-Setup-Secret"))
 
 
 # ── Status ────────────────────────────────────────────────────────────
@@ -121,7 +90,7 @@ class ProbeModelsResponse(BaseModel):
 @router.post(
     "/probe-models",
     response_model=ProbeModelsResponse,
-    dependencies=[Depends(require_uninitialized), Depends(require_setup_secret)],
+    dependencies=[Depends(require_uninitialized)],
 )
 async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
     """Live model probe used by the wizard.
@@ -266,18 +235,16 @@ def _list_directory(path: Path, *, detect_repos: bool) -> list[FsListEntry]:
     return entries
 
 
-# Intentional exposure: on a no-secret, non-production install these two
-# filesystem-browse endpoints are reachable before an admin password exists, so
-# any client on the network can enumerate host drives. This is the documented
-# local-install convenience path (the wizard needs to browse for a repo folder
-# before credentials are set). require_setup_secret blocks it once a
-# SETUP_SECRET is configured, and the startup validator forces a secret in
-# production — so the open window only exists for the explicit local trust
-# model. See docs/api-rest-conventions.md and config._check_setup_secret.
+# Intentional exposure: before an admin password exists these two
+# filesystem-browse endpoints are reachable by any client on the network (gated
+# only by require_uninitialized), so a network peer can enumerate host drives
+# during the pre-setup window. This is the accepted trust-on-first-use model for
+# a local/LAN install — the wizard needs to browse for a repo folder before
+# credentials are set, and the first caller to finish /setup closes the window.
 @router.get(
     "/fs/roots",
     response_model=FsRootsResponse,
-    dependencies=[Depends(require_uninitialized), Depends(require_setup_secret)],
+    dependencies=[Depends(require_uninitialized)],
 )
 async def fs_roots() -> FsRootsResponse:
     return FsRootsResponse(roots=_enumerate_roots())
@@ -286,7 +253,7 @@ async def fs_roots() -> FsRootsResponse:
 @router.get(
     "/fs/list",
     response_model=FsListResponse,
-    dependencies=[Depends(require_uninitialized), Depends(require_setup_secret)],
+    dependencies=[Depends(require_uninitialized)],
 )
 async def fs_list(path: str, detect_repos: bool = False) -> FsListResponse:
     try:
@@ -334,7 +301,6 @@ class SetupRepos(BaseModel):
 
 class SetupRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
-    setup_secret: str | None = None
     llm: SetupLLM | None = None
     repos: SetupRepos | None = None
 
@@ -356,33 +322,6 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _is_production() -> bool:
-    # NOTE: this predicate is broader than config.py's startup validators
-    # (_check_jwt_secret / _check_setup_secret), which gate solely on
-    # ``settings.environment == "production"``. The extra ``/.dockerenv`` probe
-    # here can classify a containerized non-prod install as production and
-    # demand a SETUP_SECRET the startup validator never required — a self-
-    # lockout. Keep the two definitions in sync; prefer config.py's as the
-    # source of truth if they are ever unified.
-    return settings.environment == "production" or os.path.exists("/.dockerenv")
-
-
-def _enforce_setup_secret(request: Request, body: SetupRequest) -> None:
-    """Gate the finalize endpoint behind ``SETUP_SECRET`` in production.
-
-    ``config._check_setup_secret`` guarantees ``settings.setup_secret`` is a
-    non-empty string at startup in production, but nothing actually compared
-    the caller's input against it — the prod guard was a no-op. Require the
-    caller to present the matching secret (``X-Setup-Secret`` header or the
-    request body) before any admin-bootstrap write happens.
-
-    Outside production the secret is optional: if one is configured we still
-    enforce it, otherwise the endpoint stays open (gated only by
-    ``require_uninitialized``) for the no-credentials local install path.
-    """
-    _check_setup_secret(request.headers.get("X-Setup-Secret") or body.setup_secret)
-
-
 @router.post(
     "",
     response_model=SetupResponse,
@@ -402,8 +341,6 @@ async def setup_finalize(
     """
     from app.services.config import get_llm_config as fetch_llm_config
     from app.services.llm import LLMOrchestrator
-
-    _enforce_setup_secret(request, body)
 
     repos_added: list[str] = []
     repos_failed: list[dict] = []
