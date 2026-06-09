@@ -1,0 +1,6 @@
+# Normalize line endings on commit. Shell scripts and the container entrypoint
+# must stay LF so they exec inside Linux images regardless of the host (a CRLF
+# shebang becomes "#!/bin/sh\r", which fails with "No such file or directory").
+* text=auto
+*.sh text eol=lf
+entrypoint.sh text eol=lf
