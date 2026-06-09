@@ -5,8 +5,9 @@ services:
       - "8000:8000"
     environment:
       # ENVIRONMENT is unset → 'development' (relaxed validators, insecure
-      # cookie). DATABASE_URL is derived in config.py from these defaults
-      # (postgres:5432/darkmem); only the password is threaded through.
+      # cookie). config.py derives DATABASE_URL from DB_HOST/DB_PORT/DB_USER/
+      # DB_PASSWORD/DB_NAME; DB_HOST points at the bundled postgres service.
+      - DB_HOST=${DB_HOST:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-darkmem}
       - TEST_DATABASE_URL=postgresql+asyncpg://darkmem:${DB_PASSWORD:-darkmem}@postgres:5432/darkmem_test
     volumes:

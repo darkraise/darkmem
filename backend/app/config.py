@@ -112,14 +112,15 @@ class LLMPurposeConfig(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Postgres connection. In the bundled single-host deployment only
-    # DB_PASSWORD varies; the rest match the compose ``postgres`` service, so
-    # DATABASE_URL is derived from these components when not set explicitly.
-    # Set DATABASE_URL directly to point at an external Postgres or a
-    # host-mapped instance (e.g. local pytest on localhost:5433).
+    # Postgres connection, each piece overridable via its own env var
+    # (DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME). DATABASE_URL is
+    # derived from these when not set explicitly; set DATABASE_URL directly to
+    # point at any other Postgres. The default host is 'localhost' (host-side
+    # dev / pytest) — the compose files pass DB_HOST so the API reaches the
+    # bundled service over the container network.
     db_user: str = "darkmem"
     db_password: str = "darkmem"
-    db_host: str = "postgres"
+    db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "darkmem"
     database_url: str | None = None

@@ -36,10 +36,16 @@ _PROD = {"jwt_secret": "x" * 32}
 # ── DATABASE_URL derivation ───────────────────────────────────────────
 
 
-def test_database_url_derived_from_password(monkeypatch):
+def test_database_url_derived_from_components_defaults(monkeypatch):
     _clear(monkeypatch, *_DB_VARS)
     s = Settings(_env_file=None, db_password="s3cret")
-    assert s.database_url == "postgresql+asyncpg://darkmem:s3cret@postgres:5432/darkmem"
+    assert s.database_url == "postgresql+asyncpg://darkmem:s3cret@localhost:5432/darkmem"
+
+
+def test_database_url_honors_db_host_override(monkeypatch):
+    _clear(monkeypatch, *_DB_VARS)
+    s = Settings(_env_file=None, db_password="pw", db_host="postgres", db_port=6000)
+    assert s.database_url == "postgresql+asyncpg://darkmem:pw@postgres:6000/darkmem"
 
 
 def test_explicit_database_url_overrides_components(monkeypatch):

@@ -10,8 +10,13 @@ services:
       # Arms the fail-fast validators (JWT strength, SETUP_SECRET) and the
       # Secure-cookie default. Keep this 'production'.
       - ENVIRONMENT=production
-      # Only DB_PASSWORD varies per deployment; DATABASE_URL is derived from it
-      # in config.py (host/port/db/user match the postgres service below).
+      # Database connection. DB_HOST defaults to the bundled postgres service;
+      # override any of these in .env to point at an external Postgres.
+      # config.py builds DATABASE_URL from them (or set DATABASE_URL directly).
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-darkmem}
+      - DB_NAME=${DB_NAME:-darkmem}
       - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env — see .env.example}
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env — see .env.example}
       # The session cookie is HTTPS-only by default; set COOKIE_SECURE=false in
@@ -70,11 +75,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=darkmem
-      - POSTGRES_USER=darkmem
+      # Kept in sync with the API's DB_* so the credentials always match.
+      - POSTGRES_DB=${DB_NAME:-darkmem}
+      - POSTGRES_USER=${DB_USER:-darkmem}
       - POSTGRES_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env — see .env.example}
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "darkmem"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-darkmem}"]
       interval: 5s
       timeout: 3s
       retries: 5
