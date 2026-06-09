@@ -25,6 +25,10 @@ services:
       # .env to allow login over plain HTTP on a trusted LAN.
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Hosts allowed to reach /mcp (DNS-rebinding allowlist). Empty = localhost
+      # only; set your LAN host:port (e.g. 192.168.0.195:8000) so agents can
+      # connect, or "*" to disable the host check.
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
     volumes:
       # Persist cloned repositories across container restarts.
       - repo_data:/app/data/repositories

@@ -140,6 +140,10 @@ class Settings(BaseSettings):
     db_pool_size: int = 30
     db_max_overflow: int = 20
     log_level: str = "INFO"
+    # Comma-separated Host values allowed to reach the MCP endpoint (DNS-rebinding
+    # protection). Empty → localhost only; LAN agents must be added, e.g.
+    # "192.168.0.195:8000" or "192.168.0.195:*". Set to "*" to disable the check.
+    mcp_allowed_hosts: str = ""
 
     @model_validator(mode="after")
     def _check_jwt_secret(self):

@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import select, text
 
+from app.config import settings
 from app.database import async_session_factory
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
@@ -14,17 +15,36 @@ from app.utils.graph_keys import compose_key, decompose_key
 
 logger = logging.getLogger(__name__)
 
-# DNS-rebinding protection (the SDK default) only allows a localhost Host
-# header, which 421-rejects LAN agents hitting the host's IP. The MCP endpoint
-# is a local-network tool surface reached directly by its host address, so the
-# protection (a browser-rebinding defence) does not apply here — disable it.
+# DNS-rebinding protection. The SDK default only allows a localhost Host header,
+# which 421-rejects LAN agents reaching the server by its IP. Rather than disable
+# the check wholesale, allowlist the configured host(s): a real agent sends an
+# allowed Host and passes, while a rebinding payload (Host: attacker-domain) is
+# refused. Browser Origins are allowlisted to the same hosts (agents send none).
+_LOCALHOST_HOSTS = ["localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*"]
+
+
+def build_transport_security(allowed_hosts_csv: str) -> TransportSecuritySettings:
+    extra = [h.strip() for h in allowed_hosts_csv.split(",") if h.strip()]
+    if "*" in extra:
+        # Explicit opt-out: no Host validation. Use only on a fully trusted,
+        # isolated network.
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    hosts = _LOCALHOST_HOSTS + extra
+    origins = [f"http://{h}" for h in hosts] + [f"https://{h}" for h in hosts]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
+    )
+
+
 mcp = FastMCP(
     "darkmem",
     json_response=True,
     stateless_http=True,
     streamable_http_path="/",
     instructions="",
-    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    transport_security=build_transport_security(settings.mcp_allowed_hosts),
 )
 
 _pipeline = None
