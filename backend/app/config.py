@@ -1,5 +1,6 @@
 import logging
 from typing import Literal
+from urllib.parse import quote
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -163,8 +164,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _derive_database_url(self):
         if not self.database_url:
+            # Percent-encode the credentials so URL-significant characters in a
+            # password (e.g. '@', ':', '/') don't corrupt URL parsing — an
+            # unescaped '@' otherwise gets read as the start of the host.
+            user = quote(self.db_user, safe="")
+            password = quote(self.db_password, safe="")
             self.database_url = (
-                f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+                f"postgresql+asyncpg://{user}:{password}"
                 f"@{self.db_host}:{self.db_port}/{self.db_name}"
             )
         return self

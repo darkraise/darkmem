@@ -48,6 +48,18 @@ def test_database_url_honors_db_host_override(monkeypatch):
     assert s.database_url == "postgresql+asyncpg://darkmem:pw@postgres:6000/darkmem"
 
 
+def test_database_url_encodes_special_chars_in_credentials(monkeypatch):
+    """A password with URL-significant chars (@ : /) must not corrupt the host."""
+    from sqlalchemy import make_url
+
+    _clear(monkeypatch, *_DB_VARS)
+    s = Settings(_env_file=None, db_user="dark@user", db_password="Qu@ng:01/77", db_host="localhost")
+    u = make_url(s.database_url)
+    assert u.host == "localhost"
+    assert u.username == "dark@user"
+    assert u.password == "Qu@ng:01/77"
+
+
 def test_explicit_database_url_overrides_components(monkeypatch):
     _clear(monkeypatch, *_DB_VARS)
     explicit = "postgresql+asyncpg://u:p@db.example:6543/other"
