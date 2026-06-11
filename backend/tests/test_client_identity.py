@@ -36,6 +36,7 @@ def test_explicit_source_wins_over_header():
 def test_explicit_mcp_is_treated_as_unspecified():
     ctx = _Ctx({"x-darkmem-client": "codex"})
     assert resolve_client_source("mcp", ctx) == "codex"
+    assert resolve_client_source("MCP", ctx) == "codex"
 
 
 def test_explicit_source_truncated_to_column_width():

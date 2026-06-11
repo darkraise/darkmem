@@ -67,11 +67,13 @@ def resolve_client_source(explicit_source, ctx) -> str:
     """
     try:
         if isinstance(explicit_source, str):
-            explicit = explicit_source.strip()
+            # Lowercased before the sentinel check ("MCP" must not dodge it)
+            # and not slug-sanitized — a deliberate value wins as-is, but
+            # lowercase keeps UI color/filter lookups consistent with the
+            # sanitized tier-2/3 output.
+            explicit = explicit_source.strip().lower()
             if explicit and explicit != FALLBACK_SOURCE:
-                # Not slug-sanitized (a deliberate value wins as-is), but
-                # lowercased so UI color/filter lookups match tier-2/3 output.
-                return explicit.lower()[:_SOURCE_MAX_LEN]
+                return explicit[:_SOURCE_MAX_LEN]
         request = _request_from_ctx(ctx)
         if request is not None:
             header_source = _sanitize(request.headers.get(CLIENT_HEADER, ""))
