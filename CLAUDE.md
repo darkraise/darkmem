@@ -1,8 +1,57 @@
 # Darkmem — business logic baseline
 
-Centralized memory system for AI agents. Everything below is contract,
-not implementation detail. A refactor that breaks one of the listed
-invariants is a behavior change, not a cleanup.
+Centralized memory system for AI agents. Commands and layout first;
+everything from "Domain model" down is contract, not implementation
+detail. A refactor that breaks one of the listed invariants is a
+behavior change, not a cleanup.
+
+## Commands
+
+- Backend tests (from `backend/`): `python -m pytest -q`. Needs a
+  `darkmem_test` database on the dev-compose Postgres
+  (127.0.0.1:5433); create it once:
+  `psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_test;"`.
+  conftest pins `DATABASE_URL` to `TEST_DATABASE_URL` (default
+  `postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test`),
+  then runs `DROP SCHEMA public CASCADE` and `alembic upgrade head` —
+  never point it at a real database.
+- Frontend (from `frontend/`): `npm run typecheck` (= `tsc -b`; plain
+  `tsc` misses the project refs), `npm test` (vitest; excludes
+  `tests/`, which is Playwright e2e via `npm run test:e2e`),
+  `npm run build`. `npm run lint` is advisory.
+- Dev servers: `./scripts/start_dev_server.sh` = alembic upgrade +
+  uvicorn :8000 `--reload --timeout-keep-alive 75` (the 75 prevents
+  sporadic 502s through the vite proxy); `cd frontend && npm run dev`
+  = vite :3636 proxying `/api`, `/health`, `/ws` to :8000.
+- Migrations (from `backend/`): `python -m alembic upgrade head`.
+  `migrations/env.py` reads `DATABASE_URL` via app settings (default
+  port 5432) and ignores `alembic.ini`'s URL; the dev-compose Postgres
+  is on 5433, so set `DATABASE_URL` explicitly for host-side runs.
+  Containers migrate at startup via `entrypoint.sh`;
+  docker-compose.dev.yml overrides the command and skips migrations.
+- Stacks: dev `docker compose -f docker-compose.dev.yml up -d` (no
+  .env needed); prod `docker compose up -d` (host networking; requires
+  `DB_PASSWORD` + `JWT_SECRET` ≥ 32 chars in .env, `COOKIE_SECURE=false`
+  for plain-HTTP LAN). Rebuild images first: `./scripts/build-push.sh`.
+- Backend lock: regenerate only with
+  `uv pip compile --universal pyproject.toml -o requirements.lock` —
+  a non-universal Windows resolve leaks pywin32 and drops uvloop.
+  `entrypoint.sh` must stay LF (.gitattributes enforces it).
+
+## Layout
+
+`backend/app`: `api/routes` (REST), `api/mcp` (FastMCP, mounted at
+`/mcp`), `services` (pipeline.py, extraction_clean.py,
+code_pipeline.py, job_registry.py, ...), `repositories`
+(graph/relational/vector), `models`, `schemas`; entry point
+`app/main.py`. `backend/migrations/versions` is Alembic;
+`backend/scripts` holds eval harnesses (`extraction_bench/`).
+`frontend/src`: `features/*` plus TanStack Router file-based `routes/`
+— `routeTree.gen.ts` is generated, never hand-edit it. `docs/` holds
+dated audit reports, `api-rest-conventions.md` (the REST contract new
+endpoints must match: 201 create, 204 delete, 202 async-accepted,
+POST `.../search` for complex queries), `superpowers/specs/` design
+specs, and `e2e/` runbooks.
 
 ## Domain model
 
@@ -10,6 +59,13 @@ Memory rows live in `memories`. Each row has a status lifecycle:
 `active → superseded → deprecated`. The CHECK constraint
 `chk_superseded_has_pointer` forbids `status='superseded'` without
 `superseded_by` set; supersession code must always set both atomically.
+Memories may carry `expires_at` (nullable TTL); the
+`expired_memory_cleanup` job deletes rows past it. Before deleting any
+memory that others reference via `superseded_by` (TTL sweep or
+interactive delete), demote those dependents to `status='deprecated'`
+with `superseded_by=NULL` first — the FK is ON DELETE SET NULL, so
+skipping the demotion violates `chk_superseded_has_pointer` and aborts
+the whole batch.
 
 A memory carries:
 
@@ -63,16 +119,30 @@ A batch flows through five phases. Each phase is a hard checkpoint:
    misses. Newly produced embeddings are written to both. The fingerprint
    may change between Phase 1 and Phase 3 if the active embedder rotated;
    in that case Phase 3 registers and switches to the new fingerprint.
-4. **Dedup.** For each unique entity name, ANN-probe `find_similar_entity`
-   at threshold 0.85. If a different canonical name comes back, record
-   `lower_name → canonical_name` in `canonical_map`. Probes fan out
-   bounded by `pipeline_concurrency`.
-5. **Write.** Per memory, in a savepoint:
+4. **Dedup.** One ANN probe per unique `(name, entity_type)` pair —
+   `find_similar_entity` is type-constrained at threshold 0.85, so
+   same-named entities of different types dedup separately. A match
+   only canonicalizes when `names_distinct(lower_name, match)` is
+   False: names that differ by a discriminating token (numbers, dates,
+   versions, month names) never merge despite high cosine similarity.
+   Record `(name_lower, entity_type) → canonical_name` in
+   `canonical_map`; Phase 5 resolves relation endpoints by the same
+   key. Probes fan out bounded by `pipeline_concurrency`.
+5. **Write.** Per memory, in two savepoints — A: vector upsert +
+   memory-row enrichment; B: entity/relationship graph + technologies
+   + supersession — so a graph failure does not roll back the vector
+   write:
    - Strip prior contributions of this `memory_id` from the graph
      (`delete_by_memory_id`) before writing the new set. This is what
-     makes re-extraction idempotent. `delete_by_memory_id` only deletes
-     entities whose `memory_ids` array becomes empty; entities shared
-     with other memories survive.
+     makes re-extraction idempotent. `delete_by_memory_id` deletes a
+     relation only when no live memory still asserts it (self-healing
+     dangling `memory_ids`), and an entity only when no live memory
+     asserts it and no surviving relation references it (the FK
+     cascades, so deleting a referenced entity would destroy another
+     memory's edge). Entities shared with other live memories survive.
+     The hourly `graph_orphan_cleanup` job runs the unscoped sweep
+     (`prune_orphan_entities`) as a backstop so Phase-4 dedup never
+     merges fresh entities onto stale ghosts.
    - Apply `canonical_map` to entity names and relationship endpoints.
    - Lowercase entity names on write; if the original casing differs,
      stash it in `properties.display_name` so the UI can render it back.
@@ -90,9 +160,10 @@ After Phase 5, `derive_memory_failed_step` records or resolves a row in
 - **Classification / enrichment** populates the `llm_*` columns and is
   gated behind `llm_enrichment_enabled`.
 
-The **only** surviving runtime behavioral flag besides classification
-toggles is `relation_rescue` (pattern-based rescue layer for relations
-the LLM misses). All `ml_*` flags were removed in the 2026-05-01
+The **only** surviving ingestion-side behavioral flag besides the
+classification toggles is `relation_rescue` (pattern-based rescue
+layer for relations the LLM misses); retrieval has its own flags (see
+Feature flags). All `ml_*` flags were removed in the 2026-05-01
 LLM-only consolidation; do not reintroduce a generic ML on/off switch.
 
 ## Supersession (`detect_supersessions`)
@@ -105,13 +176,21 @@ relation. A candidate is flipped to `superseded` only if **all** hold:
 3. `candidate.technologies` overlaps the lowercased `REPLACES` targets
    (the GIN index on `memories.technologies` carries this).
 4. `candidate.created_at >= now - SUPERSESSION_WINDOW_DAYS` (90 days).
-5. `candidate.created_at < new_memory.created_at` — strict older. Skip
-   this guard and a reprocess flips two same-relation memories into
-   mutual supersession; both vanish from the default `active` view.
-6. The new memory text contains no `SPECULATIVE_REPLACES_MARKERS`
-   ("might", "considering", "planning to switch", ...). This is the
-   per-relation confidence gate until the extractor emits a numeric
-   one.
+5. Candidate is older, with an id tie-break for equal timestamps:
+   `created_at < new.created_at OR (created_at = new.created_at AND
+   id < new.id)`. Same-batch rows share one server-side `created_at`,
+   so the tie-break lets within-batch supersession fire while still
+   blocking the mutual flip (without this guard a reprocess flips two
+   same-relation memories into mutual supersession; both vanish from
+   the default `active` view).
+6. The speculative gate, scoped per target: only the sentences
+   mentioning that `REPLACES` target are checked for
+   `SPECULATIVE_REPLACES_MARKERS` ("might", "considering", "planning
+   to switch", ...), falling back to the whole text only when no
+   sentence mentions the target — an unrelated speculative aside
+   elsewhere in the memory does not suppress a definitive replacement.
+   This is the per-relation confidence gate until the extractor emits
+   a numeric one.
 
 The detector lowercases REPLACES targets because `memories.technologies`
 is lowercase; do not change either side without the other.
@@ -143,10 +222,15 @@ Default semantic search delegates to `HybridSearchService.search` when
 - Keyword side: `ts_rank` against `memories.search_vector` with
   `plainto_tsquery('english', :q)`.
 - Fusion: Reciprocal Rank Fusion with `k = 60`, weighted by
-  `semantic_weight` (default 0.7). Output rows carry `rrf_score`;
-  individual `score` is replaced. If the caller wants
-  `confidence_rank_gamma > 0`, weighting multiplies `rrf_score` by
-  `(1 + γ·(confidence - 0.75))`.
+  `semantic_weight` (default 0.7). Output rows carry `rrf_score` as
+  the ordering signal; the per-modality `score` key survives on the
+  row (the first-seen side's raw score), so consumers must prefer
+  `rrf_score`.
+- When `reranker_enabled`, `RerankerService` LLM-scores the top 40
+  RRF-ranked rows (0–10; the unscored tail is appended) after fusion.
+- If `confidence_rank_gamma > 0`, weighting multiplies `rrf_score` by
+  `(1 + γ·(confidence - 0.75))`; after a rerank it runs with
+  `preserve_order=True`, rescaling scores without reordering.
 
 Code search (`search_code`) is semantic-only — the
 `code_chunk_embeddings__<slug>` partitions carry no FTS column, so
@@ -200,15 +284,62 @@ flaky.
 
 ## Jobs (`JobRegistry`)
 
-Periodic work (repo sync, enrichment worker, ...) is unified under
-`JobRegistry` and dispatched by cron expressions. Five-field
+Periodic work is unified under `JobRegistry` and dispatched by cron
+expressions. Seven registered jobs (`app/main.py`): `repo_sync`,
+`code_enrichment`, `token_blocklist_cleanup`,
+`pipeline_failure_cleanup`, `graph_orphan_cleanup`,
+`tag_orphan_cleanup`, `expired_memory_cleanup`. Five-field
 expressions are minute-precision; six-field expressions put the seconds
 field first, Quartz-style. `min_interval_seconds` is a per-job floor
 that protects against runaway expressions; the loop will not fire more
 often than the floor regardless of what the cron computes. Per-job
 state lives in `config` rows keyed `job:<key>`. Manual `trigger(key)`
 acquires the **same** per-job `asyncio.Lock` the loop uses, so a
-manual run and a scheduled run can never race.
+manual run and a scheduled run can never race; a trigger while the
+lock is held returns busy (HTTP 409) rather than queueing. Jobs may
+declare a `config_schema` (FieldDescriptor list); `set_config`
+validates partial updates against it (type + min/max, unknown keys
+rejected) and writes under that same lock
+(`PUT /api/v1/jobs/{key}/config`).
+
+## MCP endpoint
+
+`/mcp` is unauthenticated (local-network trust model); its only
+network defence is DNS-rebinding protection via a Host allowlist.
+localhost is always allowed; `MCP_ALLOWED_HOSTS` (comma-separated,
+`192.168.0.195:8000` or `host:*`) adds LAN hosts; `*` disables the
+check entirely. Default (empty) is localhost-only — a foreign Host
+gets 421. Fix a LAN 421 by extending the allowlist, never by
+disabling the protection. Browser Origins are allowlisted to the same
+hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
+
+## Setup, auth, runtime config
+
+- `/api/v1/setup/*` is trust-on-first-use: gated only by
+  `require_uninitialized`, which 403s once the `admin_password_hash`
+  config row exists. `SETUP_SECRET` no longer exists; do not
+  reintroduce a pre-setup shared secret.
+- Login rate limiting is per-IP with lockout; the client IP comes
+  from `X-Real-IP` (set by the bundled nginx to the direct peer) when
+  `trust_proxy_headers` is on — never the spoofable leftmost
+  `X-Forwarded-For`. Refresh and change-password rotate (blocklist)
+  the presented token; password change revokes all pre-change tokens
+  via the `iat` check.
+- `DATABASE_URL` is derived from the `DB_*` vars with percent-encoded
+  credentials; an explicit `DATABASE_URL` overrides the derivation.
+  `trust_proxy_headers` defaults to True (the API always sits behind
+  the bundled nginx). `cookie_secure` is tri-state: unset = Secure
+  only when `environment=production`; explicit false allows login
+  over plain-HTTP LAN. There are no `LLM_*` env vars — all LLM config
+  lives in the DB via the setup wizard.
+
+## Code indexing
+
+`POST /repos/{id}/reindex` accepts `{full, enrich_symbols,
+generate_wiki}`, all default False. An unchanged HEAD sha
+short-circuits the reindex unless `full=true`. Symbol enrichment and
+wiki generation run only when their toggles are set; `GET /code/wiki`
+is read-only and never implicitly generates.
 
 ## Cross-cutting invariants
 
@@ -229,3 +360,9 @@ manual run and a scheduled run can never race.
   `REPLACES_FAMILY` too.
 - **Async session lifetime.** Never open a fresh session while the
   request transaction still holds locks on the same rows; commit first.
+- **asyncpg needs CAST on raw-SQL params.** Any bound param whose
+  type Postgres cannot infer must be cast (`CAST(:vec AS vector)`,
+  `CAST(:id AS uuid)`, `CAST(:props AS jsonb)`), especially with
+  variadic ANY / unnest / jsonb_build_object — otherwise
+  `IndeterminateDatatypeError`. And roll back the session before
+  mutating ORM objects in an error handler.
