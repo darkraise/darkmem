@@ -406,6 +406,11 @@ async def update_system_prompts(
 
     await _prompt_mod.refresh_from_db(session)
 
+    # The MCP server captures its served instructions once; re-push so an
+    # agent_instructions edit takes effect without a restart.
+    from app.api.mcp.server import refresh_mcp_instructions  # noqa: PLC0415
+    refresh_mcp_instructions()
+
     defaults = dict(_prompt_mod.PROMPTS)
     overrides = _prompt_mod.get_overrides()
     effective = {k: overrides.get(k, defaults.get(k, "")) for k in defaults}

@@ -55,6 +55,21 @@ def set_pipeline(pipeline):
     _pipeline = pipeline
 
 
+def refresh_mcp_instructions() -> None:
+    """Push the current ``agent_instructions`` prompt onto the live MCP server.
+
+    FastMCP exposes ``instructions`` only as a read-only property, so the
+    low-level server attribute is the single writable path. The SDK reads it
+    per request when building the initialize response, so calling this after a
+    prompt edit makes the new text take effect without a restart.
+    """
+    from app.services import prompt as _prompt
+
+    instructions = _prompt.get("agent_instructions")
+    if instructions:
+        mcp._mcp_server.instructions = instructions
+
+
 @asynccontextmanager
 async def _memory_service_context():
     async with async_session_factory() as session:
@@ -347,6 +362,7 @@ async def code_search(
         language: Optional language filter (e.g., "python", "typescript").
         limit: Maximum number of results (default: 10).
     """
+    limit = _clamp_limit(limit, default=10)
     if not _pipeline or not _pipeline.llm:
         # Return a typed, machine-readable result rather than raising a tool
         # error so the MCP client can degrade gracefully (e.g. fall back to a

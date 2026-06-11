@@ -108,10 +108,8 @@ async def lifespan(app: FastAPI):
     # it without depending on the registry import.
     app.state.repo_sync_wakeup = None  # set after registry init
 
-    from app.services import prompt
-    agent_instructions = prompt.get("agent_instructions")
-    if agent_instructions:
-        mcp_server._mcp_server.instructions = agent_instructions
+    from app.api.mcp.server import refresh_mcp_instructions
+    refresh_mcp_instructions()
 
     # Feature 2: register retry handlers for the failure tracking system
     from app.services.pipeline_failures import register_retry_handler
