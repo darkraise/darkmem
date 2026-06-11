@@ -238,16 +238,34 @@ async def memory_delete(memory_id: str) -> str:
 
 
 @mcp.tool(
-    description="Create multiple memories in a single operation with parallel pipeline processing. Each entry follows the same format as memory_add. Concurrency is controlled by the pipeline_concurrency setting."
+    description="Create multiple memories in a single operation with parallel pipeline processing. Each entry follows the same format as memory_add; entries without 'source' get the auto-detected origin tool. Concurrency is controlled by the pipeline_concurrency setting."
 )
-async def memory_batch_add(entries: list[dict]) -> str:
+async def memory_batch_add(entries: list[dict], ctx: Context | None = None) -> str:
     """
     Args:
-        entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source', 'source_agent', 'memory_type', 'project' (supersession scope).
+        entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source' (auto-detected when omitted), 'source_agent' (defaults to the caller's User-Agent), 'memory_type', 'project' (supersession scope).
     """
+    # Resolve on the raw dicts: MemoryCreate stamps its "api" default during
+    # validation, erasing the absent-vs-explicit distinction afterwards. The
+    # resolver additionally treats a literal "mcp" as unspecified (agents
+    # copying the old default must not mask detection). Non-dict entries and
+    # non-string source/source_agent values are left untouched so validation
+    # still rejects them.
+    resolved = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            entry = dict(entry)
+            raw_source = entry.get("source")
+            if raw_source is None or isinstance(raw_source, str):
+                entry["source"] = resolve_client_source(raw_source, ctx)
+            raw_agent = entry.get("source_agent")
+            if raw_agent is None or isinstance(raw_agent, str):
+                entry["source_agent"] = resolve_source_agent(raw_agent, ctx)
+        resolved.append(entry)
+
     # Mirror the HTTP /memories/batch cap (MemoryBatchCreate: 1-100 entries)
     # so the MCP path cannot enqueue an unbounded batch.
-    validated = MemoryBatchCreate(entries=entries)
+    validated = MemoryBatchCreate(entries=resolved)
 
     # Delegate to the service so creation threads every field (notably
     # ``project``, the supersession scope) and runs the phased batch pipeline

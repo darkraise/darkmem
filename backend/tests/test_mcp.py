@@ -121,3 +121,18 @@ async def test_memory_add_explicit_source_beats_header(mcp_http_client, session)
                      headers={"X-Darkmem-Client": "codex"})
     memory = await _get_memory(session, "explicit override probe")
     assert memory.source == "my-orchestrator"
+
+
+async def test_memory_batch_add_resolves_per_entry(mcp_http_client, session):
+    await _post_tool(mcp_http_client, "memory_batch_add", {"entries": [
+        {"content": "batch omitted source"},
+        {"content": "batch explicit api", "source": "api"},
+        {"content": "batch explicit mcp", "source": "mcp", "source_agent": "eval-r3"},
+    ]}, headers={"X-Darkmem-Client": "codex"})
+    omitted = await _get_memory(session, "batch omitted source")
+    assert omitted.source == "codex"
+    assert omitted.source_agent.startswith("python-httpx/")
+    assert (await _get_memory(session, "batch explicit api")).source == "api"
+    explicit = await _get_memory(session, "batch explicit mcp")
+    assert explicit.source == "codex"
+    assert explicit.source_agent == "eval-r3"
