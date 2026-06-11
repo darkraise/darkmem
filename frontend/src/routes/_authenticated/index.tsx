@@ -27,35 +27,11 @@ import {
   type YAxisTickContentProps,
 } from "recharts"
 import { relativeTime } from "@/lib/format"
+import { sourceColor } from "@/lib/source-colors"
 
 export const Route = createFileRoute("/_authenticated/")({
   component: OverviewPage,
 })
-
-const SOURCE_COLORS: Record<string, string> = {
-  "claude-code": "#58a6ff",
-  "mcp-test": "#3fb950",
-  api: "#d2a8ff",
-  "rest-test": "#ffa657",
-  dashboard: "#f778ba",
-}
-
-const FALLBACK_COLORS = [
-  "#58a6ff",
-  "#3fb950",
-  "#d2a8ff",
-  "#ffa657",
-  "#f778ba",
-  "#8b949e",
-]
-
-function sourceColor(name: string, index: number): string {
-  return (
-    SOURCE_COLORS[name] ??
-    FALLBACK_COLORS[index % FALLBACK_COLORS.length] ??
-    "#8b949e"
-  )
-}
 
 function formatXAxis(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T00:00:00")

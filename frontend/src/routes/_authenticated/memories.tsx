@@ -30,6 +30,7 @@ import { usePaginatedSearch, useDeleteMemory, useBulkDeleteMemory } from "@/hook
 import type { Memory } from "@/hooks/api"
 import { apiFetch } from "@/lib/api"
 import { relativeTime } from "@/lib/format"
+import { SOURCE_COLORS } from "@/lib/source-colors"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,14 +59,6 @@ export const Route = createFileRoute("/_authenticated/memories")({
 })
 
 const PAGE_SIZE = 50
-
-const SOURCE_COLORS: Record<string, string> = {
-  "claude-code": "#58a6ff",
-  "mcp-test": "#3fb950",
-  api: "#d2a8ff",
-  "rest-test": "#ffa657",
-  dashboard: "#f778ba",
-}
 
 // Cap bulk concurrency. Each delete runs an independent server-side
 // pipeline cleanup; a 50-item bulk shouldn't open 50 concurrent backend
