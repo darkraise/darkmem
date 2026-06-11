@@ -4,7 +4,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.api.mcp.server import build_transport_security, mcp
+from app.api.mcp.server import build_transport_security
 
 
 def test_default_allows_localhost_only():
@@ -30,21 +30,19 @@ def test_wildcard_disables_protection():
 
 
 @pytest.mark.asyncio
-async def test_default_mcp_rejects_foreign_host_allows_localhost():
+async def test_default_mcp_rejects_foreign_host_allows_localhost(mcp_streamable_app):
     """With the default (empty) allowlist, localhost is accepted and a LAN host
     is rejected with 421 — proving rebinding protection is on by default."""
-    app = mcp.streamable_http_app()
     payload = {
         "jsonrpc": "2.0", "id": 0, "method": "initialize",
         "params": {"protocolVersion": "2025-03-26", "capabilities": {},
                    "clientInfo": {"name": "t", "version": "1"}},
     }
-    transport = httpx.ASGITransport(app=app)
-    async with app.router.lifespan_context(app):
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
-            ok = await c.post("/", json=payload, headers={
-                "Accept": "application/json, text/event-stream", "Host": "localhost:8000"})
-            foreign = await c.post("/", json=payload, headers={
-                "Accept": "application/json, text/event-stream", "Host": "192.168.0.195:8000"})
+    transport = httpx.ASGITransport(app=mcp_streamable_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+        ok = await c.post("/", json=payload, headers={
+            "Accept": "application/json, text/event-stream", "Host": "localhost:8000"})
+        foreign = await c.post("/", json=payload, headers={
+            "Accept": "application/json, text/event-stream", "Host": "192.168.0.195:8000"})
     assert ok.status_code == 200
     assert foreign.status_code == 421

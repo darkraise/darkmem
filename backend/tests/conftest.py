@@ -141,3 +141,68 @@ async def auth_headers(session):
 
     token = create_access_token({"sub": "admin"})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def mcp_streamable_app():
+    """Fresh streamable-HTTP app with its lifespan entered.
+
+    FastMCP caches one StreamableHTTPSessionManager whose run() is
+    once-per-instance, so the cached manager is dropped first; the app must
+    be built AFTER the reset so its route handler and lifespan share the
+    fresh manager. The lifespan runs in a dedicated task because anyio
+    cancel scopes must enter and exit in the same task, and pytest-asyncio
+    tears async fixtures down in a different task than setup.
+    """
+    from app.api.mcp.server import mcp as mcp_server
+
+    # Null out the cached manager so streamable_http_app() creates a fresh
+    # StreamableHTTPSessionManager; the SDK's _has_started flag makes each
+    # instance single-use, so reusing one across tests raises RuntimeError.
+    mcp_server._session_manager = None
+    mcp_app = mcp_server.streamable_http_app()
+    started = asyncio.Event()
+    stop = asyncio.Event()
+
+    async def _run_lifespan():
+        async with mcp_app.router.lifespan_context(mcp_app):
+            started.set()
+            await stop.wait()
+
+    runner = asyncio.create_task(_run_lifespan())
+    startup = asyncio.create_task(started.wait())
+    done, _ = await asyncio.wait({runner, startup}, return_when=asyncio.FIRST_COMPLETED)
+    if runner in done:
+        startup.cancel()
+        runner.result()  # surfaces the startup exception instead of hanging
+    try:
+        yield mcp_app
+    finally:
+        stop.set()
+        await runner
+
+
+@pytest_asyncio.fixture
+async def mcp_http_client(session, monkeypatch, mcp_streamable_app):
+    """JSON-RPC client for MCP tool calls, wired to the per-test session.
+
+    MCP tools open sessions via the module-level async_session_factory, not
+    the FastAPI get_session dependency, so the factory is patched here;
+    without it tool calls commit real rows outside the test transaction.
+    """
+    from contextlib import asynccontextmanager
+
+    import app.api.mcp.server as mcp_module
+
+    @asynccontextmanager
+    async def _fake_ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_module, "async_session_factory", lambda: _fake_ctx())
+    transport = ASGITransport(app=mcp_streamable_app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://localhost:8000",
+        headers={"Accept": "application/json"},
+    ) as c:
+        yield c
