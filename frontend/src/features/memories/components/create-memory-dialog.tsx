@@ -57,6 +57,7 @@ export function CreateMemoryDialog({
         content: value.content,
         memory_type: value.memory_type,
         tags: value.tags.length > 0 ? value.tags : undefined,
+        source: "dashboard",
       })
       toast.success("Memory created")
       form.reset()
