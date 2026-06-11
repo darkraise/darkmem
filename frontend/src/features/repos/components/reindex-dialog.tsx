@@ -106,7 +106,7 @@ export function ReindexDialog({
             <p
               id="reindex-form-error"
               role="alert"
-              className="text-destructive text-base"
+              className="text-destructive text-sm"
             >
               {wholeFormError}
             </p>

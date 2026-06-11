@@ -156,7 +156,7 @@ export function MLProfilesPanel() {
         </CardHeader>
         <CardContent className="p-0">
           {names.length === 0 ? (
-            <p className="text-muted-foreground px-4 py-3 text-base">
+            <p className="text-muted-foreground px-4 py-3 text-sm">
               No ML profiles yet. Add one above.
             </p>
           ) : (
@@ -229,7 +229,7 @@ function MlProfileRow({
     <div className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-base font-bold">{name}</span>
+          <span className="truncate text-sm font-bold">{name}</span>
           <Badge
             variant="outline"
             className="max-w-full truncate font-mono text-sm"
@@ -240,7 +240,7 @@ function MlProfileRow({
             CPU
           </Badge>
         </div>
-        <div className="text-muted-foreground mt-0.5 text-base">
+        <div className="text-muted-foreground mt-0.5 text-sm">
           {profile.ttl_seconds === 0
             ? "TTL: ∞ (never unload)"
             : `TTL: ${profile.ttl_seconds}s`}
@@ -256,7 +256,7 @@ function MlProfileRow({
           className="h-9 w-28"
         >
           <NumberInputControl>
-            <NumberInputField className="text-base" />
+            <NumberInputField />
             <NumberInputTriggerGroup>
               <NumberInputIncrementTrigger />
               <NumberInputDecrementTrigger />
@@ -267,7 +267,7 @@ function MlProfileRow({
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 px-2 text-base"
+          className="h-9 px-2"
           onClick={() => onSaveTtl(ttl)}
           disabled={!dirty || disabled}
         >
@@ -276,7 +276,7 @@ function MlProfileRow({
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive h-9 px-2 text-base"
+          className="text-destructive hover:text-destructive h-9 px-2"
           onClick={onDelete}
           disabled={disabled}
           aria-label={`Delete ML profile ${name}`}
@@ -318,7 +318,7 @@ function AddMlProfileForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-base">Profile name</Label>
+        <Label className="text-muted-foreground">Profile name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -327,7 +327,7 @@ function AddMlProfileForm({
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-base">
+        <Label className="text-muted-foreground">
           HuggingFace model repo
         </Label>
         <Input
@@ -342,7 +342,7 @@ function AddMlProfileForm({
         </p>
       </div>
       <div>
-        <Label className="text-muted-foreground text-base">TTL (seconds)</Label>
+        <Label className="text-muted-foreground">TTL (seconds)</Label>
         <NumberInput
           min={0}
           value={ttl}

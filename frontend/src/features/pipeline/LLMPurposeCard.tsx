@@ -316,7 +316,7 @@ export function LLMPurposeCard({
         aria-expanded={open}
         aria-controls={panelId}
       >
-        <span className="flex items-center gap-2 text-base font-semibold capitalize">
+        <span className="flex items-center gap-2 text-sm font-semibold capitalize">
           {open ? (
             <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
           ) : (
@@ -340,7 +340,7 @@ export function LLMPurposeCard({
             {/* Profile picker — the primary decision for this purpose. */}
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <Label className="text-base">Profile</Label>
+                <Label>Profile</Label>
                 {linkedToProfile && !isMl && (
                   <Badge
                     variant="secondary"
@@ -380,7 +380,7 @@ export function LLMPurposeCard({
                 disabled={noProfiles}
               >
                 <SelectTrigger
-                  className="h-9 w-full text-base"
+                  className="h-9 w-full"
                   title="Apply a saved Profile to this purpose."
                 >
                   <SelectValue
@@ -456,7 +456,7 @@ export function LLMPurposeCard({
 
             {purpose === "embedding" && (
               <div className="flex items-center justify-between">
-                <Label className="text-base">Dimensions</Label>
+                <Label>Dimensions</Label>
                 <NumberInput
                   min={1}
                   value={draft.dimensions ?? undefined}
@@ -466,7 +466,7 @@ export function LLMPurposeCard({
                   className="w-28"
                 >
                   <NumberInputControl>
-                    <NumberInputField className="h-9 text-center text-base" />
+                    <NumberInputField className="h-9 text-center" />
                     <NumberInputTriggerGroup>
                       <NumberInputIncrementTrigger />
                       <NumberInputDecrementTrigger />
@@ -479,7 +479,7 @@ export function LLMPurposeCard({
             {purpose !== "embedding" && !isMl && (
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <Label className="text-base">Reasoning mode</Label>
+                  <Label>Reasoning mode</Label>
                   {linkedToProfile && (
                     <p className="text-muted-foreground text-sm">
                       Overrides the linked Profile.
@@ -501,7 +501,7 @@ export function LLMPurposeCard({
                 onOpenChange={setOverrideOpen}
                 className="border-border border-t pt-3"
               >
-                <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 text-base font-medium">
+                <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 text-sm font-medium">
                   <span className="flex items-center gap-1">
                     {overrideOpen ? (
                       <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
@@ -586,13 +586,13 @@ export function LLMPurposeCard({
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label className="text-base">API</Label>
+                        <Label>API</Label>
                         <Select
                           value={draft.api_kind ?? "openai"}
                           onValueChange={(v) => patch({ api_kind: v })}
                         >
                           <SelectTrigger
-                            className="h-9 text-base"
+                            className="h-9"
                             title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds reserve a slot for future native adapters and currently route through OpenAI compat."
                           >
                             <SelectValue />
@@ -649,7 +649,7 @@ export function LLMPurposeCard({
                         setDirty(true)
                       }}
                       rows={3}
-                      className="mt-1 font-mono text-base"
+                      className="mt-1 font-mono"
                       placeholder='{"temperature": 0.2}'
                     />
                   </div>
@@ -742,7 +742,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`h-9 text-base ${mono ? "font-mono" : ""} disabled:opacity-50`}
+        className={`h-9 ${mono ? "font-mono" : ""} disabled:opacity-50`}
       />
     </div>
   )

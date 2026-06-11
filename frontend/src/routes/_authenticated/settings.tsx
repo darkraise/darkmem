@@ -156,7 +156,7 @@ function ClassificationAreasCard() {
           className="w-fit"
         >
           {(["simple", "expanded"] as const).map((m) => (
-            <ToggleGroupItem key={m} value={m} className="text-base">
+            <ToggleGroupItem key={m} value={m}>
               {m.charAt(0).toUpperCase() + m.slice(1)}
             </ToggleGroupItem>
           ))}
@@ -164,7 +164,7 @@ function ClassificationAreasCard() {
 
         {mode === "simple" ? (
           <div className="space-y-2">
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground text-sm">
               7 universal types optimized for small models. Invalid LLM outputs
               are automatically remapped.
             </p>
@@ -174,10 +174,10 @@ function ClassificationAreasCard() {
                   key={t.key}
                   className="flex items-baseline gap-3 px-3 py-2"
                 >
-                  <code className="w-24 shrink-0 text-base font-semibold">
+                  <code className="w-24 shrink-0 text-sm font-semibold">
                     {t.key}
                   </code>
-                  <span className="text-muted-foreground text-base">
+                  <span className="text-muted-foreground text-sm">
                     {t.description}
                   </span>
                 </div>
@@ -186,7 +186,7 @@ function ClassificationAreasCard() {
           </div>
         ) : (
           <div className="space-y-1">
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground text-sm">
               Fine-grained types from enabled domain areas. Best with larger
               models.
             </p>
@@ -197,10 +197,10 @@ function ClassificationAreasCard() {
                   className="flex items-center justify-between px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <span className="text-base font-medium">
+                    <span className="text-sm font-medium">
                       {area.display_name}
                     </span>
-                    <p className="text-muted-foreground truncate text-base">
+                    <p className="text-muted-foreground truncate text-sm">
                       {area.types.join(", ")}
                     </p>
                   </div>
@@ -319,8 +319,8 @@ function FeatureFlagsCard() {
     return (
       <div className="border-border flex items-center justify-between border-t pt-2">
         <div className="min-w-0">
-          <Label className="text-base">{label}</Label>
-          <p className="text-muted-foreground text-base">{description}</p>
+          <Label>{label}</Label>
+          <p className="text-muted-foreground text-sm">{description}</p>
         </div>
         <NumberInput
           min={min}
@@ -333,7 +333,7 @@ function FeatureFlagsCard() {
         >
           <NumberInputControl>
             <NumberInputField
-              className="h-8 text-center text-base"
+              className="h-8 text-center"
               onBlur={commit}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -364,8 +364,8 @@ function FeatureFlagsCard() {
         {productToggles.map((item) => (
           <div key={item.key} className="flex items-center justify-between">
             <div>
-              <Label className="text-base">{item.label}</Label>
-              <p className="text-muted-foreground text-base">
+              <Label>{item.label}</Label>
+              <p className="text-muted-foreground text-sm">
                 {item.description}
               </p>
             </div>
@@ -378,19 +378,19 @@ function FeatureFlagsCard() {
         ))}
 
         <Collapsible className="border-border border-t pt-3">
-          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground cursor-pointer text-base font-medium">
+          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground cursor-pointer text-sm font-medium">
             Advanced
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-3 space-y-3">
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground text-sm">
               Tuning knobs with sensible defaults. Leave these unless you are
               evaluating retrieval quality or throughput.
             </p>
             {advancedToggles.map((item) => (
               <div key={item.key} className="flex items-center justify-between">
                 <div>
-                  <Label className="text-base">{item.label}</Label>
-                  <p className="text-muted-foreground text-base">
+                  <Label>{item.label}</Label>
+                  <p className="text-muted-foreground text-sm">
                     {item.description}
                   </p>
                 </div>
@@ -588,7 +588,7 @@ function AssistantPromptsCard() {
             className="flex-wrap justify-start"
           >
             {ORPHAN_PROMPTS.map((p) => (
-              <ToggleGroupItem key={p} value={p} className="text-base">
+              <ToggleGroupItem key={p} value={p}>
                 {p}
                 {data.overrides[p] && (
                   <Badge variant="secondary" className="ml-1 text-sm">
@@ -599,7 +599,7 @@ function AssistantPromptsCard() {
             ))}
           </ToggleGroup>
           <Textarea
-            className="min-h-[200px] font-mono text-base"
+            className="min-h-[200px] font-mono"
             value={draft}
             maxLength={20000}
             onChange={(e) => {

@@ -104,7 +104,7 @@ export function LLMProviderTestDialog({
 
         <div className="space-y-3">
           <div>
-            <Label className="text-base">Model</Label>
+            <Label>Model</Label>
             {modelsLoading && (
               <p className="text-muted-foreground mt-1 text-sm">
                 Fetching models…
@@ -130,7 +130,7 @@ export function LLMProviderTestDialog({
               )}
             {modelsResp && modelsResp.models.length > 0 ? (
               <Select value={model} onValueChange={setModel}>
-                <SelectTrigger className="mt-1 h-9 w-full text-base">
+                <SelectTrigger className="mt-1 h-9 w-full">
                   <SelectValue placeholder="Select a model…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -147,7 +147,7 @@ export function LLMProviderTestDialog({
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="model id (e.g. gpt-4o-mini)"
-                className="mt-2 h-9 w-full font-mono text-base"
+                className="mt-2 h-9 w-full font-mono"
               />
             )}
             {modelsResp?.fetched_via && (
@@ -167,9 +167,9 @@ export function LLMProviderTestDialog({
                   {result.ok ? "OK" : "FAIL"}
                 </Badge>
                 {result.status_code !== null && (
-                  <span className="text-base">HTTP {result.status_code}</span>
+                  <span className="text-sm">HTTP {result.status_code}</span>
                 )}
-                <span className="text-muted-foreground text-base">
+                <span className="text-muted-foreground text-sm">
                   {result.latency_ms} ms
                 </span>
               </div>

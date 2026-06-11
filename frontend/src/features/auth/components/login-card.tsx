@@ -29,7 +29,7 @@ export function LoginCard({ onSuccess }: { onSuccess: () => void }) {
           darkmem
         </span>
       </div>
-      <p className="text-muted-foreground mb-6 text-center text-base">
+      <p className="text-muted-foreground mb-6 text-center text-sm">
         Sign in to continue
       </p>
       <LoginForm onSuccess={onSuccess} />

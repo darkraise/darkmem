@@ -872,7 +872,7 @@ function CodeGraphPage() {
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card">
                 <span className="font-mono text-2xl text-muted-foreground">◇</span>
               </div>
-              <p className="font-mono text-base text-foreground">
+              <p className="font-mono text-sm text-foreground">
                 Select a repository
               </p>
               <p className="mt-1 font-mono text-sm text-muted-foreground">
@@ -883,7 +883,7 @@ function CodeGraphPage() {
           {selectedRepoId && isLoading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
               <Loader2 className="mb-3 h-6 w-6 animate-spin text-primary" />
-              <p className="font-mono text-base text-foreground">
+              <p className="font-mono text-sm text-foreground">
                 Loading graph…
               </p>
             </div>
@@ -893,7 +893,7 @@ function CodeGraphPage() {
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card">
                 <span className="font-mono text-2xl text-muted-foreground">!</span>
               </div>
-              <p className="font-mono text-base text-foreground">No graph data</p>
+              <p className="font-mono text-sm text-foreground">No graph data</p>
               <p className="mt-1 font-mono text-sm text-muted-foreground">
                 Index this repo from the Repositories page
               </p>

@@ -74,12 +74,12 @@ export function ChatOverlay({
       }}
     >
       <div className="border-border flex shrink-0 items-center justify-between border-b px-3 py-2">
-        <span className="text-base font-semibold">Chat</span>
+        <span className="text-sm font-semibold">Chat</span>
         <div className="flex items-center gap-1.5">
           {convId && (
             <Button
               variant="ghost"
-              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-base"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1"
               aria-label="Open chat in dedicated page"
               onClick={() => navigate({ to: "/chat", search: { id: convId } })}
             >

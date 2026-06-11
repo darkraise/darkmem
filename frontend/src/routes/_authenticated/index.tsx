@@ -85,7 +85,7 @@ function StatBlock({
       <StatLabel>{label}</StatLabel>
       <StatValue>{value}</StatValue>
       {delta != null && delta > 0 && (
-        <div className="mt-0.5 text-base text-green-500">+{delta} today</div>
+        <div className="mt-0.5 text-sm text-green-500">+{delta} today</div>
       )}
     </Stat>
   )
@@ -95,7 +95,7 @@ function PipelineHealth({ recentErrors }: { recentErrors: number }) {
   const { data: health } = useHealth()
   if (!health) return null
   return (
-    <div className="flex flex-wrap items-center gap-4 text-base">
+    <div className="flex flex-wrap items-center gap-4 text-sm">
       <span className="flex items-center gap-2">
         <ServiceDot ok={health.pipeline} />
         <span
@@ -111,7 +111,7 @@ function PipelineHealth({ recentErrors }: { recentErrors: number }) {
         <ServiceDot ok={health.services.llm} /> LLM
       </span>
       {recentErrors > 0 && (
-        <span className="text-destructive text-base">
+        <span className="text-destructive text-sm">
           {recentErrors} error{recentErrors > 1 ? "s" : ""} in recent runs
         </span>
       )}
@@ -149,7 +149,7 @@ function OverviewPage() {
         <PageHeader title="Overview" />
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <p role="alert" className="text-destructive text-base">
+            <p role="alert" className="text-destructive text-sm">
               Failed to load overview data.
             </p>
             <Button variant="outline" onClick={() => refetch()}>
@@ -204,20 +204,20 @@ function OverviewPage() {
         {/* Right: activity chart */}
         <Card>
           <CardHeader className="flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
               Activity
             </CardTitle>
             <div className="flex gap-1">
               <Button
                 variant={days === 7 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-base"
+                className="h-6 px-2"
                 onClick={() => setDays(7)}
               >
                 7d
               </Button>
               <Button
                 variant={days === 30 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-base"
+                className="h-6 px-2"
                 onClick={() => setDays(30)}
               >
                 30d
@@ -249,7 +249,7 @@ function OverviewPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground py-8 text-center text-base">
+              <p className="text-muted-foreground py-8 text-center text-sm">
                 No activity data yet
               </p>
             )}
@@ -261,7 +261,7 @@ function OverviewPage() {
       <div className="hidden grid-cols-2 gap-4 lg:grid">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
               Sources
             </CardTitle>
           </CardHeader>
@@ -299,7 +299,7 @@ function OverviewPage() {
                   {data.sources.map((s, i) => (
                     <div
                       key={s.name}
-                      className="flex items-center gap-2 text-base"
+                      className="flex items-center gap-2 text-sm"
                     >
                       <span
                         className="h-2 w-2 shrink-0 rounded-full"
@@ -317,14 +317,14 @@ function OverviewPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground text-base">No sources yet</p>
+              <p className="text-muted-foreground text-sm">No sources yet</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
               Top Tags
             </CardTitle>
           </CardHeader>
@@ -375,7 +375,7 @@ function OverviewPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground text-base">No tags yet</p>
+              <p className="text-muted-foreground text-sm">No tags yet</p>
             )}
           </CardContent>
         </Card>
@@ -384,7 +384,7 @@ function OverviewPage() {
       {/* Desktop: recent memories */}
       <Card className="hidden lg:block">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+          <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
             Recent Memories
           </CardTitle>
         </CardHeader>
@@ -407,18 +407,18 @@ function OverviewPage() {
                     }
                   }}
                 >
-                  <span className="flex-1 truncate text-base">{m.content}</span>
-                  <Badge variant="secondary" className="shrink-0 text-base">
+                  <span className="flex-1 truncate text-sm">{m.content}</span>
+                  <Badge variant="secondary" className="shrink-0">
                     {m.source}
                   </Badge>
-                  <span className="text-muted-foreground shrink-0 text-base">
+                  <span className="text-muted-foreground shrink-0 text-sm">
                     {relativeTime(m.created_at)}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground text-sm">
               No memories yet. Create one to get started.
             </p>
           )}
@@ -462,20 +462,20 @@ function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[3fr_2fr] lg:hidden">
         <Card>
           <CardHeader className="flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
               Activity
             </CardTitle>
             <div className="flex gap-1">
               <Button
                 variant={days === 7 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-base"
+                className="h-6 px-2"
                 onClick={() => setDays(7)}
               >
                 7d
               </Button>
               <Button
                 variant={days === 30 ? "secondary" : "ghost"}
-                className="h-6 px-2 text-base"
+                className="h-6 px-2"
                 onClick={() => setDays(30)}
               >
                 30d
@@ -507,7 +507,7 @@ function OverviewPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-muted-foreground py-8 text-center text-base">
+              <p className="text-muted-foreground py-8 text-center text-sm">
                 No activity data yet
               </p>
             )}
@@ -516,7 +516,7 @@ function OverviewPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+            <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
               Sources
             </CardTitle>
           </CardHeader>
@@ -554,7 +554,7 @@ function OverviewPage() {
                   {data.sources.map((s, i) => (
                     <div
                       key={s.name}
-                      className="flex items-center gap-2 text-base"
+                      className="flex items-center gap-2 text-sm"
                     >
                       <span
                         className="h-2 w-2 shrink-0 rounded-full"
@@ -572,7 +572,7 @@ function OverviewPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground text-base">No sources yet</p>
+              <p className="text-muted-foreground text-sm">No sources yet</p>
             )}
           </CardContent>
         </Card>
@@ -580,7 +580,7 @@ function OverviewPage() {
 
       <Card className="lg:hidden">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+          <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
             Top Tags
           </CardTitle>
         </CardHeader>
@@ -615,14 +615,14 @@ function OverviewPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-muted-foreground text-base">No tags yet</p>
+            <p className="text-muted-foreground text-sm">No tags yet</p>
           )}
         </CardContent>
       </Card>
 
       <Card className="lg:hidden">
         <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+          <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
             Recent Memories
           </CardTitle>
         </CardHeader>
@@ -645,18 +645,18 @@ function OverviewPage() {
                     }
                   }}
                 >
-                  <span className="flex-1 truncate text-base">{m.content}</span>
-                  <Badge variant="secondary" className="shrink-0 text-base">
+                  <span className="flex-1 truncate text-sm">{m.content}</span>
+                  <Badge variant="secondary" className="shrink-0">
                     {m.source}
                   </Badge>
-                  <span className="text-muted-foreground shrink-0 text-base">
+                  <span className="text-muted-foreground shrink-0 text-sm">
                     {relativeTime(m.created_at)}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground text-sm">
               No memories yet. Create one to get started.
             </p>
           )}

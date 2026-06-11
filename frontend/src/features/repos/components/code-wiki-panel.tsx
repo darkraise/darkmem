@@ -112,8 +112,8 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                 <CardTitle className="text-base">Overview</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-base">{wiki.overview}</p>
-                <div className="text-muted-foreground mt-2 flex gap-3 text-base">
+                <p className="text-sm">{wiki.overview}</p>
+                <div className="text-muted-foreground mt-2 flex gap-3 text-sm">
                   <span>{wiki.total_modules} modules</span>
                   <span>{wiki.total_files} files</span>
                 </div>
@@ -136,19 +136,19 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                 >
                   <div className="flex min-w-0 items-center justify-between">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate font-mono text-base font-medium">
+                      <span className="truncate font-mono text-sm font-medium">
                         {mod.path}
                       </span>
                       <Badge variant="secondary" className="shrink-0 text-sm">
                         {mod.symbol_count} symbols
                       </Badge>
                     </div>
-                    <span className="text-muted-foreground shrink-0 text-base">
+                    <span className="text-muted-foreground shrink-0 text-sm">
                       {mod.files.length} files
                     </span>
                   </div>
                   {mod.summary && (
-                    <p className="text-muted-foreground mt-1 text-base">
+                    <p className="text-muted-foreground mt-1 text-sm">
                       {mod.summary}
                     </p>
                   )}
@@ -159,7 +159,7 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                     {mod.files.map((file) => (
                       <div key={file.path} className="mb-4">
                         <div className="mb-2 flex min-w-0 items-center gap-2">
-                          <span className="truncate font-mono text-base font-medium">
+                          <span className="truncate font-mono text-sm font-medium">
                             {file.path}
                           </span>
                           {file.language && (
@@ -176,7 +176,7 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                             {file.symbols.map((sym, i) => (
                               <div
                                 key={`${sym.name}-${i}`}
-                                className="text-base break-words"
+                                className="text-sm break-words"
                               >
                                 <span className="text-muted-foreground">
                                   {sym.kind}

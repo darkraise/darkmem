@@ -89,12 +89,12 @@ function CronCell({ job }: { job: Job }) {
   return (
     <div className="flex items-center gap-1">
       <Select value={matchedPreset} onValueChange={(v) => v && setCron(v)}>
-        <SelectTrigger className="h-9 w-28 text-base">
+        <SelectTrigger className="h-9 w-28">
           <SelectValue placeholder="Preset…" />
         </SelectTrigger>
         <SelectContent>
           {CRON_PRESETS.map((p) => (
-            <SelectItem key={p.value} value={p.value} className="text-base">
+            <SelectItem key={p.value} value={p.value}>
               {p.label}
             </SelectItem>
           ))}
@@ -102,7 +102,7 @@ function CronCell({ job }: { job: Job }) {
       </Select>
       <Input
         type="text"
-        className="h-9 w-36 font-mono text-base"
+        className="h-9 w-36 font-mono"
         value={cron}
         onChange={(e) => setCron(e.target.value)}
         placeholder="*/5 * * * *"
@@ -111,7 +111,7 @@ function CronCell({ job }: { job: Job }) {
       <Button
         variant="ghost"
         size="sm"
-        className="h-9 px-2 text-base"
+        className="h-9 px-2"
         onClick={handleSave}
         disabled={!dirty || updateJob.isPending}
       >
@@ -167,7 +167,7 @@ function TriggerCell({ job }: { job: Job }) {
     <Button
       variant="outline"
       size="sm"
-      className="h-9 px-2 text-base"
+      className="h-9 px-2"
       onClick={handleTrigger}
       disabled={triggerJob.isPending}
     >
@@ -210,7 +210,7 @@ export function JobConfigForm({
     <div className="space-y-4">
       {schema.map((field) => (
         <div key={field.key} className="space-y-1">
-          <Label className="text-base">{field.label}</Label>
+          <Label>{field.label}</Label>
           <NumberInput
             min={field.min}
             max={field.max}
@@ -306,15 +306,15 @@ const columns: ColumnDef<Job>[] = [
                     : "loop not running"
             }
           />
-          <span className="text-base font-medium">
+          <span className="text-sm font-medium">
             {row.original.display_name}
           </span>
         </div>
-        <div className="text-muted-foreground mt-0.5 text-base">
+        <div className="text-muted-foreground mt-0.5 text-sm">
           {row.original.description}
         </div>
         {row.original.last_status === "error" && row.original.last_error && (
-          <div className="text-destructive bg-destructive/10 mt-1 rounded px-2 py-1 font-mono text-base">
+          <div className="text-destructive bg-destructive/10 mt-1 rounded px-2 py-1 font-mono text-sm">
             {row.original.last_error}
           </div>
         )}
@@ -354,7 +354,7 @@ const columns: ColumnDef<Job>[] = [
     size: 90,
     cell: ({ getValue }) => {
       const v = getValue() as string | null
-      if (!v) return <span className="text-muted-foreground text-base">—</span>
+      if (!v) return <span className="text-muted-foreground text-sm">—</span>
       return (
         <Badge
           variant={v === "error" ? "destructive" : "secondary"}
@@ -370,7 +370,7 @@ const columns: ColumnDef<Job>[] = [
     header: "Min interval",
     size: 110,
     cell: ({ getValue }) => (
-      <span className="text-muted-foreground text-base">
+      <span className="text-muted-foreground text-sm">
         {getValue() as number}s
       </span>
     ),

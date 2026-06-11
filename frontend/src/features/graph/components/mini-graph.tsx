@@ -17,11 +17,11 @@ export function MiniGraph({
 
   if (isLoading)
     return (
-      <p className="text-muted-foreground p-2 text-base">Loading context…</p>
+      <p className="text-muted-foreground p-2 text-sm">Loading context…</p>
     )
   if (!data || (data.entities.length === 0 && data.neighbors.length === 0)) {
     return (
-      <p className="text-muted-foreground p-2 text-base">
+      <p className="text-muted-foreground p-2 text-sm">
         No entities extracted yet. Run the pipeline with entity extraction
         enabled to populate this graph.
       </p>
@@ -35,13 +35,13 @@ export function MiniGraph({
     >
       {data.entities.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-base">Entities</p>
+          <p className="text-muted-foreground mb-1 text-sm">Entities</p>
           <div className="flex flex-wrap gap-1">
             {data.entities.map((e) => (
               <Button
                 variant="ghost"
                 key={e.id}
-                className="rounded px-1.5 py-0.5 text-base"
+                className="rounded px-1.5 py-0.5"
                 style={{
                   backgroundColor: entityTypeColor(e.entity_type) + "30",
                   color: entityTypeColor(e.entity_type),
@@ -56,13 +56,13 @@ export function MiniGraph({
       )}
       {data.neighbors.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-base">Neighbors</p>
+          <p className="text-muted-foreground mb-1 text-sm">Neighbors</p>
           <div className="space-y-0.5">
             {data.neighbors.slice(0, 5).map((n) => (
               <Button
                 variant="ghost"
                 key={n.id}
-                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left text-base"
+                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left"
                 onClick={() => onNavigate(n.id)}
                 title={n.content}
               >

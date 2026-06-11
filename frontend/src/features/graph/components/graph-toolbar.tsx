@@ -60,7 +60,7 @@ function SliderRow({
   float = false,
 }: SliderRowProps) {
   return (
-    <div className="text-muted-foreground flex items-center gap-2 text-base">
+    <div className="text-muted-foreground flex items-center gap-2 text-sm">
       <Label className="w-14 shrink-0 text-right">{label}</Label>
       <Slider
         value={[value]}
@@ -113,14 +113,14 @@ export function GraphToolbar({
           <ToggleGroupItem
             value="2d"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             2D
           </ToggleGroupItem>
           <ToggleGroupItem
             value="3d"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             3D
           </ToggleGroupItem>
@@ -139,21 +139,21 @@ export function GraphToolbar({
           <ToggleGroupItem
             value="type"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             Type
           </ToggleGroupItem>
           <ToggleGroupItem
             value="cluster"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             Cluster
           </ToggleGroupItem>
           <ToggleGroupItem
             value="tag"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             Tag
           </ToggleGroupItem>
@@ -170,28 +170,28 @@ export function GraphToolbar({
           <ToggleGroupItem
             value="none"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             None
           </ToggleGroupItem>
           <ToggleGroupItem
             value="cluster"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             Cluster
           </ToggleGroupItem>
           <ToggleGroupItem
             value="tag"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             Tag
           </ToggleGroupItem>
           <ToggleGroupItem
             value="source"
             variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5 text-base"
+            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
           >
             Source
           </ToggleGroupItem>
@@ -202,7 +202,7 @@ export function GraphToolbar({
         <Toggle
           pressed={entityLayer}
           onPressedChange={onEntityLayerChange}
-          className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-base"
+          className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7"
         >
           Entities
         </Toggle>
@@ -211,7 +211,7 @@ export function GraphToolbar({
           <PopoverTrigger asChild>
             <Toggle
               aria-label="Toggle graph settings"
-              className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 text-base"
+              className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7"
             >
               <Settings className="h-3.5 w-3.5" />
             </Toggle>
@@ -222,13 +222,13 @@ export function GraphToolbar({
             className="bg-card/95 border-border w-[340px] rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
           >
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-foreground text-base font-semibold">
+              <span className="text-foreground text-sm font-semibold">
                 Settings
               </span>
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground w-14 shrink-0 text-right text-base">
+                <span className="text-muted-foreground w-14 shrink-0 text-right text-sm">
                   Size
                 </span>
                 <ToggleGroup
@@ -242,21 +242,21 @@ export function GraphToolbar({
                   <ToggleGroupItem
                     value="connections"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-base"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
                   >
                     Connections
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="importance"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-base"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
                   >
                     Importance
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="uniform"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2 text-base"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
                   >
                     Uniform
                   </ToggleGroupItem>

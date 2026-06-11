@@ -157,24 +157,24 @@ export function ServerPathBrowser({
             </Button>
           ))}
           {isLoading && (
-            <div className="text-muted-foreground px-3 py-6 text-center text-base">
+            <div className="text-muted-foreground px-3 py-6 text-center text-sm">
               Loading folders…
             </div>
           )}
           {!isLoading && !value && (
-            <div className="text-muted-foreground px-3 py-6 text-center text-base">
+            <div className="text-muted-foreground px-3 py-6 text-center text-sm">
               Pick a root above to start browsing
             </div>
           )}
           {!isLoading && value && entries.length === 0 && !error && (
-            <div className="text-muted-foreground px-3 py-6 text-center text-base">
+            <div className="text-muted-foreground px-3 py-6 text-center text-sm">
               No subfolders.
             </div>
           )}
         </div>
 
         {error && (
-          <p role="alert" className="text-destructive text-base">
+          <p role="alert" className="text-destructive text-sm">
             {error}
           </p>
         )}
@@ -188,7 +188,7 @@ export function ServerPathBrowser({
           </Button>
         </div>
         {isGit && (
-          <p className="text-muted-foreground text-base">
+          <p className="text-muted-foreground text-sm">
             This folder is itself a git repository — pick its parent to register
             the repos inside.
           </p>

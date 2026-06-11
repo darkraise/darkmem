@@ -125,10 +125,10 @@ export function SetupWizard() {
           <h1 className="font-mono text-2xl font-bold tracking-tight">
             darkmem
           </h1>
-          <p className="text-muted-foreground text-base">Initial Setup</p>
+          <p className="text-muted-foreground text-sm">Initial Setup</p>
         </div>
 
-        <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-base">
+        <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-sm">
           {[1, 2, 3, 4].map((s) => (
             <li
               key={s}
@@ -162,7 +162,7 @@ export function SetupWizard() {
           </Button>
           <div className="flex flex-wrap items-center gap-2">
             {step === 2 && !llm.skipped && missingModels.length > 0 && (
-              <span className="text-muted-foreground text-base">
+              <span className="text-muted-foreground text-sm">
                 Add a model for: {missingModels.join(", ")}
               </span>
             )}

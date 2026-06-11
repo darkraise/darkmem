@@ -51,9 +51,9 @@ export function ChatSidebar({
     <div className="border-border flex h-full w-full max-h-56 flex-col overflow-y-auto border-b bg-gradient-to-b from-[#0f1318] to-[#0a0e14] md:w-72 md:max-h-none md:shrink-0 md:overflow-visible md:border-r md:border-b-0">
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
-          <span className="text-base font-semibold">Conversations</span>
+          <span className="text-sm font-semibold">Conversations</span>
           <ChatGradientButton
-            className="h-9 gap-1 text-base text-white"
+            className="h-9 gap-1 text-sm text-white"
             onClick={onCreate}
           >
             <Plus className="h-3.5 w-3.5" /> New
@@ -66,7 +66,7 @@ export function ChatSidebar({
               placeholder="Search conversations..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-muted/50 placeholder:text-muted-foreground/50 w-full py-1.5 pr-3 pl-8 text-base focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/30"
+              className="bg-muted/50 placeholder:text-muted-foreground/50 w-full py-1.5 pr-3 pl-8 focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/30"
             />
           </div>
         )}
@@ -81,7 +81,7 @@ export function ChatSidebar({
         )}
         {!isLoading && isError && (
           <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-8">
-            <p className="text-center text-base">
+            <p className="text-center text-sm">
               Failed to load conversations.
             </p>
             {onRetry && (
@@ -94,7 +94,7 @@ export function ChatSidebar({
         {!isLoading && !isError && conversations.length === 0 && (
           <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-8">
             <MessageCircle className="h-8 w-8 text-indigo-500/30" />
-            <p className="text-center text-base">
+            <p className="text-center text-sm">
               No conversations yet.
               <br />
               Click "New" to start one.
@@ -107,7 +107,7 @@ export function ChatSidebar({
             role="button"
             tabIndex={0}
             aria-pressed={conv.id === activeId}
-            className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-base transition-all ${
+            className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-all ${
               conv.id === activeId
                 ? "border border-[rgba(99,102,241,0.15)] bg-[rgba(99,102,241,0.08)] text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.05)]"
                 : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-[rgba(99,102,241,0.04)]"
@@ -125,11 +125,11 @@ export function ChatSidebar({
                 {conv.title || "Untitled"}
               </div>
               <div className="mt-0.5 flex items-center gap-2">
-                <span className="text-base opacity-50">
+                <span className="text-sm opacity-50">
                   {timeAgo(conv.updated_at)}
                 </span>
                 {(conv.message_count ?? 0) > 0 && (
-                  <span className="text-base opacity-40">
+                  <span className="text-sm opacity-40">
                     {conv.message_count} msg
                     {conv.message_count !== 1 ? "s" : ""}
                   </span>
@@ -151,7 +151,7 @@ export function ChatSidebar({
           </div>
         ))}
         {search && filtered.length === 0 && (
-          <p className="text-muted-foreground/50 py-4 text-center text-base">
+          <p className="text-muted-foreground/50 py-4 text-center text-sm">
             No matches found
           </p>
         )}

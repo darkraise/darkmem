@@ -144,7 +144,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-base">Name *</Label>
+        <Label className="text-muted-foreground">Name *</Label>
         <Input
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
@@ -152,7 +152,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-base">URL</Label>
+        <Label className="text-muted-foreground">URL</Label>
         <Input
           value={form.url ?? ""}
           onChange={(e) => set("url", e.target.value)}
@@ -160,7 +160,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-base">Provider</Label>
+        <Label className="text-muted-foreground">Provider</Label>
         <Select
           value={form.provider ?? "github"}
           onValueChange={(v) => set("provider", v)}
@@ -176,7 +176,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         </Select>
       </div>
       <div>
-        <Label className="text-muted-foreground text-base">
+        <Label className="text-muted-foreground">
           Default branch
         </Label>
         <Input
@@ -185,7 +185,7 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <Label className="text-muted-foreground text-base">Auth token</Label>
+        <Label className="text-muted-foreground">Auth token</Label>
         <Input
           type="password"
           value={form.auth_token ?? ""}
@@ -199,9 +199,9 @@ function AddRepoDialog({ onClose }: { onClose: () => void }) {
           checked={form.auto_sync ?? true}
           onCheckedChange={(v) => set("auto_sync", v)}
         />
-        <div className="text-base">
+        <div className="text-sm">
           <div>Auto-sync</div>
-          <div className="text-muted-foreground text-base">
+          <div className="text-muted-foreground text-sm">
             When on, the repo_sync background job fetches and re-indexes this
             repo on every tick. Manual reindex always works regardless of this
             toggle.
@@ -235,7 +235,7 @@ function RepoTaskList({ repo }: { repo: Repo }) {
       {tasks.map((task: RepoTask) => (
         <div
           key={task.id}
-          className="text-muted-foreground bg-muted/30 flex items-center gap-2 rounded px-2 py-1 text-base"
+          className="text-muted-foreground bg-muted/30 flex items-center gap-2 rounded px-2 py-1 text-sm"
         >
           <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-500" />
           <Badge variant="outline" className="px-1 py-0 text-sm">
@@ -330,7 +330,7 @@ function RepositoriesPage() {
               }`}
               title={row.original.status_message ?? row.original.status}
             />
-            <span className="text-base font-medium">{row.original.name}</span>
+            <span className="text-sm font-medium">{row.original.name}</span>
           </div>
           <RepoTaskList repo={row.original} />
         </div>
@@ -360,7 +360,7 @@ function RepositoriesPage() {
       id: "location",
       header: "Location",
       cell: ({ row }) => (
-        <span className="text-muted-foreground block max-w-60 truncate text-base">
+        <span className="text-muted-foreground block max-w-60 truncate text-sm">
           {row.original.url ?? row.original.local_path ?? "—"}
         </span>
       ),
@@ -426,7 +426,7 @@ function RepositoriesPage() {
       header: "Files / Symbols",
       size: 120,
       cell: ({ row }) => (
-        <span className="text-muted-foreground text-base">
+        <span className="text-muted-foreground text-sm">
           {row.original.file_count} / {row.original.symbol_count}
         </span>
       ),
@@ -440,7 +440,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-9 px-2 text-base"
+            className="h-9 px-2"
             disabled={
               row.original.status === "cloning" ||
               row.original.status === "indexing"
@@ -455,7 +455,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-9 px-2 text-base"
+            className="h-9 px-2"
             onClick={() => setEditingRepo(row.original)}
           >
             Edit
@@ -463,7 +463,7 @@ function RepositoriesPage() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-destructive hover:text-destructive h-9 px-2 text-base"
+            className="text-destructive hover:text-destructive h-9 px-2"
             onClick={() => handleDelete(row.original)}
           >
             Delete
@@ -605,7 +605,7 @@ function RepositoriesPage() {
           ) : (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-muted-foreground text-base font-medium tracking-wider uppercase">
+                <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
                   Repositories
                 </CardTitle>
               </CardHeader>

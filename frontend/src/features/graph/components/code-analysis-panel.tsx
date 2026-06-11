@@ -200,7 +200,7 @@ export function CodeAnalysisPanel({
           <>
             {/* Symbol Header */}
             <div className="border-b border-border p-4">
-              <h3 className="truncate font-mono text-base font-semibold text-foreground">
+              <h3 className="truncate font-mono text-sm font-semibold text-foreground">
                 {selectedNode.label}
               </h3>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -279,7 +279,7 @@ export function CodeAnalysisPanel({
                   <div className="mt-3 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="rounded-sm border border-destructive/20 bg-destructive/10 px-2.5 py-1.5">
-                        <div className="font-mono text-base font-bold text-destructive tabular-nums">
+                        <div className="font-mono text-sm font-bold text-destructive tabular-nums">
                           {blastRadiusData.total}
                         </div>
                         <div className="font-mono text-sm tracking-[0.2em] text-destructive/70 uppercase">
@@ -292,7 +292,7 @@ export function CodeAnalysisPanel({
                         return (
                           <div className={`rounded-sm border px-2.5 py-1.5 ${style.box}`}>
                             <div
-                              className={`font-mono text-base font-bold uppercase ${style.text}`}
+                              className={`font-mono text-sm font-bold uppercase ${style.text}`}
                             >
                               {risk}
                             </div>

@@ -164,9 +164,9 @@ export function StepLLM() {
               checked={llm.supports_embedding}
               onCheckedChange={(v) => setLlmField("supports_embedding", v)}
             />
-            <div className="text-base">
+            <div className="text-sm">
               <div>Provider supports embeddings</div>
-              <div className="text-muted-foreground text-base">
+              <div className="text-muted-foreground text-sm">
                 Auto-set from API kind (off for Anthropic and DeepSeek).
                 Override only for custom proxies that route embeddings through
                 this base URL.
@@ -178,14 +178,14 @@ export function StepLLM() {
               {probe.isPending ? "Fetching..." : "Fetch available models"}
             </Button>
             {llm.models.length > 0 && (
-              <span className="text-muted-foreground text-base">
+              <span className="text-muted-foreground text-sm">
                 {llm.models.length} model{llm.models.length === 1 ? "" : "s"}{" "}
                 loaded
               </span>
             )}
           </div>
           {probeError && (
-            <p role="alert" className="text-destructive text-base">
+            <p role="alert" className="text-destructive text-sm">
               {probeError}
             </p>
           )}
@@ -213,13 +213,13 @@ export function StepLLM() {
                 className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-center"
               >
                 <div>
-                  <div className="text-base font-medium capitalize">
+                  <div className="text-sm font-medium capitalize">
                     {purpose}
                     {required && (
                       <span className="text-destructive ml-1">*</span>
                     )}
                   </div>
-                  <div className="text-muted-foreground text-base">
+                  <div className="text-muted-foreground text-sm">
                     {PURPOSE_HINT[purpose]}
                   </div>
                 </div>
@@ -250,7 +250,7 @@ export function StepLLM() {
                   </Combobox>
                 </div>
                 {purpose !== "embedding" && purpose !== "reranker" ? (
-                  <Label className="flex items-center gap-2 text-base">
+                  <Label className="flex items-center gap-2">
                     <Switch
                       checked={draft.reasoning}
                       onCheckedChange={(v) =>

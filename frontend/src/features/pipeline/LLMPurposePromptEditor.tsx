@@ -82,7 +82,7 @@ export function LLMPurposePromptEditor({ keys, prompts }: Props) {
       )}
 
       <Textarea
-        className="min-h-[120px] font-mono text-base"
+        className="min-h-[120px] font-mono"
         value={draft}
         onChange={(e) => {
           setDraft(e.target.value)

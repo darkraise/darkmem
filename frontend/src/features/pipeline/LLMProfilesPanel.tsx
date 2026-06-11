@@ -382,7 +382,7 @@ export function LLMProfilesPanel() {
                   </TooltipTrigger>
                   <TooltipContent
                     side="top"
-                    className="max-w-md text-base leading-relaxed normal-case"
+                    className="max-w-md leading-relaxed normal-case"
                   >
                     A Profile is a preset for one purpose: a Provider plus a
                     model, default params, and the purpose-style flags
@@ -421,14 +421,14 @@ export function LLMProfilesPanel() {
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
         {profileNames.length === 0 && (
-          <p className="text-muted-foreground text-base">
+          <p className="text-muted-foreground text-sm">
             No Profiles yet. Add one below.
           </p>
         )}
 
         {profileNames.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Label htmlFor="profiles_group_by" className="text-base">
+            <Label htmlFor="profiles_group_by">
               Group by
             </Label>
             <Select
@@ -437,7 +437,7 @@ export function LLMProfilesPanel() {
             >
               <SelectTrigger
                 id="profiles_group_by"
-                className="border-border bg-background h-9 rounded border px-2 text-base"
+                className="border-border bg-background h-9 rounded border px-2"
               >
                 <SelectValue>
                   {groupBy === "provider" ? "Provider" : "Purpose"}
@@ -455,7 +455,7 @@ export function LLMProfilesPanel() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search name, provider, or model…"
                 aria-label="Search profiles"
-                className="h-9 pl-8 text-base"
+                className="h-9 pl-8"
               />
             </div>
             <span className="text-muted-foreground text-sm">
@@ -482,7 +482,7 @@ export function LLMProfilesPanel() {
           <Tabs value={activeGroup} onValueChange={setActiveGroup}>
             <TabsList className="flex-wrap">
               {groupKeys.map((key) => (
-                <TabsTrigger key={key} value={key} className="text-base">
+                <TabsTrigger key={key} value={key}>
                   {key}
                   <Badge variant="secondary" className="ml-1.5 text-sm">
                     {(groups[key] ?? []).filter(matchesSearch).length}
@@ -643,7 +643,7 @@ function ProfileRow({
           className="hover:bg-muted/40 flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md p-1 text-left"
         >
           <span className="flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-1 font-mono text-base font-semibold">
+            <span className="flex items-center gap-1 font-mono text-sm font-semibold">
               {open ? (
                 <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
               ) : (
@@ -717,7 +717,7 @@ function ProfileRow({
                     })
                   }
                 >
-                  <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+                  <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2">
                     <SelectValue>
                       {profile.provider_ref || "Select a provider…"}
                     </SelectValue>
@@ -789,7 +789,7 @@ function ProfileRow({
                   value={profile.purpose ?? LEGACY_PURPOSE}
                   onValueChange={(v) => onPatch(purposePatch(v))}
                 >
-                  <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+                  <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2">
                     <SelectValue>
                       {profile.purpose ?? "Legacy / unset"}
                     </SelectValue>
@@ -824,7 +824,7 @@ function ProfileRow({
                 value={profile._paramsText ?? ""}
                 onChange={(e) => onPatch({ _paramsText: e.target.value })}
                 rows={3}
-                className="font-mono text-base"
+                className="font-mono"
                 placeholder='{"temperature": 0.2}'
               />
             </div>
@@ -840,7 +840,7 @@ function ProfileRow({
                   }
                   aria-label="Embedding profile"
                 />
-                <span className="text-base">Embedding profile</span>
+                <span className="text-sm">Embedding profile</span>
               </div>
               <div className="flex items-center gap-2">
                 <Switch
@@ -852,8 +852,8 @@ function ProfileRow({
                 <span
                   className={
                     profile.is_embedding
-                      ? "text-muted-foreground text-base"
-                      : "text-base"
+                      ? "text-muted-foreground text-sm"
+                      : "text-sm"
                   }
                 >
                   Reasoning enabled
@@ -899,7 +899,7 @@ function AddProfileForm({
   if (providerNames.length === 0) {
     return (
       <div className="space-y-3">
-        <p className="text-muted-foreground text-base">
+        <p className="text-muted-foreground text-sm">
           You need at least one LLM Provider before adding a Profile.
         </p>
         <div className="flex justify-end gap-2">
@@ -923,7 +923,7 @@ function AddProfileForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-base">Profile name</Label>
+        <Label className="text-muted-foreground">Profile name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -933,14 +933,14 @@ function AddProfileForm({
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <Label className="text-muted-foreground text-base">Provider</Label>
+          <Label className="text-muted-foreground">Provider</Label>
           <Select
             value={providerRef || "__none__"}
             onValueChange={(value) =>
               setProviderRef(value === "__none__" ? "" : value)
             }
           >
-            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2">
               <SelectValue>{providerRef || "Select a provider…"}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -953,12 +953,12 @@ function AddProfileForm({
           </Select>
         </div>
         <div>
-          <Label className="text-muted-foreground text-base">Purpose</Label>
+          <Label className="text-muted-foreground">Purpose</Label>
           <Select
             value={purpose}
             onValueChange={(value) => setPurpose(value as KnownPurpose)}
           >
-            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2 text-base">
+            <SelectTrigger className="border-border bg-background h-9 w-full rounded border px-2">
               <SelectValue>{purpose}</SelectValue>
             </SelectTrigger>
             <SelectContent>

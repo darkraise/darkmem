@@ -37,7 +37,7 @@ export function StepRepoPath() {
         onConfirm={handleConfirm}
       />
       {repos.basePath && (
-        <div className="text-muted-foreground text-base">
+        <div className="text-muted-foreground text-sm">
           Selected base path:{" "}
           <span className="font-mono">{repos.basePath}</span>
           {repos.detected.length > 0 ? (

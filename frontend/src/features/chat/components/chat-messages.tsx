@@ -84,7 +84,7 @@ function MemoryBadge({
   return (
     <Button
       variant="ghost"
-      className="mx-0.5 inline-flex items-center gap-1 rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 align-baseline text-base text-indigo-300 transition-colors hover:bg-indigo-500/20 hover:text-indigo-200"
+      className="mx-0.5 inline-flex items-center gap-1 rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 align-baseline text-indigo-300 transition-colors hover:bg-indigo-500/20 hover:text-indigo-200"
       onClick={onClick}
       title={mem.content || undefined}
     >
@@ -104,7 +104,7 @@ function EntityBadge({
   return (
     <Button
       variant="ghost"
-      className="mx-0.5 inline-flex items-center gap-1 rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 align-baseline text-base text-violet-300 transition-colors hover:bg-violet-500/20 hover:text-violet-200"
+      className="mx-0.5 inline-flex items-center gap-1 rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 align-baseline text-violet-300 transition-colors hover:bg-violet-500/20 hover:text-violet-200"
       onClick={onClick}
     >
       <Diamond className="h-3 w-3 shrink-0" />
@@ -264,10 +264,10 @@ export function ChatMessages({
           {msg.role === "user" ? (
             <div className="flex justify-end gap-3">
               <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
-                <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-base">
+                <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-sm">
                   {msg.content}
                 </div>
-                <span className="text-muted-foreground/70 px-1 text-base">
+                <span className="text-muted-foreground/70 px-1 text-sm">
                   {formatTime(msg.created_at)}
                 </span>
               </div>
@@ -283,7 +283,7 @@ export function ChatMessages({
         <div className="animate-in fade-in duration-200">
           <div className="flex justify-end gap-3">
             <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
-              <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-base">
+              <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-sm">
                 {pendingUserMessage}
               </div>
             </div>
@@ -354,7 +354,7 @@ function AssistantMessage({
           <ReactMarkdown components={components}>{processed}</ReactMarkdown>
         </div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="text-muted-foreground/70 text-base">
+          <span className="text-muted-foreground/70 text-sm">
             {formatTime(msg.created_at)}
           </span>
         </div>

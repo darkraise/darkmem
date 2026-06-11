@@ -80,12 +80,12 @@ export function LLMPanel({ state }: Props) {
             <DialogTitle>Embedding model changed</DialogTitle>
           </DialogHeader>
           {obsolete && (
-            <div className="space-y-3 py-2 text-base">
+            <div className="space-y-3 py-2 text-sm">
               <p>
                 The embedding changed. Existing vectors are now from the old
                 model:
               </p>
-              <ul className="list-disc space-y-1 pl-4 text-base">
+              <ul className="list-disc space-y-1 pl-4 text-sm">
                 {obsolete.memories > 0 && <li>{obsolete.memories} memories</li>}
                 {obsolete.entities > 0 && <li>{obsolete.entities} entities</li>}
                 {obsolete.code_chunks > 0 && (

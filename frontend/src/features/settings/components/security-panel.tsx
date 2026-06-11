@@ -62,7 +62,7 @@ export function SecurityPanel() {
                   key={f.label}
                   variant="ghost"
                   onClick={() => setFilter(i)}
-                  className={`rounded px-3 py-1 text-base font-medium transition-colors ${
+                  className={`rounded px-3 py-1 font-medium transition-colors ${
                     filterIdx === i
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -81,7 +81,7 @@ export function SecurityPanel() {
           {isLoading ? (
             <div className="bg-muted h-40 animate-pulse rounded" />
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-center text-base">
+            <p className="text-muted-foreground py-8 text-center text-sm">
               No audit events recorded.
             </p>
           ) : (
@@ -92,17 +92,14 @@ export function SecurityPanel() {
                   className="flex items-center justify-between gap-3 px-3 py-2"
                 >
                   <div className="flex items-center gap-3">
-                    <Badge
-                      variant={actionVariant(e.action)}
-                      className="text-base"
-                    >
+                    <Badge variant={actionVariant(e.action)}>
                       {e.action.replace(/^auth_|^setup_/, "")}
                     </Badge>
-                    <span className="text-muted-foreground text-base">
+                    <span className="text-muted-foreground text-sm">
                       {detailText(e.details)}
                     </span>
                   </div>
-                  <span className="text-muted-foreground font-mono text-base">
+                  <span className="text-muted-foreground font-mono text-sm">
                     {e.timestamp ? relativeTime(e.timestamp) : "—"}
                   </span>
                 </div>
@@ -110,7 +107,7 @@ export function SecurityPanel() {
             </div>
           )}
 
-          <div className="text-muted-foreground mt-3 flex items-center justify-between text-base">
+          <div className="text-muted-foreground mt-3 flex items-center justify-between text-sm">
             <span>
               {total > 0
                 ? `${offset + 1}–${Math.min(offset + PAGE_SIZE, total)} of ${total}`

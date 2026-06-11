@@ -102,7 +102,7 @@ function ChatPage() {
                 <Input
                   autoFocus
                   defaultValue={convDetail?.title || ""}
-                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 text-base font-semibold focus:border-primary"
+                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 font-semibold focus:border-primary"
                   onBlur={(e) => handleTitleSubmit(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter")
@@ -113,7 +113,7 @@ function ChatPage() {
               ) : (
                 <button
                   type="button"
-                  className="hover:text-primary flex-1 cursor-pointer truncate text-left text-base font-semibold transition-colors"
+                  className="hover:text-primary flex-1 cursor-pointer truncate text-left text-sm font-semibold transition-colors"
                   onClick={() => setEditingTitle(true)}
                   title="Click to rename"
                   aria-label="Rename conversation"
@@ -122,7 +122,7 @@ function ChatPage() {
                 </button>
               )}
               {messages.length > 0 && (
-                <span className="text-muted-foreground/70 shrink-0 text-base">
+                <span className="text-muted-foreground/70 shrink-0 text-sm">
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
                 </span>
               )}
@@ -136,7 +136,7 @@ function ChatPage() {
               </div>
             ) : convDetailError && !stream.isStreaming ? (
               <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-4">
-                <p className="text-base">Failed to load this conversation.</p>
+                <p className="text-sm">Failed to load this conversation.</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -175,7 +175,7 @@ function ChatPage() {
               <p className="text-foreground mb-2 text-xl font-semibold">
                 Ask anything about your memories
               </p>
-              <p className="text-base leading-relaxed">
+              <p className="text-sm leading-relaxed">
                 Chat with your knowledge base. Ask questions, explore
                 connections, and discover insights from your stored memories and
                 entities.
@@ -192,7 +192,7 @@ function ChatPage() {
                 <Button
                   variant="ghost"
                   key={prompt}
-                  className="bg-muted/40 text-muted-foreground rounded-full border border-[rgba(99,102,241,0.1)] px-4 py-2 text-base whitespace-normal transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
+                  className="bg-muted/40 text-muted-foreground rounded-full border border-[rgba(99,102,241,0.1)] px-4 py-2 whitespace-normal transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
                   onClick={async () => {
                     const resultId = await stream.sendMessage(null, prompt)
                     if (resultId) setActiveId(resultId)

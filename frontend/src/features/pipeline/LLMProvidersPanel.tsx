@@ -262,7 +262,7 @@ export function LLMProvidersPanel() {
                   </TooltipTrigger>
                   <TooltipContent
                     side="top"
-                    className="max-w-md text-base leading-relaxed normal-case"
+                    className="max-w-md leading-relaxed normal-case"
                   >
                     A Provider is a connection (base URL, API key, API kind).
                     Profiles bundle a Provider with a default model and params —
@@ -300,7 +300,7 @@ export function LLMProvidersPanel() {
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
         {profileNames.length === 0 && (
-          <p className="text-muted-foreground text-base">
+          <p className="text-muted-foreground text-sm">
             No Providers yet. Use “Add Provider” above to start sharing
             connection settings across Profiles and purposes.
           </p>
@@ -335,14 +335,12 @@ export function LLMProvidersPanel() {
           )}
           <Button
             variant="ghost"
-            className="text-base"
             onClick={reset}
             disabled={!dirty || update.isPending}
           >
             Reset
           </Button>
           <Button
-            className="text-base"
             onClick={save}
             disabled={!dirty || update.isPending}
           >
@@ -447,7 +445,7 @@ function ProviderRow({
           className="hover:bg-muted/40 flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md p-1 text-left"
         >
           <span className="flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-1 font-mono text-base font-semibold">
+            <span className="flex items-center gap-1 font-mono text-sm font-semibold">
               {open ? (
                 <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
               ) : (
@@ -538,7 +536,7 @@ function ProviderRow({
                 onValueChange={(value) => onPatch({ api_kind: value })}
               >
                 <SelectTrigger
-                  className="border-border bg-background h-9 w-full rounded border px-2 text-base"
+                  className="border-border bg-background h-9 w-full rounded border px-2"
                   title="Wire protocol used to talk to the configured base URL. Ollama native exposes think:false to disable qwen3-style reasoning. Vendor-specific kinds currently route through the OpenAI-compatible path."
                 >
                   <SelectValue placeholder="Select API kind…" />
@@ -566,7 +564,7 @@ function ProviderRow({
                 type="text"
                 value={profile.provider}
                 onChange={(e) => onPatch({ provider: e.target.value })}
-                className="h-9 text-base"
+                className="h-9"
                 placeholder="e.g. OpenAI prod"
               />
               <p className="text-muted-foreground mt-1 text-sm">
@@ -581,7 +579,7 @@ function ProviderRow({
                 type="text"
                 value={profile.base_url}
                 onChange={(e) => onPatch({ base_url: e.target.value })}
-                className="h-9 font-mono text-base"
+                className="h-9 font-mono"
                 placeholder="https://api.openai.com/v1"
               />
             </div>
@@ -593,14 +591,14 @@ function ProviderRow({
                 type="password"
                 value={profile.api_key ?? ""}
                 onChange={(e) => onPatch({ api_key: e.target.value })}
-                className="h-9 font-mono text-base"
+                className="h-9 font-mono"
                 placeholder="(none — local provider)"
                 autoComplete="off"
               />
             </div>
             <div className="border-border flex items-center justify-between border-t pt-2 sm:col-span-2">
               <div>
-                <Label className="text-base">Supports embedding</Label>
+                <Label>Supports embedding</Label>
                 <p className="text-muted-foreground text-sm">
                   Off when the vendor exposes only chat completions (Anthropic,
                   DeepSeek today). Linking an off profile to the embedding
@@ -644,7 +642,7 @@ function AddProviderForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <Label className="text-muted-foreground text-base">Provider name</Label>
+        <Label className="text-muted-foreground">Provider name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}

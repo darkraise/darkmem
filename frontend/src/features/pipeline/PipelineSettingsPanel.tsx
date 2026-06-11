@@ -31,12 +31,12 @@ export function PipelineSettingsPanel() {
         role="alert"
         className="bg-destructive/10 border-destructive/30 rounded-lg border p-4"
       >
-        <p className="text-destructive text-base">
+        <p className="text-destructive text-sm">
           {(error as Error)?.message ?? "Unknown error"}
         </p>
         <Button
           variant="link"
-          className="mt-2 text-base underline"
+          className="mt-2 underline"
           onClick={() => refetch()}
         >
           Retry

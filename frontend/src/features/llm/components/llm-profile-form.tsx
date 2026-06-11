@@ -194,7 +194,7 @@ export function LLMProfileForm({
       {saveError && (
         <p
           role="alert"
-          className="bg-destructive/15 text-destructive rounded-md px-3 py-2 text-base"
+          className="bg-destructive/15 text-destructive rounded-md px-3 py-2 text-sm"
         >
           {saveError}
         </p>

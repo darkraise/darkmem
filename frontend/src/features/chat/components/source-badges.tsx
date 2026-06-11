@@ -44,7 +44,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
         <CollapsibleTrigger asChild>
           <Button
             variant="ghost"
-            className="text-muted-foreground/70 hover:text-muted-foreground flex items-center gap-2 text-base transition-colors"
+            className="text-muted-foreground/70 hover:text-muted-foreground flex items-center gap-2 transition-colors"
           >
             {memories.length > 0 && (
               <span className="inline-flex items-center gap-1 rounded-md border border-indigo-500/15 bg-indigo-500/8 px-2 py-0.5 text-indigo-300">
@@ -68,7 +68,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <div className="animate-in slide-in-from-top-1 mt-2 space-y-1.5 text-base duration-150">
+          <div className="animate-in slide-in-from-top-1 mt-2 space-y-1.5 text-sm duration-150">
             {memories.map((m, i) => {
               const dateLabel = formatMemoryDate(m.created_at)
               return (
@@ -79,7 +79,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                   <div className="text-foreground/90 line-clamp-2 leading-relaxed">
                     {m.content || `Memory ${m.id?.slice(0, 8)}`}
                   </div>
-                  <div className="text-muted-foreground/50 mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-base">
+                  <div className="text-muted-foreground/50 mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     {m.source && (
                       <span className="inline-flex items-center gap-1">
                         <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
@@ -117,7 +117,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                     {e.name}
                   </span>
                   {e.entity_type && (
-                    <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-base text-violet-300 capitalize">
+                    <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-sm text-violet-300 capitalize">
                       {e.entity_type}
                     </span>
                   )}

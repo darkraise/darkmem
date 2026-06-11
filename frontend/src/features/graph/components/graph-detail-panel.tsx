@@ -46,7 +46,7 @@ export function GraphDetailPanel({
   return (
     <>
       <div className="border-border flex shrink-0 items-center justify-between border-b px-4 pt-3 pb-2">
-        <span className="text-base font-medium">{panelTitle}</span>
+        <span className="text-sm font-medium">{panelTitle}</span>
         <Button
           variant="ghost"
           size="icon"
@@ -113,11 +113,11 @@ function EntityDetail({
   return (
     <div className="space-y-4 p-4">
       <div>
-        <h3 className="text-foreground text-base font-semibold">
+        <h3 className="text-foreground text-sm font-semibold">
           {entity.name}
         </h3>
         <span
-          className="mt-1 inline-block rounded-full px-2 py-0.5 text-base capitalize"
+          className="mt-1 inline-block rounded-full px-2 py-0.5 text-sm capitalize"
           style={{ backgroundColor: color + "20", color }}
         >
           {entity.entity_type}
@@ -126,12 +126,12 @@ function EntityDetail({
 
       {Object.keys(entity.properties).length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-base font-semibold tracking-wider uppercase">
+          <p className="text-muted-foreground mb-1 text-sm font-semibold tracking-wider uppercase">
             Properties
           </p>
           <div className="space-y-1">
             {Object.entries(entity.properties).map(([key, value]) => (
-              <div key={key} className="flex gap-2 text-base">
+              <div key={key} className="flex gap-2 text-sm">
                 <span className="text-muted-foreground">{key}:</span>
                 <span className="text-foreground">{String(value)}</span>
               </div>
@@ -141,7 +141,7 @@ function EntityDetail({
       )}
 
       <div>
-        <p className="text-muted-foreground mb-1 text-base font-semibold tracking-wider uppercase">
+        <p className="text-muted-foreground mb-1 text-sm font-semibold tracking-wider uppercase">
           Linked Memories ({entity.memory_ids.length})
         </p>
         <div className="space-y-1">
@@ -151,7 +151,7 @@ function EntityDetail({
               <Button
                 key={mid}
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left text-base"
+                className="text-muted-foreground hover:text-foreground block w-full truncate py-0.5 text-left"
                 onClick={() => onNavigateToMemory?.(mid)}
                 title={mem?.content}
               >
@@ -164,7 +164,7 @@ function EntityDetail({
 
       {related.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-base font-semibold tracking-wider uppercase">
+          <p className="text-muted-foreground mb-1 text-sm font-semibold tracking-wider uppercase">
             Related Entities ({related.length})
           </p>
           <div className="space-y-1">
@@ -173,7 +173,7 @@ function EntityDetail({
               const otherEntity = allEntities?.find((e) => e.id === otherId)
               const isSource = r.source === entity.id
               return (
-                <div key={i} className="flex items-center gap-1.5 text-base">
+                <div key={i} className="flex items-center gap-1.5 text-sm">
                   <span className="text-muted-foreground">
                     {isSource ? "→" : "←"}
                   </span>
@@ -207,7 +207,7 @@ function MemoryDetail({
 }: MemoryDetailProps) {
   return (
     <div className="space-y-3 p-4">
-      <p className="text-foreground text-base leading-relaxed">
+      <p className="text-foreground text-sm leading-relaxed">
         {memory.content}
       </p>
 
@@ -216,7 +216,7 @@ function MemoryDetail({
           {memory.tags.map((t) => (
             <span
               key={t}
-              className="bg-accent text-primary rounded px-1.5 py-0.5 text-base"
+              className="bg-accent text-primary rounded px-1.5 py-0.5 text-sm"
             >
               {t}
             </span>
@@ -224,7 +224,7 @@ function MemoryDetail({
         </div>
       )}
 
-      <div className="text-muted-foreground space-y-0.5 text-base">
+      <div className="text-muted-foreground space-y-0.5 text-sm">
         <div className="flex items-center gap-1">
           Source:{" "}
           <span className="text-foreground inline-flex items-center gap-1">
@@ -298,11 +298,11 @@ function MemoryDetail({
 
       {children && (
         <div className="border-border border-t pt-2">
-          <p className="text-muted-foreground mb-2 text-base font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
             Entity Context
           </p>
           {children}
-          <p className="text-muted-foreground mt-1 text-base">
+          <p className="text-muted-foreground mt-1 text-sm">
             Click a neighbor node to navigate.
           </p>
         </div>
@@ -371,42 +371,42 @@ function GraphSummary({
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{memories.length}</p>
-          <p className="text-muted-foreground text-base">Memories</p>
+          <p className="text-muted-foreground text-sm">Memories</p>
         </div>
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{clusterCounts.size}</p>
-          <p className="text-muted-foreground text-base">Clusters</p>
+          <p className="text-muted-foreground text-sm">Clusters</p>
         </div>
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{visibleEdgeCount}</p>
-          <p className="text-muted-foreground text-base">Edges</p>
+          <p className="text-muted-foreground text-sm">Edges</p>
         </div>
         <div className="bg-background rounded-lg p-3">
           <p className="text-2xl font-bold">{typeCounts.size}</p>
-          <p className="text-muted-foreground text-base">Types</p>
+          <p className="text-muted-foreground text-sm">Types</p>
         </div>
         {(entities?.length ?? 0) > 0 && (
           <div className="bg-background rounded-lg p-3">
             <p className="text-2xl font-bold">{entities!.length}</p>
-            <p className="text-muted-foreground text-base">Entities</p>
+            <p className="text-muted-foreground text-sm">Entities</p>
           </div>
         )}
         {(entityRelations?.length ?? 0) > 0 && (
           <div className="bg-background rounded-lg p-3">
             <p className="text-2xl font-bold">{entityRelations!.length}</p>
-            <p className="text-muted-foreground text-base">Relations</p>
+            <p className="text-muted-foreground text-sm">Relations</p>
           </div>
         )}
       </div>
 
       {sortedClusters.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-2 text-base font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
             Clusters
           </p>
           <div className="space-y-1.5">
             {sortedClusters.map(([cid, count]) => (
-              <div key={cid} className="flex items-center gap-2 text-base">
+              <div key={cid} className="flex items-center gap-2 text-sm">
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{
@@ -419,7 +419,7 @@ function GraphSummary({
                 <span className="text-foreground flex-1 truncate">
                   {clusterNames[String(cid)] || `Cluster ${cid}`}
                 </span>
-                <span className="text-muted-foreground text-base">{count}</span>
+                <span className="text-muted-foreground text-sm">{count}</span>
               </div>
             ))}
           </div>
@@ -428,12 +428,12 @@ function GraphSummary({
 
       {sortedTagCategories.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-2 text-base font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
             Tag Categories
           </p>
           <div className="space-y-1.5">
             {sortedTagCategories.map(([category, count]) => (
-              <div key={category} className="flex items-center gap-2 text-base">
+              <div key={category} className="flex items-center gap-2 text-sm">
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{
@@ -453,7 +453,7 @@ function GraphSummary({
                 <span className="text-foreground flex-1 capitalize">
                   {category}
                 </span>
-                <span className="text-muted-foreground text-base">{count}</span>
+                <span className="text-muted-foreground text-sm">{count}</span>
               </div>
             ))}
           </div>
@@ -462,12 +462,12 @@ function GraphSummary({
 
       {sortedTypes.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-2 text-base font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
             Types
           </p>
           <div className="space-y-1.5">
             {sortedTypes.map(([type, count]) => (
-              <div key={type} className="flex items-center gap-2 text-base">
+              <div key={type} className="flex items-center gap-2 text-sm">
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{
@@ -485,7 +485,7 @@ function GraphSummary({
                   }}
                 />
                 <span className="text-foreground flex-1">{type}</span>
-                <span className="text-muted-foreground text-base">{count}</span>
+                <span className="text-muted-foreground text-sm">{count}</span>
               </div>
             ))}
           </div>
@@ -494,14 +494,14 @@ function GraphSummary({
 
       {sortedSources.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-2 text-base font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
             Sources
           </p>
           <div className="space-y-1.5">
             {sortedSources.map(([src, count]) => (
-              <div key={src} className="flex items-center gap-2 text-base">
+              <div key={src} className="flex items-center gap-2 text-sm">
                 <span className="text-foreground flex-1">{src}</span>
-                <span className="text-muted-foreground text-base">{count}</span>
+                <span className="text-muted-foreground text-sm">{count}</span>
               </div>
             ))}
           </div>
@@ -510,12 +510,12 @@ function GraphSummary({
 
       {sortedEntityTypes.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-2 text-base font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
             Entity Types
           </p>
           <div className="space-y-1.5">
             {sortedEntityTypes.map(([etype, count]) => (
-              <div key={etype} className="flex items-center gap-2 text-base">
+              <div key={etype} className="flex items-center gap-2 text-sm">
                 <span
                   className="h-2.5 w-2.5 shrink-0"
                   style={{
@@ -526,7 +526,7 @@ function GraphSummary({
                 <span className="text-foreground flex-1 capitalize">
                   {etype}
                 </span>
-                <span className="text-muted-foreground text-base">{count}</span>
+                <span className="text-muted-foreground text-sm">{count}</span>
               </div>
             ))}
           </div>

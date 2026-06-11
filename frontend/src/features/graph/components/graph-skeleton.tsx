@@ -160,7 +160,7 @@ export function GraphSkeleton({
           )),
         )}
 
-        <div className="text-muted-foreground absolute bottom-4 left-1/2 -translate-x-1/2 animate-pulse text-base tracking-wide">
+        <div className="text-muted-foreground absolute bottom-4 left-1/2 -translate-x-1/2 animate-pulse text-sm tracking-wide">
           {label}
         </div>
       </div>

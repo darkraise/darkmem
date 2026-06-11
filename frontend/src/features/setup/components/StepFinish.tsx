@@ -24,7 +24,7 @@ export function StepFinish() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Admin password</CardTitle>
         </CardHeader>
-        <CardContent className="text-base">
+        <CardContent className="text-sm">
           {password.value ? "Set" : "Not set"}
         </CardContent>
       </Card>
@@ -33,7 +33,7 @@ export function StepFinish() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Default LLM provider</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 text-base">
+        <CardContent className="space-y-1 text-sm">
           {llm.skipped || !llm.api_kind ? (
             <span className="text-muted-foreground">
               Skipped — system defaults will be used.
@@ -67,7 +67,7 @@ export function StepFinish() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Default code repo path</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-base">
+        <CardContent className="space-y-2 text-sm">
           {repos.skipped || !repos.basePath ? (
             <span className="text-muted-foreground">
               Skipped — configure later under Settings.
@@ -99,12 +99,12 @@ export function StepFinish() {
                         onChange={(e) => rename(r.subPath, e.target.value)}
                         aria-label={`Rename ${r.subPath}`}
                       />
-                      <span className="text-muted-foreground truncate font-mono text-base">
+                      <span className="text-muted-foreground truncate font-mono text-sm">
                         {r.subPath}
                       </span>
                     </div>
                   ))}
-                  <div className="text-muted-foreground pt-2 text-base">
+                  <div className="text-muted-foreground pt-2 text-sm">
                     Imported repositories start with auto-sync{" "}
                     <strong>off</strong>. Open the Repositories page and enable
                     each one from its Edit dialog when you're ready to have

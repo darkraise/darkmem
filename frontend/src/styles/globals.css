@@ -3,7 +3,7 @@
 @plugin "@tailwindcss/typography";
 
 .chat-prose {
-  @apply prose prose-invert max-w-none text-base;
+  @apply prose prose-invert max-w-none text-sm;
 }
 .chat-prose pre {
   @apply border-border rounded-lg border bg-[#0c1018] p-3;
@@ -12,7 +12,7 @@
   @apply text-foreground bg-transparent p-0;
 }
 .chat-prose code {
-  @apply text-primary bg-muted rounded px-1.5 py-0.5 text-base;
+  @apply text-primary bg-muted rounded px-1.5 py-0.5 text-sm;
 }
 .chat-prose a {
   @apply text-primary no-underline hover:underline;
