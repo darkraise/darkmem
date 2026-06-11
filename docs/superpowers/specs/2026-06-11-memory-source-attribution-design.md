@@ -66,10 +66,12 @@ Priority order:
    `"mcp"` to `None`. A deliberately passed value wins, except the
    literal generic `"mcp"`, which is treated as unspecified (agents
    copying the old default must not mask detection). Explicit values
-   are truncated to 100 chars (the `memories.source` column width)
-   before constructing `MemoryCreate` — truncate, not reject, because
-   attribution must never fail a write. Likewise an explicit
-   `source_agent` is truncated to 255.
+   are lowercased (so UI color/filter lookups match the sanitized
+   tier-2/3 output) and truncated to 100 chars (the `memories.source`
+   column width) before constructing `MemoryCreate` — truncate, not
+   reject, because attribution must never fail a write. Likewise an
+   explicit `source_agent` is truncated to 255 (not lowercased — it is
+   a free-form forensic field).
 2. **`X-Darkmem-Client` header.** Sanitized: lowercase, trimmed,
    restricted to `[a-z0-9._-]` (other chars dropped), capped at 100
    chars. Empty after sanitizing → skip to next tier.
