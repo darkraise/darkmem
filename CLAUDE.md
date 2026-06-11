@@ -313,6 +313,13 @@ gets 421. Fix a LAN 421 by extending the allowlist, never by
 disabling the protection. Browser Origins are allowlisted to the same
 hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 
+Memory writes resolve `source` per call: explicit arg (the literal `mcp`
+counts as unspecified) > `X-Darkmem-Client` header > User-Agent product
+map > `mcp`; `memory_batch_add` resolves on the raw entry dicts before
+validation, because `MemoryCreate` would stamp its `api` default and
+erase the absent-vs-explicit distinction. `source_agent` defaults to the
+caller's raw User-Agent.
+
 ## Setup, auth, runtime config
 
 - `/api/v1/setup/*` is trust-on-first-use: gated only by
