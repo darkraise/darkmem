@@ -12,6 +12,12 @@ RUN apt-get update \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Degraded routes to pypi.org (slow international transit) can stretch one
+# index fetch past pip's 15s default read timeout, failing the whole build;
+# slow down instead of dying.
+ENV PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10
+
 # Install pinned dependencies from the lockfile first (reproducible images,
 # cache-friendly), then the package itself without re-resolving deps.
 COPY pyproject.toml requirements.lock ./
