@@ -1,12 +1,15 @@
 import json
 import logging
 from contextlib import asynccontextmanager
+from typing import Annotated
 from uuid import UUID
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from pydantic import Field
 from sqlalchemy import select, text
 
+from app.api.mcp.client_identity import resolve_client_source, resolve_source_agent
 from app.config import settings
 from app.database import async_session_factory
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
@@ -105,29 +108,34 @@ def _clamp_limit(limit: int, default: int) -> int:
 
 
 @mcp.tool(
-    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions."
+    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. The origin tool is auto-detected and recorded in 'source'."
 )
 async def memory_add(
     content: str,
     tags: list[str] | None = None,
-    source: str = "mcp",
+    source: Annotated[str | None, Field(
+        description="Origin tool. Auto-detected for known clients; pass a value only to override."
+    )] = None,
     source_agent: str | None = None,
     memory_type: str | None = None,
     project: str | None = None,
+    ctx: Context | None = None,
 ) -> str:
     """
     Args:
         content: The memory content to store. Be specific and include context.
         tags: Categorization tags using slash notation (e.g., "project/darkmem", "debug/root-cause", "infra/services").
-        source: Origin identifier (default: "mcp").
-        source_agent: Optional agent/session identifier.
+        source: Origin tool. Auto-detected per request (X-Darkmem-Client header, then User-Agent); pass a value only to override. Falls back to "mcp".
+        source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
         memory_type: One of fact, decision, preference, problem, architecture, reference, milestone. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
         project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
     """
     async with _memory_service_context() as service:
         data = MemoryCreate(
-            content=content, tags=tags or [], source=source,
-            source_agent=source_agent, memory_type=memory_type, project=project,
+            content=content, tags=tags or [],
+            source=resolve_client_source(source, ctx),
+            source_agent=resolve_source_agent(source_agent, ctx),
+            memory_type=memory_type, project=project,
         )
         memory = await service.create_memory(data, api_key_id=None)
         return json.dumps(_memory_to_dict(memory))
@@ -141,7 +149,9 @@ async def memory_search(
     tags_any: list[str] | None = None,
     tags_all: list[str] | None = None,
     memory_type: str | None = None,
-    source: str | None = None,
+    source: Annotated[str | None, Field(
+        description='Filter by origin tool, e.g. "claude-code", "codex", "dashboard", "api", "mcp". "mcp"/"api" also cover all writes from before attribution landed (2026-06).'
+    )] = None,
     limit: int = 20,
     offset: int = 0,
     semantic_weight: float = 0.7,
@@ -152,7 +162,7 @@ async def memory_search(
         tags_any: Return memories matching ANY of these tags.
         tags_all: Return memories matching ALL of these tags.
         memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone.
-        source: Filter by origin (e.g., "claude-code", "mcp", "api").
+        source: Filter by origin tool (e.g., "claude-code", "codex", "dashboard", "api", "mcp"). "mcp"/"api" also cover all writes from before attribution landed (2026-06).
         limit: Maximum number of results (default: 20).
         offset: Pagination offset (default: 0).
         semantic_weight: Balance between semantic (1.0) and keyword (0.0) search (default: 0.7).
