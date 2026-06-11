@@ -1,4 +1,6 @@
-export const SOURCE_COLORS: Record<string, string> = {
+// Null prototype: source names are client-supplied slugs, and inherited
+// keys like "constructor" would dodge the ?? fallbacks at the lookup sites.
+export const SOURCE_COLORS: Record<string, string> = Object.assign(Object.create(null), {
   "claude-code": "#58a6ff",
   codex: "#e3b341",
   kiro: "#ff7b72",
@@ -12,7 +14,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   api: "#d2a8ff",
   "mcp-test": "#3fb950",
   "rest-test": "#ffa657",
-}
+})
 
 // Distinct from every mapped color so an unmapped source can't render as a
 // known client on the dashboard pie. Unmapped sources stay routine: the
