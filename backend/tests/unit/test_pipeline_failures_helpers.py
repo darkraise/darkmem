@@ -12,10 +12,18 @@ class TestDeriveMemoryFailedStep:
         status = {"embed": "ok", "extract": "ok", "vector": "ok", "graph": "ok"}
         assert derive_memory_failed_step(status) is None
 
-    def test_returns_none_when_extract_partial(self):
-        # Partial extractions are not counted as failed
+    def test_extract_partial_is_reprocessable(self):
+        # Degraded extractions (truncated / unparseable LLM output) surface as
+        # a distinct, retryable step so they reach the Unresolved Failures
+        # worklist instead of silently disappearing.
         status = {"embed": "ok", "extract": "partial", "vector": "ok", "graph": "ok"}
-        assert derive_memory_failed_step(status) is None
+        assert derive_memory_failed_step(status) == "extraction_partial"
+
+    def test_hard_error_outranks_partial_extract(self):
+        # A genuine downstream failure is more actionable than a degraded
+        # extraction, so it wins the single failed_step slot.
+        status = {"embed": "ok", "extract": "partial", "vector": "error", "graph": "ok"}
+        assert derive_memory_failed_step(status) == "vector_write"
 
     def test_returns_none_when_graph_skipped(self):
         status = {"embed": "ok", "extract": "ok", "vector": "ok", "graph": "skipped"}

@@ -183,6 +183,10 @@ function UnresolvedFailuresCard() {
             {activeBatchId !== null ? "Retrying..." : "Retry all"}
           </Button>
         </div>
+        <CardDescription>
+          Memories and repos that failed or degraded during processing. Retry
+          to reprocess just these; a clean run clears the entry automatically.
+        </CardDescription>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="border-border flex w-fit flex-wrap gap-1 rounded-md border p-0.5">
             <Button
@@ -267,6 +271,14 @@ function UnresolvedFailuresCard() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-sm">
                       <Badge variant="outline">{f.entity_type}</Badge>
+                      {f.failed_step === "extraction_partial" && (
+                        <Badge
+                          variant="outline"
+                          className="border-warning/40 bg-warning/10 text-warning"
+                        >
+                          degraded
+                        </Badge>
+                      )}
                       <span className="text-muted-foreground font-mono">
                         {f.failed_step}
                       </span>
