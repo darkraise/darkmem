@@ -207,6 +207,19 @@
   }
 }
 
+/* darkraise-ui 3.1.1 Sheet fix. SheetContent reuses DialogContent, so the
+   panel gets both `dr-dialog-content` (centered via `translate: -50% -50%`)
+   and `dr-sheet-content` (edge-pinned). The package's reset that clears the
+   centering ships `translate: none`, but our Lightning CSS build drops that
+   one declaration (it keeps the sibling `transform` reset), so the centering
+   translate leaks onto the sheet: it floats ~50% up/left of the viewport edge
+   instead of sticking to it, reading as a half-height popup. Re-clear it here.
+   Unlayered + a standalone `translate` declaration: it beats the @layer
+   components rule and survives the build that drops the bundled copy. */
+.dr-dialog-content.dr-sheet-content {
+  translate: none;
+}
+
 /* Full-bleed pages (graph canvases) cancel the layout shell's p-6 content
    padding so the content spreads edge-to-edge. Unlayered, so it overrides the
    @layer components `.dr-*-layout-content` padding regardless of layout mode. */
