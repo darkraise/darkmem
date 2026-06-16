@@ -85,6 +85,64 @@ function paramsDifferFromLinked(
   return stableStringify(parsed) !== stableStringify(linkedParams ?? {})
 }
 
+// The "max output tokens" concept uses a different params key per vendor:
+// OpenAI's gpt-5 family wants ``max_completion_tokens``, Ollama native wants
+// ``num_predict``, and the OpenAI-compat vendors (z.ai / DeepSeek / Anthropic /
+// Google) take ``max_tokens``. The dedicated control resolves through this so
+// raising the cap actually reaches the wire param the active provider reads.
+export function maxTokensKeyFor(apiKind: string | undefined): string {
+  if (apiKind === "openai") return "max_completion_tokens"
+  if (apiKind === "ollama") return "num_predict"
+  return "max_tokens"
+}
+
+function parseParamsObject(text: string): Record<string, unknown> | null {
+  try {
+    const v = text.trim() ? JSON.parse(text) : {}
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+// Read the configured cap, preferring the api_kind's canonical key but falling
+// back to any known alias so a value set under a different provider still shows.
+export function readMaxTokens(
+  params: Record<string, unknown> | null | undefined,
+  apiKind: string | undefined,
+): number | undefined {
+  if (!params) return undefined
+  const order = [
+    maxTokensKeyFor(apiKind),
+    "max_tokens",
+    "max_completion_tokens",
+    "num_predict",
+  ]
+  for (const k of order) {
+    const v = params[k]
+    if (typeof v === "number") return v
+  }
+  return undefined
+}
+
+// Write (or clear, when null) the canonical cap key into the params JSON text
+// while preserving every other key. Unparseable text falls back to an empty
+// object so the friendly control still works; the raw JSON editor stays the
+// escape hatch for advanced param shapes.
+export function upsertMaxTokens(
+  paramsText: string,
+  apiKind: string | undefined,
+  value: number | null,
+): string {
+  const params = parseParamsObject(paramsText) ?? {}
+  const key = maxTokensKeyFor(apiKind)
+  if (value == null || Number.isNaN(value) || value <= 0) delete params[key]
+  else params[key] = value
+  return Object.keys(params).length ? JSON.stringify(params, null, 2) : ""
+}
+
 interface Props {
   purpose: LLMPurpose
   config: LlmPurposeConfig
@@ -300,6 +358,26 @@ export function LLMPurposeCard({
     else if (config.profile_ref) applyLlmProfile(config.profile_ref)
   }
 
+  const maxTokensValue = readMaxTokens(
+    parseParamsObject(paramsText),
+    draft.api_kind,
+  )
+
+  // The friendly Max-tokens control edits a single key inside the params JSON.
+  // It shares paramsText as the source of truth and reuses the same
+  // profile-link-break rule as the raw editor below.
+  const setMaxTokens = (value: number | null) => {
+    const text = upsertMaxTokens(paramsText, draft.api_kind, value)
+    setParamsText(text)
+    const linkedParams = draft.profile_ref
+      ? allLlmProfiles[draft.profile_ref]?.params
+      : undefined
+    if (draft.profile_ref && paramsDifferFromLinked(text, linkedParams)) {
+      setDraft((d) => ({ ...d, profile_ref: null }))
+    }
+    setDirty(true)
+  }
+
   const panelId = `llm-purpose-${purpose}-panel`
   const noProfiles = profileNames.length === 0 && mlProfileNames.length === 0
   const linkLabel = draft.profile_ref
@@ -490,6 +568,38 @@ export function LLMPurposeCard({
                   checked={draft.reasoning}
                   onCheckedChange={(v) => patch({ reasoning: v })}
                 />
+              </div>
+            )}
+
+            {purpose !== "embedding" && !isMl && (
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label>Max output tokens</Label>
+                  <p className="text-muted-foreground text-sm">
+                    {linkedToProfile
+                      ? "Overrides the linked Profile."
+                      : purpose === "extraction"
+                        ? "Cap on generated tokens. Raise this if entity-dense memories truncate (Extraction degraded)."
+                        : "Cap on generated tokens for this purpose."}
+                  </p>
+                </div>
+                <NumberInput
+                  min={1}
+                  value={maxTokensValue ?? undefined}
+                  onValueChange={(d) => setMaxTokens(d.valueAsNumber || null)}
+                  className="w-28"
+                >
+                  <NumberInputControl>
+                    <NumberInputField
+                      className="h-9 text-center"
+                      placeholder="default"
+                    />
+                    <NumberInputTriggerGroup>
+                      <NumberInputIncrementTrigger />
+                      <NumberInputDecrementTrigger />
+                    </NumberInputTriggerGroup>
+                  </NumberInputControl>
+                </NumberInput>
               </div>
             )}
 
