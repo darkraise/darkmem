@@ -1,6 +1,6 @@
 import json
 
-from app.services.llm import LLMOrchestrator
+from app.services.llm import LLMOrchestrator, LLMTruncationError
 from app.services import prompt as prompt_constants
 
 # Re-export the pure cleanup helpers, constants, and ``clean_extraction`` so
@@ -55,11 +55,18 @@ class ExtractionService:
                 ],
                 response_format={"type": "json_object"},
                 seed=seed,
+                raise_on_truncation=True,
             )
             return clean_extraction(
                 _loads_extraction(response),
                 content, relation_rescue=relation_rescue,
             )
+        except LLMTruncationError as e:
+            # A truncated response yields half-written JSON that the salvage
+            # path can't close; report the real cause (token cap) rather than
+            # the misleading "Invalid JSON" the parser would otherwise raise.
+            logger.warning("Extraction truncated: %s", e)
+            return self._error_result(str(e))
         except json.JSONDecodeError as e:
             logger.warning(
                 "Extraction returned invalid JSON: %s; raw prefix: %r", e, response[:200]

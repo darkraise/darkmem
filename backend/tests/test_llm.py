@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.config import LLMPurposeConfig
-from app.services.llm import LLMOrchestrator
+from app.services.llm import LLMOrchestrator, LLMTruncationError
 
 
 def _make_orchestrator(handler):
@@ -50,6 +50,73 @@ async def test_chat_completion():
         messages=[{"role": "user", "content": "test"}],
     )
     assert "entities" in result
+    await llm.close()
+
+
+async def test_chat_completion_raises_on_truncation_when_opted_in():
+    def handler(request: httpx.Request):
+        # finish_reason "length" with a half-written JSON body — the exact
+        # shape that the extraction parser would otherwise mislabel as
+        # "Invalid JSON".
+        return httpx.Response(200, json={
+            "choices": [
+                {"message": {"content": '{"entities": [{"name": "a",'},
+                 "finish_reason": "length"}
+            ]
+        })
+
+    llm = _make_orchestrator(handler)
+    with pytest.raises(LLMTruncationError) as ei:
+        await llm.chat_completion(
+            "extraction",
+            messages=[{"role": "user", "content": "test"}],
+            raise_on_truncation=True,
+        )
+    assert "truncated" in str(ei.value).lower()
+    await llm.close()
+
+
+async def test_chat_completion_ignores_truncation_by_default():
+    def handler(request: httpx.Request):
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]
+        })
+
+    llm = _make_orchestrator(handler)
+    # Without opting in, a length finish is returned verbatim — classification,
+    # summarization, and reranker tolerate a clipped tail.
+    result = await llm.chat_completion(
+        "summarization", messages=[{"role": "user", "content": "x"}],
+    )
+    assert result == "partial"
+    await llm.close()
+
+
+async def test_chat_completion_ollama_raises_on_truncation():
+    def handler(request: httpx.Request):
+        # Ollama signals truncation via ``done_reason`` rather than the
+        # OpenAI ``finish_reason``.
+        return httpx.Response(200, json={
+            "message": {"content": "partial"},
+            "done_reason": "length",
+            "eval_count": 10,
+        })
+
+    config = {
+        "extraction": LLMPurposeConfig(
+            base_url="http://mock", model="qwen2.5:3b",
+            api_kind="ollama", params={"num_predict": 256},
+        ),
+    }
+    llm = LLMOrchestrator(config)
+    llm._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(LLMTruncationError) as ei:
+        await llm.chat_completion(
+            "extraction",
+            messages=[{"role": "user", "content": "x"}],
+            raise_on_truncation=True,
+        )
+    assert "256" in str(ei.value)
     await llm.close()
 
 

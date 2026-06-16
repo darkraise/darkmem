@@ -67,6 +67,32 @@ async def test_extract_still_reports_error_on_unrecoverable_response():
     assert result["entities"] == []
 
 
+async def test_extract_reports_truncation_not_invalid_json():
+    # A response cut off at the token cap (``finish_reason='length'``) used to
+    # surface as the misleading "Invalid JSON: Expecting property name..." —
+    # now it names the real cause and points at the fix.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [
+                {"message": {"content": '{"entities": [{"name": "a",'},
+                 "finish_reason": "length"}
+            ]
+        })
+
+    config = {
+        p: LLMPurposeConfig(base_url="http://mock", model="test", params={"max_tokens": 4096})
+        for p in ("embedding", "extraction", "reasoning", "summarization")
+    }
+    llm = LLMOrchestrator(config)
+    llm._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await ExtractionService(llm).extract("a big, entity-dense note")
+    assert result["entities"] == []
+    err = result.get("_error") or ""
+    assert "truncated" in err.lower()
+    assert "Settings" in err
+    assert "Invalid JSON" not in err
+
+
 # ── helper unit tests ─────────────────────────────────────────────────
 
 

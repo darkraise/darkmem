@@ -8,6 +8,34 @@ from app.config import LLMPurposeConfig
 
 logger = logging.getLogger(__name__)
 
+# The same "max output tokens" concept goes by a different param key per
+# vendor: ``max_tokens`` (z.ai/DeepSeek/Anthropic/Google compat),
+# ``max_completion_tokens`` (OpenAI's gpt-5 family, which rejects the legacy
+# ``max_tokens``), and ``num_predict`` (Ollama native). Truncation reporting
+# and the Settings UI both resolve through this order.
+_OUTPUT_CAP_KEYS = ("max_tokens", "max_completion_tokens", "num_predict")
+
+
+def _output_cap(params: dict) -> int | None:
+    """Return the configured output-token cap, whichever key carries it."""
+    for key in _OUTPUT_CAP_KEYS:
+        value = params.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+class LLMTruncationError(RuntimeError):
+    """Raised when a completion stops at its output-token cap.
+
+    The vendor reports ``finish_reason='length'`` (Ollama: ``done_reason``),
+    meaning generation was cut off before the model finished. For JSON
+    purposes like extraction the body is then unparseable, so callers that
+    require complete output opt in via ``raise_on_truncation`` instead of
+    silently consuming a half-written response and failing later with a
+    misleading parse error.
+    """
+
 
 class LLMOrchestrator:
     """Routes purpose-specific calls to the right wire protocol.
@@ -219,6 +247,7 @@ class LLMOrchestrator:
         messages: list[dict],
         response_format: dict | None = None,
         seed: int | None = None,
+        raise_on_truncation: bool = False,
     ) -> str:
         """Send a chat-completion request to the configured LLM.
 
@@ -239,6 +268,7 @@ class LLMOrchestrator:
         if cfg.api_kind == "ollama":
             return await self._chat_completion_ollama(
                 cfg, purpose, messages, response_format, headers, seed=seed,
+                raise_on_truncation=raise_on_truncation,
             )
 
         body = self._build_openai_chat_body(
@@ -270,9 +300,13 @@ class LLMOrchestrator:
         data = response.json()
         self._log_usage(purpose, cfg.model, data.get("usage"))
         try:
-            return data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"LLM {purpose} unexpected response: {str(data)[:200]}") from e
+        if raise_on_truncation and choice.get("finish_reason") == "length":
+            raise LLMTruncationError(self._truncation_message(purpose, cfg))
+        return content
 
     async def _chat_completion_ollama(
         self,
@@ -282,6 +316,7 @@ class LLMOrchestrator:
         response_format: dict | None,
         headers: dict,
         seed: int | None = None,
+        raise_on_truncation: bool = False,
     ) -> str:
         """Native Ollama ``/api/chat`` call.
 
@@ -346,11 +381,24 @@ class LLMOrchestrator:
                 "completion_tokens": data.get("eval_count", 0),
             })
         try:
-            return data["message"]["content"]
+            content = data["message"]["content"]
         except (KeyError, TypeError) as e:
             raise RuntimeError(
                 f"Ollama {purpose} unexpected response: {str(data)[:200]}"
             ) from e
+        if raise_on_truncation and data.get("done_reason") == "length":
+            raise LLMTruncationError(self._truncation_message(purpose, cfg))
+        return content
+
+    @staticmethod
+    def _truncation_message(purpose: str, cfg: LLMPurposeConfig) -> str:
+        cap = _output_cap(cfg.params)
+        cap_phrase = f"its {cap}-token output cap" if cap is not None else "its output-token cap"
+        return (
+            f"LLM {purpose} response was truncated at {cap_phrase} "
+            f"(model={cfg.model!r}). Raise the max output tokens for the "
+            f"{purpose} purpose in Settings → LLM Pipeline."
+        )
 
     @staticmethod
     def _log_usage(purpose: str, model: str, usage: dict | None) -> None:
@@ -463,8 +511,8 @@ class LLMOrchestrator:
         # Reasoning-by-default models (z.ai's GLM-4.5/5 family,
         # DeepSeek v4) silently consume the entire ``max_tokens`` budget
         # on a hidden chain-of-thought before emitting any visible
-        # output. With max_tokens=2048 and a long extraction prompt the
-        # reasoning trace pegs the cap, ``finish_reason`` is ``length``,
+        # output. With a small max_tokens budget and a long extraction prompt
+        # the reasoning trace pegs the cap, ``finish_reason`` is ``length``,
         # and ``content`` comes back empty — the parser then fails with
         # "Invalid JSON: Expecting value: line 1 column 1". Inject the
         # thinking flag so non-reasoning purposes get a real response.
