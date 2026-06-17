@@ -71,12 +71,13 @@ async def list_symbols(
 async def lookup_symbol(
     name: str = Query(...),
     file_path: str = Query(...),
+    owner: str | None = Query(None),
     _user=Depends(require_auth),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
     svc = _get_service(request, session)
-    result = await svc.lookup_symbol(name, file_path)
+    result = await svc.lookup_symbol(name, file_path, owner)
     if not result:
         raise HTTPException(status_code=404, detail="Symbol not found")
     return CodeSymbolResponse(**result)

@@ -232,6 +232,11 @@ export function useReindexRepo() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] })
       qc.invalidateQueries({ queryKey: ["repoStats"] })
+      // Reindexing rewrites the code graph; without these the cached graph
+      // serves stale data indefinitely (no window-focus refetch either).
+      qc.invalidateQueries({ queryKey: ["codeGraph"] })
+      qc.invalidateQueries({ queryKey: ["codeSymbols"] })
+      qc.invalidateQueries({ queryKey: ["codeSymbol"] })
     },
   })
 }
@@ -289,11 +294,15 @@ export function useCodeSymbolDetail(symbolId: string | null) {
     queryFn: () => {
       if (!symbolId) throw new Error("No symbol ID")
       if (symbolId.includes("::")) {
-        const [name = "", ...rest] = symbolId.split("::")
-        const filePath = rest.join("::")
-        return apiFetch(
-          `/code/symbols/lookup?name=${encodeURIComponent(name)}&file_path=${encodeURIComponent(filePath)}`,
-        )
+        // Graph node ids are name::file_path[::owner] (graph_keys.compose_key);
+        // file paths never contain "::", so segment [1] is always the path.
+        // Joining the tail would smuggle the owner into file_path and 404
+        // every method lookup. The owner disambiguates same-named methods
+        // under different classes in one file.
+        const [name = "", filePath = "", owner = ""] = symbolId.split("::")
+        const params = new URLSearchParams({ name, file_path: filePath })
+        if (owner) params.set("owner", owner)
+        return apiFetch(`/code/symbols/lookup?${params.toString()}`)
       }
       return apiFetch(`/code/symbols/${symbolId}`)
     },

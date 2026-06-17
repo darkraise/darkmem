@@ -228,3 +228,31 @@ async def test_code_graph_view_has_no_orphan_method_edges(session, tmp_path):
             assert edge["source"] in node_ids
         if "::" in edge["target"]:
             assert edge["target"] in node_ids
+
+
+@pytest.mark.asyncio
+async def test_code_graph_emits_each_node_id_exactly_once(session, tmp_path):
+    """code_files/code_symbols and code_graph_nodes both describe files and
+    symbols under the same ids; the view must merge them, keeping the
+    kind-specific kind and the code_graph_nodes properties."""
+    repo = await index_repo(session, tmp_path, {
+        "svc.py": (
+            "class Svc:\n"
+            "    def start(self):\n"
+            "        return self.helper()\n"
+            "    def helper(self):\n"
+            "        return 1\n"
+        ),
+    })
+    graph = await CodeQueryService(session).get_code_graph(repo.id)
+
+    ids = [n["id"] for n in graph["nodes"]]
+    assert len(ids) == len(set(ids))
+
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    assert by_id["svc.py"]["kind"] == "file"
+    assert by_id["Svc::svc.py"]["kind"] == "class"
+    assert by_id["start::svc.py::Svc"]["kind"] == "function"
+    assert "symbol" not in {n["kind"] for n in graph["nodes"]}
+    # code_graph_nodes properties must survive the merge.
+    assert by_id["Svc::svc.py"]["properties"]["kind"] == "class"

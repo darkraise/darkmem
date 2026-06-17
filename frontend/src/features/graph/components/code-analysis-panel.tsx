@@ -1,10 +1,17 @@
-import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { Label } from "darkraise-ui/components/label"
 import { Badge } from "darkraise-ui/components/badge"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
-import { Boxes } from "lucide-react"
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "darkraise-ui/components/collapsible"
+import { Stat, StatLabel, StatValue } from "darkraise-ui/components/stat"
+import { Spinner } from "darkraise-ui/components/spinner"
+import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Boxes, ChevronDown, Crosshair } from "lucide-react"
 import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api"
 import { ProcessPanel } from "./process-panel"
 import type { CodeProcess } from "../lib/code-processes"
@@ -68,24 +75,20 @@ function CollapsibleSection({
   defaultOpen?: boolean
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="border-b border-border">
-      <Button
-        variant="ghost"
-        className="flex w-full items-center gap-2 px-4 py-3 transition-colors hover:bg-accent"
-        onClick={() => setOpen(!open)}
-      >
+    <Collapsible defaultOpen={defaultOpen} className="border-b border-border">
+      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 px-4 py-3 transition-colors hover:bg-accent">
         <div className="h-1 w-1 shrink-0 rounded-full bg-primary" />
         <span className="flex-1 text-left font-mono text-sm font-semibold tracking-[0.2em] text-muted-foreground uppercase">
           {label}
         </span>
-        <span className="font-mono text-sm text-muted-foreground">
-          {open ? "▾" : "▸"}
-        </span>
-      </Button>
-      {open && <div className="px-4 pb-3">{children}</div>}
-    </div>
+        <ChevronDown
+          className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90"
+          aria-hidden
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="px-4 pb-3">{children}</CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -102,18 +105,11 @@ function normalizeRisk(raw: string): RiskLevel {
   return "low"
 }
 
-// LOW -> muted, MEDIUM -> primary, HIGH/CRITICAL -> destructive.
-const RISK_STYLES: Record<RiskLevel, { box: string; text: string }> = {
-  low: { box: "border-border bg-muted", text: "text-muted-foreground" },
-  medium: { box: "border-primary/20 bg-primary/10", text: "text-primary" },
-  high: {
-    box: "border-destructive/20 bg-destructive/10",
-    text: "text-destructive",
-  },
-  critical: {
-    box: "border-destructive/40 bg-destructive/20",
-    text: "text-destructive",
-  },
+const RISK_TEXT_CLASS: Record<RiskLevel, string> = {
+  low: "text-muted-foreground",
+  medium: "text-foreground",
+  high: "text-destructive",
+  critical: "text-destructive",
 }
 
 function BlastDepthHistogram({ byDepth }: { byDepth: BlastRadiusResult["by_depth"] }) {
@@ -205,25 +201,27 @@ export function CodeAnalysisPanel({
               </h3>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {selectedNode.kind && (
-                  <span className="rounded-sm border border-primary/30 bg-primary/15 px-2 py-0.5 font-mono text-sm tracking-wider text-primary uppercase">
+                  <Badge variant="default" size="sm" className="font-mono tracking-wider uppercase">
                     {selectedNode.kind}
-                  </span>
+                  </Badge>
                 )}
                 {symbolDetail?.visibility && (
-                  <span className="rounded-sm border border-border bg-muted px-2 py-0.5 font-mono text-sm tracking-wider text-muted-foreground uppercase">
+                  <Badge variant="secondary" size="sm" className="font-mono tracking-wider uppercase">
                     {symbolDetail.visibility}
-                  </span>
+                  </Badge>
                 )}
                 {symbolDetail?.enrichment_status && (
-                  <span
-                    className={`rounded-sm border px-2 py-0.5 font-mono text-sm tracking-wider uppercase ${
+                  <Badge
+                    variant={
                       symbolDetail.enrichment_status === "completed"
-                        ? "border-primary/30 bg-primary/15 text-primary"
-                        : "border-border bg-muted text-muted-foreground"
-                    }`}
+                        ? "default"
+                        : "secondary"
+                    }
+                    size="sm"
+                    className="font-mono tracking-wider uppercase"
                   >
                     {symbolDetail.enrichment_status}
-                  </span>
+                  </Badge>
                 )}
               </div>
 
@@ -257,17 +255,26 @@ export function CodeAnalysisPanel({
                 <SectionHeader label="Impact Analysis" />
                 <div className="flex gap-2">
                   <Button
-                    variant="ghost"
-                    className="flex-1 rounded-sm border border-destructive/30 bg-destructive/10 px-3 py-1.5 font-mono text-sm tracking-wider text-destructive uppercase transition-colors hover:border-destructive/50 hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-30"
+                    variant="destructive"
+                    size="sm"
+                    className="flex-1 font-mono uppercase tracking-wider"
                     onClick={onBlastRadius}
                     disabled={isBlastRadiusLoading}
                   >
-                    {isBlastRadiusLoading ? "Analyzing…" : "Run Blast Radius"}
+                    {isBlastRadiusLoading ? (
+                      <>
+                        <Spinner size="sm" />
+                        Analyzing…
+                      </>
+                    ) : (
+                      "Run Blast Radius"
+                    )}
                   </Button>
                   {blastRadiusIds && (
                     <Button
                       variant="outline"
-                      className="rounded-sm border border-border px-3 py-1.5 font-mono text-sm tracking-wider text-muted-foreground uppercase transition-colors hover:bg-accent"
+                      size="sm"
+                      className="font-mono uppercase tracking-wider"
                       onClick={onClearBlastRadius}
                     >
                       Clear
@@ -278,28 +285,27 @@ export function CodeAnalysisPanel({
                 {blastRadiusData && (
                   <div className="mt-3 space-y-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-sm border border-destructive/20 bg-destructive/10 px-2.5 py-1.5">
-                        <div className="font-mono text-sm font-bold text-destructive tabular-nums">
-                          {blastRadiusData.total}
-                        </div>
-                        <div className="font-mono text-sm tracking-[0.2em] text-destructive/70 uppercase">
+                      <Stat>
+                        <StatLabel className="font-mono tracking-[0.2em] uppercase">
                           Affected
-                        </div>
-                      </div>
+                        </StatLabel>
+                        <StatValue className="font-mono text-destructive">
+                          {blastRadiusData.total}
+                        </StatValue>
+                      </Stat>
                       {(() => {
                         const risk = normalizeRisk(blastRadiusData.risk)
-                        const style = RISK_STYLES[risk]
                         return (
-                          <div className={`rounded-sm border px-2.5 py-1.5 ${style.box}`}>
-                            <div
-                              className={`font-mono text-sm font-bold uppercase ${style.text}`}
+                          <Stat>
+                            <StatLabel className="font-mono tracking-[0.2em] uppercase">
+                              Risk
+                            </StatLabel>
+                            <StatValue
+                              className={`font-mono uppercase ${RISK_TEXT_CLASS[risk]}`}
                             >
                               {risk}
-                            </div>
-                            <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
-                              Risk
-                            </div>
-                          </div>
+                            </StatValue>
+                          </Stat>
                         )
                       })()}
                     </div>
@@ -314,7 +320,7 @@ export function CodeAnalysisPanel({
                           {blastRadiusData.affected.slice(0, 20).map((a, i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-sm transition-colors hover:bg-accent"
+                              className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-sm"
                             >
                               <span className="shrink-0 text-destructive/70">
                                 d{a.distance}
@@ -341,38 +347,33 @@ export function CodeAnalysisPanel({
             )}
           </>
         ) : (
-          <div className="border-b border-border p-4">
-            <div className="flex h-32 flex-col items-center justify-center text-center">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card">
-                <span className="font-mono text-lg text-muted-foreground">◆</span>
-              </div>
-              <p className="font-mono text-sm text-muted-foreground">
-                Select a node for analysis
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            className="border-b border-border"
+            icon={<Crosshair className="h-6 w-6" />}
+            title="Select a node for analysis"
+          />
         )}
 
         {/* Graph Statistics */}
         <div className="border-b border-border p-4">
           <SectionHeader label="Graph Statistics" />
           <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-sm border border-border bg-card px-3 py-2">
-              <div className="font-mono text-lg font-bold text-foreground tabular-nums">
-                {nodeCount.toLocaleString()}
-              </div>
-              <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+            <Stat>
+              <StatLabel className="font-mono tracking-[0.2em] uppercase">
                 Nodes
-              </div>
-            </div>
-            <div className="rounded-sm border border-border bg-card px-3 py-2">
-              <div className="font-mono text-lg font-bold text-foreground tabular-nums">
-                {edgeCount.toLocaleString()}
-              </div>
-              <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+              </StatLabel>
+              <StatValue className="font-mono">
+                {nodeCount.toLocaleString()}
+              </StatValue>
+            </Stat>
+            <Stat>
+              <StatLabel className="font-mono tracking-[0.2em] uppercase">
                 Edges
-              </div>
-            </div>
+              </StatLabel>
+              <StatValue className="font-mono">
+                {edgeCount.toLocaleString()}
+              </StatValue>
+            </Stat>
           </div>
         </div>
 
@@ -436,7 +437,6 @@ export function CodeAnalysisPanel({
                 <Checkbox
                   checked={visibleNodeTypes.has(type)}
                   onCheckedChange={() => onToggleNodeType(type)}
-                  className="h-3 w-3 border-border"
                 />
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -463,7 +463,6 @@ export function CodeAnalysisPanel({
                 <Checkbox
                   checked={visibleEdgeTypes.has(type)}
                   onCheckedChange={() => onToggleEdgeType(type)}
-                  className="h-3 w-3 border-border"
                 />
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full"

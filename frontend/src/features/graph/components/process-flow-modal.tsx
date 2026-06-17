@@ -8,6 +8,7 @@ import {
 } from "darkraise-ui/components/dialog"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { toast } from "darkraise-ui/components/sonner"
 import { ArrowDown, Copy, Crosshair } from "lucide-react"
@@ -65,17 +66,22 @@ export function ProcessFlowModal({
 
         <ScrollArea className="min-h-0 flex-1">
           {p.steps.length === 0 ? (
-            <p className="py-6 text-center font-mono text-sm text-muted-foreground">
-              This process has no recorded steps.
-            </p>
+            <EmptyState
+              title="No recorded steps"
+              description="This process has no recorded steps."
+            />
           ) : (
             <ol className="space-y-0 px-0.5 py-1">
               {p.steps.map((step, i) => (
                 <li key={`${step.nodeId}:${i}`}>
                   <div className="flex items-start gap-3 rounded-sm border border-border bg-card px-3 py-2.5">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 font-mono text-sm font-semibold text-primary tabular-nums">
+                    <Badge
+                      variant="outline"
+                      size="sm"
+                      className="h-6 w-6 shrink-0 justify-center rounded-full p-0 font-mono tabular-nums"
+                    >
                       {step.index}
-                    </span>
+                    </Badge>
                     <span
                       aria-hidden="true"
                       className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
@@ -91,9 +97,13 @@ export function ProcessFlowModal({
                         <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-foreground">
                           {step.label}
                         </span>
-                        <span className="shrink-0 font-mono text-sm uppercase tracking-wider text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 font-mono uppercase"
+                        >
                           {step.kind}
-                        </span>
+                        </Badge>
                       </span>
                       {step.file && (
                         <span className="mt-0.5 block truncate font-mono text-sm text-muted-foreground">

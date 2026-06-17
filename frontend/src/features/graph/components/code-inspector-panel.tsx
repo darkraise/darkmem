@@ -1,5 +1,16 @@
-import { useState, useMemo, useEffect, type ReactNode } from "react"
+import {
+  memo,
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react"
+import { ChevronRight, Diamond } from "lucide-react"
+import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Input } from "darkraise-ui/components/input"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import {
@@ -9,6 +20,24 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
+import { Spinner } from "darkraise-ui/components/spinner"
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "darkraise-ui/components/tabs"
+import {
+  TreeView,
+  TreeViewTree,
+  TreeViewBranch,
+  TreeViewBranchControl,
+  TreeViewBranchIndicator,
+  TreeViewBranchText,
+  TreeViewBranchContent,
+  TreeViewItem,
+  type TreeNode,
+} from "darkraise-ui/components/tree-view"
 import { useCodeSymbols } from "@/hooks/api"
 import type { CodeSymbolDetail, CodeSearchResult } from "@/hooks/api"
 
@@ -29,14 +58,16 @@ type InspectorTab = "source" | "files" | "results" | "symbols"
 const SYMBOLS_PAGE_SIZE = 25
 const ALL_KINDS = "__all__"
 
-function FileTree({
+// Memoized: the tree is the most expensive subtree in the panel, and its
+// props are referentially stable across selection/filter changes upstream.
+const FileTree = memo(function FileTree({
   files,
   onSelect,
 }: {
   files: string[]
   onSelect: (id: string) => void
 }) {
-  const tree = useMemo(() => {
+  const { nodes, leafIds, branchIds } = useMemo(() => {
     const root: Record<string, Record<string, unknown>> = {}
     for (const fp of files) {
       const parts = fp.replace(/\\/g, "/").split("/")
@@ -46,54 +77,88 @@ function FileTree({
         current = current[part] as Record<string, unknown>
       }
     }
-    return root
+    const leaves = new Set<string>()
+    const branches: string[] = []
+    const toNodes = (node: Record<string, unknown>, path = ""): TreeNode[] =>
+      Object.keys(node)
+        .sort()
+        .map((key) => {
+          const fullPath = path ? `${path}/${key}` : key
+          const children = node[key] as Record<string, unknown>
+          if (Object.keys(children).length === 0) {
+            leaves.add(fullPath)
+            return { id: fullPath, name: key }
+          }
+          branches.push(fullPath)
+          return { id: fullPath, name: key, children: toNodes(children, fullPath) }
+        })
+    return { nodes: toNodes(root), leafIds: leaves, branchIds: branches }
   }, [files])
 
-  const renderTree = (
-    node: Record<string, unknown>,
-    path = "",
-    depth = 0,
-  ): ReactNode[] =>
-    Object.keys(node)
-      .sort()
-      .map((key) => {
-        const fullPath = path ? `${path}/${key}` : key
-        const children = node[key] as Record<string, unknown>
-        const isLeaf = Object.keys(children).length === 0
-        return (
-          <div key={fullPath}>
-            {isLeaf ? (
-              <button
-                type="button"
-                aria-label={fullPath}
-                className="flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-left font-mono text-sm text-foreground transition-colors hover:bg-accent hover:text-foreground"
-                style={{ paddingLeft: `${depth * 14 + 8}px` }}
-                onClick={() => onSelect(fullPath)}
-              >
-                <span className="text-sm text-primary">◈</span>
-                <span className="truncate">{key}</span>
-              </button>
-            ) : (
-              <div
-                className="flex items-center gap-1.5 rounded px-2 py-1 font-mono text-sm font-medium text-muted-foreground transition-colors"
-                style={{ paddingLeft: `${depth * 14 + 8}px` }}
-              >
-                <span className="text-sm text-muted-foreground">▸</span>
-                <span className="truncate">{key}</span>
-              </div>
-            )}
-            {!isLeaf &&
-              renderTree(
-                children as Record<string, unknown>,
-                fullPath,
-                depth + 1,
-              )}
-          </div>
-        )
-      })
+  const [selected, setSelected] = useState<string[]>([])
 
-  return <div>{renderTree(tree)}</div>
-}
+  const renderNode = (node: TreeNode): ReactNode =>
+    node.children && node.children.length > 0 ? (
+      <TreeViewBranch key={node.id} value={node.id}>
+        <TreeViewBranchControl className="font-mono">
+          <TreeViewBranchIndicator>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </TreeViewBranchIndicator>
+          <TreeViewBranchText>{node.name}</TreeViewBranchText>
+        </TreeViewBranchControl>
+        <TreeViewBranchContent>
+          {node.children.map(renderNode)}
+        </TreeViewBranchContent>
+      </TreeViewBranch>
+    ) : (
+      <TreeViewItem
+        key={node.id}
+        value={node.id}
+        aria-label={node.id}
+        className="font-mono"
+        // Re-selecting the current file must still notify the graph —
+        // single-select toggleSelected short-circuits on the same id, so
+        // onSelectedChange alone would drop the event. Keyboard activation
+        // bypasses click entirely, hence the parallel keydown guard.
+        onClick={() => {
+          if (selected[0] === node.id) onSelect(node.id)
+        }}
+        onKeyDown={(e) => {
+          if ((e.key === "Enter" || e.key === " ") && selected[0] === node.id) {
+            onSelect(node.id)
+          }
+        }}
+      >
+        <span className="truncate">{node.name}</span>
+      </TreeViewItem>
+    )
+
+  return (
+    <TreeView
+      className="px-2"
+      selectionMode="single"
+      variant="filled"
+      selected={selected}
+      // Collapsed branches render no children, so starting big repos
+      // collapsed keeps the tree's DOM (and first paint) small; small repos
+      // keep the everything-visible behavior.
+      defaultExpanded={branchIds.length <= 50 ? branchIds : []}
+      onSelectedChange={({ value }) => {
+        const id = value[0]
+        // Branch-control clicks also toggle selection; only file leaves may select.
+        if (id && leafIds.has(id)) {
+          setSelected(value)
+          onSelect(id)
+        }
+      }}
+    >
+      {/* tabIndex seeds the roving tabindex: every treeitem starts at -1 and
+          the tree's focus initializer only runs when the ul itself receives
+          focus, so without this the tree is keyboard-unreachable. */}
+      <TreeViewTree tabIndex={0}>{nodes.map(renderNode)}</TreeViewTree>
+    </TreeView>
+  )
+})
 
 function SymbolsTab({
   repoId,
@@ -116,11 +181,11 @@ function SymbolsTab({
     return () => clearTimeout(t)
   }, [rawQuery])
 
-  // A new query or kind filter resets to the first page so the offset window
-  // never points past a shrunken result set.
+  // A new query, kind filter, or repo resets to the first page so the offset
+  // window never points past a shrunken result set.
   useEffect(() => {
     setOffset(0)
-  }, [debouncedQuery, kind])
+  }, [debouncedQuery, kind, repoId])
 
   const { data, isFetching } = useCodeSymbols({
     repoId,
@@ -139,11 +204,11 @@ function SymbolsTab({
 
   if (!repoId) {
     return (
-      <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
-        <p className="font-mono text-sm text-muted-foreground">
-          Select a repository to browse symbols
-        </p>
-      </div>
+      <EmptyState
+        className="font-mono"
+        title="No repository selected"
+        description="Select a repository to browse symbols"
+      />
     )
   }
 
@@ -152,12 +217,12 @@ function SymbolsTab({
       <div className="flex shrink-0 flex-col gap-2 border-b border-border p-3">
         <Input
           placeholder="Filter symbols…"
-          className="h-8 border-border bg-transparent font-mono text-sm"
+          className="h-8 font-mono text-sm"
           value={rawQuery}
           onChange={(e) => setRawQuery(e.target.value)}
         />
         <Select value={kind} onValueChange={setKind}>
-          <SelectTrigger className="h-8 border-border bg-transparent font-mono text-sm">
+          <SelectTrigger className="h-8 font-mono text-sm">
             <SelectValue placeholder="All kinds" />
           </SelectTrigger>
           <SelectContent>
@@ -178,7 +243,7 @@ function SymbolsTab({
               <Button
                 variant="ghost"
                 key={sym.id}
-                className="group w-full rounded-md border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent"
+                className="group w-full rounded-md px-3 py-2 text-left"
                 onClick={() => onSymbolSelect(sym.name, sym.file_path)}
               >
                 <div className="flex items-center gap-2">
@@ -205,12 +270,12 @@ function SymbolsTab({
                 </div>
               </Button>
             ))
-          ) : (
-            <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
-              <p className="font-mono text-sm text-muted-foreground">
-                {isFetching ? "Loading symbols…" : "No symbols found"}
-              </p>
+          ) : isFetching ? (
+            <div className="flex h-32 items-center justify-center">
+              <Spinner size="sm" label="Loading symbols…" />
             </div>
+          ) : (
+            <EmptyState className="font-mono" title="No symbols found" />
           )}
         </div>
       </ScrollArea>
@@ -222,7 +287,8 @@ function SymbolsTab({
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
-            className="h-7 px-2 font-mono text-sm"
+            size="sm"
+            className="font-mono"
             disabled={!hasPrev}
             onClick={() => setOffset((o) => Math.max(0, o - SYMBOLS_PAGE_SIZE))}
           >
@@ -230,7 +296,8 @@ function SymbolsTab({
           </Button>
           <Button
             variant="outline"
-            className="h-7 px-2 font-mono text-sm"
+            size="sm"
+            className="font-mono"
             disabled={!hasNext}
             onClick={() => setOffset((o) => o + SYMBOLS_PAGE_SIZE)}
           >
@@ -255,6 +322,17 @@ export function CodeInspectorPanel({
 }: CodeInspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<InspectorTab>("source")
 
+  // Fresh search results surface their own tab — they land here from the
+  // toolbar search, which otherwise gives no visible response when another
+  // tab is active. Identity-guarded so a panel remount with old results
+  // (inspector toggled closed and back open) doesn't yank the tab again.
+  const seenResultsRef = useRef(searchResults)
+  useEffect(() => {
+    if (searchResults === seenResultsRef.current) return
+    seenResultsRef.current = searchResults
+    if (searchResults.length > 0) setActiveTab("results")
+  }, [searchResults])
+
   const tabs: { id: InspectorTab; label: string; count?: number }[] = [
     { id: "source", label: "Source" },
     { id: "symbols", label: "Symbols" },
@@ -275,168 +353,175 @@ export function CodeInspectorPanel({
         </span>
       </div>
 
-      <div className="flex shrink-0 border-b border-border">
-        {tabs.map((tab) => (
-          <Button
-            variant="ghost"
-            key={tab.id}
-            className={`relative flex-1 px-3 py-2 font-mono text-sm tracking-widest uppercase transition-colors ${
-              activeTab === tab.id
-                ? "bg-primary/15 text-primary"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-            {tab.count !== undefined && (
-              <span className="ml-1 text-sm text-primary">{tab.count}</span>
-            )}
-            {activeTab === tab.id && (
-              <div className="absolute right-2 bottom-0 left-2 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
-            )}
-          </Button>
-        ))}
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as InspectorTab)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <TabsList variant="underline" className="w-full shrink-0 gap-0">
+          {tabs.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="flex-1 gap-1.5 font-mono text-sm tracking-widest uppercase"
+            >
+              {tab.label}
+              {tab.count !== undefined && (
+                <Badge variant="secondary" size="sm">
+                  {tab.count}
+                </Badge>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {activeTab === "symbols" && (
-        <SymbolsTab
-          repoId={repoId}
-          nodeColors={nodeColors}
-          symbolKinds={symbolKinds}
-          onSymbolSelect={onSymbolSelect}
-        />
-      )}
+        <TabsContent value="symbols" className="mt-0 min-h-0 flex-1">
+          <SymbolsTab
+            repoId={repoId}
+            nodeColors={nodeColors}
+            symbolKinds={symbolKinds}
+            onSymbolSelect={onSymbolSelect}
+          />
+        </TabsContent>
 
-      {activeTab !== "symbols" && (
-      <ScrollArea className="min-h-0 flex-1">
-        {activeTab === "source" && (
-          <div className="p-3">
-            {symbolDetail ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">
-                  <span className="font-mono text-sm text-primary">◈</span>
-                  <span className="flex-1 truncate font-mono text-sm text-foreground">
-                    {symbolDetail.file_path ?? symbolDetail.name}
-                  </span>
-                  {symbolDetail.line_start > 0 && (
-                    <span className="shrink-0 font-mono text-sm text-muted-foreground">
-                      L{symbolDetail.line_start}–{symbolDetail.line_end}
+        <TabsContent value="source" className="mt-0 min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <div className="p-3">
+              {symbolDetail ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">
+                    <span className="font-mono text-sm text-primary">◈</span>
+                    <span className="flex-1 truncate font-mono text-sm text-foreground">
+                      {symbolDetail.file_path ?? symbolDetail.name}
                     </span>
+                    {symbolDetail.line_start > 0 && (
+                      <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                        L{symbolDetail.line_start}–{symbolDetail.line_end}
+                      </span>
+                    )}
+                  </div>
+
+                  {symbolDetail.signature && (
+                    <Card className="overflow-hidden">
+                      <CardHeader className="border-b border-border px-3 py-1">
+                        <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                          Signature
+                        </span>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                          {symbolDetail.signature}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {symbolDetail.source_code && (
+                    <Card className="overflow-hidden">
+                      <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-border px-3 py-1">
+                        <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                          Source
+                        </span>
+                        <span className="font-mono text-sm text-muted-foreground">
+                          {symbolDetail.source_code.split("\n").length} lines
+                        </span>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        {/* ScrollArea's viewport is h-full, which cannot resolve
+                            against an auto-height root; the flex column lets
+                            max-h clamp the viewport so long sources scroll. */}
+                        <ScrollArea className="flex max-h-[65vh] flex-col">
+                          <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-[1.6] text-foreground">
+                            {symbolDetail.source_code}
+                          </pre>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {symbolDetail.docstring && (
+                    <Card className="overflow-hidden">
+                      <CardHeader className="border-b border-border px-3 py-1">
+                        <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                          Docstring
+                        </span>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <p className="px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                          {symbolDetail.docstring}
+                        </p>
+                      </CardContent>
+                    </Card>
                   )}
                 </div>
+              ) : (
+                <EmptyState
+                  className="font-mono"
+                  icon={<Diamond className="h-6 w-6" />}
+                  title="Select a symbol to inspect"
+                  description="Click a node in the graph"
+                />
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
 
-                {symbolDetail.signature && (
-                  <div className="overflow-hidden rounded-md border border-border bg-card">
-                    <div className="border-b border-border px-3 py-1">
-                      <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
-                        Signature
-                      </span>
+        <TabsContent value="files" className="mt-0 min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <div className="py-2">
+              {/* Keyed per repo: expansion/selection are uncontrolled, and a
+                  cached repo switch would otherwise keep the old tree state */}
+              {fileList.length > 0 ? (
+                <FileTree
+                  key={repoId ?? "none"}
+                  files={fileList}
+                  onSelect={onFileSelect}
+                />
+              ) : (
+                <EmptyState className="font-mono" title="No files loaded" />
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="results" className="mt-0 min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <div className="space-y-0.5 p-2">
+              {searchResults.length > 0 ? (
+                searchResults.map((r, i) => (
+                  <Button
+                    variant="ghost"
+                    key={`${r.file_path}:${r.symbol_name ?? ""}:${i}`}
+                    className="group w-full rounded-md px-3 py-2.5 text-left"
+                    onClick={() => onSearchResultClick(r)}
+                  >
+                    <div className="truncate font-mono text-sm text-foreground">
+                      {r.file_path}
                     </div>
-                    <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-                      {symbolDetail.signature}
-                    </pre>
-                  </div>
-                )}
-
-                {symbolDetail.source_code && (
-                  <div className="overflow-hidden rounded-md border border-border bg-card">
-                    <div className="flex items-center justify-between border-b border-border px-3 py-1">
-                      <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
-                        Source
-                      </span>
-                      <span className="font-mono text-sm text-muted-foreground">
-                        {symbolDetail.source_code.split("\n").length} lines
-                      </span>
+                    {r.symbol_name && (
+                      <div className="mt-0.5 font-mono text-sm text-primary">
+                        {r.symbol_name}
+                      </div>
+                    )}
+                    <div className="mt-1 line-clamp-2 font-mono text-sm leading-relaxed text-muted-foreground">
+                      {r.chunk_content.slice(0, 140)}
                     </div>
-                    <pre className="max-h-[65vh] overflow-x-auto overflow-y-auto px-3 py-2 font-mono text-sm leading-[1.6] text-foreground">
-                      {symbolDetail.source_code}
-                    </pre>
-                  </div>
-                )}
-
-                {symbolDetail.docstring && (
-                  <div className="overflow-hidden rounded-md border border-border bg-card">
-                    <div className="border-b border-border px-3 py-1">
-                      <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
-                        Docstring
-                      </span>
+                    <div className="mt-1 font-mono text-sm text-muted-foreground">
+                      score {r.score.toFixed(3)}
                     </div>
-                    <p className="px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                      {symbolDetail.docstring}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex h-48 flex-col items-center justify-center text-center">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card">
-                  <span className="font-mono text-lg text-muted-foreground">◇</span>
-                </div>
-                <p className="font-mono text-sm text-muted-foreground">
-                  Select a symbol to inspect
-                </p>
-                <p className="mt-1 font-mono text-sm text-muted-foreground">
-                  Click a node in the graph
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "files" && (
-          <div className="py-2">
-            {fileList.length > 0 ? (
-              <FileTree files={fileList} onSelect={onFileSelect} />
-            ) : (
-              <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
-                <p className="font-mono text-sm text-muted-foreground">
-                  No files loaded
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "results" && (
-          <div className="space-y-0.5 p-2">
-            {searchResults.length > 0 ? (
-              searchResults.map((r, i) => (
-                <Button
-                  variant="ghost"
-                  key={`${r.file_path}:${r.symbol_name ?? ""}:${i}`}
-                  className="group w-full rounded-md border border-transparent px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent"
-                  onClick={() => onSearchResultClick(r)}
-                >
-                  <div className="truncate font-mono text-sm text-foreground">
-                    {r.file_path}
-                  </div>
-                  {r.symbol_name && (
-                    <div className="mt-0.5 font-mono text-sm text-primary">
-                      {r.symbol_name}
-                    </div>
-                  )}
-                  <div className="mt-1 line-clamp-2 font-mono text-sm leading-relaxed text-muted-foreground">
-                    {r.chunk_content.slice(0, 140)}
-                  </div>
-                  <div className="mt-1 font-mono text-sm text-muted-foreground">
-                    score {r.score.toFixed(3)}
-                  </div>
-                </Button>
-              ))
-            ) : (
-              <div className="flex h-32 flex-col items-center justify-center px-4 text-center">
-                <p className="font-mono text-sm text-muted-foreground">
-                  No search results
-                </p>
-                <p className="mt-1 font-mono text-sm text-muted-foreground">
-                  Press Enter in the search bar
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </ScrollArea>
-      )}
+                  </Button>
+                ))
+              ) : (
+                <EmptyState
+                  className="font-mono"
+                  title="No search results"
+                  description="Press Enter in the search bar"
+                />
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

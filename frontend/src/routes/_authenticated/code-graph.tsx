@@ -9,12 +9,29 @@ import {
   SelectItem,
 } from "darkraise-ui/components/select"
 import { Button } from "darkraise-ui/components/button"
+import { ButtonGroup } from "darkraise-ui/components/button-group"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Input } from "darkraise-ui/components/input"
+import { Kbd } from "darkraise-ui/components/kbd"
+import {
+  SegmentGroup,
+  SegmentGroupIndicator,
+  SegmentGroupItem,
+} from "darkraise-ui/components/segment-group"
 import { toast } from "darkraise-ui/components/sonner"
+import { Spinner } from "darkraise-ui/components/spinner"
+import { Toggle } from "darkraise-ui/components/toggle"
 import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
+import { Toolbar, ToolbarSeparator } from "darkraise-ui/components/toolbar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "darkraise-ui/components/tooltip"
 import {
   CodeGraphRenderer,
   type CodeGraphHandle,
@@ -42,7 +59,6 @@ import {
   PanelLeft,
   PanelRight,
   Search,
-  Loader2,
   ZoomIn,
   ZoomOut,
   Maximize,
@@ -53,8 +69,10 @@ import {
   Network,
   GitBranch,
   CircleDot,
+  CircleAlert,
   Tag,
   Boxes,
+  FolderGit2,
 } from "lucide-react"
 import {
   useCodeGraphTheme,
@@ -68,6 +86,7 @@ export const Route = createFileRoute("/_authenticated/code-graph")({
 const ALL_NODE_TYPES = [
   "file",
   "module",
+  "namespace",
   "class",
   "struct",
   "interface",
@@ -145,6 +164,11 @@ function CodeGraphPage() {
 
   const rendererRef = useRef<CodeGraphHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  // Mirror refs for in-flight callbacks (blast-radius/search responses must
+  // not commit under a selection or repo they weren't run for).
+  const selectedNodeIdRef = useRef<string | null>(null)
+  const selectedRepoIdRef = useRef<string | null>(selectedRepoId)
+  selectedRepoIdRef.current = selectedRepoId
   const { tokens, nodeColors, edgeColors } = useCodeGraphTheme(
     rootRef,
     ALL_NODE_TYPES,
@@ -170,59 +194,86 @@ function CodeGraphPage() {
   }, [])
 
   const { data: repos } = useRepos()
-  const { data: graphData, isLoading } = useCodeGraph(selectedRepoId)
-  // buildGraph auto-starts the FA2 worker whenever it (re)builds in force mode
-  // (e.g. on a repo switch), so keep the play/pause toggle in sync with it.
-  useEffect(() => {
-    if (layout === "force") setIsPlaying(true)
-  }, [graphData, layout])
+  const {
+    data: graphData,
+    isLoading,
+    isError: isGraphError,
+    refetch: refetchGraph,
+  } = useCodeGraph(selectedRepoId)
   const codeSearch = useCodeSearch()
   const codeSearchRef = useRef(codeSearch)
   codeSearchRef.current = codeSearch
   const blastRadius = useBlastRadius()
-  const { data: symbolDetail } = useCodeSymbolDetail(
-    selectedNode &&
-      selectedNode.kind !== "file" &&
-      selectedNode.kind !== "module"
-      ? selectedNode.id
-      : null,
-  )
 
-  const filteredNodes = useMemo(() => {
+  // Only ids carrying a name::file_path key resolve as symbols; plain-name
+  // kinds (process, community, route, tool, property) would 404/422 on the
+  // symbol endpoints, so they never qualify for detail or blast radius.
+  const analyzableNodeId =
+    selectedNode &&
+    selectedNode.kind !== "file" &&
+    selectedNode.kind !== "module" &&
+    selectedNode.id.includes("::")
+      ? selectedNode.id
+      : null
+  const { data: symbolDetail } = useCodeSymbolDetail(analyzableNodeId)
+  const gatedSymbolDetail = analyzableNodeId ? (symbolDetail ?? null) : null
+
+  // Changing repos invalidates every per-repo selection. Without this reset a
+  // stale selectedNodeId seeds the focus BFS against the new repo's edges and
+  // filters out everything ("No graph data" on an indexed repo), and the
+  // panels keep rendering the previous repo's detail/blast/search state.
+  useEffect(() => {
+    setSelectedNode(null)
+    setSelectedNodeId(null)
+    selectedNodeIdRef.current = null
+    setBlastRadiusIds(undefined)
+    setBlastRadiusData(null)
+    setSearchResults([])
+    setSearchQuery("")
+    setSelectedProcess(null)
+    setProcessModalOpen(false)
+    setSelectedCommunityId(null)
+    setFocusDepth(null)
+  }, [selectedRepoId])
+
+  const typeFilteredNodes = useMemo(() => {
     if (!graphData?.nodes) return []
-    let nodes = graphData.nodes.filter((n) =>
+    return graphData.nodes.filter((n) =>
       visibleNodeTypes.has(n.kind || "unknown"),
     )
+  }, [graphData, visibleNodeTypes])
 
-    if (focusDepth !== null && selectedNodeId) {
-      const edgeMap = new Map<string, Set<string>>()
-      for (const e of graphData.edges) {
-        if (!edgeMap.has(e.source)) edgeMap.set(e.source, new Set())
-        if (!edgeMap.has(e.target)) edgeMap.set(e.target, new Set())
-        edgeMap.get(e.source)!.add(e.target)
-        edgeMap.get(e.target)!.add(e.source)
-      }
-
-      const visited = new Set<string>()
-      const queue: [string, number][] = [[selectedNodeId, 0]]
-      visited.add(selectedNodeId)
-
-      while (queue.length > 0) {
-        const [current, depth] = queue.shift()!
-        if (depth >= focusDepth) continue
-        for (const neighbor of edgeMap.get(current) || []) {
-          if (!visited.has(neighbor)) {
-            visited.add(neighbor)
-            queue.push([neighbor, depth + 1])
-          }
-        }
-      }
-
-      nodes = nodes.filter((n) => visited.has(n.id))
+  // Two-stage memo on purpose: without a depth filter the array identity must
+  // not change on selection clicks, or every click rebuilds the renderer
+  // scene and the file tree.
+  const filteredNodes = useMemo(() => {
+    if (focusDepth === null || !selectedNodeId || !graphData?.edges) {
+      return typeFilteredNodes
+    }
+    const edgeMap = new Map<string, Set<string>>()
+    for (const e of graphData.edges) {
+      if (!edgeMap.has(e.source)) edgeMap.set(e.source, new Set())
+      if (!edgeMap.has(e.target)) edgeMap.set(e.target, new Set())
+      edgeMap.get(e.source)!.add(e.target)
+      edgeMap.get(e.target)!.add(e.source)
     }
 
-    return nodes
-  }, [graphData, visibleNodeTypes, focusDepth, selectedNodeId])
+    const visited = new Set<string>([selectedNodeId])
+    const queue: [string, number][] = [[selectedNodeId, 0]]
+    let head = 0
+    while (head < queue.length) {
+      const [current, depth] = queue[head++]!
+      if (depth >= focusDepth) continue
+      for (const neighbor of edgeMap.get(current) || []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor)
+          queue.push([neighbor, depth + 1])
+        }
+      }
+    }
+
+    return typeFilteredNodes.filter((n) => visited.has(n.id))
+  }, [typeFilteredNodes, graphData, focusDepth, selectedNodeId])
 
   const filteredEdges = useMemo(() => {
     if (!graphData?.edges) return []
@@ -232,13 +283,16 @@ function CodeGraphPage() {
     )
   }, [graphData, filteredNodes])
 
+  // Derived from the unfiltered graph: the file browser should list the whole
+  // repo regardless of canvas filters, and the stable identity keeps the
+  // (expensive) tree from rebuilding on every filter or selection change.
   const fileList = useMemo(
     () =>
-      filteredNodes
+      (graphData?.nodes ?? [])
         .filter((n) => n.kind === "file")
         .map((n) => n.id)
         .sort(),
-    [filteredNodes],
+    [graphData],
   )
 
   const handleSelect = useCallback(
@@ -250,11 +304,16 @@ function CodeGraphPage() {
         file_path?: string
       } | null,
     ) => {
+      // Blast-radius results are scoped to the symbol they were run for;
+      // moving the selection must not present them under another node.
+      if (node?.id !== selectedNodeIdRef.current) {
+        setBlastRadiusIds(undefined)
+        setBlastRadiusData(null)
+      }
+      selectedNodeIdRef.current = node?.id ?? null
       setSelectedNode(node)
       setSelectedNodeId(node?.id ?? null)
       if (!node) {
-        setBlastRadiusIds(undefined)
-        setBlastRadiusData(null)
         // Deselecting the stage also clears any process/community emphasis;
         // without this the emphasis (gated on !sel) would re-reveal once the
         // selection drops.
@@ -268,11 +327,25 @@ function CodeGraphPage() {
   const handleSearch = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key !== "Enter" || !searchQuery.trim()) return
+      const forRepo = selectedRepoId
       codeSearchRef.current.mutate(
-        { query: searchQuery, repo_id: selectedRepoId ?? undefined },
+        { query: searchQuery, repo_id: forRepo ?? undefined },
         {
           onSuccess: (data) => {
+            // Semantic search takes seconds; a response that lands after a
+            // repo switch must not repopulate the new repo's results.
+            if (selectedRepoIdRef.current !== forRepo) return
             setSearchResults(data)
+            if (data.length === 0) {
+              toast.info(`No matches for "${searchQuery.trim()}"`)
+            } else {
+              // Results render in the inspector's Results tab; surface the
+              // panel so Enter never appears to do nothing.
+              setShowInspector(true)
+            }
+          },
+          onError: (err) => {
+            toast.error(`Search failed: ${err.message}`)
           },
         },
       )
@@ -438,12 +511,13 @@ function CodeGraphPage() {
         setSelectedProcess(null)
         return
       }
-      // Process and community emphasis are mutually exclusive.
-      setSelectedCommunityId(null)
+      // The renderer gates emphasis on `!sel` (like handleCommunitySelect), so
+      // a lingering node selection would mask the highlight entirely.
+      handleSelect(null)
       setSelectedProcess(process)
       setProcessModalOpen(true)
     },
-    [selectedProcess],
+    [selectedProcess, handleSelect],
   )
 
   const handleCommunitySelect = useCallback(
@@ -531,6 +605,12 @@ function CodeGraphPage() {
 
   const handleFileSelect = useCallback(
     (id: string) => {
+      // The file browser lists the unfiltered repo, so the clicked file may be
+      // hidden by the canvas filters — reveal it like the other entry points.
+      if (!filteredNodes.some((n) => n.id === id)) {
+        setFocusDepth(null)
+        setVisibleNodeTypes((prev) => new Set(prev).add("file"))
+      }
       setSelectedNodeId(id)
       handleSelect({
         id,
@@ -538,21 +618,28 @@ function CodeGraphPage() {
         kind: "file",
       })
     },
-    [handleSelect],
+    [filteredNodes, handleSelect],
   )
 
   const handleBlastRadius = useCallback(() => {
     if (!selectedNode) return
+    const forId = selectedNode.id
     blastRadius.mutate(
-      { symbol_id: selectedNode.id },
+      { symbol_id: forId },
       {
         onSuccess: (data) => {
+          // The selection may have moved while the request was in flight;
+          // committing then would show this symbol's impact under another.
+          if (selectedNodeIdRef.current !== forId) return
           const ids = new Set(
             data.affected.map((a) => a.key ?? `${a.name}::${a.file_path}`),
           )
-          if (selectedNode) ids.add(selectedNode.id)
+          ids.add(forId)
           setBlastRadiusIds(ids)
           setBlastRadiusData(data)
+        },
+        onError: (err) => {
+          toast.error(`Blast radius failed: ${err.message}`)
         },
       },
     )
@@ -572,11 +659,10 @@ function CodeGraphPage() {
     setIsPlaying(next === "force")
   }, [])
 
-  const handleTogglePlay = useCallback(() => {
-    const next = !isPlaying
-    rendererRef.current?.setLayoutRunning(next)
-    setIsPlaying(next)
-  }, [isPlaying])
+  const handleTogglePlay = useCallback((pressed: boolean) => {
+    rendererRef.current?.setLayoutRunning(pressed)
+    setIsPlaying(pressed)
+  }, [])
 
   const handleFocusSelected = useCallback(() => {
     if (selectedNodeId) rendererRef.current?.focusNode(selectedNodeId)
@@ -586,40 +672,47 @@ function CodeGraphPage() {
     rendererRef.current?.clearSelection()
   }, [])
 
-  // ⌘K / Ctrl+K toggles the graph-node quick-jump palette.
+  // ⌘K / Ctrl+K toggles the graph-node quick-jump palette. Suppressed while
+  // the process modal is open — stacking the palette over the modal leaves
+  // Escape closing both layers at once.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
+        if (processModalOpen) return
         setSearchPaletteOpen((prev) => !prev)
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [])
+  }, [processModalOpen])
 
   return (
     <div ref={rootRef} className="code-graph-root flex h-full flex-col">
       <h1 className="sr-only">Code Graph</h1>
       {/* ── Toolbar ─────────────────────────────────────────────── */}
-      <div className="code-graph-toolbar flex shrink-0 items-center gap-3 border-b border-border px-4 py-2">
+      <Toolbar className="code-graph-toolbar flex shrink-0 items-center gap-3 border-b border-border px-4 py-2">
+        <TooltipProvider>
         {/* Left: panel toggle + repo */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`rounded p-1.5 transition-colors ${showInspector ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
-          onClick={() => setShowInspector(!showInspector)}
-          title="Toggle code inspector"
-          aria-label="Toggle code inspector"
-        >
-          <PanelLeft className="h-3.5 w-3.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Toggle
+              size="sm"
+              pressed={showInspector}
+              onPressedChange={setShowInspector}
+              aria-label="Toggle code inspector"
+            >
+              <PanelLeft className="h-3.5 w-3.5" />
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent>Toggle code inspector</TooltipContent>
+        </Tooltip>
 
         <Select
           value={selectedRepoId ?? "__none__"}
           onValueChange={(v) => setSelectedRepoId(v === "__none__" ? null : v)}
         >
-          <SelectTrigger className="h-7 w-44 border-border bg-transparent font-mono text-sm text-foreground hover:border-primary/40 focus:border-primary/50">
+          <SelectTrigger className="h-7 w-44 font-mono text-sm">
             <SelectValue placeholder="Select repo" />
           </SelectTrigger>
           <SelectContent>
@@ -638,25 +731,33 @@ function CodeGraphPage() {
             <Search className="absolute top-1/2 left-2.5 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search symbols…"
-              className="h-7 border-border bg-transparent pl-8 font-mono text-sm text-foreground placeholder:text-muted-foreground hover:border-primary/40 focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-7 pl-8 font-mono text-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearch}
             />
             {codeSearch.isPending && (
-              <Loader2 className="absolute top-1/2 right-2.5 h-3 w-3 -translate-y-1/2 animate-spin text-primary" />
+              <span className="absolute top-1/2 right-2.5 -translate-y-1/2">
+                <Spinner size="sm" />
+              </span>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-1 h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setSearchPaletteOpen(true)}
-            title="Jump to node (⌘K)"
-            aria-label="Jump to node"
-          >
-            <Search className="h-3.5 w-3.5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="ml-1"
+                onClick={() => setSearchPaletteOpen(true)}
+                aria-label="Jump to node"
+              >
+                <Search className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Jump to node <Kbd size="sm">⌘K</Kbd>
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Layout switcher */}
@@ -665,34 +766,50 @@ function CodeGraphPage() {
           value={layout}
           onValueChange={handleLayoutChange}
           className="shrink-0 gap-0"
+          aria-label="Graph layout"
         >
-          <ToggleGroupItem
-            value="force"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
-            title="Force layout"
-            aria-label="Force layout"
-          >
-            <Network className="h-3.5 w-3.5" />
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="tree"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
-            title="Tree layout"
-            aria-label="Tree layout"
-          >
-            <GitBranch className="h-3.5 w-3.5" />
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="circles"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
-            title="Concentric layout"
-            aria-label="Concentric layout"
-          >
-            <CircleDot className="h-3.5 w-3.5" />
-          </ToggleGroupItem>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* Explicit data-state: TooltipTrigger asChild injects its own
+                  open/closed data-state which otherwise overwrites the
+                  item's on/off and kills the pressed styling. */}
+              <ToggleGroupItem
+                value="force"
+                variant="outline"
+                aria-label="Force layout"
+                data-state={layout === "force" ? "on" : "off"}
+              >
+                <Network className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Force layout</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="tree"
+                variant="outline"
+                aria-label="Tree layout"
+                data-state={layout === "tree" ? "on" : "off"}
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Tree layout</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="circles"
+                variant="outline"
+                aria-label="Concentric layout"
+                data-state={layout === "circles" ? "on" : "off"}
+              >
+                <CircleDot className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Concentric layout</TooltipContent>
+          </Tooltip>
         </ToggleGroup>
 
         {/* Color-by switcher */}
@@ -701,121 +818,153 @@ function CodeGraphPage() {
           value={colorMode}
           onValueChange={handleColorModeChange}
           className="shrink-0 gap-0"
+          aria-label="Color nodes by"
         >
-          <ToggleGroupItem
-            value="type"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
-            title="Color by type"
-            aria-label="Color by type"
-          >
-            <Tag className="h-3.5 w-3.5" />
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="community"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
-            title="Color by community"
-            aria-label="Color by community"
-          >
-            <Boxes className="h-3.5 w-3.5" />
-          </ToggleGroupItem>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="type"
+                variant="outline"
+                aria-label="Color by type"
+                data-state={colorMode === "type" ? "on" : "off"}
+              >
+                <Tag className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Color by type</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="community"
+                variant="outline"
+                aria-label="Color by community"
+                data-state={colorMode === "community" ? "on" : "off"}
+              >
+                <Boxes className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Color by community</TooltipContent>
+          </Tooltip>
         </ToggleGroup>
 
         {/* Camera controls + play/pause */}
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => rendererRef.current?.zoomIn()}
-            title="Zoom in"
-            aria-label="Zoom in"
-          >
-            <ZoomIn className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => rendererRef.current?.zoomOut()}
-            title="Zoom out"
-            aria-label="Zoom out"
-          >
-            <ZoomOut className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => rendererRef.current?.fitView()}
-            title="Fit to view"
-            aria-label="Fit to view"
-          >
-            <Maximize className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={!selectedNodeId}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40"
-            onClick={handleFocusSelected}
-            title="Focus selected node"
-            aria-label="Focus selected node"
-          >
-            <Crosshair className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={!selectedNodeId}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-40"
-            onClick={handleClearSelection}
-            title="Clear selection"
-            aria-label="Clear selection"
-          >
-            <Eraser className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={layout !== "force"}
-            className={`h-8 w-8 disabled:opacity-40 ${isPlaying ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
-            onClick={handleTogglePlay}
-            title={isPlaying ? "Pause layout" : "Play layout"}
-            aria-label={isPlaying ? "Pause layout" : "Play layout"}
-          >
-            {isPlaying ? (
-              <Pause className="h-3.5 w-3.5" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-          </Button>
+          <ButtonGroup>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => rendererRef.current?.zoomIn()}
+                  aria-label="Zoom in"
+                >
+                  <ZoomIn className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Zoom in</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => rendererRef.current?.zoomOut()}
+                  aria-label="Zoom out"
+                >
+                  <ZoomOut className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Zoom out</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => rendererRef.current?.fitView()}
+                  aria-label="Fit to view"
+                >
+                  <Maximize className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Fit to view</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!selectedNodeId}
+                  onClick={handleFocusSelected}
+                  aria-label="Focus selected node"
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Focus selected node</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={!selectedNodeId}
+                  onClick={handleClearSelection}
+                  aria-label="Clear selection"
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Clear selection</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Toggle
+                size="sm"
+                pressed={isPlaying}
+                onPressedChange={handleTogglePlay}
+                disabled={layout !== "force"}
+                aria-label={isPlaying ? "Pause layout" : "Play layout"}
+              >
+                {isPlaying ? (
+                  <Pause className="h-3.5 w-3.5" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isPlaying ? "Pause layout" : "Play layout"}
+            </TooltipContent>
+          </Tooltip>
         </div>
 
-        <div className="h-4 w-px bg-border" />
+        <ToolbarSeparator orientation="vertical" className="h-4" />
 
         {/* Right: depth + stats + panel toggle */}
         <div className="flex shrink-0 items-center gap-1 font-mono text-sm">
           <span className="mr-1 text-muted-foreground">Depth</span>
-          {([null, 1, 2, 3, 5] as const).map((d) => (
-            <Button
-              variant="ghost"
-              key={d ?? "all"}
-              aria-pressed={focusDepth === d}
-              className={`rounded-sm px-1.5 py-0.5 transition-colors ${
-                focusDepth === d
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
-              onClick={() => setFocusDepth(d)}
-            >
-              {d === null ? "All" : d}
-            </Button>
-          ))}
+          <SegmentGroup
+            value={focusDepth === null ? "all" : String(focusDepth)}
+            onValueChange={(v) => setFocusDepth(v === "all" ? null : Number(v))}
+            orientation="horizontal"
+            aria-label="Focus depth"
+          >
+            <SegmentGroupIndicator />
+            {([null, 1, 2, 3, 5] as const).map((d) => (
+              <SegmentGroupItem
+                key={d ?? "all"}
+                value={d === null ? "all" : String(d)}
+              >
+                {d === null ? "All" : d}
+              </SegmentGroupItem>
+            ))}
+          </SegmentGroup>
         </div>
 
-        <div className="h-4 w-px bg-border" />
+        <ToolbarSeparator orientation="vertical" className="h-4" />
 
         {filteredNodes.length > 0 && (
           <div className="shrink-0 font-mono text-sm text-muted-foreground tabular-nums">
@@ -828,17 +977,21 @@ function CodeGraphPage() {
           </div>
         )}
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`rounded p-1.5 transition-colors ${showAnalysis ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
-          onClick={() => setShowAnalysis(!showAnalysis)}
-          title="Toggle analysis panel"
-          aria-label="Toggle analysis panel"
-        >
-          <PanelRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Toggle
+              size="sm"
+              pressed={showAnalysis}
+              onPressedChange={setShowAnalysis}
+              aria-label="Toggle analysis panel"
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent>Toggle analysis panel</TooltipContent>
+        </Tooltip>
+        </TooltipProvider>
+      </Toolbar>
 
       {/* ── Three-panel content ────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -846,13 +999,7 @@ function CodeGraphPage() {
         {showInspector && (
           <div className="w-[280px] shrink-0 overflow-hidden">
             <CodeInspectorPanel
-              symbolDetail={
-                selectedNode &&
-                selectedNode.kind !== "file" &&
-                selectedNode.kind !== "module"
-                  ? (symbolDetail ?? null)
-                  : null
-              }
+              symbolDetail={gatedSymbolDetail}
               searchResults={searchResults}
               fileList={fileList}
               onFileSelect={handleFileSelect}
@@ -869,36 +1016,48 @@ function CodeGraphPage() {
         <div className="relative min-w-0 flex-1">
           {!selectedRepoId && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card">
-                <span className="font-mono text-2xl text-muted-foreground">◇</span>
-              </div>
-              <p className="font-mono text-sm text-foreground">
-                Select a repository
-              </p>
-              <p className="mt-1 font-mono text-sm text-muted-foreground">
-                to visualize its code graph
-              </p>
+              <EmptyState
+                icon={<FolderGit2 className="h-8 w-8" />}
+                title="Select a repository"
+                description="to visualize its code graph"
+              />
             </div>
           )}
           {selectedRepoId && isLoading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
-              <Loader2 className="mb-3 h-6 w-6 animate-spin text-primary" />
-              <p className="font-mono text-sm text-foreground">
-                Loading graph…
-              </p>
+              <Spinner size="lg" label="Loading graph…" />
             </div>
           )}
-          {selectedRepoId && !isLoading && filteredNodes.length === 0 && (
+          {selectedRepoId && !isLoading && isGraphError && !graphData && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card">
-                <span className="font-mono text-2xl text-muted-foreground">!</span>
-              </div>
-              <p className="font-mono text-sm text-foreground">No graph data</p>
-              <p className="mt-1 font-mono text-sm text-muted-foreground">
-                Index this repo from the Repositories page
-              </p>
+              <EmptyState
+                icon={<CircleAlert className="h-8 w-8" />}
+                title="Failed to load graph"
+                description="The request failed — this is not an indexing problem"
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchGraph()}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
             </div>
           )}
+          {selectedRepoId &&
+            !isLoading &&
+            !isGraphError &&
+            filteredNodes.length === 0 && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
+                <EmptyState
+                  icon={<CircleAlert className="h-8 w-8" />}
+                  title="No graph data"
+                  description="Index this repo from the Repositories page"
+                />
+              </div>
+            )}
           {filteredNodes.length > 0 && (
             <CodeGraphRenderer
               ref={rendererRef}
@@ -914,6 +1073,8 @@ function CodeGraphPage() {
               tokens={tokens}
               layout={layout}
               colorMode={colorMode}
+              onLayoutRunningChange={setIsPlaying}
+              viewportKey={selectedRepoId}
             />
           )}
 
@@ -926,13 +1087,7 @@ function CodeGraphPage() {
           <div className="w-[300px] shrink-0 overflow-hidden">
             <CodeAnalysisPanel
               selectedNode={selectedNode}
-              symbolDetail={
-                selectedNode &&
-                selectedNode.kind !== "file" &&
-                selectedNode.kind !== "module"
-                  ? (symbolDetail ?? null)
-                  : null
-              }
+              symbolDetail={gatedSymbolDetail}
               blastRadiusIds={blastRadiusIds}
               blastRadiusData={blastRadiusData}
               onBlastRadius={handleBlastRadius}

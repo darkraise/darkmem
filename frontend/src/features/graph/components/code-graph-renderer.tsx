@@ -66,6 +66,31 @@ function brightenColor(hex: string, factor: number): string {
   )
 }
 
+// The reducers run per node/edge on every Sigma refresh (hover included);
+// regex-parsing colors there dominates frame time on large graphs. The input
+// space is tiny (palette colors × a few constants), so cache the variants.
+const colorVariantCache = new Map<string, string>()
+
+function dimColorCached(hex: string, amount: number, bgHex: string): string {
+  const key = `d|${hex}|${amount}|${bgHex}`
+  let value = colorVariantCache.get(key)
+  if (value === undefined) {
+    value = dimColor(hex, amount, bgHex)
+    colorVariantCache.set(key, value)
+  }
+  return value
+}
+
+function brightenColorCached(hex: string, factor: number): string {
+  const key = `b|${hex}|${factor}`
+  let value = colorVariantCache.get(key)
+  if (value === undefined) {
+    value = brightenColor(hex, factor)
+    colorVariantCache.set(key, value)
+  }
+  return value
+}
+
 // ── Node constants ────────────────────────────────────────────
 
 const NODE_SIZES: Record<string, number> = {
@@ -365,6 +390,14 @@ interface CodeGraphRendererProps {
   tokens: GraphThemeTokens
   layout?: CodeGraphLayout
   colorMode?: CodeGraphColorMode
+  /** Reports the real FA2 run state (auto-start on rebuild, auto-stop timer,
+   *  manual pause) so the toolbar toggle can never desync from it. */
+  onLayoutRunningChange?: (running: boolean) => void
+  /** Identity of the dataset (the repo id). The camera survives rebuilds with
+   *  the same key (filter/theme/color changes) and resets when it changes —
+   *  node-id sampling can't tell repos apart, since unscoped ids like module
+   *  names repeat across repos. */
+  viewportKey?: string | null
 }
 
 export const CodeGraphRenderer = forwardRef<
@@ -384,6 +417,8 @@ export const CodeGraphRenderer = forwardRef<
     tokens,
     layout = "force",
     colorMode = "type",
+    onLayoutRunningChange,
+    viewportKey = null,
   },
   ref,
 ) {
@@ -404,14 +439,36 @@ export const CodeGraphRenderer = forwardRef<
   // Tracks whether the FA2 worker is actively running, so play/pause and the
   // imperative handle report the real state rather than the last command.
   const layoutRunningRef = useRef(false)
+  const onLayoutRunningChangeRef = useRef(onLayoutRunningChange)
+  onLayoutRunningChangeRef.current = onLayoutRunningChange
+  const setLayoutRunningState = useCallback((running: boolean) => {
+    if (layoutRunningRef.current === running) return
+    layoutRunningRef.current = running
+    onLayoutRunningChangeRef.current?.(running)
+  }, [])
   const edgesRef = useRef(edges)
   edgesRef.current = edges
+  // A focusNode() call that targets a node not yet in the scene (the caller
+  // just revealed it by widening the filters) is parked here and honored at
+  // the end of the next rebuild — focusing earlier is a silent no-op.
+  const pendingFocusRef = useRef<string | null>(null)
+  // Re-center on this node when the FA2 auto-stop fires: a deferred focus
+  // consumed in force mode aims at seed positions the simulation then moves.
+  const focusAfterSettleRef = useRef<string | null>(null)
+  const viewportKeyRef = useRef(viewportKey)
+  viewportKeyRef.current = viewportKey
+  // Camera state captured by the build effect's cleanup (which runs BEFORE
+  // the next buildGraph — by then sigmaRef is already null), keyed by the
+  // dataset it was looking at.
+  const savedCameraRef = useRef<{
+    key: string | null
+    state: { x: number; y: number; ratio: number; angle: number }
+  } | null>(null)
 
-  // Theme identity in the key forces a full rebuild — node/edge colors, the
-  // dim base, labels, and hover/selection chrome are all baked at build time,
-  // so they must recompute when the accent or mode flips.
+  // Theme identity forces a full rebuild — node/edge colors, the dim base,
+  // labels, and hover/selection chrome are all baked at build time, so they
+  // must recompute when the accent or mode flips.
   const themeKey = `${tokens.primary}:${tokens.background}:${tokens.isDark}`
-  const graphKey = `${nodes.length}:${edges.length}:${nodes[0]?.id ?? ""}:${nodes[nodes.length - 1]?.id ?? ""}:${themeKey}:${colorMode}`
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
@@ -430,7 +487,10 @@ export const CodeGraphRenderer = forwardRef<
       graphRef.current = null
     }
 
-    const graph = new Graph()
+    // Multigraph: the backend legitimately emits several edge types between
+    // the same pair (contains + has_method on every class method); a simple
+    // graph would throw on the second one and silently drop it.
+    const graph = new Graph({ multi: true, type: "directed" })
     graphRef.current = graph
 
     const defaultNodeColor = tokens.mutedForeground
@@ -565,12 +625,14 @@ export const CodeGraphRenderer = forwardRef<
       })
     }
 
-    // BFS from structural nodes
+    // BFS from structural nodes (pointer-indexed: Array.shift is O(n) and
+    // turns this into O(n²) on large graphs)
     const queue = [...structuralNodes.map((n) => n.id)]
     const visited = new Set(queue)
+    let queueHead = 0
 
-    while (queue.length > 0) {
-      const currentId = queue.shift()!
+    while (queueHead < queue.length) {
+      const currentId = queue[queueHead++]!
       const children = parentToChildren.get(currentId) || []
       for (const childId of children) {
         if (!visited.has(childId)) {
@@ -589,27 +651,41 @@ export const CodeGraphRenderer = forwardRef<
     }
 
     // ── Add edges ─────────────────────────────────────────────
+    // Parallel edges of different types render side by side (multigraph +
+    // parallel index below); exact (source, target, type) repeats from the
+    // API are deduped so they don't double-draw.
+    const seenEdges = new Set<string>()
     for (const e of edges) {
       if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue
-      try {
-        const edgeType = e.type?.toLowerCase() ?? ""
-        graph.addEdge(e.source, e.target, {
-          color: edgeColors[edgeType] || defaultEdgeColor,
-          size:
-            edgeBaseSize *
-            (EDGE_SIZE_MULTIPLIERS[edgeType] || DEFAULT_EDGE_SIZE),
-          type: "curve",
-          curvature: 0.12 + seededUnit(`${e.source}->${e.target}`, 2) * 0.08,
-          _relType: edgeType,
-        })
-      } catch {
-        /* duplicate edge */
-      }
+      const edgeType = e.type?.toLowerCase() ?? ""
+      const dedupeKey = `${e.source}|${e.target}|${edgeType}`
+      if (seenEdges.has(dedupeKey)) continue
+      seenEdges.add(dedupeKey)
+      graph.addEdge(e.source, e.target, {
+        color: edgeColors[edgeType] || defaultEdgeColor,
+        size:
+          edgeBaseSize *
+          (EDGE_SIZE_MULTIPLIERS[edgeType] || DEFAULT_EDGE_SIZE),
+        type: "curve",
+        curvature:
+          0.12 + seededUnit(`${e.source}->${e.target}:${edgeType}`, 2) * 0.08,
+        _relType: edgeType,
+      })
     }
 
     indexParallelEdgesIndex(graph, {
       edgeIndexAttribute: "parallelIndex",
       edgeMaxIndexAttribute: "parallelMaxIndex",
+    })
+    // EdgeCurveProgram only reads `curvature` — the parallel index does
+    // nothing by itself, so spread parallel edges across distinct curvature
+    // steps or same-pair edge types render stacked on top of each other.
+    graph.forEachEdge((edge, attrs) => {
+      const idx = attrs.parallelIndex as number | null
+      const max = attrs.parallelMaxIndex as number | null
+      if (typeof idx === "number" && typeof max === "number" && max > 0) {
+        graph.setEdgeAttribute(edge, "curvature", 0.1 + (idx / max) * 0.3)
+      }
     })
 
     // ── Sigma instance ────────────────────────────────────────
@@ -688,14 +764,17 @@ export const CodeGraphRenderer = forwardRef<
         const sel = selectedIdRef.current
         const hov = hoveredNodeRef.current
 
-        if (hasHighlights && !sel) {
+        // Blast-radius takes precedence over the selection styling: running it
+        // requires a selected node, so gating on !sel would make the overlay
+        // unreachable in every real flow.
+        if (hasHighlights) {
           if (hl.has(node)) {
             res.color = tokens.destructive
             res.size = baseSize * 1.8
             res.zIndex = 3
             res.highlighted = true
           } else {
-            res.color = dimColor(data.color || defaultNodeColor, 0.15, bg)
+            res.color = dimColorCached(data.color || defaultNodeColor, 0.15, bg)
             res.size = baseSize * 0.4
             res.zIndex = 0
           }
@@ -712,7 +791,7 @@ export const CodeGraphRenderer = forwardRef<
             res.zIndex = 3
             res.highlighted = true
           } else {
-            res.color = dimColor(data.color || defaultNodeColor, 0.18, bg)
+            res.color = dimColorCached(data.color || defaultNodeColor, 0.18, bg)
             res.size = baseSize * 0.45
             res.zIndex = 0
           }
@@ -734,7 +813,7 @@ export const CodeGraphRenderer = forwardRef<
             res.size = baseSize * 1.3
             res.zIndex = 1
           } else {
-            res.color = dimColor(data.color || defaultNodeColor, 0.25, bg)
+            res.color = dimColorCached(data.color || defaultNodeColor, 0.25, bg)
             res.size = baseSize * 0.6
             res.zIndex = 0
           }
@@ -742,7 +821,7 @@ export const CodeGraphRenderer = forwardRef<
         }
 
         if (hov === node) {
-          res.color = brightenColor(data.color || defaultNodeColor, 1.5)
+          res.color = brightenColorCached(data.color || defaultNodeColor, 1.5)
           res.size = baseSize * 1.4
           res.zIndex = 2
           res.highlighted = true
@@ -780,7 +859,7 @@ export const CodeGraphRenderer = forwardRef<
         const hov = hoveredNodeRef.current
         const [src, tgt] = graph.extremities(edge)
 
-        if (hasHighlights && !sel) {
+        if (hasHighlights) {
           const srcActive = hl.has(src)
           const tgtActive = hl.has(tgt)
 
@@ -789,11 +868,11 @@ export const CodeGraphRenderer = forwardRef<
             res.size = Math.max(2, (data.size || 1) * 3)
             res.zIndex = 2
           } else if (srcActive || tgtActive) {
-            res.color = dimColor(tokens.primary, 0.4, bg)
+            res.color = dimColorCached(tokens.primary, 0.4, bg)
             res.size = 1
             res.zIndex = 1
           } else {
-            res.color = dimColor(data.color || defaultEdgeColor, 0.08, bg)
+            res.color = dimColorCached(data.color || defaultEdgeColor, 0.08, bg)
             res.size = 0.2
             res.zIndex = 0
           }
@@ -809,11 +888,11 @@ export const CodeGraphRenderer = forwardRef<
             res.size = Math.max(2, (data.size || 1) * 3)
             res.zIndex = 2
           } else if (srcActive || tgtActive) {
-            res.color = dimColor(tokens.primary, 0.4, bg)
+            res.color = dimColorCached(tokens.primary, 0.4, bg)
             res.size = 1
             res.zIndex = 1
           } else {
-            res.color = dimColor(data.color || defaultEdgeColor, 0.08, bg)
+            res.color = dimColorCached(data.color || defaultEdgeColor, 0.08, bg)
             res.size = 0.2
             res.zIndex = 0
           }
@@ -823,11 +902,11 @@ export const CodeGraphRenderer = forwardRef<
         if (sel) {
           const isConnected = src === sel || tgt === sel
           if (isConnected) {
-            res.color = brightenColor(data.color || defaultEdgeColor, 1.5)
+            res.color = brightenColorCached(data.color || defaultEdgeColor, 1.5)
             res.size = Math.max(3, (data.size || 1) * 4)
             res.zIndex = 2
           } else {
-            res.color = dimColor(data.color || defaultEdgeColor, 0.1, bg)
+            res.color = dimColorCached(data.color || defaultEdgeColor, 0.1, bg)
             res.size = 0.3
             res.zIndex = 0
           }
@@ -837,7 +916,7 @@ export const CodeGraphRenderer = forwardRef<
         if (hov && (src === hov || tgt === hov)) {
           res.size = (data.size || DEFAULT_EDGE_SIZE) * 2
           const neighborNode = src === hov ? tgt : src
-          res.color = brightenColor(
+          res.color = brightenColorCached(
             (graph.getNodeAttribute(neighborNode, "color") as string) ||
               defaultNodeColor,
             1.3,
@@ -881,6 +960,29 @@ export const CodeGraphRenderer = forwardRef<
 
     sigmaRef.current = sigma
 
+    // Carry the camera across rebuilds of the SAME dataset (filter/theme/
+    // color changes) so a checkbox toggle doesn't yank the user back to the
+    // default framing; a different viewportKey (repo switch) starts fresh.
+    const saved = savedCameraRef.current
+    savedCameraRef.current = null
+    if (saved && saved.key === viewportKeyRef.current) {
+      sigma.getCamera().setState(saved.state)
+    }
+    if (pendingFocusRef.current) {
+      const focusId = pendingFocusRef.current
+      pendingFocusRef.current = null
+      if (graph.hasNode(focusId)) {
+        const pos = sigma.getNodeDisplayData(focusId)
+        if (pos) {
+          sigma
+            .getCamera()
+            .animate({ x: pos.x, y: pos.y, ratio: 0.15 }, { duration: 400 })
+        }
+        // Seed positions move once FA2 runs; re-center when it settles.
+        focusAfterSettleRef.current = focusId
+      }
+    }
+
     // The FA2 worker is always instantiated so play/pause can resume it, but it
     // only auto-starts for the force layout. Tree/circles get manual positions
     // applied by the layout effect that runs right after this build.
@@ -891,7 +993,7 @@ export const CodeGraphRenderer = forwardRef<
     fa2Ref.current = fa2
 
     if (layoutRef.current !== "force") {
-      layoutRunningRef.current = false
+      setLayoutRunningState(false)
       // Apply manual positions now so a rebuild (data/filter/theme change) while
       // tree/circles is active keeps the chosen layout instead of the FA2 seed.
       const rootIds = graph.filterNodes((_, attrs) =>
@@ -905,7 +1007,7 @@ export const CodeGraphRenderer = forwardRef<
     }
 
     fa2.start()
-    layoutRunningRef.current = true
+    setLayoutRunningState(true)
 
     const duration = getLayoutDuration(nodeCount)
 
@@ -913,16 +1015,35 @@ export const CodeGraphRenderer = forwardRef<
       if (fa2Ref.current) {
         fa2Ref.current.stop()
       }
-      layoutRunningRef.current = false
+      setLayoutRunningState(false)
       if (!graphRef.current || !sigmaRef.current) return
 
       noverlap.assign(graphRef.current, NOVERLAP_SETTINGS)
       sigmaRef.current.refresh()
+
+      const settleFocusId = focusAfterSettleRef.current
+      focusAfterSettleRef.current = null
+      if (settleFocusId && graphRef.current.hasNode(settleFocusId)) {
+        const pos = sigmaRef.current.getNodeDisplayData(settleFocusId)
+        if (pos) {
+          sigmaRef.current
+            .getCamera()
+            .animate({ x: pos.x, y: pos.y, ratio: 0.15 }, { duration: 400 })
+        }
+      }
     }, duration)
+    // Identity-keyed on purpose: the route memoizes nodes/edges, so a rebuild
+    // happens exactly when the data, filters, theme (via themeKey), or color
+    // mode actually change. tokens/nodeColors/edgeColors are proxied by
+    // themeKey — they all derive from the same CSS variables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphKey])
+  }, [nodes, edges, themeKey, colorMode, setLayoutRunningState])
 
   useEffect(() => {
+    // Captured now, not in the cleanup: when the cleanup runs on a repo
+    // switch, viewportKeyRef already holds the NEW key while the dying sigma
+    // still frames the OLD dataset.
+    const keyAtBuild = viewportKeyRef.current
     const frame = requestAnimationFrame(() => buildGraph())
     return () => {
       cancelAnimationFrame(frame)
@@ -935,6 +1056,12 @@ export const CodeGraphRenderer = forwardRef<
         fa2Ref.current = null
       }
       if (sigmaRef.current) {
+        // This cleanup runs BEFORE the next buildGraph, so the camera must be
+        // captured here — by the time buildGraph executes, sigmaRef is null.
+        savedCameraRef.current = {
+          key: keyAtBuild,
+          state: sigmaRef.current.getCamera().getState(),
+        }
         sigmaRef.current.kill()
         sigmaRef.current = null
         graphRef.current = null
@@ -1012,7 +1139,7 @@ export const CodeGraphRenderer = forwardRef<
       }
       if (fa2Ref.current && !layoutRunningRef.current) {
         fa2Ref.current.start()
-        layoutRunningRef.current = true
+        setLayoutRunningState(true)
       }
       return
     }
@@ -1024,7 +1151,7 @@ export const CodeGraphRenderer = forwardRef<
     if (fa2Ref.current) {
       fa2Ref.current.stop()
     }
-    layoutRunningRef.current = false
+    setLayoutRunningState(false)
 
     const rootIds = graph.filterNodes((_, attrs) =>
       STRUCTURAL_TYPES.has((attrs._kind as string)?.toLowerCase() ?? ""),
@@ -1037,7 +1164,7 @@ export const CodeGraphRenderer = forwardRef<
     sigma.refresh()
     fitView()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, graphKey, fitView])
+  }, [layout, nodes, edges, fitView, setLayoutRunningState])
 
   useImperativeHandle(
     ref,
@@ -1048,7 +1175,12 @@ export const CodeGraphRenderer = forwardRef<
       fitView,
       focusNode: (id: string) => {
         const sigma = sigmaRef.current
-        if (!sigma || !graphRef.current?.hasNode(id)) return
+        if (!sigma || !graphRef.current?.hasNode(id)) {
+          // The caller may have just revealed the node by widening filters;
+          // it only exists after the next rebuild, so park the request.
+          pendingFocusRef.current = id
+          return
+        }
         const pos = sigma.getNodeDisplayData(id)
         if (pos) {
           sigma
@@ -1066,15 +1198,21 @@ export const CodeGraphRenderer = forwardRef<
             layoutTimeoutRef.current = null
           }
           fa2.start()
-          layoutRunningRef.current = true
+          setLayoutRunningState(true)
         } else if (!running && layoutRunningRef.current) {
+          // Also disarm the auto-stop timer: left armed, it would fire after
+          // an explicit pause and run noverlap against a settled graph.
+          if (layoutTimeoutRef.current) {
+            clearTimeout(layoutTimeoutRef.current)
+            layoutTimeoutRef.current = null
+          }
           fa2.stop()
-          layoutRunningRef.current = false
+          setLayoutRunningState(false)
         }
       },
       isLayoutRunning: () => layoutRunningRef.current,
     }),
-    [fitView],
+    [fitView, setLayoutRunningState],
   )
 
   return (

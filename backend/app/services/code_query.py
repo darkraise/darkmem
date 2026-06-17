@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models.code import CodeFile, CodeSymbol
 from app.repositories.vector import PostgresVectorRepository
@@ -144,12 +145,21 @@ class CodeQueryService:
             })
         return {"items": items, "total": total}
 
-    async def lookup_symbol(self, name: str, file_path: str) -> dict | None:
-        sym = (await self.session.execute(
-            select(CodeSymbol).join(CodeFile).where(
-                CodeSymbol.name == name, CodeFile.file_path == file_path,
-            )
-        )).scalars().first()
+    async def lookup_symbol(
+        self, name: str, file_path: str, owner: str | None = None
+    ) -> dict | None:
+        stmt = select(CodeSymbol).join(CodeFile).where(
+            CodeSymbol.name == name, CodeFile.file_path == file_path,
+        )
+        if owner:
+            # Same-named methods under different classes in one file are only
+            # distinguishable by their parent symbol (the owner segment of
+            # the graph node key).
+            parent = aliased(CodeSymbol)
+            stmt = stmt.join(
+                parent, CodeSymbol.parent_symbol_id == parent.id
+            ).where(parent.name == owner)
+        sym = (await self.session.execute(stmt)).scalars().first()
         if not sym:
             return None
 
@@ -206,7 +216,7 @@ class CodeQueryService:
 
     async def get_code_graph(self, repo_id: UUID) -> dict:
         repo_id_str = str(repo_id)
-        nodes: list[dict] = []
+        nodes_by_id: dict[str, dict] = {}
         edges: list[dict] = []
 
         file_rows = (await self.session.execute(
@@ -214,7 +224,9 @@ class CodeQueryService:
             {"repo_id": repo_id_str},
         )).mappings().all()
         for row in file_rows:
-            nodes.append({"id": row["file_path"], "label": row["file_path"], "kind": "file"})
+            nodes_by_id[row["file_path"]] = {
+                "id": row["file_path"], "label": row["file_path"], "kind": "file",
+            }
 
         sym_rows = (await self.session.execute(
             text("""
@@ -228,8 +240,15 @@ class CodeQueryService:
         )).mappings().all()
         for row in sym_rows:
             node_id = compose_key("symbol", row["name"], row["file_path"], owner=row["owner"])
-            nodes.append({"id": node_id, "label": row["name"], "kind": row["kind"], "file_path": row["file_path"]})
+            nodes_by_id[node_id] = {
+                "id": node_id, "label": row["name"], "kind": row["kind"],
+                "file_path": row["file_path"],
+            }
 
+        # code_graph_nodes re-keys files as their path and symbols via the same
+        # compose_key, so most aux rows are the nodes above under a generic kind;
+        # merge their properties into the kind-specific node instead of emitting
+        # a duplicate id.
         aux_rows = (await self.session.execute(
             text("""
                 SELECT key, kind, label, properties, properties->>'file_path' AS file_path
@@ -239,12 +258,24 @@ class CodeQueryService:
             {"repo_id": repo_id_str},
         )).mappings().all()
         for row in aux_rows:
+            existing = nodes_by_id.get(row["key"])
+            if existing is not None:
+                # Only 'file'/'symbol' rows are re-keyed duplicates of nodes
+                # already emitted. Uniqueness is per (repo, kind, key), so an
+                # unrelated kind may share the key (module "config" vs
+                # property "config") and must not clobber the richer node.
+                if row["kind"] in ("file", "symbol"):
+                    if row["file_path"] and "file_path" not in existing:
+                        existing["file_path"] = row["file_path"]
+                    if row["properties"]:
+                        existing["properties"] = row["properties"]
+                continue
             node = {"id": row["key"], "label": row["label"] or row["key"], "kind": row["kind"]}
             if row["file_path"]:
                 node["file_path"] = row["file_path"]
             if row["properties"]:
                 node["properties"] = row["properties"]
-            nodes.append(node)
+            nodes_by_id[row["key"]] = node
 
         edge_rows = (await self.session.execute(
             text("""
@@ -262,7 +293,7 @@ class CodeQueryService:
                 edge["properties"] = props
             edges.append(edge)
 
-        return {"nodes": nodes, "edges": edges}
+        return {"nodes": list(nodes_by_id.values()), "edges": edges}
 
     async def calculate_blast_radius(self, symbol_id: str, max_depth: int = 10) -> dict | None:
         sym = None

@@ -81,7 +81,7 @@ describe("CodeInspectorPanel — Symbols tab", () => {
     const user = userEvent.setup()
     renderPanel()
 
-    await user.click(screen.getByRole("button", { name: "Symbols" }))
+    await user.click(screen.getByRole("tab", { name: /symbols/i }))
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalled())
     const url = (apiFetchMock.mock.calls[0]?.[0] ?? "") as string
@@ -96,7 +96,7 @@ describe("CodeInspectorPanel — Symbols tab", () => {
     const user = userEvent.setup()
     renderPanel()
 
-    await user.click(screen.getByRole("button", { name: "Symbols" }))
+    await user.click(screen.getByRole("tab", { name: /symbols/i }))
 
     expect(await screen.findByText("UserService")).toBeInTheDocument()
     expect(screen.getByText("login")).toBeInTheDocument()
@@ -108,7 +108,7 @@ describe("CodeInspectorPanel — Symbols tab", () => {
     const user = userEvent.setup()
     const { onSymbolSelect } = renderPanel()
 
-    await user.click(screen.getByRole("button", { name: "Symbols" }))
+    await user.click(screen.getByRole("tab", { name: /symbols/i }))
     await user.click(await screen.findByText("UserService"))
 
     expect(onSymbolSelect).toHaveBeenCalledWith(
@@ -121,7 +121,7 @@ describe("CodeInspectorPanel — Symbols tab", () => {
     const user = userEvent.setup()
     renderPanel()
 
-    await user.click(screen.getByRole("button", { name: "Symbols" }))
+    await user.click(screen.getByRole("tab", { name: /symbols/i }))
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalled())
 
     await user.type(screen.getByPlaceholderText("Filter symbols…"), "login")

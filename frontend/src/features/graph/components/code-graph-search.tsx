@@ -6,6 +6,7 @@ import {
   CommandItem,
   CommandEmpty,
 } from "darkraise-ui/components/command"
+import { Badge } from "darkraise-ui/components/badge"
 
 export interface CodeGraphSearchNode {
   id: string
@@ -83,15 +84,15 @@ export function CodeGraphSearch({
               className="size-2 shrink-0 rounded-full"
               style={{
                 backgroundColor:
-                  nodeColors[node.kind] ?? "hsl(var(--muted-foreground))",
+                  nodeColors[node.kind] ?? "var(--muted-foreground)",
               }}
             />
             <span className="min-w-0 flex-1 truncate text-foreground">
               {node.label}
             </span>
-            <span className="text-muted-foreground shrink-0 text-sm">
+            <Badge variant="outline" size="sm" className="shrink-0">
               {node.kind}
-            </span>
+            </Badge>
           </CommandItem>
         ))}
       </CommandList>
