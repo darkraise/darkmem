@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -460,5 +462,113 @@ async def update_repos_path(
         row.value = {"path": str(resolved)}
     await session.flush()
     return ReposPathResponse(path=str(resolved))
+
+
+# ── Theme settings (frontend theme-switcher persistence) ─────────────
+
+
+THEME_SETTINGS_KEY = "theme_settings"
+
+# Axis values are darkraise-ui design-token slugs ("indigo", "cozy",
+# "blobs"). The pattern constrains shape rather than enumerating values so a
+# library upgrade that adds a color doesn't start rejecting saves.
+_AXIS_VALUE = r"^[a-z][a-z0-9-]{0,31}$"
+
+
+class ThemeSettingsPayload(BaseModel):
+    """Mirrors darkraise-ui's ThemeSettings; stored and served verbatim in
+    its camelCase wire form so the frontend round-trips without mapping."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    accent_color: str = Field(alias="accentColor", pattern=_AXIS_VALUE)
+    surface_color: str = Field(alias="surfaceColor", pattern=_AXIS_VALUE)
+    preset: str = Field(pattern=_AXIS_VALUE)
+    background_style: str = Field(alias="backgroundStyle", pattern=_AXIS_VALUE)
+    background_intensity: str | None = Field(
+        default=None, alias="backgroundIntensity", pattern=_AXIS_VALUE
+    )
+    gradient_pattern: str | None = Field(
+        default=None, alias="gradientPattern", pattern=_AXIS_VALUE
+    )
+    mode: str = Field(pattern=_AXIS_VALUE)
+    density: str | None = Field(default=None, pattern=_AXIS_VALUE)
+    elevation: str | None = Field(default=None, pattern=_AXIS_VALUE)
+    button_elevation: str | None = Field(
+        default=None, alias="buttonElevation", pattern=_AXIS_VALUE
+    )
+    radius: str | None = Field(default=None, pattern=_AXIS_VALUE)
+    preset_axis_values: dict[str, dict[str, str]] | None = Field(
+        default=None, alias="presetAxisValues"
+    )
+
+    @field_validator("preset_axis_values")
+    @classmethod
+    def _validate_preset_axis_values(
+        cls, value: dict[str, dict[str, str]] | None
+    ) -> dict[str, dict[str, str]] | None:
+        if value is None:
+            return value
+        if len(value) > 16:
+            raise ValueError("too many presets")
+        for preset_name, axes in value.items():
+            if not re.fullmatch(_AXIS_VALUE, preset_name):
+                raise ValueError(f"invalid preset name: {preset_name!r}")
+            if len(axes) > 16:
+                raise ValueError(f"too many axes for preset {preset_name!r}")
+            for axis_name, axis_value in axes.items():
+                if not re.fullmatch(_AXIS_VALUE, axis_name):
+                    raise ValueError(f"invalid axis name: {axis_name!r}")
+                if not re.fullmatch(_AXIS_VALUE, axis_value):
+                    raise ValueError(f"invalid axis value: {axis_value!r}")
+        return value
+
+
+class ThemeSettingsResponse(BaseModel):
+    settings: ThemeSettingsPayload | None = None
+
+
+class ThemeSettingsUpdate(BaseModel):
+    settings: ThemeSettingsPayload
+
+
+@router.get("/theme", response_model=ThemeSettingsResponse)
+async def get_theme_settings(
+    session: AsyncSession = Depends(get_session),
+):
+    """Deliberately unauthenticated: the ThemeProvider loads once at app
+    boot (above the router, possibly on the login screen), and the payload
+    is pure UI cosmetics. Writes stay auth-gated below."""
+    row = (await session.execute(
+        select(Config).where(Config.key == THEME_SETTINGS_KEY)
+    )).scalar_one_or_none()
+    if row is None or not isinstance(row.value, dict):
+        return ThemeSettingsResponse(settings=None)
+    try:
+        settings = ThemeSettingsPayload.model_validate(row.value)
+    except ValidationError:
+        # A row written under an older schema shouldn't break boot; the
+        # client falls back to its defaults and the next save heals it.
+        return ThemeSettingsResponse(settings=None)
+    return ThemeSettingsResponse(settings=settings)
+
+
+@router.put("/theme", response_model=ThemeSettingsResponse)
+async def update_theme_settings(
+    body: ThemeSettingsUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    stored = body.settings.model_dump(by_alias=True, exclude_none=True)
+    # Saves are debounce-fired by every browser session, so concurrent
+    # first-ever writes are plausible; select-then-insert would 500 the loser.
+    await session.execute(
+        pg_insert(Config)
+        .values(key=THEME_SETTINGS_KEY, value=stored)
+        .on_conflict_do_update(
+            index_elements=[Config.key], set_={"value": stored}
+        )
+    )
+    return ThemeSettingsResponse(settings=body.settings)
 
 

@@ -8,6 +8,7 @@ import {
 } from "darkraise-ui/components/floating-panel"
 import { tanstackRouterAdapter } from "./router-adapter"
 import { themeConfig } from "@/theme.config"
+import { themePersistence } from "@/lib/theme-persistence"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,7 +22,7 @@ const queryClient = new QueryClient({
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider config={themeConfig}>
+      <ThemeProvider config={themeConfig} persistence={themePersistence}>
         <RouterAdapterProvider value={tanstackRouterAdapter}>
           <FloatingPanelProvider>
             {children}

@@ -44,7 +44,9 @@ Collections are plural nouns; sub-resources nest (`/repos/{id}/tasks`).
   that concurrent per-row deletes hit.
 - **`PUT` on a config singleton/collection** to replace it wholesale
   (`/config/llm-providers`, `/llm-profiles`, `/feature-flags`, `/system-prompts`,
-  `/repos-path`) — idempotent full-replace.
+  `/repos-path`, `/config/theme`) — idempotent full-replace. `GET /config/theme`
+  is deliberately unauthenticated: the frontend theme loads at boot, before
+  login, and the payload is pure UI cosmetics.
 
 ## Naming
 
