@@ -200,7 +200,7 @@ class RepoManager:
                     )).scalar_one_or_none()
                     if repo:
                         repo.status = "error"
-                        repo.status_message = str(e)[:500]
+                        repo.status_message = _sanitize_url(str(e))[:500]
                         await session.commit()
             except Exception as inner_e:
                 logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
@@ -428,14 +428,14 @@ class RepoManager:
                 ),
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError(f"git command timed out after 300s: {' '.join(cmd)}")
+            raise RuntimeError(f"git command timed out after 300s: {_sanitize_url(' '.join(cmd))}")
         stderr_text = result.stderr.decode()
         if result.returncode != 0:
             if "Clone succeeded, but checkout failed" in stderr_text:
                 logger.warning("git clone succeeded with checkout warning: %s", stderr_text.strip())
             else:
-                logger.error("git command failed: %s\nstderr: %s", _sanitize_url(" ".join(cmd)), stderr_text)
-                raise RuntimeError(f"git command failed: {stderr_text}")
+                logger.error("git command failed: %s\nstderr: %s", _sanitize_url(" ".join(cmd)), _sanitize_url(stderr_text))
+                raise RuntimeError(f"git command failed: {_sanitize_url(stderr_text)}")
         return result.stdout.decode()
 
     @staticmethod
