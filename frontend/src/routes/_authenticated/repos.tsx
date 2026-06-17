@@ -51,6 +51,7 @@ import { Switch } from "darkraise-ui/components/switch"
 import { Plus, RefreshCw, X } from "lucide-react"
 import { EditRepoDialog } from "@/features/repos/components/edit-repo-dialog"
 import { relativeTime } from "@/lib/format"
+import { ignorePortaledOverlayPointerDown } from "@/lib/portal-overlays"
 import {
   Stat as StatRoot,
   StatLabel,
@@ -502,7 +503,9 @@ function RepositoriesPage() {
                   Add Repo
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent
+                onPointerDownOutside={ignorePortaledOverlayPointerDown}
+              >
                 <DialogHeader>
                   <DialogTitle>Add Repository</DialogTitle>
                 </DialogHeader>

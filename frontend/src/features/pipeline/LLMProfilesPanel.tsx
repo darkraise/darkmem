@@ -77,6 +77,7 @@ import {
   type LlmProfile,
 } from "@/hooks/api"
 import { navigateToSettingsTab } from "@/lib/settings-tab"
+import { ignorePortaledOverlayPointerDown } from "@/lib/portal-overlays"
 import { KNOWN_PURPOSES, purposeOf, type KnownPurpose } from "./purpose-of"
 
 type DraftProfile = LlmProfile & { _isNew?: boolean; _paramsText?: string }
@@ -405,7 +406,9 @@ export function LLMProfilesPanel() {
                 Add Profile
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent
+              onPointerDownOutside={ignorePortaledOverlayPointerDown}
+            >
               <DialogHeader>
                 <DialogTitle>Add LLM Profile</DialogTitle>
               </DialogHeader>

@@ -23,6 +23,7 @@ import {
   useTestLlmProvider,
   type LlmProviderTestResponse,
 } from "@/hooks/api"
+import { ignorePortaledOverlayPointerDown } from "@/lib/portal-overlays"
 
 interface Props {
   providerName: string | null
@@ -94,7 +95,10 @@ export function LLMProviderTestDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="max-w-md"
+        onPointerDownOutside={ignorePortaledOverlayPointerDown}
+      >
         <DialogHeader>
           <DialogTitle>
             Test {mode === "chat" ? "Chat" : "Embedding"} —{" "}
