@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown"
 import { Bot, User, FileText, Diamond } from "lucide-react"
 import { Avatar, AvatarFallback } from "darkraise-ui/components/avatar"
 import { Button } from "darkraise-ui/components/button"
+import { Spinner } from "darkraise-ui/components/spinner"
 import { SourceBadges } from "./source-badges"
 import { findEntityMatches } from "../lib/entity-match"
 import type { ChatMessage } from "@/hooks/api"
@@ -53,9 +54,9 @@ function truncateContent(content: string, maxLen = 40): string {
 
 function AssistantAvatar() {
   return (
-    <Avatar className="mt-0.5 h-7 w-7 shrink-0 rounded-lg bg-gradient-to-br from-indigo-500/15 to-violet-500/10">
-      <AvatarFallback className="rounded-lg bg-transparent">
-        <Bot className="h-4 w-4 text-indigo-300" />
+    <Avatar className="mt-0.5 h-7 w-7 shrink-0 rounded-lg">
+      <AvatarFallback className="bg-primary/10 text-primary rounded-lg">
+        <Bot className="h-4 w-4" />
       </AvatarFallback>
     </Avatar>
   )
@@ -63,9 +64,9 @@ function AssistantAvatar() {
 
 function UserAvatar() {
   return (
-    <Avatar className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-indigo-500/15 bg-indigo-500/10">
-      <AvatarFallback className="rounded-full bg-transparent">
-        <User className="h-4 w-4 text-indigo-300" />
+    <Avatar className="mt-0.5 h-7 w-7 shrink-0">
+      <AvatarFallback className="bg-primary/10 text-primary">
+        <User className="h-4 w-4" />
       </AvatarFallback>
     </Avatar>
   )
@@ -83,8 +84,8 @@ function MemoryBadge({
     : `Memory ${mem.id?.slice(0, 8) ?? mem.index}`
   return (
     <Button
-      variant="ghost"
-      className="mx-0.5 inline-flex items-center gap-1 rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 align-baseline text-indigo-300 transition-colors hover:bg-indigo-500/20 hover:text-indigo-200"
+      variant="secondary"
+      className="mx-0.5 inline-flex h-auto items-center gap-1 px-1.5 py-0.5 align-baseline"
       onClick={onClick}
       title={mem.content || undefined}
     >
@@ -103,8 +104,8 @@ function EntityBadge({
 }) {
   return (
     <Button
-      variant="ghost"
-      className="mx-0.5 inline-flex items-center gap-1 rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 align-baseline text-violet-300 transition-colors hover:bg-violet-500/20 hover:text-violet-200"
+      variant="outline"
+      className="mx-0.5 inline-flex h-auto items-center gap-1 px-1.5 py-0.5 align-baseline"
       onClick={onClick}
     >
       <Diamond className="h-3 w-3 shrink-0" />
@@ -264,7 +265,7 @@ export function ChatMessages({
           {msg.role === "user" ? (
             <div className="flex justify-end gap-3">
               <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
-                <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-sm">
+                <div className="text-foreground border-primary/20 bg-primary/10 rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm">
                   {msg.content}
                 </div>
                 <span className="text-muted-foreground/70 px-1 text-sm">
@@ -283,7 +284,7 @@ export function ChatMessages({
         <div className="animate-in fade-in duration-200">
           <div className="flex justify-end gap-3">
             <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
-              <div className="text-foreground rounded-2xl rounded-tr-sm border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 to-violet-500/8 px-4 py-2.5 text-sm">
+              <div className="text-foreground border-primary/20 bg-primary/10 rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm">
                 {pendingUserMessage}
               </div>
             </div>
@@ -303,10 +304,8 @@ export function ChatMessages({
       {isStreaming && !streamingContent && (
         <div className="animate-in fade-in flex gap-3 duration-200">
           <AssistantAvatar />
-          <div className="flex items-center gap-1.5 py-2">
-            <span className="h-1.5 w-1.5 animate-[pulse-glow_1.4s_ease-in-out_infinite] rounded-full bg-indigo-400 [animation-delay:0ms]" />
-            <span className="h-1.5 w-1.5 animate-[pulse-glow_1.4s_ease-in-out_infinite] rounded-full bg-indigo-400 [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 animate-[pulse-glow_1.4s_ease-in-out_infinite] rounded-full bg-indigo-400 [animation-delay:300ms]" />
+          <div className="flex items-center py-2">
+            <Spinner size="sm" variant="primary" aria-label="Assistant is thinking" />
           </div>
         </div>
       )}

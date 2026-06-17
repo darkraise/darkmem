@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { ChevronDown, ChevronUp, FileText, Diamond } from "lucide-react"
+import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import {
   Collapsible,
@@ -44,20 +45,20 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
         <CollapsibleTrigger asChild>
           <Button
             variant="ghost"
-            className="text-muted-foreground/70 hover:text-muted-foreground flex items-center gap-2 transition-colors"
+            className="text-muted-foreground/70 hover:text-muted-foreground flex items-center gap-2"
           >
             {memories.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-indigo-500/15 bg-indigo-500/8 px-2 py-0.5 text-indigo-300">
+              <Badge variant="secondary" className="gap-1">
                 <FileText className="h-3 w-3" />
                 {memories.length}{" "}
                 {memories.length === 1 ? "memory" : "memories"}
-              </span>
+              </Badge>
             )}
             {entityCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-violet-500/15 bg-violet-500/8 px-2 py-0.5 text-violet-300">
+              <Badge variant="outline" className="gap-1">
                 <Diamond className="h-3 w-3" />
                 {entityCount} {entityCount === 1 ? "entity" : "entities"}
-              </span>
+              </Badge>
             )}
             {open ? (
               <ChevronUp className="h-3 w-3" />
@@ -74,7 +75,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
               return (
                 <div
                   key={m.id ?? i}
-                  className="rounded-lg border border-[rgba(99,102,241,0.1)] bg-[#0c1018] p-2.5"
+                  className="border-border bg-card rounded-lg border p-2.5"
                 >
                   <div className="text-foreground/90 line-clamp-2 leading-relaxed">
                     {m.content || `Memory ${m.id?.slice(0, 8)}`}
@@ -82,7 +83,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                   <div className="text-muted-foreground/50 mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     {m.source && (
                       <span className="inline-flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                        <FileText className="h-3 w-3" />
                         {m.source}
                       </span>
                     )}
@@ -104,22 +105,16 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
               .map((e, i) => (
                 <div
                   key={e.id ?? i}
-                  className="flex items-center gap-2.5 rounded-lg border border-[rgba(99,102,241,0.1)] bg-[#0c1018] p-2.5"
+                  className="border-border bg-card flex items-center gap-2.5 rounded-lg border p-2.5"
                 >
-                  <span
-                    className="h-3 w-3 shrink-0"
-                    style={{
-                      clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
-                      backgroundColor: "#a78bfa",
-                    }}
-                  />
+                  <Diamond className="text-muted-foreground h-3 w-3 shrink-0" />
                   <span className="text-foreground/90 font-medium">
                     {e.name}
                   </span>
                   {e.entity_type && (
-                    <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-sm text-violet-300 capitalize">
+                    <Badge variant="secondary" className="capitalize">
                       {e.entity_type}
-                    </span>
+                    </Badge>
                   )}
                 </div>
               ))}

@@ -5,7 +5,6 @@ import { ChatMessages } from "./chat-messages"
 import { ChatInput } from "./chat-input"
 import { useConversation } from "@/hooks/api"
 import { useChatStream } from "../hooks/use-chat-stream"
-import { CHAT_GRADIENT_CLASS } from "./chat-gradient-button"
 import { Button } from "darkraise-ui/components/button"
 
 interface ChatOverlayProps {
@@ -54,8 +53,9 @@ export function ChatOverlay({
   if (!open) {
     return (
       <Button
-        variant="ghost"
-        className={`fixed right-4 bottom-4 z-40 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all ${CHAT_GRADIENT_CLASS}`}
+        size="icon"
+        aria-label="Open chat panel"
+        className="fixed right-4 bottom-4 z-40 h-10 w-10 rounded-full shadow-lg"
         onClick={() => setOpen(true)}
       >
         <MessageCircle className="h-5 w-5" />
@@ -68,7 +68,7 @@ export function ChatOverlay({
       role="dialog"
       aria-modal="false"
       aria-label="Chat panel"
-      className="bg-card fixed right-4 bottom-16 z-40 flex h-[680px] max-h-[calc(100vh-5rem)] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-[rgba(99,102,241,0.15)] shadow-[0_0_30px_rgba(99,102,241,0.08)]"
+      className="bg-card border-border fixed right-4 bottom-16 z-40 flex h-[680px] max-h-[calc(100vh-5rem)] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border shadow-lg"
       onKeyDown={(e) => {
         if (e.key === "Escape") setOpen(false)
       }}

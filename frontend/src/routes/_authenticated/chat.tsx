@@ -1,11 +1,18 @@
 import { useState, useCallback } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
 import { ChatSidebar } from "@/features/chat/components/chat-sidebar"
 import { ChatMessages } from "@/features/chat/components/chat-messages"
 import { ChatInput } from "@/features/chat/components/chat-input"
-import { Input } from "darkraise-ui/components/input"
 import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
+import { EmptyState } from "darkraise-ui/components/empty-state"
+import {
+  Editable,
+  EditableArea,
+  EditableInput,
+  EditablePreview,
+} from "darkraise-ui/components/editable"
 import {
   useConversations,
   useConversation,
@@ -23,10 +30,17 @@ export const Route = createFileRoute("/_authenticated/chat")({
   component: ChatPage,
 })
 
+const SUGGESTED_PROMPTS = [
+  "What do I know about Docker?",
+  "Summarize recent decisions",
+  "Network topology overview",
+  "What services does darkmem use?",
+]
+
 function ChatPage() {
+  useFullBleedContent()
   const { id: initialId } = Route.useSearch()
   const [activeId, setActiveId] = useState<string | null>(initialId ?? null)
-  const [editingTitle, setEditingTitle] = useState(false)
 
   const {
     data: convList,
@@ -71,14 +85,17 @@ function ChatPage() {
     [activeId, stream],
   )
 
-  const handleTitleSubmit = useCallback(
+  const handleTitleCommit = useCallback(
     async (newTitle: string) => {
-      if (activeId && newTitle.trim()) {
-        await updateConv.mutateAsync({ id: activeId, title: newTitle.trim() })
+      const trimmed = newTitle.trim()
+      // Editable's submitOnEnter also triggers a blur-submit when the input
+      // is CSS-hidden, re-committing the stale controlled value; the equality
+      // check drops that second commit (and redundant unchanged-title saves).
+      if (activeId && trimmed && trimmed !== (convDetail?.title ?? "")) {
+        await updateConv.mutateAsync({ id: activeId, title: trimmed })
       }
-      setEditingTitle(false)
     },
-    [activeId, updateConv],
+    [activeId, convDetail?.title, updateConv],
   )
 
   return (
@@ -98,29 +115,31 @@ function ChatPage() {
         {activeId || stream.isStreaming ? (
           <>
             <div className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-3">
-              {editingTitle ? (
-                <Input
-                  autoFocus
-                  defaultValue={convDetail?.title || ""}
-                  className="border-primary h-auto flex-1 rounded-none border-b bg-transparent py-0 font-semibold focus:border-primary"
-                  onBlur={(e) => handleTitleSubmit(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter")
-                      handleTitleSubmit(e.currentTarget.value)
-                    if (e.key === "Escape") setEditingTitle(false)
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="hover:text-primary flex-1 cursor-pointer truncate text-left text-sm font-semibold transition-colors"
-                  onClick={() => setEditingTitle(true)}
-                  title="Click to rename"
-                  aria-label="Rename conversation"
-                >
-                  {convDetail?.title || "New Chat"}
-                </button>
-              )}
+              <Editable
+                value={convDetail?.title ?? ""}
+                placeholder="New Chat"
+                submitOnBlur
+                submitOnEnter
+                cancelOnEscape
+                selectOnFocus
+                onValueCommit={({ value }) => handleTitleCommit(value)}
+                className="min-w-0 flex-1"
+              >
+                <EditableArea>
+                  <EditablePreview
+                    className="min-w-0 text-sm font-semibold"
+                    title="Click to rename"
+                    aria-label="Rename conversation"
+                  >
+                    {/* text-overflow is inert on the inline-flex preview
+                        itself, so the ellipsis needs a block-level child */}
+                    <span className="truncate">
+                      {convDetail?.title || "New Chat"}
+                    </span>
+                  </EditablePreview>
+                  <EditableInput className="text-sm font-semibold" />
+                </EditableArea>
+              </Editable>
               {messages.length > 0 && (
                 <span className="text-muted-foreground/70 shrink-0 text-sm">
                   {messages.length} message{messages.length !== 1 ? "s" : ""}
@@ -135,16 +154,19 @@ function ChatPage() {
                 <Skeleton className="h-20 w-2/3" />
               </div>
             ) : convDetailError && !stream.isStreaming ? (
-              <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 px-4">
-                <p className="text-sm">Failed to load this conversation.</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetchConvDetail()}
-                >
-                  Retry
-                </Button>
-              </div>
+              <EmptyState
+                className="flex-1"
+                title="Failed to load this conversation"
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchConvDetail()}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
             ) : (
               <ChatMessages
                 messages={messages}
@@ -161,48 +183,29 @@ function ChatPage() {
             />
           </>
         ) : (
-          <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-6 px-4">
-            <div
-              className="flex h-20 w-20 items-center justify-center rounded-2xl"
-              style={{
-                background:
-                  "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)",
-              }}
-            >
-              <Sparkles className="h-8 w-8 text-indigo-400" />
-            </div>
-            <div className="max-w-md text-center">
-              <p className="text-foreground mb-2 text-xl font-semibold">
-                Ask anything about your memories
-              </p>
-              <p className="text-sm leading-relaxed">
-                Chat with your knowledge base. Ask questions, explore
-                connections, and discover insights from your stored memories and
-                entities.
-              </p>
-            </div>
-
-            <div className="flex max-w-lg flex-wrap justify-center gap-2">
-              {[
-                "What do I know about Docker?",
-                "Summarize recent decisions",
-                "Network topology overview",
-                "What services does darkmem use?",
-              ].map((prompt) => (
-                <Button
-                  variant="ghost"
-                  key={prompt}
-                  className="bg-muted/40 text-muted-foreground rounded-full border border-[rgba(99,102,241,0.1)] px-4 py-2 whitespace-normal transition-all hover:border-[rgba(99,102,241,0.2)] hover:bg-[rgba(99,102,241,0.1)] hover:text-indigo-200"
-                  onClick={async () => {
-                    const resultId = await stream.sendMessage(null, prompt)
-                    if (resultId) setActiveId(resultId)
-                  }}
-                >
-                  {prompt}
-                </Button>
-              ))}
-            </div>
-          </div>
+          <EmptyState
+            className="flex-1"
+            icon={<Sparkles className="h-8 w-8" />}
+            title="Ask anything about your memories"
+            description="Chat with your knowledge base. Ask questions, explore connections, and discover insights from your stored memories and entities."
+            action={
+              <div className="flex max-w-lg flex-wrap justify-center gap-2">
+                {SUGGESTED_PROMPTS.map((prompt) => (
+                  <Button
+                    variant="outline"
+                    key={prompt}
+                    className="rounded-full whitespace-normal"
+                    onClick={async () => {
+                      const resultId = await stream.sendMessage(null, prompt)
+                      if (resultId) setActiveId(resultId)
+                    }}
+                  >
+                    {prompt}
+                  </Button>
+                ))}
+              </div>
+            }
+          />
         )}
       </div>
     </div>
