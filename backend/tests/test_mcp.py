@@ -123,6 +123,40 @@ async def test_memory_add_explicit_source_beats_header(mcp_http_client, session)
     assert memory.source == "my-orchestrator"
 
 
+async def test_memory_update_tags_only_preserves_content(mcp_http_client, session):
+    # Updating only tags must replace tags and leave content untouched. The MCP
+    # wrapper used to pass content=None explicitly, defeating the service's
+    # exclude_unset guard and clobbering the NOT NULL content column (which also
+    # aborted before tags were applied).
+    await _post_tool(mcp_http_client, "memory_add",
+                     {"content": "update tags-only probe", "tags": ["keep/a"]})
+    mem = await _get_memory(session, "update tags-only probe")
+
+    await _post_tool(mcp_http_client, "memory_update",
+                     {"memory_id": str(mem.id), "tags": ["new/b"]})
+
+    session.expire_all()
+    updated = await _get_memory(session, "update tags-only probe")
+    assert updated.content == "update tags-only probe"
+    assert {t.name for t in updated.tags} == {"new/b"}
+
+
+async def test_memory_update_type_only_preserves_content_and_tags(mcp_http_client, session):
+    await _post_tool(mcp_http_client, "memory_add",
+                     {"content": "update type-only probe", "tags": ["keep/c"],
+                      "memory_type": "fact"})
+    mem = await _get_memory(session, "update type-only probe")
+
+    await _post_tool(mcp_http_client, "memory_update",
+                     {"memory_id": str(mem.id), "memory_type": "decision"})
+
+    session.expire_all()
+    updated = await _get_memory(session, "update type-only probe")
+    assert updated.content == "update type-only probe"
+    assert updated.memory_type == "decision"
+    assert {t.name for t in updated.tags} == {"keep/c"}
+
+
 async def test_memory_batch_add_resolves_per_entry(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_batch_add", {"entries": [
         {"content": "batch omitted source"},

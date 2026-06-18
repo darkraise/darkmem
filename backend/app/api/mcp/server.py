@@ -213,8 +213,20 @@ async def memory_update(
         memory_type: New type classification. Omit to keep current type.
     """
     mid = _validate_uuid(memory_id)
+    # Only set fields the caller actually provided. Passing every arg (each
+    # defaulting to None) would mark them "set" on the model, defeating the
+    # service's exclude_unset guard and clobbering the omitted columns — nulling
+    # the NOT NULL content (which also aborts before tags apply). ``tags=[]``
+    # still clears tags, since only ``None`` means "omitted".
+    fields: dict = {}
+    if content is not None:
+        fields["content"] = content
+    if tags is not None:
+        fields["tags"] = tags
+    if memory_type is not None:
+        fields["memory_type"] = memory_type
     async with _memory_service_context() as service:
-        data = MemoryUpdate(content=content, tags=tags, memory_type=memory_type)
+        data = MemoryUpdate(**fields)
         memory = await service.update_memory(mid, data, api_key_id=None)
         if not memory:
             raise ValueError(f"Memory not found: {memory_id}")
