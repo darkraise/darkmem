@@ -48,8 +48,6 @@ class Memory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
-    classified_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    classified_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     llm_classified_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     llm_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     llm_emotions: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)

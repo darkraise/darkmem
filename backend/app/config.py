@@ -221,7 +221,6 @@ class Settings(BaseSettings):
 settings = Settings()
 
 FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
-    "llm_enrichment_enabled": False,
     "hybrid_search_enabled": True,
     "reranker_enabled": False,
     "pipeline_concurrency": 5,

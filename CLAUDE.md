@@ -72,9 +72,11 @@ A memory carries:
 - `content` (Text) and `source` (where it came from: `mcp`, `api`, ...).
 - `project` (Text, default `default`) — the supersession scope.
 - `memory_type` from `MEMORY_TYPES` in `app.taxonomy`.
-- `classified_type` / `classified_confidence` — regex classifier output.
 - `llm_classified_type` / `llm_summary` / `llm_emotions` / `llm_flags` —
-  enrichment output. Populated only when `llm_enrichment_enabled` is on.
+  classification/enrichment output, populated on every ingest. The regex
+  classifier and its `classified_type` / `classified_confidence` columns
+  were removed; classification now always runs through the LLM (or the
+  in-process ML classifier when `ml_profile_ref` is set).
 - `technologies` (lowercase Text[]) — denormalised cache of entity names
   whose `entity_type` is in `TECH_TYPES`. The supersession detector and
   the retrieval filter both consult this column instead of joining.
@@ -107,13 +109,26 @@ A batch flows through five phases. Each phase is a hard checkpoint:
    Returns `(vectors, fingerprint)`. Failure marks every memory's
    `embed=error` and skips writes. Fingerprint is registered exactly
    once (`_register_fingerprint`) before any partition write.
-2. **Extract + (optional) classify.** Per-memory, bounded by
-   `pipeline_concurrency`. Classification only runs when
-   `llm_enrichment_enabled`. The classifier instance is chosen per
+2. **Extract + classify.** Per-memory, bounded by `pipeline_concurrency`.
+   Classification always runs alongside extraction. The classifier
+   instance is chosen per
    batch: if the classification purpose has `ml_profile_ref` set, the
    pipeline swaps in `MLClassificationService`; otherwise it uses the
    LLM-backed one. The two implementations share the same surface
    (`classify(content, areas, prompt, mode) → {hall, summary, emotions, flags}`).
+   **Single-call merge:** when the classifier is the LLM-backed one
+   (no `ml_profile_ref`) AND `classification_mode == 'simple'`, the
+   pipeline folds classification into the one extraction call
+   (`extract(..., with_classification=True)`) instead of a second LLM
+   round-trip — the merged schema adds `summary`/`emotions`/`flags`, and
+   extraction's `memory_type` (already the simple-7 vocabulary) doubles
+   as the classification label written to `llm_classified_type`. Any
+   other config (an ML classifier, or an area-grained non-simple mode
+   whose larger label space the extraction schema does not carry) keeps
+   the two concurrent calls. Because the gate changes the extraction
+   prompt, re-extracting the same content under a different gate state
+   (mode flip, `ml_profile_ref` set/cleared) is not bit-identical even
+   with the same content seed.
 3. **Entity embed with cache.** Lookup `(name_lower, fingerprint)` in
    memory cache, fall back to DB cache, fall back to embedding the
    misses. Newly produced embeddings are written to both. The fingerprint
@@ -157,14 +172,17 @@ After Phase 5, `derive_memory_failed_step` records or resolves a row in
 ## Pipeline terminology — never conflate
 
 - **Extraction** builds the entity/relationship graph and is always on.
-- **Classification / enrichment** populates the `llm_*` columns and is
-  gated behind `llm_enrichment_enabled`.
+- **Classification / enrichment** populates the `llm_*` columns and also
+  always runs. There is no longer a regex classifier or an
+  `llm_enrichment_enabled` gate; the only choice is which model-backed
+  classifier serves the `classification` purpose (LLM by default, or the
+  in-process ML classifier when `ml_profile_ref` is set).
 
-The **only** surviving ingestion-side behavioral flag besides the
-classification toggles is `relation_rescue` (pattern-based rescue
-layer for relations the LLM misses); retrieval has its own flags (see
-Feature flags). All `ml_*` flags were removed in the 2026-05-01
-LLM-only consolidation; do not reintroduce a generic ML on/off switch.
+The **only** surviving ingestion-side behavioral flag is `relation_rescue`
+(pattern-based rescue layer for relations the LLM misses); retrieval has
+its own flags (see Feature flags). All `ml_*` flags were removed in the
+2026-05-01 LLM-only consolidation; do not reintroduce a generic ML on/off
+switch, and do not reintroduce a classification on/off flag.
 
 ## Supersession (`detect_supersessions`)
 
@@ -247,8 +265,8 @@ so per-call dispatching does not hammer the DB; concurrent refreshers
 share one task. `_flag_cache_reset` is a test hook only.
 
 Current behavioral flags (the rest govern concurrency or thresholds):
-`llm_enrichment_enabled`, `hybrid_search_enabled`, `reranker_enabled`,
-`relation_rescue`, `confidence_rank_gamma`.
+`hybrid_search_enabled`, `reranker_enabled`, `relation_rescue`,
+`confidence_rank_gamma`.
 
 ## LLM configuration
 

@@ -14,7 +14,6 @@ from app.services.classification_llm import ClassificationService
 from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import estimate_confidence, rank_fusion_factor
-from app.services.memory_classifier import classify as regex_classify
 from app.services.relations import TECH_TYPES, names_distinct
 from app.services.supersession import detect_supersessions
 from app.services import prompt
@@ -264,9 +263,6 @@ class ProcessingPipeline:
         memory_type = entry.get("memory_type")
         created_at = entry.get("created_at", "")
 
-        areas = flags.get("classification_areas", ["general"])
-        mode = flags.get("classification_mode", "simple")
-
         status = {
             "memory_id": str(memory_id),
             "embed": "ok" if vector is not None else "error",
@@ -324,8 +320,6 @@ class ProcessingPipeline:
             graph_repo = PostgresGraphRepository(session)
 
             if status["embed"] == "ok":
-                regex_result = regex_classify(content, enabled_areas=areas, mode=mode)
-
                 # Idempotent re-extraction: strip any prior contributions of
                 # this memory_id from the entity graph before writing the new
                 # set. Otherwise re-running with a different model just
@@ -361,8 +355,6 @@ class ProcessingPipeline:
                             "source": source, "tags": tags,
                             "memory_type": resolved_memory_type,
                             "created_at": created_at,
-                            "classified_type": regex_result.get("hall", ""),
-                            "classified_confidence": regex_result.get("confidence", 0.0),
                         }
                         if llm_classification:
                             payload["llm_classified_type"] = llm_classification.get("hall", "")
@@ -383,8 +375,6 @@ class ProcessingPipeline:
                         )
                         mem_record = mem_result.scalar_one_or_none()
                         if mem_record:
-                            mem_record.classified_type = regex_result.get("hall") or None
-                            mem_record.classified_confidence = regex_result.get("confidence")
                             if llm_classification:
                                 mem_record.llm_classified_type = llm_classification.get("hall") or None
                                 mem_record.llm_summary = llm_classification.get("summary") or None
@@ -557,7 +547,6 @@ class ProcessingPipeline:
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
         ttl_seconds = flags.get("entity_cache_ttl_minutes", 60) * 60
-        classification_on = flags.get("llm_enrichment_enabled", False)
         relation_rescue = flags.get("relation_rescue", True)
 
         logger.info(
@@ -586,17 +575,21 @@ class ProcessingPipeline:
         if embedding_fingerprint and any(v is not None for v in vectors):
             await self._register_fingerprint(embedding_fingerprint)
 
-        # Phase 2: Extraction and LLM classification
+        # Phase 2: Extraction and LLM classification. Classification always runs
+        # alongside extraction — the regex classifier it used to A/B against is
+        # gone, so the LLM (or the in-process ML classifier when an ml_profile_ref
+        # is set) is the sole source of the llm_* enrichment columns.
         ext_prompt = prompt.get("extraction")
-        cls_prompt = prompt.get("classification") if classification_on else ""
+        cls_prompt = prompt.get("classification")
         semaphore = asyncio.Semaphore(pipeline_concurrency)
 
-        async def run_extract(content: str):
+        async def run_extract(content: str, with_classification: bool = False):
             async with semaphore:
                 try:
                     return await self.extraction.extract(
                         content, system_prompt=ext_prompt,
                         relation_rescue=relation_rescue,
+                        with_classification=with_classification,
                     )
                 except Exception as exc:
                     return exc
@@ -616,19 +609,46 @@ class ProcessingPipeline:
                     logger.warning("Classification failed: %s", exc)
                     return None
 
-        if classification_on:
+        # Fold classification into the single extraction call when the classifier
+        # is the LLM-backed one (no ml_profile_ref) AND the type vocabulary is the
+        # fixed simple-7 set. In that regime extraction's ``memory_type`` already
+        # covers the classification label, so the standalone classification call
+        # only re-predicts the same type plus summary/emotions/flags — fold those
+        # onto the extraction response and save a round-trip. The in-process ML
+        # classifier (which can't extract) and the area-grained non-simple mode
+        # (whose larger label space the extraction schema doesn't carry) keep the
+        # two-call path.
+        can_merge = (
+            classifier is self.classification
+            and flags.get("classification_mode", "simple") == "simple"
+        )
+        classifications: list[dict | None]
+        if can_merge:
+            extractions = await asyncio.gather(
+                *[run_extract(e["content"], with_classification=True) for e in entries]
+            )
+            classifications = []
+            for ext in extractions:
+                if not isinstance(ext, dict) or ext.get("_error"):
+                    classifications.append(None)
+                    continue
+                emotions = ext.get("emotions")
+                ext_flags = ext.get("flags")
+                classifications.append({
+                    "hall": normalize_memory_type(ext.get("memory_type")),
+                    "summary": ext.get("summary"),
+                    "emotions": emotions if isinstance(emotions, list) else [],
+                    "flags": ext_flags if isinstance(ext_flags, list) else [],
+                })
+        else:
             extract_tasks = [run_extract(e["content"]) for e in entries]
             classify_tasks = [run_classify(e["content"]) for e in entries]
             all_results = await asyncio.gather(*extract_tasks, *classify_tasks)
             extractions = all_results[: len(entries)]
-            classifications: list[dict | None] = all_results[len(entries) :]
-        else:
-            extractions = await asyncio.gather(*[run_extract(e["content"]) for e in entries])
-            classifications = [None] * len(entries)
+            classifications = all_results[len(entries) :]
         logger.info(
-            "Phase 2 complete: extractions=%d, classifications=%s",
-            len(extractions),
-            "llm" if classification_on else "off",
+            "Phase 2 complete: extractions=%d, classifications=%d, merged=%s",
+            len(extractions), len(classifications), can_merge,
         )
 
         # Phase 3: Entity embedding with cache

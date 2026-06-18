@@ -119,7 +119,6 @@ async def test_feature_flags_expose_toggles(client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     for key in (
-        "llm_enrichment_enabled",
         "hybrid_search_enabled",
         "relation_rescue",
         "confidence_rank_gamma",
@@ -349,9 +348,10 @@ async def test_llm_profiles_seed_covers_all_purposes(client, auth_headers, seede
     # was retired from extraction). All other purposes still use
     # glm-4.5-flash since the eval only reranked extraction.
     expected_max_tokens = {
-        # Extraction emits the largest JSON (full entity/relationship graph);
-        # 4096 keeps entity-dense memories from truncating mid-object.
-        "extraction": 4096,
+        # Extraction emits the largest JSON (full entity/relationship graph),
+        # and in the merged regime also carries summary/emotions/flags; 8192
+        # keeps entity-dense memories from truncating mid-object.
+        "extraction": 8192,
         "classification": 64,
         "summarization": 512,
         "reranker": 32,
@@ -412,7 +412,7 @@ async def test_llm_profiles_seed_covers_all_purposes(client, auth_headers, seede
     # gpt-5.4-mini (rank 2).
     assert profiles["openai-nano-extraction"]["model"] == "gpt-5.4-nano"
     assert profiles["openai-nano-extraction"]["reasoning"] is False
-    assert profiles["openai-nano-extraction"]["params"].get("max_completion_tokens") == 4096
+    assert profiles["openai-nano-extraction"]["params"].get("max_completion_tokens") == 8192
 
     # Google profiles seeded 2026-05-02. Three tiers: lite (gemini-2.5-flash-lite),
     # flash (gemini-2.5-flash), pro (gemini-2.5-pro). All non-reasoning purposes

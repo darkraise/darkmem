@@ -13,8 +13,6 @@ def memory_to_dict(memory) -> dict:
         "updated_at": memory.updated_at.isoformat() if memory.updated_at else None,
         "expires_at": memory.expires_at.isoformat() if memory.expires_at else None,
         "is_archived": memory.is_archived,
-        "classified_type": memory.classified_type,
-        "classified_confidence": memory.classified_confidence,
         "llm_classified_type": memory.llm_classified_type,
         "llm_summary": memory.llm_summary,
         "llm_emotions": memory.llm_emotions,

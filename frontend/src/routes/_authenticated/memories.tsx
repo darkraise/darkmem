@@ -804,14 +804,6 @@ function MemoriesPage() {
                   </div>
                   <span>{detailMemory.importance}</span>
                 </div>
-                {detailMemory.classified_type && (
-                  <div>
-                    <div className="text-muted-foreground mb-0.5 text-sm font-medium tracking-wider uppercase">
-                      Regex Classification
-                    </div>
-                    <span>{detailMemory.classified_type}</span>
-                  </div>
-                )}
                 {detailMemory.llm_classified_type && (
                   <div>
                     <div className="text-muted-foreground mb-0.5 text-sm font-medium tracking-wider uppercase">

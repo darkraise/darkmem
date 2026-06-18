@@ -99,15 +99,25 @@ def _loads_extraction(response: str) -> dict:
         return json.loads(salvaged)
 
 
-def _build_extraction_schema() -> str:
+def _build_extraction_schema(with_classification: bool = False) -> str:
     entity_types = "|".join(ENTITY_TYPES)
     rel_types = "|".join(RELATIONSHIP_TYPES)
+    # When merged with classification, the same call also returns the
+    # enrichment fields the standalone classifier would. ``memory_type`` already
+    # carries the type label (the simple-7 vocabulary), so no separate type
+    # field is needed — only summary/emotions/flags ride along.
+    classification_fields = (
+        ',\n'
+        '  "summary": "one-line summary of the key insight",\n'
+        '  "emotions": [],\n'
+        '  "flags": []'
+    ) if with_classification else ""
     return (
         "{\n"
         f'  "entities": [{{"name": "string", "type": "{entity_types}", "properties": {{}}}}],\n'
         f'  "relationships": [{{"source": "entity_name", "target": "entity_name", "type": "{rel_types}", "properties": {{}}, "weight": 0.8}}],\n'
         '  "memory_type": "fact|decision|preference|problem|reference|architecture|milestone",\n'
-        '  "importance": 0.7\n'
+        f'  "importance": 0.7{classification_fields}\n'
         "}"
     )
 

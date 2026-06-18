@@ -244,7 +244,6 @@ async def update_llm_config(
 
 
 class FeatureFlagsResponse(BaseModel):
-    llm_enrichment_enabled: bool
     hybrid_search_enabled: bool
     reranker_enabled: bool
     pipeline_concurrency: int
@@ -258,7 +257,6 @@ class FeatureFlagsResponse(BaseModel):
 
 
 class FeatureFlagsUpdate(BaseModel):
-    llm_enrichment_enabled: bool | None = None
     hybrid_search_enabled: bool | None = None
     reranker_enabled: bool | None = None
     pipeline_concurrency: int | None = Field(default=None, ge=1, le=20)

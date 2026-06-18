@@ -116,8 +116,6 @@ async def read_graph(session, mid: uuid.UUID) -> dict:
     )).all()
     return {
         "memory_type": mem.memory_type,
-        "classified_type": mem.classified_type,
-        "classified_confidence": mem.classified_confidence,
         "llm_classified_type": mem.llm_classified_type,
         "llm_summary": mem.llm_summary,
         "llm_emotions": mem.llm_emotions,
@@ -169,7 +167,7 @@ async def main():
     async with async_session_factory() as session:
         flags = await get_feature_flags_dict(session)
     print("=== feature flags (behavioral) ===")
-    for k in ("llm_enrichment_enabled", "hybrid_search_enabled", "reranker_enabled",
+    for k in ("hybrid_search_enabled", "reranker_enabled",
               "relation_rescue", "confidence_rank_gamma"):
         print(f"  {k} = {flags.get(k)}")
 

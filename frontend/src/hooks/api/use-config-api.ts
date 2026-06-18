@@ -226,7 +226,6 @@ export function useUpdateLlmConfig() {
 }
 
 export interface FeatureFlags {
-  llm_enrichment_enabled: boolean
   hybrid_search_enabled: boolean
   reranker_enabled: boolean
   pipeline_concurrency: number

@@ -19,7 +19,6 @@ from app.services.heritage_resolver import (
 )
 from app.services.call_resolver import CallResolver
 from app.services.code_parser import ExtractedCall
-from app.services.memory_classifier import classify, extract_memories
 from app.services.hybrid_search import HybridSearchService
 
 
@@ -498,99 +497,6 @@ class TestRRFFusion:
         assert result[0]["id"] == "x"
 
 
-# =============================================================================
-# MEMORY CLASSIFIER ACCURACY
-# =============================================================================
-
-
-class TestMemoryClassifier:
-    """Test zero-LLM regex classifier accuracy across memory types."""
-
-    def test_decision_classification(self):
-        result = classify("We decided to use PostgreSQL instead of MongoDB because of ACID compliance.")
-        assert result["hall"] == "decision"
-        assert result["confidence"] > 0.3
-
-    def test_preference_classification(self):
-        result = classify("I always use dark mode and I prefer tabs over spaces.")
-        assert result["hall"] == "preference"
-
-    def test_milestone_classification(self):
-        result = classify("It finally works! I got it working, the breakthrough was figuring out the config. First time it built successfully.")
-        assert result["hall"] == "milestone"
-
-    def test_problem_classification(self):
-        result = classify("There's a critical bug in the authentication module that keeps crashing the server.")
-        assert result["hall"] == "problem"
-
-    def test_emotional_classification(self):
-        result = classify("I'm so proud of what we built together. I love this team and everything we've achieved.", mode="expanded")
-        assert result["hall"] == "emotional"
-
-    def test_low_signal_text_returns_fact(self):
-        result = classify("The sky is blue today.", min_confidence=0.3)
-        assert result["hall"] == "fact"
-        assert result["confidence"] == 0.0
-
-    def test_technical_content_not_classified_as_decision(self):
-        result = classify(
-            "PostgreSQL HNSW indexes use a hierarchical navigable small world graph structure. "
-            "The ef_construction parameter controls build-time accuracy vs speed tradeoff.",
-            enabled_areas=["general", "technical"],
-        )
-        assert result["hall"] != "decision"
-
-    def test_enabled_areas_merge(self):
-        result = classify(
-            "The root cause was a race condition in the connection pool. "
-            "The bug caused crashes under load because two threads competed for the same lock.",
-            enabled_areas=["general", "debugging"],
-            min_confidence=0.1,
-        )
-        assert result["hall"] in ("root_cause", "problem")
-
-    def test_default_areas_backwards_compatible(self):
-        result = classify("We decided to use PostgreSQL instead of MongoDB.")
-        assert result["hall"] == "decision"
-
-    def test_problem_with_resolution_reclassified(self):
-        text = "There was a bug in the parser but we fixed it by updating the grammar."
-        result = classify(text)
-        assert result["hall"] in ("milestone", "problem")
-
-    def test_extract_memories_returns_typed_chunks(self):
-        text = (
-            "> Let's use Redis for caching because it has pub/sub support.\n\n"
-            "> There's a bug in the login flow that crashes on empty passwords.\n\n"
-            "> I finally got the CI pipeline working after two weeks!"
-        )
-        memories = extract_memories(text, min_confidence=0.2)
-        types = {m["memory_type"] for m in memories}
-        assert len(memories) >= 2
-        assert len(types) >= 2
-
-    def test_code_lines_filtered_before_classification(self):
-        text = """
-```python
-import os
-def main():
-    print("hello")
-```
-We decided to use FastAPI instead of Flask because of async support.
-"""
-        result = classify(text)
-        assert result["hall"] == "decision"
-
-    def test_confidence_scales_with_signal_density(self):
-        weak = classify("Let's use this approach.")
-        strong = classify(
-            "We decided to use PostgreSQL instead of MongoDB because of ACID compliance. "
-            "The trade-off is that we lose schema flexibility but the architecture benefits "
-            "outweigh the costs. The reason is that our data model is highly relational."
-        )
-        assert strong["confidence"] > weak["confidence"]
-
-
 class TestClassificationMode:
     """Test simple vs expanded classification mode."""
 
@@ -612,25 +518,6 @@ class TestClassificationMode:
         from app.services.classification_areas import get_merged_llm_types
         types = get_merged_llm_types(["general", "technical"])
         assert len(types) == 7
-
-    def test_simple_markers_remap_types(self):
-        from app.services.classification_areas import get_merged_markers
-        markers = get_merged_markers(["general", "debugging"], mode="simple")
-        assert "problem" in markers
-        assert "root_cause" not in markers
-        assert "workaround" not in markers
-        assert "gotcha" not in markers
-
-    def test_simple_markers_merge_collisions(self):
-        from app.services.classification_areas import get_merged_markers
-        markers = get_merged_markers(["general", "debugging"], mode="simple")
-        assert len(markers["problem"]) > 10
-
-    def test_expanded_markers_unchanged(self):
-        from app.services.classification_areas import get_merged_markers
-        markers = get_merged_markers(["general", "debugging"], mode="expanded")
-        assert "root_cause" in markers
-        assert "workaround" in markers
 
     def test_simple_normalization_remaps_invalid_types(self):
         from app.services.classification_areas import SIMPLE_NORMALIZATION, SIMPLE_TYPES

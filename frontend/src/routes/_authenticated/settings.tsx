@@ -234,12 +234,6 @@ function FeatureFlagsCard() {
         "Blend semantic (vector) search with keyword search for better recall.",
     },
     {
-      label: "LLM Enrichment",
-      key: "llm_enrichment_enabled" as const,
-      description:
-        "Classify and enrich each memory with an LLM — adds type, summary, emotions, and flags.",
-    },
-    {
       label: "Reranker",
       key: "reranker_enabled" as const,
       description:

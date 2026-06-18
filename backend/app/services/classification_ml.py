@@ -12,8 +12,7 @@ Resolution rule:
 * If the model's predicted label is in the area-allowed-types set
   for the current ``classification_areas`` flag, return it.
 * Otherwise fall back to ``"fact"`` — the same conservative default
-  the LLM service uses when the model returns a stray label. The
-  regex ``classified_type`` column is unaffected.
+  the LLM service uses when the model returns a stray label.
 """
 from __future__ import annotations
 
@@ -35,8 +34,8 @@ class MLClassificationService:
     classification profile (``ml_profile_ref`` on the classification purpose)
     therefore DISABLES summary and emotion/flag enrichment — ``classify`` always
     returns ``summary=None`` with empty ``emotions``/``flags``, so the ``llm_*``
-    columns those would populate stay null even while ``llm_enrichment_enabled``
-    is on. Use the LLM-backed ``ClassificationService`` if you need summaries.
+    columns those would populate stay null even though classification always
+    runs. Use the LLM-backed ``ClassificationService`` if you need summaries.
     """
 
     def __init__(self, manager: MLModelManager, model_repo: str, ttl_seconds: int) -> None:

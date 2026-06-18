@@ -46,8 +46,6 @@ class MemoryResponse(BaseModel):
     updated_at: datetime
     expires_at: datetime | None
     is_archived: bool
-    classified_type: str | None = None
-    classified_confidence: float | None = None
     llm_classified_type: str | None = None
     llm_summary: str | None = None
     llm_emotions: list[str] | None = None

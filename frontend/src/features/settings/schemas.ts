@@ -8,7 +8,6 @@ export const generalSettingsSchema = z.object({
 
 export const pipelineSettingsSchema = z.object({
   pipeline_concurrency: z.number().int().min(1).max(64),
-  llm_enrichment_enabled: z.boolean(),
   relation_rescue: z.boolean(),
   confidence_rank_gamma: z.number().min(0).max(1),
 })

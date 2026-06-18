@@ -19,8 +19,6 @@ export interface Memory {
   updated_at: string
   expires_at: string | null
   is_archived: boolean
-  classified_type?: string | null
-  classified_confidence?: number | null
   llm_classified_type?: string | null
   llm_summary?: string | null
   llm_emotions?: string[]
