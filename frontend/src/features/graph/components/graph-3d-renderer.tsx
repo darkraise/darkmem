@@ -229,7 +229,7 @@ export function Graph3DRenderer({
     // materials in place so a theme flip preserves 3D positions. colorMode (a dep)
     // still recomputes with the current palette.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [`${tokens.background}:${tokens.isDark}:${colorMode}`])
+  }, [`${tokens.background}:${tokens.isDark}:${colorMode}:${tokens.primary}:${tokens.border}`])
 
   // Declared after the recolor effect so passive effects run recolor-first:
   // the recolor effect refreshes node.color/base materials, then this effect

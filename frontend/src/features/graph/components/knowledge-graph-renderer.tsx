@@ -295,7 +295,7 @@ export function KnowledgeGraphRenderer({
     sigma.refresh()
     // Keyed on a primitive theme signature so incidental re-renders don't recolor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [`${tokens.background}:${tokens.isDark}`])
+  }, [`${tokens.background}:${tokens.isDark}:${tokens.primary}:${tokens.border}`])
 
   return <div ref={containerRef} className="absolute inset-0" />
 }
