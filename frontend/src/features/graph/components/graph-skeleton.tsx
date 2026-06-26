@@ -98,12 +98,12 @@ export function GraphSkeleton({
 }) {
   return (
     <div className="relative h-full min-h-0 flex-1">
-      <div className="absolute inset-0 overflow-hidden bg-[#0d1117]">
+      <div className="absolute inset-0 overflow-hidden bg-background">
         <div className="bg-card/70 border-border absolute top-3 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-md border px-3 py-1.5">
           {SKEL_BARS.map((w, i) => (
             <div
               key={i}
-              className="h-2 animate-pulse rounded-full bg-[#21262d]"
+              className="h-2 animate-pulse rounded-full bg-muted"
               style={{ width: w, animationDelay: `${i * 0.15}s` }}
             />
           ))}
@@ -136,7 +136,7 @@ export function GraphSkeleton({
               width: e.width,
               transform: `rotate(${e.rotate})`,
               transformOrigin: "0 0",
-              background: "rgba(139,148,158,0.15)",
+              background: "hsl(var(--border) / 0.5)",
               animationDelay: e.delay,
             }}
           />

@@ -1,6 +1,7 @@
 import { Button } from "darkraise-ui/components/button"
 import { useMemoryContext } from "@/hooks/api"
 import { entityTypeColor } from "@/features/graph/lib/graph-colors"
+import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
 export interface MiniGraphProps {
   memoryId: string
@@ -14,6 +15,7 @@ export function MiniGraph({
   onEntitySelect,
 }: MiniGraphProps) {
   const { data, isLoading } = useMemoryContext(memoryId)
+  const { palette } = useMemoryGraphTheme()
 
   if (isLoading)
     return (
@@ -30,7 +32,7 @@ export function MiniGraph({
 
   return (
     <div
-      className="border-border space-y-2 rounded border bg-[#0d1117] p-2"
+      className="border-border space-y-2 rounded border bg-background p-2"
       style={{ minHeight: 80 }}
     >
       {data.entities.length > 0 && (
@@ -43,8 +45,8 @@ export function MiniGraph({
                 key={e.id}
                 className="rounded px-1.5 py-0.5"
                 style={{
-                  backgroundColor: entityTypeColor(e.entity_type) + "30",
-                  color: entityTypeColor(e.entity_type),
+                  backgroundColor: entityTypeColor(e.entity_type, palette) + "30",
+                  color: entityTypeColor(e.entity_type, palette),
                 }}
                 onClick={() => onEntitySelect?.(e.id)}
               >
