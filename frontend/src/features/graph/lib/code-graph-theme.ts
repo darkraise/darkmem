@@ -318,18 +318,16 @@ export interface CodeGraphTheme {
  * provider has written the new variables and would read the stale values. To
  * stay correct regardless of effect ordering we observe the documentElement
  * `style` attribute and re-resolve once the provider actually mutates the DOM.
+ *
+ * @param rootRef - element to resolve tokens from; defaults to documentElement.
  */
-export function useCodeGraphTheme(
-  rootRef: RefObject<HTMLElement | null>,
-  nodeTypes: readonly string[],
-  edgeTypes: readonly string[],
-): CodeGraphTheme {
+export function useGraphThemeTokens(
+  rootRef?: RefObject<HTMLElement | null>,
+): GraphThemeTokens {
   const [tokens, setTokens] = useState<GraphThemeTokens>(FALLBACK_TOKENS)
 
   useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-
+    const el = rootRef?.current ?? document.documentElement
     const resolve = () => setTokens(resolveGraphTokens(el))
     resolve()
 
@@ -340,6 +338,16 @@ export function useCodeGraphTheme(
     })
     return () => observer.disconnect()
   }, [rootRef])
+
+  return tokens
+}
+
+export function useCodeGraphTheme(
+  rootRef: RefObject<HTMLElement | null>,
+  nodeTypes: readonly string[],
+  edgeTypes: readonly string[],
+): CodeGraphTheme {
+  const tokens = useGraphThemeTokens(rootRef)
 
   return useMemo(() => {
     const { nodeColors, edgeColors } = buildCodeGraphColorMaps(
