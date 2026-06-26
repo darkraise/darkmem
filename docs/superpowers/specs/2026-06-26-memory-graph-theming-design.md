@@ -76,9 +76,26 @@ reworking layout/physics.
 - `resolveNodeColor(node, colorMode, palette: MemoryPalette)`
 - `resolveGroupColor(groupKey, groupIndex, colorMode, hullMode, palette)`
 - `entityTypeColor(type, palette)` (or `palette.entityTypeColor(type)`)
+- `clusterColor(palette, clusterId)` — new helper returning
+  `palette.palette[clusterId % palette.palette.length] ?? palette.unclustered`.
+  It replaces the **direct array indexing** that two panels do today
+  (`UNIFIED_PALETTE[clusterId % UNIFIED_PALETTE.length]` at
+  `graph-detail-panel.tsx:289,415` and `graph-filter-panel.tsx:253`), so no
+  consumer touches the raw array.
+
+`UNIFIED_PALETTE`, `UNCLUSTERED_COLOR`, and `ENTITY_TYPE_COLORS` stop being
+exported module constants (the palette is now mode-dependent). The
+**re-exports** of all three in `graph-utils.ts:12-16` are removed, and the
+panels that import them through `graph-utils` switch to the hook + helpers.
+A completeness sweep confirmed **every** consumer of these symbols lives under
+`features/graph` (the two panels, `mini-graph`, the three renderers,
+`graph-utils`), so the re-signature is fully contained — no call site outside
+the feature breaks.
 
 Existing hex utilities (`hexToRgba`, `lightenHex`, `darkenHex`, `blendHex`)
-stay — hover/dim/border variants still derive from a node's own color.
+stay — hover/dim/border variants still derive from a node's own color. A new
+`hexToHsl` helper (not currently in the codebase) backs the base-hue
+extraction; it can also be unit-tested alongside `hslToHex`.
 
 ### Edge color helpers (token-derived)
 
@@ -108,7 +125,11 @@ is factored into shared helpers and both paths call them:
 - `code-graph-theme.ts`: extract a reusable `useGraphThemeTokens(rootRef?)`
   that resolves tokens from `document.documentElement` and re-resolves on the
   `MutationObserver`. Refactor the existing `useCodeGraphTheme` to call it
-  (no behavior change for the Code graph).
+  (no behavior change for the Code graph). The generic hook keeps living in the
+  `code-graph-theme.ts` file — a minor naming smell accepted on purpose:
+  renaming the module to `graph-theme.ts` would churn ~7 importers plus the
+  test for no functional gain. Flagged so it is a deliberate choice, not an
+  oversight.
 - New `memory-graph-theme.ts`: `useMemoryGraphTheme(): { tokens, palette }`,
   memoized (`palette = buildMemoryPalette(tokens)`).
 
@@ -127,12 +148,19 @@ is factored into shared helpers and both paths call them:
 - New `recolor()`: walk nodes → recompute base `color`/`borderColor` via
   `nodeColorFor`; walk edges → recompute `color` via `edgeColorFor`; update
   `sigma.setSetting("labelColor"/"defaultNodeColor", …)`; `sigma.refresh()`.
-- An effect keyed on `[tokens, palette]` calls `recolor()` when a Sigma
-  instance exists (skipped on initial mount, where buildGraph already paints
-  with the current palette). `buildGraph` is **not** keyed on theme.
+- An effect keyed on a derived **`themeKey` string**
+  (`` `${tokens.background}:${tokens.isDark}` ``, mirroring the Code graph's
+  `themeKey`) calls `recolor()` when a Sigma instance exists (skipped on initial
+  mount, where buildGraph already paints with the current palette). Keying on a
+  primitive — not the `[tokens, palette]` object identities — avoids recoloring
+  on any incidental re-render. `buildGraph` is **not** keyed on theme.
 - The diamond hover pill (`node-diamond-program.ts` `drawDiamondNodeHover`)
-  takes the surface colors as parameters; the renderer passes
-  `tokens.popover` (fill) / `tokens.popoverForeground` and drops `#FFF`/`#000`.
+  takes the surface colors as parameters; the wrapper `defaultDrawNodeHover`
+  reads `tokensRef.current` and passes `tokens.popover` (fill) /
+  `tokens.popoverForeground`, dropping `#FFF`/`#000`. The pill's label text is
+  still drawn by Sigma's `drawDiscNodeLabel` via the `labelColor` setting
+  (= `foreground`), a hair different from the Code graph's `popoverForeground`
+  but indistinguishable in practice.
 
 ### Knowledge renderer (`knowledge-graph-renderer.tsx`)
 
@@ -151,7 +179,9 @@ future-proofing; called out as not-yet-rendered.
   keeps x/y/z).
 - `linkColor` reads `tokensRef.current` and returns `memoryEdgeColor` /
   `relationEdgeColor` variants; the recolor effect calls `fgRef.current.refresh()`
-  to repaint links.
+  to repaint links. **Verify at implementation** that `refresh()` re-invokes the
+  `linkColor` accessor on a settled (cooled-down) graph; if it does not, bump a
+  `linkColorVersion` state to force react-force-graph to re-read accessors.
 - The route's `graphData3D` memo is intentionally **not** keyed on `palette`
   (keeping node-object identity stable so positions survive a flip). `transform`
   receives the palette for the correct initial color; later flips are handled by
@@ -177,10 +207,14 @@ mode-aware palette.
 - `graph-skeleton.tsx`: `bg-[#0d1117]` → `bg-background`, `bg-[#21262d]` →
   `bg-muted`, edge `rgba(139,148,158,…)` → `bg-border`. The decorative
   translucent cluster hues stay (low-alpha, theme-neutral).
-- `graph-filter-panel.tsx` / `graph-detail-panel.tsx`: legend swatches obtain
-  `palette` from the hook; `resolveNodeColor`/`resolveGroupColor`/
-  `entityTypeColor` calls get the palette arg; the `#8b949e` fallbacks become
-  `palette.unclustered`.
+- `graph-filter-panel.tsx` (3 color sites) / `graph-detail-panel.tsx`
+  (8 color sites — `entityTypeColor` at 107/522, `resolveNodeColor` at
+  236/259/442/476, direct cluster indexing at 289/415) obtain `palette` from
+  the hook. `resolveNodeColor`/`entityTypeColor` calls get the palette arg, the
+  direct `UNIFIED_PALETTE[…]` indexing becomes `clusterColor(palette, id)`, and
+  the `#8b949e` fallbacks become `palette.unclustered`. These are not throwaway
+  swatches — the detail panel is the second-heaviest consumer after the 2D
+  renderer.
 
 ## Components & data flow
 
@@ -216,16 +250,38 @@ New `graph-colors.test.ts` (mirroring `code-graph-theme.test.tsx`):
   surface).
 - `entityTypeColor("person")` hue is stable across modes.
 - `unclustered` equals the tokens' `mutedForeground`.
+- Drift guard: `nodeColorFor` / `edgeColorFor` are pure and deterministic for a
+  given `(storedAttrs, palette)` — the unit test pins this, since the
+  build-vs-recolor agreement rests entirely on both paths calling these
+  helpers (the live Sigma/WebGL recolor itself can't run under jsdom).
 
-Update any test importing the re-signatured color functions.
+Update any test importing the re-signatured color functions. The existing
+`code-graph-theme.test.tsx` is unaffected (the Code graph's `nodeKindColor` /
+`communityColor` / `edgeTypeColor` signatures do not change).
 
 Gate (from `CLAUDE.md`): `npm run typecheck` (`tsc -b`), `npm test` (vitest),
 `npm run build`. Manual: toggle dark↔light in the running app and confirm the
 2D graph, 3D graph, loading skeleton, mini-graph, and the filter/detail legends
 all flip, and that a flip preserves node positions and camera.
 
+## Known inconsistencies & risks
+
+- **`colorMode` switch still resettles.** Theme flips recolor in place
+  (positions preserved), but changing the color mode (type/cluster/tag) still
+  goes through the existing `buildGraph` rebuild + FA2 restart, so nodes
+  resettle on that action. Left as-is to keep this change scoped; folding
+  `colorMode` into the recolor path is a clean follow-up.
+- **3D initial-color staleness window.** The `graphData3D` memo is deliberately
+  not keyed on `palette`, so right after a flip the memo holds stale node colors
+  until the renderer's recolor effect runs (same tick). The invariant
+  "the renderer owns 3D node color after mount" must be documented in code or a
+  future edit that re-keys the memo will silently fight the recolor effect.
+- **`refresh()` link repaint** (3D) — unverified API behavior, with the
+  `linkColorVersion` fallback noted above.
+
 ## Out of scope / follow-ups
 
 - Accent-driven node recoloring (kept fixed-identity by decision).
 - Wiring `KnowledgeGraphRenderer` into a route.
 - Tuning the decorative skeleton cluster hues to chart tokens.
+- Routing `colorMode` changes through the in-place recolor path.
