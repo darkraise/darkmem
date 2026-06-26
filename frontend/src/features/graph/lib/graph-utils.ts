@@ -4,16 +4,13 @@ import type {
   GraphEntity,
   EntityRelation,
 } from "@/hooks/api"
-import { resolveNodeColor, entityTypeColor } from "./graph-colors"
-import type { ColorMode } from "./graph-colors"
-import { seededUnit } from "./code-graph-theme"
-export { resolveNodeColor, entityTypeColor }
-export type { ColorMode }
-export {
-  UNIFIED_PALETTE,
-  UNCLUSTERED_COLOR,
-  ENTITY_TYPE_COLORS,
+import {
+  resolveNodeColor,
+  entityTypeColor,
+  type MemoryPalette,
 } from "./graph-colors"
+import { seededUnit } from "./code-graph-theme"
+export type { ColorMode } from "./graph-colors"
 
 export type SizeMode = "connections" | "importance" | "uniform"
 
@@ -112,6 +109,7 @@ export function transformToGraphData(
   entityLayerEnabled = false,
   entities: GraphEntity[] = [],
   entityRelations: EntityRelation[] = [],
+  palette: MemoryPalette,
 ): GraphData3D {
   const edgeCountMap = new Map<string, number>()
   for (const edge of data.similarity_edges) {
@@ -134,7 +132,7 @@ export function transformToGraphData(
     importance: m.importance,
     cluster: m.cluster,
     clusterName: data.cluster_names[String(m.cluster)] ?? "",
-    color: resolveNodeColor(m, colorMode),
+    color: resolveNodeColor(m, colorMode, palette),
     val: computeNodeVal(sizeMode, edgeCountMap.get(m.id) ?? 0, m.importance),
   }))
 
@@ -237,7 +235,7 @@ export function transformToGraphData(
         importance: 0,
         cluster: -1,
         clusterName: "",
-        color: entityTypeColor(e.entity_type),
+        color: entityTypeColor(e.entity_type, palette),
         val: 1,
         entityName: e.name,
         entityType: e.entity_type,
