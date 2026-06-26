@@ -71,7 +71,6 @@ import {
   entityTypeColor,
   clusterColor,
   hslToHex,
-  type MemoryPalette,
 } from "../graph-colors"
 import type { GraphThemeTokens } from "../code-graph-theme"
 
@@ -563,7 +562,9 @@ Replace `context.fillStyle = "#FFF"` with `context.fillStyle = fill` and `contex
 In `unified-graph.tsx`:
 - Add the import: `import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"`.
 - Inside `UnifiedGraphPage`, add: `const { tokens, palette } = useMemoryGraphTheme()`.
-- Replace both `<div className="absolute inset-0 bg-[#0d1117]">` (the stage at ~line 158 and the loading overlay at ~line 193) with `<div className="absolute inset-0 bg-background">`.
+- Swap only the `bg-[#0d1117]` **utility class** for `bg-background` in the two graph-stage divs, preserving every other class. The two tags differ, so do not blanket-replace the whole opening tag:
+  - stage (~line 158): `<div className="absolute inset-0 bg-[#0d1117]">` → `<div className="absolute inset-0 bg-background">`
+  - loading overlay (~line 193): `<div className="absolute inset-0 z-30 bg-[#0d1117]">` → `<div className="absolute inset-0 z-30 bg-background">` (the `z-30` keeps the overlay above the toolbar/filter button during a refetch — do not drop it).
 - On the `<Graph2DRenderer ... />` element add two props: `tokens={tokens}` and `palette={palette}`.
 
 - [ ] **Step 3: Consume tokens/palette in the 2D renderer + add recolor**
@@ -719,6 +720,7 @@ In `graph-3d-renderer.tsx`:
   ```ts
   import {
     resolveNodeColor,
+    resolveGroupColor,
     entityTypeColor,
     memoryEdgeColor,
     relationEdgeColor,
@@ -726,7 +728,7 @@ In `graph-3d-renderer.tsx`:
   } from "@/features/graph/lib/graph-colors"
   import { type GraphThemeTokens } from "@/features/graph/lib/code-graph-theme"
   ```
-  (Drop `resolveGraphTokens` from the import.)
+  (Keep the existing `resolveGroupColor` import — it stays a consumer, see Step 3 — and drop `resolveGraphTokens`, which is no longer called.)
 
 - Replace the one-shot `chrome` memo with a reactive value from the prop:
   ```ts
@@ -736,10 +738,12 @@ In `graph-3d-renderer.tsx`:
   )
   ```
 
-- Add a tokens ref for the link accessor:
+- Add a tokens ref for the link accessor and a palette ref for `buildHulls`:
   ```ts
   const tokensRef = useRef(tokens)
   tokensRef.current = tokens
+  const paletteRef = useRef(palette)
+  paletteRef.current = palette
   ```
 
 - Add a node-color helper mirroring the 2D dispatcher:
@@ -763,7 +767,18 @@ In `graph-3d-renderer.tsx`:
   ```
   (Replace the two `node.color` reads in `nodeThreeObject` with `color`.)
 
-- Add a recolor effect that recomputes node colors in place and repaints (does not touch positions):
+- Migrate the hull-color call (this is the orphaned 5th consumer of the
+  re-signatured `resolveGroupColor`). In `buildHulls`, change
+  `const hullColor = resolveGroupColor(groupKey, groupIdx, colorMode, hullMode)`
+  to `const hullColor = resolveGroupColor(groupKey, groupIdx, colorMode, hullMode, paletteRef.current)`.
+  Read `paletteRef.current` (not the `palette` prop) so `buildHulls`'s
+  `useCallback` deps (`[graphData, colorMode, hullMode]`) stay unchanged and its
+  identity stays stable. Without this the call is a 4-arg invocation against the
+  new 5-arg signature — a hard `TS2554` — and 3D hulls would never recolor.
+
+- Add a recolor effect that recomputes node colors in place, rebuilds the hull
+  meshes with the current palette, and repaints (none of this touches node
+  positions):
   ```ts
   useEffect(() => {
     for (const node of graphData.nodes) {
@@ -775,10 +790,14 @@ In `graph-3d-renderer.tsx`:
       mat.color.set(color)
       mat.emissive.set(color)
     }
+    buildHulls() // disposes + rebuilds hull meshes from current positions + palette
     fgRef.current?.refresh?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [`${tokens.background}:${tokens.isDark}:${colorMode}`])
   ```
+  (`buildHulls` is intentionally not an effect dep — the effect re-runs on the
+  theme/colorMode key and calls the latest `buildHulls` closure, which reads the
+  current `paletteRef`.)
 
 - Replace the hardcoded `linkColor` constants with token-derived values read from `tokensRef.current` (so they track the theme), keeping the selected/neighbor logic. Replace the literal returns:
   - `"#ffa65790"` → `relationEdgeColor(tokensRef.current)`
@@ -792,7 +811,7 @@ In `graph-3d-renderer.tsx`:
 
 - [ ] **Step 3: Manual verification**
 
-In the running app, switch the Memory graph to 3D and toggle the theme mode. Confirm the scene background, node materials, selection ring, and link colors all flip, and that node positions do not re-simulate on the flip.
+In the running app, switch the Memory graph to 3D, enable a hull mode, and toggle the theme mode. Confirm the scene background, node materials, selection ring, link colors, and hull fills all flip, and that node positions do not re-simulate on the flip.
 
 - [ ] **Step 4: Commit**
 
@@ -826,7 +845,7 @@ In `graph-filter-panel.tsx`:
 - Pass `palette` to the three color sites:
   - line ~112: `resolveNodeColor({ cluster: -1, memory_type: null, tags: [category + "/x"] }, "tag", palette)`; the `"#8b949e"` fallback → `palette.unclustered`.
   - line ~175: `resolveNodeColor({ cluster: -1, memory_type: realType, tags: [] }, "type", palette)`; `"#8b949e"` → `palette.unclustered`.
-  - line ~253: `UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length]` → `clusterColor(palette, cid)`.
+  - line ~253 (cluster swatch, a ternary `colorMode === "cluster" ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length] : "#8b949e"`): convert **both** branches → `colorMode === "cluster" ? clusterColor(palette, cid) : palette.unclustered`. Do not leave the `: "#8b949e"` else-branch hardcoded — it is the swatch shown in non-cluster modes and must track the theme.
   - line ~295: `entityTypeColor(etype)` → `entityTypeColor(etype, palette)`.
 
 - [ ] **Step 2: Detail panel**
@@ -842,7 +861,7 @@ In `graph-detail-panel.tsx`:
 - Update every site found by grep:
   - line ~107 and ~522: `entityTypeColor(entity.entity_type)` / `entityTypeColor(etype)` → add `, palette`.
   - lines ~236, ~259, ~442, ~476: `resolveNodeColor(<node>, <mode>)` → add `, palette`; any `"#8b949e"` fallback → `palette.unclustered`.
-  - lines ~289, ~415: `UNIFIED_PALETTE[<id> % UNIFIED_PALETTE.length]` → `clusterColor(palette, <id>)`.
+  - lines ~289, ~415 (cluster swatches, each a ternary `colorMode === "cluster" ? UNIFIED_PALETTE[<id> % UNIFIED_PALETTE.length] : "#8b949e"`): convert **both** branches → `colorMode === "cluster" ? clusterColor(palette, <id>) : palette.unclustered`. Do not leave the `: "#8b949e"` else-branch hardcoded.
 
 - [ ] **Step 3: Manual verification**
 
@@ -966,7 +985,7 @@ Expected: PASS.
 
 With the dev servers running, on the Memory graph toggle dark↔light and confirm in one pass that **all** of these flip and stay legible, and that a flip preserves 2D/3D node positions and camera:
 - 2D graph (nodes, edges, labels, hulls, selection highlight, entity diamond hover pill)
-- 3D graph (background, node materials, selection ring, links)
+- 3D graph (background, node materials, selection ring, links, hull fills)
 - loading skeleton
 - mini-graph (background + entity chips)
 - filter panel + detail panel legend swatches
@@ -988,4 +1007,6 @@ git commit -m "chore(graph): finalize memory-graph theming gate"
 
 **Placeholder scan:** No TBD/TODO; every code step shows the actual change. The only "tune during verification" notes are color saturation/alpha constants, which are explicitly allowed to be adjusted under the manual gate.
 
-**Type consistency:** `MemoryPalette` shape (`palette`/`unclustered`/`entityTypeColor`) is identical across Tasks 1, 3, 4, 5, 6, 7. `resolveNodeColor`/`resolveGroupColor`/`entityTypeColor`/`clusterColor` signatures used in consumer tasks match Task 1's `Produces`. Edge helpers (`memoryEdgeColor`/`relationEdgeColor`/`membershipEdgeColor`) are used with the signatures defined in Task 1. The recolor effects in Tasks 4/5/8 all key on the same primitive `` `${tokens.background}:${tokens.isDark}` `` shape (Task 5 adds `:${colorMode}`).
+**Type consistency:** `MemoryPalette` shape (`palette`/`unclustered`/`entityTypeColor`) is identical across Tasks 1, 3, 4, 5, 6, 7. `resolveNodeColor`/`resolveGroupColor`/`entityTypeColor`/`clusterColor` signatures used in consumer tasks match Task 1's `Produces`. Both `resolveGroupColor` call sites are migrated to the new 5-arg signature: the 2D hull call in Task 4 Step 3 and the 3D hull call (`buildHulls`) in Task 5 Step 2. Edge helpers (`memoryEdgeColor`/`relationEdgeColor`/`membershipEdgeColor`) are used with the signatures defined in Task 1. The recolor effects in Tasks 4/5/8 all key on the same primitive `` `${tokens.background}:${tokens.isDark}` `` shape (Task 5 adds `:${colorMode}`).
+
+**Post-review corrections (2026-06-27, adversarial multi-agent review):** four verified defects fixed inline — (1) the orphaned 3D `resolveGroupColor`/`buildHulls` consumer is now migrated and hulls recolor on flip (Task 5); (2) the `z-30` loading-overlay swap now preserves the class (Task 4); (3) the unused `type MemoryPalette` import was removed from the Task 1 test so `tsc -b` (`noUnusedLocals`) passes; (4) the three cluster-swatch `: "#8b949e"` else-branches now convert to `palette.unclustered` (Task 6).
