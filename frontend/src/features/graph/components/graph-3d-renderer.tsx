@@ -115,61 +115,6 @@ export function Graph3DRenderer({
     }
   }, [graphData, spacing])
 
-  useEffect(() => {
-    const scene = fgRef.current?.scene()
-    if (ringRef.current && scene) {
-      scene.remove(ringRef.current)
-      ringRef.current.geometry.dispose()
-      ;(ringRef.current.material as THREE.Material).dispose()
-      ringRef.current = null
-    }
-
-    for (const node of graphData.nodes) {
-      const obj = (node as any).__threeObj
-      if (!obj) continue
-      const mat = obj.material as THREE.MeshPhongMaterial
-      if (!neighborSet) {
-        mat.color.set(node.color)
-        mat.emissive.set(node.color)
-        mat.emissiveIntensity = 0.1
-        mat.opacity = 0.9
-        obj.scale.set(1, 1, 1)
-      } else if (node.id === selectedNodeId) {
-        mat.color.set(chrome.highlight)
-        mat.emissive.set(chrome.highlight)
-        mat.emissiveIntensity = 0.6
-        mat.opacity = 1.0
-        obj.scale.set(1.5, 1.5, 1.5)
-
-        if (scene && node.x != null) {
-          const radius = (1 + node.val * 1.5) * 2.2
-          const ringGeo = new THREE.TorusGeometry(radius, 0.3, 8, 48)
-          const ringMat = new THREE.MeshBasicMaterial({
-            color: node.color,
-            transparent: true,
-            opacity: 0.8,
-          })
-          const ring = new THREE.Mesh(ringGeo, ringMat)
-          ring.position.set(node.x!, node.y!, node.z!)
-          scene.add(ring)
-          ringRef.current = ring
-        }
-      } else if (neighborSet.has(node.id)) {
-        mat.color.set(node.color)
-        mat.emissive.set(node.color)
-        mat.emissiveIntensity = 0.3
-        mat.opacity = 0.9
-        obj.scale.set(1, 1, 1)
-      } else {
-        mat.color.set(node.color)
-        mat.emissive.set(node.color)
-        mat.emissiveIntensity = 0.0
-        mat.opacity = 0.15
-        obj.scale.set(1, 1, 1)
-      }
-    }
-  }, [neighborSet, selectedNodeId, graphData.nodes, chrome])
-
   const buildHulls = useCallback(() => {
     const scene = fgRef.current?.scene()
     if (!scene) return
@@ -286,6 +231,65 @@ export function Graph3DRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [`${tokens.background}:${tokens.isDark}:${colorMode}`])
 
+  // Declared after the recolor effect so passive effects run recolor-first:
+  // the recolor effect refreshes node.color/base materials, then this effect
+  // rebuilds the selection ring from the fresh color and re-applies the
+  // highlight to the selected node — keeping the ring in sync across a theme flip.
+  useEffect(() => {
+    const scene = fgRef.current?.scene()
+    if (ringRef.current && scene) {
+      scene.remove(ringRef.current)
+      ringRef.current.geometry.dispose()
+      ;(ringRef.current.material as THREE.Material).dispose()
+      ringRef.current = null
+    }
+
+    for (const node of graphData.nodes) {
+      const obj = (node as any).__threeObj
+      if (!obj) continue
+      const mat = obj.material as THREE.MeshPhongMaterial
+      if (!neighborSet) {
+        mat.color.set(node.color)
+        mat.emissive.set(node.color)
+        mat.emissiveIntensity = 0.1
+        mat.opacity = 0.9
+        obj.scale.set(1, 1, 1)
+      } else if (node.id === selectedNodeId) {
+        mat.color.set(chrome.highlight)
+        mat.emissive.set(chrome.highlight)
+        mat.emissiveIntensity = 0.6
+        mat.opacity = 1.0
+        obj.scale.set(1.5, 1.5, 1.5)
+
+        if (scene && node.x != null) {
+          const radius = (1 + node.val * 1.5) * 2.2
+          const ringGeo = new THREE.TorusGeometry(radius, 0.3, 8, 48)
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: node.color,
+            transparent: true,
+            opacity: 0.8,
+          })
+          const ring = new THREE.Mesh(ringGeo, ringMat)
+          ring.position.set(node.x!, node.y!, node.z!)
+          scene.add(ring)
+          ringRef.current = ring
+        }
+      } else if (neighborSet.has(node.id)) {
+        mat.color.set(node.color)
+        mat.emissive.set(node.color)
+        mat.emissiveIntensity = 0.3
+        mat.opacity = 0.9
+        obj.scale.set(1, 1, 1)
+      } else {
+        mat.color.set(node.color)
+        mat.emissive.set(node.color)
+        mat.emissiveIntensity = 0.0
+        mat.opacity = 0.15
+        obj.scale.set(1, 1, 1)
+      }
+    }
+  }, [neighborSet, selectedNodeId, graphData.nodes, chrome])
+
   useEffect(() => {
     return () => {
       document.body.style.cursor = "default"
@@ -320,6 +324,10 @@ export function Graph3DRenderer({
       opacity: 0.9,
     })
     return new THREE.Mesh(geometry, material)
+    // Empty deps keep node-object identity stable (the graph library would
+    // recreate every node if this changed); the recolor effect owns later
+    // color updates, so the stale palette/colorMode captured here is intended.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
