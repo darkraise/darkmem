@@ -3,11 +3,18 @@ import ForceGraph3D from "react-force-graph-3d"
 import * as THREE from "three"
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js"
 import type { Node3D, GraphData3D } from "@/features/graph/lib/graph-utils"
-import { resolveGroupColor } from "@/features/graph/lib/graph-colors"
+import {
+  resolveNodeColor,
+  resolveGroupColor,
+  entityTypeColor,
+  memoryEdgeColor,
+  relationEdgeColor,
+  type MemoryPalette,
+} from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { computeHullGroups } from "@/features/graph/lib/graph-geometry"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
-import { resolveGraphTokens } from "@/features/graph/lib/code-graph-theme"
+import { type GraphThemeTokens } from "@/features/graph/lib/code-graph-theme"
 
 interface Graph3DRendererProps {
   graphData: GraphData3D
@@ -19,6 +26,8 @@ interface Graph3DRendererProps {
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string | null) => void
   onReady: () => void
+  tokens: GraphThemeTokens
+  palette: MemoryPalette
 }
 
 export function Graph3DRenderer({
@@ -31,6 +40,8 @@ export function Graph3DRenderer({
   selectedNodeId,
   onNodeSelect,
   onReady,
+  tokens,
+  palette,
 }: Graph3DRendererProps) {
   const fgRef = useRef<any>(null)
   const hoveredRef = useRef<any>(null)
@@ -39,10 +50,26 @@ export function Graph3DRenderer({
 
   const isEntitySelected = selectedNodeId?.startsWith("entity:") ?? false
 
-  const chrome = useMemo(() => {
-    const t = resolveGraphTokens(document.documentElement)
-    return { background: t.background, highlight: t.foreground }
-  }, [])
+  const chrome = useMemo(
+    () => ({ background: tokens.background, highlight: tokens.foreground }),
+    [tokens],
+  )
+
+  // Refs so linkColor accessor and buildHulls always read the latest values
+  // without those values appearing in their dependency/identity arrays.
+  const tokensRef = useRef(tokens)
+  tokensRef.current = tokens
+  const paletteRef = useRef(palette)
+  paletteRef.current = palette
+
+  const colorForNode = (n: Node3D, p: MemoryPalette): string =>
+    n.nodeKind === "entity"
+      ? entityTypeColor(n.entityType ?? "", p)
+      : resolveNodeColor(
+          { cluster: n.cluster, memory_type: n.memoryType, tags: n.tags },
+          colorMode,
+          p,
+        )
 
   const neighborSet = useMemo(() => {
     if (!selectedNodeId) return null
@@ -212,11 +239,14 @@ export function Graph3DRenderer({
       try {
         const geometry = new ConvexGeometry(points)
         geometry.computeVertexNormals()
+        // paletteRef keeps buildHulls deps stable ([graphData, colorMode, hullMode])
+        // while always reading the latest palette when hulls are rebuilt on a theme flip.
         const hullColor = resolveGroupColor(
           groupKey,
           groupIdx,
           colorMode,
           hullMode,
+          paletteRef.current,
         )
         const material = new THREE.MeshPhongMaterial({
           color: hullColor,
@@ -235,6 +265,26 @@ export function Graph3DRenderer({
       groupIdx++
     }
   }, [graphData, colorMode, hullMode])
+
+  // Recolor node materials and hull meshes in place on a theme or colorMode change.
+  // Updating materials directly (not node positions) preserves the settled 3D layout.
+  useEffect(() => {
+    for (const node of graphData.nodes) {
+      const color = colorForNode(node, palette)
+      node.color = color
+      const obj = (node as any).__threeObj
+      if (!obj) continue
+      const mat = obj.material as THREE.MeshPhongMaterial
+      mat.color.set(color)
+      mat.emissive.set(color)
+    }
+    buildHulls()
+    fgRef.current?.refresh?.()
+    // palette intentionally excluded from deps: the renderer recolors node
+    // materials in place so a theme flip preserves 3D positions. colorMode (a dep)
+    // still recomputes with the current palette.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [`${tokens.background}:${tokens.isDark}:${colorMode}`])
 
   useEffect(() => {
     return () => {
@@ -261,9 +311,10 @@ export function Graph3DRenderer({
       node.nodeKind === "entity"
         ? new THREE.OctahedronGeometry(radius * 0.6)
         : new THREE.SphereGeometry(radius, 16, 12)
+    const color = colorForNode(node, palette)
     const material = new THREE.MeshPhongMaterial({
-      color: node.color,
-      emissive: node.color,
+      color,
+      emissive: color,
       emissiveIntensity: 0.1,
       transparent: true,
       opacity: 0.9,
@@ -302,19 +353,22 @@ export function Graph3DRenderer({
       }}
       linkColor={(link: any) => {
         if (!neighborSet) {
-          if (link.linkKind === "relation") return "#ffa65790"
-          return "rgba(76, 201, 240, 0.6)"
+          if (link.linkKind === "relation")
+            return relationEdgeColor(tokensRef.current)
+          return memoryEdgeColor(tokensRef.current.primary, tokensRef.current)
         }
         const src =
           typeof link.source === "object" ? link.source.id : link.source
         const tgt =
           typeof link.target === "object" ? link.target.id : link.target
         if (neighborSet.has(src) && neighborSet.has(tgt)) {
-          if (link.linkKind === "relation") return "#ffa657"
-          return "#4CC9F0"
+          if (link.linkKind === "relation")
+            return relationEdgeColor(tokensRef.current)
+          return tokensRef.current.primary
         }
-        if (link.linkKind === "relation") return "#ffa65740"
-        return "rgba(76, 201, 240, 0.25)"
+        if (link.linkKind === "relation")
+          return relationEdgeColor(tokensRef.current)
+        return memoryEdgeColor(tokensRef.current.primary, tokensRef.current)
       }}
       linkDirectionalArrowLength={(link: any) =>
         link.linkKind === "relation" ? 4 : 0

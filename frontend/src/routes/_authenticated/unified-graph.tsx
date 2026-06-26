@@ -103,39 +103,47 @@ function UnifiedGraphPage() {
     filters.clearFilters()
   }
 
-  const graphData3D = useMemo(() => {
-    if (!data) return { nodes: [], links: [] }
-    const graphFilters: FilterState = {
-      searchText: filters.debouncedSearchText,
-      selectedTags: filters.selectedTags,
-      selectedTypes: filters.selectedTypes,
-      selectedSources: filters.selectedSources,
-      selectedClusters: filters.selectedClusters,
-      selectedEntityTypes,
-    }
-    return transformToGraphData(
+  const graphData3D = useMemo(
+    () => {
+      if (!data) return { nodes: [], links: [] }
+      const graphFilters: FilterState = {
+        searchText: filters.debouncedSearchText,
+        selectedTags: filters.selectedTags,
+        selectedTypes: filters.selectedTypes,
+        selectedSources: filters.selectedSources,
+        selectedClusters: filters.selectedClusters,
+        selectedEntityTypes,
+      }
+      return transformToGraphData(
+        data,
+        layout.sizeMode,
+        graphFilters,
+        colorMode,
+        entityLayerEnabled,
+        filters.filteredEntities,
+        filters.filteredEntityRelations,
+        palette,
+      )
+    },
+    // palette intentionally excluded from deps: the renderer recolors node
+    // materials in place so a theme flip preserves 3D positions. colorMode (a dep)
+    // still recomputes with the current palette.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
       data,
       layout.sizeMode,
-      graphFilters,
+      filters.debouncedSearchText,
+      filters.selectedTags,
+      filters.selectedTypes,
+      filters.selectedSources,
+      filters.selectedClusters,
+      selectedEntityTypes,
       colorMode,
       entityLayerEnabled,
       filters.filteredEntities,
       filters.filteredEntityRelations,
-    )
-  }, [
-    data,
-    layout.sizeMode,
-    filters.debouncedSearchText,
-    filters.selectedTags,
-    filters.selectedTypes,
-    filters.selectedSources,
-    filters.selectedClusters,
-    selectedEntityTypes,
-    colorMode,
-    entityLayerEnabled,
-    filters.filteredEntities,
-    filters.filteredEntityRelations,
-  ])
+    ],
+  )
 
   const selectedMemory =
     data?.memories.find((m) => m.id === selection.selectedNodeId) ?? null
@@ -189,6 +197,8 @@ function UnifiedGraphPage() {
                   spacing={layout.spacing3D}
                   colorMode={colorMode}
                   hullMode={layout.hullMode}
+                  tokens={tokens}
+                  palette={palette}
                 />
               )}
             </div>
