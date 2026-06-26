@@ -149,11 +149,17 @@ is factored into shared helpers and both paths call them:
   `nodeColorFor`; walk edges → recompute `color` via `edgeColorFor`; update
   `sigma.setSetting("labelColor"/"defaultNodeColor", …)`; `sigma.refresh()`.
 - An effect keyed on a derived **`themeKey` string**
-  (`` `${tokens.background}:${tokens.isDark}` ``, mirroring the Code graph's
-  `themeKey`) calls `recolor()` when a Sigma instance exists (skipped on initial
-  mount, where buildGraph already paints with the current palette). Keying on a
+  (`` `${tokens.background}:${tokens.isDark}:${tokens.primary}:${tokens.border}` ``,
+  mirroring the Code graph's `themeKey`) calls `recolor()` when a Sigma instance
+  exists (skipped on initial mount, where buildGraph already paints with the
+  current palette). The key includes `primary` and `border` because the
+  accent-derived edge helpers (`relationEdgeColor`←`primary`,
+  `membershipEdgeColor`←`border`) must recolor on an accent-only theme change,
+  not just on a light/dark flip — so chrome tracks the full theme system while
+  node hues stay fixed-identity (their math ignores the accent). Keying on a
   primitive — not the `[tokens, palette]` object identities — avoids recoloring
-  on any incidental re-render. `buildGraph` is **not** keyed on theme.
+  on any incidental re-render. `buildGraph` is **not** keyed on theme. (The 3D
+  recolor key additionally carries `:${colorMode}`.)
 - The diamond hover pill (`node-diamond-program.ts` `drawDiamondNodeHover`)
   takes the surface colors as parameters; the wrapper `defaultDrawNodeHover`
   reads `tokensRef.current` and passes `tokens.popover` (fill) /
