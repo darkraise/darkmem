@@ -17,11 +17,10 @@ import {
   entityTypeColor,
   lightenHex,
   darkenHex,
+  membershipEdgeColor,
 } from "@/features/graph/lib/graph-colors"
-import {
-  seededUnit,
-  resolveGraphTokens,
-} from "@/features/graph/lib/code-graph-theme"
+import { seededUnit } from "@/features/graph/lib/code-graph-theme"
+import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
 export interface KGSelection {
   kind: "node" | "edge"
@@ -59,6 +58,12 @@ export function KnowledgeGraphRenderer({
   const selectedIdRef = useRef(selectedId)
   const hoveredNodeRef = useRef<string | null>(null)
 
+  const { tokens, palette } = useMemoryGraphTheme()
+  const tokensRef = useRef(tokens)
+  tokensRef.current = tokens
+  const paletteRef = useRef(palette)
+  paletteRef.current = palette
+
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
 
@@ -72,10 +77,7 @@ export function KnowledgeGraphRenderer({
       graphRef.current = null
     }
 
-    const t = resolveGraphTokens(document.documentElement)
-    const mutedColor = t.mutedForeground
-    const dimColor = t.border
-    const labelColorToken = t.foreground
+    const t = tokensRef.current
 
     const graph = new Graph()
     graphRef.current = graph
@@ -83,7 +85,7 @@ export function KnowledgeGraphRenderer({
     for (const e of entities) {
       const nodeId = e.id || e.name
       if (graph.hasNode(nodeId)) continue
-      const color = entityTypeColor(e.entity_type)
+      const color = entityTypeColor(e.entity_type, paletteRef.current)
       graph.addNode(nodeId, {
         x: (seededUnit(nodeId, 0) - 0.5) * 10,
         y: (seededUnit(nodeId, 1) - 0.5) * 10,
@@ -99,10 +101,11 @@ export function KnowledgeGraphRenderer({
       if (!graph.hasNode(r.source) || !graph.hasNode(r.target)) continue
       try {
         graph.addEdge(r.source, r.target, {
-          color: "#58606980",
+          color: membershipEdgeColor(tokensRef.current),
           size: 1.5,
           label: r.type || "",
           _weight: r.weight ?? 0.5,
+          _edgeKind: "membership",
         })
       } catch {
         /* duplicate edge */
@@ -119,10 +122,10 @@ export function KnowledgeGraphRenderer({
       renderLabels: true,
       renderEdgeLabels: true,
       labelSize: 12,
-      labelColor: { color: labelColorToken },
+      labelColor: { color: t.foreground },
       labelFont: "Inter, sans-serif",
       edgeLabelSize: 10,
-      edgeLabelColor: { color: mutedColor },
+      edgeLabelColor: { color: t.mutedForeground },
       defaultEdgeType: "curvedArrow",
       edgeProgramClasses: { curvedArrow: EdgeCurvedArrowProgram },
       defaultDrawEdgeLabel: createDrawCurvedEdgeLabel({
@@ -132,32 +135,34 @@ export function KnowledgeGraphRenderer({
       defaultDrawNodeHover: drawDiscNodeHover,
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
-      defaultNodeColor: mutedColor,
+      defaultNodeColor: t.mutedForeground,
       nodeReducer(node, data) {
+        const tk = tokensRef.current
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedIdRef.current
         if (hov === node) {
-          res.color = lightenHex(data.color || mutedColor, 0.4)
+          res.color = lightenHex(data.color || tk.mutedForeground, 0.4)
           res.size = (data.size || 14) * 1.4
           res.highlighted = true
         } else if (sel === node) {
-          res.color = lightenHex(data.color || mutedColor, 0.4)
+          res.color = lightenHex(data.color || tk.mutedForeground, 0.4)
           res.size = (data.size || 14) * 1.4
           res.highlighted = true
-          res.borderColor = labelColorToken
+          res.borderColor = tk.foreground
           res.borderSize = 3
         } else if (sel && sel !== node) {
           const isNeighbor =
             graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
           if (!isNeighbor) {
-            res.color = dimColor
+            res.color = tk.border
             res.label = ""
           }
         }
         return res
       },
       edgeReducer(edge, data) {
+        const tk = tokensRef.current
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedIdRef.current
@@ -169,10 +174,10 @@ export function KnowledgeGraphRenderer({
             res.size = (data.size || 1.5) * 2
             const neighborColor =
               graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              mutedColor
+              tk.mutedForeground
             res.color = lightenHex(neighborColor, 0.3)
           } else {
-            res.color = dimColor
+            res.color = tk.border
             res.size = (data.size || 1.5) * 0.5
           }
         }
@@ -181,7 +186,7 @@ export function KnowledgeGraphRenderer({
           res.size = (data.size || 1.5) * 2
           const neighborColor =
             graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            mutedColor
+            tk.mutedForeground
           res.color = lightenHex(neighborColor, 0.3)
         }
 
@@ -262,6 +267,35 @@ export function KnowledgeGraphRenderer({
     selectedIdRef.current = selectedId
     sigmaRef.current?.refresh()
   }, [selectedId])
+
+  useEffect(() => {
+    const sigma = sigmaRef.current
+    const graph = graphRef.current
+    if (!sigma || !graph) return
+
+    graph.forEachNode((id, attrs) => {
+      const color = entityTypeColor(
+        attrs._entityType as string,
+        paletteRef.current,
+      )
+      graph.mergeNodeAttributes(id, { color, borderColor: darkenHex(color) })
+    })
+    graph.forEachEdge((edge) => {
+      graph.setEdgeAttribute(
+        edge,
+        "color",
+        membershipEdgeColor(tokensRef.current),
+      )
+    })
+    sigma.setSetting("labelColor", { color: tokensRef.current.foreground })
+    sigma.setSetting("edgeLabelColor", {
+      color: tokensRef.current.mutedForeground,
+    })
+    sigma.setSetting("defaultNodeColor", tokensRef.current.mutedForeground)
+    sigma.refresh()
+    // Keyed on a primitive theme signature so incidental re-renders don't recolor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [`${tokens.background}:${tokens.isDark}`])
 
   return <div ref={containerRef} className="absolute inset-0" />
 }

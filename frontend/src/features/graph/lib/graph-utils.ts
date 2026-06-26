@@ -7,10 +7,11 @@ import type {
 import {
   resolveNodeColor,
   entityTypeColor,
+  type ColorMode,
   type MemoryPalette,
 } from "./graph-colors"
 import { seededUnit } from "./code-graph-theme"
-export type { ColorMode } from "./graph-colors"
+export type { ColorMode }
 
 export type SizeMode = "connections" | "importance" | "uniform"
 
