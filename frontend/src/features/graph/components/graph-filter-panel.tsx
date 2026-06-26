@@ -1,10 +1,7 @@
 import { useState } from "react"
-import {
-  UNIFIED_PALETTE,
-  entityTypeColor,
-  resolveNodeColor,
-} from "@/features/graph/lib/graph-colors"
+import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
+import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import { Input } from "darkraise-ui/components/input"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { Label } from "darkraise-ui/components/label"
@@ -59,6 +56,7 @@ export function GraphFilterPanel({
   onEntityTypeToggle,
 }: GraphFilterPanelProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const { palette } = useMemoryGraphTheme()
 
   function toggleGroup(group: string) {
     setCollapsedGroups((prev) => {
@@ -116,8 +114,9 @@ export function GraphFilterPanel({
                                     tags: [category + "/x"],
                                   },
                                   "tag",
+                                  palette,
                                 )
-                              : "#8b949e",
+                              : palette.unclustered,
                         }}
                       />
                       <span className="font-medium capitalize">{category}</span>
@@ -175,8 +174,9 @@ export function GraphFilterPanel({
                       ? resolveNodeColor(
                           { cluster: -1, memory_type: realType, tags: [] },
                           "type",
+                          palette,
                         )
-                      : "#8b949e"
+                      : palette.unclustered
                   return (
                     <Label
                       key={type}
@@ -250,8 +250,8 @@ export function GraphFilterPanel({
                 {allClusters.map(([cid, count]) => {
                   const color =
                     colorMode === "cluster"
-                      ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length]
-                      : "#8b949e"
+                      ? clusterColor(palette, cid)
+                      : palette.unclustered
                   return (
                     <Label
                       key={cid}
@@ -292,7 +292,7 @@ export function GraphFilterPanel({
                 </p>
                 <div className="space-y-0.5">
                   {allEntityTypes.map(([etype, count]) => {
-                    const color = entityTypeColor(etype)
+                    const color = entityTypeColor(etype, palette)
                     return (
                       <Label
                         key={etype}

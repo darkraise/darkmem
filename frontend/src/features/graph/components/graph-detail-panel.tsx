@@ -1,12 +1,9 @@
 import { X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api"
-import {
-  UNIFIED_PALETTE,
-  entityTypeColor,
-  resolveNodeColor,
-} from "@/features/graph/lib/graph-colors"
+import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
+import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
 interface GraphDetailPanelProps {
   selectedMemory: UnifiedMemory | null
@@ -104,7 +101,8 @@ function EntityDetail({
   allEntities,
   onNavigateToMemory,
 }: EntityDetailProps) {
-  const color = entityTypeColor(entity.entity_type)
+  const { palette } = useMemoryGraphTheme()
+  const color = entityTypeColor(entity.entity_type, palette)
   const related =
     entityRelations?.filter(
       (r) => r.source === entity.id || r.target === entity.id,
@@ -205,6 +203,7 @@ function MemoryDetail({
   children,
   colorMode,
 }: MemoryDetailProps) {
+  const { palette } = useMemoryGraphTheme()
   return (
     <div className="space-y-3 p-4">
       <p className="text-foreground text-sm leading-relaxed">
@@ -240,8 +239,9 @@ function MemoryDetail({
                           tags: memory.tags.slice(0, 1),
                         },
                         "tag",
+                        palette,
                       )
-                    : "#8b949e",
+                    : palette.unclustered,
               }}
             />
             {memory.source}
@@ -263,8 +263,9 @@ function MemoryDetail({
                             tags: [],
                           },
                           "type",
+                          palette,
                         )
-                      : "#8b949e",
+                      : palette.unclustered,
                 }}
               />
               {memory.memory_type}
@@ -286,8 +287,8 @@ function MemoryDetail({
                 style={{
                   backgroundColor:
                     colorMode === "cluster"
-                      ? UNIFIED_PALETTE[memory.cluster % UNIFIED_PALETTE.length]
-                      : "#8b949e",
+                      ? clusterColor(palette, memory.cluster)
+                      : palette.unclustered,
                 }}
               />
               {clusterName || `Cluster ${memory.cluster}`}
@@ -328,6 +329,7 @@ function GraphSummary({
   entities,
   entityRelations,
 }: GraphSummaryProps) {
+  const { palette } = useMemoryGraphTheme()
   const clusterCounts = new Map<number, number>()
   const typeCounts = new Map<string, number>()
   const sourceCounts = new Map<string, number>()
@@ -412,8 +414,8 @@ function GraphSummary({
                   style={{
                     backgroundColor:
                       colorMode === "cluster"
-                        ? UNIFIED_PALETTE[cid % UNIFIED_PALETTE.length]
-                        : "#8b949e",
+                        ? clusterColor(palette, cid)
+                        : palette.unclustered,
                   }}
                 />
                 <span className="text-foreground flex-1 truncate">
@@ -446,8 +448,9 @@ function GraphSummary({
                               tags: [category + "/x"],
                             },
                             "tag",
+                            palette,
                           )
-                        : "#8b949e",
+                        : palette.unclustered,
                   }}
                 />
                 <span className="text-foreground flex-1 capitalize">
@@ -480,8 +483,9 @@ function GraphSummary({
                               tags: [],
                             },
                             "type",
+                            palette,
                           )
-                        : "#8b949e",
+                        : palette.unclustered,
                   }}
                 />
                 <span className="text-foreground flex-1">{type}</span>
@@ -519,7 +523,7 @@ function GraphSummary({
                 <span
                   className="h-2.5 w-2.5 shrink-0"
                   style={{
-                    backgroundColor: entityTypeColor(etype),
+                    backgroundColor: entityTypeColor(etype, palette),
                     clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                   }}
                 />
