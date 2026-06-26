@@ -22,11 +22,15 @@ import {
   entityTypeColor,
   lightenHex,
   darkenHex,
+  memoryEdgeColor,
+  relationEdgeColor,
+  membershipEdgeColor,
+  type ColorMode,
+  type MemoryPalette,
 } from "@/features/graph/lib/graph-colors"
-import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import {
   seededUnit,
-  resolveGraphTokens,
+  type GraphThemeTokens,
 } from "@/features/graph/lib/code-graph-theme"
 import type {
   UnifiedMemory,
@@ -49,6 +53,8 @@ interface Graph2DRendererProps {
   entities: GraphEntity[]
   entityRelations: EntityRelation[]
   onEntitySelect?: (entityId: string | null) => void
+  tokens: GraphThemeTokens
+  palette: MemoryPalette
 }
 
 export function Graph2DRenderer({
@@ -66,6 +72,8 @@ export function Graph2DRenderer({
   entities,
   entityRelations,
   onEntitySelect,
+  tokens,
+  palette,
 }: Graph2DRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
@@ -77,6 +85,30 @@ export function Graph2DRenderer({
   const colorModeRef = useRef(colorMode)
   const hullModeRef = useRef(hullMode)
   const filteredMemoriesRef = useRef(filteredMemories)
+  const tokensRef = useRef(tokens)
+  tokensRef.current = tokens
+  const paletteRef = useRef(palette)
+  paletteRef.current = palette
+
+  const nodeBaseColor = (attrs: Record<string, unknown>): string => {
+    if (attrs._kind === "entity") {
+      const et =
+        (attrs._entityData as { entity_type: string } | undefined)
+          ?.entity_type ?? ""
+      return entityTypeColor(et, paletteRef.current)
+    }
+    const m = attrs._mem as {
+      cluster: number
+      memory_type: string | null
+      tags: string[]
+    }
+    return resolveNodeColor(m, colorModeRef.current, paletteRef.current)
+  }
+  const edgeBaseColor = (kind: string, srcHex: string): string => {
+    if (kind === "relation") return relationEdgeColor(tokensRef.current)
+    if (kind === "membership") return membershipEdgeColor(tokensRef.current)
+    return memoryEdgeColor(srcHex, tokensRef.current)
+  }
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
@@ -95,9 +127,8 @@ export function Graph2DRenderer({
       graphRef.current = null
     }
 
-    const t = resolveGraphTokens(document.documentElement)
+    const t = tokensRef.current
     const mutedColor = t.mutedForeground
-    const dimColor = t.border
     const labelColorToken = t.foreground
 
     const graph = new Graph()
@@ -111,7 +142,10 @@ export function Graph2DRenderer({
 
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
-      const color = resolveNodeColor(m, colorModeRef.current)
+      const color = nodeBaseColor({
+        _kind: "memory",
+        _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
+      })
       const conns = connMap.get(m.id) ?? 0
       const size = computeSize(sizeMode, conns, m.importance)
       allNodeIds.add(m.id)
@@ -123,6 +157,7 @@ export function Graph2DRenderer({
         color,
         borderColor: darkenHex(color),
         _kind: "memory",
+        _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
       })
     }
 
@@ -131,10 +166,11 @@ export function Graph2DRenderer({
         try {
           const srcColor =
             graph.getNodeAttribute(e.source, "color") || mutedColor
-          const edgeColor = darkenHex(srcColor, 0.6)
+          const edgeColor = edgeBaseColor("memory", srcColor)
           graph.addEdge(e.source, e.target, {
             color: edgeColor,
             size: 2.5,
+            _edgeKind: "memory",
           })
         } catch {
           /* duplicate */
@@ -149,7 +185,7 @@ export function Graph2DRenderer({
       const entityIdSet = new Set(visibleEntities.map((ent) => ent.id))
 
       for (const ent of visibleEntities) {
-        const bg = entityTypeColor(ent.entity_type)
+        const bg = entityTypeColor(ent.entity_type, paletteRef.current)
         graph.addNode(`entity:${ent.id}`, {
           x: (seededUnit(`entity:${ent.id}`, 0) - 0.5) * 10,
           y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
@@ -167,9 +203,10 @@ export function Graph2DRenderer({
         if (entityIdSet.has(r.source) && entityIdSet.has(r.target)) {
           try {
             graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
-              color: "#ffa65770",
+              color: edgeBaseColor("relation", ""),
               size: 2.5,
               label: r.type,
+              _edgeKind: "relation",
             })
           } catch {
             /* duplicate */
@@ -182,8 +219,9 @@ export function Graph2DRenderer({
           if (allNodeIds.has(mid)) {
             try {
               graph.addEdge(`entity:${ent.id}`, mid, {
-                color: "#58606920",
+                color: edgeBaseColor("membership", ""),
                 size: 2.5,
+                _edgeKind: "membership",
               })
             } catch {
               /* duplicate */
@@ -205,7 +243,13 @@ export function Graph2DRenderer({
       edgeProgramClasses: { curve: EdgeCurveProgram },
       defaultDrawNodeHover: (context, data, settings) => {
         if (data.type === "diamond") {
-          drawDiamondNodeHover(context, data, settings)
+          drawDiamondNodeHover(
+            context,
+            data,
+            settings,
+            tokensRef.current.popover,
+            tokensRef.current.isDark ? "#000" : tokensRef.current.border,
+          )
         } else {
           drawDiscNodeHover(context, data, settings)
         }
@@ -214,32 +258,34 @@ export function Graph2DRenderer({
       labelRenderedSizeThreshold: 6,
       defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
+        const t = tokensRef.current
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedNodeIdRef.current
         if (hov === node) {
-          res.color = lightenHex(data.color || mutedColor, 0.4)
+          res.color = lightenHex(data.color || t.mutedForeground, 0.4)
           res.size = (data.size || 5) * 1.4
           res.highlighted = true
         } else if (sel === node) {
-          res.color = lightenHex(data.color || mutedColor, 0.4)
+          res.color = lightenHex(data.color || t.mutedForeground, 0.4)
           res.size = (data.size || 5) * 1.4
           res.highlighted = true
           if (data.type !== "diamond") {
-            res.borderColor = labelColorToken
+            res.borderColor = t.foreground
             res.borderSize = 3
           }
         } else if (sel && sel !== node) {
           const isNeighbor =
             graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
           if (!isNeighbor) {
-            res.color = dimColor
+            res.color = t.border
             res.label = ""
           }
         }
         return res
       },
       edgeReducer(edge, data) {
+        const t = tokensRef.current
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedNodeIdRef.current
@@ -251,10 +297,10 @@ export function Graph2DRenderer({
             res.size = (data.size || 2.5) * 2
             const neighborColor =
               graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              mutedColor
+              t.mutedForeground
             res.color = lightenHex(neighborColor, 0.3)
           } else {
-            res.color = dimColor
+            res.color = t.border
             res.size = (data.size || 2.5) * 0.5
           }
         }
@@ -263,7 +309,7 @@ export function Graph2DRenderer({
           res.size = (data.size || 2.5) * 2
           const neighborColor =
             graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            mutedColor
+            t.mutedForeground
           res.color = lightenHex(neighborColor, 0.3)
         }
 
@@ -331,6 +377,7 @@ export function Graph2DRenderer({
           idx,
           colorModeRef.current,
           hullModeRef.current,
+          paletteRef.current,
         )
         drawHullForSigma(hullCtx, sigmaRef.current, members, color, 0.07, 0.2)
         idx++
@@ -356,7 +403,7 @@ export function Graph2DRenderer({
         hullCtx.lineTo(vp.x, vp.y + r)
         hullCtx.lineTo(vp.x - r, vp.y)
         hullCtx.closePath()
-        hullCtx.strokeStyle = labelColorToken
+        hullCtx.strokeStyle = tokensRef.current.foreground
         hullCtx.lineWidth = border
         hullCtx.stroke()
       }
@@ -444,6 +491,31 @@ export function Graph2DRenderer({
     filteredMemoriesRef.current = filteredMemories
     sigmaRef.current?.refresh()
   }, [colorMode, hullMode, filteredMemories])
+
+  useEffect(() => {
+    const sigma = sigmaRef.current
+    const graph = graphRef.current
+    if (!sigma || !graph) return // initial mount: buildGraph already painted
+
+    graph.forEachNode((id, attrs) => {
+      const color = nodeBaseColor(attrs)
+      graph.mergeNodeAttributes(id, { color, borderColor: darkenHex(color) })
+    })
+    graph.forEachEdge((edge, attrs, _s, _t, sAttrs) => {
+      const kind = (attrs._edgeKind as string) ?? "memory"
+      const srcHex =
+        (sAttrs.color as string) ?? tokensRef.current.mutedForeground
+      graph.setEdgeAttribute(edge, "color", edgeBaseColor(kind, srcHex))
+    })
+    sigma.setSetting("labelColor", { color: tokensRef.current.foreground })
+    sigma.setSetting("edgeLabelColor", {
+      color: tokensRef.current.mutedForeground,
+    })
+    sigma.setSetting("defaultNodeColor", tokensRef.current.mutedForeground)
+    sigma.refresh()
+    // Keyed on a primitive theme signature so incidental re-renders don't recolor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [`${tokens.background}:${tokens.isDark}`])
 
   return <div ref={containerRef} className="absolute inset-0" />
 }

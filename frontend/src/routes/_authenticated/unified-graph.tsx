@@ -21,6 +21,7 @@ import { useDebouncedValue } from "@/features/graph/hooks/use-debounced-value"
 import { useGraphFilters } from "@/features/graph/hooks/use-graph-filters"
 import { useGraphLayout } from "@/features/graph/hooks/use-graph-layout"
 import { useGraphSelection } from "@/features/graph/hooks/use-graph-selection"
+import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
 export const Route = createFileRoute("/_authenticated/unified-graph")({
   component: UnifiedGraphPage,
@@ -30,6 +31,7 @@ type ViewMode = "2d" | "3d"
 
 function UnifiedGraphPage() {
   useFullBleedContent()
+  const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
   const [, setGraphReady] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>("type")
@@ -155,7 +157,7 @@ function UnifiedGraphPage() {
 
         {memoryCount > 0 && (
           <div ref={containerRef} className="relative min-h-0 flex-1">
-            <div className="absolute inset-0 bg-[#0d1117]">
+            <div className="absolute inset-0 bg-background">
               {dimensions && viewMode === "2d" && data && (
                 <Graph2DRenderer
                   filteredMemories={filters.filteredMemories}
@@ -172,6 +174,8 @@ function UnifiedGraphPage() {
                   entities={filters.filteredEntities}
                   entityRelations={filters.filteredEntityRelations}
                   onEntitySelect={selection.handleEntitySelect}
+                  tokens={tokens}
+                  palette={palette}
                 />
               )}
               {dimensions && viewMode === "3d" && (
@@ -190,7 +194,7 @@ function UnifiedGraphPage() {
             </div>
 
             {isLoading && (
-              <div className="absolute inset-0 z-30 bg-[#0d1117]">
+              <div className="absolute inset-0 z-30 bg-background">
                 <GraphSkeleton label="Loading graph data..." />
               </div>
             )}

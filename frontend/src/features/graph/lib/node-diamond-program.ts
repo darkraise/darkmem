@@ -46,6 +46,8 @@ export function drawDiamondNodeHover(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
+  fill = "#FFF",
+  shadow = "#000",
 ): void {
   const size = settings.labelSize
   const font = settings.labelFont
@@ -55,11 +57,11 @@ export function drawDiamondNodeHover(
   const PADDING = 2
   const r = data.size + PADDING
 
-  context.fillStyle = "#FFF"
+  context.fillStyle = fill
   context.shadowOffsetX = 0
   context.shadowOffsetY = 0
   context.shadowBlur = 8
-  context.shadowColor = "#000"
+  context.shadowColor = shadow
 
   if (typeof data.label === "string") {
     const textWidth = context.measureText(data.label).width
