@@ -80,7 +80,7 @@ A first-class deliverable, not a design-decision doc: **annotated mockups for ev
 | 00 — Overview, vision & principles | ✅ drafted (`dcc9fea`, `e9dedc5`) |
 | 01 — Domain model & business flows | ✅ drafted, Fable-reviewed |
 | 02 — System architecture | ✅ drafted, Fable-reviewed |
-| 03a — Backend stack viability (.NET) | ✅ annex + gap-closure spikes → **21/24 green** (data/numeric/tree-sitter/MCP/graph proven live, `spikes/`); residuals: tree-sitter grammar CI pipeline, harness rebuild, maintainer appetite |
+| 03a — Backend stack viability (.NET) | ✅ annex + gap-closure spikes + tree-sitter port study (§5.1.1) → **21 green / 3 yellow / 0 red**, no feasibility blocker; residuals are bounded build/validation (grammar CI pipeline, harness rebuild, Leiden validation). Decision = appetite |
 | 03–20 (design docs) | not started |
 | UI Mockups (→ claude.ai artifact) | not started |
 
