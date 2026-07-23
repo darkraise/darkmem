@@ -27,7 +27,7 @@ Each doc states **decisions and their purpose (why)**, not just what. Grouped by
 - **00 — Overview, vision & principles** — what darkmem is, who for, north-star, non-goals, design principles, the moats.
 - **01 — Domain model & business flows** — the entities (memory, entity/relation, topic, knowledge, project, code) and the lifecycles/user-journeys (capture → extract → retrieve → supersede/expire → consolidate).
 - **02 — System architecture** — components, boundaries, data stores, deployment topology, the single-Postgres rationale, sync vs async paths.
-- **03 — Technology & stack decisions** — ADR-style rationale for each stack + library choice; what was considered and rejected.
+- **03 — Technology & stack decisions** — ADR-style rationale for each stack + library choice; what was considered and rejected. Its backend-language ADR is informed by annex **03a — Backend stack viability (.NET)** (`03a-backend-stack-dotnet-viability.md`, drafted).
 - **04 — Data model & schema design** — the fresh schema: tables, per-fingerprint partitioning, indexes, constraints, invariants.
 
 ### Subsystems & algorithms — fanned out via workflow (conform to the foundation)
@@ -80,6 +80,7 @@ A first-class deliverable, not a design-decision doc: **annotated mockups for ev
 | 00 — Overview, vision & principles | ✅ drafted (`dcc9fea`, `e9dedc5`) |
 | 01 — Domain model & business flows | ✅ drafted, Fable-reviewed |
 | 02 — System architecture | ✅ drafted, Fable-reviewed |
+| 03a — Backend stack viability (.NET) | ✅ research annex, Fable-verified — awaiting maintainer decision |
 | 03–20 (design docs) | not started |
 | UI Mockups (→ claude.ai artifact) | not started |
 
