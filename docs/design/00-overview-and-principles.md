@@ -7,14 +7,16 @@ Part of the unified target design — see `docs/design/README.md` for the frame 
 
 ## 1. What darkmem is
 
-darkmem is a **self-hosted, single-Postgres memory and knowledge engine for AI agents.** It captures what agents and their humans learn, extracts a typed knowledge graph from it, retrieves it with graph-augmented hybrid search, keeps it true over time, and surfaces all of it in a rich UI — over a first-class **MCP** interface any AI tool can speak.
+**Core value — a knowledge engine for AI agents.** darkmem is a self-hosted, single-Postgres knowledge engine that captures what agents (and their humans) learn, extracts a typed knowledge graph from it, retrieves it with graph-augmented hybrid search, keeps it true over time, and surfaces all of it in a rich UI — over a first-class **MCP** interface any AI tool can speak. This is the anchor; nothing in the expansion is allowed to dilute it.
 
-In one line: **one brain, self-hosted, that every AI tool you use can read from and write to — and that organises and maintains itself.**
+**Expansion horizon — a personal memory engine.** The same engine grows into a personal memory engine for the human: ingest personal **documents** (notes, PDFs, files), retrieve over them (**document RAG**), and **analyse** that corpus — all in the one store, one graph. Agents remain the core consumer; the human becomes a first-class *user* of their own memory, not only its curator. The two horizons share one substrate — a document the human files is also knowledge an agent can recall.
+
+In one line: **one brain, self-hosted — the knowledge engine every AI tool reads from and writes to, growing into the personal memory engine its human thinks with.**
 
 ## 2. Who it is for
 
-- **Primary consumer — AI coding agents** (Claude Code, Cursor, Codex, Cline, and any MCP client). They read context at the start of work and write back verified facts, decisions, and bugfixes. darkmem's job is to make an agent in a fresh session as informed as one that lived through the prior sessions.
-- **Primary human — the self-hoster / maintainer.** One person (or a small team) running darkmem on a homelab or a single box, who wants to *see, trust, and curate* what the brain knows.
+- **Core consumer — AI coding agents** (Claude Code, Cursor, Codex, Cline, and any MCP client). They read context at the start of work and write back verified facts, decisions, and bugfixes. darkmem's job is to make an agent in a fresh session as informed as one that lived through the prior sessions.
+- **The human — curator, and (expansion) direct user.** One person (or a small team) running darkmem on a homelab or a single box. In the core they *see, trust, and curate* what the brain knows. In the expansion horizon they also *use* it directly — filing their own documents and notes, asking questions over that corpus (document RAG), and getting analysis back — so darkmem is their personal memory engine, not only the agents'.
 - **The project — an open-source product.** darkmem is built to be adopted, so it must be easy to stand up, honest about its numbers, and never crippled behind a paywall.
 
 darkmem is **not** built for a multi-tenant cloud SaaS operator or an enterprise data platform; those shape a different product and are explicit non-goals (§5).
@@ -40,6 +42,8 @@ The target darkmem is a coherent system with seven capabilities, each earning it
 5. **Self-organisation & self-maintenance.** Off-the-hot-path consolidation ("dreaming") that dedupes, refines, supersedes stale facts on newer corrections, groups memories into **topics**, and synthesises higher-order **knowledge** (derived `insight`/`profile` rows) — all auditable through the supersession lineage.
 6. **Auto-research.** On request, darkmem researches a topic and files organised, cited knowledge back into itself — the deep-research pattern turned inward.
 7. **A surface worth using.** A UI that *shows* the engine: a living dashboard with a contribution calendar, live pipeline observability, retrieval explainability, a memory timeline, and human-in-the-loop curation — plus distribution (auto-inject, one-command onboarding, SDKs) so the brain reaches every tool.
+
+**The expansion horizon — personal memory engine.** Beyond the seven agent-facing capabilities, the same substrate extends to the human as their own memory engine: ingest personal **documents** (notes, PDFs, files) as blocks with block-level embeddings, retrieve over them with grounded, cited answers (**document RAG**), and **analyse** the personal corpus — trends, summaries, connections across what the human has filed. This reuses the one graph and one store rather than adding a second product; a document the human files becomes knowledge an agent can also recall. It is deliberately a *horizon* — the core agent engine earns its keep first — but it is designed in from the start so the schema, ingestion, and retrieval never have to be retrofitted for it (specified in doc 16).
 
 This is a big target, and it is **accepted as the target** (see the README's locked frame): existing features and the full evolution are designed as one system, from first principles, with a rebuild treated as an acceptable path.
 
