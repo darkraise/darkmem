@@ -77,7 +77,9 @@ A first-class deliverable, not a design-decision doc: **annotated mockups for ev
 
 | Doc / deliverable | State |
 |---|---|
-| 00–20 (design docs) | not started |
+| 00 — Overview, vision & principles | ✅ drafted (`dcc9fea`, `e9dedc5`) |
+| 01 — Domain model & business flows | ✅ drafted, Fable-reviewed |
+| 02–20 (design docs) | not started |
 | UI Mockups (→ claude.ai artifact) | not started |
 
 **Paused/parked:** the `benchlib` harness SDD (plan `docs/superpowers/plans/2026-07-23-harness-benchlib-walking-skeleton.md`; Tasks 1–2 committed, `.superpowers/sdd/progress.md`). The harness becomes design doc 17; execution resumes only after the design is settled, if still wanted.
