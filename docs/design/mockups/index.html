@@ -1,0 +1,1009 @@
+<style>/* ==========================================================================
+   darkraise-ui@3.1.2 design tokens — light + dark, self-contained.
+
+   Provenance:
+   - These tokens reflect darkmem's own configured theme — accentColor:
+     "indigo", surfaceColor: "slate", preset: "default" — per
+     frontend/src/theme.config.ts and docs/design/14-ui-ux-design-
+     language.md §2, NOT the darkraise-ui package's generic default
+     (accentColor: "blue"). Neutral/surface channels (background,
+     card, border, ...) are slate either way, so the LIGHT neutrals
+     below are still copied verbatim from the shipped `:root` block in
+     frontend/node_modules/darkraise-ui/dist/styles.css (the package's
+     `./styles.css` export, imported by frontend/src/styles/globals.css).
+     Accent-bearing tokens (--primary, --ring, --focus-ring) do NOT
+     come from that file — they were re-derived for both light and
+     dark by hand-evaluating the package's generateTokens() formula
+     (dist/theme/index.js, bundled in dist/chunk-BAL7XKOG.js) with
+     accentColor: "indigo" swapped in for the shipped default.
+   - DARK neutrals are NOT present anywhere in styles.css as static
+     CSS. darkraise-ui's dark mode is generated at runtime by
+     ThemeProvider and written as inline styles once React mounts;
+     there is no `.dark` class or dark `:root` block shipped in the
+     CSS. The dark values below were likewise computed by hand-
+     evaluating generateTokens() for mode: "dark" with the same
+     accentColor: "indigo", surfaceColor: "slate", preset: "default"
+     inputs. --info/--success/--warning are hardcoded to blue/emerald/
+     amber by the formula itself regardless of accentColor, so they
+     stay untouched. Channel values reuse the package's own slate/
+     indigo/blue/emerald/amber palette entries (dist/chunk-BAL7XKOG.js
+     surfaceColors / accentColors).
+   - --chart-1..5: the shipped light block does not follow the engine's
+     getChartColors() rotation exactly (it reads as a hand-picked
+     blue/green/rose/amber/violet spread). Rather than switch hues
+     between themes, dark keeps that same five-hue identity and moves
+     each one from its `500` shade to its `400` shade — the exact
+     light->dark shade step generateTokens() itself uses for every
+     other accent-derived token (ring, info, warning, ...).
+   - --font-sans / --font-heading / --font-mono and the --radius-*
+     family are copied from the shipped `@theme` block (Tailwind v4
+     token-to-utility mapping) in the same styles.css; they are mode-
+     independent so they are declared once, not duplicated per theme.
+
+   Self-containment: no stylesheet import directive, no remote url() —
+   font stacks fall back to system fonts if "Inter" / "JetBrains Mono"
+   aren't installed.
+
+   Consumption convention (matches the shipped package exactly):
+     hsl(var(--background))   // channel-only tokens: background,
+                               // foreground, card, primary, muted,
+                               // border, destructive, success,
+                               // warning, info, ring, focus-ring, ...
+     var(--chart-1)            // chart-1..5 are pre-wrapped "hsl(...)"
+                               // strings — do NOT wrap again.
+   ========================================================================== */
+
+:root,
+.theme-light {
+  color-scheme: light;
+
+  /* mode-independent */
+  --radius: 0.5rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-button: 0.5rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* light */
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 239 84% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 222 47% 11%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 239 84% 67%;
+  --focus-ring: 230 94% 82%;
+  --chart-1: hsl(217 91% 60%);
+  --chart-2: hsl(142 71% 45%);
+  --chart-3: hsl(350 89% 60%);
+  --chart-4: hsl(38 92% 50%);
+  --chart-5: hsl(258 90% 66%);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* :not(.theme-light) so a page-level .theme-light override (should one
+     ever be applied to :root itself, rather than only to a nested
+     .board) still wins over the OS preference. */
+  :root:not(.theme-light) {
+    color-scheme: dark;
+
+    --background: 229 84% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 52%;
+    --success-foreground: 0 0% 100%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 222 47% 11%;
+    --info: 213 94% 68%;
+    --info-foreground: 0 0% 100%;
+    --border: 215 25% 27%;
+    --input: 215 25% 27%;
+    --ring: 239 84% 67%;
+    --focus-ring: 228 96% 89%;
+    --chart-1: hsl(213 94% 68%);
+    --chart-2: hsl(142 69% 58%);
+    --chart-3: hsl(351 95% 71%);
+    --chart-4: hsl(43 96% 56%);
+    --chart-5: hsl(255 92% 76%);
+  }
+}
+
+[data-theme="dark"],
+.theme-dark {
+  color-scheme: dark;
+
+  --background: 229 84% 5%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 239 84% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 158 64% 52%;
+  --success-foreground: 0 0% 100%;
+  --warning: 43 96% 56%;
+  --warning-foreground: 222 47% 11%;
+  --info: 213 94% 68%;
+  --info-foreground: 0 0% 100%;
+  --border: 215 25% 27%;
+  --input: 215 25% 27%;
+  --ring: 239 84% 67%;
+  --focus-ring: 228 96% 89%;
+  --chart-1: hsl(213 94% 68%);
+  --chart-2: hsl(142 69% 58%);
+  --chart-3: hsl(351 95% 71%);
+  --chart-4: hsl(43 96% 56%);
+  --chart-5: hsl(255 92% 76%);
+}
+
+/* ==========================================================================
+   Board chrome for the Comprehensive UI Mockups (D2).
+
+   Authored entirely against the tokens declared in theme.css — every
+   color reference below is var(--token) or hsl(var(--token)), never a
+   literal. That's what makes a board correct under all four theme
+   entry points theme.css wires up: the OS `prefers-color-scheme`, the
+   viewer's own [data-theme] toggle, and a forced .theme-light /
+   .theme-dark class on an individual board. No stylesheet import
+   directive, no remote url() — self-contained.
+
+   Load order: theme.css then mockup.css (mockup.css only *consumes*
+   custom properties, it never declares --background/--primary/etc.
+   itself).
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px;
+  display: grid;
+  gap: 32px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- board frame -------------------------------------------------------- */
+
+.board {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.board-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid hsl(var(--border));
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.board-bar .board-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: hsl(var(--border));
+  flex: none;
+}
+
+.board-title {
+  font-size: 15px;
+  font-weight: 640;
+  color: hsl(var(--foreground));
+}
+
+.board-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- side-by-side theme framing -----------------------------------------
+   Wraps two boards (one tagged .theme-light, one .theme-dark) so a
+   fragment can show both themes at once, independent of the page-level
+   [data-theme] toggle or the viewer's OS preference. theme.css defines
+   the token values for .theme-light/.theme-dark; this file only lays
+   the pair out and labels them. */
+
+.theme-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .theme-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-row > .theme-light,
+.theme-row > .theme-dark {
+  position: relative;
+  padding-top: 40px;
+}
+
+.theme-row > .theme-light::before,
+.theme-row > .theme-dark::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.theme-row > .theme-light::before {
+  content: "theme: light";
+}
+
+.theme-row > .theme-dark::before {
+  content: "theme: dark";
+}
+
+/* ---- annotation callout -------------------------------------------------- */
+
+.annotation {
+  border-left: 2px solid hsl(var(--primary) / 0.55);
+  padding: 2px 0 2px 12px;
+  font-size: 12.5px;
+  color: hsl(var(--muted-foreground));
+}
+
+.annotation b,
+.annotation strong {
+  color: hsl(var(--foreground));
+  font-weight: 640;
+}
+
+.annotation.annotation-caution {
+  border-left-color: hsl(var(--warning) / 0.7);
+}
+
+.annotation.annotation-conflict {
+  border-left-color: hsl(var(--destructive) / 0.7);
+}
+
+/* ---- state chips ----------------------------------------------------------
+   empty / loading / error / populated / staged / degraded / excluded —
+   the seven honest states a surface must be able to render. */
+
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.state-chip.state-empty {
+  border-style: dashed;
+}
+
+.state-chip.state-loading {
+  color: hsl(var(--info));
+  border-color: hsl(var(--info) / 0.5);
+  background: hsl(var(--info) / 0.1);
+}
+
+.state-chip.state-error {
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.5);
+  background: hsl(var(--destructive) / 0.1);
+}
+
+.state-chip.state-populated {
+  color: hsl(var(--success));
+  border-color: hsl(var(--success) / 0.5);
+  background: hsl(var(--success) / 0.1);
+}
+
+.state-chip.state-staged {
+  border-style: dashed;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+}
+
+.state-chip.state-degraded {
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.5);
+  background: hsl(var(--warning) / 0.12);
+}
+
+.state-chip.state-excluded {
+  color: hsl(var(--muted-foreground));
+  border-style: dotted;
+  opacity: 0.85;
+}
+
+/* ---- verification badges --------------------------------------------------
+   candidate / corroborated / disputed / confirmed — the honesty-label
+   ladder. Colour maps to the doc-14 status roles: neutral -> muted,
+   supported -> primary, conflict -> destructive. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 560;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.badge.candidate {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px dashed hsl(var(--border));
+}
+
+.badge.corroborated {
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.6);
+  background: transparent;
+}
+
+.badge.confirmed {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
+
+.badge.disputed {
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.55);
+  background: hsl(var(--destructive) / 0.1);
+}
+
+/* ---- overlay chips ----------------------------------------------------
+   Append after a badge; never replace it — the backend has not demoted
+   the row, these are advisory labels only. */
+
+.overlay-under-sourced,
+.overlay-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 550;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: hsl(var(--warning));
+  border: 1px dashed hsl(var(--warning) / 0.6);
+  background: hsl(var(--warning) / 0.12);
+}
+
+/* ---- code-origin badge --------------------------------------------------- */
+
+.badge-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--chart-5));
+  border: 1px solid hsl(var(--chart-5));
+  background: transparent;
+}
+
+/* ---- layer chips -----------------------------------------------------
+   l0 memory / l1 / l2 fact / l3 article. Per doc 14: surface-toned,
+   monospace, no accent, no status colour — quiet metadata that
+   classifies without judging. The l0..l3 modifiers stay on that same
+   neutral --muted/--border pairing (never a hue) and differ only by a
+   depth-of-synthesis opacity ramp, so a layer chip can never be
+   mistaken for a verification signal. */
+
+.layer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.layer-chip.l0 {
+  opacity: 0.7;
+}
+
+.layer-chip.l1 {
+  opacity: 0.8;
+}
+
+.layer-chip.l2 {
+  opacity: 0.9;
+}
+
+.layer-chip.l3 {
+  opacity: 1;
+}
+</style>
+<nav class="board-index"><a href="#G0-design-guideline">G0-design-guideline</a></nav>
+<main><article id="G0-design-guideline" class="fragment">
+<style>
+  /* G0 board-local styles. These are new presentational widgets that have
+     no shared chrome class yet (token/type/spacing swatches, the dispute
+     split panel, the exclusion strip, the trace-panel bars) — C0*/S*
+     fragments formalise the reusable ones later. Everything below reads
+     var(--token) / var(--chart-N) only; nothing here redeclares a token
+     or restyles .board/.annotation/.badge/.layer-chip/.state-chip/
+     .theme-light/.theme-dark. Namespaced g0- so it can never collide with
+     another fragment's local styles once build.py concatenates them. */
+
+  .g0-section { display: flex; flex-direction: column; gap: 14px; }
+  .g0-section > h3 {
+    margin: 0; font-size: 15px; font-weight: 640; color: hsl(var(--foreground));
+  }
+  .g0-sub { display: flex; flex-direction: column; gap: 10px; }
+
+  .g0-swatch-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 10px;
+  }
+  .g0-swatch {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    overflow: hidden; background: hsl(var(--card));
+  }
+  .g0-swatch .chip { height: 36px; }
+  .g0-swatch .label { padding: 6px 8px; display: flex; flex-direction: column; gap: 1px; }
+  .g0-swatch .tok { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--foreground)); }
+  .g0-swatch .role { font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .g0-role-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .g0-role-card {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+    background: hsl(var(--card)); font-size: 12.5px;
+  }
+  .g0-role-card .name { font-weight: 620; color: hsl(var(--foreground)); }
+  .g0-role-card .name .dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 7px; vertical-align: -1px;
+  }
+  .g0-role-card .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .g0-type-row { display: flex; align-items: baseline; gap: 16px; padding: 7px 0; border-bottom: 1px dashed hsl(var(--border)); }
+  .g0-type-row:last-child { border-bottom: none; }
+  .g0-type-row .sample { flex: none; width: 230px; color: hsl(var(--foreground)); }
+  .g0-type-row .meta { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  .g0-radius-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .g0-radius-sample { width: 46px; height: 46px; background: hsl(var(--primary) / 0.16); border: 1px solid hsl(var(--primary) / 0.55); }
+  .g0-radius-meta { display: flex; flex-direction: column; gap: 1px; }
+  .g0-radius-meta .tok { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); }
+  .g0-radius-meta .val { font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .g0-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  .g0-list li::marker { color: hsl(var(--muted-foreground)); }
+
+  .g0-vocab-block {
+    display: flex; flex-direction: column; gap: 10px; padding: 12px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card));
+  }
+  .g0-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .g0-claim { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .g0-claim b { color: hsl(var(--foreground)); font-weight: 600; }
+  .g0-claim code { font-family: var(--font-mono); }
+
+  .overlay-under-sourced svg, .overlay-stale svg { width: 12px; height: 12px; flex: none; }
+
+  .g0-dispute {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .g0-dispute .side { padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; background: hsl(var(--destructive) / 0.06); }
+  .g0-dispute .vs {
+    display: flex; align-items: center; justify-content: center; padding: 0 10px;
+    font-family: var(--font-mono); font-size: 11px; color: hsl(var(--destructive));
+    border-left: 1px dashed hsl(var(--destructive) / 0.4); border-right: 1px dashed hsl(var(--destructive) / 0.4);
+  }
+  .g0-dispute .assert { font-size: 12.5px; font-weight: 560; color: hsl(var(--foreground)); }
+  .g0-dispute .count { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  @media (max-width: 560px) {
+    .g0-dispute { grid-template-columns: 1fr; }
+    .g0-dispute .vs { border: none; border-top: 1px dashed hsl(var(--destructive) / 0.4); border-bottom: 1px dashed hsl(var(--destructive) / 0.4); padding: 4px; }
+  }
+
+  .g0-exclusion-strip { display: flex; flex-direction: column; gap: 6px; }
+  .g0-exclusion-chip {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm);
+    background: hsl(var(--warning) / 0.08); font-size: 12.5px; color: hsl(var(--foreground));
+  }
+  .g0-exclusion-chip svg { width: 15px; height: 15px; flex: none; color: hsl(var(--warning)); }
+  .g0-exclusion-chip .tag { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .g0-trace { display: flex; flex-direction: column; gap: 10px; }
+  .g0-trace-region {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    padding: 10px 12px; background: hsl(var(--card)); display: flex; flex-direction: column; gap: 6px;
+  }
+  .g0-trace-region .region-label {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground));
+  }
+  .g0-arm { display: grid; grid-template-columns: 84px 1fr 78px; align-items: center; gap: 8px; font-size: 12px; }
+  .g0-arm .name { font-family: var(--font-mono); color: hsl(var(--foreground)); }
+  .g0-arm .track { height: 8px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+  .g0-arm .fill { display: block; height: 100%; border-radius: 999px; }
+  .g0-arm .val { font-family: var(--font-mono); text-align: right; color: hsl(var(--muted-foreground)); }
+  .g0-arm.inactive .name, .g0-arm.inactive .val { color: hsl(var(--muted-foreground)); opacity: 0.65; }
+  .g0-arm.inactive .track { background: hsl(var(--muted) / 0.5); }
+</style>
+
+<section class="board" id="G0-reference-board">
+  <h2>G0 — Design guideline: doc 14 realised</h2>
+  <div class="annotation">
+    <b>Reference board, not a screen.</b> Realises doc 14 §2 (theme substrate + token roles), §3 (the
+    honesty-label vocabulary: verification badge, layer chip, overlay chips, both-sides dispute), §4 (the
+    trace panel), and §7 (type scale, spacing, motion, accessibility, copy voice). It composes nothing from
+    doc 13's screen inventory — this is the vocabulary the <code>C0*</code> and <code>S*</code> fragments
+    reuse, never re-derive.
+  </div>
+
+  <div class="board-body">
+    <!-- ============================================================= -->
+    <div class="g0-section">
+      <h3>1 — Theme substrate: token palette (doc 14 §2)</h3>
+      <div class="annotation">
+        Every colour below is a CSS custom property, never a literal hex — the same
+        <code>code-graph-theme.ts</code> pattern doc 14 §2 requires: name a token role, let the role
+        resolve through the theme. The two panels are the identical swatch set rendered once under
+        <code>.theme-light</code> and once under <code>.theme-dark</code>, so a reviewer can compare values
+        directly rather than toggling.
+      </div>
+      <div class="theme-row">
+        <div class="theme-light">
+          <div class="g0-swatch-grid">
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--background))"></span><span class="label"><span class="tok">--background</span><span class="role">app canvas</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--foreground))"></span><span class="label"><span class="tok">--foreground</span><span class="role">primary text</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--card))"></span><span class="label"><span class="tok">--card</span><span class="role">board surface</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--muted))"></span><span class="label"><span class="tok">--muted</span><span class="role">neutral role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--border))"></span><span class="label"><span class="tok">--border</span><span class="role">frame / dashed</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--primary))"></span><span class="label"><span class="tok">--primary</span><span class="role">supported role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--destructive))"></span><span class="label"><span class="tok">--destructive</span><span class="role">conflict role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--warning))"></span><span class="label"><span class="tok">--warning</span><span class="role">caution role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--success))"></span><span class="label"><span class="tok">--success</span><span class="role">state-chip: populated</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--info))"></span><span class="label"><span class="tok">--info</span><span class="role">state-chip: loading</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-1)"></span><span class="label"><span class="tok">--chart-1</span><span class="role">trace arm: semantic</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-2)"></span><span class="label"><span class="tok">--chart-2</span><span class="role">trace arm: keyword</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-3)"></span><span class="label"><span class="tok">--chart-3</span><span class="role">trace arm: ppr</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-4)"></span><span class="label"><span class="tok">--chart-4</span><span class="role">reserved — never an arm</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-5)"></span><span class="label"><span class="tok">--chart-5</span><span class="role">trace arm: rerank / code mark</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--ring))"></span><span class="label"><span class="tok">--ring</span><span class="role">focus outline</span></span></div>
+          </div>
+        </div>
+        <div class="theme-dark">
+          <div class="g0-swatch-grid">
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--background))"></span><span class="label"><span class="tok">--background</span><span class="role">app canvas</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--foreground))"></span><span class="label"><span class="tok">--foreground</span><span class="role">primary text</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--card))"></span><span class="label"><span class="tok">--card</span><span class="role">board surface</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--muted))"></span><span class="label"><span class="tok">--muted</span><span class="role">neutral role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--border))"></span><span class="label"><span class="tok">--border</span><span class="role">frame / dashed</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--primary))"></span><span class="label"><span class="tok">--primary</span><span class="role">supported role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--destructive))"></span><span class="label"><span class="tok">--destructive</span><span class="role">conflict role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--warning))"></span><span class="label"><span class="tok">--warning</span><span class="role">caution role</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--success))"></span><span class="label"><span class="tok">--success</span><span class="role">state-chip: populated</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--info))"></span><span class="label"><span class="tok">--info</span><span class="role">state-chip: loading</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-1)"></span><span class="label"><span class="tok">--chart-1</span><span class="role">trace arm: semantic</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-2)"></span><span class="label"><span class="tok">--chart-2</span><span class="role">trace arm: keyword</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-3)"></span><span class="label"><span class="tok">--chart-3</span><span class="role">trace arm: ppr</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-4)"></span><span class="label"><span class="tok">--chart-4</span><span class="role">reserved — never an arm</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:var(--chart-5)"></span><span class="label"><span class="tok">--chart-5</span><span class="role">trace arm: rerank / code mark</span></span></div>
+            <div class="g0-swatch"><span class="chip" style="background:hsl(var(--ring))"></span><span class="label"><span class="tok">--ring</span><span class="role">focus outline</span></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="g0-role-grid">
+        <div class="g0-role-card">
+          <span class="name"><span class="dot" style="background:hsl(var(--muted-foreground))"></span>neutral</span>
+          <span class="meta">token: --muted / --muted-foreground</span>
+          <span class="meta">used by: candidate badge, layer chips</span>
+        </div>
+        <div class="g0-role-card">
+          <span class="name"><span class="dot" style="background:hsl(var(--primary))"></span>supported</span>
+          <span class="meta">token: --primary</span>
+          <span class="meta">used by: corroborated (outline), confirmed (filled)</span>
+        </div>
+        <div class="g0-role-card">
+          <span class="name"><span class="dot" style="background:hsl(var(--warning))"></span>caution</span>
+          <span class="meta">token: --warning (same computed value as the amber --chart-4 ramp member)</span>
+          <span class="meta">used by: overlay chips, degraded banner, lifecycle amber</span>
+        </div>
+        <div class="g0-role-card">
+          <span class="name"><span class="dot" style="background:hsl(var(--destructive))"></span>conflict</span>
+          <span class="meta">token: --destructive</span>
+          <span class="meta">used by: disputed badge, dispute panel, error state</span>
+        </div>
+      </div>
+      <div class="annotation">
+        Four status roles, no new palette (doc 14 §3.1). <code>--chart-4</code> carries the same amber hue as
+        <code>--warning</code> but is reserved for score-arm identity only (§4 below) — status caution copy
+        always reads <code>--warning</code>, never <code>--chart-4</code> directly, so an arm bar can never be
+        misread as a caution signal.
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <div class="g0-section">
+      <h3>2 — Type scale &amp; spacing (doc 14 §2, §7)</h3>
+      <div class="g0-sub">
+        <div class="g0-type-row"><span class="sample" style="font-size:21px;font-weight:640;">Board / section title</span><span class="meta">21px / 640 — headings keep their larger sizes</span></div>
+        <div class="g0-type-row"><span class="sample" style="font-size:15px;font-weight:640;">Board-title chrome</span><span class="meta">15px / 640 — .board-title</span></div>
+        <div class="g0-type-row"><span class="sample" style="font-size:14px;">Body copy — the floor</span><span class="meta">14px / text-sm — darkraise-ui default, no text-xs anywhere</span></div>
+        <div class="g0-type-row"><span class="sample" style="font-size:12.5px;color:hsl(var(--muted-foreground));">Annotation callout copy</span><span class="meta">12.5px — .annotation</span></div>
+        <div class="g0-type-row"><span class="sample" style="font-family:var(--font-mono);font-size:12px;">entity_name · commit_sha · L2</span><span class="meta">var(--font-mono) — identifiers only (doc 14 §7)</span></div>
+      </div>
+      <div class="annotation">
+        <b>Known gap, flagged rather than papered over.</b> Doc 14 §2/§9 fixes <code>text-sm</code> (14px) as
+        the floor for <em>all</em> app text including badges and chips — compactness must come from padding
+        and weight, never sub-floor type, "because a label carrying the system's central truth claim must not
+        be the smallest text on the screen." The shared <code>mockup.css</code> chrome committed in Task 1
+        currently sizes <code>.badge</code> (12.5px), <code>.layer-chip</code> / <code>.overlay-*</code>
+        (11.5px) and <code>.state-chip</code> (11px) below that floor. This board renders those classes as
+        given rather than overriding shared chrome from within a single fragment — noted here as a
+        doc-14-vs-asset gap for a follow-up <code>mockup.css</code> pass, not silently resolved.
+      </div>
+      <div class="g0-sub">
+        <div class="g0-radius-row">
+          <div class="g0-radius-sample" style="border-radius:var(--radius);"></div>
+          <div class="g0-radius-meta"><span class="tok">--radius</span><span class="val">0.5rem — board frame, buttons</span></div>
+          <div class="g0-radius-sample" style="border-radius:var(--radius-md);"></div>
+          <div class="g0-radius-meta"><span class="tok">--radius-md</span><span class="val">radius − 2px</span></div>
+          <div class="g0-radius-sample" style="border-radius:var(--radius-sm);"></div>
+          <div class="g0-radius-meta"><span class="tok">--radius-sm</span><span class="val">radius − 4px — chips</span></div>
+        </div>
+      </div>
+      <div class="annotation">
+        Density (cozy), elevation (medium), and radius (rounded) are <b>locked axes</b> — pinned, no switcher
+        UI (doc 14 §2). Doc 14 does not fix a numeric spacing scale beyond the built-ins' own defaults ("the
+        mockup sub-phase places components on the grid the theme already fixes"); this board's own chrome is
+        the concrete illustration in practice — page gap 32px, board padding 20px, board-body gap 14px,
+        annotation indent 12px — not a separate doc-14-specified ramp.
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <div class="g0-section">
+      <h3>3 — Motion &amp; accessibility (doc 14 §7, §8)</h3>
+      <div class="g0-sub">
+        <div>
+          <b style="font-size:13px;">Motion — a closed list of signal uses, nothing decorative</b>
+          <ul class="g0-list">
+            <li>Live-feed row entrance (a new event arriving)</li>
+            <li>Pipeline stepper's phase advance</li>
+            <li>Badge rung-change transition — a single subtle emphasis pulse when a fact's rung changes under a live update (pulse-glow keyframe)</li>
+            <li>The existing particle/aurora backdrop, reserved for the unauthenticated threshold surfaces (login / setup)</li>
+          </ul>
+        </div>
+        <div>
+          <b style="font-size:13px;">Accessibility — part of the encoding, not a pass afterwards</b>
+          <ul class="g0-list">
+            <li>Colour never carries meaning alone — every state pairs a token colour with an icon and a text label; fill style + border style + icon differ pairwise even with colour removed</li>
+            <li>Contrast of label text against its chip background meets WCAG AA at text-sm in both modes — checkable once per theme via the token mapping, not per screen</li>
+            <li>Badges are focusable; the expansion opens on focus as well as hover (Popover for the full origin list — a tooltip cannot hold interactive content)</li>
+            <li>Counts are always printed beside a bar or ramp cell, never shading alone (calendar heatmap, trace-panel arms)</li>
+            <li>All motion honours <code>prefers-reduced-motion</code></li>
+          </ul>
+        </div>
+      </div>
+      <div class="annotation">
+        Every non-motion, non-a11y note above is restated inline on the vocabulary examples below rather than
+        collected separately — an annotation next to a treatment is what makes the rule checkable against the
+        pixels, not a rule stated once and trusted to hold.
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <div class="g0-section">
+      <h3>4 — Honesty visual vocabulary (doc 14 §3, §4)</h3>
+
+      <div class="g0-sub">
+        <b style="font-size:13px;">4a — The verification badge: all four rungs</b>
+        <div class="g0-vocab-block">
+          <div class="g0-row">
+            <span class="badge candidate">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+              candidate
+            </span>
+            <span class="g0-claim">expansion — "extracted signal, not yet corroborated — served labelled"</span>
+          </div>
+          <div class="g0-row">
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+            <span class="g0-claim">expansion — <b>rendered verbatim from the wire, never re-assembled client-side</b> (doc 12 <code>badge.claim</code>)</span>
+          </div>
+          <div class="g0-claim" style="padding-left:2px;">
+            canonical reference string (doc 12 §4) — <b>asserted by K distinct origins of kinds [X, Y], no known contradiction, as of T</b>
+          </div>
+          <div class="g0-row">
+            <span class="badge confirmed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+              human-ratified
+            </span>
+            <span class="g0-claim">expansion — claim string + <b>", human-ratified"</b> suffix + who/when, e.g. "asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-20, human-ratified — ratified by a.lee, 2026-07-21"</span>
+          </div>
+          <div class="g0-row">
+            <span class="badge disputed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+              disputed
+            </span>
+            <span class="g0-claim">expansion (two-sided form) — <b>disputed: 2 origins assert X, 1 origin asserts not-X, as of T</b> — see the split panel in 4d</span>
+          </div>
+          <div class="g0-row">
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+            <span class="badge-code">code@a3f19c2</span>
+            <span class="g0-claim">a code-originated corroborated fact also carries this distinct mark inside its expansion — <code>{commit_sha, basis, file_path, symbol_key}</code> (doc 14 §3.2; C01 formalises the full composition)</span>
+          </div>
+        </div>
+        <div class="annotation">
+          Visible label is the rung name, with <code>confirmed</code> shown as "human-ratified" — never the
+          word "verified" anywhere in label, tooltip, or state copy (rule 2). Icons are semantic, never
+          decorative: dashed circle <i>is</i> incompleteness, the merge glyph <i>is</i> multiple distinct
+          origins converging, the person-check <i>is</i> "a human ratified this," the scales <i>are</i> two
+          sides held in balance. A plain checkmark appears nowhere in the ladder.
+        </div>
+        <div class="annotation">
+          Two badge <b>non-rung</b> treatments exist outside this ladder (C01 renders both in full): an L0
+          memory carries no verification badge at all — a lifecycle amber label instead — and a terminal
+          <code>superseded</code> L3 article shows an amber superseded badge that <i>replaces</i> the rung.
+          Neither is a fifth rung; the CHECK constraint stays exactly
+          <code>candidate | corroborated | disputed | confirmed</code>.
+        </div>
+      </div>
+
+      <div class="g0-sub">
+        <b style="font-size:13px;">4b — The layer chip</b>
+        <div class="g0-vocab-block">
+          <div class="g0-row">
+            <span class="layer-chip l0">L0 · memory</span>
+            <span class="layer-chip l2">L2 · fact</span>
+            <span class="layer-chip l3">L3 · article</span>
+          </div>
+        </div>
+        <div class="annotation">
+          Surface-toned, monospace, no accent, no status colour — classification, not judgement (doc 14 §3.3).
+          Always precedes the verification badge in a row's label cluster so the reading order is "what kind
+          of thing → how well supported." L1 (the candidate graph) is never directly served, so no L1 chip
+          renders on a served row (doc 12 §4) — it is omitted above rather than shown unused.
+        </div>
+      </div>
+
+      <div class="g0-sub">
+        <b style="font-size:13px;">4c — Overlay chips: riding a rung, never becoming one</b>
+        <div class="g0-vocab-block">
+          <div class="g0-row">
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+            <span class="overlay-under-sourced">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 10.5v3"/><path d="M6 11v3"/></svg>
+              under-sourced
+            </span>
+            <span class="g0-claim">expansion — "origin count dropped below N; will demote if not re-corroborated"</span>
+          </div>
+          <div class="g0-row">
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+            <span class="overlay-stale">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
+              stale
+            </span>
+            <span class="g0-claim">expansion — "synthesised before the latest verified change"</span>
+          </div>
+        </div>
+        <div class="annotation">
+          Overlays append <b>after</b> the badge and never replace, recolour, or restyle it — the row is
+          still corroborated, claim string intact, while the demotion hysteresis runs (doc 14 §3.4, doc 08
+          §4.3). The dashed border is the shared "provisional/overlay" marker across the language — the same
+          non-colour channel <code>candidate</code> uses.
+        </div>
+      </div>
+
+      <div class="g0-sub">
+        <b style="font-size:13px;">4d — The both-sides dispute treatment</b>
+        <div class="g0-vocab-block">
+          <div class="g0-claim"><b>disputed: 2 origins assert X, 1 origin asserts not-X, as of T</b></div>
+          <div class="g0-dispute">
+            <div class="side">
+              <span class="badge disputed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                disputed
+              </span>
+              <span class="assert">asserts X — cookie_secure defaults to enabled in production</span>
+              <span class="count">2 origins · kinds [memory, code]</span>
+            </div>
+            <div class="vs">vs</div>
+            <div class="side">
+              <span class="badge disputed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                disputed
+              </span>
+              <span class="assert">asserts not-X — cookie_secure is tri-state, unset by default</span>
+              <span class="count">1 origin · kind [human]</span>
+            </div>
+          </div>
+        </div>
+        <div class="annotation annotation-conflict">
+          Strictly equal visual weight both sides — same card treatment, same type, no comparative bar or "2
+          vs 1" scoreboard, because corroboration count does not adjudicate a dispute (doc 14 §3.5). Order is
+          deterministic and epistemically neutral: the earlier-asserted side renders first, stable across
+          reloads — never ordered by count or recency, since that would visually pick the winner the backend
+          refuses to pick (doc 14 §9).
+        </div>
+      </div>
+
+      <div class="g0-sub">
+        <b style="font-size:13px;">4e — The surfaced-exclusion strip</b>
+        <div class="g0-exclusion-strip">
+          <div class="g0-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>3 facts excluded by context conflict</b> — active context chip <code>env=prod</code></span>
+            <span class="tag">by_context_conflict</span>
+          </div>
+          <div class="g0-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>2 rows excluded</b> — outside the current project scope</span>
+            <span class="tag">by_project</span>
+          </div>
+          <div class="g0-exclusion-chip" style="border-style:solid;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>0 shown, 5 excluded</b> — every candidate row was filtered by the active scope/context, never rendered as a bare empty</span>
+          </div>
+        </div>
+        <div class="annotation">
+          The strip sits between the query controls and the rows, persistent — not a toast — and the empty
+          state is computed <b>after</b> it, so "0 shown, N excluded" can never render as "nothing found"
+          (doc 14 §3.6, §5; invariant 14). Each chip expands to its reason and, where the cause is a
+          user-held control, points at it.
+        </div>
+      </div>
+
+      <div class="g0-sub">
+        <b style="font-size:13px;">4f — The trace-panel style</b>
+        <div class="g0-trace">
+          <div class="g0-trace-region">
+            <span class="region-label">region 1 — request header</span>
+            <span class="g0-claim">query: "cookie_secure default" · sectioned (fused=false) · channels ran: [semantic, keyword] · weights: w_semantic=0.7, w_keyword=0.3, w_ppr=0</span>
+          </div>
+          <div class="g0-trace-region">
+            <span class="region-label">region 2 — exclusion strip (shared with 4e)</span>
+            <span class="g0-claim">1 row excluded — by_status</span>
+          </div>
+          <div class="g0-trace-region">
+            <span class="region-label">region 3 — per-row label cluster</span>
+            <div class="g0-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="g0-claim">context: matched · provenance: LLM-guessed, not human-checked</span>
+            </div>
+          </div>
+          <div class="g0-trace-region">
+            <span class="region-label">region 4 — score breakdown (ledger, not narrative)</span>
+            <div class="g0-arm"><span class="name">semantic</span><span class="track"><span class="fill" style="width:78%;background:var(--chart-1)"></span></span><span class="val">0.78</span></div>
+            <div class="g0-arm"><span class="name">keyword</span><span class="track"><span class="fill" style="width:41%;background:var(--chart-2)"></span></span><span class="val">0.41</span></div>
+            <div class="g0-arm inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%;"></span></span><span class="val">w=0 · inactive</span></div>
+            <div class="g0-arm"><span class="name">rerank</span><span class="track"><span class="fill" style="width:66%;background:var(--chart-5)"></span></span><span class="val">6.6 / 10</span></div>
+            <span class="g0-claim"><b>rrf_score</b> is printed as the ordering signal, not a bar among the modality arms (doc 14 §4) — the per-modality score survives on the row but must not be misread as rank.</span>
+          </div>
+        </div>
+        <div class="annotation">
+          Field-for-field rendering of doc 07 §8's payload — ledger, not narrative; no generated "because"
+          sentence (doc 14 §4, invariant 15). Arm bars use only the four non-caution chart members
+          (<code>--chart-1/2/3/5</code>), never <code>--chart-4</code>, so a bar can never be misread as a
+          caution signal. A <code>w_*</code> = 0 arm renders as an inactive, muted bar labelled "inactive" —
+          never omitted (which would hide that the arm exists) and never a zero score (which would imply it
+          ran and found nothing) — invariant 23.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</article></main>
