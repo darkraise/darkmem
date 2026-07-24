@@ -1,0 +1,699 @@
+<style>
+  /* S03 board-local styles — the "why retrieved" trace panel (doc 07 section
+     8 payload -> doc 13 section 5.4 modules -> doc 14 section 4 rendering).
+     Reuses the shared .badge / .layer-chip / .overlay-* / .state-chip /
+     .annotation / .theme-light / .theme-dark classes from mockup.css as-is —
+     nothing here restyles or redeclares them. Everything new is namespaced
+     s03- so it can never collide with another fragment's local styles once
+     build.py concatenates them; the trace-bar layout (region 4, doc 14
+     section 4) is the one genuinely new widget this board contributes. */
+
+  .s03-panel { display: flex; flex-direction: column; gap: 14px; }
+
+  .s03-region-label {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground));
+  }
+
+  /* ---- region 1: envelope header ---- */
+  .s03-envelope {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    padding: 12px 14px; background: hsl(var(--card));
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .s03-envelope .query {
+    font-size: 13.5px; font-weight: 620; color: hsl(var(--foreground));
+  }
+  .s03-envelope .query .q-label {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+    color: hsl(var(--muted-foreground)); margin-right: 6px; text-transform: uppercase;
+  }
+  .s03-envelope dl {
+    margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+    font-size: 12px;
+  }
+  .s03-envelope dt {
+    font-family: var(--font-mono); color: hsl(var(--muted-foreground)); white-space: nowrap;
+  }
+  .s03-envelope dd { margin: 0; color: hsl(var(--foreground)); }
+  .s03-envelope dd code { font-family: var(--font-mono); font-size: 11.5px; }
+
+  /* ---- region 2: exclusion strip ---- */
+  .s03-exclusion-strip { display: flex; flex-direction: column; gap: 6px; }
+  .s03-exclusion-chip {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm);
+    background: hsl(var(--warning) / 0.08); font-size: 12.5px; color: hsl(var(--foreground));
+  }
+  .s03-exclusion-chip.summary { border-style: solid; }
+  .s03-exclusion-chip svg { width: 15px; height: 15px; flex: none; color: hsl(var(--warning)); }
+  .s03-exclusion-chip .tag {
+    margin-left: auto; font-family: var(--font-mono); font-size: 10.5px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* ---- context-outcome chip: match / neutral / conflict ---- */
+  .s03-ctx-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+    font-weight: 560; padding: 2px 9px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .s03-ctx-chip svg { width: 12px; height: 12px; flex: none; }
+  .s03-ctx-chip.match { color: hsl(var(--primary)); border-color: hsl(var(--primary) / 0.55); background: hsl(var(--primary) / 0.1); }
+  .s03-ctx-chip.neutral { color: hsl(var(--muted-foreground)); border-color: hsl(var(--border)); background: hsl(var(--muted)); }
+  .s03-ctx-chip.conflict { color: hsl(var(--destructive)); border-color: hsl(var(--destructive) / 0.55); background: hsl(var(--destructive) / 0.1); }
+
+  /* the llm_guessed provenance qualifier — neutral role, dashed border, the
+     same provisional marker language as .badge.candidate (doc 14 section 4). */
+  .s03-provenance-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+    padding: 2px 9px; border-radius: 999px; color: hsl(var(--muted-foreground));
+    border: 1px dashed hsl(var(--border)); background: transparent;
+  }
+  .s03-provenance-chip svg { width: 12px; height: 12px; flex: none; }
+
+  .s03-ctx-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+  /* ---- layer sections ---- */
+  .s03-section { display: flex; flex-direction: column; gap: 10px; }
+  .s03-section > h3 {
+    margin: 0; font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground));
+    display: flex; align-items: center; gap: 8px;
+  }
+  .s03-section > h3 .count {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* ---- one result row ---- */
+  .s03-row {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    padding: 12px 14px; background: hsl(var(--card));
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .s03-row.nested {
+    margin-left: 26px; border-left: 2px dashed hsl(var(--border));
+    border-top-left-radius: 0; border-bottom-left-radius: 0;
+  }
+  .s03-group-relation {
+    display: flex; align-items: center; gap: 6px; font-size: 11.5px;
+    color: hsl(var(--muted-foreground)); margin-left: -14px;
+  }
+  .s03-group-relation svg { width: 13px; height: 13px; flex: none; }
+  .s03-group-relation code { font-family: var(--font-mono); font-size: 11px; }
+
+  .s03-row-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .s03-row-top .id-tag {
+    font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground));
+  }
+  .s03-row-top .claim {
+    flex-basis: 100%; font-size: 12.5px; color: hsl(var(--foreground));
+  }
+  .s03-row-top .badge-claim {
+    flex-basis: 100%; font-family: var(--font-mono); font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+  .s03-row-top .badge-claim b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s03-context-line {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px;
+    color: hsl(var(--muted-foreground));
+  }
+  .s03-context-line .kv { font-family: var(--font-mono); font-size: 11px; }
+  .s03-context-line .kv b { color: hsl(var(--foreground)); font-weight: 600; font-family: var(--font-sans); }
+
+  /* ---- region 4: score breakdown, the trace-bar layout ---- */
+  .s03-scores { display: flex; flex-direction: column; gap: 5px; }
+  .s03-scorebar {
+    display: grid; grid-template-columns: 96px 1fr 130px; align-items: center;
+    gap: 8px; font-size: 12px;
+  }
+  .s03-scorebar .name { font-family: var(--font-mono); color: hsl(var(--foreground)); }
+  .s03-scorebar .track {
+    height: 8px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden;
+  }
+  .s03-scorebar .fill { display: block; height: 100%; border-radius: 999px; }
+  .s03-scorebar .val {
+    font-family: var(--font-mono); font-size: 11px; text-align: right;
+    color: hsl(var(--muted-foreground));
+  }
+  .s03-scorebar.inactive .name,
+  .s03-scorebar.inactive .val { color: hsl(var(--muted-foreground)); opacity: 0.65; }
+  .s03-scorebar.inactive .track { background: hsl(var(--muted) / 0.5); }
+  .s03-scorebar.tail .val { font-style: italic; }
+
+  .s03-fusion-group {
+    margin-left: 16px; padding-left: 10px; border-left: 1px dashed hsl(var(--border));
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .s03-fusion-label {
+    font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground));
+  }
+  .s03-fusion-label b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* token identity, drawn only from --chart-1/2/3/5 (never --chart-4); the
+     alt / fusion-* variants are the code-graph-theme lightness-shift
+     technique — a CSS filter on the resolved token, never a new hue or a
+     hardcoded hex — so dual_level (graph-signal sibling of ppr) and the
+     rank_fusion_factor sub-arms (post-fusion sibling of rerank) stay
+     visually distinct while still resolving from the same 4-token set. */
+  .tok-semantic { background: var(--chart-1); }
+  .tok-keyword { background: var(--chart-2); }
+  .tok-graph { background: var(--chart-3); }
+  .tok-graph-alt { background: var(--chart-3); filter: brightness(1.35); }
+  .tok-refine { background: var(--chart-5); }
+  .tok-fusion-a { background: var(--chart-5); filter: brightness(0.72); }
+  .tok-fusion-b { background: var(--chart-5); filter: brightness(0.9); }
+  .tok-fusion-c { background: var(--chart-5); filter: brightness(1.12); }
+  .tok-fusion-d { background: var(--chart-5); filter: brightness(1.28); }
+
+  .s03-rrf {
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+    border-radius: var(--radius-sm); background: hsl(var(--primary) / 0.08);
+    border: 1px solid hsl(var(--primary) / 0.35);
+  }
+  .s03-rrf .label {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .04em;
+    text-transform: uppercase; color: hsl(var(--primary));
+  }
+  .s03-rrf .value { font-family: var(--font-mono); font-size: 13px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s03-rrf .note { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .s03-empty-body {
+    padding: 22px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm);
+    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  }
+  .s03-empty-body .headline { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s03-empty-body .sub { font-size: 12px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<!-- ================================================================= -->
+<section class="board" id="S03-trace-populated">
+  <h2>S03 — Memories: "why retrieved" trace panel</h2>
+  <div class="annotation">
+    Realises the doc 07 §8 retrieval-trace payload — one request envelope plus a per-row
+    explanation for every returned result — as doc 13 §5.4 maps it to UI modules and doc 14 §4
+    lays out its four fixed regions. The panel reads the payload field-for-field; it never
+    recomputes or re-narrates a score (<i>ledger, not story</i>). Opened per-result from the
+    Memories search &amp; list surface (S02) via <code>include_trace=true</code>.
+  </div>
+
+  <div class="theme-row">
+    <div class="theme-light">
+      <div class="s03-panel">
+
+        <!-- region 1 -->
+        <div>
+          <div class="s03-region-label">region 1 — request header (the envelope)</div>
+          <div class="s03-envelope">
+            <div class="query"><span class="q-label">query</span>&ldquo;does cookie_secure default to enabled in production?&rdquo;</div>
+            <dl>
+              <dt>shape</dt><dd><code>fused: false</code> — sectioned by layer (Facts / Articles / Memory below); the token-budgeted <code>fused: true</code> single ranked list is a separate inject shape, not shown here (doc 13 §5.4 — the layer structure is the point of the explanation)</dd>
+              <dt>channels ran</dt><dd><code>[semantic, keyword, dual_level]</code> — <code>ppr</code> did not run this call (<code>ppr_enabled=false</code>); <code>semantic_failed: false</code>, <code>keyword_failed: false</code></dd>
+              <dt>weights</dt><dd><code>w_semantic=0.7, w_keyword=0.3, w_ppr=0, w_dual=0.15, confidence_rank_gamma=0.4, w_importance=0, w_heat=0, w_recency=0, reranker_enabled=true</code></dd>
+            </dl>
+          </div>
+        </div>
+
+        <!-- region 2 -->
+        <div>
+          <div class="s03-region-label">region 2 — exclusion strip (surfaced, never buried)</div>
+          <div class="s03-exclusion-strip">
+            <div class="s03-exclusion-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>3 facts excluded by context conflict</b> — active context chip <code>env=prod</code> conflicts with a <code>dev-only</code> row</span>
+              <span class="tag">by_context_conflict</span>
+            </div>
+            <div class="s03-exclusion-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>2 rows excluded</b> — outside the current project scope</span>
+              <span class="tag">by_project</span>
+            </div>
+            <div class="s03-exclusion-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>1 row excluded</b> — status is superseded, not active</span>
+              <span class="tag">by_status</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- context-outcome legend -->
+        <div>
+          <div class="s03-region-label">context-outcome reference (region 3 field)</div>
+          <div class="s03-ctx-legend">
+            <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
+            <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>neutral</span>
+            <span class="s03-ctx-chip conflict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>conflict</span>
+            <span style="font-size:11.5px;color:hsl(var(--muted-foreground));">— conflict never renders on a served row; an explicit conflict is excluded and only counted above (region 2), so this chip is shown here for reference only</span>
+          </div>
+        </div>
+
+        <!-- sections -->
+        <div class="s03-section">
+          <h3>Facts <span class="count">L2 · 1 result, 1 grouped under it</span></h3>
+
+          <div class="s03-row">
+            <div class="s03-row-top">
+              <span class="id-tag">fact_id: 8a21e0f3</span>
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="claim">cookie_secure defaults to Secure-only-in-production (tri-state; unset = secure when environment=production)</span>
+              <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [memory, code], no known contradiction, as of 2026-07-20</b></span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
+              <span class="kv">boost <b>&times;1.18</b></span>
+              <span class="kv">applies_when <b>env=prod</b></span>
+              <span class="kv">provenance <b>human</b></span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:82%"></span></span><span class="val">0.82</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:55%"></span></span><span class="val">0.55</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:31%"></span></span><span class="val">0.31</span></div>
+              <div class="s03-scorebar"><span class="name">rerank</span><span class="track"><span class="fill tok-refine" style="width:74%"></span></span><span class="val">7.4 / 10</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;1.02 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:51%"></span></span><span class="val">&times;1.02</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0412</span>
+              <span class="note">the ordering signal — printed apart from the modality bars above so it is never misread as one raw score among them</span>
+            </div>
+          </div>
+
+          <div class="s03-group-relation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v6a4 4 0 0 0 4 4h8"/><path d="M14 10l4 4-4 4"/></svg>
+            grouping — <code>grouped_under: fact_id 8a21e0f3</code>, <code>relation: "supports fact F"</code>
+          </div>
+          <div class="s03-row nested">
+            <div class="s03-row-top">
+              <span class="id-tag">memory_id: c93f7a12</span>
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="claim">"COOKIE_SECURE=false unblocks plain-HTTP LAN logins for the LXC deploy"</span>
+              <span class="badge-claim">no verification badge on this row — <code>badge: null</code>, <code>verification_status: null</code> (L0 memories carry lifecycle, not the ladder)</span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>neutral</span>
+              <span class="s03-provenance-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="16.5" r=".6" fill="currentColor" stroke="none"/></svg>
+                LLM-guessed, not human-checked
+              </span>
+              <span class="kv">boost <b>—</b> (no boost, displayed provenance only)</span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:71%"></span></span><span class="val">0.71</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:20%"></span></span><span class="val">0.20</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:9%"></span></span><span class="val">0.09</span></div>
+              <div class="s03-scorebar tail"><span class="name">rerank</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">— not reranked (tail)</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;0.95 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:47%"></span></span><span class="val">&times;0.95</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0288</span>
+              <span class="note">ordering signal — below the top-40 rerank window, so this row rode the unscored tail (doc 07 §3)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s03-section">
+          <h3>Articles <span class="count">L3 · 1 result</span></h3>
+          <div class="s03-row">
+            <div class="s03-row-top">
+              <span class="id-tag">article_id: 4f2e1a9c</span>
+              <span class="layer-chip l3">L3 · article</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="claim">"Cookie &amp; session security — target design"</span>
+              <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-18</b></span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
+              <span class="kv">boost <b>&times;1.09</b></span>
+              <span class="kv">applies_when <b>env=prod</b></span>
+              <span class="kv">provenance <b>human</b></span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:66%"></span></span><span class="val">0.66</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:61%"></span></span><span class="val">0.61</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:22%"></span></span><span class="val">0.22</span></div>
+              <div class="s03-scorebar"><span class="name">rerank</span><span class="track"><span class="fill tok-refine" style="width:81%"></span></span><span class="val">8.1 / 10</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;1.05 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:53%"></span></span><span class="val">&times;1.05</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0356</span>
+              <span class="note">the ordering signal</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s03-section">
+          <h3>Memory <span class="count">L0 · 1 result, not grouped</span></h3>
+          <div class="s03-row">
+            <div class="s03-row-top">
+              <span class="id-tag">memory_id: 71b0d5e6</span>
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="claim">"trust_proxy_headers defaults to True; cookie_secure is tri-state, explicit false allows plain-HTTP LAN login"</span>
+              <span class="badge-claim">no verification badge on this row — <code>badge: null</code>, <code>verification_status: null</code></span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>neutral</span>
+              <span class="kv">applies_when <b>— (none declared)</b></span>
+              <span class="kv">provenance <b>n/a</b> — nothing to attribute when no context is stated</span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:59%"></span></span><span class="val">0.59</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:38%"></span></span><span class="val">0.38</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:5%"></span></span><span class="val">0.05</span></div>
+              <div class="s03-scorebar"><span class="name">rerank</span><span class="track"><span class="fill tok-refine" style="width:59%"></span></span><span class="val">5.9 / 10</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;0.88 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:44%"></span></span><span class="val">&times;0.88</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0241</span>
+              <span class="note">the ordering signal</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="theme-dark">
+      <div class="s03-panel">
+
+        <!-- region 1 -->
+        <div>
+          <div class="s03-region-label">region 1 — request header (the envelope)</div>
+          <div class="s03-envelope">
+            <div class="query"><span class="q-label">query</span>&ldquo;does cookie_secure default to enabled in production?&rdquo;</div>
+            <dl>
+              <dt>shape</dt><dd><code>fused: false</code> — sectioned by layer (Facts / Articles / Memory below); the token-budgeted <code>fused: true</code> single ranked list is a separate inject shape, not shown here (doc 13 §5.4 — the layer structure is the point of the explanation)</dd>
+              <dt>channels ran</dt><dd><code>[semantic, keyword, dual_level]</code> — <code>ppr</code> did not run this call (<code>ppr_enabled=false</code>); <code>semantic_failed: false</code>, <code>keyword_failed: false</code></dd>
+              <dt>weights</dt><dd><code>w_semantic=0.7, w_keyword=0.3, w_ppr=0, w_dual=0.15, confidence_rank_gamma=0.4, w_importance=0, w_heat=0, w_recency=0, reranker_enabled=true</code></dd>
+            </dl>
+          </div>
+        </div>
+
+        <!-- region 2 -->
+        <div>
+          <div class="s03-region-label">region 2 — exclusion strip (surfaced, never buried)</div>
+          <div class="s03-exclusion-strip">
+            <div class="s03-exclusion-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>3 facts excluded by context conflict</b> — active context chip <code>env=prod</code> conflicts with a <code>dev-only</code> row</span>
+              <span class="tag">by_context_conflict</span>
+            </div>
+            <div class="s03-exclusion-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>2 rows excluded</b> — outside the current project scope</span>
+              <span class="tag">by_project</span>
+            </div>
+            <div class="s03-exclusion-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>1 row excluded</b> — status is superseded, not active</span>
+              <span class="tag">by_status</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- context-outcome legend -->
+        <div>
+          <div class="s03-region-label">context-outcome reference (region 3 field)</div>
+          <div class="s03-ctx-legend">
+            <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
+            <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>neutral</span>
+            <span class="s03-ctx-chip conflict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>conflict</span>
+            <span style="font-size:11.5px;color:hsl(var(--muted-foreground));">— conflict never renders on a served row; an explicit conflict is excluded and only counted above (region 2), so this chip is shown here for reference only</span>
+          </div>
+        </div>
+
+        <!-- sections -->
+        <div class="s03-section">
+          <h3>Facts <span class="count">L2 · 1 result, 1 grouped under it</span></h3>
+
+          <div class="s03-row">
+            <div class="s03-row-top">
+              <span class="id-tag">fact_id: 8a21e0f3</span>
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="claim">cookie_secure defaults to Secure-only-in-production (tri-state; unset = secure when environment=production)</span>
+              <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [memory, code], no known contradiction, as of 2026-07-20</b></span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
+              <span class="kv">boost <b>&times;1.18</b></span>
+              <span class="kv">applies_when <b>env=prod</b></span>
+              <span class="kv">provenance <b>human</b></span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:82%"></span></span><span class="val">0.82</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:55%"></span></span><span class="val">0.55</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:31%"></span></span><span class="val">0.31</span></div>
+              <div class="s03-scorebar"><span class="name">rerank</span><span class="track"><span class="fill tok-refine" style="width:74%"></span></span><span class="val">7.4 / 10</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;1.02 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:51%"></span></span><span class="val">&times;1.02</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0412</span>
+              <span class="note">the ordering signal — printed apart from the modality bars above so it is never misread as one raw score among them</span>
+            </div>
+          </div>
+
+          <div class="s03-group-relation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v6a4 4 0 0 0 4 4h8"/><path d="M14 10l4 4-4 4"/></svg>
+            grouping — <code>grouped_under: fact_id 8a21e0f3</code>, <code>relation: "supports fact F"</code>
+          </div>
+          <div class="s03-row nested">
+            <div class="s03-row-top">
+              <span class="id-tag">memory_id: c93f7a12</span>
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="claim">"COOKIE_SECURE=false unblocks plain-HTTP LAN logins for the LXC deploy"</span>
+              <span class="badge-claim">no verification badge on this row — <code>badge: null</code>, <code>verification_status: null</code> (L0 memories carry lifecycle, not the ladder)</span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>neutral</span>
+              <span class="s03-provenance-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="16.5" r=".6" fill="currentColor" stroke="none"/></svg>
+                LLM-guessed, not human-checked
+              </span>
+              <span class="kv">boost <b>—</b> (no boost, displayed provenance only)</span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:71%"></span></span><span class="val">0.71</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:20%"></span></span><span class="val">0.20</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:9%"></span></span><span class="val">0.09</span></div>
+              <div class="s03-scorebar tail"><span class="name">rerank</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">— not reranked (tail)</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;0.95 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:47%"></span></span><span class="val">&times;0.95</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0288</span>
+              <span class="note">ordering signal — below the top-40 rerank window, so this row rode the unscored tail (doc 07 §3)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s03-section">
+          <h3>Articles <span class="count">L3 · 1 result</span></h3>
+          <div class="s03-row">
+            <div class="s03-row-top">
+              <span class="id-tag">article_id: 4f2e1a9c</span>
+              <span class="layer-chip l3">L3 · article</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="claim">"Cookie &amp; session security — target design"</span>
+              <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-18</b></span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
+              <span class="kv">boost <b>&times;1.09</b></span>
+              <span class="kv">applies_when <b>env=prod</b></span>
+              <span class="kv">provenance <b>human</b></span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:66%"></span></span><span class="val">0.66</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:61%"></span></span><span class="val">0.61</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:22%"></span></span><span class="val">0.22</span></div>
+              <div class="s03-scorebar"><span class="name">rerank</span><span class="track"><span class="fill tok-refine" style="width:81%"></span></span><span class="val">8.1 / 10</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;1.05 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:53%"></span></span><span class="val">&times;1.05</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0356</span>
+              <span class="note">the ordering signal</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s03-section">
+          <h3>Memory <span class="count">L0 · 1 result, not grouped</span></h3>
+          <div class="s03-row">
+            <div class="s03-row-top">
+              <span class="id-tag">memory_id: 71b0d5e6</span>
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="claim">"trust_proxy_headers defaults to True; cookie_secure is tri-state, explicit false allows plain-HTTP LAN login"</span>
+              <span class="badge-claim">no verification badge on this row — <code>badge: null</code>, <code>verification_status: null</code></span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>neutral</span>
+              <span class="kv">applies_when <b>— (none declared)</b></span>
+              <span class="kv">provenance <b>n/a</b> — nothing to attribute when no context is stated</span>
+            </div>
+            <div class="s03-scores">
+              <div class="s03-scorebar"><span class="name">semantic</span><span class="track"><span class="fill tok-semantic" style="width:59%"></span></span><span class="val">0.59</span></div>
+              <div class="s03-scorebar"><span class="name">keyword</span><span class="track"><span class="fill tok-keyword" style="width:38%"></span></span><span class="val">0.38</span></div>
+              <div class="s03-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · ppr_enabled=false</span></div>
+              <div class="s03-scorebar"><span class="name">dual_level</span><span class="track"><span class="fill tok-graph-alt" style="width:5%"></span></span><span class="val">0.05</span></div>
+              <div class="s03-scorebar"><span class="name">rerank</span><span class="track"><span class="fill tok-refine" style="width:59%"></span></span><span class="val">5.9 / 10</span></div>
+              <div class="s03-fusion-group">
+                <span class="s03-fusion-label"><b>rank_fusion_factor</b> &times;0.88 — arm breakdown</span>
+                <div class="s03-scorebar"><span class="name">confidence</span><span class="track"><span class="fill tok-fusion-a" style="width:44%"></span></span><span class="val">&times;0.88</span></div>
+                <div class="s03-scorebar inactive"><span class="name">importance</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">heat</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+                <div class="s03-scorebar inactive"><span class="name">recency</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">inactive · w=0</span></div>
+              </div>
+            </div>
+            <div class="s03-rrf">
+              <span class="label">rrf_score</span>
+              <span class="value">0.0241</span>
+              <span class="note">the ordering signal</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="annotation">
+    <b>Score bars: chart-token identity, never the caution token.</b> Every bar above resolves from
+    only the four non-caution chart members — <code>--chart-1</code> semantic, <code>--chart-2</code>
+    keyword, <code>--chart-3</code> ppr (and its dual_level sibling at a lightness-shifted variant of
+    the same token), <code>--chart-5</code> rerank (and the rank_fusion_factor sub-arms at further
+    lightness-shifted variants of that token) — <code>--chart-4</code> is never used for an arm, so a
+    bar can never be misread as a caution signal (doc 14 §4). Colour never carries the value alone: a
+    number is printed beside every bar.
+  </div>
+  <div class="annotation">
+    <b>Dormant arms render dormant, never omitted, never zero.</b> <code>ppr</code> is muted and
+    labelled "inactive · ppr_enabled=false" on every row above — the channel did not run this
+    request — and the same treatment applies to the <code>importance</code>/<code>heat</code>/
+    <code>recency</code> rank_fusion_factor sub-arms, whose weights are 0 in the envelope's
+    <code>weights</code> snapshot. Omitting the bar would hide that the arm exists; drawing it at a
+    literal zero would wrongly imply it ran and found nothing — this is invariant 23 read into the
+    trace: built-but-unspent signals look built-but-unspent.
+  </div>
+  <div class="annotation">
+    <b>Grouping indents, never repeats as a sibling.</b> The memory that supports the Facts-section
+    fact nests directly under it with a dashed connector and its own full label cluster + score
+    breakdown — it is still a fully-explained row, just visually subordinate to the fact it grounds
+    (doc 14 §4).
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S03-trace-all-excluded">
+  <h2>S03 — Trace panel: every candidate excluded (still not a bare empty)</h2>
+  <div class="annotation">
+    Non-hero state, shown once in the default theme (theme parity is guaranteed by the shared
+    toggle wired in <code>mockup.css</code>/<code>theme.css</code>, per the fragment authoring
+    protocol). A stricter declared context (<code>env=prod</code> against a vault written almost
+    entirely <code>dev-only</code>) excludes every candidate this request touched. The exclusion
+    strip renders first and the body reads "0 shown, N excluded" — never a bare empty list, because
+    a silent drop is exactly the failure doc 14 §3.6/§5 and invariant 14 forbid.
+  </div>
+  <div class="board-body">
+    <div class="s03-panel">
+      <div>
+        <div class="s03-region-label">region 1 — request header (the envelope)</div>
+        <div class="s03-envelope">
+          <div class="query"><span class="q-label">query</span>&ldquo;darkmem local dev LAN login flow&rdquo;</div>
+          <dl>
+            <dt>shape</dt><dd><code>fused: false</code> — sectioned by layer</dd>
+            <dt>channels ran</dt><dd><code>[semantic, keyword]</code></dd>
+            <dt>weights</dt><dd><code>w_semantic=0.7, w_keyword=0.3, w_ppr=0, w_dual=0</code></dd>
+          </dl>
+        </div>
+      </div>
+      <div>
+        <div class="s03-region-label">region 2 — exclusion strip</div>
+        <div class="s03-exclusion-strip">
+          <div class="s03-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>6 facts excluded by context conflict</b> — active context chip <code>env=prod</code></span>
+            <span class="tag">by_context_conflict</span>
+          </div>
+          <div class="s03-exclusion-chip summary">
+            <span class="state-chip state-excluded">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+              excluded
+            </span>
+            <span><b>0 shown, 6 excluded</b> — every candidate this request touched was filtered by the active context, never rendered as a bare empty</span>
+          </div>
+        </div>
+      </div>
+      <div class="s03-empty-body">
+        <span class="headline">No rows to explain — everything that matched was excluded above</span>
+        <span class="sub">not "no matches": the semantic and keyword channels both found candidates; the context conflict removed all of them. Drop the context chip or switch to <code>env=dev</code> to see them.</span>
+      </div>
+    </div>
+  </div>
+</section>

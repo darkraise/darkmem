@@ -1,0 +1,629 @@
+<style>
+  /* S05 board-local styles. New presentational widgets mockup.css/C0* do
+     not define yet (the memory-detail module frame, the enrichment field
+     grid, the technologies chip row, the lineage/relation/timeline rows,
+     the from->to rung-pair widget) — namespaced s05- so it can never
+     collide with another fragment's local styles once build.py
+     concatenates them. Everything below reads var(--token) /
+     hsl(var(--token)) only; nothing here redeclares a token or restyles
+     .board/.annotation/.theme-row/.theme-light/.theme-dark/.state-chip/
+     .badge/.layer-chip from assets/mockup.css, and nothing here redefines
+     .badge.superseded/.badge.deprecated (composed verbatim from mockup.css
+     instead). The loading board reuses C04's .c04-skel-row/.c04-skel-bar
+     classes per the fragment authoring protocol's "compose the C04 state
+     skeleton" step, rather than re-declaring a skeleton locally.
+
+     Technologies chips deliberately reuse bare .layer-chip (no l0-3
+     modifier) rather than a new chip style: doc 14 draws the technologies
+     denorm from the same quiet, muted "metadata register" .layer-chip
+     already realises, never the accent/status registers .badge or
+     .state-chip carry. */
+
+  .s05-intro { display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
+  .s05-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s05-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s05-detail { display: flex; flex-direction: column; gap: 16px; }
+
+  .s05-module { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
+  .s05-module:first-child { padding-top: 0; border-top: none; }
+  .s05-module > h3 { margin: 0; font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s05-module > .hint { margin: -4px 0 0; font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  .s05-meta-row { display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s05-meta-row b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s05-content-block { padding: 12px 14px; border-left: 3px solid hsl(var(--border)); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: hsl(var(--muted) / 0.25); font-size: 13.5px; color: hsl(var(--foreground)); line-height: 1.6; }
+
+  .s05-field-grid { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 0; }
+  .s05-field-grid dt { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s05-field-grid dd { margin: 0; font-size: 13px; color: hsl(var(--foreground)); }
+
+  .s05-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .s05-lineage-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .s05-quiet { font-size: 12.5px; color: hsl(var(--muted-foreground)); font-style: italic; }
+
+  .s05-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s05-link svg { width: 13px; height: 13px; flex: none; color: hsl(var(--muted-foreground)); }
+
+  .s05-relation-list { display: flex; flex-direction: column; gap: 6px; }
+  .s05-relation-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s05-relation-type { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 8px; border-radius: 999px; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); white-space: nowrap; }
+
+  .s05-timeline { display: flex; flex-direction: column; gap: 0; }
+  .s05-event-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px dashed hsl(var(--border)); }
+  .s05-event-row:first-child { border-top: none; padding-top: 0; }
+  .s05-event-time { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; padding-top: 2px; flex: none; width: 118px; }
+  .s05-event-chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm); background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); white-space: nowrap; flex: none; }
+  .s05-event-chip svg { width: 11px; height: 11px; flex: none; }
+  .s05-event-body { display: flex; flex-direction: column; gap: 5px; flex: 1 1 260px; min-width: 200px; }
+  .s05-event-desc { font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s05-event-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* the from->to rung-pair widget (doc 14 section 6): two small badges
+     (or, when a side carries no wire badge at all, a plain unstyled
+     label — never a fabricated pill) joined by one arrow glyph. */
+  .s05-rung-pair { display: inline-flex; align-items: center; gap: 8px; }
+  .s05-rung-pair svg.arrow { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s05-rung-pair .badge { font-size: 12.5px; padding: 2px 9px; }
+  .s05-plain-state { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s05-plain-state em { font-style: normal; color: hsl(var(--muted-foreground)); }
+</style>
+
+<div class="s05-intro">
+  <h2>S05 — Memory detail</h2>
+  <p>
+    One memory, its enrichment, and its lineage — realising doc 13 section 4's Memory-detail row and doc 14
+    section 6's per-object timeline treatment. Every module composes the shared vocabulary rather than
+    re-deriving it: <code>.badge</code> rungs and the promoted <code>.badge.superseded</code> /
+    <code>.badge.deprecated</code> non-rung caution badges from <code>mockup.css</code>, bare
+    <code>.layer-chip</code> for the muted <code>technologies</code> metadata register, and C04's skeleton
+    classes for the loading state. <b>populated</b> renders as the hero in both themes; <b>superseded</b>,
+    <b>deprecated</b>, and <b>loading</b> render once each in the default theme, since the shared toggle
+    guarantees theme parity.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S05-populated">
+  <h2>Memory detail — populated (hero, both themes)</h2>
+  <div class="annotation">
+    A normal active memory (doc 13 section 4). Modules: <b>content</b>, <b>enrichment</b>
+    (<code>classified_type</code> / <code>summary</code> / <code>emotions</code> / <code>flags</code> —
+    the <code>llm_</code> prefix is dropped at the wire boundary, doc 04 section 3.1), the
+    <code>technologies</code> chips, the <b>supersession lineage</b> module (quiet and badge-free here —
+    an active memory has nothing to show, the same non-rung honesty as an unbadged L0 row in C01), the
+    associative <b>memory-relations</b> (all five kinds), and the <b>per-memory timeline</b>. The last
+    timeline row is a genuine verification transition — a fact this memory helped corroborate moved
+    <code>candidate</code> &rarr; <code>corroborated</code> — rendered as the doc-14-section-6 two-badge-
+    plus-arrow pair, the same <code>.badge</code> markup and icon glyphs C01 defines (glyphs are reserved
+    words; this reuses candidate's dashed-circle and corroborated's merge glyph verbatim, never a new icon
+    for the same meaning).
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s05-detail">
+
+          <div class="s05-module">
+            <h3>Content</h3>
+            <div class="s05-meta-row">
+              <span>id: <b>a1b2c3d4</b></span>
+              <span>project: <b>darkmem</b></span>
+              <span>source: <b>mcp</b></span>
+              <span>status: <b>active</b></span>
+              <span>created: <b>2026-07-10 09:14</b></span>
+              <span>confidence: <b>0.82</b></span>
+            </div>
+            <div class="s05-content-block">
+              "RerankerService LLM-scores the top 40 RRF-ranked rows on a 0&ndash;10 scale; the unscored
+              tail past rank 40 is appended in its original RRF order, never re-ranked."
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Enrichment</h3>
+            <dl class="s05-field-grid">
+              <dt>classified_type</dt><dd>fact</dd>
+              <dt>summary</dt><dd>Reranking only touches the top 40 fused rows &mdash; anything ranked below 40 keeps its RRF-computed order.</dd>
+              <dt>emotions</dt><dd>neutral</dd>
+              <dt>flags</dt><dd>none</dd>
+            </dl>
+          </div>
+
+          <div class="s05-module">
+            <h3>technologies</h3>
+            <div class="s05-chip-row">
+              <span class="layer-chip">reranker</span>
+              <span class="layer-chip">rrf</span>
+              <span class="layer-chip">hybrid-search</span>
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Supersession lineage</h3>
+            <div class="s05-lineage-row">
+              <span class="s05-quiet">not superseded &mdash; this is the current, active version of this memory; <code>superseded_by</code> is null.</span>
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Memory-relations</h3>
+            <div class="s05-relation-list">
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">CONTRADICTS</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory b7e2f001 &mdash; "the reranker scores every fused row, not just the top 40"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">ELABORATES</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 5c81e0f2 &mdash; "hybrid_search_enabled defaults on; RRF fusion runs k=60"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">DEPENDS_ON</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 902fbb14 &mdash; "reranker_enabled flag gates whether RerankerService runs at all"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">FOLLOWS</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 33ad61c7 &mdash; "confidence_rank_gamma weighting runs before rerank, preserve_order=True after"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">RELATES_TO</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 771e4f9a &mdash; "semantic_weight defaults to 0.7 in the RRF fusion formula"
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Per-memory timeline</h3>
+            <p class="hint">events by object &mdash; timestamp, event-type chip, object link, and (for verification transitions) the from&rarr;to rung pair.</p>
+            <div class="s05-timeline">
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-10 09:14</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: this memory</span>
+                  <span class="s05-event-note">captured via mcp</span>
+                </div>
+              </div>
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-10 09:14</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>classification.completed</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: this memory</span>
+                  <span class="s05-event-note">classified_type set to fact (single-call merge with extraction)</span>
+                </div>
+              </div>
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-12 14:02</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>relation.added</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: this memory &mdash; RELATES_TO &rarr; memory 771e4f9a</span>
+                  <span class="s05-event-note">"semantic_weight defaults to 0.7 in the RRF fusion formula"</span>
+                </div>
+              </div>
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-18 11:47</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>fact.verified</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: fact &mdash; "the top-40 rerank cutoff is a latency/quality tradeoff"</span>
+                  <span class="s05-rung-pair">
+                    <span class="badge candidate">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                      candidate
+                    </span>
+                    <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                    <span class="badge corroborated">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                      corroborated
+                    </span>
+                  </span>
+                  <span class="s05-event-note">this memory became one of the distinct origins corroborating the fact</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s05-detail">
+
+          <div class="s05-module">
+            <h3>Content</h3>
+            <div class="s05-meta-row">
+              <span>id: <b>a1b2c3d4</b></span>
+              <span>project: <b>darkmem</b></span>
+              <span>source: <b>mcp</b></span>
+              <span>status: <b>active</b></span>
+              <span>created: <b>2026-07-10 09:14</b></span>
+              <span>confidence: <b>0.82</b></span>
+            </div>
+            <div class="s05-content-block">
+              "RerankerService LLM-scores the top 40 RRF-ranked rows on a 0&ndash;10 scale; the unscored
+              tail past rank 40 is appended in its original RRF order, never re-ranked."
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Enrichment</h3>
+            <dl class="s05-field-grid">
+              <dt>classified_type</dt><dd>fact</dd>
+              <dt>summary</dt><dd>Reranking only touches the top 40 fused rows &mdash; anything ranked below 40 keeps its RRF-computed order.</dd>
+              <dt>emotions</dt><dd>neutral</dd>
+              <dt>flags</dt><dd>none</dd>
+            </dl>
+          </div>
+
+          <div class="s05-module">
+            <h3>technologies</h3>
+            <div class="s05-chip-row">
+              <span class="layer-chip">reranker</span>
+              <span class="layer-chip">rrf</span>
+              <span class="layer-chip">hybrid-search</span>
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Supersession lineage</h3>
+            <div class="s05-lineage-row">
+              <span class="s05-quiet">not superseded &mdash; this is the current, active version of this memory; <code>superseded_by</code> is null.</span>
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Memory-relations</h3>
+            <div class="s05-relation-list">
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">CONTRADICTS</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory b7e2f001 &mdash; "the reranker scores every fused row, not just the top 40"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">ELABORATES</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 5c81e0f2 &mdash; "hybrid_search_enabled defaults on; RRF fusion runs k=60"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">DEPENDS_ON</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 902fbb14 &mdash; "reranker_enabled flag gates whether RerankerService runs at all"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">FOLLOWS</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 33ad61c7 &mdash; "confidence_rank_gamma weighting runs before rerank, preserve_order=True after"
+                </span>
+              </div>
+              <div class="s05-relation-row">
+                <span class="s05-relation-type">RELATES_TO</span>
+                <span class="s05-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                  memory 771e4f9a &mdash; "semantic_weight defaults to 0.7 in the RRF fusion formula"
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="s05-module">
+            <h3>Per-memory timeline</h3>
+            <p class="hint">events by object &mdash; timestamp, event-type chip, object link, and (for verification transitions) the from&rarr;to rung pair.</p>
+            <div class="s05-timeline">
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-10 09:14</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: this memory</span>
+                  <span class="s05-event-note">captured via mcp</span>
+                </div>
+              </div>
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-10 09:14</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>classification.completed</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: this memory</span>
+                  <span class="s05-event-note">classified_type set to fact (single-call merge with extraction)</span>
+                </div>
+              </div>
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-12 14:02</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>relation.added</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: this memory &mdash; RELATES_TO &rarr; memory 771e4f9a</span>
+                  <span class="s05-event-note">"semantic_weight defaults to 0.7 in the RRF fusion formula"</span>
+                </div>
+              </div>
+              <div class="s05-event-row">
+                <span class="s05-event-time">2026-07-18 11:47</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>fact.verified</span>
+                <div class="s05-event-body">
+                  <span class="s05-event-desc">object: fact &mdash; "the top-40 rerank cutoff is a latency/quality tradeoff"</span>
+                  <span class="s05-rung-pair">
+                    <span class="badge candidate">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                      candidate
+                    </span>
+                    <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                    <span class="badge corroborated">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                      corroborated
+                    </span>
+                  </span>
+                  <span class="s05-event-note">this memory became one of the distinct origins corroborating the fact</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S05-superseded">
+  <h2>Memory detail — superseded</h2>
+  <div class="annotation annotation-caution">
+    <b>Retained, not hidden (doc 01 section 8, invariant 14).</b> A superseded memory keeps rendering at its
+    own URL with the amber <code>.badge.superseded</code> (promoted to <code>mockup.css</code>, composed
+    verbatim here) plus a lineage link resolved through <code>superseded_by</code> (doc 07 section 7). The
+    backend sets <code>status</code> and <code>superseded_by</code> atomically &mdash; the
+    <code>chk_superseded_has_pointer</code> CHECK constraint forbids a superseded row without a successor
+    pointer &mdash; so this badge and this link can never appear one without the other.
+  </div>
+  <div class="board-body">
+    <div class="s05-detail">
+
+      <div class="s05-module">
+        <h3>Content</h3>
+        <div class="s05-meta-row">
+          <span>id: <b>b7e2f001</b></span>
+          <span>project: <b>darkmem</b></span>
+          <span>source: <b>mcp</b></span>
+          <span>status: <b>superseded</b></span>
+          <span>created: <b>2026-06-02 10:00</b></span>
+        </div>
+        <div class="s05-content-block">
+          "The reranker previously scored the full RRF list (all fused rows) before the top-40 cutoff was
+          introduced."
+        </div>
+      </div>
+
+      <div class="s05-module">
+        <h3>Enrichment</h3>
+        <dl class="s05-field-grid">
+          <dt>classified_type</dt><dd>fact</dd>
+          <dt>summary</dt><dd>Legacy behavior: full-list reranking, since replaced by the top-40 cutoff.</dd>
+          <dt>emotions</dt><dd>neutral</dd>
+          <dt>flags</dt><dd>stale-claim</dd>
+        </dl>
+      </div>
+
+      <div class="s05-module">
+        <h3>technologies</h3>
+        <div class="s05-chip-row">
+          <span class="layer-chip">reranker</span>
+          <span class="layer-chip">rrf</span>
+        </div>
+      </div>
+
+      <div class="s05-module">
+        <h3>Supersession lineage</h3>
+        <div class="s05-lineage-row">
+          <span class="badge superseded">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+            superseded
+          </span>
+          <span class="s05-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+            superseded_by &rarr; memory a1b2c3d4, "RerankerService LLM-scores the top 40 RRF-ranked rows&hellip;", 2026-07-18
+          </span>
+        </div>
+      </div>
+
+      <div class="s05-module">
+        <h3>Per-memory timeline</h3>
+        <div class="s05-timeline">
+          <div class="s05-event-row">
+            <span class="s05-event-time">2026-06-02 10:00</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+            <div class="s05-event-body">
+              <span class="s05-event-desc">object: this memory</span>
+            </div>
+          </div>
+          <div class="s05-event-row">
+            <span class="s05-event-time">2026-07-18 11:47</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.superseded</span>
+            <div class="s05-event-body">
+              <span class="s05-event-desc">object: this memory</span>
+              <span class="s05-rung-pair">
+                <span class="s05-plain-state">active <em>(no badge)</em></span>
+                <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                <span class="badge superseded">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                  superseded
+                </span>
+              </span>
+              <span class="s05-event-note"><code>status</code> and <code>superseded_by</code> written atomically, per <code>chk_superseded_has_pointer</code></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S05-deprecated">
+  <h2>Memory detail — deprecated</h2>
+  <div class="annotation annotation-caution">
+    <b>Also retained, not hidden.</b> <code>deprecated</code> is the demoted end of the same lifecycle:
+    when a memory that others point at via <code>superseded_by</code> is itself deleted (here, the TTL
+    sweep in <code>expired_memory_cleanup</code>), its dependents are demoted to <code>deprecated</code> with
+    <code>superseded_by</code> cleared to <code>NULL</code> first &mdash; the FK is <code>ON DELETE SET
+    NULL</code>, so skipping that demotion would violate <code>chk_superseded_has_pointer</code>. That is
+    why this board shows the amber <code>.badge.deprecated</code> with <b>no</b> successor link, unlike the
+    superseded board above.
+  </div>
+  <div class="board-body">
+    <div class="s05-detail">
+
+      <div class="s05-module">
+        <h3>Content</h3>
+        <div class="s05-meta-row">
+          <span>id: <b>d4f9a112</b></span>
+          <span>project: <b>darkmem</b></span>
+          <span>source: <b>mcp</b></span>
+          <span>status: <b>deprecated</b></span>
+          <span>created: <b>2026-05-01 08:00</b></span>
+        </div>
+        <div class="s05-content-block">
+          "Entity-embedding cache invalidates per fingerprint rotation; old rows are pruned nightly."
+        </div>
+      </div>
+
+      <div class="s05-module">
+        <h3>Enrichment</h3>
+        <dl class="s05-field-grid">
+          <dt>classified_type</dt><dd>fact</dd>
+          <dt>summary</dt><dd>Early note on cache pruning cadence, since superseded and then orphaned.</dd>
+          <dt>emotions</dt><dd>neutral</dd>
+          <dt>flags</dt><dd>none</dd>
+        </dl>
+      </div>
+
+      <div class="s05-module">
+        <h3>technologies</h3>
+        <div class="s05-chip-row">
+          <span class="layer-chip">pgvector</span>
+          <span class="layer-chip">entity-embedding-cache</span>
+        </div>
+      </div>
+
+      <div class="s05-module">
+        <h3>Supersession lineage</h3>
+        <div class="s05-lineage-row">
+          <span class="badge deprecated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+            deprecated
+          </span>
+          <span class="s05-quiet">superseded_by: null &mdash; the successor memory was later removed by <code>expired_memory_cleanup</code>; this row was demoted, not deleted.</span>
+        </div>
+      </div>
+
+      <div class="s05-module">
+        <h3>Per-memory timeline</h3>
+        <div class="s05-timeline">
+          <div class="s05-event-row">
+            <span class="s05-event-time">2026-05-01 08:00</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+            <div class="s05-event-body">
+              <span class="s05-event-desc">object: this memory</span>
+            </div>
+          </div>
+          <div class="s05-event-row">
+            <span class="s05-event-time">2026-05-20 09:30</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.superseded</span>
+            <div class="s05-event-body">
+              <span class="s05-event-desc">object: this memory</span>
+              <span class="s05-rung-pair">
+                <span class="s05-plain-state">active <em>(no badge)</em></span>
+                <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                <span class="badge superseded">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                  superseded
+                </span>
+              </span>
+              <span class="s05-event-note">superseded_by &rarr; memory e88ca241 (since deleted)</span>
+            </div>
+          </div>
+          <div class="s05-event-row">
+            <span class="s05-event-time">2026-07-15 03:00</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.demoted</span>
+            <div class="s05-event-body">
+              <span class="s05-event-desc">object: this memory</span>
+              <span class="s05-rung-pair">
+                <span class="badge superseded">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                  superseded
+                </span>
+                <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                <span class="badge deprecated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                  deprecated
+                </span>
+              </span>
+              <span class="s05-event-note">successor deleted by expired_memory_cleanup; superseded_by cleared to satisfy chk_superseded_has_pointer</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S05-loading">
+  <h2>Memory detail — loading</h2>
+  <div class="annotation">
+    Skeleton bars mirror the populated board's module slots &mdash; content, enrichment fields, technologies
+    chips, relation rows, timeline rows &mdash; reusing C04's <code>.c04-skel-row</code> /
+    <code>.c04-skel-bar</code> classes rather than a locally re-declared skeleton, per the fragment
+    authoring protocol's instruction to compose the C04 state-skeleton reference.
+  </div>
+  <div class="board-body">
+    <div class="s05-detail">
+      <div class="s05-module">
+        <h3>Content</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s05-module">
+        <h3>Enrichment</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s05-module">
+        <h3>technologies</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar chip"></span><span class="c04-skel-bar chip"></span></div>
+      </div>
+      <div class="s05-module">
+        <h3>Memory-relations</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s05-module">
+        <h3>Per-memory timeline</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar meta"></span><span class="c04-skel-bar chip"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar meta"></span><span class="c04-skel-bar chip"></span><span class="c04-skel-bar text"></span></div>
+      </div>
+    </div>
+  </div>
+</section>

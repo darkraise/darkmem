@@ -1,0 +1,799 @@
+<style>
+  /* S04 board-local styles — Memories: create dialog, edit dialog, command
+     palette. None of this has a shared class yet (mockup.css owns
+     board/annotation/state-chip/badge/layer-chip only), so everything new
+     is namespaced s04- to stay collision-free once build.py concatenates
+     every fragment. Reads var(--token) / hsl(var(--token)) only — no
+     literal hex, no redeclared token, no restyling of .board/.annotation/
+     .state-chip/.badge/.layer-chip/.theme-light/.theme-dark. */
+
+  /* ---- the dimmed Memories list every overlay sits over ---- */
+  .s04-scene {
+    position: relative; border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    overflow: hidden; background: hsl(var(--background)); min-height: 380px;
+  }
+  .s04-backdrop {
+    padding: 18px; display: flex; flex-direction: column; gap: 8px;
+    filter: blur(0.5px); opacity: 0.55; pointer-events: none; user-select: none;
+  }
+  .s04-backdrop-header {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground)); margin-bottom: 2px;
+  }
+  .s04-backdrop-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); flex-wrap: wrap;
+  }
+  .s04-backdrop-text { flex: 1 1 260px; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s04-backdrop-meta {
+    margin-left: auto; font-family: var(--font-mono); font-size: 10.5px;
+    color: hsl(var(--muted-foreground)); white-space: nowrap;
+  }
+
+  /* ---- the modal scrim + panel every dialog/palette shares ---- */
+  .s04-scrim {
+    position: absolute; inset: 0; background: hsl(var(--background) / 0.8);
+    display: flex; align-items: flex-start; justify-content: center; padding: 26px 18px;
+  }
+  .s04-dialog {
+    width: 100%; max-width: 440px; border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); overflow: hidden;
+    box-shadow: 0 24px 48px -24px hsl(var(--foreground) / 0.35);
+  }
+  .s04-dialog-header {
+    display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .s04-dialog-heading { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .s04-dialog-title { font-size: 15px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s04-dialog-desc { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s04-dialog-header .state-chip { flex: none; }
+  .s04-dialog-close {
+    flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-sm); border: 1px solid hsl(var(--border)); background: transparent;
+    color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 1;
+  }
+  .s04-dialog-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .s04-dialog-body.is-disabled { opacity: 0.55; }
+  .s04-field { display: flex; flex-direction: column; gap: 5px; }
+  .s04-field .flabel { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 610; color: hsl(var(--foreground)); }
+  .s04-optional {
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.04em; color: hsl(var(--muted-foreground)); padding: 1px 5px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm);
+  }
+  .s04-hint { font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s04-textarea {
+    min-height: 84px; padding: 9px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+  }
+  .s04-textarea.is-edited { border-color: hsl(var(--info) / 0.55); }
+  .s04-select {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background));
+    font-size: 13px; color: hsl(var(--foreground));
+  }
+  .s04-select svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s04-select.is-locked { color: hsl(var(--muted-foreground)); background: hsl(var(--muted) / 0.5); }
+  .s04-scope-chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; width: fit-content;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted));
+    font-size: 13px; color: hsl(var(--foreground));
+  }
+  .s04-scope-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--primary)); flex: none; }
+  .s04-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .s04-tag {
+    display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted)); font-size: 11.5px; color: hsl(var(--foreground));
+  }
+  .s04-tag-add { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); align-self: center; }
+  .s04-error-banner {
+    display: flex; gap: 9px; align-items: flex-start; padding: 10px 11px;
+    border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm);
+    background: hsl(var(--destructive) / 0.08); font-size: 12px; color: hsl(var(--foreground));
+  }
+  .s04-error-banner svg { width: 16px; height: 16px; flex: none; color: hsl(var(--destructive)); margin-top: 1px; }
+  .s04-error-banner b { font-weight: 640; }
+  .s04-dialog-footer {
+    display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-top: 1px solid hsl(var(--border));
+  }
+  .s04-footer-note { margin-right: auto; font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .s04-btn {
+    font-size: 12.5px; font-weight: 610; padding: 7px 13px; border-radius: var(--radius-sm);
+    border: 1px solid transparent; color: hsl(var(--foreground));
+  }
+  .s04-btn-ghost { background: transparent; border-color: hsl(var(--border)); }
+  .s04-btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .s04-btn.is-disabled { opacity: 0.55; }
+  .s04-btn-primary .spin { display: inline-block; width: 11px; height: 11px; vertical-align: -2px; margin-right: 4px; }
+
+  /* ---- command palette ---- */
+  .s04-palette {
+    width: 100%; max-width: 480px; border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); overflow: hidden;
+    box-shadow: 0 24px 48px -24px hsl(var(--foreground) / 0.35);
+  }
+  .s04-palette-input { display: flex; align-items: center; gap: 9px; padding: 11px 14px; border-bottom: 1px solid hsl(var(--border)); }
+  .s04-palette-input svg { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s04-palette-input .q { font-size: 13px; color: hsl(var(--foreground)); }
+  .s04-palette-input .cursor { display: inline-block; width: 1px; height: 14px; background: hsl(var(--foreground)); margin-left: 1px; vertical-align: -2px; }
+  .s04-palette-group {
+    padding: 8px 14px 3px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground));
+  }
+  .s04-palette-item { display: flex; align-items: center; gap: 9px; padding: 8px 14px; font-size: 13px; color: hsl(var(--foreground)); }
+  .s04-palette-item svg { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s04-palette-item .hint {
+    margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; padding: 1px 5px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
+  }
+  .s04-palette-item.is-active { background: hsl(var(--accent)); }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-create-populated">
+  <h2>S04 — Create-memory dialog (populated, hero)</h2>
+  <div class="annotation">
+    Realises doc 13 §4's Memories module list — "the create-memory dialog … (exists today)" — over the
+    <b>capture</b> half of the screen's purpose line "capture, search, curate L0." <b>Content is the only
+    required field.</b> <code>memory_type</code> is an optional hint, never a gate: extraction and
+    classification always run on every capture (CLAUDE.md pipeline phase 2 is unconditional, not a toggle
+    this dialog flips). Submitting POSTs to <code>/api/v1/memories</code> and returns <b>202 Accepted</b> —
+    capture is decoupled from the pipeline, so the dialog closes optimistically while the five-phase
+    pipeline finishes asynchronously and progress surfaces on Activity (doc 13 §6.1). The dimmed Memories
+    list behind every board in this fragment is the same convention repeated for all three overlays (create,
+    edit, palette) — one modal pattern, three payloads.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s04-scene">
+          <div class="s04-backdrop" aria-hidden="true">
+            <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+              <span class="s04-backdrop-meta">2h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+              <span class="s04-backdrop-meta">6h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Embedder pinned to nomic-embed-text for the retrieval benchmark baseline.</span>
+              <span class="badge superseded">superseded</span>
+              <span class="s04-backdrop-meta">3d ago</span>
+            </div>
+          </div>
+          <div class="s04-scrim">
+            <div class="s04-dialog">
+              <div class="s04-dialog-header">
+                <div class="s04-dialog-heading">
+                  <span class="s04-dialog-title">New memory</span>
+                  <span class="s04-dialog-desc">Capture a fact, decision, or note. Content is required.</span>
+                </div>
+                <span class="state-chip state-populated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                  populated
+                </span>
+                <button class="s04-dialog-close" type="button" aria-label="Close">✕</button>
+              </div>
+              <div class="s04-dialog-body">
+                <div class="s04-field">
+                  <span class="flabel">Content</span>
+                  <div class="s04-textarea">Switched the embedder to bge-large; retrieval MRR improved to 0.895 on the clean 7500-pair benchmark.</div>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Project scope</span>
+                  <span class="s04-scope-chip"><span class="dot"></span>darkmem-core-backend</span>
+                  <span class="s04-hint">inherits the active project switcher (doc 13 §3) — a record field on the new row, not a second scope control</span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Memory type <span class="s04-optional">optional hint</span></span>
+                  <span class="s04-select">milestone <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+                  <span class="s04-hint">classification runs regardless of this hint and may relabel it</span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Tags</span>
+                  <div class="s04-tags">
+                    <span class="s04-tag">embeddings</span>
+                    <span class="s04-tag">retrieval</span>
+                    <span class="s04-tag-add">+ add tag</span>
+                  </div>
+                </div>
+              </div>
+              <div class="s04-dialog-footer">
+                <span class="s04-footer-note">submit → 202 Accepted</span>
+                <button class="s04-btn s04-btn-ghost" type="button">Cancel</button>
+                <button class="s04-btn s04-btn-primary" type="button">Create memory</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s04-scene">
+          <div class="s04-backdrop" aria-hidden="true">
+            <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+              <span class="s04-backdrop-meta">2h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+              <span class="s04-backdrop-meta">6h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Embedder pinned to nomic-embed-text for the retrieval benchmark baseline.</span>
+              <span class="badge superseded">superseded</span>
+              <span class="s04-backdrop-meta">3d ago</span>
+            </div>
+          </div>
+          <div class="s04-scrim">
+            <div class="s04-dialog">
+              <div class="s04-dialog-header">
+                <div class="s04-dialog-heading">
+                  <span class="s04-dialog-title">New memory</span>
+                  <span class="s04-dialog-desc">Capture a fact, decision, or note. Content is required.</span>
+                </div>
+                <span class="state-chip state-populated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                  populated
+                </span>
+                <button class="s04-dialog-close" type="button" aria-label="Close">✕</button>
+              </div>
+              <div class="s04-dialog-body">
+                <div class="s04-field">
+                  <span class="flabel">Content</span>
+                  <div class="s04-textarea">Switched the embedder to bge-large; retrieval MRR improved to 0.895 on the clean 7500-pair benchmark.</div>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Project scope</span>
+                  <span class="s04-scope-chip"><span class="dot"></span>darkmem-core-backend</span>
+                  <span class="s04-hint">inherits the active project switcher (doc 13 §3) — a record field on the new row, not a second scope control</span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Memory type <span class="s04-optional">optional hint</span></span>
+                  <span class="s04-select">milestone <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+                  <span class="s04-hint">classification runs regardless of this hint and may relabel it</span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Tags</span>
+                  <div class="s04-tags">
+                    <span class="s04-tag">embeddings</span>
+                    <span class="s04-tag">retrieval</span>
+                    <span class="s04-tag-add">+ add tag</span>
+                  </div>
+                </div>
+              </div>
+              <div class="s04-dialog-footer">
+                <span class="s04-footer-note">submit → 202 Accepted</span>
+                <button class="s04-btn s04-btn-ghost" type="button">Cancel</button>
+                <button class="s04-btn s04-btn-primary" type="button">Create memory</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-create-loading">
+  <h2>S04 — Create-memory dialog (loading — submitting)</h2>
+  <div class="annotation">
+    Shown in one theme — parity already established by the hero above (protocol step 2). Submitting
+    disables every field and the Cancel button rather than yanking the dialog away, so the draft stays
+    visible while the 202-Accepted round trip is in flight.
+  </div>
+  <div class="board-body">
+    <div class="s04-scene">
+      <div class="s04-backdrop" aria-hidden="true">
+        <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+        <div class="s04-backdrop-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+          <span class="s04-backdrop-meta">2h ago</span>
+        </div>
+        <div class="s04-backdrop-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+          <span class="s04-backdrop-meta">6h ago</span>
+        </div>
+      </div>
+      <div class="s04-scrim">
+        <div class="s04-dialog">
+          <div class="s04-dialog-header">
+            <div class="s04-dialog-heading">
+              <span class="s04-dialog-title">New memory</span>
+              <span class="s04-dialog-desc">Capture a fact, decision, or note. Content is required.</span>
+            </div>
+            <span class="state-chip state-loading">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              loading
+            </span>
+          </div>
+          <div class="s04-dialog-body is-disabled">
+            <div class="s04-field">
+              <span class="flabel">Content</span>
+              <div class="s04-textarea">Switched the embedder to bge-large; retrieval MRR improved to 0.895 on the clean 7500-pair benchmark.</div>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Project scope</span>
+              <span class="s04-scope-chip"><span class="dot"></span>darkmem-core-backend</span>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Memory type <span class="s04-optional">optional hint</span></span>
+              <span class="s04-select is-locked">milestone <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Tags</span>
+              <div class="s04-tags">
+                <span class="s04-tag">embeddings</span>
+                <span class="s04-tag">retrieval</span>
+              </div>
+            </div>
+          </div>
+          <div class="s04-dialog-footer">
+            <span class="s04-footer-note">awaiting 202 Accepted…</span>
+            <button class="s04-btn s04-btn-ghost is-disabled" type="button" disabled>Cancel</button>
+            <button class="s04-btn s04-btn-primary is-disabled" type="button" disabled>
+              <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/></svg>
+              Creating…
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-create-error">
+  <h2>S04 — Create-memory dialog (error — save failed, draft kept)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: a failed save keeps the draft and surfaces the reason</b> (the same discipline doc 13
+    §7 fixes for Settings — "error on a failed save keeps the draft and surfaces the reason" — applies
+    equally here). The dialog never clears content or re-opens blank on a rejected request; the reason is
+    named, and the primary action stays enabled so the user can fix and retry without retyping.
+  </div>
+  <div class="board-body">
+    <div class="s04-scene">
+      <div class="s04-backdrop" aria-hidden="true">
+        <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+        <div class="s04-backdrop-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+          <span class="s04-backdrop-meta">2h ago</span>
+        </div>
+        <div class="s04-backdrop-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+          <span class="s04-backdrop-meta">6h ago</span>
+        </div>
+      </div>
+      <div class="s04-scrim">
+        <div class="s04-dialog">
+          <div class="s04-dialog-header">
+            <div class="s04-dialog-heading">
+              <span class="s04-dialog-title">New memory</span>
+              <span class="s04-dialog-desc">Capture a fact, decision, or note. Content is required.</span>
+            </div>
+            <span class="state-chip state-error">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              error
+            </span>
+            <button class="s04-dialog-close" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="s04-dialog-body">
+            <div class="s04-field">
+              <span class="flabel">Content</span>
+              <div class="s04-textarea">Switched the embedder to bge-large; retrieval MRR improved to 0.895 on the clean 7500-pair benchmark. Full re-run details and the eval harness path are in backend/scripts/extraction_bench, plus the earlier bge-base pass, plus the mispair cleanup that unblocked the ceiling, plus the fine-tune retrain log entry for 2026-04-16 which is the day the 7k augmentation run finished and got compared against the 5k baseline that had been used up to that point in the project's retrieval work…</div>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Project scope</span>
+              <span class="s04-scope-chip"><span class="dot"></span>darkmem-core-backend</span>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Memory type <span class="s04-optional">optional hint</span></span>
+              <span class="s04-select">milestone <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+            </div>
+            <div class="s04-error-banner">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>Save failed — content exceeds 20,000 characters.</b> Draft retained above; trim the content and try again.</span>
+            </div>
+          </div>
+          <div class="s04-dialog-footer">
+            <span class="s04-footer-note">not submitted</span>
+            <button class="s04-btn s04-btn-ghost" type="button">Cancel</button>
+            <button class="s04-btn s04-btn-primary" type="button">Retry create</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-edit-populated">
+  <h2>S04 — Edit-memory dialog (populated, hero)</h2>
+  <div class="annotation">
+    <b>Target-new</b> — doc 13 §4's Memories purpose line is "capture, search, curate L0"; the master
+    module table names only the create dialog as existing today, so this is the curate half, rendered
+    honestly as new rather than implied by the create dialog's presence (invariant 23). Editing content
+    re-runs extraction and classification against the same <code>memory_id</code> — idempotent
+    re-extraction strips this memory's prior graph contributions before writing the new set (CLAUDE.md
+    Pipeline phase 5), so a saved edit can change this memory's entities, relations, and
+    <code>technologies</code>, not just its text. Project scope is shown locked: darkmem has no
+    move-between-projects action, so scope is fixed at capture and only changes via a fresh memory plus
+    supersession.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s04-scene">
+          <div class="s04-backdrop" aria-hidden="true">
+            <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+              <span class="s04-backdrop-meta">selected · 6h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+              <span class="s04-backdrop-meta">2h ago</span>
+            </div>
+          </div>
+          <div class="s04-scrim">
+            <div class="s04-dialog">
+              <div class="s04-dialog-header">
+                <div class="s04-dialog-heading">
+                  <span class="s04-dialog-title">Edit memory</span>
+                  <span class="s04-dialog-desc">Update this memory's content or fields.</span>
+                </div>
+                <span class="state-chip state-populated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                  populated
+                </span>
+                <button class="s04-dialog-close" type="button" aria-label="Close">✕</button>
+              </div>
+              <div class="s04-dialog-body">
+                <div class="s04-field">
+                  <span class="flabel">Content</span>
+                  <div class="s04-textarea">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</div>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Project scope</span>
+                  <span class="s04-select is-locked">darkmem-core-backend <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+                  <span class="s04-hint">fixed at capture — move via supersession, not an edit</span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Memory type</span>
+                  <span class="s04-select">fact <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Tags</span>
+                  <div class="s04-tags">
+                    <span class="s04-tag">security</span>
+                    <span class="s04-tag">cookies</span>
+                    <span class="s04-tag-add">+ add tag</span>
+                  </div>
+                </div>
+                <span class="s04-hint">saving re-runs extraction + classification for this memory (idempotent — prior graph contributions are replaced, not stacked)</span>
+              </div>
+              <div class="s04-dialog-footer">
+                <span class="s04-footer-note">save → re-extraction queued</span>
+                <button class="s04-btn s04-btn-ghost" type="button">Cancel</button>
+                <button class="s04-btn s04-btn-primary" type="button">Save changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s04-scene">
+          <div class="s04-backdrop" aria-hidden="true">
+            <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+              <span class="s04-backdrop-meta">selected · 6h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+              <span class="s04-backdrop-meta">2h ago</span>
+            </div>
+          </div>
+          <div class="s04-scrim">
+            <div class="s04-dialog">
+              <div class="s04-dialog-header">
+                <div class="s04-dialog-heading">
+                  <span class="s04-dialog-title">Edit memory</span>
+                  <span class="s04-dialog-desc">Update this memory's content or fields.</span>
+                </div>
+                <span class="state-chip state-populated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                  populated
+                </span>
+                <button class="s04-dialog-close" type="button" aria-label="Close">✕</button>
+              </div>
+              <div class="s04-dialog-body">
+                <div class="s04-field">
+                  <span class="flabel">Content</span>
+                  <div class="s04-textarea">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</div>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Project scope</span>
+                  <span class="s04-select is-locked">darkmem-core-backend <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+                  <span class="s04-hint">fixed at capture — move via supersession, not an edit</span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Memory type</span>
+                  <span class="s04-select">fact <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+                </div>
+                <div class="s04-field">
+                  <span class="flabel">Tags</span>
+                  <div class="s04-tags">
+                    <span class="s04-tag">security</span>
+                    <span class="s04-tag">cookies</span>
+                    <span class="s04-tag-add">+ add tag</span>
+                  </div>
+                </div>
+                <span class="s04-hint">saving re-runs extraction + classification for this memory (idempotent — prior graph contributions are replaced, not stacked)</span>
+              </div>
+              <div class="s04-dialog-footer">
+                <span class="s04-footer-note">save → re-extraction queued</span>
+                <button class="s04-btn s04-btn-ghost" type="button">Cancel</button>
+                <button class="s04-btn s04-btn-primary" type="button">Save changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-edit-loading">
+  <h2>S04 — Edit-memory dialog (loading — saving)</h2>
+  <div class="annotation">
+    Shown in one theme — parity already established by the hero above. As with create, saving disables the
+    form in place rather than dismissing the dialog, so the in-progress edit stays visible and reversible
+    by Cancel until the response lands.
+  </div>
+  <div class="board-body">
+    <div class="s04-scene">
+      <div class="s04-backdrop" aria-hidden="true">
+        <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+        <div class="s04-backdrop-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+          <span class="s04-backdrop-meta">selected · 6h ago</span>
+        </div>
+      </div>
+      <div class="s04-scrim">
+        <div class="s04-dialog">
+          <div class="s04-dialog-header">
+            <div class="s04-dialog-heading">
+              <span class="s04-dialog-title">Edit memory</span>
+              <span class="s04-dialog-desc">Update this memory's content or fields.</span>
+            </div>
+            <span class="state-chip state-loading">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              loading
+            </span>
+          </div>
+          <div class="s04-dialog-body is-disabled">
+            <div class="s04-field">
+              <span class="flabel">Content</span>
+              <div class="s04-textarea is-edited">cookie_secure defaults to enabled in production, confirmed against the ops runbook dated 2026-07-20; unset falls back to Secure-only-in-prod.</div>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Project scope</span>
+              <span class="s04-select is-locked">darkmem-core-backend</span>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Memory type</span>
+              <span class="s04-select is-locked">fact</span>
+            </div>
+          </div>
+          <div class="s04-dialog-footer">
+            <span class="s04-footer-note">saving…</span>
+            <button class="s04-btn s04-btn-ghost is-disabled" type="button" disabled>Cancel</button>
+            <button class="s04-btn s04-btn-primary is-disabled" type="button" disabled>
+              <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/></svg>
+              Saving…
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-edit-error">
+  <h2>S04 — Edit-memory dialog (error — save failed, draft kept)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: a failed save keeps the draft and surfaces the reason.</b> The edited text the user
+    typed — not the last-saved content — stays in the field, and the error names an infrastructure cause
+    distinct from the create dialog's validation cause (S04-create-error), so the two boards demonstrate
+    both classes of "save failure keeps the draft" the brief requires: a rejected write and a failed
+    round trip.
+  </div>
+  <div class="board-body">
+    <div class="s04-scene">
+      <div class="s04-backdrop" aria-hidden="true">
+        <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+        <div class="s04-backdrop-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+          <span class="s04-backdrop-meta">selected · 6h ago</span>
+        </div>
+      </div>
+      <div class="s04-scrim">
+        <div class="s04-dialog">
+          <div class="s04-dialog-header">
+            <div class="s04-dialog-heading">
+              <span class="s04-dialog-title">Edit memory</span>
+              <span class="s04-dialog-desc">Update this memory's content or fields.</span>
+            </div>
+            <span class="state-chip state-error">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              error
+            </span>
+            <button class="s04-dialog-close" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="s04-dialog-body">
+            <div class="s04-field">
+              <span class="flabel">Content</span>
+              <div class="s04-textarea is-edited">cookie_secure defaults to enabled in production, confirmed against the ops runbook dated 2026-07-20; unset falls back to Secure-only-in-prod.</div>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Project scope</span>
+              <span class="s04-select is-locked">darkmem-core-backend</span>
+            </div>
+            <div class="s04-field">
+              <span class="flabel">Memory type</span>
+              <span class="s04-select">fact <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></span>
+            </div>
+            <div class="s04-error-banner">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <span><b>Save failed — network timeout contacting the API.</b> Your edit is retained above and was not applied; retry when the connection recovers.</span>
+            </div>
+          </div>
+          <div class="s04-dialog-footer">
+            <span class="s04-footer-note">not saved</span>
+            <button class="s04-btn s04-btn-ghost" type="button">Cancel</button>
+            <button class="s04-btn s04-btn-primary" type="button">Retry save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S04-palette-open">
+  <h2>S04 — Command palette (⌘K, open)</h2>
+  <div class="annotation">
+    Realises doc 13 §4's Memories module list — "the command palette (exists today)" — the same
+    global jump-and-act surface C03 documents as chrome, instantiated here with the Memories list dimmed
+    behind it, exactly like the two dialogs above (one overlay pattern, three payloads). No four-state
+    cycle applies to the palette — it is either closed or open, so only its populated/open state renders,
+    as the hero in both themes. Results mix two groups, Navigate then Actions, so the palette never becomes
+    a second, competing navigation source; "Edit …" jumps straight into the S04-edit-populated dialog above
+    for the matched memory rather than duplicating its form here.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s04-scene">
+          <div class="s04-backdrop" aria-hidden="true">
+            <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+              <span class="s04-backdrop-meta">6h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+              <span class="s04-backdrop-meta">2h ago</span>
+            </div>
+          </div>
+          <div class="s04-scrim">
+            <div class="s04-palette">
+              <div class="s04-palette-input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <span class="q">cookie<span class="cursor"></span></span>
+              </div>
+              <div class="s04-palette-group">Navigate</div>
+              <div class="s04-palette-item is-active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 0 1 2-2h11v16H6a2 2 0 0 0-2 2V5Z"/><path d="M6 17h13"/></svg>
+                Jump to Knowledge → Facts: "cookie_secure default"
+                <span class="hint">↵</span>
+              </div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+                Jump to Memories filtered by "cookie"
+              </div>
+              <div class="s04-palette-group">Actions</div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+                Create memory…
+                <span class="hint">C</span>
+              </div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Edit "cookie_secure defaults to enabled…"
+              </div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                Switch project…
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s04-scene">
+          <div class="s04-backdrop" aria-hidden="true">
+            <div class="s04-backdrop-header">Memories — project: darkmem-core-backend</div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">cookie_secure defaults to enabled in production; unset falls back to Secure-only-in-prod.</span>
+              <span class="s04-backdrop-meta">6h ago</span>
+            </div>
+            <div class="s04-backdrop-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="s04-backdrop-text">Rotated the retrieval reranker top-k window from 40 to 60 after eval regressions surfaced a long tail.</span>
+              <span class="s04-backdrop-meta">2h ago</span>
+            </div>
+          </div>
+          <div class="s04-scrim">
+            <div class="s04-palette">
+              <div class="s04-palette-input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <span class="q">cookie<span class="cursor"></span></span>
+              </div>
+              <div class="s04-palette-group">Navigate</div>
+              <div class="s04-palette-item is-active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 0 1 2-2h11v16H6a2 2 0 0 0-2 2V5Z"/><path d="M6 17h13"/></svg>
+                Jump to Knowledge → Facts: "cookie_secure default"
+                <span class="hint">↵</span>
+              </div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+                Jump to Memories filtered by "cookie"
+              </div>
+              <div class="s04-palette-group">Actions</div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+                Create memory…
+                <span class="hint">C</span>
+              </div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Edit "cookie_secure defaults to enabled…"
+              </div>
+              <div class="s04-palette-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                Switch project…
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

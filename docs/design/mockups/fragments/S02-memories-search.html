@@ -1,0 +1,527 @@
+<style>
+  /* S02 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .badge (+ rungs), .layer-chip — and
+     invents nothing that duplicates them. Everything below is new S02-only
+     layout: the search bar (query field + the two distinct scope/context
+     chips), the result-list surface and its rows, the "supports fact F"
+     nesting affordance, and the local empty/alert/degraded/skeleton blocks
+     (this fragment does not depend on another fragment's local <style>
+     block being present, so it stays self-checkable standalone). Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s02- so it can never collide with another fragment's local
+     styles once build.py concatenates them. */
+
+  .s02-search-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed hsl(var(--border));
+  }
+  .s02-search-field {
+    display: flex; align-items: center; gap: 8px; flex: 1 1 260px;
+    padding: 7px 12px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--background));
+  }
+  .s02-search-field svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s02-search-text { font-size: 14px; color: hsl(var(--foreground)); }
+  .s02-search-text.s02-placeholder { color: hsl(var(--muted-foreground)); }
+
+  /* project scope pill — the global switcher's value, mirrored on this
+     screen because it sets the query key every read on this page uses
+     (doc 13 §3). Solid border = a required, always-present control. */
+  .s02-scope-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--foreground)); font-size: 14px;
+  }
+  .s02-scope-pill svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* context chip — the OPTIONAL session applies_when declaration (doc 07
+     §6, doc 13 §3). Dashed border = the language's shared provisional
+     marker (the same channel candidate/overlay chips use), deliberately
+     NOT the scope pill's solid treatment, so the two controls read as
+     different kinds of thing even with colour removed. */
+  .s02-context-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px dashed hsl(var(--border)); font-size: 14px;
+  }
+  .s02-context-chip svg { width: 12px; height: 12px; }
+  .s02-context-chip.is-set { color: hsl(var(--foreground)); }
+  .s02-context-chip.is-set svg { color: hsl(var(--muted-foreground)); }
+  .s02-context-chip.is-unset { color: hsl(var(--muted-foreground)); font-style: italic; }
+
+  /* ---- the results surface every state below instantiates ---- */
+  .s02-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s02-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s02-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s02-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s02-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+  .s02-group { display: flex; flex-direction: column; gap: 6px; }
+  .s02-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); font-size: 13px; flex-wrap: wrap; }
+  .s02-row .text { flex: 1 1 260px; color: hsl(var(--foreground)); }
+  .s02-row .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  /* the "supports fact F" nesting — a memory row indented under the fact
+     it supports, connected by a stub line, instead of a third flat row
+     beside the fact and any article citing it (doc 07 §5, doc 13 §4). */
+  .s02-nest-row {
+    margin-left: 30px; position: relative;
+    background: hsl(var(--muted) / 0.35);
+  }
+  .s02-nest-row::before {
+    content: ""; position: absolute; left: -18px; top: 50%;
+    width: 16px; height: 1px; background: hsl(var(--border));
+  }
+  .s02-relation { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; white-space: nowrap; }
+
+  /* ---- empty: honest about why, distinct CTA per register ---- */
+  .s02-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s02-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s02-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s02-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 62ch; }
+  .s02-cta-row { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+  .s02-btn-outline, .s02-btn-primary {
+    font-size: 12.5px; padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+  }
+  .s02-btn-outline { border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: transparent; }
+  .s02-btn-primary { border: 1px solid hsl(var(--primary)); color: hsl(var(--primary-foreground)); background: hsl(var(--primary)); }
+
+  /* ---- error: a named both-channel failure, never an empty list ---- */
+  .s02-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s02-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .s02-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s02-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s02-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s02-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- degraded: populated + caution, never fewer rows ---- */
+  .s02-degraded-banner { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.12); font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s02-degraded-banner svg { width: 16px; height: 16px; flex: none; color: hsl(var(--warning)); }
+
+  /* ---- loading: skeleton rows mirroring the populated row shape ---- */
+  .s02-skel-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s02-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s02-skel-bar.chip { width: 66px; }
+  .s02-skel-bar.badge { width: 96px; }
+  .s02-skel-bar.text { flex: 1 1 auto; }
+  .s02-skel-bar.meta { width: 78px; }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S02-empty-no-memories">
+  <h2>S02 — Memories: empty, no memories exist yet (cold start)</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §4's Memories inventory: the search box (with the project
+    scope pill + the optional context chip, doc 13 §3), the result list with layer/verification labels, and
+    the "supports fact F" nesting. The why-retrieved trace panel is <b>S03</b>'s surface and the create/edit
+    dialogs + command palette are <b>S04</b>'s — this board composes only what doc 13 §4 assigns to search
+    &amp; list.
+  </div>
+  <div class="annotation">
+    <b>Honesty rule — two distinct empty registers, not one generic string (doc 14 §5).</b> This board is the
+    <i>none-yet</i> register: a fresh project with zero memories captured, ever. Copy is forward-looking and
+    names what happens next, never "no results" — that phrasing is reserved for the <i>no-match</i> register
+    on the next board, which names the query instead. Same empty shell, deliberately different words and a
+    different call to action, because the two situations mean different things to the user.
+  </div>
+  <div class="board-body">
+    <div class="s02-search-bar">
+      <div class="s02-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s02-search-text s02-placeholder">Search your memories…</span>
+      </div>
+      <span class="s02-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s02-context-chip is-unset">context: not declared</span>
+    </div>
+    <div class="s02-surface">
+      <div class="s02-surface-header">
+        <span class="title">Results — project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s02-surface-body">
+        <div class="s02-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No memories captured yet</span>
+          <span class="why">Project darkmem has no memories yet. Capture your first one and search starts working immediately — nothing needs to be pre-configured.</span>
+          <div class="s02-cta-row">
+            <span class="s02-btn-primary">Capture your first memory</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S02-empty-no-match">
+  <h2>S02 — Memories: empty, no memories match this query</h2>
+  <div class="annotation">
+    <b>The <i>no-match</i> register (doc 14 §5).</b> The project has memories — this specific query returned
+    none. Copy names the query and the scope and offers the two loosening moves, rather than repeating the
+    cold-start wording above: the same blank list would otherwise read as ambiguous between "you have nothing"
+    and "try a different search."
+  </div>
+  <div class="board-body">
+    <div class="s02-search-bar">
+      <div class="s02-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s02-search-text">wireshark packet capture</span>
+      </div>
+      <span class="s02-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s02-context-chip is-set">
+        context: env=prod
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </span>
+    </div>
+    <div class="s02-surface">
+      <div class="s02-surface-header">
+        <span class="title">Results — project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s02-surface-body">
+        <div class="s02-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No matches</span>
+          <span class="why">No memories match "wireshark packet capture" in project darkmem — clear filters or search all projects.</span>
+          <div class="s02-cta-row">
+            <span class="s02-btn-outline">Clear filters</span>
+            <span class="s02-btn-outline">Search all projects</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S02-loading">
+  <h2>S02 — Memories: loading</h2>
+  <div class="annotation">
+    Skeleton rows mirror the exact chip / badge / text / meta slots the populated board below fills in — a
+    layout preview, not a spinner replacing the page (doc 14 §5).
+  </div>
+  <div class="board-body">
+    <div class="s02-search-bar">
+      <div class="s02-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s02-search-text">cookie_secure default</span>
+      </div>
+      <span class="s02-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s02-context-chip is-set">
+        context: env=prod
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </span>
+    </div>
+    <div class="s02-surface">
+      <div class="s02-surface-header">
+        <span class="title">Results — project: darkmem</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s02-surface-body">
+        <div class="s02-skel-row"><span class="s02-skel-bar chip"></span><span class="s02-skel-bar text"></span><span class="s02-skel-bar meta"></span></div>
+        <div class="s02-skel-row"><span class="s02-skel-bar chip"></span><span class="s02-skel-bar badge"></span><span class="s02-skel-bar text"></span><span class="s02-skel-bar meta"></span></div>
+        <div class="s02-skel-row"><span class="s02-skel-bar chip"></span><span class="s02-skel-bar badge"></span><span class="s02-skel-bar text"></span><span class="s02-skel-bar meta"></span></div>
+        <div class="s02-skel-row"><span class="s02-skel-bar chip"></span><span class="s02-skel-bar badge"></span><span class="s02-skel-bar text"></span><span class="s02-skel-bar meta"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S02-error">
+  <h2>S02 — Memories: error, both retrieval channels failed</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list (doc 07 §2, invariant 14).</b> A one-sided channel failure degrades
+    gracefully to the surviving modality with a caution banner (see the degraded board below) — only a
+    <i>both</i>-sided failure raises this named error, which must never render as zero rows indistinguishable
+    from a genuine no-match. Retry stays offered; the last-known cached timestamp is named rather than showing
+    stale rows as if current.
+  </div>
+  <div class="board-body">
+    <div class="s02-search-bar">
+      <div class="s02-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s02-search-text">cookie_secure default</span>
+      </div>
+      <span class="s02-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s02-context-chip is-set">
+        context: env=prod
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </span>
+    </div>
+    <div class="s02-surface">
+      <div class="s02-surface-header">
+        <span class="title">Results — project: darkmem</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s02-surface-body">
+        <div class="s02-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load memories — both retrieval channels failed</span>
+            <span class="desc">Semantic and keyword channels both failed to respond. Showing the last successful result from 14:02.</span>
+            <span class="s02-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S02-populated">
+  <h2>S02 — Memories: populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>The two scope controls are distinct, never conflated (Global Constraints; doc 13 §3).</b> The
+    <b>project scope pill</b> mirrors the global project switcher — it sets <code>project</code> in every
+    query key on this screen (invariant 14's isolation boundary). The <b>context chip</b> is a separate,
+    optional control declaring the session <code>applies_when</code> (doc 07 §6) — it boosts/labels/
+    conflict-excludes rows, it does not scope which project's rows are visible. Conflating the two would
+    silently exclude dev-only facts the moment someone switched to a project named "production."
+  </div>
+  <div class="annotation">
+    <b>The "supports fact F" nesting (doc 07 §5, doc 13 §4).</b> A memory that is a source of a returned fact
+    renders nested and indented under that fact, not as a third unrelated row — this is what "never
+    triple-counted" means in practice. A disputed fact collapses to its badge plus a one-line both-sides
+    summary in list context (doc 14 §3.5); the full split panel lives on the fact's own detail view (S07). An
+    article's <code>confidence</code> is labelled <b>claim-support coverage</b> (doc 13 §5.2), never a vague
+    score. Per-row "why retrieved" score breakdowns are <b>S03</b>'s surface, not rendered here.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s02-search-bar">
+          <div class="s02-search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+            <span class="s02-search-text">cookie_secure default</span>
+          </div>
+          <span class="s02-scope-pill">
+            project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s02-context-chip is-set">
+            context: env=prod
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+          </span>
+        </div>
+        <div class="s02-surface">
+          <div class="s02-surface-header">
+            <span class="title">Results — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">4 of 4 shown</span>
+          </div>
+          <div class="s02-surface-body">
+            <div class="s02-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="text">Considering swapping the article synthesiser's chunking strategy to spans instead of blocks</span>
+              <span class="meta">captured 2026-07-21</span>
+            </div>
+
+            <div class="s02-group">
+              <div class="s02-row">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="text">cookie_secure defaults to Secure only when environment=production</span>
+                <span class="meta">asserted by 3 origins</span>
+              </div>
+              <div class="s02-row s02-nest-row">
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="text">"set COOKIE_SECURE=false for plain-HTTP LAN deploys" — memory, 2026-06-09</span>
+                <span class="s02-relation">supports fact F</span>
+              </div>
+            </div>
+
+            <div class="s02-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge disputed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                disputed
+              </span>
+              <span class="text">disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts it is opt-in per profile, as of 2026-07-20</span>
+              <span class="s02-relation">view both sides →</span>
+            </div>
+
+            <div class="s02-row">
+              <span class="layer-chip l3">L3 · article</span>
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified
+              </span>
+              <span class="text">Cookie security defaults across environments</span>
+              <span class="meta">claim-support coverage 0.92 · ratified 2026-07-10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s02-search-bar">
+          <div class="s02-search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+            <span class="s02-search-text">cookie_secure default</span>
+          </div>
+          <span class="s02-scope-pill">
+            project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s02-context-chip is-set">
+            context: env=prod
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+          </span>
+        </div>
+        <div class="s02-surface">
+          <div class="s02-surface-header">
+            <span class="title">Results — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">4 of 4 shown</span>
+          </div>
+          <div class="s02-surface-body">
+            <div class="s02-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="text">Considering swapping the article synthesiser's chunking strategy to spans instead of blocks</span>
+              <span class="meta">captured 2026-07-21</span>
+            </div>
+
+            <div class="s02-group">
+              <div class="s02-row">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="text">cookie_secure defaults to Secure only when environment=production</span>
+                <span class="meta">asserted by 3 origins</span>
+              </div>
+              <div class="s02-row s02-nest-row">
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="text">"set COOKIE_SECURE=false for plain-HTTP LAN deploys" — memory, 2026-06-09</span>
+                <span class="s02-relation">supports fact F</span>
+              </div>
+            </div>
+
+            <div class="s02-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge disputed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                disputed
+              </span>
+              <span class="text">disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts it is opt-in per profile, as of 2026-07-20</span>
+              <span class="s02-relation">view both sides →</span>
+            </div>
+
+            <div class="s02-row">
+              <span class="layer-chip l3">L3 · article</span>
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified
+              </span>
+              <span class="text">Cookie security defaults across environments</span>
+              <span class="meta">claim-support coverage 0.92 · ratified 2026-07-10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S02-degraded">
+  <h2>S02 — Memories: degraded, keyword-only (semantic channel unavailable)</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: degraded ≠ fewer rows (doc 07 §2, CLAUDE.md retrieval contract).</b> A one-sided channel
+    failure degrades gracefully to the surviving modality — the full row count the surviving channel found
+    still renders, flagged by a persistent caution banner, never a silently shorter list. Banner copy is the
+    verbatim string from doc 14 §3.6.
+  </div>
+  <div class="board-body">
+    <div class="s02-search-bar">
+      <div class="s02-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s02-search-text">cookie_secure default</span>
+      </div>
+      <span class="s02-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s02-context-chip is-set">
+        context: env=prod
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </span>
+    </div>
+    <div class="s02-surface">
+      <div class="s02-surface-header">
+        <span class="title">Results — project: darkmem</span>
+        <span class="state-chip state-degraded">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          degraded
+        </span>
+        <span class="meta">3 of 3 shown</span>
+      </div>
+      <div class="s02-surface-body">
+        <div class="s02-degraded-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span><b>showing keyword-only results — semantic search unavailable</b></span>
+        </div>
+        <div class="s02-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="text">Considering swapping the article synthesiser's chunking strategy to spans instead of blocks</span>
+          <span class="meta">channel: keyword</span>
+        </div>
+        <div class="s02-row">
+          <span class="layer-chip l2">L2 · fact</span>
+          <span class="badge corroborated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+            corroborated
+          </span>
+          <span class="text">cookie_secure defaults to Secure only when environment=production</span>
+          <span class="meta">channel: keyword</span>
+        </div>
+        <div class="s02-row">
+          <span class="layer-chip l3">L3 · article</span>
+          <span class="badge confirmed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+            human-ratified
+          </span>
+          <span class="text">Cookie security defaults across environments</span>
+          <span class="meta">channel: keyword</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
