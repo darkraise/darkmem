@@ -1,0 +1,247 @@
+<style>
+  /* C02 board-local layout widgets only. The chips themselves are the shared
+     .layer-chip l0/l2/l3 from mockup.css and the shared .badge from mockup.css
+     — nothing here restyles either class or redeclares a token. Namespaced
+     c02- so it can never collide with another fragment's local styles once
+     build.py concatenates them. */
+
+  .c02-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+  }
+  .c02-card {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: hsl(var(--card));
+  }
+  .c02-card .c02-surfaces {
+    font-size: 12.5px;
+    color: hsl(var(--foreground));
+  }
+  .c02-card .c02-surfaces b {
+    font-weight: 620;
+  }
+  .c02-card .c02-token-role {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
+  }
+  .c02-card .c02-expansion {
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+    border-top: 1px dashed hsl(var(--border));
+    padding-top: 7px;
+  }
+  .c02-card .c02-expansion b {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+
+  /* L1 — deliberately NOT a .layer-chip: it never renders on a served row,
+     so it gets a visibly different, ghosted treatment rather than a fourth
+     chip variant that would imply it sometimes appears. */
+  .c02-l1-card {
+    border: 1px dashed hsl(var(--border));
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: transparent;
+  }
+  .c02-l1-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed hsl(var(--muted-foreground) / 0.55);
+    color: hsl(var(--muted-foreground));
+    width: fit-content;
+    opacity: 0.75;
+  }
+  .c02-l1-card .c02-surfaces {
+    font-size: 12.5px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* the "supports fact F" nesting affordance */
+  .c02-nest {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .c02-fact-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    background: hsl(var(--card));
+  }
+  .c02-memory-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 12px;
+    margin-left: 28px;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    background: hsl(var(--muted) / 0.4);
+    position: relative;
+  }
+  .c02-memory-row::before {
+    content: "";
+    position: absolute;
+    left: -16px;
+    top: 50%;
+    width: 14px;
+    height: 1px;
+    background: hsl(var(--border));
+  }
+  .c02-claim-text {
+    font-size: 13px;
+    color: hsl(var(--foreground));
+  }
+  .c02-relation {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    margin-left: auto;
+  }
+</style>
+
+<section class="board" id="C02-layer-chip-reference">
+  <h2>C02 — Layer chip reference: L0 · L2 · L3, and the L1 that never renders</h2>
+  <div class="annotation">
+    Formalises doc 14 §3.3's layer chip as its own reusable reference. The layer chip is an <b>orthogonal
+    axis, styled orthogonally</b> from the verification badge — surface-toned <code>.layer-chip</code> using
+    only <code>--card</code>/<code>--border</code> tokens, monospace layer key, no accent, no status colour —
+    so "L2" is never misread as a trust level. It always <b>precedes</b> the verification badge in a row's
+    label cluster (doc 13 §4's <code>layer</code> row field: <code>L0</code> / <code>L2</code> / <code>L3</code>,
+    L1 never directly served).
+  </div>
+
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="c02-grid">
+          <div class="c02-card">
+            <span class="layer-chip l0">L0 · memory</span>
+            <span class="c02-surfaces">
+              Used by: <b>Memories</b> search &amp; detail, <b>Chat</b> context panel, the retrieval trace's
+              per-row cluster, and the nested row under a fact it supports (see below).
+            </span>
+            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-expansion">expansion — <b>"memory — Layer 0 of the vault"</b></span>
+          </div>
+          <div class="c02-card">
+            <span class="layer-chip l2">L2 · fact</span>
+            <span class="c02-surfaces">
+              Used by: <b>Knowledge → Facts</b> tab &amp; detail, the <b>Review</b> tab (disputed /
+              under-sourced facts), and search / retrieval trace rows.
+            </span>
+            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-expansion">expansion — <b>"fact — Layer 2 of the vault"</b></span>
+          </div>
+          <div class="c02-card">
+            <span class="layer-chip l3">L3 · article</span>
+            <span class="c02-surfaces">
+              Used by: <b>Knowledge → Articles</b> tab &amp; detail, and search / retrieval trace rows.
+            </span>
+            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-expansion">expansion — <b>"article — Layer 3 of the vault"</b></span>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="c02-grid">
+          <div class="c02-card">
+            <span class="layer-chip l0">L0 · memory</span>
+            <span class="c02-surfaces">
+              Used by: <b>Memories</b> search &amp; detail, <b>Chat</b> context panel, the retrieval trace's
+              per-row cluster, and the nested row under a fact it supports (see below).
+            </span>
+            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-expansion">expansion — <b>"memory — Layer 0 of the vault"</b></span>
+          </div>
+          <div class="c02-card">
+            <span class="layer-chip l2">L2 · fact</span>
+            <span class="c02-surfaces">
+              Used by: <b>Knowledge → Facts</b> tab &amp; detail, the <b>Review</b> tab (disputed /
+              under-sourced facts), and search / retrieval trace rows.
+            </span>
+            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-expansion">expansion — <b>"fact — Layer 2 of the vault"</b></span>
+          </div>
+          <div class="c02-card">
+            <span class="layer-chip l3">L3 · article</span>
+            <span class="c02-surfaces">
+              Used by: <b>Knowledge → Articles</b> tab &amp; detail, and search / retrieval trace rows.
+            </span>
+            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-expansion">expansion — <b>"article — Layer 3 of the vault"</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotation">
+      A layer chip <b>classifies, never asserts standing</b> (doc 14 §3.3): an L2 fact may still be a
+      <code>candidate</code> on the verification ladder, or a <code>disputed</code> one — the layer says
+      "what kind of thing," the badge says "how well supported," and the reading order in a label cluster is
+      always layer chip first, badge second.
+    </div>
+
+    <div class="c02-l1-card">
+      <span class="c02-l1-ghost">L1 · candidate graph</span>
+      <span class="c02-surfaces">
+        Not a live chip variant — <b>L1 is never directly served</b>. The row-level <code>layer</code> field
+        (doc 13 §4) only ever takes <code>L0</code> / <code>L2</code> / <code>L3</code>; there is no served
+        row for a layer chip to label L1 with. L1 is the pre-corroboration extraction graph, and it is
+        rendered elsewhere — as node/edge structure in the Memory Graph explorer — never as a labelled row in
+        a result list or trace panel.
+      </span>
+      <span class="c02-expansion">no expansion string — there is nothing to classify a served row as, because no served row is ever L1</span>
+    </div>
+    <div class="annotation annotation-caution">
+      Rendered here as a dashed, ghosted placeholder deliberately unlike the three live chips above, so a
+      reviewer sees what is <i>absent</i> from a row's label cluster rather than assuming L1 was forgotten.
+    </div>
+
+    <div class="c02-nest">
+      <div class="c02-fact-row">
+        <span class="layer-chip l2">L2 · fact</span>
+        <span class="c02-claim-text">cookie_secure defaults to Secure only when environment=production</span>
+        <span class="badge corroborated">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+          corroborated
+        </span>
+      </div>
+      <div class="c02-memory-row">
+        <span class="layer-chip l0">L0 · memory</span>
+        <span class="c02-claim-text">"set COOKIE_SECURE=false for plain-HTTP LAN deploys" — memory, 2026-06-09</span>
+        <span class="c02-relation">grouping.relation = "supports fact F"</span>
+      </div>
+    </div>
+    <div class="annotation">
+      The grouping-under-fact collapse (doc 13 §4, doc 07 §5): a memory that supports a fact renders nested
+      under it, indented, rather than as a third unrelated hit beside it — so a memory, the fact it supports,
+      and an article citing that fact never read as three unrelated rows. The relation string travels verbatim
+      from <code>grouping.relation</code>; note the L0 memory row carries no badge (a memory's
+      <code>verification_status</code> is always null — it has a lifecycle label instead, not a rung), while
+      the L2 fact it supports carries the full ladder.
+    </div>
+  </div>
+</section>

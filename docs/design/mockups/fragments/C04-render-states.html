@@ -1,0 +1,427 @@
+<style>
+  /* C04 board-local styles. This fragment is the FIRST place the seven
+     .state-chip variants (empty/loading/error/populated/staged/degraded/
+     excluded — already declared in the shared mockup.css) actually get
+     rendered, so every rule below only *extends* a shared class with a
+     child-selector detail (icon sizing inside a chip/alert/banner) or lays
+     out new c04- surfaces around them. Nothing here redeclares --token
+     values or restyles .board/.annotation/.state-chip/.badge/.layer-chip/
+     .theme-light/.theme-dark at the class level. Namespaced c04- so it can
+     never collide with another fragment's local styles once build.py
+     concatenates them. */
+
+  .c04-intro { display: flex; flex-direction: column; gap: 6px; max-width: 920px; }
+  .c04-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .c04-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* icon pairing inside the shared state-chip / alert / banner classes —
+     colour never carries meaning alone (doc 14 §7/§8): every chip below
+     pairs its token colour with a distinct icon shape, not colour alone. */
+  .state-chip svg { width: 12px; height: 12px; flex: none; }
+  .c04-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .c04-partial svg { width: 15px; height: 15px; flex: none; color: hsl(var(--warning)); }
+  .c04-staged svg { width: 20px; height: 20px; flex: none; color: hsl(var(--muted-foreground)); }
+  .c04-degraded-banner svg { width: 16px; height: 16px; flex: none; color: hsl(var(--warning)); }
+  .c04-exclusion-chip svg { width: 15px; height: 15px; flex: none; color: hsl(var(--warning)); }
+  .c04-empty svg { width: 22px; height: 22px; flex: none; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the generic result surface every screen instantiates ---- */
+  .c04-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .c04-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .c04-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .c04-surface-header .meta { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .c04-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+  .c04-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); font-size: 13px; flex-wrap: wrap; }
+  .c04-row .text { flex: 1 1 220px; color: hsl(var(--foreground)); }
+  .c04-row .rowmeta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  /* ---- loading: skeleton bars mirroring the populated row above,
+     never a spinner that replaces the page (doc 14 §5) ---- */
+  .c04-skel-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .c04-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .c04-skel-bar.chip { width: 58px; }
+  .c04-skel-bar.badge { width: 92px; }
+  .c04-skel-bar.text { flex: 1 1 auto; }
+  .c04-skel-bar.meta { width: 74px; }
+
+  /* ---- empty: honest about why, never a bare blank ---- */
+  .c04-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .c04-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .c04-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .c04-empty .why b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .c04-register-row { display: flex; gap: 18px; flex-wrap: wrap; padding-top: 10px; margin-top: 2px; border-top: 1px dashed hsl(var(--border)); }
+  .c04-register { display: flex; flex-direction: column; gap: 2px; font-size: 12px; max-width: 280px; }
+  .c04-register .tag { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+  .c04-register .copy { color: hsl(var(--foreground)); }
+
+  /* ---- error: a named failure, never an empty list ---- */
+  .c04-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .c04-alert .body { display: flex; flex-direction: column; gap: 5px; }
+  .c04-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .c04-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .c04-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  .c04-partial { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-top: 10px; border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.08); font-size: 12.5px; color: hsl(var(--foreground)); }
+  .c04-partial .step { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+  /* ---- staged: a labelled promise, never an empty panel ---- */
+  .c04-staged { display: flex; gap: 12px; padding: 18px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .c04-staged .body { display: flex; flex-direction: column; gap: 5px; }
+  .c04-staged .phase { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+  .c04-staged .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .c04-staged .waiting { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- degraded: populated + caution, never fewer rows ---- */
+  .c04-degraded-banner { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.12); font-size: 12.5px; color: hsl(var(--foreground)); }
+
+  /* ---- empty-with-exclusions: the strip renders before the empty body
+     so "0 shown, N excluded" can never collapse to a bare empty ---- */
+  .c04-exclusion-strip { display: flex; flex-direction: column; gap: 6px; }
+  .c04-exclusion-chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.08); font-size: 12.5px; color: hsl(var(--foreground)); }
+  .c04-exclusion-chip.summary { border-style: solid; }
+  .c04-exclusion-chip .tag { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<div class="c04-intro">
+  <h2>C04 — Render-state skeleton</h2>
+  <p>
+    The reusable state pattern every screen instantiates on top of one <code>.c04-surface</code> shape:
+    <b>empty · loading · error · populated</b>, plus the <b>staged</b>, <b>degraded</b>, and
+    <b>empty-with-exclusions</b> variants (doc 13 §4, doc 14 §5). Each header chip below is one of the
+    seven <code>.state-chip</code> variants already declared in <code>mockup.css</code> — this fragment is
+    where they are first put on screen, composed rather than re-invented. <code>populated</code> renders as
+    the hero in both themes; the other six render once, in the default theme, since the shared theme toggle
+    guarantees parity.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-empty">
+  <h2>Render state — empty</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says WHY.</b> An empty result never renders as a bare blank — the copy states the
+    cause and what happens next (doc 14 §5). The vault's cold-start register is reproduced verbatim below
+    (doc 13 §5.1); the row underneath shows the other two registers doc 14 §5 names — <i>no-match</i> and
+    <i>healthy-empty</i> — because one generic "nothing here" string cannot honestly cover all three.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No corroborated facts yet</span>
+          <span class="why"><b>no corroborated facts yet; candidates are served labelled in search</b></span>
+          <span class="why">Corroboration takes multiple distinct origins — this project has none logged yet.</span>
+        </div>
+        <div class="c04-register-row">
+          <div class="c04-register">
+            <span class="tag">no-match</span>
+            <span class="copy">No matches in project darkmem for "cookie secure default" — clear filters or search all projects.</span>
+          </div>
+          <div class="c04-register">
+            <span class="tag">healthy-empty</span>
+            <span class="copy">No disputes to adjudicate — the review queue is caught up.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-loading">
+  <h2>Render state — loading</h2>
+  <div class="annotation">
+    Loading is a layout preview, not a spinner replacing the page (doc 14 §5): skeleton rows mirror the
+    exact chip / badge / text / meta slots the populated board below fills in, so the surface never jumps
+    once data resolves.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-error">
+  <h2>Render state — error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list.</b> A both-sided channel failure raises a named error rather than
+    returning zero rows indistinguishable from a genuine no-match (doc 07 §2, invariant 14) — retry stays
+    offered and last-known cached data renders where cached, never silently swapped for an empty state.
+    <b>Honesty rule: partial names its failed step.</b> A pipeline <code>partial</code> status never says
+    just "something failed" — it names the failed phase (embed / extract / vector / graph, Phase 1–5) so the
+    caller knows exactly what is missing.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load facts — both retrieval channels failed</span>
+            <span class="desc">Semantic and keyword channels both failed to respond. Showing the last successful result from 14:02.</span>
+            <span class="c04-retry">Retry</span>
+          </div>
+        </div>
+        <div class="c04-partial">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span>pipeline: partial — failed step: <b>extract</b> (embed ok · vector ok · graph incomplete)</span>
+          <span class="step">3 of 5 memories affected</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-populated">
+  <h2>Render state — populated (hero, both themes)</h2>
+  <div class="annotation">
+    The content state, composing the shared layer chip (<code>.layer-chip</code>) and verification badge
+    (<code>.badge</code>) rungs — this skeleton never re-derives them (doc 13 §4, doc 14 §5). Rendered as the
+    hero in both themes; every other state in this fragment renders once, in the default theme, since the
+    shared toggle in <code>mockup.css</code>/<code>theme.css</code> already guarantees theme parity.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="c04-surface">
+          <div class="c04-surface-header">
+            <span class="title">Facts — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="c04-surface-body">
+            <div class="c04-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="badge candidate">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                candidate
+              </span>
+              <span class="text">Considering moving the reranker to a cross-encoder model</span>
+              <span class="rowmeta">as of 2026-07-18</span>
+            </div>
+            <div class="c04-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="text">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
+              <span class="rowmeta">asserted by 3 origins</span>
+            </div>
+            <div class="c04-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified
+              </span>
+              <span class="text">hybrid_search_enabled is on by default; RRF k=60</span>
+              <span class="rowmeta">ratified 2026-07-10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="c04-surface">
+          <div class="c04-surface-header">
+            <span class="title">Facts — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="c04-surface-body">
+            <div class="c04-row">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="badge candidate">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                candidate
+              </span>
+              <span class="text">Considering moving the reranker to a cross-encoder model</span>
+              <span class="rowmeta">as of 2026-07-18</span>
+            </div>
+            <div class="c04-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="text">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
+              <span class="rowmeta">asserted by 3 origins</span>
+            </div>
+            <div class="c04-row">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified
+              </span>
+              <span class="text">hybrid_search_enabled is on by default; RRF k=60</span>
+              <span class="rowmeta">ratified 2026-07-10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-staged">
+  <h2>Render state — staged</h2>
+  <div class="annotation">
+    <b>Honesty rule: staged ≠ empty panel.</b> A surface whose backend signal has not shipped renders a
+    labelled placeholder naming what will appear and what it is waiting on — never a fake-populated mock,
+    never a blank that looks broken (doc 14 §5, invariant 23).
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Graph augmentation</span>
+        <span class="state-chip state-staged">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          staged
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-staged">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          <div class="body">
+            <span class="phase">phase: target — built-but-unspent graph (doc 07 §2)</span>
+            <span class="headline">Graph augmentation is staged</span>
+            <span class="waiting">PPR mass and dual-level relation signals will appear here once this channel is spent — the cached igraph snapshot already exists; the read path does not yet.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-degraded">
+  <h2>Render state — degraded (populated-with-caution)</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: degraded ≠ fewer rows.</b> A one-sided channel failure degrades gracefully — the
+    surviving channel's full row count still renders, flagged by a persistent caution banner, never a
+    silently shorter list (doc 14 §3.6, doc 07 §2). Verbatim banner copy below.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-degraded">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          degraded
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-degraded-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span><b>showing keyword-only results — semantic search unavailable</b></span>
+        </div>
+        <div class="c04-row">
+          <span class="layer-chip l0">L0 · memory</span>
+          <span class="badge candidate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+            candidate
+          </span>
+          <span class="text">Considering moving the reranker to a cross-encoder model</span>
+          <span class="rowmeta">channel: keyword</span>
+        </div>
+        <div class="c04-row">
+          <span class="layer-chip l2">L2 · fact</span>
+          <span class="badge corroborated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+            corroborated
+          </span>
+          <span class="text">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
+          <span class="rowmeta">channel: keyword</span>
+        </div>
+        <div class="c04-row">
+          <span class="layer-chip l2">L2 · fact</span>
+          <span class="badge confirmed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+            human-ratified
+          </span>
+          <span class="text">hybrid_search_enabled is on by default; RRF k=60</span>
+          <span class="rowmeta">channel: keyword</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="C04-empty-exclusions">
+  <h2>Render state — empty-with-exclusions</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: empty-with-exclusions ≠ bare empty.</b> When scope or context excludes every candidate
+    row, the exclusion strip renders <i>before</i> the empty body, so the surface reads "0 shown, N excluded"
+    rather than "nothing found" (doc 14 §3.6/§5).
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-excluded">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+          excluded
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-exclusion-strip">
+          <div class="c04-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+            <span><b>2 rows excluded</b> — outside the current project scope</span>
+            <span class="tag">by_project</span>
+          </div>
+          <div class="c04-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+            <span><b>3 rows excluded</b> — status is superseded, not active</span>
+            <span class="tag">by_status</span>
+          </div>
+          <div class="c04-exclusion-chip summary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+            <span><b>0 shown, 5 excluded</b> — every candidate row was filtered by the active scope/context</span>
+          </div>
+        </div>
+        <div class="c04-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No rows to display</span>
+          <span class="why">Every candidate matched an exclusion filter above — this is not a "no memories exist" state; loosen scope or context to see them.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

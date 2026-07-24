@@ -1,0 +1,386 @@
+<style>
+  /* C03 board-local styles — the global chrome reference: nav shell, the
+     two distinct scope controls, and the command palette. None of this
+     has a shared class yet (mockup.css owns board/annotation/state-chip/
+     badge/layer-chip only), so it is namespaced c03- to stay collision-
+     free once build.py concatenates every fragment. Everything below
+     reads var(--token) / hsl(var(--token)) only — no literal hex, no
+     redeclared token, no restyling of .board/.annotation/.state-chip/
+     .theme-light/.theme-dark. */
+
+  .c03-shell {
+    display: grid; grid-template-columns: 200px 1fr;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    overflow: hidden; background: hsl(var(--background)); min-height: 420px;
+  }
+  @media (max-width: 760px) {
+    .c03-shell { grid-template-columns: 1fr; }
+  }
+
+  .c03-sidebar {
+    background: hsl(var(--card)); border-right: 1px solid hsl(var(--border));
+    display: flex; flex-direction: column; padding: 12px 8px;
+  }
+  .c03-brand {
+    display: flex; align-items: center; gap: 8px; padding: 4px 8px 14px;
+    font-weight: 640; font-size: 13px; color: hsl(var(--foreground));
+  }
+  .c03-brand svg { width: 16px; height: 16px; color: hsl(var(--primary)); flex: none; }
+
+  .c03-nav-group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 12px; }
+  .c03-nav-group-title {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground)); padding: 5px 8px 3px;
+  }
+  .c03-nav-item {
+    display: flex; align-items: center; gap: 9px; padding: 7px 8px;
+    border-radius: var(--radius-sm); font-size: 13px; color: hsl(var(--muted-foreground));
+  }
+  .c03-nav-item svg { width: 15px; height: 15px; flex: none; }
+  .c03-nav-item .refetch { margin-left: auto; }
+  .c03-nav-item.active {
+    background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); font-weight: 590;
+  }
+
+  .c03-main { display: flex; flex-direction: column; min-width: 0; }
+  .c03-topbar {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--card));
+    flex-wrap: wrap;
+  }
+  .c03-topbar-title { font-size: 13px; font-weight: 590; color: hsl(var(--foreground)); }
+  .c03-topbar-spacer { flex: 1; min-width: 8px; }
+
+  /* the project switcher — one control, sets scope */
+  .c03-switcher {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--muted)); font-size: 13px; color: hsl(var(--foreground));
+  }
+  .c03-switcher .dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--primary)); flex: none; }
+  .c03-switcher .cap {
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: hsl(var(--muted-foreground));
+  }
+  .c03-switcher svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); flex: none; }
+
+  /* the context chip — a second, separate control, session applies_when */
+  .c03-context-chip {
+    display: flex; align-items: center; gap: 7px; padding: 5px 10px;
+    border: 1px dashed hsl(var(--border)); border-radius: 999px; font-size: 12.5px;
+    color: hsl(var(--muted-foreground)); background: transparent;
+  }
+  .c03-context-chip.set {
+    border-style: solid; border-color: hsl(var(--info) / 0.55);
+    color: hsl(var(--info)); background: hsl(var(--info) / 0.08);
+  }
+  .c03-context-chip svg { width: 13px; height: 13px; flex: none; }
+  .c03-context-chip .clear { font-family: var(--font-mono); opacity: 0.75; }
+
+  /* command palette trigger + panel */
+  .c03-palette-trigger {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--background)); color: hsl(var(--muted-foreground)); font-size: 12.5px;
+  }
+  .c03-palette-trigger svg { width: 14px; height: 14px; flex: none; }
+  .c03-kbd {
+    font-family: var(--font-mono); font-size: 10.5px; padding: 1px 5px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
+  }
+
+  .c03-content-placeholder {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 30px; text-align: center; font-family: var(--font-mono);
+    font-size: 12px; color: hsl(var(--muted-foreground));
+  }
+
+  .c03-palette {
+    max-width: 480px; border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); overflow: hidden;
+  }
+  .c03-palette-input-row {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .c03-palette-input-row svg { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); flex: none; }
+  .c03-palette-input-row .ph { font-size: 13px; color: hsl(var(--muted-foreground)); }
+  .c03-palette-group-title {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground)); padding: 8px 12px 4px;
+  }
+  .c03-palette-item {
+    display: flex; align-items: center; gap: 9px; padding: 7px 12px;
+    font-size: 13px; color: hsl(var(--foreground));
+  }
+  .c03-palette-item svg { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); flex: none; }
+  .c03-palette-item .hint { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .c03-palette-item.highlighted { background: hsl(var(--accent)); }
+
+  /* switched-project variant */
+  .c03-switch-flow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+  .c03-switch-flow svg { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); flex: none; }
+  .c03-switch-arrow { font-family: var(--font-mono); color: hsl(var(--muted-foreground)); }
+  .c03-switch-old { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+  .c03-switch-new { color: hsl(var(--primary)); font-weight: 600; }
+  .c03-refetch-list { display: flex; flex-direction: column; gap: 6px; }
+  .c03-refetch-row { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-wrap: wrap; }
+  .c03-refetch-row .key { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<section class="board" id="C03-global-chrome">
+  <div class="board-bar"><span class="board-dot"></span><span class="board-title">C03 — Global chrome: nav shell, scope controls, command palette</span></div>
+  <div class="annotation">
+    <b>Reference board, not a screen.</b> Realises doc 13 §3 (the three-group / eight-destination
+    navigation map, the project switcher as global scope, the separate session context chip) and doc 14
+    §9 (the eighth sidebar item absorbed by the existing three-group treatment unchanged — no grouping
+    redesign). Chrome shown here is the <code>SidebarLayout</code> darkraise-ui variant
+    (<code>useLayoutStore</code>); the <code>TopNavLayout</code> / <code>StackedLayout</code> alternates
+    carry the same eight destinations and the same two scope controls, only the frame differs — that
+    swap is chrome, not information architecture, so it is not re-illustrated here.
+  </div>
+
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="c03-shell">
+          <nav class="c03-sidebar">
+            <div class="c03-brand">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+              darkmem
+            </div>
+            <div class="c03-nav-group">
+              <div class="c03-nav-group-title">Workspace</div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Dashboard
+              </div>
+              <div class="c03-nav-item active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+                Memories
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 0 1 2-2h11v16H6a2 2 0 0 0-2 2V5Z"/><path d="M6 17h13"/></svg>
+                Knowledge
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6.2L4 20l1.2-3.6A7.96 7.96 0 0 1 4 12Z"/></svg>
+                Chat
+              </div>
+            </div>
+            <div class="c03-nav-group">
+              <div class="c03-nav-group-title">Explore</div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 5 3 12l5 7"/><path d="M16 5l5 7-5 7"/></svg>
+                Code
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8 7l3 9M16 7l-3 9M8.4 6h7.2"/></svg>
+                Memory Graph
+              </div>
+            </div>
+            <div class="c03-nav-group">
+              <div class="c03-nav-group-title">Operate</div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>
+                Activity
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+                Settings
+              </div>
+            </div>
+          </nav>
+          <div class="c03-main">
+            <div class="c03-topbar">
+              <span class="c03-topbar-title">Memories</span>
+              <span class="c03-topbar-spacer"></span>
+              <div class="c03-switcher">
+                <span class="dot"></span>
+                <span><span class="cap">project</span> darkmem-core-backend</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+              <div class="c03-context-chip set">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 3v18"/><path d="M4 4h13l-3 4 3 4H4"/></svg>
+                <span>context: env=dev</span>
+                <span class="clear">✕</span>
+              </div>
+              <div class="c03-palette-trigger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                Search or jump to…
+                <span class="c03-kbd">⌘K</span>
+              </div>
+            </div>
+            <div class="c03-content-placeholder">screen content renders here — scoped by<br>project=darkmem-core-backend, context=env:dev</div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="c03-shell">
+          <nav class="c03-sidebar">
+            <div class="c03-brand">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+              darkmem
+            </div>
+            <div class="c03-nav-group">
+              <div class="c03-nav-group-title">Workspace</div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Dashboard
+              </div>
+              <div class="c03-nav-item active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+                Memories
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 0 1 2-2h11v16H6a2 2 0 0 0-2 2V5Z"/><path d="M6 17h13"/></svg>
+                Knowledge
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6.2L4 20l1.2-3.6A7.96 7.96 0 0 1 4 12Z"/></svg>
+                Chat
+              </div>
+            </div>
+            <div class="c03-nav-group">
+              <div class="c03-nav-group-title">Explore</div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 5 3 12l5 7"/><path d="M16 5l5 7-5 7"/></svg>
+                Code
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8 7l3 9M16 7l-3 9M8.4 6h7.2"/></svg>
+                Memory Graph
+              </div>
+            </div>
+            <div class="c03-nav-group">
+              <div class="c03-nav-group-title">Operate</div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>
+                Activity
+              </div>
+              <div class="c03-nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+                Settings
+              </div>
+            </div>
+          </nav>
+          <div class="c03-main">
+            <div class="c03-topbar">
+              <span class="c03-topbar-title">Memories</span>
+              <span class="c03-topbar-spacer"></span>
+              <div class="c03-switcher">
+                <span class="dot"></span>
+                <span><span class="cap">project</span> darkmem-core-backend</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+              <div class="c03-context-chip set">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 3v18"/><path d="M4 4h13l-3 4 3 4H4"/></svg>
+                <span>context: env=dev</span>
+                <span class="clear">✕</span>
+              </div>
+              <div class="c03-palette-trigger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                Search or jump to…
+                <span class="c03-kbd">⌘K</span>
+              </div>
+            </div>
+            <div class="c03-content-placeholder">screen content renders here — scoped by<br>project=darkmem-core-backend, context=env:dev</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotation annotation-conflict">
+      <b>The project switcher and the context chip are two distinct controls, never one.</b> The
+      switcher (left, solid, a dot + project name) sets the <code>project</code> scope — the isolation
+      boundary that rides into every query key (doc 13 §2). The chip (right, dashed-until-set) declares
+      the optional session <code>applies_when</code> — the UI's equivalent of the
+      <code>X-Darkmem-Context</code> header. Conflating them — e.g. letting a project named
+      "production" silently imply <code>env=prod</code> — would silently exclude every dev-only fact
+      from retrieval and surface an exclusion count the user never asked for: a quietly-lossy behaviour
+      doc 13 §3 names explicitly. Rendered separately, each stays honest about what it does: switching
+      project changes what data set is visible; setting or clearing the context chip changes which
+      facts in that data set apply.
+    </div>
+
+    <div class="annotation">
+      The chip's default state (not shown as the hero above) is <b>unset</b> — dashed border, no fill,
+      label "no context declared". When unset, the backend falls back through its own precedence chain,
+      down to the selected project's registry <code>applies_when</code> default at the lowest tier
+      (doc 13 §3) — so a project still contributes a default, but only through that chain, never through
+      the switcher masquerading as a context declaration.
+    </div>
+
+    <div class="c03-palette-wrap">
+      <h3 style="margin:0 0 8px;font-size:14px;font-weight:620;color:hsl(var(--foreground));">Command palette (⌘K)</h3>
+      <div class="c03-palette">
+        <div class="c03-palette-input-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <span class="ph">memo</span>
+        </div>
+        <div class="c03-palette-group-title">Navigate</div>
+        <div class="c03-palette-item highlighted">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+          Jump to Memories
+          <span class="hint">↵</span>
+        </div>
+        <div class="c03-palette-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 0 1 2-2h11v16H6a2 2 0 0 0-2 2V5Z"/><path d="M6 17h13"/></svg>
+          Jump to Knowledge → Facts
+        </div>
+        <div class="c03-palette-group-title">Actions</div>
+        <div class="c03-palette-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+          Create memory…
+          <span class="hint">C</span>
+        </div>
+        <div class="c03-palette-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          Switch project…
+        </div>
+      </div>
+    </div>
+    <div class="annotation">
+      The palette is a global jump-and-act surface, not a third scope control — choosing a destination
+      or action operates inside the <em>current</em> project/context scope; "Switch project…" opens the
+      same switcher shown above rather than duplicating its logic. Results mix both groups (destinations,
+      then actions) so the palette never becomes a second, competing navigation source.
+    </div>
+  </div>
+</section>
+
+<section class="board" id="C03-switched-project">
+  <div class="board-bar"><span class="board-dot"></span><span class="board-title">C03 — switched-project variant: scope-refetch intent</span></div>
+  <div class="annotation">
+    Shown in one theme only (theme parity already demonstrated by the shared token system in the
+    reference board above). Realises doc 13 §2's contract that the composite
+    <code>(project, status[, is_archived])</code> filter rides into the TanStack Query key, so switching
+    the project switcher changes that key and every scoped view refetches against the new scope — never
+    a client-side re-filter of an over-fetched set.
+  </div>
+  <div class="board-body">
+    <div class="c03-switch-flow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+      <span class="c03-switch-old">project: darkmem-core-backend</span>
+      <span class="c03-switch-arrow">→</span>
+      <span class="c03-switch-new">project: acme-storefront</span>
+      <span class="state-chip state-loading">refetching</span>
+    </div>
+    <div class="c03-refetch-list">
+      <div class="c03-refetch-row"><span class="key">memories</span> Memories list <span class="state-chip state-loading">refetching</span></div>
+      <div class="c03-refetch-row"><span class="key">vaultFacts, vaultArticles, topics</span> Knowledge tabs <span class="state-chip state-loading">refetching</span></div>
+      <div class="c03-refetch-row"><span class="key">activityFeed, dreamDigest</span> Activity <span class="state-chip state-loading">refetching</span></div>
+      <div class="c03-refetch-row"><span class="key">overview, stats</span> Dashboard calendar + tiles <span class="state-chip state-loading">refetching</span></div>
+      <div class="c03-refetch-row"><span class="key">retrievalTrace</span> why-retrieved trace (Memories) <span class="state-chip state-loading">refetching</span></div>
+    </div>
+    <div class="annotation">
+      <b>The context chip is untouched by this switch</b> — it still reads "context: env=dev" exactly as
+      before. That is the decoupling made visible: the switcher changed <code>project</code> and every
+      key derived from it; nothing about the declared <code>applies_when</code> changed, because the two
+      controls sit on independent axes (doc 13 §3). A design that tied them together would have to either
+      clear the chip on every project switch (surprising) or carry a stale context into the new scope
+      (also surprising) — keeping them separate avoids both failure modes.
+    </div>
+  </div>
+</section>
