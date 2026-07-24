@@ -1,0 +1,524 @@
+<style>
+  /* S31 board-local styles — Auth: Login (_guest route, doc 13 §2/§3). Composes
+     the SHARED chrome classes verbatim — .board, .annotation, .state-chip —
+     and invents nothing that duplicates them. Everything below is new S31-only
+     layout: the atmospheric stage (static aurora/particle backdrop + glass
+     card), the password field, and the submit/error/lockout states. Reads
+     var(--token) / hsl(var(--token)) only; chart-1..5 are pre-wrapped hsl(...)
+     strings (theme.css) so they are used bare, never re-wrapped in hsl().
+     No literal hex anywhere — the atmosphere is token-derived, which is a
+     deliberate departure from the shipped particle-background.tsx (which
+     hardcodes #818cf8/#22d3ee/etc.) per this mockup's no-hardcoded-hex rule;
+     see the first board's annotation. Namespaced s31- so it can never
+     collide with another fragment's local styles once build.py concatenates
+     every fragment. */
+
+  .s31-board-head { display: flex; align-items: center; gap: 10px; }
+  .s31-board-title { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s31-board-head .state-chip { margin-left: auto; }
+
+  /* ---- the atmospheric stage every state renders inside ---- */
+  .s31-stage {
+    position: relative; overflow: hidden; isolation: isolate;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    min-height: 460px; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px 20px; background: hsl(var(--background));
+  }
+  .s31-backdrop-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+
+  /* particle/aurora colour identity — token-derived only. --chart-1/--chart-5
+     used bare (already hsl(...) strings); --primary/--info wrapped (channel
+     tokens). Kept to four token sources, mirroring the shipped component's
+     indigo-node / cyan-accent split (doc 14 §2's "ceremonial register"). */
+  .s31-p-a { fill: var(--chart-1); }
+  .s31-p-b { fill: var(--chart-5); }
+  .s31-p-c { fill: hsl(var(--primary)); }
+  .s31-p-glow { fill: hsl(var(--info)); opacity: 0.55; filter: url(#s31-node-glow); }
+  .s31-p-glow-core { fill: hsl(var(--info)); opacity: 0.9; }
+  .s31-links { stroke: hsl(var(--primary)); stroke-opacity: 0.26; stroke-width: 1; }
+  .s31-links-accent { stroke: hsl(var(--info)); stroke-opacity: 0.34; stroke-width: 1; }
+
+  /* ---- the glass card (realises components/glass-panel.tsx + login-card.tsx) ---- */
+  .s31-card {
+    position: relative; z-index: 1; width: 100%; max-width: 336px;
+    border-radius: calc(var(--radius) * 1.4);
+    border: 1px solid hsl(var(--border) / 0.7);
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 28px 70px -20px hsl(var(--foreground) / 0.55), inset 0 1px 0 hsl(var(--card-foreground) / 0.07);
+    padding: 30px 26px 24px; display: flex; flex-direction: column; gap: 18px;
+  }
+  .s31-brand { display: flex; align-items: center; justify-content: center; gap: 9px; }
+  .s31-brand svg { width: 22px; height: 22px; flex: none; }
+  .s31-wordmark {
+    font-size: 23px; font-weight: 800; letter-spacing: 0.01em;
+    background: linear-gradient(90deg, var(--chart-5), hsl(var(--primary)), hsl(var(--info)));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .s31-tagline { margin: 0; text-align: center; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s31-form { display: flex; flex-direction: column; gap: 14px; }
+  .s31-field { display: flex; flex-direction: column; gap: 6px; }
+  .s31-flabel { font-size: 12px; font-weight: 610; color: hsl(var(--foreground) / 0.9); }
+  .s31-input-shell {
+    display: flex; align-items: center; gap: 8px;
+    height: 42px; padding: 0 12px; border-radius: calc(var(--radius) - 2px);
+    border: 1px solid hsl(var(--border) / 0.8);
+    background: hsl(var(--background) / 0.4);
+  }
+  .s31-input-shell svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s31-input-value { flex: 1; font-size: 15px; letter-spacing: 0.14em; color: hsl(var(--foreground)); }
+  .s31-visibility {
+    flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; color: hsl(var(--muted-foreground));
+  }
+  .s31-input-shell.is-invalid { border-color: hsl(var(--destructive) / 0.65); }
+  .s31-input-shell.is-disabled { opacity: 0.5; }
+
+  .s31-submit {
+    height: 40px; border-radius: calc(var(--radius) - 2px); border: none;
+    font-size: 13.5px; font-weight: 640; letter-spacing: 0.01em;
+    color: hsl(var(--primary-foreground));
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--info)));
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .s31-submit.is-loading { opacity: 0.85; }
+  .s31-submit.is-disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+  .s31-submit .spin { width: 14px; height: 14px; flex: none; }
+
+  .s31-alert {
+    display: flex; gap: 9px; align-items: flex-start; padding: 10px 11px;
+    border: 1px solid hsl(var(--destructive) / 0.5); border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--destructive) / 0.14); font-size: 12.5px; color: hsl(var(--foreground));
+  }
+  .s31-alert svg { width: 15px; height: 15px; flex: none; color: hsl(var(--destructive)); margin-top: 1px; }
+  .s31-alert .headline { font-weight: 640; }
+  .s31-alert .desc { color: hsl(var(--muted-foreground)); }
+
+  /* ---- lockout panel — replaces the form area, never leaves it silently blank ---- */
+  .s31-lockout {
+    display: flex; flex-direction: column; gap: 10px; padding: 13px 12px;
+    border: 1px solid hsl(var(--warning) / 0.55); border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--warning) / 0.12);
+  }
+  .s31-lockout-head { display: flex; align-items: center; gap: 8px; }
+  .s31-lockout-head svg { width: 16px; height: 16px; flex: none; color: hsl(var(--warning)); }
+  .s31-lockout-head .headline { font-size: 13px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s31-lockout .wire {
+    font-family: var(--font-mono); font-size: 12px; color: hsl(var(--foreground));
+    padding: 7px 9px; border-radius: var(--radius-sm); background: hsl(var(--background) / 0.5);
+    border: 1px dashed hsl(var(--warning) / 0.5);
+  }
+  .s31-lockout .countdown { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s31-lockout .countdown b { color: hsl(var(--foreground)); font-weight: 640; }
+  .s31-lockout .meta { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <radialGradient id="s31-aurora-1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:hsl(var(--primary));stop-opacity:0.55"/>
+      <stop offset="55%" style="stop-color:hsl(var(--primary));stop-opacity:0.14"/>
+      <stop offset="100%" style="stop-color:hsl(var(--primary));stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="s31-aurora-2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:var(--chart-1);stop-opacity:0.5"/>
+      <stop offset="55%" style="stop-color:var(--chart-1);stop-opacity:0.12"/>
+      <stop offset="100%" style="stop-color:var(--chart-1);stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="s31-aurora-3" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:var(--chart-5);stop-opacity:0.5"/>
+      <stop offset="55%" style="stop-color:var(--chart-5);stop-opacity:0.12"/>
+      <stop offset="100%" style="stop-color:var(--chart-5);stop-opacity:0"/>
+    </radialGradient>
+    <filter id="s31-soft-blur" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="38"/>
+    </filter>
+    <filter id="s31-node-glow" x="-300%" y="-300%" width="700%" height="700%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+    <g id="s31-backdrop-content">
+      <rect width="960" height="600" style="fill:hsl(var(--background))"/>
+      <ellipse cx="150" cy="120" rx="280" ry="220" fill="url(#s31-aurora-1)" filter="url(#s31-soft-blur)"/>
+      <ellipse cx="830" cy="90" rx="230" ry="190" fill="url(#s31-aurora-2)" filter="url(#s31-soft-blur)"/>
+      <ellipse cx="620" cy="520" rx="320" ry="230" fill="url(#s31-aurora-3)" filter="url(#s31-soft-blur)"/>
+      <ellipse cx="120" cy="520" rx="220" ry="180" fill="url(#s31-aurora-2)" filter="url(#s31-soft-blur)" opacity="0.7"/>
+      <rect width="960" height="600" style="fill:hsl(var(--background));opacity:0.32"/>
+      <g class="s31-links">
+        <line x1="60" y1="54" x2="140" y2="40"/>
+        <line x1="140" y1="40" x2="230" y2="86"/>
+        <line x1="230" y1="86" x2="310" y2="48"/>
+        <line x1="310" y1="48" x2="420" y2="110"/>
+        <line x1="420" y1="110" x2="505" y2="60"/>
+        <line x1="505" y1="60" x2="600" y2="95"/>
+        <line x1="600" y1="95" x2="690" y2="50"/>
+        <line x1="690" y1="50" x2="780" y2="100"/>
+        <line x1="780" y1="100" x2="860" y2="60"/>
+        <line x1="860" y1="60" x2="900" y2="150"/>
+        <line x1="80" y1="160" x2="180" y2="200"/>
+        <line x1="180" y1="200" x2="260" y2="150"/>
+        <line x1="760" y1="190" x2="840" y2="230"/>
+        <line x1="60" y1="320" x2="120" y2="400"/>
+        <line x1="120" y1="400" x2="90" y2="480"/>
+        <line x1="90" y1="480" x2="60" y2="540"/>
+        <line x1="900" y1="380" x2="860" y2="460"/>
+        <line x1="860" y1="460" x2="900" y2="540"/>
+        <line x1="500" y1="540" x2="420" y2="570"/>
+        <line x1="420" y1="570" x2="300" y2="560"/>
+        <line x1="630" y1="560" x2="700" y2="510"/>
+      </g>
+      <g class="s31-links-accent">
+        <line x1="150" y1="120" x2="230" y2="86"/>
+        <line x1="250" y1="470" x2="300" y2="560"/>
+      </g>
+      <g>
+        <circle cx="60" cy="54" r="2" class="s31-p-a" opacity="0.55"/>
+        <circle cx="140" cy="40" r="1.6" class="s31-p-c" opacity="0.45"/>
+        <circle cx="230" cy="86" r="2.4" class="s31-p-b" opacity="0.5"/>
+        <circle cx="310" cy="48" r="1.8" class="s31-p-a" opacity="0.4"/>
+        <circle cx="420" cy="110" r="2" class="s31-p-c" opacity="0.5"/>
+        <circle cx="505" cy="60" r="1.6" class="s31-p-b" opacity="0.42"/>
+        <circle cx="600" cy="95" r="2.2" class="s31-p-a" opacity="0.48"/>
+        <circle cx="690" cy="50" r="1.8" class="s31-p-c" opacity="0.4"/>
+        <circle cx="780" cy="100" r="2.4" class="s31-p-b" opacity="0.5"/>
+        <circle cx="860" cy="60" r="1.6" class="s31-p-a" opacity="0.42"/>
+        <circle cx="900" cy="150" r="2" class="s31-p-c" opacity="0.46"/>
+        <circle cx="80" cy="160" r="1.8" class="s31-p-b" opacity="0.4"/>
+        <circle cx="180" cy="200" r="2.2" class="s31-p-a" opacity="0.5"/>
+        <circle cx="260" cy="150" r="1.6" class="s31-p-c" opacity="0.4"/>
+        <circle cx="760" cy="190" r="2" class="s31-p-a" opacity="0.46"/>
+        <circle cx="840" cy="230" r="1.8" class="s31-p-b" opacity="0.42"/>
+        <circle cx="60" cy="320" r="2.4" class="s31-p-c" opacity="0.5"/>
+        <circle cx="120" cy="400" r="1.6" class="s31-p-a" opacity="0.4"/>
+        <circle cx="90" cy="480" r="2" class="s31-p-b" opacity="0.46"/>
+        <circle cx="60" cy="540" r="1.8" class="s31-p-c" opacity="0.4"/>
+        <circle cx="900" cy="380" r="2.2" class="s31-p-b" opacity="0.48"/>
+        <circle cx="860" cy="460" r="1.6" class="s31-p-a" opacity="0.42"/>
+        <circle cx="900" cy="540" r="2" class="s31-p-c" opacity="0.46"/>
+        <circle cx="500" cy="540" r="1.8" class="s31-p-a" opacity="0.4"/>
+        <circle cx="420" cy="570" r="2.2" class="s31-p-b" opacity="0.44"/>
+        <circle cx="300" cy="560" r="1.6" class="s31-p-c" opacity="0.4"/>
+        <circle cx="630" cy="560" r="2" class="s31-p-a" opacity="0.42"/>
+        <circle cx="700" cy="510" r="1.8" class="s31-p-b" opacity="0.4"/>
+      </g>
+      <g>
+        <circle cx="150" cy="120" r="3.2" class="s31-p-glow"/>
+        <circle cx="150" cy="120" r="2" class="s31-p-glow-core"/>
+        <circle cx="800" cy="140" r="3" class="s31-p-glow"/>
+        <circle cx="800" cy="140" r="1.8" class="s31-p-glow-core"/>
+        <circle cx="520" cy="540" r="3.2" class="s31-p-glow"/>
+        <circle cx="520" cy="540" r="2" class="s31-p-glow-core"/>
+        <circle cx="250" cy="470" r="2.8" class="s31-p-glow"/>
+        <circle cx="250" cy="470" r="1.7" class="s31-p-glow-core"/>
+      </g>
+    </g>
+  </defs>
+</svg>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-populated">
+  <h2>S31 — Auth: Login, populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §2/§3's <code>_guest</code> layout route
+    (<code>/login</code>) — the atmospheric glass card centred over the particle/aurora backdrop
+    (doc 14 §2: "the login/setup flow's glass card over the interactive particle/aurora backdrop ...
+    is the language's <i>ceremonial register</i>, reserved for the unauthenticated threshold surfaces").
+    The form mirrors the shipped <code>login-card.tsx</code>/<code>login-form.tsx</code> exactly:
+    darkmem is single-admin, trust-on-first-use (doc 18 §3) — one password field, no username, because
+    there is exactly one account to authenticate against. <b>States:</b> 4 boards — populated (this one,
+    hero in both themes) / loading / error / rate-limited lockout.
+  </div>
+  <div class="annotation">
+    <b>Static still-frame — motion out of scope.</b> The live component (<code>particle-background.tsx</code>)
+    drifts particles continuously, links nearby nodes, and repels/links toward the cursor when interactive;
+    it degrades to fewer particles with no cursor interaction on touch/low-core devices, and to exactly this
+    kind of single frozen frame under <code>prefers-reduced-motion</code> (doc 14 §7 lists "the existing
+    particle backdrop on the threshold surfaces" as one of the app's few closed motion-as-signal uses). This
+    board renders that reduced-motion frame permanently — no canvas, no animation loop, no cursor listeners.
+  </div>
+  <div class="annotation">
+    <b>Token-derived, not hardcoded (mockup contract).</b> The shipped component today hardcodes its palette
+    (<code>#818cf8</code>, <code>#22d3ee</code>, ...). This board instead derives every backdrop colour from
+    <code>--primary</code> / <code>--chart-1</code> / <code>--chart-5</code> / <code>--info</code> so the
+    atmosphere already re-themes with an accent change — the same migration doc 14 §2's "no hardcoded hex in
+    app components, ever" rule implies for the component itself, not yet done in <code>frontend/src</code>.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s31-board-head">
+          <span class="s31-board-title">/login (_guest)</span>
+          <span class="state-chip state-populated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            populated
+          </span>
+        </div>
+        <div class="s31-stage">
+          <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+            <use href="#s31-backdrop-content"></use>
+          </svg>
+          <div class="s31-card">
+            <div class="s31-brand">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+                  <line x1="6" y1="7" x2="14" y2="5"/>
+                  <line x1="6" y1="7" x2="9" y2="17"/>
+                  <line x1="14" y1="5" x2="18" y2="14"/>
+                  <line x1="9" y1="17" x2="18" y2="14"/>
+                </g>
+                <g style="fill:hsl(var(--primary))">
+                  <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+                  <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+                </g>
+              </svg>
+              <span class="s31-wordmark">darkmem</span>
+            </div>
+            <p class="s31-tagline">Sign in to continue</p>
+            <div class="s31-form">
+              <div class="s31-field">
+                <span class="s31-flabel">Password</span>
+                <div class="s31-input-shell">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <span class="s31-input-value">••••••••••</span>
+                  <button type="button" class="s31-visibility" aria-label="Show password">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="s31-submit">Sign in</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s31-board-head">
+          <span class="s31-board-title">/login (_guest)</span>
+          <span class="state-chip state-populated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            populated
+          </span>
+        </div>
+        <div class="s31-stage">
+          <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+            <use href="#s31-backdrop-content"></use>
+          </svg>
+          <div class="s31-card">
+            <div class="s31-brand">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+                  <line x1="6" y1="7" x2="14" y2="5"/>
+                  <line x1="6" y1="7" x2="9" y2="17"/>
+                  <line x1="14" y1="5" x2="18" y2="14"/>
+                  <line x1="9" y1="17" x2="18" y2="14"/>
+                </g>
+                <g style="fill:hsl(var(--primary))">
+                  <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+                  <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+                </g>
+              </svg>
+              <span class="s31-wordmark">darkmem</span>
+            </div>
+            <p class="s31-tagline">Sign in to continue</p>
+            <div class="s31-form">
+              <div class="s31-field">
+                <span class="s31-flabel">Password</span>
+                <div class="s31-input-shell">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <span class="s31-input-value">••••••••••</span>
+                  <button type="button" class="s31-visibility" aria-label="Show password">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="s31-submit">Sign in</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-loading">
+  <h2>S31 — Auth: Login, loading (submitting)</h2>
+  <div class="annotation">
+    Mirrors <code>useLogin().isPending</code> exactly: the field dims and the button label swaps to
+    "Signing in…" with a static spinner glyph and goes non-interactive — no page-level spinner replaces
+    the card, the layout holds still (doc 14 §5's loading discipline applied to a single-surface form).
+    Renders once, in the default theme — the shared toggle in <code>mockup.css</code>/<code>theme.css</code>
+    already guarantees parity with the populated hero above.
+  </div>
+  <div class="board-body">
+    <div class="s31-board-head">
+      <span class="s31-board-title">/login (_guest)</span>
+      <span class="state-chip state-loading">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        loading
+      </span>
+    </div>
+    <div class="s31-stage">
+      <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <use href="#s31-backdrop-content"></use>
+      </svg>
+      <div class="s31-card">
+        <div class="s31-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+              <line x1="6" y1="7" x2="14" y2="5"/><line x1="6" y1="7" x2="9" y2="17"/>
+              <line x1="14" y1="5" x2="18" y2="14"/><line x1="9" y1="17" x2="18" y2="14"/>
+            </g>
+            <g style="fill:hsl(var(--primary))">
+              <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+              <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+            </g>
+          </svg>
+          <span class="s31-wordmark">darkmem</span>
+        </div>
+        <p class="s31-tagline">Sign in to continue</p>
+        <div class="s31-form">
+          <div class="s31-field">
+            <span class="s31-flabel">Password</span>
+            <div class="s31-input-shell is-disabled">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <span class="s31-input-value">••••••••••</span>
+              <button type="button" class="s31-visibility" aria-label="Show password" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="button" class="s31-submit is-loading" disabled aria-busy="true">
+            <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/></svg>
+            Signing in…
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-error">
+  <h2>S31 — Auth: Login, error (invalid credentials)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Verbatim backend copy.</b> <code>POST /api/v1/auth/login</code> returns
+    <code>401</code> with <code>detail: "Invalid password"</code> (<code>backend/app/api/routes/auth.py</code>);
+    <code>login-form.tsx</code> renders that message directly, unparaphrased — a single generic message is
+    correct here, since there is exactly one admin account to authenticate against and nothing to enumerate
+    (no "unknown user" branch exists). The field is marked invalid; the value is not cleared.
+  </div>
+  <div class="board-body">
+    <div class="s31-board-head">
+      <span class="s31-board-title">/login (_guest)</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        error
+      </span>
+    </div>
+    <div class="s31-stage">
+      <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <use href="#s31-backdrop-content"></use>
+      </svg>
+      <div class="s31-card">
+        <div class="s31-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+              <line x1="6" y1="7" x2="14" y2="5"/><line x1="6" y1="7" x2="9" y2="17"/>
+              <line x1="14" y1="5" x2="18" y2="14"/><line x1="9" y1="17" x2="18" y2="14"/>
+            </g>
+            <g style="fill:hsl(var(--primary))">
+              <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+              <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+            </g>
+          </svg>
+          <span class="s31-wordmark">darkmem</span>
+        </div>
+        <p class="s31-tagline">Sign in to continue</p>
+        <div class="s31-form">
+          <div class="s31-field">
+            <span class="s31-flabel">Password</span>
+            <div class="s31-input-shell is-invalid" aria-invalid="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <span class="s31-input-value">••••••••</span>
+              <button type="button" class="s31-visibility" aria-label="Show password">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="button" class="s31-submit">Sign in</button>
+          <div class="s31-alert" role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>Invalid password</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-locked">
+  <h2>S31 — Auth: Login, rate-limited lockout</h2>
+  <div class="annotation annotation-conflict">
+    <b>Per-IP lockout, honestly named as a distinct state, not another "invalid password" (doc 18 §3).</b>
+    Login rate limiting is per-IP with lockout — the client IP comes from <code>X-Real-IP</code> under a
+    trusted proxy, never the spoofable leftmost <code>X-Forwarded-For</code>. The shipped
+    <code>LoginRateLimiter</code> defaults (<code>backend/app/services/login_rate_limit.py</code>) are
+    <b>5 failed attempts</b> inside a 300-second window before a <b>5-minute lockout</b>; a locked IP gets
+    <code>429</code> with <code>detail: "Too many failed login attempts; retry in {n}s"</code> and a
+    <code>Retry-After</code> header, checked before the DB is touched or any password hashed. Doc 18 §3 marks
+    these thresholds <b>target-new</b> to move from code constants into tunable <code>config</code> rows, and
+    lockouts as journaling to <code>events</code> (<code>auth_lockout</code>, also target-new) — today each
+    failed attempt already writes an <code>auth_login_failed</code> audit row.
+  </div>
+  <div class="board-body">
+    <div class="s31-board-head">
+      <span class="s31-board-title">/login (_guest)</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        locked
+      </span>
+    </div>
+    <div class="s31-stage">
+      <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <use href="#s31-backdrop-content"></use>
+      </svg>
+      <div class="s31-card">
+        <div class="s31-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+              <line x1="6" y1="7" x2="14" y2="5"/><line x1="6" y1="7" x2="9" y2="17"/>
+              <line x1="14" y1="5" x2="18" y2="14"/><line x1="9" y1="17" x2="18" y2="14"/>
+            </g>
+            <g style="fill:hsl(var(--primary))">
+              <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+              <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+            </g>
+          </svg>
+          <span class="s31-wordmark">darkmem</span>
+        </div>
+        <p class="s31-tagline">Sign in to continue</p>
+        <div class="s31-form">
+          <div class="s31-field">
+            <span class="s31-flabel">Password</span>
+            <div class="s31-input-shell is-disabled">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <span class="s31-input-value">••••••••</span>
+            </div>
+          </div>
+          <button type="button" class="s31-submit is-disabled" disabled>Sign in</button>
+          <div class="s31-lockout" role="alert">
+            <div class="s31-lockout-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+              <span class="headline">Too many failed attempts</span>
+            </div>
+            <div class="wire">Too many failed login attempts; retry in 236s</div>
+            <div class="countdown">Locked for this network — try again in <b>≈ 3:56</b>.</div>
+            <div class="meta">5 failed attempts &middot; lockout window 5 min &middot; per-IP, not per-account</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

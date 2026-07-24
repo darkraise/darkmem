@@ -592,7 +592,7 @@ body {
   color: hsl(var(--muted-foreground));
 }
 </style>
-<nav class="board-index"><a href="#G0-design-guideline">G0-design-guideline</a><a href="#C01-verification-badges">C01-verification-badges</a><a href="#C02-layer-chips">C02-layer-chips</a><a href="#C03-global-chrome">C03-global-chrome</a><a href="#C04-render-states">C04-render-states</a><a href="#S01-dashboard">S01-dashboard</a><a href="#S02-memories-search">S02-memories-search</a><a href="#S03-memories-trace">S03-memories-trace</a><a href="#S04-memories-create">S04-memories-create</a><a href="#S05-memory-detail">S05-memory-detail</a><a href="#S06-facts-tab">S06-facts-tab</a><a href="#S07-fact-detail">S07-fact-detail</a><a href="#S08-articles-tab">S08-articles-tab</a><a href="#S09-article-detail">S09-article-detail</a><a href="#S10-topics-tab">S10-topics-tab</a><a href="#S11-review-mode">S11-review-mode</a><a href="#S12-hygiene-mode">S12-hygiene-mode</a><a href="#S13-chat">S13-chat</a><a href="#S14-repositories">S14-repositories</a><a href="#S15-code-graph">S15-code-graph</a><a href="#S16-code-wiki">S16-code-wiki</a><a href="#S17-memory-graph">S17-memory-graph</a><a href="#S18-activity-stepper">S18-activity-stepper</a><a href="#S19-activity-feed">S19-activity-feed</a><a href="#S20-activity-triage">S20-activity-triage</a><a href="#S21-activity-jobs">S21-activity-jobs</a><a href="#S22-activity-staged-monitors">S22-activity-staged-monitors</a><a href="#S23-activity-dream-digest">S23-activity-dream-digest</a><a href="#S24-activity-day-drill">S24-activity-day-drill</a><a href="#S25-settings-flags">S25-settings-flags</a><a href="#S26-settings-llm">S26-settings-llm</a><a href="#S27-settings-jobs">S27-settings-jobs</a><a href="#S28-settings-security">S28-settings-security</a><a href="#S29-settings-maintenance">S29-settings-maintenance</a><a href="#S30-settings-distribution">S30-settings-distribution</a></nav>
+<nav class="board-index"><a href="#G0-design-guideline">G0-design-guideline</a><a href="#C01-verification-badges">C01-verification-badges</a><a href="#C02-layer-chips">C02-layer-chips</a><a href="#C03-global-chrome">C03-global-chrome</a><a href="#C04-render-states">C04-render-states</a><a href="#S01-dashboard">S01-dashboard</a><a href="#S02-memories-search">S02-memories-search</a><a href="#S03-memories-trace">S03-memories-trace</a><a href="#S04-memories-create">S04-memories-create</a><a href="#S05-memory-detail">S05-memory-detail</a><a href="#S06-facts-tab">S06-facts-tab</a><a href="#S07-fact-detail">S07-fact-detail</a><a href="#S08-articles-tab">S08-articles-tab</a><a href="#S09-article-detail">S09-article-detail</a><a href="#S10-topics-tab">S10-topics-tab</a><a href="#S11-review-mode">S11-review-mode</a><a href="#S12-hygiene-mode">S12-hygiene-mode</a><a href="#S13-chat">S13-chat</a><a href="#S14-repositories">S14-repositories</a><a href="#S15-code-graph">S15-code-graph</a><a href="#S16-code-wiki">S16-code-wiki</a><a href="#S17-memory-graph">S17-memory-graph</a><a href="#S18-activity-stepper">S18-activity-stepper</a><a href="#S19-activity-feed">S19-activity-feed</a><a href="#S20-activity-triage">S20-activity-triage</a><a href="#S21-activity-jobs">S21-activity-jobs</a><a href="#S22-activity-staged-monitors">S22-activity-staged-monitors</a><a href="#S23-activity-dream-digest">S23-activity-dream-digest</a><a href="#S24-activity-day-drill">S24-activity-day-drill</a><a href="#S25-settings-flags">S25-settings-flags</a><a href="#S26-settings-llm">S26-settings-llm</a><a href="#S27-settings-jobs">S27-settings-jobs</a><a href="#S28-settings-security">S28-settings-security</a><a href="#S29-settings-maintenance">S29-settings-maintenance</a><a href="#S30-settings-distribution">S30-settings-distribution</a><a href="#S31-login">S31-login</a><a href="#S32-setup-wizard">S32-setup-wizard</a></nav>
 <main><article id="G0-design-guideline" class="fragment">
 <style>
   /* G0 board-local styles. These are new presentational widgets that have
@@ -22273,6 +22273,1126 @@ body {
         </div>
       </div>
 
+    </div>
+  </div>
+</section>
+
+</article><article id="S31-login" class="fragment">
+<style>
+  /* S31 board-local styles — Auth: Login (_guest route, doc 13 §2/§3). Composes
+     the SHARED chrome classes verbatim — .board, .annotation, .state-chip —
+     and invents nothing that duplicates them. Everything below is new S31-only
+     layout: the atmospheric stage (static aurora/particle backdrop + glass
+     card), the password field, and the submit/error/lockout states. Reads
+     var(--token) / hsl(var(--token)) only; chart-1..5 are pre-wrapped hsl(...)
+     strings (theme.css) so they are used bare, never re-wrapped in hsl().
+     No literal hex anywhere — the atmosphere is token-derived, which is a
+     deliberate departure from the shipped particle-background.tsx (which
+     hardcodes #818cf8/#22d3ee/etc.) per this mockup's no-hardcoded-hex rule;
+     see the first board's annotation. Namespaced s31- so it can never
+     collide with another fragment's local styles once build.py concatenates
+     every fragment. */
+
+  .s31-board-head { display: flex; align-items: center; gap: 10px; }
+  .s31-board-title { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s31-board-head .state-chip { margin-left: auto; }
+
+  /* ---- the atmospheric stage every state renders inside ---- */
+  .s31-stage {
+    position: relative; overflow: hidden; isolation: isolate;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    min-height: 460px; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px 20px; background: hsl(var(--background));
+  }
+  .s31-backdrop-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+
+  /* particle/aurora colour identity — token-derived only. --chart-1/--chart-5
+     used bare (already hsl(...) strings); --primary/--info wrapped (channel
+     tokens). Kept to four token sources, mirroring the shipped component's
+     indigo-node / cyan-accent split (doc 14 §2's "ceremonial register"). */
+  .s31-p-a { fill: var(--chart-1); }
+  .s31-p-b { fill: var(--chart-5); }
+  .s31-p-c { fill: hsl(var(--primary)); }
+  .s31-p-glow { fill: hsl(var(--info)); opacity: 0.55; filter: url(#s31-node-glow); }
+  .s31-p-glow-core { fill: hsl(var(--info)); opacity: 0.9; }
+  .s31-links { stroke: hsl(var(--primary)); stroke-opacity: 0.26; stroke-width: 1; }
+  .s31-links-accent { stroke: hsl(var(--info)); stroke-opacity: 0.34; stroke-width: 1; }
+
+  /* ---- the glass card (realises components/glass-panel.tsx + login-card.tsx) ---- */
+  .s31-card {
+    position: relative; z-index: 1; width: 100%; max-width: 336px;
+    border-radius: calc(var(--radius) * 1.4);
+    border: 1px solid hsl(var(--border) / 0.7);
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 28px 70px -20px hsl(var(--foreground) / 0.55), inset 0 1px 0 hsl(var(--card-foreground) / 0.07);
+    padding: 30px 26px 24px; display: flex; flex-direction: column; gap: 18px;
+  }
+  .s31-brand { display: flex; align-items: center; justify-content: center; gap: 9px; }
+  .s31-brand svg { width: 22px; height: 22px; flex: none; }
+  .s31-wordmark {
+    font-size: 23px; font-weight: 800; letter-spacing: 0.01em;
+    background: linear-gradient(90deg, var(--chart-5), hsl(var(--primary)), hsl(var(--info)));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .s31-tagline { margin: 0; text-align: center; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s31-form { display: flex; flex-direction: column; gap: 14px; }
+  .s31-field { display: flex; flex-direction: column; gap: 6px; }
+  .s31-flabel { font-size: 12px; font-weight: 610; color: hsl(var(--foreground) / 0.9); }
+  .s31-input-shell {
+    display: flex; align-items: center; gap: 8px;
+    height: 42px; padding: 0 12px; border-radius: calc(var(--radius) - 2px);
+    border: 1px solid hsl(var(--border) / 0.8);
+    background: hsl(var(--background) / 0.4);
+  }
+  .s31-input-shell svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s31-input-value { flex: 1; font-size: 15px; letter-spacing: 0.14em; color: hsl(var(--foreground)); }
+  .s31-visibility {
+    flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; color: hsl(var(--muted-foreground));
+  }
+  .s31-input-shell.is-invalid { border-color: hsl(var(--destructive) / 0.65); }
+  .s31-input-shell.is-disabled { opacity: 0.5; }
+
+  .s31-submit {
+    height: 40px; border-radius: calc(var(--radius) - 2px); border: none;
+    font-size: 13.5px; font-weight: 640; letter-spacing: 0.01em;
+    color: hsl(var(--primary-foreground));
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--info)));
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .s31-submit.is-loading { opacity: 0.85; }
+  .s31-submit.is-disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+  .s31-submit .spin { width: 14px; height: 14px; flex: none; }
+
+  .s31-alert {
+    display: flex; gap: 9px; align-items: flex-start; padding: 10px 11px;
+    border: 1px solid hsl(var(--destructive) / 0.5); border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--destructive) / 0.14); font-size: 12.5px; color: hsl(var(--foreground));
+  }
+  .s31-alert svg { width: 15px; height: 15px; flex: none; color: hsl(var(--destructive)); margin-top: 1px; }
+  .s31-alert .headline { font-weight: 640; }
+  .s31-alert .desc { color: hsl(var(--muted-foreground)); }
+
+  /* ---- lockout panel — replaces the form area, never leaves it silently blank ---- */
+  .s31-lockout {
+    display: flex; flex-direction: column; gap: 10px; padding: 13px 12px;
+    border: 1px solid hsl(var(--warning) / 0.55); border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--warning) / 0.12);
+  }
+  .s31-lockout-head { display: flex; align-items: center; gap: 8px; }
+  .s31-lockout-head svg { width: 16px; height: 16px; flex: none; color: hsl(var(--warning)); }
+  .s31-lockout-head .headline { font-size: 13px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s31-lockout .wire {
+    font-family: var(--font-mono); font-size: 12px; color: hsl(var(--foreground));
+    padding: 7px 9px; border-radius: var(--radius-sm); background: hsl(var(--background) / 0.5);
+    border: 1px dashed hsl(var(--warning) / 0.5);
+  }
+  .s31-lockout .countdown { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s31-lockout .countdown b { color: hsl(var(--foreground)); font-weight: 640; }
+  .s31-lockout .meta { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <radialGradient id="s31-aurora-1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:hsl(var(--primary));stop-opacity:0.55"/>
+      <stop offset="55%" style="stop-color:hsl(var(--primary));stop-opacity:0.14"/>
+      <stop offset="100%" style="stop-color:hsl(var(--primary));stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="s31-aurora-2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:var(--chart-1);stop-opacity:0.5"/>
+      <stop offset="55%" style="stop-color:var(--chart-1);stop-opacity:0.12"/>
+      <stop offset="100%" style="stop-color:var(--chart-1);stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="s31-aurora-3" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:var(--chart-5);stop-opacity:0.5"/>
+      <stop offset="55%" style="stop-color:var(--chart-5);stop-opacity:0.12"/>
+      <stop offset="100%" style="stop-color:var(--chart-5);stop-opacity:0"/>
+    </radialGradient>
+    <filter id="s31-soft-blur" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="38"/>
+    </filter>
+    <filter id="s31-node-glow" x="-300%" y="-300%" width="700%" height="700%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+    <g id="s31-backdrop-content">
+      <rect width="960" height="600" style="fill:hsl(var(--background))"/>
+      <ellipse cx="150" cy="120" rx="280" ry="220" fill="url(#s31-aurora-1)" filter="url(#s31-soft-blur)"/>
+      <ellipse cx="830" cy="90" rx="230" ry="190" fill="url(#s31-aurora-2)" filter="url(#s31-soft-blur)"/>
+      <ellipse cx="620" cy="520" rx="320" ry="230" fill="url(#s31-aurora-3)" filter="url(#s31-soft-blur)"/>
+      <ellipse cx="120" cy="520" rx="220" ry="180" fill="url(#s31-aurora-2)" filter="url(#s31-soft-blur)" opacity="0.7"/>
+      <rect width="960" height="600" style="fill:hsl(var(--background));opacity:0.32"/>
+      <g class="s31-links">
+        <line x1="60" y1="54" x2="140" y2="40"/>
+        <line x1="140" y1="40" x2="230" y2="86"/>
+        <line x1="230" y1="86" x2="310" y2="48"/>
+        <line x1="310" y1="48" x2="420" y2="110"/>
+        <line x1="420" y1="110" x2="505" y2="60"/>
+        <line x1="505" y1="60" x2="600" y2="95"/>
+        <line x1="600" y1="95" x2="690" y2="50"/>
+        <line x1="690" y1="50" x2="780" y2="100"/>
+        <line x1="780" y1="100" x2="860" y2="60"/>
+        <line x1="860" y1="60" x2="900" y2="150"/>
+        <line x1="80" y1="160" x2="180" y2="200"/>
+        <line x1="180" y1="200" x2="260" y2="150"/>
+        <line x1="760" y1="190" x2="840" y2="230"/>
+        <line x1="60" y1="320" x2="120" y2="400"/>
+        <line x1="120" y1="400" x2="90" y2="480"/>
+        <line x1="90" y1="480" x2="60" y2="540"/>
+        <line x1="900" y1="380" x2="860" y2="460"/>
+        <line x1="860" y1="460" x2="900" y2="540"/>
+        <line x1="500" y1="540" x2="420" y2="570"/>
+        <line x1="420" y1="570" x2="300" y2="560"/>
+        <line x1="630" y1="560" x2="700" y2="510"/>
+      </g>
+      <g class="s31-links-accent">
+        <line x1="150" y1="120" x2="230" y2="86"/>
+        <line x1="250" y1="470" x2="300" y2="560"/>
+      </g>
+      <g>
+        <circle cx="60" cy="54" r="2" class="s31-p-a" opacity="0.55"/>
+        <circle cx="140" cy="40" r="1.6" class="s31-p-c" opacity="0.45"/>
+        <circle cx="230" cy="86" r="2.4" class="s31-p-b" opacity="0.5"/>
+        <circle cx="310" cy="48" r="1.8" class="s31-p-a" opacity="0.4"/>
+        <circle cx="420" cy="110" r="2" class="s31-p-c" opacity="0.5"/>
+        <circle cx="505" cy="60" r="1.6" class="s31-p-b" opacity="0.42"/>
+        <circle cx="600" cy="95" r="2.2" class="s31-p-a" opacity="0.48"/>
+        <circle cx="690" cy="50" r="1.8" class="s31-p-c" opacity="0.4"/>
+        <circle cx="780" cy="100" r="2.4" class="s31-p-b" opacity="0.5"/>
+        <circle cx="860" cy="60" r="1.6" class="s31-p-a" opacity="0.42"/>
+        <circle cx="900" cy="150" r="2" class="s31-p-c" opacity="0.46"/>
+        <circle cx="80" cy="160" r="1.8" class="s31-p-b" opacity="0.4"/>
+        <circle cx="180" cy="200" r="2.2" class="s31-p-a" opacity="0.5"/>
+        <circle cx="260" cy="150" r="1.6" class="s31-p-c" opacity="0.4"/>
+        <circle cx="760" cy="190" r="2" class="s31-p-a" opacity="0.46"/>
+        <circle cx="840" cy="230" r="1.8" class="s31-p-b" opacity="0.42"/>
+        <circle cx="60" cy="320" r="2.4" class="s31-p-c" opacity="0.5"/>
+        <circle cx="120" cy="400" r="1.6" class="s31-p-a" opacity="0.4"/>
+        <circle cx="90" cy="480" r="2" class="s31-p-b" opacity="0.46"/>
+        <circle cx="60" cy="540" r="1.8" class="s31-p-c" opacity="0.4"/>
+        <circle cx="900" cy="380" r="2.2" class="s31-p-b" opacity="0.48"/>
+        <circle cx="860" cy="460" r="1.6" class="s31-p-a" opacity="0.42"/>
+        <circle cx="900" cy="540" r="2" class="s31-p-c" opacity="0.46"/>
+        <circle cx="500" cy="540" r="1.8" class="s31-p-a" opacity="0.4"/>
+        <circle cx="420" cy="570" r="2.2" class="s31-p-b" opacity="0.44"/>
+        <circle cx="300" cy="560" r="1.6" class="s31-p-c" opacity="0.4"/>
+        <circle cx="630" cy="560" r="2" class="s31-p-a" opacity="0.42"/>
+        <circle cx="700" cy="510" r="1.8" class="s31-p-b" opacity="0.4"/>
+      </g>
+      <g>
+        <circle cx="150" cy="120" r="3.2" class="s31-p-glow"/>
+        <circle cx="150" cy="120" r="2" class="s31-p-glow-core"/>
+        <circle cx="800" cy="140" r="3" class="s31-p-glow"/>
+        <circle cx="800" cy="140" r="1.8" class="s31-p-glow-core"/>
+        <circle cx="520" cy="540" r="3.2" class="s31-p-glow"/>
+        <circle cx="520" cy="540" r="2" class="s31-p-glow-core"/>
+        <circle cx="250" cy="470" r="2.8" class="s31-p-glow"/>
+        <circle cx="250" cy="470" r="1.7" class="s31-p-glow-core"/>
+      </g>
+    </g>
+  </defs>
+</svg>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-populated">
+  <h2>S31 — Auth: Login, populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §2/§3's <code>_guest</code> layout route
+    (<code>/login</code>) — the atmospheric glass card centred over the particle/aurora backdrop
+    (doc 14 §2: "the login/setup flow's glass card over the interactive particle/aurora backdrop ...
+    is the language's <i>ceremonial register</i>, reserved for the unauthenticated threshold surfaces").
+    The form mirrors the shipped <code>login-card.tsx</code>/<code>login-form.tsx</code> exactly:
+    darkmem is single-admin, trust-on-first-use (doc 18 §3) — one password field, no username, because
+    there is exactly one account to authenticate against. <b>States:</b> 4 boards — populated (this one,
+    hero in both themes) / loading / error / rate-limited lockout.
+  </div>
+  <div class="annotation">
+    <b>Static still-frame — motion out of scope.</b> The live component (<code>particle-background.tsx</code>)
+    drifts particles continuously, links nearby nodes, and repels/links toward the cursor when interactive;
+    it degrades to fewer particles with no cursor interaction on touch/low-core devices, and to exactly this
+    kind of single frozen frame under <code>prefers-reduced-motion</code> (doc 14 §7 lists "the existing
+    particle backdrop on the threshold surfaces" as one of the app's few closed motion-as-signal uses). This
+    board renders that reduced-motion frame permanently — no canvas, no animation loop, no cursor listeners.
+  </div>
+  <div class="annotation">
+    <b>Token-derived, not hardcoded (mockup contract).</b> The shipped component today hardcodes its palette
+    (<code>#818cf8</code>, <code>#22d3ee</code>, ...). This board instead derives every backdrop colour from
+    <code>--primary</code> / <code>--chart-1</code> / <code>--chart-5</code> / <code>--info</code> so the
+    atmosphere already re-themes with an accent change — the same migration doc 14 §2's "no hardcoded hex in
+    app components, ever" rule implies for the component itself, not yet done in <code>frontend/src</code>.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s31-board-head">
+          <span class="s31-board-title">/login (_guest)</span>
+          <span class="state-chip state-populated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            populated
+          </span>
+        </div>
+        <div class="s31-stage">
+          <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+            <use href="#s31-backdrop-content"></use>
+          </svg>
+          <div class="s31-card">
+            <div class="s31-brand">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+                  <line x1="6" y1="7" x2="14" y2="5"/>
+                  <line x1="6" y1="7" x2="9" y2="17"/>
+                  <line x1="14" y1="5" x2="18" y2="14"/>
+                  <line x1="9" y1="17" x2="18" y2="14"/>
+                </g>
+                <g style="fill:hsl(var(--primary))">
+                  <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+                  <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+                </g>
+              </svg>
+              <span class="s31-wordmark">darkmem</span>
+            </div>
+            <p class="s31-tagline">Sign in to continue</p>
+            <div class="s31-form">
+              <div class="s31-field">
+                <span class="s31-flabel">Password</span>
+                <div class="s31-input-shell">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <span class="s31-input-value">••••••••••</span>
+                  <button type="button" class="s31-visibility" aria-label="Show password">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="s31-submit">Sign in</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s31-board-head">
+          <span class="s31-board-title">/login (_guest)</span>
+          <span class="state-chip state-populated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            populated
+          </span>
+        </div>
+        <div class="s31-stage">
+          <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+            <use href="#s31-backdrop-content"></use>
+          </svg>
+          <div class="s31-card">
+            <div class="s31-brand">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+                  <line x1="6" y1="7" x2="14" y2="5"/>
+                  <line x1="6" y1="7" x2="9" y2="17"/>
+                  <line x1="14" y1="5" x2="18" y2="14"/>
+                  <line x1="9" y1="17" x2="18" y2="14"/>
+                </g>
+                <g style="fill:hsl(var(--primary))">
+                  <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+                  <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+                </g>
+              </svg>
+              <span class="s31-wordmark">darkmem</span>
+            </div>
+            <p class="s31-tagline">Sign in to continue</p>
+            <div class="s31-form">
+              <div class="s31-field">
+                <span class="s31-flabel">Password</span>
+                <div class="s31-input-shell">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <span class="s31-input-value">••••••••••</span>
+                  <button type="button" class="s31-visibility" aria-label="Show password">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="s31-submit">Sign in</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-loading">
+  <h2>S31 — Auth: Login, loading (submitting)</h2>
+  <div class="annotation">
+    Mirrors <code>useLogin().isPending</code> exactly: the field dims and the button label swaps to
+    "Signing in…" with a static spinner glyph and goes non-interactive — no page-level spinner replaces
+    the card, the layout holds still (doc 14 §5's loading discipline applied to a single-surface form).
+    Renders once, in the default theme — the shared toggle in <code>mockup.css</code>/<code>theme.css</code>
+    already guarantees parity with the populated hero above.
+  </div>
+  <div class="board-body">
+    <div class="s31-board-head">
+      <span class="s31-board-title">/login (_guest)</span>
+      <span class="state-chip state-loading">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        loading
+      </span>
+    </div>
+    <div class="s31-stage">
+      <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <use href="#s31-backdrop-content"></use>
+      </svg>
+      <div class="s31-card">
+        <div class="s31-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+              <line x1="6" y1="7" x2="14" y2="5"/><line x1="6" y1="7" x2="9" y2="17"/>
+              <line x1="14" y1="5" x2="18" y2="14"/><line x1="9" y1="17" x2="18" y2="14"/>
+            </g>
+            <g style="fill:hsl(var(--primary))">
+              <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+              <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+            </g>
+          </svg>
+          <span class="s31-wordmark">darkmem</span>
+        </div>
+        <p class="s31-tagline">Sign in to continue</p>
+        <div class="s31-form">
+          <div class="s31-field">
+            <span class="s31-flabel">Password</span>
+            <div class="s31-input-shell is-disabled">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <span class="s31-input-value">••••••••••</span>
+              <button type="button" class="s31-visibility" aria-label="Show password" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="button" class="s31-submit is-loading" disabled aria-busy="true">
+            <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/></svg>
+            Signing in…
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-error">
+  <h2>S31 — Auth: Login, error (invalid credentials)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Verbatim backend copy.</b> <code>POST /api/v1/auth/login</code> returns
+    <code>401</code> with <code>detail: "Invalid password"</code> (<code>backend/app/api/routes/auth.py</code>);
+    <code>login-form.tsx</code> renders that message directly, unparaphrased — a single generic message is
+    correct here, since there is exactly one admin account to authenticate against and nothing to enumerate
+    (no "unknown user" branch exists). The field is marked invalid; the value is not cleared.
+  </div>
+  <div class="board-body">
+    <div class="s31-board-head">
+      <span class="s31-board-title">/login (_guest)</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        error
+      </span>
+    </div>
+    <div class="s31-stage">
+      <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <use href="#s31-backdrop-content"></use>
+      </svg>
+      <div class="s31-card">
+        <div class="s31-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+              <line x1="6" y1="7" x2="14" y2="5"/><line x1="6" y1="7" x2="9" y2="17"/>
+              <line x1="14" y1="5" x2="18" y2="14"/><line x1="9" y1="17" x2="18" y2="14"/>
+            </g>
+            <g style="fill:hsl(var(--primary))">
+              <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+              <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+            </g>
+          </svg>
+          <span class="s31-wordmark">darkmem</span>
+        </div>
+        <p class="s31-tagline">Sign in to continue</p>
+        <div class="s31-form">
+          <div class="s31-field">
+            <span class="s31-flabel">Password</span>
+            <div class="s31-input-shell is-invalid" aria-invalid="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <span class="s31-input-value">••••••••</span>
+              <button type="button" class="s31-visibility" aria-label="Show password">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="button" class="s31-submit">Sign in</button>
+          <div class="s31-alert" role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>Invalid password</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S31-locked">
+  <h2>S31 — Auth: Login, rate-limited lockout</h2>
+  <div class="annotation annotation-conflict">
+    <b>Per-IP lockout, honestly named as a distinct state, not another "invalid password" (doc 18 §3).</b>
+    Login rate limiting is per-IP with lockout — the client IP comes from <code>X-Real-IP</code> under a
+    trusted proxy, never the spoofable leftmost <code>X-Forwarded-For</code>. The shipped
+    <code>LoginRateLimiter</code> defaults (<code>backend/app/services/login_rate_limit.py</code>) are
+    <b>5 failed attempts</b> inside a 300-second window before a <b>5-minute lockout</b>; a locked IP gets
+    <code>429</code> with <code>detail: "Too many failed login attempts; retry in {n}s"</code> and a
+    <code>Retry-After</code> header, checked before the DB is touched or any password hashed. Doc 18 §3 marks
+    these thresholds <b>target-new</b> to move from code constants into tunable <code>config</code> rows, and
+    lockouts as journaling to <code>events</code> (<code>auth_lockout</code>, also target-new) — today each
+    failed attempt already writes an <code>auth_login_failed</code> audit row.
+  </div>
+  <div class="board-body">
+    <div class="s31-board-head">
+      <span class="s31-board-title">/login (_guest)</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        locked
+      </span>
+    </div>
+    <div class="s31-stage">
+      <svg class="s31-backdrop-svg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <use href="#s31-backdrop-content"></use>
+      </svg>
+      <div class="s31-card">
+        <div class="s31-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g style="stroke:hsl(var(--info));stroke-width:1.6;fill:none">
+              <line x1="6" y1="7" x2="14" y2="5"/><line x1="6" y1="7" x2="9" y2="17"/>
+              <line x1="14" y1="5" x2="18" y2="14"/><line x1="9" y1="17" x2="18" y2="14"/>
+            </g>
+            <g style="fill:hsl(var(--primary))">
+              <circle cx="6" cy="7" r="2.4"/><circle cx="14" cy="5" r="2.4"/>
+              <circle cx="18" cy="14" r="2.4"/><circle cx="9" cy="17" r="2.4"/>
+            </g>
+          </svg>
+          <span class="s31-wordmark">darkmem</span>
+        </div>
+        <p class="s31-tagline">Sign in to continue</p>
+        <div class="s31-form">
+          <div class="s31-field">
+            <span class="s31-flabel">Password</span>
+            <div class="s31-input-shell is-disabled">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <span class="s31-input-value">••••••••</span>
+            </div>
+          </div>
+          <button type="button" class="s31-submit is-disabled" disabled>Sign in</button>
+          <div class="s31-lockout" role="alert">
+            <div class="s31-lockout-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+              <span class="headline">Too many failed attempts</span>
+            </div>
+            <div class="wire">Too many failed login attempts; retry in 236s</div>
+            <div class="countdown">Locked for this network — try again in <b>≈ 3:56</b>.</div>
+            <div class="meta">5 failed attempts &middot; lockout window 5 min &middot; per-IP, not per-account</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</article><article id="S32-setup-wizard" class="fragment">
+<style>
+  /* S32 board-local styles — the trust-on-first-use setup wizard (doc 13
+     section2/section3 the `_guest` route, doc 18 section3 human auth). Composes the
+     SHARED chrome classes verbatim (.board, .annotation, .state-chip) and
+     invents nothing that duplicates them. Field/button/switch shapes follow
+     the established sXX-field / sXX-btn / sXX-switch precedent (S04, S20,
+     S25) re-namespaced here per that same precedent — each fragment owns
+     its own namespace so build.py's concatenation never collides.
+
+     Ceremonial register (doc 14 section2): the login/setup flow's glass card
+     over the interactive particle/aurora backdrop is called out as the
+     language's *ceremonial* register, reserved for these unauthenticated
+     threshold surfaces — everywhere else in the app is the calm
+     *instrumental* register. `.s32-stage`/`.s32-wizard` render that
+     register as a STATIC STILL-FRAME: layered radial-gradients (token-
+     derived, no hex) standing in for the animated particle canvas
+     (`src/components/particle-background.tsx`), and a translucent
+     backdrop-blur card standing in for `GlassPanel` — motion itself is out
+     of scope for a static mockup, consistent with S31's login board. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens,
+     no animation/@keyframes (a still-frame has nothing to animate). */
+
+  .s32-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s32-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s32-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+  .s32-intro code { font-family: var(--font-mono); font-size: 12px; background: hsl(var(--muted)); padding: 1px 5px; border-radius: var(--radius-sm); color: hsl(var(--foreground)); }
+
+  /* ---- small board-local meta bar (loading/error boards only) ---- */
+  .s32-board-meta { display: flex; align-items: center; gap: 10px; }
+  .s32-board-meta .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s32-board-meta .route { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+  /* ---- the atmospheric stage: static stand-in for the particle/aurora
+     backdrop, token-derived blobs + a masked dot field, never a hex value ---- */
+  .s32-stage { position: relative; padding: 34px 20px; border-radius: var(--radius); overflow: hidden; background: hsl(var(--background)); display: flex; justify-content: center; }
+  .s32-stage::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 18% 12%, hsl(var(--primary) / 0.32), transparent 55%),
+      radial-gradient(circle at 84% 80%, hsl(var(--chart-5) / 0.26), transparent 52%),
+      radial-gradient(circle at 55% 30%, hsl(var(--chart-1) / 0.14), transparent 60%);
+  }
+  .s32-stage::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(hsl(var(--foreground) / 0.16) 1px, transparent 1px);
+    background-size: 24px 24px; opacity: 0.4;
+    mask-image: radial-gradient(circle at 50% 38%, black, transparent 72%);
+  }
+  .s32-stage-note {
+    position: absolute; top: 10px; left: 14px; z-index: 2;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* ---- the glass wizard card ---- */
+  .s32-wizard {
+    position: relative; z-index: 1; width: 100%; max-width: 520px;
+    border-radius: calc(var(--radius) + 6px); border: 1px solid hsl(var(--border) / 0.7);
+    background: hsl(var(--card) / 0.74); backdrop-filter: blur(18px);
+    box-shadow: 0 24px 60px hsl(var(--background) / 0.55);
+    padding: 20px 20px 16px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .s32-wizard.s32-dim { opacity: 0.42; filter: grayscale(0.35); }
+  .s32-wordmark { font-family: var(--font-mono); font-size: 18px; font-weight: 700; text-align: center; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
+  .s32-subtitle { text-align: center; font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: -8px; }
+  .s32-gate {
+    display: inline-flex; align-items: center; gap: 6px; align-self: center;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em;
+    padding: 3px 9px; border-radius: 999px; border: 1px dashed hsl(var(--border)); color: hsl(var(--muted-foreground));
+  }
+  .s32-gate svg { width: 11px; height: 11px; flex: none; }
+
+  /* ---- the four-step progress indicator ---- */
+  .s32-steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .s32-step-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid hsl(var(--border) / 0.6); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s32-step-pill svg { width: 11px; height: 11px; flex: none; }
+  .s32-step-pill.is-active { border-color: hsl(var(--primary) / 0.7); background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); font-weight: 630; }
+  .s32-step-pill.is-done { background: hsl(var(--muted) / 0.4); color: hsl(var(--muted-foreground)); }
+  .s32-step-pill.is-upcoming { border-style: dashed; opacity: 0.7; }
+
+  .s32-body { display: flex; flex-direction: column; gap: 10px; }
+  .s32-card { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card) / 0.55); padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
+  .s32-card-title { font-size: 12px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s32-field { display: flex; flex-direction: column; gap: 4px; }
+  .s32-field .flabel { font-size: 11px; font-weight: 610; color: hsl(var(--foreground)); }
+  .s32-input { padding: 6px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 12px; }
+  .s32-input.is-masked { font-family: var(--font-mono); letter-spacing: 0.14em; }
+  .s32-select { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); font-size: 12px; color: hsl(var(--foreground)); }
+  .s32-select svg { width: 12px; height: 12px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s32-hint { font-size: 10px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- switch, same shape family as S25's .s25-switch, reauthored under
+     the s32- namespace per that established precedent ---- */
+  .s32-switch-row { display: flex; align-items: flex-start; gap: 9px; }
+  .s32-switch { width: 30px; height: 17px; border-radius: 999px; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); position: relative; flex: none; margin-top: 2px; }
+  .s32-switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: 50%; background: hsl(var(--muted-foreground)); }
+  .s32-switch.on { background: hsl(var(--primary) / 0.28); border-color: hsl(var(--primary) / 0.6); }
+  .s32-switch.on::after { left: auto; right: 1px; background: hsl(var(--primary)); }
+  .s32-switch-copy { font-size: 11.5px; color: hsl(var(--foreground)); }
+  .s32-switch-copy .sub { font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .s32-btn-row { display: flex; align-items: center; gap: 8px; }
+
+  /* ---- per-purpose model rows (LLM step) ---- */
+  .s32-purpose-grid { display: flex; flex-direction: column; gap: 7px; }
+  .s32-purpose-row { display: grid; grid-template-columns: 104px 1fr auto; gap: 8px; align-items: center; }
+  .s32-purpose-name { font-size: 11px; font-weight: 630; color: hsl(var(--foreground)); text-transform: capitalize; }
+  .s32-purpose-name .req { color: hsl(var(--destructive)); margin-left: 2px; }
+  .s32-purpose-hint { font-size: 9.5px; color: hsl(var(--muted-foreground)); }
+  .s32-purpose-model { padding: 5px 8px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); font-family: var(--font-mono); font-size: 11px; color: hsl(var(--foreground)); }
+  .s32-purpose-model.is-empty { color: hsl(var(--muted-foreground)); border-style: dashed; }
+  .s32-purpose-reasoning { font-size: 9.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+
+  /* ---- server path browser (repo step) ---- */
+  .s32-crumbs { display: flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); flex-wrap: wrap; }
+  .s32-crumbs .seg { padding: 2px 6px; border-radius: var(--radius-sm); }
+  .s32-crumbs .seg.current { color: hsl(var(--foreground)); background: hsl(var(--muted) / 0.5); }
+  .s32-dirlist { display: flex; flex-direction: column; gap: 3px; }
+  .s32-dirrow { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid transparent; font-size: 11.5px; color: hsl(var(--foreground)); }
+  .s32-dirrow.is-selected { border-color: hsl(var(--primary) / 0.5); background: hsl(var(--primary) / 0.08); }
+  .s32-dirrow svg.folder { width: 12px; height: 12px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s32-git-badge { margin-left: auto; font-family: var(--font-mono); font-size: 9px; padding: 1px 6px; border-radius: 999px; border: 1px solid hsl(var(--chart-2) / 0.6); color: hsl(var(--chart-2)); display: inline-flex; align-items: center; gap: 3px; }
+  .s32-git-badge svg { width: 8px; height: 8px; }
+
+  /* ---- detected-repo checklist (finish step) ---- */
+  .s32-repo-check { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); font-size: 11.5px; }
+  .s32-repo-check .box { width: 13px; height: 13px; border-radius: 4px; border: 1px solid hsl(var(--border)); flex: none; display: flex; align-items: center; justify-content: center; }
+  .s32-repo-check.checked .box { background: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .s32-repo-check .box svg { width: 8px; height: 8px; }
+  .s32-repo-check .name { font-family: var(--font-mono); }
+  .s32-repo-check .path { margin-left: auto; color: hsl(var(--muted-foreground)); font-size: 10px; font-family: var(--font-mono); }
+
+  .s32-summary-list { margin: 2px 0 0 15px; padding: 0; font-size: 11px; color: hsl(var(--foreground)); }
+  .s32-summary-list li { margin-bottom: 2px; }
+  .s32-summary-list code { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--foreground)); background: hsl(var(--muted)); padding: 0 4px; border-radius: 3px; }
+
+  /* ---- footer + buttons ---- */
+  .s32-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px dashed hsl(var(--border)); flex-wrap: wrap; }
+  .s32-footer-right { display: flex; align-items: center; gap: 8px; }
+  .s32-btn { font-size: 11.5px; font-weight: 610; padding: 6px 13px; border-radius: var(--radius-sm); border: 1px solid transparent; color: hsl(var(--foreground)); display: inline-flex; align-items: center; gap: 6px; }
+  .s32-btn-ghost { background: transparent; border-color: hsl(var(--border)); }
+  .s32-btn-outline { background: transparent; border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+  .s32-btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .s32-btn.is-disabled { opacity: 0.5; }
+  .s32-btn svg { width: 12px; height: 12px; flex: none; }
+  .s32-footer-note { font-size: 10px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- error banner (TOFU-closed state) ---- */
+  .s32-error-banner { display: flex; gap: 10px; padding: 13px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.09); position: relative; z-index: 2; }
+  .s32-error-banner svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; margin-top: 1px; }
+  .s32-error-banner .body { display: flex; flex-direction: column; gap: 5px; }
+  .s32-error-banner .headline { font-weight: 640; font-size: 13px; color: hsl(var(--foreground)); }
+  .s32-error-banner .desc { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s32-error-cta { align-self: flex-start; margin-top: 2px; }
+</style>
+
+<div class="s32-intro">
+  <h2>S32 — Auth: trust-on-first-use setup wizard</h2>
+  <p>
+    The <code>_guest</code>-layout counterpart to S31's login board (doc 13 &sect;2/&sect;3): a four-step
+    wizard — <code>password &rarr; LLM &rarr; repo path &rarr; finish</code> — served at <code>/setup</code>
+    and gated end-to-end by <code>require_uninitialized</code>. Every wizard endpoint (including the two
+    filesystem-browse endpoints step 3 uses) 403s the moment the <code>admin_password_hash</code> config row
+    exists (doc 18 &sect;3): the first party to finish the wizard on a fresh box owns it, and there is no
+    pre-shared <code>SETUP_SECRET</code> to reintroduce — that secret-distribution problem was judged strictly
+    worse than the bounded TOFU race it would close. The board renders the ceremonial register doc 14 &sect;2
+    reserves for unauthenticated threshold surfaces — a glass card over a static stand-in for the particle/
+    aurora backdrop — matching S31's register rather than the app's calm instrumental default.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S32-password">
+  <h2>S32 — step 1 of 4: admin password (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Trust-on-first-use, not a shared secret.</b> <code>/api/v1/setup/*</code> is gated only by
+    <code>require_uninitialized</code>; there is no pre-shared setup key to distribute before the box has an
+    owner. The password the visitor sets here <i>is</i> the claim — whoever completes this step first owns the
+    box, and the wizard closes to every later visitor (S32-error below). Rendered as the hero in both themes;
+    the remaining three steps and the loading/error states render once, in the default theme, since the shared
+    toggle in <code>mockup.css</code>/<code>theme.css</code> already guarantees theme parity.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s32-stage">
+          <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+          <div class="s32-wizard">
+            <div class="s32-wordmark">darkmem</div>
+            <div class="s32-subtitle">Initial setup</div>
+            <span class="s32-gate">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              gated by require_uninitialized — no pre-shared secret
+            </span>
+            <div class="s32-steps">
+              <span class="s32-step-pill is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>1. Admin password</span>
+              <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>2. Default LLM provider</span>
+              <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>3. Default code repo path</span>
+              <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>4. Review &amp; finish</span>
+            </div>
+            <div class="s32-body">
+              <div class="s32-field">
+                <span class="flabel">Admin password</span>
+                <input class="s32-input is-masked" value="••••••••••••" readonly>
+                <span class="s32-hint">8–128 characters. This is the only credential the box will have — set it, do not lose it.</span>
+              </div>
+              <div class="s32-field">
+                <span class="flabel">Confirm password</span>
+                <input class="s32-input is-masked" value="••••••••••••" readonly>
+              </div>
+            </div>
+            <div class="s32-footer">
+              <button type="button" class="s32-btn s32-btn-ghost is-disabled">Back</button>
+              <div class="s32-footer-right">
+                <button type="button" class="s32-btn s32-btn-primary">Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s32-stage">
+          <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+          <div class="s32-wizard">
+            <div class="s32-wordmark">darkmem</div>
+            <div class="s32-subtitle">Initial setup</div>
+            <span class="s32-gate">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              gated by require_uninitialized — no pre-shared secret
+            </span>
+            <div class="s32-steps">
+              <span class="s32-step-pill is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>1. Admin password</span>
+              <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>2. Default LLM provider</span>
+              <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>3. Default code repo path</span>
+              <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>4. Review &amp; finish</span>
+            </div>
+            <div class="s32-body">
+              <div class="s32-field">
+                <span class="flabel">Admin password</span>
+                <input class="s32-input is-masked" value="••••••••••••" readonly>
+                <span class="s32-hint">8–128 characters. This is the only credential the box will have — set it, do not lose it.</span>
+              </div>
+              <div class="s32-field">
+                <span class="flabel">Confirm password</span>
+                <input class="s32-input is-masked" value="••••••••••••" readonly>
+              </div>
+            </div>
+            <div class="s32-footer">
+              <button type="button" class="s32-btn s32-btn-ghost is-disabled">Back</button>
+              <div class="s32-footer-right">
+                <button type="button" class="s32-btn s32-btn-primary">Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S32-llm">
+  <h2>S32 — step 2 of 4: default LLM provider (LLM purpose config seed)</h2>
+  <div class="annotation">
+    Optional (<b>Skip</b> below carries a system-defaults note into the finish summary). Choosing a vendor
+    here seeds the <b>full</b> default provider/profile/purpose menu (every <code>api_kind</code>, doc 11), then
+    overlays this vendor's base URL and API key onto its matching row and this purpose selection onto the six
+    canonical <code>LLMPurposeConfigRow</code>s — the wizard finishes with a complete, browsable menu, not just
+    one connection. Required purposes (<span style="color:hsl(var(--destructive))">*</span>) are
+    <code>extraction</code>, <code>classification</code>, <code>reasoning</code>, and <code>embedding</code>
+    when the provider supports it; <code>summarization</code> and <code>reranker</code> stay optional.
+  </div>
+  <div class="board-body">
+    <div class="s32-stage">
+      <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+      <div class="s32-wizard">
+        <div class="s32-wordmark">darkmem</div>
+        <div class="s32-subtitle">Initial setup</div>
+        <div class="s32-steps">
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>1. Admin password</span>
+          <span class="s32-step-pill is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>2. Default LLM provider</span>
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>3. Default code repo path</span>
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>4. Review &amp; finish</span>
+        </div>
+        <div class="s32-body">
+          <div class="s32-card">
+            <span class="s32-card-title">Provider</span>
+            <div class="s32-field">
+              <span class="flabel">API kind</span>
+              <span class="s32-select">OpenAI-compatible (/v1) <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
+            </div>
+            <div class="s32-field">
+              <span class="flabel">Base URL</span>
+              <input class="s32-input" value="api.openai.com/v1" readonly>
+            </div>
+            <div class="s32-field">
+              <span class="flabel">API key</span>
+              <input class="s32-input is-masked" value="sk-••••••••••••" readonly>
+            </div>
+            <div class="s32-switch-row">
+              <span class="s32-switch on"></span>
+              <span class="s32-switch-copy">Provider supports embeddings
+                <div class="sub">Auto-set from API kind (off for Anthropic and DeepSeek).</div>
+              </span>
+            </div>
+            <div class="s32-btn-row">
+              <button type="button" class="s32-btn s32-btn-outline">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                Fetch available models
+              </button>
+              <span class="s32-hint">14 models loaded</span>
+            </div>
+          </div>
+          <div class="s32-card">
+            <span class="s32-card-title">Per-purpose models</span>
+            <div class="s32-purpose-grid">
+              <div class="s32-purpose-row">
+                <span class="s32-purpose-name">embedding<span class="req">*</span></span>
+                <span class="s32-purpose-model">text-embedding-3-large</span>
+                <span></span>
+              </div>
+              <div class="s32-purpose-row">
+                <span class="s32-purpose-name">extraction<span class="req">*</span></span>
+                <span class="s32-purpose-model">gpt-5.1-mini</span>
+                <span class="s32-purpose-reasoning"><span class="s32-switch"></span>reasoning</span>
+              </div>
+              <div class="s32-purpose-row">
+                <span class="s32-purpose-name">classification<span class="req">*</span></span>
+                <span class="s32-purpose-model">gpt-5.1-mini</span>
+                <span class="s32-purpose-reasoning"><span class="s32-switch"></span>reasoning</span>
+              </div>
+              <div class="s32-purpose-row">
+                <span class="s32-purpose-name">reasoning<span class="req">*</span></span>
+                <span class="s32-purpose-model">gpt-5.1</span>
+                <span class="s32-purpose-reasoning"><span class="s32-switch on"></span>reasoning</span>
+              </div>
+              <div class="s32-purpose-row">
+                <span class="s32-purpose-name">summarization</span>
+                <span class="s32-purpose-model is-empty">model id</span>
+                <span class="s32-purpose-reasoning"><span class="s32-switch"></span>reasoning</span>
+              </div>
+              <div class="s32-purpose-row">
+                <span class="s32-purpose-name">reranker</span>
+                <span class="s32-purpose-model is-empty">model id</span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="s32-footer">
+          <button type="button" class="s32-btn s32-btn-ghost">Back</button>
+          <div class="s32-footer-right">
+            <button type="button" class="s32-btn s32-btn-outline">Skip</button>
+            <button type="button" class="s32-btn s32-btn-primary">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S32-repo">
+  <h2>S32 — step 3 of 4: default code repo path (repo path registration)</h2>
+  <div class="annotation">
+    Optional. The server-side browse it drives (<code>fs/roots</code>, <code>fs/list</code>) is one of the two
+    endpoints doc 18 &sect;3 names as intentionally reachable, unauthenticated, by any LAN peer during the
+    pre-setup window — accepted under the same TOFU model, since the wizard needs to browse for a repo folder
+    before credentials exist, and the first completed <code>/setup</code> call closes the window for everyone.
+    Detected <code>.git</code> folders are pre-selected; imported repositories start with <code>auto_sync</code>
+    off, reviewed later from the Repositories page.
+  </div>
+  <div class="board-body">
+    <div class="s32-stage">
+      <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+      <div class="s32-wizard">
+        <div class="s32-wordmark">darkmem</div>
+        <div class="s32-subtitle">Initial setup</div>
+        <div class="s32-steps">
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>1. Admin password</span>
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>2. Default LLM provider</span>
+          <span class="s32-step-pill is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>3. Default code repo path</span>
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>4. Review &amp; finish</span>
+        </div>
+        <div class="s32-body">
+          <div class="s32-card">
+            <span class="s32-card-title">Browse server filesystem</span>
+            <div class="s32-crumbs">
+              <span class="seg">D:</span> › <span class="seg">Repositories</span> › <span class="seg current">_local_projects</span>
+            </div>
+            <div class="s32-dirlist">
+              <div class="s32-dirrow is-selected">
+                <svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+                darkmem
+                <span class="s32-git-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 8v8"/><path d="M6 8a6 6 0 0 0 6 6h4"/></svg>git</span>
+              </div>
+              <div class="s32-dirrow is-selected">
+                <svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+                darkraise-ui
+                <span class="s32-git-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 8v8"/><path d="M6 8a6 6 0 0 0 6 6h4"/></svg>git</span>
+              </div>
+              <div class="s32-dirrow">
+                <svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+                node_modules
+              </div>
+            </div>
+          </div>
+          <div class="s32-hint" style="font-size:11.5px">
+            Selected base path: <code>D:\Repositories\_local_projects</code> — found <b>2</b> repository(ies). Review them on the next step.
+          </div>
+        </div>
+        <div class="s32-footer">
+          <button type="button" class="s32-btn s32-btn-ghost">Back</button>
+          <div class="s32-footer-right">
+            <button type="button" class="s32-btn s32-btn-outline">Skip</button>
+            <button type="button" class="s32-btn s32-btn-primary">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S32-finish">
+  <h2>S32 — step 4 of 4: review &amp; finish (finish/summary)</h2>
+  <div class="annotation">
+    A render-only summary of the three prior steps' drafts — nothing here has been sent yet. <b>Finish</b>
+    submits the whole draft in one <code>POST /api/v1/setup</code> call, still gated by
+    <code>require_uninitialized</code>; the password block commits first and unconditionally, so the LLM and
+    repo blocks (each in their own savepoint, S32-loading below) can fail independently without ever costing
+    the admin account.
+  </div>
+  <div class="board-body">
+    <div class="s32-stage">
+      <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+      <div class="s32-wizard">
+        <div class="s32-wordmark">darkmem</div>
+        <div class="s32-subtitle">Initial setup</div>
+        <div class="s32-steps">
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>1. Admin password</span>
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>2. Default LLM provider</span>
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>3. Default code repo path</span>
+          <span class="s32-step-pill is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>4. Review &amp; finish</span>
+        </div>
+        <div class="s32-body">
+          <div class="s32-card">
+            <span class="s32-card-title">Admin password</span>
+            <span class="s32-hint" style="font-size:11.5px">Set</span>
+          </div>
+          <div class="s32-card">
+            <span class="s32-card-title">Default LLM provider</span>
+            <span class="s32-hint" style="font-size:11.5px"><b style="color:hsl(var(--foreground))">openai</b> — default vendor menu seeded; API key applied to this row</span>
+            <ul class="s32-summary-list">
+              <li>embedding: <code>text-embedding-3-large</code></li>
+              <li>extraction: <code>gpt-5.1-mini</code></li>
+              <li>classification: <code>gpt-5.1-mini</code></li>
+              <li>reasoning: <code>gpt-5.1</code></li>
+            </ul>
+          </div>
+          <div class="s32-card">
+            <span class="s32-card-title">Default code repo path</span>
+            <span class="s32-hint" style="font-size:11.5px">Base path: <code>D:\Repositories\_local_projects</code></span>
+            <div class="s32-repo-check checked">
+              <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4 10-10"/></svg></span>
+              <span class="name">darkmem</span>
+              <span class="path">darkmem</span>
+            </div>
+            <div class="s32-repo-check checked">
+              <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4 10-10"/></svg></span>
+              <span class="name">darkraise-ui</span>
+              <span class="path">darkraise-ui</span>
+            </div>
+            <span class="s32-hint">Imported repositories start with auto-sync <b>off</b>.</span>
+          </div>
+        </div>
+        <div class="s32-footer">
+          <button type="button" class="s32-btn s32-btn-ghost">Back</button>
+          <div class="s32-footer-right">
+            <button type="button" class="s32-btn s32-btn-primary">Finish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S32-loading">
+  <h2>S32 — state: loading (finalizing)</h2>
+  <div class="annotation">
+    <b>Honesty rule: a submitted draft is not a completed setup until its own block reports back.</b>
+    <code>POST /api/v1/setup</code> is not one atomic write — the password block commits immediately and
+    unconditionally (a stale connection afterward can never lose the admin account); the LLM and repo blocks
+    each run in their own savepoint and each report their own <code>{ok, message}</code>. Back and Skip disable
+    for the whole in-flight window rather than allowing a step change mid-submit.
+  </div>
+  <div class="board-body">
+    <div class="s32-board-meta">
+      <span class="title">Setup — finalizing</span>
+      <span class="state-chip state-loading">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        loading
+      </span>
+      <span class="route">route: <code>/setup</code> (<code>_guest</code>)</span>
+    </div>
+    <div class="s32-stage">
+      <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+      <div class="s32-wizard">
+        <div class="s32-wordmark">darkmem</div>
+        <div class="s32-subtitle">Initial setup</div>
+        <div class="s32-steps">
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>1. Admin password</span>
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>2. Default LLM provider</span>
+          <span class="s32-step-pill is-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>3. Default code repo path</span>
+          <span class="s32-step-pill is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>4. Review &amp; finish</span>
+        </div>
+        <div class="s32-body">
+          <div class="s32-card">
+            <span class="s32-card-title">Admin password</span>
+            <span class="s32-hint" style="font-size:11.5px">committed</span>
+          </div>
+          <div class="s32-card">
+            <span class="s32-card-title">Default LLM provider</span>
+            <span class="s32-hint" style="font-size:11.5px">savepoint running…</span>
+          </div>
+          <div class="s32-card">
+            <span class="s32-card-title">Default code repo path</span>
+            <span class="s32-hint" style="font-size:11.5px">queued</span>
+          </div>
+        </div>
+        <div class="s32-footer">
+          <button type="button" class="s32-btn s32-btn-ghost is-disabled">Back</button>
+          <div class="s32-footer-right">
+            <button type="button" class="s32-btn s32-btn-outline is-disabled">Skip</button>
+            <button type="button" class="s32-btn s32-btn-primary is-disabled">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              Finishing…
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S32-error">
+  <h2>S32 — state: error (setup window already closed)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: the TOFU race is named, never disguised as a generic failure.</b> Every
+    <code>/api/v1/setup/*</code> call — including this one — 403s the instant the
+    <code>admin_password_hash</code> config row exists (doc 18 &sect;3's "setup takeover" row): the LAN
+    boundary plus the minutes between first boot and wizard completion bound the race window, and once someone
+    closes it the wizard has nothing left to offer a later visitor except a pointer to <code>/login</code>. This
+    is not a network/server error — the request succeeded and was correctly refused.
+  </div>
+  <div class="board-body">
+    <div class="s32-board-meta">
+      <span class="title">Setup — access</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        error
+      </span>
+      <span class="route">route: <code>/setup</code> (<code>_guest</code>) → 403</span>
+    </div>
+    <div class="s32-stage">
+      <span class="s32-stage-note">particle / aurora backdrop — static still-frame</span>
+      <div class="s32-wizard s32-dim">
+        <div class="s32-wordmark">darkmem</div>
+        <div class="s32-subtitle">Initial setup</div>
+        <div class="s32-steps">
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>1. Admin password</span>
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>2. Default LLM provider</span>
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>3. Default code repo path</span>
+          <span class="s32-step-pill is-upcoming"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>4. Review &amp; finish</span>
+        </div>
+      </div>
+      <div class="s32-error-banner" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:min(420px, 88%);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <div class="body">
+          <span class="headline">Setup already completed</span>
+          <span class="desc">Another party already finished this box's setup wizard. <code>/api/v1/setup/*</code> only stays open until the <code>admin_password_hash</code> config row exists — that window has closed. If you own this box, sign in below.</span>
+          <button type="button" class="s32-btn s32-btn-primary s32-error-cta">
+            Go to log in
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </section>
