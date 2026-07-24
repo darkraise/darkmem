@@ -1,0 +1,709 @@
+<style>
+  /* S07 board-local styles. New presentational widgets mockup.css/C0* do not
+     define yet (the fact-triple/fact-text header, the origin_key-grouped
+     sources module, the belief-window timeline, the applies_when context
+     chip) — namespaced s07- so it can never collide with another
+     fragment's local styles once build.py concatenates them. Everything
+     below reads var(--token) / hsl(var(--token)) only; nothing here
+     redeclares a token or restyles .board/.annotation/.theme-row/
+     .theme-light/.theme-dark/.state-chip/.badge/.layer-chip from
+     assets/mockup.css.
+
+     The disputed both-sides split panel (.c01-dispute/.side/.vs/.assert/
+     .count), the code@commit provenance list (.c01-provenance), and the
+     claim-explanation text style (.c01-claim) are COMPOSED verbatim from
+     C01-verification-badges.html rather than re-declared here — the brief
+     names C01's dispute split and code@commit pattern explicitly as the
+     thing to reuse, and build.py's concatenation order (G0, C0*, then S*)
+     guarantees those classes exist by the time this fragment loads, the
+     same way S05 reuses C04's .c04-skel-row/.c04-skel-bar for its loading
+     board. Source-kind tags reuse bare .layer-chip (no l0-3 modifier),
+     mirroring S05's reuse of bare .layer-chip for the technologies denorm
+     — a source kind (memory/block/code/human) is classification, not a
+     judgement, the same register layer chips already occupy. */
+
+  .s07-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s07-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s07-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s07-detail { display: flex; flex-direction: column; gap: 16px; }
+
+  .s07-module { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
+  .s07-module:first-child { padding-top: 0; border-top: none; }
+  .s07-module > h3 { margin: 0; font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s07-module > .hint { margin: -4px 0 0; font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  .s07-meta-row { display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s07-meta-row b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* fact head: subject_name / rel_type / object_name + fact prose + badge row */
+  .s07-fact-triple { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s07-fact-triple b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s07-fact-triple .rel { color: hsl(var(--primary)); }
+  .s07-fact-text { padding: 12px 14px; border-left: 3px solid hsl(var(--border)); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: hsl(var(--muted) / 0.25); font-size: 13.5px; color: hsl(var(--foreground)); line-height: 1.6; }
+  .s07-badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+  /* sources module — grouped by origin_key */
+  .s07-source-groups { display: flex; flex-direction: column; gap: 10px; }
+  .s07-source-group { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s07-source-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .s07-origin-key { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); }
+  .s07-origin-count { margin-left: auto; font-size: 11.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s07-source-rows { display: flex; flex-direction: column; gap: 0; }
+  .s07-source-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 5px 0; border-top: 1px dashed hsl(var(--border)); }
+  .s07-source-row:first-child { border-top: none; padding-top: 0; }
+  .s07-source-ref { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); flex: none; min-width: 150px; }
+  .s07-source-detail { color: hsl(var(--foreground)); flex: 1 1 260px; font-size: 12.5px; }
+  .s07-source-time { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; flex: none; margin-left: auto; }
+  .s07-echo-note { font-size: 11.5px; font-style: italic; color: hsl(var(--muted-foreground)); }
+
+  /* belief-window module — valid_at / invalid_at / expired_at as a timeline */
+  .s07-belief-timeline { display: flex; flex-direction: column; gap: 10px; }
+  .s07-belief-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s07-belief-tag { flex: none; display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .s07-belief-tag.open { color: hsl(var(--primary)); border: 1px solid hsl(var(--primary) / 0.5); background: hsl(var(--primary) / 0.08); }
+  .s07-belief-tag.closed { color: hsl(var(--muted-foreground)); border: 1px dashed hsl(var(--border)); background: hsl(var(--muted) / 0.35); }
+  .s07-belief-dates { display: flex; flex-wrap: wrap; gap: 16px; flex: none; }
+  .s07-belief-dates .field { display: flex; flex-direction: column; gap: 2px; font-family: var(--font-mono); font-size: 11px; }
+  .s07-belief-dates .field .k { color: hsl(var(--muted-foreground)); }
+  .s07-belief-dates .field .v { color: hsl(var(--foreground)); }
+  .s07-belief-note { flex: 1 1 240px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s07-belief-note code { font-family: var(--font-mono); }
+
+  /* applies_when — structured context, shown as quiet labels */
+  .s07-context-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .s07-context-chip { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 11.5px; padding: 2px 9px; border-radius: var(--radius-sm); background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); }
+  .s07-context-chip b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* dispute board: per-side object_name + compact nested modules inside .c01-dispute .side */
+  .s07-side-object { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s07-side-sub { margin-top: 6px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+</style>
+
+<div class="s07-intro">
+  <h2>S07 — Knowledge: Fact detail</h2>
+  <p>
+    <code>/knowledge/facts/$factId</code> — realising doc 13 &sect;5.1 and doc 08 &sect;3/&sect;4: the fact
+    text (<code>subject_name</code> / <code>rel_type</code> / <code>object_name</code>), the
+    <b>verification badge</b> rendered verbatim, the <b>sources module</b> (<code>fact_sources</code> rows
+    grouped by <code>origin_key</code> so the badge's count is auditable), the <b>belief-window module</b>
+    (<code>valid_at</code> / <code>invalid_at</code> / <code>expired_at</code> as a timeline), and the
+    <code>applies_when</code> context. Every module composes the shared vocabulary rather than re-deriving
+    it: <code>.badge</code> / <code>.layer-chip</code> from <code>mockup.css</code>, and the dispute split
+    panel + code@commit provenance list directly from <code>C01-verification-badges.html</code>. The
+    <b>corroborated</b> base fact renders as the hero in both themes; the other four boards render once each
+    in the default theme, since the shared toggle guarantees theme parity.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S07-corroborated">
+  <h2>Fact detail — corroborated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>The base case (doc 08 &sect;4.1).</b> <code>K</code> in the badge binds to
+    <code>COUNT(DISTINCT origin_key)</code> over this fact's <code>fact_sources</code> rows, never a row
+    count — the sources module below groups the raw rows by <code>origin_key</code> so that count is
+    auditable rather than asserted. The belief-window module shows this fact's <i>current, open</i> window
+    plus its <i>prior, window-closed</i> window on the same <code>triple_key</code> — the closed window is
+    retained as history, not a live claim (doc 08 &sect;3.1/&sect;3.2, stale-on-arrival).
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s07-detail">
+
+          <div class="s07-module">
+            <h3>Fact</h3>
+            <div class="s07-meta-row">
+              <span>fact_id: <b>f4a1c908</b></span>
+              <span>project: <b>darkmem</b></span>
+              <span>review_state: <b>&mdash;</b></span>
+              <span>as of: <b>2026-07-22</b></span>
+            </div>
+            <div class="s07-fact-triple">
+              <b>semantic_weight</b>
+              <span class="rel">DEFAULTS_TO</span>
+              <b>0.7</b>
+            </div>
+            <div class="s07-fact-text">
+              semantic_weight defaults to 0.7 in the RRF fusion formula (k=60) &mdash; the semantic channel
+              is weighted 70% against the keyword channel's 30% before fusion.
+            </div>
+            <div class="s07-badge-row">
+              <span class="layer-chip l2">L2 &middot; fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+            </div>
+            <div class="c01-claim"><b>asserted by 4 distinct origins of kinds [memory, code, block], no known contradiction, as of 2026-07-22</b></div>
+          </div>
+
+          <div class="s07-module">
+            <h3>Sources &mdash; grouped by origin_key</h3>
+            <p class="hint"><code>fact_sources</code> rows grouped by <code>origin_key</code>; the badge's <code>K</code> is <code>COUNT(DISTINCT origin_key)</code> over these groups, never the raw row count.</p>
+            <div class="s07-source-groups">
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">memory</span>
+                  <span class="s07-origin-key">origin_key: session:9f21b7c4</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 2 rows</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">memory 5c81e0f2</span>
+                    <span class="s07-source-detail">&ldquo;hybrid_search_enabled defaults on; RRF fusion runs k=60&rdquo;</span>
+                    <span class="s07-source-time">captured 2026-06-01 09:00</span>
+                  </div>
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">memory 771e4f9a</span>
+                    <span class="s07-source-detail">&ldquo;semantic_weight defaults to 0.7 in the RRF fusion formula&rdquo;</span>
+                    <span class="s07-source-time">captured 2026-06-01 09:04</span>
+                  </div>
+                </div>
+                <div class="s07-echo-note">same origin_key &mdash; same capturing session &mdash; two memories, one origin, counted once.</div>
+              </div>
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">code</span>
+                  <span class="s07-origin-key">origin_key: repo:darkmem-backend</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">code backend/app/services/hybrid_search.py@d81e4f0</span>
+                    <span class="s07-source-detail">basis: constant <code>SEMANTIC_WEIGHT_DEFAULT = 0.7</code> parsed from source</span>
+                    <span class="s07-source-time">indexed 2026-06-03</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">block</span>
+                  <span class="s07-origin-key">origin_key: document:d-4471</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">block &ldquo;RRF tuning notes.md &sect; Fusion weights&rdquo;</span>
+                    <span class="s07-source-detail">excerpted paragraph confirming the 0.7 / 0.3 split</span>
+                    <span class="s07-source-time">indexed 2026-05-20</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">memory</span>
+                  <span class="s07-origin-key">origin_key: session:review-2026-07-19</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">memory 3a9c02e1</span>
+                    <span class="s07-source-detail">&ldquo;weekly config audit reconfirmed semantic_weight=0.7 against the live RRF fusion call&rdquo;</span>
+                    <span class="s07-source-time">captured 2026-07-19 08:15</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+            <div class="annotation">
+              <code>COUNT(DISTINCT origin_key)</code> over the 5 raw <code>fact_sources</code> rows above =
+              <b>4</b> groups &mdash; the badge's <code>K</code>. One pair echoes the same session (counted
+              once); a UI that read &ldquo;5 sources&rdquo; here would silently overclaim.
+            </div>
+          </div>
+
+          <div class="s07-module">
+            <h3>Belief window</h3>
+            <p class="hint"><code>valid_at</code> / <code>invalid_at</code> / <code>expired_at</code> as a timeline &mdash; &ldquo;what did we believe as of X.&rdquo;</p>
+            <div class="s07-belief-timeline">
+              <div class="s07-belief-row">
+                <span class="s07-belief-tag open">open</span>
+                <div class="s07-belief-dates">
+                  <span class="field"><span class="k">valid_at</span><span class="v">2026-06-01 09:00</span></span>
+                  <span class="field"><span class="k">invalid_at</span><span class="v">&mdash;</span></span>
+                  <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+                </div>
+                <span class="s07-belief-note">darkmem's current live belief &mdash; <code>expired_at IS NULL</code>, window still open.</span>
+              </div>
+              <div class="s07-belief-row">
+                <span class="s07-belief-tag closed">window-closed</span>
+                <div class="s07-belief-dates">
+                  <span class="field"><span class="k">valid_at</span><span class="v">2026-02-01 09:00</span></span>
+                  <span class="field"><span class="k">invalid_at</span><span class="v">2026-06-01 09:00</span></span>
+                  <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+                </div>
+                <span class="s07-belief-note">retained as history, NOT a live claim &mdash; superseded by the 2026-06-01 reconfirmation (stale-on-arrival, doc 08 &sect;3.2); the row was never deleted.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="s07-module">
+            <h3>applies_when</h3>
+            <div class="s07-context-chips">
+              <span class="s07-context-chip"><b>hybrid_search_enabled</b>: on</span>
+              <span class="s07-context-chip"><b>reranker_profile</b>: default</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s07-detail">
+
+          <div class="s07-module">
+            <h3>Fact</h3>
+            <div class="s07-meta-row">
+              <span>fact_id: <b>f4a1c908</b></span>
+              <span>project: <b>darkmem</b></span>
+              <span>review_state: <b>&mdash;</b></span>
+              <span>as of: <b>2026-07-22</b></span>
+            </div>
+            <div class="s07-fact-triple">
+              <b>semantic_weight</b>
+              <span class="rel">DEFAULTS_TO</span>
+              <b>0.7</b>
+            </div>
+            <div class="s07-fact-text">
+              semantic_weight defaults to 0.7 in the RRF fusion formula (k=60) &mdash; the semantic channel
+              is weighted 70% against the keyword channel's 30% before fusion.
+            </div>
+            <div class="s07-badge-row">
+              <span class="layer-chip l2">L2 &middot; fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+            </div>
+            <div class="c01-claim"><b>asserted by 4 distinct origins of kinds [memory, code, block], no known contradiction, as of 2026-07-22</b></div>
+          </div>
+
+          <div class="s07-module">
+            <h3>Sources &mdash; grouped by origin_key</h3>
+            <p class="hint"><code>fact_sources</code> rows grouped by <code>origin_key</code>; the badge's <code>K</code> is <code>COUNT(DISTINCT origin_key)</code> over these groups, never the raw row count.</p>
+            <div class="s07-source-groups">
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">memory</span>
+                  <span class="s07-origin-key">origin_key: session:9f21b7c4</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 2 rows</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">memory 5c81e0f2</span>
+                    <span class="s07-source-detail">&ldquo;hybrid_search_enabled defaults on; RRF fusion runs k=60&rdquo;</span>
+                    <span class="s07-source-time">captured 2026-06-01 09:00</span>
+                  </div>
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">memory 771e4f9a</span>
+                    <span class="s07-source-detail">&ldquo;semantic_weight defaults to 0.7 in the RRF fusion formula&rdquo;</span>
+                    <span class="s07-source-time">captured 2026-06-01 09:04</span>
+                  </div>
+                </div>
+                <div class="s07-echo-note">same origin_key &mdash; same capturing session &mdash; two memories, one origin, counted once.</div>
+              </div>
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">code</span>
+                  <span class="s07-origin-key">origin_key: repo:darkmem-backend</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">code backend/app/services/hybrid_search.py@d81e4f0</span>
+                    <span class="s07-source-detail">basis: constant <code>SEMANTIC_WEIGHT_DEFAULT = 0.7</code> parsed from source</span>
+                    <span class="s07-source-time">indexed 2026-06-03</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">block</span>
+                  <span class="s07-origin-key">origin_key: document:d-4471</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">block &ldquo;RRF tuning notes.md &sect; Fusion weights&rdquo;</span>
+                    <span class="s07-source-detail">excerpted paragraph confirming the 0.7 / 0.3 split</span>
+                    <span class="s07-source-time">indexed 2026-05-20</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s07-source-group">
+                <div class="s07-source-group-head">
+                  <span class="layer-chip">memory</span>
+                  <span class="s07-origin-key">origin_key: session:review-2026-07-19</span>
+                  <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+                </div>
+                <div class="s07-source-rows">
+                  <div class="s07-source-row">
+                    <span class="s07-source-ref">memory 3a9c02e1</span>
+                    <span class="s07-source-detail">&ldquo;weekly config audit reconfirmed semantic_weight=0.7 against the live RRF fusion call&rdquo;</span>
+                    <span class="s07-source-time">captured 2026-07-19 08:15</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+            <div class="annotation">
+              <code>COUNT(DISTINCT origin_key)</code> over the 5 raw <code>fact_sources</code> rows above =
+              <b>4</b> groups &mdash; the badge's <code>K</code>. One pair echoes the same session (counted
+              once); a UI that read &ldquo;5 sources&rdquo; here would silently overclaim.
+            </div>
+          </div>
+
+          <div class="s07-module">
+            <h3>Belief window</h3>
+            <p class="hint"><code>valid_at</code> / <code>invalid_at</code> / <code>expired_at</code> as a timeline &mdash; &ldquo;what did we believe as of X.&rdquo;</p>
+            <div class="s07-belief-timeline">
+              <div class="s07-belief-row">
+                <span class="s07-belief-tag open">open</span>
+                <div class="s07-belief-dates">
+                  <span class="field"><span class="k">valid_at</span><span class="v">2026-06-01 09:00</span></span>
+                  <span class="field"><span class="k">invalid_at</span><span class="v">&mdash;</span></span>
+                  <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+                </div>
+                <span class="s07-belief-note">darkmem's current live belief &mdash; <code>expired_at IS NULL</code>, window still open.</span>
+              </div>
+              <div class="s07-belief-row">
+                <span class="s07-belief-tag closed">window-closed</span>
+                <div class="s07-belief-dates">
+                  <span class="field"><span class="k">valid_at</span><span class="v">2026-02-01 09:00</span></span>
+                  <span class="field"><span class="k">invalid_at</span><span class="v">2026-06-01 09:00</span></span>
+                  <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+                </div>
+                <span class="s07-belief-note">retained as history, NOT a live claim &mdash; superseded by the 2026-06-01 reconfirmation (stale-on-arrival, doc 08 &sect;3.2); the row was never deleted.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="s07-module">
+            <h3>applies_when</h3>
+            <div class="s07-context-chips">
+              <span class="s07-context-chip"><b>hybrid_search_enabled</b>: on</span>
+              <span class="s07-context-chip"><b>reranker_profile</b>: default</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S07-code-corroborated">
+  <h2>Fact detail — code-originated, born corroborated</h2>
+  <div class="annotation">
+    <b>The parse is the verification (doc 08 &sect;4.1, doc 14 &sect;3.2).</b> A code-derived fact skips the
+    <code>candidate</code> rung entirely at write time. The distinct <code>code@commit</code> mark and the
+    <code>{commit_sha, basis, file_path, symbol_key}</code> provenance detail below reuse
+    <code>C01-verification-badges.html</code>'s <code>.badge-code</code> / <code>.c01-provenance</code>
+    markup verbatim rather than re-deriving it.
+  </div>
+  <div class="board-body">
+    <div class="s07-detail">
+
+      <div class="s07-module">
+        <h3>Fact</h3>
+        <div class="s07-meta-row">
+          <span>fact_id: <b>8b6e21f0</b></span>
+          <span>project: <b>darkmem</b></span>
+          <span>review_state: <b>&mdash;</b></span>
+          <span>as of: <b>2026-07-15</b></span>
+        </div>
+        <div class="s07-fact-triple">
+          <b>search_code</b>
+          <span class="rel">IS</span>
+          <b>semantic_only</b>
+        </div>
+        <div class="s07-fact-text">
+          search_code is semantic-only &mdash; the code_chunk_embeddings__&lt;slug&gt; partitions carry no FTS
+          column, so there is nothing to fuse with hybrid search.
+        </div>
+        <div class="s07-badge-row">
+          <span class="layer-chip l2">L2 &middot; fact</span>
+          <span class="badge corroborated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+            corroborated
+          </span>
+          <span class="badge-code">code@e7a2b4c</span>
+        </div>
+        <div class="c01-claim"><b>asserted by 2 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-15</b> &mdash; code-originated, born corroborated: parse is verification.</div>
+        <dl class="c01-provenance">
+          <dt>commit_sha</dt><dd>e7a2b4c</dd>
+          <dt>basis</dt><dd>no FTS column found on <code>code_chunk_embeddings__&lt;slug&gt;</code> in the parsed migration + repository schema scan</dd>
+          <dt>file_path</dt><dd>backend/app/services/code_pipeline.py</dd>
+          <dt>symbol_key</dt><dd>CodeSearchService.search_code</dd>
+        </dl>
+      </div>
+
+      <div class="s07-module">
+        <h3>Sources &mdash; grouped by origin_key</h3>
+        <p class="hint"><code>fact_sources</code> rows grouped by <code>origin_key</code>; the code parse alone would already satisfy corroboration &mdash; it is deterministic ground truth, not a vote &mdash; but a memory independently confirmed it too.</p>
+        <div class="s07-source-groups">
+
+          <div class="s07-source-group">
+            <div class="s07-source-group-head">
+              <span class="layer-chip">code</span>
+              <span class="s07-origin-key">origin_key: repo:darkmem-backend</span>
+              <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+            </div>
+            <div class="s07-source-rows">
+              <div class="s07-source-row">
+                <span class="s07-source-ref">code backend/app/services/code_pipeline.py@e7a2b4c</span>
+                <span class="s07-source-detail">basis: no FTS column on the code-chunk embedding partition</span>
+                <span class="s07-source-time">indexed 2026-07-15 09:50</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="s07-source-group">
+            <div class="s07-source-group-head">
+              <span class="layer-chip">memory</span>
+              <span class="s07-origin-key">origin_key: session:4b71ea9c</span>
+              <span class="s07-origin-count">1 distinct origin &middot; 1 row</span>
+            </div>
+            <div class="s07-source-rows">
+              <div class="s07-source-row">
+                <span class="s07-source-ref">memory f02c88a1</span>
+                <span class="s07-source-detail">&ldquo;search_code never fuses with FTS since code chunks carry no search_vector column&rdquo;</span>
+                <span class="s07-source-time">captured 2026-07-15 10:30</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="annotation">
+          <code>COUNT(DISTINCT origin_key)</code> over the 2 raw <code>fact_sources</code> rows above =
+          <b>2</b> &mdash; the badge's <code>K</code>. No echo here: each origin contributed exactly one row.
+        </div>
+      </div>
+
+      <div class="s07-module">
+        <h3>Belief window</h3>
+        <p class="hint"><code>valid_at</code> / <code>invalid_at</code> / <code>expired_at</code> as a timeline.</p>
+        <div class="s07-belief-timeline">
+          <div class="s07-belief-row">
+            <span class="s07-belief-tag open">open</span>
+            <div class="s07-belief-dates">
+              <span class="field"><span class="k">valid_at</span><span class="v">2026-07-15 09:50</span></span>
+              <span class="field"><span class="k">invalid_at</span><span class="v">&mdash;</span></span>
+              <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+            </div>
+            <span class="s07-belief-note">born corroborated at write time &mdash; no <code>candidate</code> phase preceded it (doc 08 &sect;4.1).</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="s07-module">
+        <h3>applies_when</h3>
+        <div class="s07-context-chips">
+          <span class="s07-context-chip"><b>repo</b>: darkmem-backend</span>
+          <span class="s07-context-chip"><b>index_mode</b>: semantic-only</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S07-disputed">
+  <h2>Fact detail — disputed, both-sides split panel</h2>
+  <div class="annotation annotation-conflict">
+    <b>No picked winner (doc 08 &sect;4.2, doc 14 &sect;3.5).</b> Both sides carry an overlapping validity
+    window &mdash; that overlap is what makes this a genuine contradiction rather than a succession (disjoint
+    windows would instead be modelled as two live facts, &sect;3.1). The split panel reuses
+    <code>C01-verification-badges.html</code>'s <code>.c01-dispute</code> markup verbatim: strictly equal
+    visual weight, no comparative bar, the earlier-asserted side (2026-05-10) rendered first. Resolution
+    happens only in the Review shell (doc 13 &sect;6.2) &mdash; this page links there, it never adjudicates.
+  </div>
+  <div class="board-body">
+    <div class="s07-detail">
+
+      <div class="s07-module">
+        <h3>Fact</h3>
+        <div class="s07-meta-row">
+          <span>fact_id: <b>9d3e7a12</b></span>
+          <span>project: <b>darkmem</b></span>
+          <span>review_state: <b>open</b></span>
+          <span>as of: <b>2026-07-21</b></span>
+        </div>
+        <div class="s07-fact-triple">
+          <b>reranker_enabled</b>
+          <span class="rel">DEFAULT_STATE</span>
+          <b>&mdash; two competing object_name values below</b>
+        </div>
+        <div class="s07-badge-row">
+          <span class="layer-chip l2">L2 &middot; fact</span>
+          <span class="badge disputed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+            disputed
+          </span>
+        </div>
+        <div class="c01-claim"><b>disputed: 2 origins assert X, 1 origin asserts not-X, as of T</b> &mdash; the fixed two-sided form (doc 14 &sect;3.5).</div>
+        <div class="c01-claim">filled: <b>disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts the reranker is opt-in per profile and disabled by default, as of 2026-07-21</b></div>
+      </div>
+
+      <div class="s07-module">
+        <h3>Both sides &mdash; strictly equal weight, no winner</h3>
+        <div class="c01-dispute">
+          <div class="side">
+            <span class="badge disputed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+              disputed
+            </span>
+            <span class="s07-side-object">object_name: on_by_default</span>
+            <span class="assert">asserts X &mdash; the reranker is enabled by default in production</span>
+            <span class="count">2 origins &middot; kinds [memory, code]</span>
+
+            <span class="s07-side-sub">sources &mdash; grouped by origin_key</span>
+            <div class="s07-source-rows">
+              <div class="s07-source-row">
+                <span class="s07-source-ref">code config.py@f9b2e11</span>
+                <span class="s07-source-detail">reranker_enabled default &mdash; on (origin_key repo:darkmem-backend)</span>
+                <span class="s07-source-time">2026-05-10</span>
+              </div>
+              <div class="s07-source-row">
+                <span class="s07-source-ref">memory 6c04af2e</span>
+                <span class="s07-source-detail">&ldquo;Enabled reranker by default after eval showed +12% nDCG&rdquo; (origin_key session:8f0091d2)</span>
+                <span class="s07-source-time">2026-05-10</span>
+              </div>
+            </div>
+
+            <span class="s07-side-sub">belief window</span>
+            <div class="s07-belief-row">
+              <span class="s07-belief-tag open">open</span>
+              <div class="s07-belief-dates">
+                <span class="field"><span class="k">valid_at</span><span class="v">2026-05-10</span></span>
+                <span class="field"><span class="k">invalid_at</span><span class="v">&mdash;</span></span>
+                <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+              </div>
+            </div>
+            <div class="s07-context-chips">
+              <span class="s07-context-chip"><b>deployment</b>: cloud-hosted-default</span>
+            </div>
+          </div>
+
+          <div class="vs">vs</div>
+
+          <div class="side">
+            <span class="badge disputed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+              disputed
+            </span>
+            <span class="s07-side-object">object_name: opt_in_per_profile</span>
+            <span class="assert">asserts not-X &mdash; the reranker is opt-in per profile, disabled by default</span>
+            <span class="count">1 origin &middot; kind [human]</span>
+
+            <span class="s07-side-sub">sources &mdash; grouped by origin_key</span>
+            <div class="s07-source-rows">
+              <div class="s07-source-row">
+                <span class="s07-source-ref">human q.tran</span>
+                <span class="s07-source-detail">reviewed the deployed config directly: reranker_enabled defaults off; profiles opt in explicitly (origin_key human:q.tran)</span>
+                <span class="s07-source-time">2026-07-20</span>
+              </div>
+            </div>
+
+            <span class="s07-side-sub">belief window</span>
+            <div class="s07-belief-row">
+              <span class="s07-belief-tag open">open</span>
+              <div class="s07-belief-dates">
+                <span class="field"><span class="k">valid_at</span><span class="v">2026-07-20</span></span>
+                <span class="field"><span class="k">invalid_at</span><span class="v">&mdash;</span></span>
+                <span class="field"><span class="k">expired_at</span><span class="v">&mdash;</span></span>
+              </div>
+            </div>
+            <div class="s07-context-chips">
+              <span class="s07-context-chip"><b>deployment</b>: self-hosted-config-override</span>
+            </div>
+          </div>
+        </div>
+        <div class="annotation">
+          Origin counts are shown on both sides without a comparative treatment &mdash; corroboration count
+          does not adjudicate a dispute; one non-echo contradiction over an overlapping window vetoes
+          regardless of count (doc 08 &sect;4.2). Each side's <code>COUNT(DISTINCT origin_key)</code> stays
+          independently auditable via its own sources list above.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S07-empty">
+  <h2>Fact detail — cold-start empty</h2>
+  <div class="annotation">
+    The detail pane's companion to the Facts tab's own cold-start state (doc 13 &sect;5.1, S06): reached
+    before any <code>$factId</code> resolves, in a project with zero corroborated facts yet. Reuses C04's
+    <code>.c04-surface</code> / <code>.c04-empty</code> shape rather than a locally re-declared empty panel.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Fact detail &mdash; project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No fact selected</span>
+          <span class="why"><b>no corroborated facts yet; candidates are served labelled in search</b></span>
+          <span class="why">Corroboration takes multiple distinct origins &mdash; this project has none logged yet, so there is nothing to open a detail on.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S07-loading">
+  <h2>Fact detail — loading</h2>
+  <div class="annotation">
+    Skeleton bars mirror the populated board's module slots &mdash; fact head, source groups, belief-window
+    rows, applies_when chips &mdash; reusing C04's <code>.c04-skel-row</code> / <code>.c04-skel-bar</code>
+    classes rather than a locally re-declared skeleton, per the fragment authoring protocol's instruction to
+    compose the C04 state-skeleton reference.
+  </div>
+  <div class="board-body">
+    <div class="s07-detail">
+      <div class="s07-module">
+        <h3>Fact</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span></div>
+      </div>
+      <div class="s07-module">
+        <h3>Sources &mdash; grouped by origin_key</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s07-module">
+        <h3>Belief window</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span></div>
+      </div>
+      <div class="s07-module">
+        <h3>applies_when</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar chip"></span></div>
+      </div>
+    </div>
+  </div>
+</section>

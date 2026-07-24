@@ -1,0 +1,626 @@
+<style>
+  /* S09 board-local styles. New presentational widgets mockup.css/C0* do not
+     define yet (grounded-prose layout, inline claim->fact citation links,
+     the claim-support-coverage meter, the citations audit list, the
+     forward-lineage link) — namespaced s09- so it can never collide with
+     another fragment's local styles once build.py concatenates them.
+     Everything below reads var(--token) / hsl(var(--token)) only; nothing
+     here redeclares a token or restyles .board/.annotation/.theme-row/
+     .theme-light/.theme-dark/.state-chip/.badge/.overlay-stale/.layer-chip
+     from assets/mockup.css — the verification badge, the stale overlay, and
+     the terminal-superseded badge are all composed verbatim from there,
+     never redeclared. The loading board reuses C04's .c04-skel-row/
+     .c04-skel-bar classes per the fragment authoring protocol's "compose
+     the C04 state skeleton" step.
+
+     Citation links and the coverage fill deliberately reuse the --primary
+     role (the same "supported" colour the corroborated badge itself uses)
+     rather than inventing a new hue for "this is a citation" — a citation
+     IS the mechanism that earns the supported badge, so the two share a
+     colour family on purpose. */
+
+  .s09-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s09-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s09-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s09-detail { display: flex; flex-direction: column; gap: 16px; max-width: 900px; }
+
+  .s09-module { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
+  .s09-module:first-child { padding-top: 0; border-top: none; }
+  .s09-module > h3 { margin: 0; font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s09-module > .hint { margin: -4px 0 0; font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  .s09-meta-row { display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s09-meta-row b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s09-badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .s09-claim-string { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s09-claim-string b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- claim-support coverage meter ---- */
+  .s09-coverage { display: flex; flex-direction: column; gap: 6px; }
+  .s09-coverage-bar { position: relative; height: 8px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+  .s09-coverage-fill { position: absolute; inset: 0 auto 0 0; height: 100%; border-radius: 999px; background: hsl(var(--primary)); }
+  .s09-coverage-stat { font-size: 13px; color: hsl(var(--foreground)); }
+  .s09-coverage-stat b { font-size: 15px; }
+
+  /* ---- grounded prose + inline citation links ---- */
+  .s09-prose { display: flex; flex-direction: column; gap: 12px; }
+  .s09-prose p { margin: 0; font-size: 13.5px; line-height: 1.7; color: hsl(var(--foreground)); }
+  .s09-prose code { font-family: var(--font-mono); font-size: 0.92em; }
+  .s09-section-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+
+  .s09-cite {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+    min-width: 20px; height: 16px; padding: 0 5px; margin-left: 4px;
+    border-radius: 999px; text-decoration: none; vertical-align: 2px;
+    color: hsl(var(--primary)); border: 1px solid hsl(var(--primary) / 0.4);
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  /* ---- citations audit list (article_citations rows) ---- */
+  .s09-citations { display: flex; flex-direction: column; gap: 6px; }
+  .s09-citation-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card));
+  }
+  .s09-citation-row:target { border-color: hsl(var(--primary) / 0.6); }
+  .s09-fact-id { font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s09-span { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s09-fact-text { flex: 1 1 300px; font-size: 12.5px; color: hsl(var(--foreground)); }
+
+  /* ---- forward/backward lineage link (superseded_by) ---- */
+  .s09-lineage { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s09-lineage svg { width: 13px; height: 13px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s09-quiet { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<div class="s09-intro">
+  <h2>S09 — Article detail</h2>
+  <p>
+    One Layer-3 article — synthesised, grounded prose whose every claim links to the verified fact that
+    entails it — realising doc 13 §5.2 and doc 09 §4. Every module composes the shared vocabulary rather than
+    re-deriving it: the <code>.badge</code> rungs, the promoted <code>.badge.superseded</code> non-rung
+    caution badge, and <code>.overlay-stale</code>, all from <code>mockup.css</code>; C04's skeleton classes
+    for loading. <b>Live grounded (populated)</b> renders as the hero in both themes; <b>stale</b>,
+    <b>superseded</b>, and <b>loading</b> render once each in the default theme, since the shared toggle
+    guarantees theme parity.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S09-populated">
+  <h2>Article detail — live, grounded (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Grounding is enforced, not asserted (doc 09 §4.3).</b> Every sentence in the <b>Synthesised content</b>
+    module below carries an inline <code>F#</code> citation link — jump to the <b>Citations</b> module to see
+    the exact fact it was checked against. The <b>claim-support coverage</b> readout is not a vague
+    confidence score: it <i>is</i> the fraction of this article's candidate sentences a verified fact was
+    found to entail, computed by the <code>verification</code>-purpose entailment pass over the synthesis
+    draft, before anything ships.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s09-detail">
+
+          <div class="s09-module">
+            <h3>Article</h3>
+            <div class="s09-meta-row">
+              <span>article: <b>4c9a7e21</b></span>
+              <span>subject: <b>embedder-fingerprint-partitioning &middot; concept</b></span>
+              <span>project: <b>darkmem</b></span>
+              <span>synthesised: <b>2026-07-19 03:00</b></span>
+              <span>fact_set_hash: <b>8b31e9d2f4a7</b></span>
+              <span>applies_when: <b>none &mdash; project-neutral</b></span>
+            </div>
+            <div class="s09-badge-row">
+              <span class="layer-chip l3">L3 &middot; article</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="s09-claim-string"><b>asserted by 5 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-21</b></span>
+            </div>
+          </div>
+
+          <div class="s09-module">
+            <h3>Claim-support coverage</h3>
+            <p class="hint">confidence is labelled <b>claim-support coverage</b>, never a vague score &mdash; it is the entailed/total ratio over this article's candidate sentences (doc 09 &sect;4.3, doc 04 &sect;8.8).</p>
+            <div class="s09-coverage">
+              <div class="s09-coverage-bar"><div class="s09-coverage-fill" style="width: 85.7%"></div></div>
+              <div class="s09-coverage-stat"><b>0.86</b> claim-support coverage &mdash; 6 / 7 candidate sentences entailed by a cited fact</div>
+            </div>
+            <div class="annotation">
+              One drafted sentence &mdash; "the fingerprint slug embeds the embedding dimension so a dimension
+              change always produces a new partition automatically" &mdash; failed the entailment check
+              against its proposed citation (an unverified over-generalisation the synthesis model proposed)
+              and was dropped before shipping. Every sentence rendered below is one of the 6 that passed;
+              nothing uncited or unentailed is ever shown as knowledge. Had coverage fallen below the
+              configured threshold, this article would not have shipped as <code>corroborated</code> at all
+              &mdash; it would carry <code>review_state=open</code> and sit in the Review queue instead of
+              rendering here (doc 09 &sect;4.3); a disputed article is withheld the same way.
+            </div>
+          </div>
+
+          <div class="s09-module">
+            <h3>Synthesised content</h3>
+            <p class="hint">grounded prose, organised by relation and <code>applies_when</code> context (doc 09 &sect;4.2) &mdash; every sentence carries an inline citation to the fact that grounds it.</p>
+            <div class="s09-prose">
+              <div>
+                <span class="s09-section-label">Partition boundary</span>
+                <p>
+                  Because pgvector requires a fixed-dimension <code>vector(N)</code> column, darkmem
+                  partitions embeddings by embedder fingerprint instead of storing every model's vectors in
+                  one table.<a class="s09-cite" href="#s09-fact-7a3c1f02" title="grounded by fact 7a3c1f02">F1</a>
+                  Each fingerprint gets its own four child tables &mdash;
+                  <code>memory_embeddings__&lt;slug&gt;</code>, <code>entity_embeddings__&lt;slug&gt;</code>,
+                  <code>code_chunk_embeddings__&lt;slug&gt;</code>, and
+                  <code>entity_embedding_cache__&lt;slug&gt;</code>.<a class="s09-cite" href="#s09-fact-9d5e2b41" title="grounded by fact 9d5e2b41">F2</a>
+                </p>
+              </div>
+              <div>
+                <span class="s09-section-label">Registration &amp; safety</span>
+                <p>
+                  The <code>embedders</code> table is the fingerprint registry, and
+                  <code>embedder_registry.register</code> creates all four child tables idempotently with
+                  <code>CREATE TABLE IF NOT EXISTS</code>.<a class="s09-cite" href="#s09-fact-c118e9af" title="grounded by fact c118e9af">F3</a>
+                  Application code never names a partition directly; it always resolves the table name
+                  through <code>child_table(parent, fingerprint)</code>.<a class="s09-cite" href="#s09-fact-2f6a04dd" title="grounded by fact 2f6a04dd">F4</a>
+                  <code>_register_fingerprint</code> must run before any insert into a partition &mdash; the
+                  ingest pipeline registers the content fingerprint in its embed phase, and re-registers
+                  mid-batch if the active embedder rotates.<a class="s09-cite" href="#s09-fact-e01b7c53" title="grounded by fact e01b7c53">F5</a>
+                  A query that joins across two different fingerprints has no defined cosine distance, because
+                  vectors from different embedders are not comparable &mdash; cross-fingerprint joins are
+                  treated as a bug, not an edge case.<a class="s09-cite" href="#s09-fact-88d4a6f1" title="grounded by fact 88d4a6f1">F6</a>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="s09-module">
+            <h3>Citations &mdash; the article's only provenance</h3>
+            <p class="hint"><code>article_citations.fact_id</code> is a hard FK to <code>knowledge_triples</code> &mdash; the one hard reference the design allows anywhere, safe because facts are invalidate-not-delete, never hard-deleted, so a citation can never dangle (doc 09 &sect;4.3, doc 04 &sect;8.8).</p>
+            <div class="s09-citations">
+              <div class="s09-citation-row" id="s09-fact-7a3c1f02">
+                <span class="s09-fact-id">fact 7a3c1f02</span>
+                <span class="s09-span">claim_span [0,189)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"pgvector requires a fixed-dimension vector(N) column, which is why darkmem partitions embeddings by embedder fingerprint"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-9d5e2b41">
+                <span class="s09-fact-id">fact 9d5e2b41</span>
+                <span class="s09-span">claim_span [190,361)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"each embedder fingerprint gets four child tables &mdash; memory_embeddings, entity_embeddings, code_chunk_embeddings, entity_embedding_cache &mdash; each suffixed with the fingerprint slug"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-c118e9af">
+                <span class="s09-fact-id">fact c118e9af</span>
+                <span class="s09-span">claim_span [365,520)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"embedder_registry.register inserts the embedders row and creates the four child tables with CREATE TABLE IF NOT EXISTS, idempotently"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-2f6a04dd">
+                <span class="s09-fact-id">fact 2f6a04dd</span>
+                <span class="s09-span">claim_span [524,640)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"application code resolves a partition's table name through child_table(parent, fingerprint) and never names a partition directly"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-e01b7c53">
+                <span class="s09-fact-id">fact e01b7c53</span>
+                <span class="s09-span">claim_span [644,812)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"_register_fingerprint must be called before any insert into a partition; Phase 1 registers the content fingerprint, Phase 3 re-registers if the active embedder rotates mid-batch"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-88d4a6f1">
+                <span class="s09-fact-id">fact 88d4a6f1</span>
+                <span class="s09-span">claim_span [816,1010)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"a query that joins across two different embedder fingerprints has no defined cosine distance"</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="annotation annotation-caution">
+            <b>The doc-16 firewall.</b> This article's provenance is <b>only</b> the six cited facts listed
+            above &mdash; it never reads a document block, and structurally it cannot: synthesis input is
+            restricted to the subject's non-disputed corroborated/confirmed <code>knowledge_triples</code>
+            rows (doc 09 &sect;4.2), never a raw document. If a source document said something relevant, that
+            content has to have already been extracted into its own verified fact before this article could
+            ever cite it &mdash; there is no code path from a document straight into synthesised prose.
+          </div>
+
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s09-detail">
+
+          <div class="s09-module">
+            <h3>Article</h3>
+            <div class="s09-meta-row">
+              <span>article: <b>4c9a7e21</b></span>
+              <span>subject: <b>embedder-fingerprint-partitioning &middot; concept</b></span>
+              <span>project: <b>darkmem</b></span>
+              <span>synthesised: <b>2026-07-19 03:00</b></span>
+              <span>fact_set_hash: <b>8b31e9d2f4a7</b></span>
+              <span>applies_when: <b>none &mdash; project-neutral</b></span>
+            </div>
+            <div class="s09-badge-row">
+              <span class="layer-chip l3">L3 &middot; article</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+              <span class="s09-claim-string"><b>asserted by 5 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-21</b></span>
+            </div>
+          </div>
+
+          <div class="s09-module">
+            <h3>Claim-support coverage</h3>
+            <p class="hint">confidence is labelled <b>claim-support coverage</b>, never a vague score &mdash; it is the entailed/total ratio over this article's candidate sentences (doc 09 &sect;4.3, doc 04 &sect;8.8).</p>
+            <div class="s09-coverage">
+              <div class="s09-coverage-bar"><div class="s09-coverage-fill" style="width: 85.7%"></div></div>
+              <div class="s09-coverage-stat"><b>0.86</b> claim-support coverage &mdash; 6 / 7 candidate sentences entailed by a cited fact</div>
+            </div>
+            <div class="annotation">
+              One drafted sentence &mdash; "the fingerprint slug embeds the embedding dimension so a dimension
+              change always produces a new partition automatically" &mdash; failed the entailment check
+              against its proposed citation (an unverified over-generalisation the synthesis model proposed)
+              and was dropped before shipping. Every sentence rendered below is one of the 6 that passed;
+              nothing uncited or unentailed is ever shown as knowledge. Had coverage fallen below the
+              configured threshold, this article would not have shipped as <code>corroborated</code> at all
+              &mdash; it would carry <code>review_state=open</code> and sit in the Review queue instead of
+              rendering here (doc 09 &sect;4.3); a disputed article is withheld the same way.
+            </div>
+          </div>
+
+          <div class="s09-module">
+            <h3>Synthesised content</h3>
+            <p class="hint">grounded prose, organised by relation and <code>applies_when</code> context (doc 09 &sect;4.2) &mdash; every sentence carries an inline citation to the fact that grounds it.</p>
+            <div class="s09-prose">
+              <div>
+                <span class="s09-section-label">Partition boundary</span>
+                <p>
+                  Because pgvector requires a fixed-dimension <code>vector(N)</code> column, darkmem
+                  partitions embeddings by embedder fingerprint instead of storing every model's vectors in
+                  one table.<a class="s09-cite" href="#s09-fact-7a3c1f02-d" title="grounded by fact 7a3c1f02">F1</a>
+                  Each fingerprint gets its own four child tables &mdash;
+                  <code>memory_embeddings__&lt;slug&gt;</code>, <code>entity_embeddings__&lt;slug&gt;</code>,
+                  <code>code_chunk_embeddings__&lt;slug&gt;</code>, and
+                  <code>entity_embedding_cache__&lt;slug&gt;</code>.<a class="s09-cite" href="#s09-fact-9d5e2b41-d" title="grounded by fact 9d5e2b41">F2</a>
+                </p>
+              </div>
+              <div>
+                <span class="s09-section-label">Registration &amp; safety</span>
+                <p>
+                  The <code>embedders</code> table is the fingerprint registry, and
+                  <code>embedder_registry.register</code> creates all four child tables idempotently with
+                  <code>CREATE TABLE IF NOT EXISTS</code>.<a class="s09-cite" href="#s09-fact-c118e9af-d" title="grounded by fact c118e9af">F3</a>
+                  Application code never names a partition directly; it always resolves the table name
+                  through <code>child_table(parent, fingerprint)</code>.<a class="s09-cite" href="#s09-fact-2f6a04dd-d" title="grounded by fact 2f6a04dd">F4</a>
+                  <code>_register_fingerprint</code> must run before any insert into a partition &mdash; the
+                  ingest pipeline registers the content fingerprint in its embed phase, and re-registers
+                  mid-batch if the active embedder rotates.<a class="s09-cite" href="#s09-fact-e01b7c53-d" title="grounded by fact e01b7c53">F5</a>
+                  A query that joins across two different fingerprints has no defined cosine distance, because
+                  vectors from different embedders are not comparable &mdash; cross-fingerprint joins are
+                  treated as a bug, not an edge case.<a class="s09-cite" href="#s09-fact-88d4a6f1-d" title="grounded by fact 88d4a6f1">F6</a>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="s09-module">
+            <h3>Citations &mdash; the article's only provenance</h3>
+            <p class="hint"><code>article_citations.fact_id</code> is a hard FK to <code>knowledge_triples</code> &mdash; the one hard reference the design allows anywhere, safe because facts are invalidate-not-delete, never hard-deleted, so a citation can never dangle (doc 09 &sect;4.3, doc 04 &sect;8.8).</p>
+            <div class="s09-citations">
+              <div class="s09-citation-row" id="s09-fact-7a3c1f02-d">
+                <span class="s09-fact-id">fact 7a3c1f02</span>
+                <span class="s09-span">claim_span [0,189)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"pgvector requires a fixed-dimension vector(N) column, which is why darkmem partitions embeddings by embedder fingerprint"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-9d5e2b41-d">
+                <span class="s09-fact-id">fact 9d5e2b41</span>
+                <span class="s09-span">claim_span [190,361)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"each embedder fingerprint gets four child tables &mdash; memory_embeddings, entity_embeddings, code_chunk_embeddings, entity_embedding_cache &mdash; each suffixed with the fingerprint slug"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-c118e9af-d">
+                <span class="s09-fact-id">fact c118e9af</span>
+                <span class="s09-span">claim_span [365,520)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"embedder_registry.register inserts the embedders row and creates the four child tables with CREATE TABLE IF NOT EXISTS, idempotently"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-2f6a04dd-d">
+                <span class="s09-fact-id">fact 2f6a04dd</span>
+                <span class="s09-span">claim_span [524,640)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"application code resolves a partition's table name through child_table(parent, fingerprint) and never names a partition directly"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-e01b7c53-d">
+                <span class="s09-fact-id">fact e01b7c53</span>
+                <span class="s09-span">claim_span [644,812)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"_register_fingerprint must be called before any insert into a partition; Phase 1 registers the content fingerprint, Phase 3 re-registers if the active embedder rotates mid-batch"</span>
+              </div>
+              <div class="s09-citation-row" id="s09-fact-88d4a6f1-d">
+                <span class="s09-fact-id">fact 88d4a6f1</span>
+                <span class="s09-span">claim_span [816,1010)</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="s09-fact-text">"a query that joins across two different embedder fingerprints has no defined cosine distance"</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="annotation annotation-caution">
+            <b>The doc-16 firewall.</b> This article's provenance is <b>only</b> the six cited facts listed
+            above &mdash; it never reads a document block, and structurally it cannot: synthesis input is
+            restricted to the subject's non-disputed corroborated/confirmed <code>knowledge_triples</code>
+            rows (doc 09 &sect;4.2), never a raw document. If a source document said something relevant, that
+            content has to have already been extracted into its own verified fact before this article could
+            ever cite it &mdash; there is no code path from a document straight into synthesised prose.
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S09-stale">
+  <h2>Article detail — stale</h2>
+  <div class="annotation annotation-caution">
+    <b>Labelled, not hidden or rewritten (doc 09 &sect;4.4, doc 14 &sect;3.4).</b> This is the same live
+    article (<code>4c9a7e21</code>) shown above &mdash; its underlying verified fact set changed
+    <i>after</i> synthesis, so <code>fact_set_hash</code> no longer matches. The article stays fully readable
+    and fully cited exactly as it was shipped; only the overlay changes.
+  </div>
+  <div class="board-body">
+    <div class="s09-detail">
+
+      <div class="s09-module">
+        <h3>Article</h3>
+        <div class="s09-meta-row">
+          <span>article: <b>4c9a7e21</b></span>
+          <span>subject: <b>embedder-fingerprint-partitioning &middot; concept</b></span>
+          <span>project: <b>darkmem</b></span>
+          <span>synthesised: <b>2026-07-19 03:00</b></span>
+          <span>fact_set_hash (current): <b>8b31e9d2f4a7</b></span>
+          <span>fact_set_hash (at synthesis): <b>8b31e9d2f4a7</b> &rarr; <b>stale</b></span>
+        </div>
+        <div class="s09-badge-row">
+          <span class="layer-chip l3">L3 &middot; article</span>
+          <span class="badge corroborated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+            corroborated
+          </span>
+          <span class="overlay-stale">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
+            stale
+          </span>
+          <span class="s09-claim-string">synthesised before the latest verified change</span>
+        </div>
+      </div>
+
+      <div class="s09-module">
+        <h3>Claim-support coverage</h3>
+        <div class="s09-coverage">
+          <div class="s09-coverage-bar"><div class="s09-coverage-fill" style="width: 85.7%"></div></div>
+          <div class="s09-coverage-stat"><b>0.86</b> claim-support coverage &mdash; 6 / 7 candidate sentences entailed by a cited fact <span class="s09-quiet">(unchanged since synthesis &mdash; re-synthesis has not run yet)</span></div>
+        </div>
+      </div>
+
+      <div class="s09-module">
+        <h3>Synthesised content</h3>
+        <p class="hint">the same grounded prose the corroborated board renders above &mdash; still fully readable, still fully cited, while a re-synthesis is pending.</p>
+        <div class="s09-prose">
+          <div>
+            <span class="s09-section-label">Partition boundary</span>
+            <p>
+              Because pgvector requires a fixed-dimension <code>vector(N)</code> column, darkmem partitions
+              embeddings by embedder fingerprint instead of storing every model's vectors in one
+              table.<a class="s09-cite" href="#s09-fact-7a3c1f02" title="grounded by fact 7a3c1f02">F1</a>
+              Each fingerprint gets its own four child tables &mdash;
+              <code>memory_embeddings__&lt;slug&gt;</code>, <code>entity_embeddings__&lt;slug&gt;</code>,
+              <code>code_chunk_embeddings__&lt;slug&gt;</code>, and
+              <code>entity_embedding_cache__&lt;slug&gt;</code>.<a class="s09-cite" href="#s09-fact-9d5e2b41" title="grounded by fact 9d5e2b41">F2</a>
+            </p>
+          </div>
+          <div>
+            <span class="s09-section-label">Registration &amp; safety</span>
+            <p>
+              The <code>embedders</code> table is the fingerprint registry, and
+              <code>embedder_registry.register</code> creates all four child tables idempotently with
+              <code>CREATE TABLE IF NOT EXISTS</code>.<a class="s09-cite" href="#s09-fact-c118e9af" title="grounded by fact c118e9af">F3</a>
+              Application code never names a partition directly; it always resolves the table name through
+              <code>child_table(parent, fingerprint)</code>.<a class="s09-cite" href="#s09-fact-2f6a04dd" title="grounded by fact 2f6a04dd">F4</a>
+              <code>_register_fingerprint</code> must run before any insert into a partition &mdash; the
+              ingest pipeline registers the content fingerprint in its embed phase, and re-registers mid-batch
+              if the active embedder rotates.<a class="s09-cite" href="#s09-fact-e01b7c53" title="grounded by fact e01b7c53">F5</a>
+              A query that joins across two different fingerprints has no defined cosine distance, because
+              vectors from different embedders are not comparable &mdash; cross-fingerprint joins are treated
+              as a bug, not an edge case.<a class="s09-cite" href="#s09-fact-88d4a6f1" title="grounded by fact 88d4a6f1">F6</a>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="annotation">
+        <b>What changed.</b> On 2026-07-23 a new fact about a fifth child-table cache-eviction policy
+        corroborated for this subject, changing its verified fact set and therefore its
+        <code>fact_set_hash</code>. Retrieval surfaces this exact same "stale" overlay wherever the article is
+        served (doc 07 &sect;5) &mdash; it is a label, never a suppression. Re-synthesis is debounced in the
+        dream job (a quiet period absorbs a burst of corroborations into one re-synthesis, not one per fact)
+        and will supersede this article once the new draft clears the grounding gate again; if it fails
+        grounding instead, this standing article is left exactly as-is rather than losing a good article to a
+        bad re-synthesis (doc 09 &sect;4.4).
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S09-superseded">
+  <h2>Article detail — superseded</h2>
+  <div class="annotation annotation-caution">
+    <b>The badge REPLACES the rung, not decorates it (doc 14 &sect;3.2).</b> This is the predecessor article
+    for the same subject, retained and reachable at its own URL rather than deleted. Its verified fact set
+    later grew past the two facts it was synthesised from, so a debounced re-synthesis produced the current
+    article (<code>4c9a7e21</code>, shown above) and this row flipped to the terminal <code>superseded</code>
+    <code>verification_status</code> &mdash; which <b>replaces</b> the corroborated rung badge entirely, the
+    same non-rung treatment C01 and S05 give a superseded row, rather than appending a caution chip beside it.
+  </div>
+  <div class="board-body">
+    <div class="s09-detail">
+
+      <div class="s09-module">
+        <h3>Article</h3>
+        <div class="s09-meta-row">
+          <span>article: <b>f0b3d9a4</b></span>
+          <span>subject: <b>embedder-fingerprint-partitioning &middot; concept</b></span>
+          <span>project: <b>darkmem</b></span>
+          <span>synthesised: <b>2026-06-30 03:00</b></span>
+          <span>fact_set_hash: <b>21c4f0b3d9a4</b></span>
+        </div>
+        <div class="s09-badge-row">
+          <span class="layer-chip l3">L3 &middot; article</span>
+          <span class="badge superseded">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+            superseded
+          </span>
+          <span class="s09-lineage">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+            superseded_by &rarr; article 4c9a7e21, "embedder-fingerprint-partitioning", 2026-07-19
+          </span>
+        </div>
+        <div class="s09-quiet">last known rung before superseding: <code>corroborated</code> &mdash; asserted by 2 distinct origins of kinds [code, memory], no known contradiction, as of 2026-06-30 (not rendered as a live badge; the terminal status replaces it, per doc 14 &sect;3.2)</div>
+      </div>
+
+      <div class="s09-module">
+        <h3>Synthesised content <span class="s09-quiet">(retained, not the servable statement of record)</span></h3>
+        <div class="s09-prose">
+          <p>
+            Because pgvector requires a fixed-dimension <code>vector(N)</code> column, darkmem partitions
+            embeddings by embedder fingerprint instead of storing every model's vectors in one
+            table.<a class="s09-cite" href="#s09-fact-7a3c1f02-s" title="grounded by fact 7a3c1f02">F1</a>
+            Each fingerprint gets its own four child tables &mdash; <code>memory_embeddings__&lt;slug&gt;</code>,
+            <code>entity_embeddings__&lt;slug&gt;</code>, <code>code_chunk_embeddings__&lt;slug&gt;</code>, and
+            <code>entity_embedding_cache__&lt;slug&gt;</code>.<a class="s09-cite" href="#s09-fact-9d5e2b41-s" title="grounded by fact 9d5e2b41">F2</a>
+          </p>
+        </div>
+        <div class="s09-citations">
+          <div class="s09-citation-row" id="s09-fact-7a3c1f02-s">
+            <span class="s09-fact-id">fact 7a3c1f02</span>
+            <span class="s09-span">claim_span [0,189)</span>
+            <span class="layer-chip l2">L2 &middot; fact</span>
+            <span class="s09-fact-text">"pgvector requires a fixed-dimension vector(N) column, which is why darkmem partitions embeddings by embedder fingerprint"</span>
+          </div>
+          <div class="s09-citation-row" id="s09-fact-9d5e2b41-s">
+            <span class="s09-fact-id">fact 9d5e2b41</span>
+            <span class="s09-span">claim_span [190,361)</span>
+            <span class="layer-chip l2">L2 &middot; fact</span>
+            <span class="s09-fact-text">"each embedder fingerprint gets four child tables, each suffixed with the fingerprint slug"</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="annotation">
+        This early synthesis only had two corroborated facts to draw from &mdash; the registration, safety,
+        and cross-fingerprint-join facts (F3&ndash;F6 in the current article) had not corroborated yet. Their
+        later corroboration changed <code>fact_set_hash</code>, this article was labelled stale (the same
+        overlay the board above shows), and a debounced re-synthesis superseded it. The citations here still
+        resolve to live, non-expired facts &mdash; nothing about supersession invalidates a fact, only the
+        article that read it.
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S09-loading">
+  <h2>Article detail — loading</h2>
+  <div class="annotation">
+    Skeleton bars mirror the populated board's module slots &mdash; the badge row, the coverage meter, the
+    prose paragraphs, and the citations list &mdash; reusing C04's <code>.c04-skel-row</code> /
+    <code>.c04-skel-bar</code> classes rather than a locally re-declared skeleton, per the fragment authoring
+    protocol's instruction to compose the C04 state-skeleton reference.
+  </div>
+  <div class="board-body">
+    <div class="s09-detail">
+      <div class="s09-module">
+        <h3>Article</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s09-module">
+        <h3>Claim-support coverage</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s09-module">
+        <h3>Synthesised content</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+      </div>
+      <div class="s09-module">
+        <h3>Citations</h3>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar text"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar badge"></span><span class="c04-skel-bar meta"></span><span class="c04-skel-bar text"></span></div>
+      </div>
+    </div>
+  </div>
+</section>

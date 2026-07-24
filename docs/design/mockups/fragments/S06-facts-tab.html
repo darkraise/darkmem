@@ -1,0 +1,534 @@
+<style>
+  /* S06 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .badge (+ rungs), .layer-chip — and
+     invents nothing that duplicates them. New S06-only layout: the
+     four-control filter bar (subject / relation / status / project scope),
+     the fact-list surface and its subject-rel-object rows, the
+     applies_when label module, and the local empty/alert/skeleton blocks.
+     This fragment does not depend on another fragment's local <style>
+     block being present, so it stays self-checkable standalone. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s06- so it can never collide with another fragment's local
+     styles once build.py concatenates them. */
+
+  .s06-filter-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed hsl(var(--border));
+  }
+  .s06-filter-field {
+    display: flex; align-items: center; gap: 8px; flex: 1 1 220px;
+    padding: 7px 12px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--background));
+  }
+  .s06-filter-field svg { width: 14px; height: 14px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s06-filter-field .val { font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s06-filter-field .val.s06-placeholder { color: hsl(var(--muted-foreground)); }
+
+  /* relation / status filter pills — same visual family as the scope pill
+     below (solid border = always-present, always-resolving control), each
+     labelled with its own field key so four distinct controls never blur
+     into one ambiguous "filters" blob. */
+  .s06-filter-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--foreground)); font-size: 13.5px;
+  }
+  .s06-filter-pill .key { color: hsl(var(--muted-foreground)); }
+  .s06-filter-pill svg { width: 12px; height: 12px; color: hsl(var(--muted-foreground)); }
+
+  /* project scope pill — mirrors the global switcher's value; sets the
+     isolation boundary every read on this tab uses (doc 13 §3). */
+  .s06-scope-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--foreground)); font-size: 13.5px; margin-left: auto;
+  }
+  .s06-scope-pill svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the fact-list surface every state below instantiates ---- */
+  .s06-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s06-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s06-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s06-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s06-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .s06-row {
+    display: flex; flex-direction: column; gap: 7px;
+    padding: 10px 12px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--card));
+  }
+  .s06-row.s06-row-candidate { border-style: dashed; background: hsl(var(--muted) / 0.15); }
+  .s06-row-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s06-row-top .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; white-space: nowrap; }
+
+  /* subject -> rel -> object triple, the row's primary label */
+  .s06-triple { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 13.5px; }
+  .s06-triple .subj, .s06-triple .obj { font-weight: 620; color: hsl(var(--foreground)); }
+  .s06-triple .rel {
+    font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.03em;
+    color: hsl(var(--muted-foreground)); padding: 1px 6px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--muted));
+  }
+  .s06-triple .arrow { color: hsl(var(--muted-foreground)); }
+
+  /* the `fact` prose sentence — a distinct column from the triple (doc 08
+     §3): the triple is the structured S/P/O, this is the embeddable text. */
+  .s06-fact-text { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+
+  /* the verbatim filled badge claim — corroborated rows show this in full
+     (task brief); confirmed/disputed/candidate stay compact, matching
+     C01's under-claiming-in-full-vs-compact-elsewhere split. */
+  .s06-claim { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--foreground)); }
+
+  /* one-line disputed collapse — the full equal-weight split panel is
+     S07's fact-detail surface, not re-derived here (doc 14 §3.5). */
+  .s06-dispute-line { font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s06-view-both { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  /* applies_when — one label per declared context key; an explicit
+     "no context restriction" label when the fact carries none, so the
+     module is never silently omitted (doc 07 §6, doc 08 §3). */
+  .s06-context-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .s06-context-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11.5px;
+    border: 1px dashed hsl(var(--border)); color: hsl(var(--foreground));
+  }
+  .s06-context-chip.s06-context-none { color: hsl(var(--muted-foreground)); font-style: italic; }
+  .s06-context-chip .tag { font-family: var(--font-mono); font-size: 10px; color: hsl(var(--muted-foreground)); }
+
+  .s06-rank-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- empty: the cold-start register, verbatim copy ---- */
+  .s06-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s06-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s06-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s06-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 64ch; }
+  .s06-empty .why b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- error: a named failure, never an empty list ---- */
+  .s06-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s06-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .s06-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s06-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s06-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s06-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- loading: skeleton rows mirroring the populated row shape ---- */
+  .s06-skel-row { display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s06-skel-top { display: flex; align-items: center; gap: 10px; }
+  .s06-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s06-skel-bar.chip { width: 62px; }
+  .s06-skel-bar.badge { width: 96px; }
+  .s06-skel-bar.triple { flex: 1 1 auto; }
+  .s06-skel-bar.meta { width: 74px; }
+  .s06-skel-bar.sub { width: 55%; height: 8px; }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S06-empty">
+  <h2>S06 — Knowledge · Facts tab: empty, cold-start</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §5.1's Facts tab: the filterable fact list (subject /
+    relation / status / project scope, doc 13 §5.1), each row's <code>subject_name → rel_type → object_name</code>
+    triple, the verification badge (composed verbatim from <b>C01</b>), the <code>applies_when</code> context
+    labels, and the <code>L2 · fact</code> layer chip (<b>C02</b>). The fact <i>detail</i> view — the sources
+    module grouped by <code>origin_key</code>, the belief-window timeline, the full both-sides split panel — is
+    <b>S07</b>'s surface; this board composes only the list.
+  </div>
+  <div class="annotation">
+    <b>Honesty rule: cold-start is not a generic empty state (doc 13 §5.1, spec §2.7).</b> The vault stays
+    empty of corroborated facts for months after a fresh install, because corroboration requires multiple
+    distinct origins to accumulate — that is expected, not broken, so the copy is the exact verbatim line below
+    rather than a bare "no results."
+  </div>
+  <div class="board-body">
+    <div class="s06-filter-bar">
+      <div class="s06-filter-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="val s06-placeholder">subject — e.g. darkmem, hybrid_search…</span>
+      </div>
+      <span class="s06-filter-pill"><span class="key">relation:</span> any
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s06-filter-pill"><span class="key">status:</span> any
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s06-scope-pill">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s06-surface">
+      <div class="s06-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s06-surface-body">
+        <div class="s06-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No corroborated facts yet</span>
+          <span class="why"><b>no corroborated facts yet; candidates are served labelled in search</b></span>
+          <span class="why">Corroboration takes multiple distinct origins across memory, code, and human review — this project has none logged yet. The fact layer is still lifting candidates from the graph; nothing here means broken, not "check back later, not never."</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S06-loading">
+  <h2>S06 — Knowledge · Facts tab: loading</h2>
+  <div class="annotation">
+    Skeleton rows mirror the exact layer-chip / badge / triple / meta slots the populated board below fills
+    in — a layout preview, not a spinner replacing the page (doc 14 §5).
+  </div>
+  <div class="board-body">
+    <div class="s06-filter-bar">
+      <div class="s06-filter-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="val">cookie_secure</span>
+      </div>
+      <span class="s06-filter-pill"><span class="key">relation:</span> any
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s06-filter-pill"><span class="key">status:</span> any
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s06-scope-pill">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s06-surface">
+      <div class="s06-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s06-surface-body">
+        <div class="s06-skel-row">
+          <div class="s06-skel-top"><span class="s06-skel-bar chip"></span><span class="s06-skel-bar badge"></span><span class="s06-skel-bar triple"></span><span class="s06-skel-bar meta"></span></div>
+          <span class="s06-skel-bar sub"></span>
+        </div>
+        <div class="s06-skel-row">
+          <div class="s06-skel-top"><span class="s06-skel-bar chip"></span><span class="s06-skel-bar badge"></span><span class="s06-skel-bar triple"></span><span class="s06-skel-bar meta"></span></div>
+          <span class="s06-skel-bar sub"></span>
+        </div>
+        <div class="s06-skel-row">
+          <div class="s06-skel-top"><span class="s06-skel-bar chip"></span><span class="s06-skel-bar badge"></span><span class="s06-skel-bar triple"></span><span class="s06-skel-bar meta"></span></div>
+          <span class="s06-skel-bar sub"></span>
+        </div>
+        <div class="s06-skel-row">
+          <div class="s06-skel-top"><span class="s06-skel-bar chip"></span><span class="s06-skel-bar badge"></span><span class="s06-skel-bar triple"></span><span class="s06-skel-bar meta"></span></div>
+          <span class="s06-skel-bar sub"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S06-error">
+  <h2>S06 — Knowledge · Facts tab: error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list (invariant 14).</b> A failed facts-list request never renders as zero
+    rows indistinguishable from a genuine cold-start or no-match — it raises this named error instead, retry
+    stays offered, and the last-known cached timestamp is named rather than showing stale rows as if current.
+  </div>
+  <div class="board-body">
+    <div class="s06-filter-bar">
+      <div class="s06-filter-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="val">cookie_secure</span>
+      </div>
+      <span class="s06-filter-pill"><span class="key">relation:</span> any
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s06-filter-pill"><span class="key">status:</span> any
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s06-scope-pill">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s06-surface">
+      <div class="s06-surface-header">
+        <span class="title">Facts — project: darkmem</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s06-surface-body">
+        <div class="s06-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load facts — the request failed</span>
+            <span class="desc">The knowledge-facts list did not respond. Showing the last successful list from 14:02.</span>
+            <span class="s06-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S06-populated">
+  <h2>S06 — Knowledge · Facts tab: populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Four filters, one project scope.</b> <code>subject</code> free-texts over <code>subject_name</code>;
+    <code>relation</code> constrains <code>rel_type</code> (the closed vocab); <code>status</code> constrains
+    <code>verification_status</code> across all four rungs; <code>project</code> mirrors the global switcher and
+    sets the isolation boundary the query key uses — a distinct control from the session context chip (Global
+    Constraints), which this tab does not carry (context labels are per-fact <code>applies_when</code> data
+    here, not a query input).
+  </div>
+  <div class="annotation">
+    <b>A candidate ranks below every verified rung, always (doc 08 §4, doc 14 §3.2).</b> The list below sorts
+    <code>confirmed → corroborated → disputed → candidate</code>; the candidate row at the bottom is
+    "extracted signal, not yet corroborated" and is still served, labelled, never hidden and never mixed in as
+    if equally supported. Each row composes the shared <b>C01</b> badge markup verbatim — <code>corroborated</code>
+    shows the filled claim inline, <code>confirmed</code> always renders visible text "human-ratified", and
+    <code>disputed</code> collapses to a one-line both-sides summary (the full equal-weight split panel is
+    <b>S07</b>'s fact-detail surface). <code>applies_when</code> renders as one label per declared context key,
+    or an explicit "no context restriction" label when the fact carries none — the module is never silently
+    omitted.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s06-filter-bar">
+          <div class="s06-filter-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+            <span class="val s06-placeholder">subject — e.g. darkmem, hybrid_search…</span>
+          </div>
+          <span class="s06-filter-pill"><span class="key">relation:</span> any
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s06-filter-pill"><span class="key">status:</span> any
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s06-scope-pill">project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+        </div>
+        <div class="s06-surface">
+          <div class="s06-surface-header">
+            <span class="title">Facts — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">4 of 4 shown</span>
+          </div>
+          <div class="s06-surface-body">
+
+            <div class="s06-row">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified
+                </span>
+                <span class="meta">ratified by q.tran, 2026-07-21</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">darkmem</span><span class="arrow">→</span>
+                <span class="rel">DEPLOYED_ON</span><span class="arrow">→</span>
+                <span class="obj">docker-compose</span>
+              </span>
+              <span class="s06-fact-text">darkmem's production stack is deployed on docker-compose with host networking.</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip">env=production <span class="tag">human</span></span>
+              </div>
+            </div>
+
+            <div class="s06-row">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="meta">asserted by 3 origins</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">hybrid_search</span><span class="arrow">→</span>
+                <span class="rel">USES</span><span class="arrow">→</span>
+                <span class="obj">reciprocal rank fusion</span>
+              </span>
+              <span class="s06-fact-text">hybrid_search combines the semantic and keyword channels via reciprocal rank fusion with k=60.</span>
+              <span class="s06-claim">asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip s06-context-none">no context restriction</span>
+              </div>
+            </div>
+
+            <div class="s06-row">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge disputed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                  disputed
+                </span>
+                <span class="s06-view-both">view both sides →</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">extraction purpose</span><span class="arrow">→</span>
+                <span class="rel">USES</span><span class="arrow">→</span>
+                <span class="obj">glm-4.5-flash</span>
+              </span>
+              <span class="s06-dispute-line">disputed: 2 origins assert extraction purpose uses glm-4.5-flash, 1 origin asserts extraction purpose uses gpt-5.4-mini, as of 2026-07-15</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip">purpose=extraction <span class="tag">llm_guessed</span></span>
+              </div>
+            </div>
+
+            <div class="s06-row s06-row-candidate">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge candidate">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                  candidate
+                </span>
+                <span class="meta">as of 2026-07-18</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">reranker</span><span class="arrow">→</span>
+                <span class="rel">REPLACES</span><span class="arrow">→</span>
+                <span class="obj">cross-encoder model</span>
+              </span>
+              <span class="s06-fact-text">considering moving the reranker to a cross-encoder model.</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip s06-context-none">no context restriction</span>
+              </div>
+              <span class="s06-rank-note">lifted from L1, served labelled, ranked below every verified rung — extracted signal, not yet corroborated</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s06-filter-bar">
+          <div class="s06-filter-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+            <span class="val s06-placeholder">subject — e.g. darkmem, hybrid_search…</span>
+          </div>
+          <span class="s06-filter-pill"><span class="key">relation:</span> any
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s06-filter-pill"><span class="key">status:</span> any
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s06-scope-pill">project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+        </div>
+        <div class="s06-surface">
+          <div class="s06-surface-header">
+            <span class="title">Facts — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">4 of 4 shown</span>
+          </div>
+          <div class="s06-surface-body">
+
+            <div class="s06-row">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified
+                </span>
+                <span class="meta">ratified by q.tran, 2026-07-21</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">darkmem</span><span class="arrow">→</span>
+                <span class="rel">DEPLOYED_ON</span><span class="arrow">→</span>
+                <span class="obj">docker-compose</span>
+              </span>
+              <span class="s06-fact-text">darkmem's production stack is deployed on docker-compose with host networking.</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip">env=production <span class="tag">human</span></span>
+              </div>
+            </div>
+
+            <div class="s06-row">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="meta">asserted by 3 origins</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">hybrid_search</span><span class="arrow">→</span>
+                <span class="rel">USES</span><span class="arrow">→</span>
+                <span class="obj">reciprocal rank fusion</span>
+              </span>
+              <span class="s06-fact-text">hybrid_search combines the semantic and keyword channels via reciprocal rank fusion with k=60.</span>
+              <span class="s06-claim">asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip s06-context-none">no context restriction</span>
+              </div>
+            </div>
+
+            <div class="s06-row">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge disputed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                  disputed
+                </span>
+                <span class="s06-view-both">view both sides →</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">extraction purpose</span><span class="arrow">→</span>
+                <span class="rel">USES</span><span class="arrow">→</span>
+                <span class="obj">glm-4.5-flash</span>
+              </span>
+              <span class="s06-dispute-line">disputed: 2 origins assert extraction purpose uses glm-4.5-flash, 1 origin asserts extraction purpose uses gpt-5.4-mini, as of 2026-07-15</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip">purpose=extraction <span class="tag">llm_guessed</span></span>
+              </div>
+            </div>
+
+            <div class="s06-row s06-row-candidate">
+              <div class="s06-row-top">
+                <span class="layer-chip l2">L2 · fact</span>
+                <span class="badge candidate">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                  candidate
+                </span>
+                <span class="meta">as of 2026-07-18</span>
+              </div>
+              <span class="s06-triple">
+                <span class="subj">reranker</span><span class="arrow">→</span>
+                <span class="rel">REPLACES</span><span class="arrow">→</span>
+                <span class="obj">cross-encoder model</span>
+              </span>
+              <span class="s06-fact-text">considering moving the reranker to a cross-encoder model.</span>
+              <div class="s06-context-row">
+                <span class="s06-context-chip s06-context-none">no context restriction</span>
+              </div>
+              <span class="s06-rank-note">lifted from an L1 relation, served labelled, ranked below every verified rung — extracted signal, not yet corroborated</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

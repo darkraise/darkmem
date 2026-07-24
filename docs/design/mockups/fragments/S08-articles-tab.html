@@ -1,0 +1,437 @@
+<style>
+  /* S08 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .badge (+ rungs), .overlay-stale,
+     .layer-chip — and invents nothing that duplicates them. New S08-only
+     layout below: the article-list header bar, the list row shape (a
+     subject + excerpt two-line block, distinct from S02's single-line
+     memory/fact rows because an article is a synthesised write-up, not a
+     raw claim), the claim-support-coverage readout, the lineage-link
+     affordance, and the local empty/alert/skeleton blocks. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s08- so it can never collide with another fragment's local
+     styles once build.py concatenates them. */
+
+  .s08-list-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed hsl(var(--border));
+  }
+  .s08-scope-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--foreground)); font-size: 14px;
+  }
+  .s08-scope-pill svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); }
+  .s08-sort { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+  /* ---- the article-list surface every state below instantiates ---- */
+  .s08-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s08-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s08-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s08-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s08-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+  /* one list row = one live article for its subject; layer chip + rung
+     badge + optional overlay on the left, the subject/excerpt block in
+     the middle, coverage + meta stacked on the right. */
+  .s08-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); flex-wrap: wrap; }
+  .s08-row-badges { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; flex: none; }
+  .s08-row-main { display: flex; flex-direction: column; gap: 4px; flex: 1 1 300px; min-width: 220px; }
+  .s08-subject { font-size: 13.5px; font-weight: 620; color: hsl(var(--foreground)); }
+  .s08-excerpt { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s08-row-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+  .s08-coverage { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); white-space: nowrap; }
+  .s08-meta-line { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  /* lineage affordance — "one live row, history reachable" (doc 09 §4.4).
+     Dashed treatment mirrors C01's .c01-lineage so the two fragments read
+     as the same honesty idiom rather than two different widgets. */
+  .s08-lineage { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s08-lineage svg { width: 12px; height: 12px; flex: none; }
+  .s08-lineage a, .s08-lineage span.link { color: hsl(var(--primary)); }
+
+  /* ---- empty: honest cold-start, distinct from the Facts-tab register ---- */
+  .s08-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s08-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s08-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s08-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 64ch; }
+  .s08-empty .why b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s08-cta-row { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+  .s08-btn-outline { font-size: 12.5px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: transparent; }
+
+  /* ---- error: a named failure, never an empty list ---- */
+  .s08-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s08-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .s08-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s08-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s08-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s08-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- loading: skeleton rows mirroring the populated row shape ---- */
+  .s08-skel-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s08-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s08-skel-bar.chip { width: 66px; }
+  .s08-skel-bar.badge { width: 96px; }
+  .s08-skel-col { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; }
+  .s08-skel-bar.subject { width: 55%; }
+  .s08-skel-bar.excerpt { width: 85%; }
+  .s08-skel-bar.coverage { width: 84px; }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S08-empty">
+  <h2>S08 — Knowledge: Articles tab, empty (cold start)</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §5.2's Articles-browsing inventory as assigned to the
+    <i>list</i>: the article list — exactly one live grounded article per <code>(project, subject_key)</code>.
+    The grounded-prose reading view with inline claim citations, the full <b>stale</b> and <b>superseded</b>
+    detail states, and the confidence-as-coverage derivation belong to the article-detail board, <b>S09</b>;
+    this board renders only what a subject's row in the list needs to say.
+  </div>
+  <div class="annotation">
+    <b>Honesty rule: cold-start, not the Facts tab's register verbatim, but the same underlying cause.</b>
+    Articles are synthesised once corroborated facts exist for a subject — a Layer-3 article only ever grounds
+    itself in the subject's non-disputed corroborated/confirmed facts, never in candidates (doc 09 §4.1/§4.2).
+    With the fact layer still empty, nothing here is eligible to synthesise from yet — that is the same root
+    condition as the Facts tab's own "no corroborated facts yet; candidates are served labelled in search"
+    cold start (doc 13 §5.1), so the copy below names that dependency explicitly rather than reading as broken.
+  </div>
+  <div class="board-body">
+    <div class="s08-list-bar">
+      <span class="s08-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s08-surface">
+      <div class="s08-surface-header">
+        <span class="title">Articles — project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s08-surface-body">
+        <div class="s08-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3v5h5"/><path d="M6 3h8l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+          <span class="headline">No articles yet</span>
+          <span class="why"><b>Articles are synthesised once corroborated facts exist for a subject — none do here yet.</b></span>
+          <span class="why">A subject needs a live Layer-2 fact set before it can be written up: no corroborated or confirmed facts means nothing for the synthesiser to ground a claim in, so it produces no draft rather than an ungrounded one.</span>
+          <div class="s08-cta-row">
+            <span class="s08-btn-outline">View Facts tab</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S08-loading">
+  <h2>S08 — Knowledge: Articles tab, loading</h2>
+  <div class="annotation">
+    Skeleton rows mirror the exact chip / badge / subject / excerpt / coverage slots the populated board below
+    fills in — a layout preview, not a spinner replacing the page (doc 14 §5).
+  </div>
+  <div class="board-body">
+    <div class="s08-list-bar">
+      <span class="s08-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s08-surface">
+      <div class="s08-surface-header">
+        <span class="title">Articles — project: darkmem</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s08-surface-body">
+        <div class="s08-skel-row"><span class="s08-skel-bar chip"></span><span class="s08-skel-bar badge"></span><div class="s08-skel-col"><span class="s08-skel-bar subject"></span><span class="s08-skel-bar excerpt"></span></div><span class="s08-skel-bar coverage"></span></div>
+        <div class="s08-skel-row"><span class="s08-skel-bar chip"></span><span class="s08-skel-bar badge"></span><div class="s08-skel-col"><span class="s08-skel-bar subject"></span><span class="s08-skel-bar excerpt"></span></div><span class="s08-skel-bar coverage"></span></div>
+        <div class="s08-skel-row"><span class="s08-skel-bar chip"></span><span class="s08-skel-bar badge"></span><div class="s08-skel-col"><span class="s08-skel-bar subject"></span><span class="s08-skel-bar excerpt"></span></div><span class="s08-skel-bar coverage"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S08-error">
+  <h2>S08 — Knowledge: Articles tab, error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list.</b> The article list is a straightforward per-project read, not a
+    fused retrieval — so its failure mode is a named request failure, not a two-channel degrade. A failed load
+    never renders as a bare empty list indistinguishable from the genuine cold-start above (invariant 14);
+    retry stays offered and the last-known list timestamp is named rather than showing stale rows as current.
+  </div>
+  <div class="board-body">
+    <div class="s08-list-bar">
+      <span class="s08-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s08-surface">
+      <div class="s08-surface-header">
+        <span class="title">Articles — project: darkmem</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s08-surface-body">
+        <div class="s08-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load articles — the knowledge API request failed</span>
+            <span class="desc">The vault service did not respond. Showing the last successful list from 13:40 is not available for this project — retry to load current articles.</span>
+            <span class="s08-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S08-populated">
+  <h2>S08 — Knowledge: Articles tab, populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Exactly one live article per <code>(project, subject_key)</code>.</b> The partial-unique constraint
+    (<code>WHERE status &lt;&gt; 'superseded'</code>, doc 04 §8.8) means this list can never show two current
+    drafts competing for the same subject — a subject either has one live row here, sitting in the ladder's
+    <code>corroborated</code>/<code>confirmed</code> rungs, or no row at all. A subject's history is not
+    deleted, only chained: each live row's prior versions stay reachable through its <code>superseded_by</code>
+    lineage (doc 09 §4.4), not by cluttering the list with duplicate rows per subject — see the second row's
+    lineage link below.
+  </div>
+  <div class="annotation">
+    <b>Row composition.</b> Each row reuses the shared verification badge and layer chip verbatim from
+    <b>C01</b>/<b>C02</b> (never re-derived), adds the subject + a short excerpt of the synthesised prose
+    (new S08 layout — full grounded prose with inline claim citations is S09's surface, not rendered here),
+    and the <b>claim-support coverage</b> readout — the article's <code>confidence</code>, labelled by what it
+    actually measures (entailed claims / total claims, doc 09 §4.3), never a vague unlabelled score. A row
+    whose supporting verified fact set changed since synthesis carries the <code>stale</code> overlay
+    (<code>.overlay-stale</code>, appended after the badge, never replacing it — third row below).
+  </div>
+  <div class="annotation annotation-caution">
+    <b>What never appears in this list.</b> A <code>disputed</code> or ungrounded article
+    (<code>review_state='open'</code>) is withheld from this corroborated view entirely and routed to
+    Knowledge → Review instead (doc 09 §4.3/§4.4) — this list only ever shows rows that cleared the
+    claim-support coverage threshold.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s08-list-bar">
+          <span class="s08-scope-pill">
+            project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s08-sort">sorted by priority — verified-fact count · read-heat · centrality</span>
+        </div>
+        <div class="s08-surface">
+          <div class="s08-surface-header">
+            <span class="title">Articles — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">4 subjects</span>
+          </div>
+          <div class="s08-surface-body">
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">Cookie security defaults across environments</span>
+                <span class="s08-excerpt">cookie_secure defaults to Secure only when environment=production; an explicit COOKIE_SECURE=false permits plain-HTTP LAN deploys without weakening the production default…</span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.92</span>
+                <span class="s08-meta-line">ratified 2026-07-10</span>
+              </div>
+            </div>
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">Retrieval fusion weights — how darkmem ranks results</span>
+                <span class="s08-excerpt">Hybrid search fuses semantic and keyword channels via Reciprocal Rank Fusion (k=60), weighted 0.7 toward the semantic side by default; a reranker, when enabled, rescopes only the top 40 fused rows…</span>
+                <span class="s08-lineage">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                  supersedes 1 prior article · superseded 2026-07-19 — <span class="link">view history →</span>
+                </span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.88</span>
+                <span class="s08-meta-line">asserted across 5 facts</span>
+              </div>
+            </div>
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="overlay-stale">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
+                  stale
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">Hybrid search fusion — degraded-channel behaviour</span>
+                <span class="s08-excerpt">When one retrieval channel fails, darkmem degrades to the surviving channel rather than narrowing the result set; a single-channel failure never silently returns fewer rows…</span>
+                <span class="s08-excerpt">synthesised before the latest verified change</span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.81</span>
+                <span class="s08-meta-line">stale since 2026-07-23</span>
+              </div>
+            </div>
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">LLM purpose routing across six roles</span>
+                <span class="s08-excerpt">Six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each resolve independently through a provider or profile reference, so rotating one credential never touches another purpose's routing…</span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.79</span>
+                <span class="s08-meta-line">asserted across 3 facts</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s08-list-bar">
+          <span class="s08-scope-pill">
+            project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s08-sort">sorted by priority — verified-fact count · read-heat · centrality</span>
+        </div>
+        <div class="s08-surface">
+          <div class="s08-surface-header">
+            <span class="title">Articles — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">4 subjects</span>
+          </div>
+          <div class="s08-surface-body">
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">Cookie security defaults across environments</span>
+                <span class="s08-excerpt">cookie_secure defaults to Secure only when environment=production; an explicit COOKIE_SECURE=false permits plain-HTTP LAN deploys without weakening the production default…</span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.92</span>
+                <span class="s08-meta-line">ratified 2026-07-10</span>
+              </div>
+            </div>
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">Retrieval fusion weights — how darkmem ranks results</span>
+                <span class="s08-excerpt">Hybrid search fuses semantic and keyword channels via Reciprocal Rank Fusion (k=60), weighted 0.7 toward the semantic side by default; a reranker, when enabled, rescopes only the top 40 fused rows…</span>
+                <span class="s08-lineage">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                  supersedes 1 prior article · superseded 2026-07-19 — <span class="link">view history →</span>
+                </span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.88</span>
+                <span class="s08-meta-line">asserted across 5 facts</span>
+              </div>
+            </div>
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <span class="overlay-stale">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
+                  stale
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">Hybrid search fusion — degraded-channel behaviour</span>
+                <span class="s08-excerpt">When one retrieval channel fails, darkmem degrades to the surviving channel rather than narrowing the result set; a single-channel failure never silently returns fewer rows…</span>
+                <span class="s08-excerpt">synthesised before the latest verified change</span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.81</span>
+                <span class="s08-meta-line">stale since 2026-07-23</span>
+              </div>
+            </div>
+
+            <div class="s08-row">
+              <div class="s08-row-badges">
+                <span class="layer-chip l3">L3 · article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+              </div>
+              <div class="s08-row-main">
+                <span class="s08-subject">LLM purpose routing across six roles</span>
+                <span class="s08-excerpt">Six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each resolve independently through a provider or profile reference, so rotating one credential never touches another purpose's routing…</span>
+              </div>
+              <div class="s08-row-meta">
+                <span class="s08-coverage">claim-support coverage 0.79</span>
+                <span class="s08-meta-line">asserted across 3 facts</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

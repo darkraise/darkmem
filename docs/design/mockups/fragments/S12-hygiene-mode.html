@@ -1,0 +1,768 @@
+<style>
+  /* S12 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .badge (+ .badge.superseded /
+     .badge.deprecated), .layer-chip — and invents nothing that duplicates
+     them. Everything below is new S12-only layout: the shared triage-shell
+     header (route label + Review/Hygiene mode toggle + project scope pill,
+     mirroring the S11 shell this screen shares), the four hygiene-category
+     surfaces (candidate duplicates, low-confidence memories, expiring-soon
+     rows, superseded lineage), their per-category bulk-action toolbars, and
+     the checkbox/row/why-ranked primitives. S11 has not landed as a file
+     yet (parallel wave), so this header is authored fresh from doc 13 §6.2
+     / doc 08 §6 rather than copied from an existing S11 fragment; its
+     structure (route label, segmented mode toggle, scope pill) is kept
+     deliberately plain so an S11 author reusing it later does not have to
+     unwind anything S12-specific. Reads var(--token) / hsl(var(--token))
+     only; no hex, no redeclared tokens. Namespaced s12- so it can never
+     collide with another fragment's local styles once build.py
+     concatenates them. Note: hygiene rows are all L0 memories, so per the
+     non-rung rule (doc 14 §3.2 / C01 group 4) they never carry a
+     candidate/corroborated/disputed/confirmed rung badge — only the
+     .badge.superseded / .badge.deprecated lifecycle-amber treatment where
+     the row's own status warrants it (the lineage category), otherwise no
+     badge at all. Dedup pairs use a bespoke .s12-dup-pair layout rather
+     than C01's .c01-dispute split panel — a candidate-duplicate pair is
+     not a disputed-fact both-sides claim, and reusing that panel would
+     blur two different honesty concepts. */
+
+  .s12-shell-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed hsl(var(--border));
+  }
+  .s12-route { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .s12-mode-toggle {
+    display: inline-flex; border: 1px solid hsl(var(--border));
+    border-radius: 999px; overflow: hidden;
+  }
+  .s12-mode-tab {
+    padding: 5px 14px; font-size: 12.5px; color: hsl(var(--muted-foreground));
+    background: transparent; white-space: nowrap;
+  }
+  .s12-mode-tab.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 600; }
+
+  .s12-scope-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--foreground)); font-size: 13px; margin-left: auto;
+  }
+  .s12-scope-pill svg { width: 12px; height: 12px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the four category surfaces ---- */
+  .s12-categories { display: flex; flex-direction: column; gap: 14px; }
+  .s12-category { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s12-category-header {
+    display: flex; align-items: center; gap: 9px; padding: 10px 14px;
+    border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3);
+    flex-wrap: wrap;
+  }
+  .s12-category-header svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s12-category-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s12-category-header .count { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s12-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---- per-category bulk toolbar ---- */
+  .s12-toolbar { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s12-sel-count { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s12-btn {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+    padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: transparent;
+  }
+  .s12-btn svg { width: 12px; height: 12px; flex: none; }
+  .s12-btn.primary { border-color: hsl(var(--primary)); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .s12-btn.warn { border-color: hsl(var(--destructive) / 0.55); color: hsl(var(--destructive)); }
+  .s12-btn.is-idle { opacity: 0.5; }
+
+  /* ---- row primitives ---- */
+  .s12-check {
+    width: 16px; height: 16px; border: 1px solid hsl(var(--border)); border-radius: 4px;
+    flex: none; display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+  .s12-check.checked { background: hsl(var(--primary)); border-color: hsl(var(--primary)); }
+  .s12-check svg { width: 10px; height: 10px; color: hsl(var(--primary-foreground)); }
+
+  .s12-row {
+    display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); font-size: 13px; flex-wrap: wrap;
+  }
+  .s12-row-main { display: flex; flex-direction: column; gap: 3px; flex: 1 1 260px; min-width: 0; }
+  .s12-text { color: hsl(var(--foreground)); }
+  .s12-why { font-size: 11.5px; color: hsl(var(--muted-foreground)); font-style: italic; }
+  .s12-meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; margin-left: auto; }
+
+  /* ---- candidate-duplicate pair: two L0 rows + a similarity connector,
+     one shared checkbox for the pair (bulk-acting on the pair, not the
+     rows independently) ---- */
+  .s12-dup-pair { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s12-dup-connector { display: flex; align-items: center; gap: 8px; padding-left: 26px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s12-dup-pair .s12-row { border-style: solid; }
+  .s12-dup-pair .s12-row:first-of-type { margin-left: 26px; }
+  .s12-dup-pair .s12-row:last-of-type { margin-left: 26px; }
+  .s12-dup-head { display: flex; align-items: flex-start; gap: 10px; }
+
+  /* ---- superseded-lineage chain ---- */
+  .s12-chain { display: flex; flex-direction: column; gap: 2px; margin-left: 26px; }
+  .s12-chain-arrow { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 10px; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .s12-chain-arrow svg { width: 12px; height: 12px; }
+
+  /* ---- empty: each category shows its own "clear" line + one combined
+     headline, honest per-category rather than one generic string ---- */
+  .s12-empty-surface { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s12-empty-surface svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s12-empty-surface .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s12-empty-surface .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 62ch; }
+  .s12-clear-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s12-clear-row svg { width: 13px; height: 13px; color: hsl(var(--success)); flex: none; }
+
+  /* ---- error: a named failure, never a silent "nothing to tidy" ---- */
+  .s12-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s12-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .s12-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s12-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s12-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s12-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- loading: skeleton rows mirroring the populated shape ---- */
+  .s12-skel-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s12-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s12-skel-bar.chk { width: 16px; height: 16px; border-radius: 4px; }
+  .s12-skel-bar.chip { width: 58px; }
+  .s12-skel-bar.text { flex: 1 1 auto; }
+  .s12-skel-bar.meta { width: 88px; }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S12-empty">
+  <h2>S12 — Knowledge: Hygiene mode, empty (nothing to tidy)</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 08 §6 / doc 13 §6.2's Hygiene mode: candidate duplicates
+    surfaced by dreaming (doc 08 §9), low-confidence memories, expiring-soon rows (<code>expires_at</code>
+    approaching), and superseded lineage — each with its own bulk-action toolbar. Review mode's disputed/
+    under-sourced/ungrounded queue is <b>S11</b>'s surface, not re-illustrated here; this board shows only
+    what doc 08 §6 assigns to housekeeping.
+  </div>
+  <div class="annotation">
+    <b>Shared triage shell, one route, two modes (doc 13 §6.2).</b> Hygiene and Review render on the same
+    <code>/knowledge/review</code> screen behind the mode toggle above the categories — never two routes.
+    They are the same human <i>activity</i> (triage a queue with actions) over two distinct backend states:
+    Review adjudicates truth (<code>review_state='open'</code> facts/articles), Hygiene curates housekeeping
+    (memory-level rows). Switching the tab swaps the query, not the URL.
+  </div>
+  <div class="board-body">
+    <div class="s12-shell-bar">
+      <span class="s12-route">/knowledge/review</span>
+      <div class="s12-mode-toggle">
+        <span class="s12-mode-tab">Review</span>
+        <span class="s12-mode-tab active">Hygiene</span>
+      </div>
+      <span class="s12-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s12-category-header" style="border:1px solid hsl(var(--border));border-radius:var(--radius-sm);">
+      <span class="title">Hygiene queue</span>
+      <span class="state-chip state-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+        empty
+      </span>
+    </div>
+    <div class="s12-body">
+      <div class="s12-empty-surface">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+        <span class="headline">Nothing to tidy</span>
+        <span class="why">All four hygiene categories are clear for project darkmem — nothing needs a bulk action right now. New candidates surface here automatically as dreaming, confidence, and TTL sweeps run.</span>
+      </div>
+      <div class="s12-clear-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4L19 6"/></svg>
+        Candidate duplicates — 0, none flagged by the last dream cycle
+      </div>
+      <div class="s12-clear-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4L19 6"/></svg>
+        Low-confidence memories — 0 below the review threshold
+      </div>
+      <div class="s12-clear-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4L19 6"/></svg>
+        Expiring soon — 0 rows with <code>expires_at</code> inside the lookahead window
+      </div>
+      <div class="s12-clear-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4L19 6"/></svg>
+        Superseded lineage — 0 chains flagged for cleanup
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S12-loading">
+  <h2>S12 — Knowledge: Hygiene mode, loading</h2>
+  <div class="annotation">
+    Skeleton rows mirror the exact checkbox / text / meta slots the populated board below fills in — a
+    layout preview, not a spinner replacing the page (doc 14 §5).
+  </div>
+  <div class="board-body">
+    <div class="s12-shell-bar">
+      <span class="s12-route">/knowledge/review</span>
+      <div class="s12-mode-toggle">
+        <span class="s12-mode-tab">Review</span>
+        <span class="s12-mode-tab active">Hygiene</span>
+      </div>
+      <span class="s12-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s12-categories">
+      <div class="s12-category">
+        <div class="s12-category-header">
+          <span class="title">Candidate duplicates</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s12-body">
+          <div class="s12-skel-row"><span class="s12-skel-bar chk"></span><span class="s12-skel-bar text"></span><span class="s12-skel-bar meta"></span></div>
+          <div class="s12-skel-row"><span class="s12-skel-bar chk"></span><span class="s12-skel-bar text"></span><span class="s12-skel-bar meta"></span></div>
+        </div>
+      </div>
+      <div class="s12-category">
+        <div class="s12-category-header">
+          <span class="title">Low-confidence memories</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s12-body">
+          <div class="s12-skel-row"><span class="s12-skel-bar chk"></span><span class="s12-skel-bar text"></span><span class="s12-skel-bar meta"></span></div>
+        </div>
+      </div>
+      <div class="s12-category">
+        <div class="s12-category-header">
+          <span class="title">Expiring soon</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s12-body">
+          <div class="s12-skel-row"><span class="s12-skel-bar chk"></span><span class="s12-skel-bar text"></span><span class="s12-skel-bar meta"></span></div>
+        </div>
+      </div>
+      <div class="s12-category">
+        <div class="s12-category-header">
+          <span class="title">Superseded lineage</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s12-body">
+          <div class="s12-skel-row"><span class="s12-skel-bar chip"></span><span class="s12-skel-bar text"></span><span class="s12-skel-bar meta"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S12-error">
+  <h2>S12 — Knowledge: Hygiene mode, error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list (invariant 14).</b> A failed hygiene-queue fetch never falls back to
+    rendering the "nothing to tidy" empty state above — that copy asserts a healthy, checked queue, and
+    showing it after a fetch failure would misreport work as done. The named error stays up until retried;
+    the last-known counts (if any were cached) are labelled with their own timestamp, never presented as
+    current.
+  </div>
+  <div class="board-body">
+    <div class="s12-shell-bar">
+      <span class="s12-route">/knowledge/review</span>
+      <div class="s12-mode-toggle">
+        <span class="s12-mode-tab">Review</span>
+        <span class="s12-mode-tab active">Hygiene</span>
+      </div>
+      <span class="s12-scope-pill">
+        project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
+    <div class="s12-category-header" style="border:1px solid hsl(var(--border));border-radius:var(--radius-sm);">
+      <span class="title">Hygiene queue</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        error
+      </span>
+    </div>
+    <div class="s12-body">
+      <div class="s12-alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <div class="body">
+          <span class="headline">Couldn't load the hygiene queue</span>
+          <span class="desc">The duplicate, confidence, expiry, and lineage scans failed to respond. Showing no rows rather than a possibly-stale queue — last successful load was 2026-07-24 09:14.</span>
+          <span class="s12-retry">Retry</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S12-populated">
+  <h2>S12 — Knowledge: Hygiene mode, populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Consequence-ranked, served-labelled, never a gate (doc 13 §6.2, doc 08 §6).</b> Like Review, this queue
+    is ranked by retrieval frequency and subject salience, never FIFO or insertion order — each row's muted
+    <i>why ranked here</i> line makes that ranking visible instead of implied (doc 14 §6). Sitting in this
+    queue changes nothing about how a row serves: a low-confidence memory keeps returning from search exactly
+    as it does today, and a superseded chain keeps rendering its lineage link — hygiene is housekeeping the
+    human works, never a bottleneck the read path waits on.
+  </div>
+  <div class="annotation">
+    <b>Four categories map onto the four named bulk actions (doc 08 §6, doc 08 §9).</b> <i>Candidate
+    duplicates</i> (associative-edge pairs dreaming flagged without a correction, doc 08 §9) get
+    <b>confirm dedup</b> or, when one memory actually corrects the other rather than merely restating it,
+    <b>supersede</b> instead — dreaming never hard-merges or deletes a memory itself. <i>Low-confidence
+    memories</i> and <i>expiring-soon rows</i> get <b>set/extend a TTL</b> or <b>prune</b>. <i>Superseded
+    lineage</i> gets <b>prune</b> to compact old chain links — pruning a memory another row still points
+    <code>superseded_by</code> at first demotes that dependent to <code>deprecated</code> with the pointer
+    cleared, so the <code>chk_superseded_has_pointer</code> constraint holds throughout the batch rather than
+    aborting it.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s12-shell-bar">
+          <span class="s12-route">/knowledge/review</span>
+          <div class="s12-mode-toggle">
+            <span class="s12-mode-tab">Review</span>
+            <span class="s12-mode-tab active">Hygiene</span>
+          </div>
+          <span class="s12-scope-pill">
+            project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+        </div>
+        <div class="s12-categories">
+
+          <!-- Category 1: candidate duplicates -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span class="title">Candidate duplicates</span>
+              <span class="count">2 pairs · from dreaming</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">1 pair selected</span>
+                <span class="s12-btn primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Confirm dedup
+                </span>
+                <span class="s12-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  Supersede instead
+                </span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-dup-pair">
+                <div class="s12-dup-head">
+                  <span class="s12-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg></span>
+                  <span class="s12-dup-connector">≈ 0.93 similarity · dreaming associative edge · flagged 2026-07-22</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">cookie_secure defaults to Secure only when environment=production</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-06-09</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">COOKIE_SECURE decouples the Secure flag from environment — set false for plain-HTTP LAN deploys</span>
+                    <span class="s12-why">why ranked here — both memories co-retrieved in 5 of the last 10 cookie_secure searches</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-06-09</span>
+                </div>
+              </div>
+              <div class="s12-dup-pair">
+                <div class="s12-dup-head">
+                  <span class="s12-check"></span>
+                  <span class="s12-dup-connector">≈ 0.89 similarity · dreaming associative edge · flagged 2026-07-20</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">the reranker LLM-scores the top 40 RRF-ranked rows after fusion</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-05-01</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">RerankerService scores the top 40 fused rows before final ordering</span>
+                    <span class="s12-why">why ranked here — subject salience: "reranker" referenced by 3 active facts</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-07-03</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 2: low-confidence memories -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18Z"/><path d="M12 12l4-4"/><path d="M12 12v3"/></svg>
+              <span class="title">Low-confidence memories</span>
+              <span class="count">2</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">0 selected</span>
+                <span class="s12-btn is-idle">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+                  Set TTL
+                </span>
+                <span class="s12-btn warn is-idle">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+                  Prune
+                </span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-row">
+                <span class="s12-check"></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">might be worth swapping the article synthesiser's chunking strategy to spans instead of blocks</span>
+                  <span class="s12-why">why ranked here — confidence well under the 0.75 default, never retrieved since capture</span>
+                </span>
+                <span class="s12-meta">confidence 0.31 · captured 2026-07-21</span>
+              </div>
+              <div class="s12-row">
+                <span class="s12-check"></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">possibly deprecate the /vectors route once Knowledge fully ships</span>
+                  <span class="s12-why">why ranked here — 0 retrievals in 30 days, low salience</span>
+                </span>
+                <span class="s12-meta">confidence 0.28 · captured 2026-06-20</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 3: expiring-soon rows -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+              <span class="title">Expiring soon</span>
+              <span class="count">2 · expires_at approaching</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">2 selected</span>
+                <span class="s12-btn primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+                  Extend TTL
+                </span>
+                <span class="s12-btn">Let expire</span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-row">
+                <span class="s12-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">temporary workaround: pin uvloop&lt;0.20 until the upstream asyncio fix ships</span>
+                  <span class="s12-why">why ranked here — expires_at inside the lookahead window, still referenced by an open job config</span>
+                </span>
+                <span class="s12-meta">expires_at 2026-07-27 · in 3 days</span>
+              </div>
+              <div class="s12-row">
+                <span class="s12-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">trial LLM profile: glm-4.5-flash evaluation window</span>
+                  <span class="s12-why">why ranked here — expires_at inside the lookahead window</span>
+                </span>
+                <span class="s12-meta">expires_at 2026-07-30 · in 6 days</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 4: superseded lineage -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+              <span class="title">Superseded lineage</span>
+              <span class="count">1 chain · 3 rows</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">0 selected</span>
+                <span class="s12-btn warn is-idle">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+                  Prune
+                </span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-dup-head">
+                <span class="s12-check"></span>
+                <span class="s12-dup-connector">chain depth 2 · still linked from 1 active memory</span>
+              </div>
+              <div class="s12-chain">
+                <div class="s12-row">
+                  <span class="badge superseded">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                    superseded
+                  </span>
+                  <span class="s12-row-main"><span class="s12-text">reranker top-K fixed at 20 rows</span></span>
+                  <span class="s12-meta">superseded 2026-05-01</span>
+                </div>
+                <div class="s12-chain-arrow">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v14"/><path d="M6 13l6 6 6-6"/></svg>
+                  superseded_by
+                </div>
+                <div class="s12-row">
+                  <span class="badge superseded">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                    superseded
+                  </span>
+                  <span class="s12-row-main"><span class="s12-text">reranker top-K raised to 40 rows</span></span>
+                  <span class="s12-meta">superseded 2026-06-15</span>
+                </div>
+                <div class="s12-chain-arrow">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v14"/><path d="M6 13l6 6 6-6"/></svg>
+                  superseded_by
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">reranker top-K raised to 40 rows, applied after RRF fusion</span>
+                    <span class="s12-why">why ranked here — active head of a 2-deep chain, both ancestors past dream_undo_retention</span>
+                  </span>
+                  <span class="s12-meta">active · current</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s12-shell-bar">
+          <span class="s12-route">/knowledge/review</span>
+          <div class="s12-mode-toggle">
+            <span class="s12-mode-tab">Review</span>
+            <span class="s12-mode-tab active">Hygiene</span>
+          </div>
+          <span class="s12-scope-pill">
+            project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+        </div>
+        <div class="s12-categories">
+
+          <!-- Category 1: candidate duplicates -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span class="title">Candidate duplicates</span>
+              <span class="count">2 pairs · from dreaming</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">1 pair selected</span>
+                <span class="s12-btn primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Confirm dedup
+                </span>
+                <span class="s12-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  Supersede instead
+                </span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-dup-pair">
+                <div class="s12-dup-head">
+                  <span class="s12-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg></span>
+                  <span class="s12-dup-connector">≈ 0.93 similarity · dreaming associative edge · flagged 2026-07-22</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">cookie_secure defaults to Secure only when environment=production</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-06-09</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">COOKIE_SECURE decouples the Secure flag from environment — set false for plain-HTTP LAN deploys</span>
+                    <span class="s12-why">why ranked here — both memories co-retrieved in 5 of the last 10 cookie_secure searches</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-06-09</span>
+                </div>
+              </div>
+              <div class="s12-dup-pair">
+                <div class="s12-dup-head">
+                  <span class="s12-check"></span>
+                  <span class="s12-dup-connector">≈ 0.89 similarity · dreaming associative edge · flagged 2026-07-20</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">the reranker LLM-scores the top 40 RRF-ranked rows after fusion</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-05-01</span>
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">RerankerService scores the top 40 fused rows before final ordering</span>
+                    <span class="s12-why">why ranked here — subject salience: "reranker" referenced by 3 active facts</span>
+                  </span>
+                  <span class="s12-meta">captured 2026-07-03</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 2: low-confidence memories -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18Z"/><path d="M12 12l4-4"/><path d="M12 12v3"/></svg>
+              <span class="title">Low-confidence memories</span>
+              <span class="count">2</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">0 selected</span>
+                <span class="s12-btn is-idle">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+                  Set TTL
+                </span>
+                <span class="s12-btn warn is-idle">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+                  Prune
+                </span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-row">
+                <span class="s12-check"></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">might be worth swapping the article synthesiser's chunking strategy to spans instead of blocks</span>
+                  <span class="s12-why">why ranked here — confidence well under the 0.75 default, never retrieved since capture</span>
+                </span>
+                <span class="s12-meta">confidence 0.31 · captured 2026-07-21</span>
+              </div>
+              <div class="s12-row">
+                <span class="s12-check"></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">possibly deprecate the /vectors route once Knowledge fully ships</span>
+                  <span class="s12-why">why ranked here — 0 retrievals in 30 days, low salience</span>
+                </span>
+                <span class="s12-meta">confidence 0.28 · captured 2026-06-20</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 3: expiring-soon rows -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+              <span class="title">Expiring soon</span>
+              <span class="count">2 · expires_at approaching</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">2 selected</span>
+                <span class="s12-btn primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+                  Extend TTL
+                </span>
+                <span class="s12-btn">Let expire</span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-row">
+                <span class="s12-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">temporary workaround: pin uvloop&lt;0.20 until the upstream asyncio fix ships</span>
+                  <span class="s12-why">why ranked here — expires_at inside the lookahead window, still referenced by an open job config</span>
+                </span>
+                <span class="s12-meta">expires_at 2026-07-27 · in 3 days</span>
+              </div>
+              <div class="s12-row">
+                <span class="s12-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg></span>
+                <span class="layer-chip l0">L0 · memory</span>
+                <span class="s12-row-main">
+                  <span class="s12-text">trial LLM profile: glm-4.5-flash evaluation window</span>
+                  <span class="s12-why">why ranked here — expires_at inside the lookahead window</span>
+                </span>
+                <span class="s12-meta">expires_at 2026-07-30 · in 6 days</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 4: superseded lineage -->
+          <div class="s12-category">
+            <div class="s12-category-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+              <span class="title">Superseded lineage</span>
+              <span class="count">1 chain · 3 rows</span>
+              <div class="s12-toolbar">
+                <span class="s12-sel-count">0 selected</span>
+                <span class="s12-btn warn is-idle">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+                  Prune
+                </span>
+              </div>
+            </div>
+            <div class="s12-body">
+              <div class="s12-dup-head">
+                <span class="s12-check"></span>
+                <span class="s12-dup-connector">chain depth 2 · still linked from 1 active memory</span>
+              </div>
+              <div class="s12-chain">
+                <div class="s12-row">
+                  <span class="badge superseded">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                    superseded
+                  </span>
+                  <span class="s12-row-main"><span class="s12-text">reranker top-K fixed at 20 rows</span></span>
+                  <span class="s12-meta">superseded 2026-05-01</span>
+                </div>
+                <div class="s12-chain-arrow">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v14"/><path d="M6 13l6 6 6-6"/></svg>
+                  superseded_by
+                </div>
+                <div class="s12-row">
+                  <span class="badge superseded">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                    superseded
+                  </span>
+                  <span class="s12-row-main"><span class="s12-text">reranker top-K raised to 40 rows</span></span>
+                  <span class="s12-meta">superseded 2026-06-15</span>
+                </div>
+                <div class="s12-chain-arrow">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v14"/><path d="M6 13l6 6 6-6"/></svg>
+                  superseded_by
+                </div>
+                <div class="s12-row">
+                  <span class="layer-chip l0">L0 · memory</span>
+                  <span class="s12-row-main">
+                    <span class="s12-text">reranker top-K raised to 40 rows, applied after RRF fusion</span>
+                    <span class="s12-why">why ranked here — active head of a 2-deep chain, both ancestors past dream_undo_retention</span>
+                  </span>
+                  <span class="s12-meta">active · current</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

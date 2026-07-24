@@ -1,0 +1,587 @@
+<style>
+  /* S10 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip — and invents nothing that duplicates
+     them. This tab renders NO verification badge and NO layer chip: a
+     topic (memory_communities row) and a pin suggestion are organizational
+     views of what memory contains, never a verified claim (doc 09 §3.3) —
+     .badge/.layer-chip belong to Facts/Articles, not Topics, so this
+     fragment does not reach for them. New S10-only layout below: the
+     community-list card (label, dominant-entity tags, member count,
+     impact rating, report_string), the pin-suggestion nomination card
+     (subject soft key, supporting community label, new/grown reason,
+     member count, anchored-verified-fact count, accept/dismiss actions),
+     and the local empty/alert/skeleton blocks. This fragment does not
+     depend on another fragment's local <style> block being present, so it
+     stays self-checkable standalone. Reads var(--token) / hsl(var(--token))
+     only; no hex, no redeclared tokens. Namespaced s10- so it can never
+     collide with another fragment's local styles once build.py
+     concatenates them. */
+
+  .s10-list-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed hsl(var(--border));
+  }
+  .s10-scope-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--foreground)); font-size: 14px;
+  }
+  .s10-scope-pill svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); }
+  .s10-run-meta { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+  .s10-section-head { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+  .s10-section-head h3 { margin: 0; font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s10-section-head .count { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the two list surfaces every populated/loading/error board instantiates ---- */
+  .s10-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s10-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s10-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s10-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s10-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---- community card ---- */
+  .s10-comm-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s10-comm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s10-comm-head svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s10-comm-label { font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s10-comm-meta { margin-left: auto; display: flex; gap: 12px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s10-entity-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .s10-entity-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-sm); font-size: 11.5px; border: 1px solid hsl(var(--border)); background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+  .s10-report { display: flex; gap: 7px; padding-left: 2px; border-left: 2px dashed hsl(var(--border)); font-size: 12px; color: hsl(var(--muted-foreground)); font-style: italic; }
+  .s10-report.s10-report-none { font-style: normal; }
+  .s10-report .tag { flex: none; font-family: var(--font-mono); font-style: normal; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+  .s10-no-suggestion { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- pin-suggestion nomination card ---- */
+  .s10-nom-card { display: flex; flex-direction: column; gap: 9px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s10-nom-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s10-nom-head svg { width: 14px; height: 14px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s10-nom-subject { font-size: 13.5px; font-weight: 640; color: hsl(var(--foreground)); font-family: var(--font-mono); }
+  .s10-reason-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; border: 1px dashed hsl(var(--border)); color: hsl(var(--foreground)); margin-left: auto; }
+  .s10-reason-chip svg { width: 11px; height: 11px; }
+  .s10-nom-support { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s10-nom-support b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s10-nom-meta-row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .s10-nom-meta-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: hsl(var(--foreground)); }
+  .s10-nom-meta-item svg { width: 13px; height: 13px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s10-nom-actions { display: flex; gap: 8px; padding-top: 3px; border-top: 1px dashed hsl(var(--border)); }
+  .s10-btn-accept, .s10-btn-dismiss { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
+  .s10-btn-accept svg, .s10-btn-dismiss svg { width: 13px; height: 13px; }
+  .s10-btn-accept { border: 1px solid hsl(var(--primary)); color: hsl(var(--primary-foreground)); background: hsl(var(--primary)); }
+  .s10-btn-dismiss { border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: transparent; }
+  .s10-nom-decided { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.3); font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s10-nom-decided svg { width: 14px; height: 14px; flex: none; }
+
+  /* ---- empty: honest cold-start, verbatim tab-level copy ---- */
+  .s10-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s10-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s10-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s10-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 64ch; }
+  .s10-empty .why b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- error: a named failure, never an empty list ---- */
+  .s10-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s10-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .s10-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s10-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s10-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s10-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- loading: skeleton cards mirroring the populated card shape ---- */
+  .s10-skel-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s10-skel-top { display: flex; align-items: center; gap: 10px; }
+  .s10-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s10-skel-bar.label { width: 42%; }
+  .s10-skel-bar.meta { width: 74px; margin-left: auto; }
+  .s10-skel-bar.tag { width: 64px; }
+  .s10-skel-bar.report { width: 80%; height: 8px; }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S10-empty">
+  <h2>S10 — Knowledge · Topics tab: empty, no topics detected yet</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 09 §3.1/§3.4 and doc 13 §5/§9's Topics tab: the community list
+    (<code>memory_communities</code> rows — label, dominant entities, impact rating, member count,
+    <code>report_string</code>) and the pin-suggestion nominations that are the one bridge from topics to the
+    article vault. Facts/Articles browsing are S06/S08's surfaces; the disputed/ungrounded review queue is
+    S11's — this board composes only what doc 13 §5 assigns to Topics.
+  </div>
+  <div class="annotation">
+    <b>A topic is a community, never an entity (invariant 5, doc 01 §3.3, doc 09 §2).</b> What this tab lists
+    is a computed clustering of <i>memories</i> via their entities — it is never itself stored as an entity row,
+    which would collide with the closed <code>ENTITY_TYPES</code> fallback and the entities table's
+    <code>UNIQUE(name, entity_type)</code> constraint. Topics live in their own table (doc 06); this tab only
+    ever renders them as a community.
+  </div>
+  <div class="board-body">
+    <div class="s10-list-bar">
+      <span class="s10-scope-pill">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s10-run-meta">last detection run: never</span>
+    </div>
+    <div class="s10-surface">
+      <div class="s10-surface-header">
+        <span class="title">Topics — project: darkmem</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s10-surface-body">
+        <div class="s10-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No topics detected yet</span>
+          <span class="why"><b>no topics detected yet</b></span>
+          <span class="why">Community detection clusters memories once enough of them share entities — this project has not accumulated enough yet, or the Tier-C detection job has not completed its first run. Nothing here means broken, not never.</span>
+        </div>
+      </div>
+    </div>
+    <div class="s10-section-head"><h3>Pin suggestions</h3></div>
+    <div class="s10-surface">
+      <div class="s10-surface-body">
+        <div class="s10-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No pin suggestions</span>
+          <span class="why">Nominations are diffed from consecutive detection runs (doc 09 §3.4) — with no community rows yet, there is nothing to diff.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S10-loading">
+  <h2>S10 — Knowledge · Topics tab: loading</h2>
+  <div class="annotation">
+    Skeleton cards mirror the exact label / meta / tag / report slots the populated board below fills in — a
+    layout preview, not a spinner replacing the page (doc 14 §5).
+  </div>
+  <div class="board-body">
+    <div class="s10-list-bar">
+      <span class="s10-scope-pill">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s10-run-meta">last detection run: 2026-07-22</span>
+    </div>
+    <div class="s10-surface">
+      <div class="s10-surface-header">
+        <span class="title">Topics — project: darkmem</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s10-surface-body">
+        <div class="s10-skel-card">
+          <div class="s10-skel-top"><span class="s10-skel-bar label"></span><span class="s10-skel-bar meta"></span></div>
+          <div class="s10-skel-top"><span class="s10-skel-bar tag"></span><span class="s10-skel-bar tag"></span></div>
+          <span class="s10-skel-bar report"></span>
+        </div>
+        <div class="s10-skel-card">
+          <div class="s10-skel-top"><span class="s10-skel-bar label"></span><span class="s10-skel-bar meta"></span></div>
+          <div class="s10-skel-top"><span class="s10-skel-bar tag"></span><span class="s10-skel-bar tag"></span></div>
+          <span class="s10-skel-bar report"></span>
+        </div>
+      </div>
+    </div>
+    <div class="s10-section-head"><h3>Pin suggestions</h3></div>
+    <div class="s10-surface">
+      <div class="s10-surface-body">
+        <div class="s10-skel-card">
+          <div class="s10-skel-top"><span class="s10-skel-bar label"></span><span class="s10-skel-bar meta"></span></div>
+          <span class="s10-skel-bar report"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S10-error">
+  <h2>S10 — Knowledge · Topics tab: error, community query failed</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list (doc 07 §2, invariant 14).</b> A failed read of
+    <code>memory_communities</code> raises a named error, never a silently-blank list indistinguishable from a
+    genuine "no topics yet." Retry stays offered; the last-known snapshot's timestamp is named rather than
+    showing stale rows as if current.
+  </div>
+  <div class="board-body">
+    <div class="s10-list-bar">
+      <span class="s10-scope-pill">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+      <span class="s10-run-meta">last detection run: 2026-07-22</span>
+    </div>
+    <div class="s10-surface">
+      <div class="s10-surface-header">
+        <span class="title">Topics — project: darkmem</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s10-surface-body">
+        <div class="s10-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load topics — community query failed</span>
+            <span class="desc">The <code>memory_communities</code> read timed out. Showing the last successful snapshot from the 2026-07-22 detection run.</span>
+            <span class="s10-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S10-populated">
+  <h2>S10 — Knowledge · Topics tab: populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>No verification badge on this tab (doc 09 §3.3).</b> A community and a pin suggestion are organizational
+    views of what memory contains — the same footing as <code>memory_overview</code> — never a verified claim,
+    so neither card below composes <code>.badge</code> or <code>.layer-chip</code>; those belong to the
+    Facts/Articles tabs (doc 13 §5.1/§5.2).
+  </div>
+  <div class="annotation">
+    <b>Community ids churn — nominations reference by label, never by id (doc 09 §3.4, doc 06 §7).</b>
+    <code>memory_communities</code> is delete-and-rewritten on every detection run, so a community id cached
+    from a previous page load can point at nothing on the next. Every card below — and every
+    <code>events</code> row an accept/dismiss journals — keys on the <b>stable dominant-entity label</b>
+    ("Hybrid search &amp; RRF weighting" below), never on the row's current id.
+  </div>
+  <div class="annotation">
+    <b>Accept pins a subject; it never auto-creates an article (doc 09 §3.4/§4.1).</b> Accept writes a pinned
+    subject only, making it <i>eligible</i> for synthesis on the next salience/synthesis pass — the article
+    itself still has to be grounded from verified facts. Dismiss is recorded against the subject so later
+    detection diffs suppress the suggestion, not merely hidden client-side. A nomination only fires once its
+    subject already anchors a floor of non-disputed corroborated/confirmed facts — a human is never asked to
+    pin a subject that could not yet be grounded.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s10-list-bar">
+          <span class="s10-scope-pill">project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s10-run-meta">last detection run: 2026-07-22</span>
+        </div>
+        <div class="s10-surface">
+          <div class="s10-surface-header">
+            <span class="title">Topics — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">3 communities</span>
+          </div>
+          <div class="s10-surface-body">
+            <div class="s10-comm-card">
+              <div class="s10-comm-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg>
+                <span class="s10-comm-label">Hybrid search &amp; RRF weighting</span>
+                <span class="s10-comm-meta">
+                  <span>17 members</span>
+                  <span>impact: high</span>
+                </span>
+              </div>
+              <div class="s10-entity-row">
+                <span class="s10-entity-tag">hybrid_search_enabled</span>
+                <span class="s10-entity-tag">rrf_score</span>
+                <span class="s10-entity-tag">semantic_weight</span>
+                <span class="s10-entity-tag">reranker</span>
+              </div>
+              <div class="s10-report">
+                <span class="tag">report</span>
+                <span>Memories in this cluster converge on tuning the RRF fusion weight and troubleshooting keyword-only degradation.</span>
+              </div>
+              <span class="s10-no-suggestion">Already has a live article — "Hybrid search and RRF tuning defaults." No pin suggestion.</span>
+            </div>
+
+            <div class="s10-comm-card">
+              <div class="s10-comm-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg>
+                <span class="s10-comm-label">Retry &amp; backoff tuning</span>
+                <span class="s10-comm-meta">
+                  <span>9 members</span>
+                  <span>impact: medium</span>
+                </span>
+              </div>
+              <div class="s10-entity-row">
+                <span class="s10-entity-tag">retry_backoff_strategy</span>
+                <span class="s10-entity-tag">job_registry</span>
+              </div>
+              <div class="s10-report s10-report-none">
+                <span class="tag">report</span>
+                <span>not yet generated — next detection run: 2026-07-27</span>
+              </div>
+            </div>
+
+            <div class="s10-comm-card">
+              <div class="s10-comm-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg>
+                <span class="s10-comm-label">Cookie &amp; session security</span>
+                <span class="s10-comm-meta">
+                  <span>22 members</span>
+                  <span>impact: high</span>
+                </span>
+              </div>
+              <div class="s10-entity-row">
+                <span class="s10-entity-tag">cookie_secure</span>
+                <span class="s10-entity-tag">jwt_secret</span>
+                <span class="s10-entity-tag">trust_proxy_headers</span>
+              </div>
+              <div class="s10-report">
+                <span class="tag">report</span>
+                <span>Sessions cluster around the Secure-cookie/proxy-trust defaults and their plain-HTTP LAN exceptions.</span>
+              </div>
+              <span class="s10-no-suggestion">Stable since the last two runs — no new/grown reason to nominate.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s10-section-head">
+          <h3>Pin suggestions</h3>
+          <span class="count">2 open</span>
+        </div>
+        <div class="s10-surface">
+          <div class="s10-surface-body">
+            <div class="s10-nom-card">
+              <div class="s10-nom-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
+                <span class="s10-nom-subject">retry_backoff_strategy (config_flag)</span>
+                <span class="s10-reason-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l1.5 5L19 9l-5.5 2L12 16l-1.5-5L5 9l5.5-2Z"/></svg>
+                  new community
+                </span>
+              </div>
+              <div class="s10-nom-support">supporting community: <b>Retry &amp; backoff tuning</b></div>
+              <div class="s10-nom-meta-row">
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+                  9 members
+                </span>
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                  anchors 3 verified facts
+                </span>
+              </div>
+              <div class="s10-nom-actions">
+                <span class="s10-btn-accept">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6Z"/><circle cx="12" cy="8" r="2"/></svg>
+                  Accept — pin subject
+                </span>
+                <span class="s10-btn-dismiss">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                  Dismiss
+                </span>
+              </div>
+            </div>
+
+            <div class="s10-nom-card">
+              <div class="s10-nom-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
+                <span class="s10-nom-subject">confidence_rank_gamma (config_flag)</span>
+                <span class="s10-reason-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                  grown: 8 → 15 members
+                </span>
+              </div>
+              <div class="s10-nom-support">supporting community: <b>Confidence-weighted ranking</b></div>
+              <div class="s10-nom-meta-row">
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+                  15 members
+                </span>
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                  anchors 6 verified facts
+                </span>
+              </div>
+              <div class="s10-nom-actions">
+                <span class="s10-btn-accept">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6Z"/><circle cx="12" cy="8" r="2"/></svg>
+                  Accept — pin subject
+                </span>
+                <span class="s10-btn-dismiss">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                  Dismiss
+                </span>
+              </div>
+            </div>
+
+            <div class="s10-nom-decided">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+              1 suggestion dismissed on an earlier run — recorded and suppressed, not shown here again.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s10-list-bar">
+          <span class="s10-scope-pill">project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <span class="s10-run-meta">last detection run: 2026-07-22</span>
+        </div>
+        <div class="s10-surface">
+          <div class="s10-surface-header">
+            <span class="title">Topics — project: darkmem</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+            <span class="meta">3 communities</span>
+          </div>
+          <div class="s10-surface-body">
+            <div class="s10-comm-card">
+              <div class="s10-comm-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg>
+                <span class="s10-comm-label">Hybrid search &amp; RRF weighting</span>
+                <span class="s10-comm-meta">
+                  <span>17 members</span>
+                  <span>impact: high</span>
+                </span>
+              </div>
+              <div class="s10-entity-row">
+                <span class="s10-entity-tag">hybrid_search_enabled</span>
+                <span class="s10-entity-tag">rrf_score</span>
+                <span class="s10-entity-tag">semantic_weight</span>
+                <span class="s10-entity-tag">reranker</span>
+              </div>
+              <div class="s10-report">
+                <span class="tag">report</span>
+                <span>Memories in this cluster converge on tuning the RRF fusion weight and troubleshooting keyword-only degradation.</span>
+              </div>
+              <span class="s10-no-suggestion">Already has a live article — "Hybrid search and RRF tuning defaults." No pin suggestion.</span>
+            </div>
+
+            <div class="s10-comm-card">
+              <div class="s10-comm-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg>
+                <span class="s10-comm-label">Retry &amp; backoff tuning</span>
+                <span class="s10-comm-meta">
+                  <span>9 members</span>
+                  <span>impact: medium</span>
+                </span>
+              </div>
+              <div class="s10-entity-row">
+                <span class="s10-entity-tag">retry_backoff_strategy</span>
+                <span class="s10-entity-tag">job_registry</span>
+              </div>
+              <div class="s10-report s10-report-none">
+                <span class="tag">report</span>
+                <span>not yet generated — next detection run: 2026-07-27</span>
+              </div>
+            </div>
+
+            <div class="s10-comm-card">
+              <div class="s10-comm-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg>
+                <span class="s10-comm-label">Cookie &amp; session security</span>
+                <span class="s10-comm-meta">
+                  <span>22 members</span>
+                  <span>impact: high</span>
+                </span>
+              </div>
+              <div class="s10-entity-row">
+                <span class="s10-entity-tag">cookie_secure</span>
+                <span class="s10-entity-tag">jwt_secret</span>
+                <span class="s10-entity-tag">trust_proxy_headers</span>
+              </div>
+              <div class="s10-report">
+                <span class="tag">report</span>
+                <span>Sessions cluster around the Secure-cookie/proxy-trust defaults and their plain-HTTP LAN exceptions.</span>
+              </div>
+              <span class="s10-no-suggestion">Stable since the last two runs — no new/grown reason to nominate.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s10-section-head">
+          <h3>Pin suggestions</h3>
+          <span class="count">2 open</span>
+        </div>
+        <div class="s10-surface">
+          <div class="s10-surface-body">
+            <div class="s10-nom-card">
+              <div class="s10-nom-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
+                <span class="s10-nom-subject">retry_backoff_strategy (config_flag)</span>
+                <span class="s10-reason-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l1.5 5L19 9l-5.5 2L12 16l-1.5-5L5 9l5.5-2Z"/></svg>
+                  new community
+                </span>
+              </div>
+              <div class="s10-nom-support">supporting community: <b>Retry &amp; backoff tuning</b></div>
+              <div class="s10-nom-meta-row">
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+                  9 members
+                </span>
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                  anchors 3 verified facts
+                </span>
+              </div>
+              <div class="s10-nom-actions">
+                <span class="s10-btn-accept">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6Z"/><circle cx="12" cy="8" r="2"/></svg>
+                  Accept — pin subject
+                </span>
+                <span class="s10-btn-dismiss">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                  Dismiss
+                </span>
+              </div>
+            </div>
+
+            <div class="s10-nom-card">
+              <div class="s10-nom-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
+                <span class="s10-nom-subject">confidence_rank_gamma (config_flag)</span>
+                <span class="s10-reason-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                  grown: 8 → 15 members
+                </span>
+              </div>
+              <div class="s10-nom-support">supporting community: <b>Confidence-weighted ranking</b></div>
+              <div class="s10-nom-meta-row">
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+                  15 members
+                </span>
+                <span class="s10-nom-meta-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                  anchors 6 verified facts
+                </span>
+              </div>
+              <div class="s10-nom-actions">
+                <span class="s10-btn-accept">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6Z"/><circle cx="12" cy="8" r="2"/></svg>
+                  Accept — pin subject
+                </span>
+                <span class="s10-btn-dismiss">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                  Dismiss
+                </span>
+              </div>
+            </div>
+
+            <div class="s10-nom-decided">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+              1 suggestion dismissed on an earlier run — recorded and suppressed, not shown here again.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
