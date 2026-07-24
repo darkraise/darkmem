@@ -1,0 +1,258 @@
+# 16 — Documents / PKM Surface
+
+**Status:** subsystem doc; conforms to foundation docs 00–04 and the 2026-07-24 knowledge-reshape spec. Draft 2026-07-24. Wave-3 product-and-reach layer (with docs 12 API/MCP, 13 frontend IA, 15 distribution). **This whole doc is the expansion HORIZON — designed now, shipped later; every mechanism here is tagged (horizon) unless it is the inert schema that lands early.**
+
+---
+
+## 1. Purpose & scope
+
+**This doc fixes how darkmem grows a *personal memory engine* over the same store the agent engine already runs on — documents decomposed into blocks, retrieved with grounded span-anchored citations, and lifted into the vault as block-sourced facts — but it commits *none* of it to v1 and fixes no verification semantics, no ranking algorithm, and no table shape.** It owns the design of a surface the roadmap ships *after* the core earns its keep: the document/block model (doc 01 §3.7), the ingestion pipeline variant that parses a source into blocks (a variant of doc 05's five-phase memory pipeline), block retrieval with a faithfulness gate (F8), proposition lifting into memories and — through consolidation — into vault facts, and the corpus-analysis surface. It settles six things the foundation left open to this doc: the **block↔memory provenance direction**, the **parser-stack ADR**, the **proposition-lifting trigger and its idempotency key**, whether **block retrieval fuses with memory or stays a separate channel**, the **faithfulness-gate metric**, and the **v1 analysis scope** — and it fixes what is deliberately *not* committed (editor, canvas, CRDT, connectors).
+
+**What the neighbouring docs fix instead.** Doc 04 §8.5 owns the physical `documents`/`blocks` table shapes and §5.3 the `block_embeddings__<slug>` per-fingerprint partition; this doc gives those tables their pipeline, retrieval, and lifting mechanics but never re-specifies a column. Doc 05 owns the memory-capture pipeline this doc *varies* — the five phases, the buffer, segmentation (doc 05 §4 already points here for the multi-unit-decomposition case). Doc 07 owns the retrieval composition *pattern* this doc extends — the channel model, the RRF fusion, the four-layer composition, and the trace payload (contract 1, doc 07 §8); this doc adds a block channel that follows that pattern, it does not redefine fusion. Doc 08 owns the verification ladder and the consolidation job family; block-sourced facts enter *that* ladder unchanged, and proposition lifting runs under *that* schedule. Doc 09 owns article synthesis, and its firewall is load-bearing for this doc (below). Doc 11 owns the LLM boundary; this doc names the `reasoning` and `verification` purposes its answering and faithfulness paths dispatch through, never constructing a call. Doc 15 owns the document *front door* (file capture as an ingestion source); this doc owns what happens once a document is filed. Doc 17 co-owns the faithfulness metric as a measured ship gate.
+
+**The horizon is a two-speed thing, and the honesty convention (doc 04 §1) draws the line precisely.** The *schema* lands early and inert: the empty `documents`/`blocks` tables and the `block_embeddings` per-fingerprint template ship in the v1 baseline **(target-new, inert)**, because doc 04 §5.3 adds all four target-new partition templates up front under the boot-time reconciliation, and `block_embeddings__<slug>`'s `REFERENCES blocks(id) ON DELETE CASCADE` FK cannot be created unless `blocks` exists. So the tables and the embedding template land like the `repo_ids[]` amendment lands — reviewed, tested, and frozen while riskless, with nothing writing to them. Everything *above* the schema — the document pipeline, block retrieval, the faithfulness gate, proposition lifting, and the analysis surface — is **(horizon)**: designed here, gated behind the core's eval gate, and never claimed as shipped (invariant 23). A reader must not mistake the inert tables for a working PKM product; the tables are substrate the horizon will spend, not the horizon itself.
+
+**The firewall holds both ways, and it is the reason this surface can be deferred safely (doc 01 §3.4).** Article synthesis (doc 09) synthesises *only* from verified facts and **never reads a block directly**, so the verified vault does not depend on this unshipped horizon — the core ships without documents. Conversely this PKM surface is *this doc's product*, gated behind the core's eval gate, so it does not ship until the core is proven. The one sanctioned path from a document into the vault is **not** an article reading a block; it is a *fact* carrying `fact_sources(kind='block')` provenance (§5), which reaches an article only through the ordinary `article_citations → knowledge_triples` grounding. The firewall is what makes "designed in now, shipped later" a true statement rather than a coupling risk.
+
+**Audience & authority.** This binds anyone building the documents/PKM surface, and anyone in docs 04/05/07/08 who must leave room for it. It authors on the retained Python/FastAPI + async SQLAlchemy + Postgres/pgvector stack (the 2026-07-24 Option A decision); every design here is SQL-first and expressible without ORM-only constructs (doc 04 §12). Where it and the as-is baseline agree, that is contract; every extension is labelled per doc 04 §1.
+
+---
+
+## 2. The document & block model — tree, spans, identity, change gating
+
+**Decision. A document is a filed source and a block is its single retrievable unit — simultaneously the chunk unit, the embedding unit, the citation anchor, the link endpoint, and the transclusion target — and the one-block abstraction is the design's whole leverage: it keeps retrieval, citation, and linking pointing at the *same* object so a grounded answer can cite an exact span.** The alternative — parallel chunk types, one for RAG and another for citation and another for linking — was rejected because the moment those units diverge, a retrieved chunk cannot cite itself and a link cannot land on what was retrieved; the single unit is what makes span-anchored grounding (F8) mechanical rather than a best-effort mapping. This is doc 01 §3.7's decision; this doc gives it its physical consequences over doc 04 §8.5's tables.
+
+The tables this doc owns (the whole-schema ERD is `erd.md`; doc 04 §8.5 owns the column detail — only the document half is shown here):
+
+```mermaid
+erDiagram
+    documents {
+        uuidv7 id PK
+        text project
+        text title
+        text source_type "pdf|md|note|import"
+        text uri "UK (project,uri) partial WHERE uri not null"
+        text content_hash "re-ingest change gate"
+        jsonb properties
+    }
+    blocks {
+        uuidv7 id PK
+        uuid document_id FK "ON DELETE CASCADE"
+        uuid parent_id FK "self tree, ON DELETE CASCADE"
+        int order_index
+        text type "closed block-type vocab"
+        text text
+        jsonb properties "page / bbox provenance"
+        int4range char_span "span-anchored citation"
+    }
+    block_embeddings__slug {
+        uuidv7 block_id PK
+        text fingerprint PK
+        vector embedding "HNSW cosine"
+        jsonb payload
+    }
+    documents ||--o{ blocks : "contains; strip by document_id"
+    blocks ||--o{ blocks : "parent_id tree"
+    blocks ||--o{ block_embeddings__slug : "per fingerprint, CASCADE"
+```
+
+**Document identity is the partial `UNIQUE (project, uri)` with `content_hash` as the change gate, so re-filing a source finds and re-ingests the existing row rather than minting a duplicate (doc 04 §8.5).** A document filed from a path or URL is identified by its `(project, uri)`; re-filing the same `uri` resolves to the existing `documents` row, and its `content_hash` decides whether any work runs at all — an unchanged hash short-circuits the whole pipeline, exactly the way an unchanged `HEAD` sha short-circuits a code reindex (doc 10, doc 01 §6). Uri-less sources — an ad-hoc note typed into the UI — carry no `uri` and are identified by their UUIDv7 `id`; the partial `WHERE uri IS NOT NULL` on the unique index is what lets many uri-less notes coexist without colliding on a null. This is the document-level analog of a memory's identity, and it is why the change gate lives on the document and the strip discipline (below) lives on the block.
+
+**A block tree is `parent_id`-linked with `char_span int4range`, and both are load-bearing for citation.** `parent_id` gives the document its structure — a heading owns its paragraphs, a list owns its items — with `ON DELETE CASCADE` so deleting a block takes its subtree (doc 04 §8.5); `order_index` preserves reading order within a parent. `char_span` is a native Postgres `int4range` over the source's character offsets, chosen over a pair of `start`/`end` integer columns because it is one column with native containment and overlap operators — a grounded citation asks "does this cited span contain the answer's supporting text" as a range containment, not a hand-rolled comparison. The range type takes the asyncpg `CAST` discipline in raw SQL (`CAST(:span AS int4range)`, invariant 10); the repository layer carries it. `blocks.type` is a **closed block-type vocabulary** normalised in code (paragraph / heading / list / … — doc 04 §2 convention, invariant 5), not a free-form string, so retrieval and rendering can reason about block kind without drift — the same taxonomy-first discipline the entity graph lives by. Block-level provenance for PDFs (page number, bounding box) rides `blocks.properties` jsonb, so a citation can resolve not just to a character span but to a page and a region for the reader.
+
+**Everything here is one store — no document database, no external index (invariant 1).** Documents, blocks, and their per-fingerprint block embeddings are all rows on the one pgvector Postgres. A document is *not* siloed in a separate store the way a naive PKM product would file it; it shares the substrate so that a proposition lifted from a document participates in the *same* graph, supersession, and topic machinery a memory does (doc 01 §3.7, §4). The block-embedding vectors live in `block_embeddings__<slug>` reached only through `child_table("block_embeddings", fingerprint)`, registered before any insert, never joined across fingerprints (invariant 2) — identical to every other embedding family (doc 04 §5.3).
+
+---
+
+## 3. The ingestion pipeline variant — parse, chunk, embed, idempotent re-ingest
+
+**Decision. Filing a document runs a Tier-B pipeline *variant* — parse the source into a block tree, write the blocks strip-before-rewrite by `document_id`, embed each block into the per-fingerprint partition — and it deliberately does NOT run the five-phase memory pipeline on the document itself; entity extraction over document content happens only later, and only for the propositions a human opts to lift (§5).** The reason to make document ingest a *lean* pipeline rather than a second copy of `process_batch` is the firewall and the cost model together: a raw document is *candidate signal at best*, and running extraction over every filed PDF would flood the L1 graph (and, downstream, the vault) with unverified assertions from text nobody has vouched for. So the document pipeline stops at retrievable blocks; the graph and the vault are reached deliberately, through lifting, never automatically. This is the document-side reading of doc 05 §4's segmentation policy: a document *is* decomposed (into blocks) because there the source and the retrievable unit are genuinely different objects — the deliberate contrast doc 05 §4 already draws with a memory, which stays one row.
+
+The pipeline variant, next to the memory pipeline it varies (doc 05 §5) — a document flows to blocks and block embeddings, not through the five phases:
+
+```mermaid
+flowchart LR
+    FILE["document filed (front door: doc 15)"] --> HASH{"content_hash changed?"}
+    HASH -->|"no"| SKIP["short-circuit — no work (doc 10 change-gate analog)"]
+    HASH -->|"yes"| PARSE["parse: source -> structured block tree<br/>(parser stack ADR below)"]
+    PARSE --> STRIP["strip: delete blocks WHERE document_id = :id<br/>(CASCADE takes subtree + block_embeddings)"]
+    STRIP --> WRITE["write blocks: tree, char_span, type, order_index"]
+    WRITE --> EMB["embed each block -> block_embeddings__slug<br/>register fingerprint before insert (inv 2)"]
+    EMB --> DONE["document retrievable"]
+    DONE -.->|"on demand, Tier-C (section 5)"| LIFT["proposition lifting -> memories -> F2 -> vault"]
+
+    MEMPIPE["memory pipeline (doc 05): 5 phases -> L1 graph"] -.->|"variant of"| PARSE
+```
+
+**The parser stack is a genuine ADR-shaped technology choice, and it must respect doc 03 §3.3's no-heavy-ML floor — so it is recorded ADR-style here and flagged back to doc 03 as an amendment when the horizon is scheduled.** The forces are three: the parse must produce a *structured* block tree with character offsets (for `char_span`) and, for PDFs, page/bbox provenance (for `blocks.properties`); it must not reintroduce the native ML stack the 2026-05-01 consolidation removed (`torch`/`transformers` are an optional classification-only extra, and the reshape does not widen that — doc 03 §3.3); and it must stay inside the one-image, permissively-licensed deployment. The recommendation:
+
+| Source type | Recommended library | Why | Rejected alternative |
+|---|---|---|---|
+| Markdown / notes | `markdown-it-py` (or `mistune`) | pure-Python, gives a token/AST stream that maps cleanly to the block tree with offsets; permissive licence | a bespoke line-splitter — loses nested structure and offsets |
+| Plain text | native segmentation (paragraph/heading heuristics) | no dependency; the block-type vocab is small | — |
+| PDF | `pdfplumber` (over `pdfminer.six`) | pure-Python, character-level text with bounding boxes → feeds both `char_span` and `blocks.properties` page/bbox; permissive licence | **`PyMuPDF`** — faster but AGPL, a licence friction for permissive OSS single-image deploy; **`unstructured` / `marker` / Docling** — pull heavy ML layout models (torch), a direct violation of doc 03 §3.3 and the one-image, no-heavy-ML posture |
+
+The load-bearing rejection is the ML-based PDF layout parsers: they give the best structure but reintroduce exactly the multi-gigabyte native-ML dependency doc 03 §3.3 spent a consolidation removing, so they are out on principle, not on quality. `pdfplumber`'s character-level extraction is enough to segment blocks and record spans; richer layout is a later, demand-gated concern. **This ADR is flagged to doc 03 as a new layer entry ("document parsing") to be folded in when the horizon is scheduled** — it is not in doc 03 today because the horizon is not committed, and adding a dependency floor for an unshipped feature would itself be over-claiming.
+
+**Re-ingest is strip-before-rewrite by `document_id` — invariant 8 generalised, exactly as doc 05 §4 and doc 04 §8.5 fix it.** When a changed document is re-filed, the pipeline deletes *all* of the document's blocks by `document_id` before re-chunking; the block `ON DELETE CASCADE` on `parent_id` collapses the subtree and the `block_embeddings__<slug>` FK CASCADE takes the vectors, so no stale block or orphaned vector survives a re-ingest. This is the block-analog of `delete_by_memory_id` stripping a memory's prior graph contributions (invariant 8), and it is what makes re-filing an edited document idempotent: the second ingest of the same content is a `content_hash` no-op, and the ingest of edited content produces exactly the new tree with nothing left over. Because block ids are freshly minted on each re-ingest, nothing durable may FK a block id across ingests — the same churn rule communities live by (doc 04 §8.4); the durable anchor a citation or a lifted proposition keys on is `document_id` plus the within-document `char_span`, not the block id (§5).
+
+**The block-embedding write obeys fingerprint discipline identically to every other family (invariant 2).** Each block's text is embedded and written to `block_embeddings__<slug>` through `child_table`, with `_register_fingerprint` called before the first partition insert and the partition self-healing under the boot-time reconciliation if the active embedder rotated (doc 04 §5.3/§12). Long blocks that exceed the embedder's token window are chunked at embed time via payload spans — the same technique articles use (doc 04 §8.8) — rather than by splitting a block into sub-blocks, because a block is the citation unit and must stay one object. No phase of this pipeline joins two `__<slug>` tables.
+
+The document lifecycle as a state machine — filed, parsed, embedded, retrievable, and (optionally, on demand) lifted; re-ingest re-enters on a content-hash change:
+
+```mermaid
+stateDiagram-v2
+    [*] --> filed : document filed (doc 15 front door)
+    filed --> unchanged : content_hash matches — no work
+    unchanged --> [*]
+    filed --> parsed : content_hash changed — parser stack
+    parsed --> chunked : block tree written, strip-by-document_id first
+    chunked --> embedded : blocks embedded into block_embeddings__slug
+    embedded --> retrievable : block channel can serve it (section 4)
+    retrievable --> lifted : human opts document into proposition lifting (section 5)
+    retrievable --> parsed : re-filed with changed content — strip + re-chunk
+    lifted --> parsed : re-filed — lifted contributions re-derived by document_id
+    note right of chunked
+        strip-before-rewrite by document_id (inv 8):
+        CASCADE takes the subtree and block embeddings.
+    end note
+```
+
+---
+
+## 4. Retrieval & grounded citations — the block channel and the faithfulness gate
+
+**Decision. Block retrieval is a *separate channel and tool* — a document-RAG sibling that follows doc 07's channel pattern but never fuses into the four-layer memory/vault composition — and document content reaches the core composition only as *lifted facts* through the ordinary facts channel (§5), never as raw block rows in the fusion.** This resolves the framing's open question (fuse-or-separate) in favour of *separate*, on three grounds. First, the firewall: mixing block rows into the four-layer composition would make the core read path depend on the unshipped horizon and blur the layer model that carries the honest labels (doc 07 §5). Second, the product boundary: block search answers "what does *my document corpus* say," a personal-RAG question distinct from "what has darkmem *verified*" — the same reason code search is a separate semantic-only sibling that never joins the memory/vault composition (doc 07 §2, doc 01 §8's deliberate exception). Third, the eval gate: keeping the block channel a separate tool means the horizon can ship (and be gated) without touching the core ranking path at all. The block channel is therefore the document-side twin of code search — its own tool, its own trace, no fusion with memory or the vault.
+
+**The block channel is semantic-first over `block_embeddings__<slug>`, and it emits the doc 07 §8 trace with a `block` id-kind.** A query embeds once (doc 11's `embedding` purpose), scores `1 - (embedding <=> :vec)` against the per-fingerprint block partition, and returns ranked blocks resolved to their document and span. It follows doc 07's channel shape — a one-sided failure degrades honestly and a both-sided failure raises rather than returning an empty list indistinguishable from a no-match (invariant 14) — and it stamps the transient retrieval trace (contract 1, doc 07 §8) with `id_kind: block`, the `block_id` (normalised at the boundary, invariant 9), the document and `char_span`, and a `layer` of `document` distinct from the L0–L3 layers the composition serves. Because blocks are horizon and the channel is separate, this trace variant is additive: the core trace schema of doc 07 §8 is unchanged, and a consumer that does not speak the block channel simply never sees a `block` row. The `block` id-kind and the `document` layer are therefore a **horizon addendum to contract 1** — they extend the shared trace enum only when the block channel ships, never in the v1 baseline, and until then no consumer may assume they exist (invariant 23). A keyword arm over block text is a later refinement — v1 of the horizon is semantic-only, and the trace says so rather than implying a keyword gap.
+
+**Grounded answering (F8) is an interactive `reasoning`-purpose flow gated by a faithfulness check — the document-RAG analog of `memory_reason`, not a store-reconciliation call.** The human asks a question over their corpus; the flow retrieves the relevant blocks (deterministic), generates an answer with per-sentence candidate block-span citations through doc 11's `reasoning` purpose (the same purpose and tier `memory_reason` already occupies — an interactive generative read, permitted on Tier A because it answers an explicit question rather than reconciling the store, invariant 15), and then a **faithfulness gate** checks each answer sentence against its cited block span. An answer that clears the gate is served with its span-anchored citations; an answer below the bar is not served as grounded — it is returned labelled ("could not fully ground this answer") or withheld, never presented as if grounded (invariant 14). This is the exact shape of doc 09's enforced-grounding pass, retargeted from facts to block spans.
+
+A grounded answer end to end — retrieve blocks, generate a cited answer, gate it on faithfulness, serve or label:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Human
+    participant Q as Block channel (this doc)
+    participant Emb as Embedding purpose (doc 11)
+    participant Ans as Reasoning purpose (doc 11)
+    participant Faith as Verification purpose (doc 11)
+
+    Human->>Q: question over the document corpus
+    Q->>Emb: embed the query (one model call)
+    Emb-->>Q: query vector
+    Q->>Q: ANN over block_embeddings__slug -> ranked blocks + spans
+    Q->>Ans: generate answer with per-sentence candidate block-span citations
+    Ans-->>Q: draft answer + proposed span citations
+    loop each answer claim c cited to block span s
+        Q->>Faith: does span s entail claim c?
+        Faith-->>Q: entailed / not entailed
+    end
+    Q->>Q: faithfulness = entailed claims / total claims
+    alt coverage at or above threshold (config)
+        Q-->>Human: grounded answer + span-anchored citations
+    else below threshold
+        Q-->>Human: answer labelled could-not-fully-ground OR withheld (inv 14)
+    end
+```
+
+**The faithfulness-gate metric is span-support coverage, defined with doc 17 as both a per-answer gate and a layer ship gate — the block-analog of doc 09's groundedness metric, reusing the one `verification` judge.** Faithfulness = entailed answer-claims / total answer-claims, where entailment asks the `verification`-purpose model (doc 11 §6 — the same truth-critical judge that serves the fact-level contradiction veto and the article entailment pass, one judge, now three consumers) whether a claim's cited block span entails it. A claim with no citation fails outright (an uncited span is by definition ungrounded — no search-for-support fallback). Two uses, one number, exactly as doc 09 §4.3 structures it: **per-answer**, coverage below a `config` threshold means the answer is withheld or labelled, never served as grounded; **at the layer**, F8 grounded answering does not ship until doc 17 shows the entailment judge reliable at distinguishing grounded from ungrounded answer sentences on a labelled gold set. The metric therefore does double duty — it gates every answer at runtime and gates the whole feature at ship time — and both bars are `config`/harness values tuned conservatively and loosened only with evidence (convention 9). Cost is bounded because the number of answer claims is small; the check is batchable, and its latency is the price of the product's whole value (a grounded, cited answer over the human's own documents).
+
+**Faithfulness (block-grounded answers) and groundedness (article synthesis) are the same metric shape against different grounding targets, and keeping them distinct is what preserves the firewall.** Doc 09's groundedness pass grounds an *article claim* to a *verified fact*; this doc's faithfulness pass grounds an *answer claim* to a *block span*. They share the `verification` purpose and the coverage formula, but they never cross: an article is never grounded to a block (the firewall), and a block answer is never grounded to a fact-of-record (it answers over the corpus, not the vault). Two consumers of one judge, two grounding targets, one honest metric. They also differ in *when* they run, and that difference is what keeps faithfulness inside invariant 15: doc 09's groundedness runs inside the Tier-C consolidation job, off the hot path, while faithfulness is a **read-time output gate** on the interactive answer path — the same shape as the reranker gating a retrieval response before it is served (doc 07), a sanctioned Tier-A exception. Invariant 15 forbids reconciling the *store* on the hot path, not answering an explicit question on it; the faithfulness gate reconciles nothing and writes nothing, it only decides whether an already-generated answer is served as grounded, labelled, or withheld.
+
+---
+
+## 5. Proposition lifting & the vault bridge — block-sourced facts, provenance direction
+
+**Decision. Propositions are lifted from a document into the vault *on demand and off the hot path*, never automatically on ingest: a human (or an explicit per-document/per-project opt-in) triggers a Tier-C lift that mints memory rows from a document's blocks — each carrying its `(document_id, block_id, char_span)` provenance *on the derived row* — which then flow through the ordinary F2 pipeline into the L1 graph, and ordinary consolidation lifts the corroborated relations to Layer-2 facts whose `fact_sources` carry `kind='block'` with `origin_key = document_id`.** The trigger is on-demand, not automatic, for the same reason the document pipeline stops at blocks (§3): auto-lifting every filed document would flood the vault with candidate signal from unvouched text, and corroboration must be *earned*, not manufactured by the act of filing. Lifting is a deliberate act that says "treat this document's claims as capturable knowledge," and from there nothing is special — the lifted memories are ordinary memories, the graph is the ordinary graph, and the ladder is doc 08's ladder.
+
+The vault bridge — a block becomes a proposition memory (provenance on the derived row), enters the ordinary pipeline, and its corroborated relations lift to a fact whose source is the block's document; the firewall keeps articles off blocks:
+
+```mermaid
+flowchart TD
+    BLK["block (document_id, block_id, char_span)"] -->|"on-demand lift (Tier-C)"| PROP["proposition memory row<br/>provenance ON the derived row:<br/>metadata_ = {document_id, block_id, char_span}<br/>origin_key = document_id"]
+    PROP -->|"ordinary F2 (doc 05)"| L1["L1 candidate graph (doc 06)"]
+    L1 -->|"consolidation, distinct origins (doc 08)"| FACT["L2 fact"]
+    FACT --> FS["fact_sources: kind='block', origin_key=document_id,<br/>source_ref=block_id, detail={char_span} (doc 04 8.3)"]
+    FACT -.->|"cited by, hard FK (doc 09)"| ART["L3 article"]
+    BLK --x|"FIREWALL: an article never reads a block, doc 01 3.4"| ART
+```
+
+**The block↔memory provenance direction is settled: it rides *on the derived memory row*, not as a reverse FK from `blocks` — inheriting doc 04 §13's on-the-derived-row default.** A lifted proposition memory carries `{document_id, block_id, char_span}` in its `metadata_` jsonb (or dedicated columns if the horizon's query patterns later justify promoting them, doc 04 §9's activation discipline), so retrieval can render a memory's document provenance and cite the exact span *without a join*, and so a block's deletion does not have to cascade into memory rows through a hard FK. The reverse-FK alternative (a `blocks.memory_id` or a `block_memories` join) was rejected because the block side churns — re-ingest deletes and re-mints blocks by `document_id` (§3), so a hard block→memory FK would either dangle or force lifted memories to be destroyed on every re-ingest, neither acceptable. On-the-derived-row provenance keyed on the durable `(document_id, char_span)` survives the block churn: a re-ingest re-derives the lifted contributions by `document_id`, matching on the durable span rather than a dead block id. This is the exact soft-reference doctrine the fact layer's endpoints already follow (doc 04 §8.3).
+
+**The fact side is already fixed by the reshape and needs no new mechanism (spec §2.2, doc 04 §8.3).** A fact lifted (via the memory it was lifted into) from a document gets a `fact_sources` row of `kind='block'`, `origin_key = document_id`, `source_ref = block_id`, and `detail = {char_span}` — a *soft* reference (no FK), consistent with `fact_sources`'s doctrine and required because block ids churn. **The document is one origin: `origin_key = document_id`, counted once regardless of how many blocks assert the same claim** — the document analog of "a repo is one origin regardless of commit count" (doc 08, spec §2.1). This is the truth-critical rule: two independent *documents* asserting a claim are two distinct origins and real corroboration; the same claim echoed across many blocks of one document is *one* origin, never inflated. When block identity is unknown or a claim spans an ambiguous set of blocks, the degradation rule is the vault's own — **merge to one origin (undercount), never mint distinct ones** (spec §2.1) — so document lifting can never manufacture corroboration by paraphrasing one source into many blocks.
+
+**Proposition lifting is idempotent, keyed on `document_id`, and self-heals under re-ingest — invariant 8 generalised a second time.** Re-lifting a document strips the document's prior lifted contributions before writing the new set, exactly as `delete_by_memory_id` strips a memory's graph contributions and as the document pipeline strips blocks by `document_id` (§3). The idempotency key for the *lift* is `document_id`: a re-ingest that changes the document re-runs the lift, stripping the old proposition memories (identified by their `metadata_.document_id`) and re-deriving from the new blocks; a re-ingest that does not change the document (`content_hash` no-op) never re-lifts. When a proposition memory is stripped, its downstream fact contributions self-heal through the ordinary sweep: the memory's `fact_sources` rows are withdrawn and any fact left with no surviving source is expired invalidate-not-delete, and — critically — **verification is *enqueued*, never recomputed inline** (doc 08's re-extraction/deletion sweep, invariant 15). A strip-and-re-lift that lands the identical source set is a *provenance no-op* — no verified↔candidate thrash — the document-side reading of doc 08's provenance-no-op rule. Because lifting opens a fresh Tier-C session over rows the ingest may still touch, it commits before re-touching them (invariant 11).
+
+**Lifting is a Tier-C consolidation consumer, so it never sits on capture or retrieval (invariant 15).** The lift itself — turning blocks into proposition memories — is a background pass under doc 08's dream-job schedule umbrella; the subsequent extraction (F2) and consolidation (F6) are the ordinary pipelines. No LLM reconciliation runs on the document-filing path; filing produces retrievable blocks and stops (§3). The one interactive LLM path in this whole doc is the grounded-answer flow (§4), which answers an explicit human question and is the document analog of `memory_reason`.
+
+---
+
+## 6. The analysis surface — v1 horizon scope
+
+**Decision. The v1 analysis scope of the horizon is deliberately thin and reuses shipped machinery: grounded question-answering over the corpus (F8, §4), single-document summarisation (reusing doc 11's `summarization` purpose), and cross-document *connections that emerge from the one shared graph* — while bespoke trend analytics and multi-document synthesis dashboards are deferred as later, demand-gated work.** The reason to keep analysis thin is that darkmem already owns the machinery that makes a corpus analysable: once propositions are lifted (§5), a document's claims are *in the one graph*, so cross-document connections, topic membership, and "what relates to this" are answered by the existing entity graph, topic communities (doc 06), and associative memory relations (doc 08) — no new analysis engine is needed for the emergent-connection case. Building a separate analytics stack would duplicate that and re-open the two-drifting-stores disease the single-Postgres moat exists to avoid (invariant 1).
+
+| Analysis capability | v1 horizon | Mechanism / reuse |
+|---|---|---|
+| Grounded Q&A over the corpus | committed to the horizon | the block channel + faithfulness gate (§4); `reasoning` + `verification` purposes |
+| Single-document summary | committed to the horizon | doc 11's `summarization` purpose over a document's blocks — a report, not a verified claim, carrying no verification badge |
+| Cross-document connections | committed to the horizon | *emergent from the shared graph* after lifting — entity overlap, topic communities (doc 06), associative relations (doc 08); no new engine |
+| Corpus trends / analytics dashboards | **deferred** | demand-gated; no bespoke analytics store — revisit on measured demand |
+| Multi-document synthesis write-ups | **deferred / firewalled** | a *verified* multi-source write-up is an *article* (doc 09), grounded to lifted facts, never an article reading blocks |
+
+**The connection between documents and the vault is lifting, and analysis honours the same labels the rest of darkmem does.** A single-document summary is explicitly a *report* (like `memory_overview`, doc 09 §3.3) — an organisational view of what a document says, carrying *no* verification badge, never a verified claim. A verified, cross-document write-up is not an "analysis feature" at all; it is a Layer-3 article synthesised from the lifted facts (doc 09), grounded to those facts by `article_citations`, and it reaches the document's content only through `fact_sources(kind='block')`, never by reading a block. So the analysis surface splits cleanly along the firewall: *reports over blocks* (unbadged, organisational) live here; *verified synthesis* lives in the vault and obeys the vault's grounding. This keeps the horizon's analysis honest by construction — it can summarise and connect, but it can only *assert verified knowledge* through the same ladder everything else does.
+
+---
+
+## 7. Deliberately not committed — editor, canvas, CRDT, connectors
+
+**Decision. The committed horizon scope is parse, chunk, blocks, block retrieval, grounded span-anchored citations, and proposition lifting — and the editor, canvas, real-time CRDT collaboration, and third-party connectors are a *separate, demand-gated product*, not committed to v1 and not designed here beyond naming why they are out (doc 01 §3.7).** The block model deliberately *leaves room* for them — a block is already the link endpoint and the transclusion target, so an editor or a bidirectional-link canvas could be built on the same rows later — but leaving room is not committing. Each deferred piece is out for a stated reason, not an oversight:
+
+| Deferred surface | Why out of the committed horizon | What the model already leaves room for |
+|---|---|---|
+| Block editor | darkmem's vault is its *own* verified understanding, not a human-edited wiki (doc 01 §3.4); an editor is a different product with a different trust model | blocks are the edit unit; `char_span` and the tree survive an editor |
+| Canvas / bidirectional links | a graph-of-notes UI is demand-gated and orthogonal to the agent memory engine | a block is already the link endpoint and transclusion target |
+| Real-time CRDT collaboration | multi-user concurrent editing contradicts the single-worker, single-box assumption (invariant 13) and is a Phase-4-scale concern | none needed for single-user filing; a CRDT layer would sit above blocks |
+| Third-party connectors (Notion, Drive, …) | each connector is an ingestion *front door* (doc 15's concern) and an ongoing maintenance surface, gated on demand | `documents.source_type='import'` and the `uri` identity already accommodate an imported source |
+
+**Naming these keeps the horizon honest (invariant 23).** A reader must not infer from "documents/PKM surface" that darkmem is becoming Obsidian or Notion; the committed horizon is a *grounded document-RAG surface over the one store*, and the editor/canvas/CRDT/connector product is a separate, demand-gated thing that the block model is *compatible with* but does not promise. The line is drawn here so no downstream doc, mockup, or roadmap entry claims the editor as designed.
+
+---
+
+## 8. Invariants restated
+
+The invariants that bind this layer, restated in this doc's own terms so the design is checkable against the 1–23 catalog and the firewall:
+
+- **Scaffolding-not-substrate — the whole doc is horizon (inv. 23).** Every mechanism here — the document pipeline, block retrieval, the faithfulness gate, proposition lifting, the analysis surface — is **(horizon)**, gated behind the core's eval gate and never claimed as shipped. The only thing that lands early is the *inert schema*: the empty `documents`/`blocks` tables and the `block_embeddings` template (target-new, inert), landing like the `repo_ids[]` amendment so the per-fingerprint template is creatable and self-heals. The tables are not the product.
+- **The doc-16 firewall, both directions (doc 01 §3.4).** Article synthesis never reads a block (the vault does not depend on this unshipped horizon), and this surface is gated behind the core's eval gate. A document reaches the vault only as a *fact* carrying `fact_sources(kind='block')`, which an article grounds to through `article_citations` — never as a block an article reads.
+- **Idempotent re-ingest / strip-before-rewrite, generalised twice (inv. 8).** Re-ingesting a document deletes its blocks by `document_id` before re-chunking (the block-analog of `delete_by_memory_id`); re-lifting a document strips its prior proposition contributions by `document_id`. Block ids churn, so the durable citation/lift anchor is `(document_id, char_span)`, never a block id.
+- **Per-fingerprint isolation (inv. 2).** Block vectors live in `block_embeddings__<slug>` reached only via `child_table("block_embeddings", fingerprint)`, registered before any insert, `ON DELETE CASCADE` from `blocks`, and never joined across fingerprints; long blocks are chunked at embed time by payload span, not by splitting the block.
+- **Single Postgres (inv. 1).** Documents, blocks, block embeddings, and every analysis output are rows on the one pgvector Postgres — no document store, no external index. Cross-document connections are emergent from the shared graph, not a second analytics store.
+- **Closed taxonomy, normalise-before-store (inv. 5).** `blocks.type` is a closed block-type vocabulary normalised in code; lifted propositions carry no new type — their entities/relations normalise through the existing `ENTITY_TYPES`/`RELATIONSHIP_TYPES` (doc 06). No free-form type column.
+- **Reconciliation off the hot path (inv. 15).** Document filing produces retrievable blocks and stops — no LLM on the filing path. Proposition lifting is a Tier-C consumer under doc 08's schedule; verification is *enqueued*, never recomputed inline, on a strip-and-re-lift. The one interactive LLM path is the grounded-answer flow (`reasoning` + `verification`), which answers an explicit question, the document analog of `memory_reason`.
+- **Honest partial results & no silent degradation (inv. 14).** The faithfulness gate withholds or labels an ungrounded answer, never serves it as grounded; the block channel's one-sided failure is surfaced in the trace and a both-sided failure raises rather than returning a false empty result; a keyword gap in the v1 block channel is reported, never implied.
+- **Two front doors, one service layer (inv. 17).** The block-search and grounded-answer tools land on both REST and MCP (or are explicitly single-door with a reason — file *upload* is naturally REST-multipart, with a text-document filing tool on MCP; the front-door transport is doc 15's, §9). Neither door carries a behaviour the other lacks.
+- **Provenance always, one mechanism per layer (doc 01 §8, spec §2.8).** A lifted proposition carries `(document_id, block_id, char_span)` on the derived row; a block-sourced fact carries `fact_sources(kind='block', origin_key=document_id)`; an article grounds only through `article_citations`. `DERIVED_FROM` is cut — a document never grounds an article through a memory edge, only through a fact.
+- **Every lifecycle transition journals to `events` (convention 8).** Document and block state changes — `filed`, `parsed`, `embedded`, `retrievable`, re-ingest, and an on-demand `lifted` — emit `events` rows keyed by `object_type` `document`/`block`, exactly as memory and vault transitions journal (doc 04 §8.1). These are target-new `event_type`s added to doc 04 §8.1's closed vocabulary before any code writes them (taxonomy-first), and they land only when the horizon ships (invariant 23). A lift's downstream vault objects journal under their own object types (doc 08).
+- **id/type drift normalised at the boundary (inv. 9); asyncpg CAST discipline (inv. 10); async session lifetime (inv. 11).** The block channel normalises `block_id` at the fusion/trace boundary; `char_span int4range` takes explicit `CAST` in raw SQL; the Tier-C lift commits before opening a session that re-touches ingest rows.
+
+---
+
+## 9. Open questions & deferred decisions
+
+Each carries a recommended stance, so downstream inherits a default rather than a blank.
+
+- **Block↔memory provenance direction — resolved.** *Stance: provenance rides `(document_id, block_id, char_span)` on the derived memory/knowledge row (in `metadata_` jsonb, or dedicated columns if query patterns later justify it), not a reverse FK from `blocks` — inheriting doc 04 §13's on-the-derived-row default (§5). The fact side is `fact_sources(kind='block', origin_key=document_id)`, already fixed by spec §2.2. The durable anchor is the span, because block ids churn on re-ingest.*
+- **Parser stack — ADR recorded, flagged to doc 03.** *Stance: `pdfplumber` (pure-Python, pdfminer.six-based, character-level text + page/bbox) for PDF, `markdown-it-py`/`mistune` for markdown, native segmentation for notes; reject `PyMuPDF` (AGPL licence friction) and all ML-layout parsers (`unstructured`/`marker`/Docling — heavy ML, violates doc 03 §3.3). Record this ADR-style (§3) and fold it into doc 03 as a "document parsing" layer entry when the horizon is scheduled — not before, since a dependency floor for an unshipped feature would over-claim. The exact PDF-library pin is confirmable at schedule time against the then-current permissive-licence landscape.*
+- **Proposition-lifting trigger & idempotency key — resolved.** *Stance: on-demand / opt-in per document (never automatic on filing), run as a Tier-C consolidation pass; idempotency keyed on `document_id` (strip-before-rewrite of the document's prior lifted contributions, matched on `metadata_.document_id`), self-healing through the ordinary source-withdrawal sweep, with a provenance no-op when the source set is unchanged (§5). Whether a whole-project opt-in ("lift everything filed into this KB project") is offered alongside per-document is a doc 13/15 surface decision; the mechanism is identical either way.*
+- **Block retrieval — separate channel, not fused — resolved.** *Stance: a separate channel and tool (the document-RAG twin of code search, doc 07 §2), never fused into the four-layer memory/vault composition; document content enters the core composition only as lifted facts through the ordinary facts channel (§4/§5). The block channel emits the doc 07 §8 trace with a `block` id-kind and a `document` layer, additive to the core schema.*
+- **Faithfulness-gate metric — resolved with doc 17.** *Stance: span-support coverage (answer claims entailed by their cited block span / total claims) through doc 11's `verification` purpose — the same judge as the fact veto and article entailment; a per-answer `config` threshold gates serve-vs-withhold/label, and a doc-17-measured judge-reliability bar on a gold set gates whether F8 ships at all (§4). The same shape as doc 09's groundedness metric, retargeted to block spans. Open sub-decision: whether the answer-time faithfulness check runs inline (a second interactive call, chosen for v1 because grounding is the product's value) or is deferred with a provisional label — recommend inline, revisit if latency measures poorly.*
+- **v1 analysis scope — resolved.** *Stance: grounded Q&A (§4), single-document summary (reusing `summarization`, unbadged report), and cross-document connections *emergent from the shared graph after lifting* — all committed to the horizon; bespoke trend analytics and multi-document synthesis dashboards deferred as demand-gated, with verified multi-source write-ups being *articles* (doc 09), not an analysis feature (§6).*
+- **Document front-door transport — deferred to doc 15.** *Stance: file *upload* is REST-multipart (binary does not fit MCP's text-JSON surface cleanly), with an MCP text-document filing tool for notes/markdown; the block-search and grounded-answer tools land on both doors (invariant 17). The precise front-door shape — and browser/file capture feeding the buffer — is doc 15's; this doc fixes only what happens after a document is filed.*
+- **Dedicated document-answer LLM purpose — not now.** *Stance: reuse `reasoning` for grounded-answer generation and `verification` for the faithfulness check; do not widen the purpose set for the horizon. If a distinct document-answer purpose is ever wanted, it lands taxonomy-first in doc 11's matrix (row + seed + `PURPOSES` sweep) before any consumer dispatches — the same discipline doc 11 §6 applies to `synthesis`/`verification`.*
+- **Block-type vocabulary & link/transclusion activation — deferred to schedule time.** *Stance: `blocks.type` starts with a minimal closed set (paragraph / heading / list / code / quote); the link-endpoint and transclusion roles the block model already carries stay inert until the editor/canvas product is demand-gated in (§7) — designed-for, not built.*
+
+---
+
+*Downstream: doc 04 §8.5/§5.3 owns the `documents`/`blocks`/`block_embeddings` schema this doc's pipeline, retrieval, and lifting spend, and its §13 on-the-derived-row provenance default is the direction §5 settles; doc 05 §4 already points here for document decomposition, and this pipeline is the variant of its five phases; doc 07 §2/§8 owns the channel pattern and the trace this doc's block channel follows and extends with a `block` id-kind, never fusing into the four-layer composition; doc 08 owns the verification ladder that block-sourced facts enter born `candidate` and the consolidation schedule under which proposition lifting runs; doc 09 owns article synthesis and the firewall this doc respects — block-sourced facts reach an article only through `fact_sources`, never by an article reading a block — and its groundedness metric is the shape this doc's faithfulness gate reuses; doc 11 provides the `reasoning`/`verification`/`summarization`/`embedding` purposes this doc dispatches and the taxonomy-first discipline any new purpose would follow; doc 12 serialises the block-search and grounded-answer tool contracts on both front doors; doc 13 surfaces the documents view (labelled horizon) and the grounded-answer explainability; doc 15 owns the document front door (file/browser capture) that feeds this pipeline; and doc 17 co-owns the faithfulness metric as the measured L-horizon ship gate. Everything here is the horizon — designed now, shipped later, gated behind the core's eval gate.*
