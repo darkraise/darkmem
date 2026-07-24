@@ -256,6 +256,21 @@ body {
   background: hsl(var(--destructive) / 0.1);
 }
 
+/* ---- non-rung caution badges --------------------------------------------
+   lifecycle amber (L0 memory) + terminal superseded (an L3 article's rung
+   badge is REPLACED by this, not decorated). Caution-role colour per doc
+   14 §3.1 (--warning), never the ladder's --primary/--destructive/--muted
+   roles. Promoted here (not board-local) so any board needing this
+   treatment (S05 memory detail, S09 article detail) reuses it rather than
+   redeclaring. */
+
+.badge.superseded,
+.badge.deprecated {
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.55);
+  background: hsl(var(--warning) / 0.12);
+}
+
 /* ---- overlay chips ----------------------------------------------------
    Append after a badge; never replace it — the backend has not demoted
    the row, these are advisory labels only. */

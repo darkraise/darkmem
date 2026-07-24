@@ -37,7 +37,6 @@
     border-radius: var(--radius-sm); font-size: 13px; color: hsl(var(--muted-foreground));
   }
   .c03-nav-item svg { width: 15px; height: 15px; flex: none; }
-  .c03-nav-item .refetch { margin-left: auto; }
   .c03-nav-item.active {
     background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); font-weight: 590;
   }
@@ -130,7 +129,7 @@
 </style>
 
 <section class="board" id="C03-global-chrome">
-  <div class="board-bar"><span class="board-dot"></span><span class="board-title">C03 — Global chrome: nav shell, scope controls, command palette</span></div>
+  <h2>C03 — Global chrome: nav shell, scope controls, command palette</h2>
   <div class="annotation">
     <b>Reference board, not a screen.</b> Realises doc 13 §3 (the three-group / eight-destination
     navigation map, the project switcher as global scope, the separate session context chip) and doc 14
@@ -312,7 +311,7 @@
       the switcher masquerading as a context declaration.
     </div>
 
-    <div class="c03-palette-wrap">
+    <div>
       <h3 style="margin:0 0 8px;font-size:14px;font-weight:620;color:hsl(var(--foreground));">Command palette (⌘K)</h3>
       <div class="c03-palette">
         <div class="c03-palette-input-row">
@@ -351,7 +350,7 @@
 </section>
 
 <section class="board" id="C03-switched-project">
-  <div class="board-bar"><span class="board-dot"></span><span class="board-title">C03 — switched-project variant: scope-refetch intent</span></div>
+  <h2>C03 — switched-project variant: scope-refetch intent</h2>
   <div class="annotation">
     Shown in one theme only (theme parity already demonstrated by the shared token system in the
     reference board above). Realises doc 13 §2's contract that the composite

@@ -437,6 +437,21 @@ body {
   background: hsl(var(--destructive) / 0.1);
 }
 
+/* ---- non-rung caution badges --------------------------------------------
+   lifecycle amber (L0 memory) + terminal superseded (an L3 article's rung
+   badge is REPLACED by this, not decorated). Caution-role colour per doc
+   14 §3.1 (--warning), never the ladder's --primary/--destructive/--muted
+   roles. Promoted here (not board-local) so any board needing this
+   treatment (S05 memory detail, S09 article detail) reuses it rather than
+   redeclaring. */
+
+.badge.superseded,
+.badge.deprecated {
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.55);
+  background: hsl(var(--warning) / 0.12);
+}
+
 /* ---- overlay chips ----------------------------------------------------
    Append after a badge; never replace it — the backend has not demoted
    the row, these are advisory labels only. */
@@ -1014,16 +1029,12 @@ body {
      another fragment's local styles once build.py concatenates them.
      Everything below reads var(--token) / hsl(var(--token)) only; nothing
      here redeclares a token or restyles .board/.annotation/.theme-row/
-     .theme-light/.theme-dark/.layer-chip from assets/mockup.css. The one
-     deliberate extension is two NEW modifier rules on the shared, open
-     .badge component (.badge.superseded / .badge.deprecated) — mockup.css
-     only ships the four ladder-rung modifiers; these two are the caution-
-     role, non-rung treatments doc 14 §3.2 requires (lifecycle amber on an
-     L0 memory, and the terminal-superseded badge that REPLACES an L3
-     article's rung badge). They reuse the shared .badge base shape and
-     only add colour, so any other fragment (S05 lineage, S07/S09 article
-     status) that also needs them can declare the identical rule with no
-     visual conflict. */
+     .theme-light/.theme-dark/.layer-chip/.badge from assets/mockup.css.
+     The non-rung caution badges (.badge.superseded / .badge.deprecated —
+     lifecycle amber on an L0 memory, and the terminal-superseded badge
+     that REPLACES an L3 article's rung badge, doc 14 §3.2) live in
+     mockup.css alongside the other .badge modifiers, since S05/S09 reuse
+     them too; nothing below redeclares them. */
 
   .c01-matrix { display: flex; flex-direction: column; gap: 18px; }
   .c01-group { display: flex; flex-direction: column; gap: 10px; }
@@ -1065,17 +1076,6 @@ body {
   .c01-provenance { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-family: var(--font-mono); font-size: 11.5px; }
   .c01-provenance dt { color: hsl(var(--muted-foreground)); }
   .c01-provenance dd { margin: 0; color: hsl(var(--foreground)); word-break: break-word; }
-
-  /* non-rung caution badges: lifecycle amber (L0 memory) + terminal
-     superseded (L3 article, replaces the rung). Same base .badge shape,
-     caution-role colour per doc 14 §3.1 (--warning), never the ladder's
-     --primary/--destructive/--muted roles. */
-  .badge.superseded,
-  .badge.deprecated {
-    color: hsl(var(--warning));
-    border-color: hsl(var(--warning) / 0.55);
-    background: hsl(var(--warning) / 0.12);
-  }
 
   .c01-nonrung-row {
     display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
@@ -1587,7 +1587,7 @@ body {
               Used by: <b>Memories</b> search &amp; detail, <b>Chat</b> context panel, the retrieval trace's
               per-row cluster, and the nested row under a fact it supports (see below).
             </span>
-            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-token-role">token role: surface-toned <code>--muted</code> / <code>--muted-foreground</code>, bordered with <code>--border</code> — no accent, no status colour (realises doc 14 §3.3's "surface-toned … like the technologies chips" intent; the chip must stay visible against the <code>--card</code> board, so <code>--muted</code>, not <code>--card</code>)</span>
             <span class="c02-expansion">expansion — <b>"memory — Layer 0 of the vault"</b></span>
           </div>
           <div class="c02-card">
@@ -1596,7 +1596,7 @@ body {
               Used by: <b>Knowledge → Facts</b> tab &amp; detail, the <b>Review</b> tab (disputed /
               under-sourced facts), and search / retrieval trace rows.
             </span>
-            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-token-role">token role: surface-toned <code>--muted</code> / <code>--muted-foreground</code>, bordered with <code>--border</code> — no accent, no status colour (realises doc 14 §3.3's "surface-toned … like the technologies chips" intent; the chip must stay visible against the <code>--card</code> board, so <code>--muted</code>, not <code>--card</code>)</span>
             <span class="c02-expansion">expansion — <b>"fact — Layer 2 of the vault"</b></span>
           </div>
           <div class="c02-card">
@@ -1604,7 +1604,7 @@ body {
             <span class="c02-surfaces">
               Used by: <b>Knowledge → Articles</b> tab &amp; detail, and search / retrieval trace rows.
             </span>
-            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-token-role">token role: surface-toned <code>--muted</code> / <code>--muted-foreground</code>, bordered with <code>--border</code> — no accent, no status colour (realises doc 14 §3.3's "surface-toned … like the technologies chips" intent; the chip must stay visible against the <code>--card</code> board, so <code>--muted</code>, not <code>--card</code>)</span>
             <span class="c02-expansion">expansion — <b>"article — Layer 3 of the vault"</b></span>
           </div>
         </div>
@@ -1617,7 +1617,7 @@ body {
               Used by: <b>Memories</b> search &amp; detail, <b>Chat</b> context panel, the retrieval trace's
               per-row cluster, and the nested row under a fact it supports (see below).
             </span>
-            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-token-role">token role: surface-toned <code>--muted</code> / <code>--muted-foreground</code>, bordered with <code>--border</code> — no accent, no status colour (realises doc 14 §3.3's "surface-toned … like the technologies chips" intent; the chip must stay visible against the <code>--card</code> board, so <code>--muted</code>, not <code>--card</code>)</span>
             <span class="c02-expansion">expansion — <b>"memory — Layer 0 of the vault"</b></span>
           </div>
           <div class="c02-card">
@@ -1626,7 +1626,7 @@ body {
               Used by: <b>Knowledge → Facts</b> tab &amp; detail, the <b>Review</b> tab (disputed /
               under-sourced facts), and search / retrieval trace rows.
             </span>
-            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-token-role">token role: surface-toned <code>--muted</code> / <code>--muted-foreground</code>, bordered with <code>--border</code> — no accent, no status colour (realises doc 14 §3.3's "surface-toned … like the technologies chips" intent; the chip must stay visible against the <code>--card</code> board, so <code>--muted</code>, not <code>--card</code>)</span>
             <span class="c02-expansion">expansion — <b>"fact — Layer 2 of the vault"</b></span>
           </div>
           <div class="c02-card">
@@ -1634,7 +1634,7 @@ body {
             <span class="c02-surfaces">
               Used by: <b>Knowledge → Articles</b> tab &amp; detail, and search / retrieval trace rows.
             </span>
-            <span class="c02-token-role">token role: surface-toned <code>--card</code> / <code>--border</code> — no accent, no status colour</span>
+            <span class="c02-token-role">token role: surface-toned <code>--muted</code> / <code>--muted-foreground</code>, bordered with <code>--border</code> — no accent, no status colour (realises doc 14 §3.3's "surface-toned … like the technologies chips" intent; the chip must stay visible against the <code>--card</code> board, so <code>--muted</code>, not <code>--card</code>)</span>
             <span class="c02-expansion">expansion — <b>"article — Layer 3 of the vault"</b></span>
           </div>
         </div>
@@ -1730,7 +1730,6 @@ body {
     border-radius: var(--radius-sm); font-size: 13px; color: hsl(var(--muted-foreground));
   }
   .c03-nav-item svg { width: 15px; height: 15px; flex: none; }
-  .c03-nav-item .refetch { margin-left: auto; }
   .c03-nav-item.active {
     background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); font-weight: 590;
   }
@@ -1823,7 +1822,7 @@ body {
 </style>
 
 <section class="board" id="C03-global-chrome">
-  <div class="board-bar"><span class="board-dot"></span><span class="board-title">C03 — Global chrome: nav shell, scope controls, command palette</span></div>
+  <h2>C03 — Global chrome: nav shell, scope controls, command palette</h2>
   <div class="annotation">
     <b>Reference board, not a screen.</b> Realises doc 13 §3 (the three-group / eight-destination
     navigation map, the project switcher as global scope, the separate session context chip) and doc 14
@@ -2005,7 +2004,7 @@ body {
       the switcher masquerading as a context declaration.
     </div>
 
-    <div class="c03-palette-wrap">
+    <div>
       <h3 style="margin:0 0 8px;font-size:14px;font-weight:620;color:hsl(var(--foreground));">Command palette (⌘K)</h3>
       <div class="c03-palette">
         <div class="c03-palette-input-row">
@@ -2044,7 +2043,7 @@ body {
 </section>
 
 <section class="board" id="C03-switched-project">
-  <div class="board-bar"><span class="board-dot"></span><span class="board-title">C03 — switched-project variant: scope-refetch intent</span></div>
+  <h2>C03 — switched-project variant: scope-refetch intent</h2>
   <div class="annotation">
     Shown in one theme only (theme parity already demonstrated by the shared token system in the
     reference board above). Realises doc 13 §2's contract that the composite
@@ -2096,7 +2095,7 @@ body {
   .c04-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
 
   /* icon pairing inside the shared state-chip / alert / banner classes —
-     colour never carries meaning alone (doc 14 §7/§8): every chip below
+     colour never carries meaning alone (doc 14 §3): every chip below
      pairs its token colour with a distinct icon shape, not colour alone. */
   .state-chip svg { width: 12px; height: 12px; flex: none; }
   .c04-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }

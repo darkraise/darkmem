@@ -5,16 +5,12 @@
      another fragment's local styles once build.py concatenates them.
      Everything below reads var(--token) / hsl(var(--token)) only; nothing
      here redeclares a token or restyles .board/.annotation/.theme-row/
-     .theme-light/.theme-dark/.layer-chip from assets/mockup.css. The one
-     deliberate extension is two NEW modifier rules on the shared, open
-     .badge component (.badge.superseded / .badge.deprecated) — mockup.css
-     only ships the four ladder-rung modifiers; these two are the caution-
-     role, non-rung treatments doc 14 §3.2 requires (lifecycle amber on an
-     L0 memory, and the terminal-superseded badge that REPLACES an L3
-     article's rung badge). They reuse the shared .badge base shape and
-     only add colour, so any other fragment (S05 lineage, S07/S09 article
-     status) that also needs them can declare the identical rule with no
-     visual conflict. */
+     .theme-light/.theme-dark/.layer-chip/.badge from assets/mockup.css.
+     The non-rung caution badges (.badge.superseded / .badge.deprecated —
+     lifecycle amber on an L0 memory, and the terminal-superseded badge
+     that REPLACES an L3 article's rung badge, doc 14 §3.2) live in
+     mockup.css alongside the other .badge modifiers, since S05/S09 reuse
+     them too; nothing below redeclares them. */
 
   .c01-matrix { display: flex; flex-direction: column; gap: 18px; }
   .c01-group { display: flex; flex-direction: column; gap: 10px; }
@@ -56,17 +52,6 @@
   .c01-provenance { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-family: var(--font-mono); font-size: 11.5px; }
   .c01-provenance dt { color: hsl(var(--muted-foreground)); }
   .c01-provenance dd { margin: 0; color: hsl(var(--foreground)); word-break: break-word; }
-
-  /* non-rung caution badges: lifecycle amber (L0 memory) + terminal
-     superseded (L3 article, replaces the rung). Same base .badge shape,
-     caution-role colour per doc 14 §3.1 (--warning), never the ladder's
-     --primary/--destructive/--muted roles. */
-  .badge.superseded,
-  .badge.deprecated {
-    color: hsl(var(--warning));
-    border-color: hsl(var(--warning) / 0.55);
-    background: hsl(var(--warning) / 0.12);
-  }
 
   .c01-nonrung-row {
     display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
