@@ -17,14 +17,16 @@ Copied verbatim from the spec; **every fragment task inherits these**.
 - **Substrate:** `darkraise-ui@3.1.2` tokens + the doc-14 design language. Fresh rebuild rebuilds the *boards*, not the language. Doc 14 is signed off and not re-opened.
 - **Every board renders in BOTH themes** — light and dark. The dark tokens ride `@media (prefers-color-scheme: dark)` **and** a `[data-theme="dark"]` override so the board's theme toggle wins both directions.
 - **Self-contained `index.html`:** no external assets — all CSS, fonts, and images inlined (data: URIs); zero `http(s)://` `src`/`href`/`@import`/`url()` to any remote host; renders offline.
-- **Verbatim honesty copy (never paraphrased, never the words "true" or "verified"):**
-  - Verification badge: **`asserted by K distinct origins of kinds [X, Y], no known contradiction, as of T`** (K, X/Y, T filled with realistic sample values). The badge binds to `COUNT(DISTINCT origin_key)`, never a row count — the sources module makes the count auditable.
-  - Cold-start vault empty state: **`no corroborated facts yet; candidates are served labelled in search`**.
-  - Degraded single-channel result banner: **`showing keyword-only results`** (populated list + caution banner, never fewer rows silently — doc 07 §2).
-  - Retrieval exclusion strip: human copy like **`3 facts excluded by context conflict`** alongside `by_project` and `by_status` — never buried.
+- **Verbatim honesty copy (never paraphrased, never the words "true" or "verified" as a status):**
+  - Verification badge template (doc 12 §4): **`asserted by K distinct origins of kinds [X, Y], no known contradiction, as of T`**. The **G0 reference carries this literal K/X/Y/T template once**; every *screen* board fills it with realistic sample values (e.g. `asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20`). The badge binds to `COUNT(DISTINCT origin_key)`, never a row count — the sources module makes the count auditable.
+  - `confirmed` rung **visible label** (doc 14 §3.2): **`human-ratified`** (never the word "confirmed" as visible chip text); the claim suffix is **`, human-ratified`**.
+  - Disputed two-sided form (doc 14 §3.2): **`disputed: 2 origins assert X, 1 origin asserts not-X, as of T`** — both sides, no picked winner.
+  - Cold-start vault empty state (doc 13 §5.1 / spec — the chosen wording; doc 14 §5's longer variant is a corpus phrasing difference, not a conflict, so do not churn on it in review): **`no corroborated facts yet; candidates are served labelled in search`**.
+  - Degraded single-channel result banner (doc 14 §3.6, **full string**): **`showing keyword-only results — semantic search unavailable`** (populated list + caution banner, never fewer rows silently — doc 07 §2).
+  - Retrieval exclusion strip: human copy like **`3 facts excluded by context conflict`** alongside `by_project` and `by_status` — never buried. When everything is excluded, the **empty state itself shows the strip** ("0 shown, N excluded"), never a bare empty (doc 14 §3.6/§5).
   - Article confidence is labelled **`claim-support coverage`**, not a vague score.
-  - `llm_guessed` `applies_when` provenance is labelled **unverified provenance**, never used as an exclusion basis until a human touches it.
-- **Four render states + two variants (doc 13 §4, doc 14 §5):** every screen shows **empty / loading / error / populated**; **staged** where doc 13 stages a module (labelled with its phase, plus its populated target design — never an empty panel that overclaims, invariant 23); **degraded** (populated + caution) wherever a single retrieval channel can fail. Empty states are honest about *why* (cold-start copy; Memories distinguishes "no matches" from "no memories exist"); a both-channel search failure is an **error** state, never an empty list; a `partial` pipeline **names its failed step** (embed / extract / vector / graph).
+  - `llm_guessed` `applies_when` provenance **chip copy** (doc 14 §4): **`LLM-guessed, not human-checked`** (doc 14 deliberately avoids "unverified" to honour the ban on verdict-claiming words); never used as an exclusion basis until a human touches it.
+- **Four render states + three variants (doc 13 §4, doc 14 §5):** every screen shows **empty / loading / error / populated**; **staged** where doc 13 stages a module (labelled with its phase, plus its populated target design — never an empty panel that overclaims, invariant 23); **degraded** (populated + caution) wherever a single retrieval channel can fail; **empty-with-exclusions** wherever scope/context can exclude everything (the exclusion strip renders "0 shown, N excluded", never a bare empty — doc 14 §5). Empty states are honest about *why* (cold-start copy; Memories distinguishes "no matches" from "no memories exist"); a both-channel search failure is an **error** state, never an empty list; a `partial` pipeline **names its failed step** (embed / extract / vector / graph).
 - **Badge non-rung treatments (doc 14 §3.2):** an L0 memory carries **no** verification badge (a lifecycle amber instead); a terminal-`superseded` article shows a superseded badge that **replaces** the rung. The four ladder rungs are `candidate | corroborated | disputed | confirmed`; `under-sourced` and `stale` are **label overlays**, never a fifth rung.
 - **Scope controls are two distinct chips:** the **project switcher** (sets `project` scope) is NOT the **context chip** (declares session `applies_when`) — never conflated.
 - **Fragment form:** `G0` + `C0*` + `S01…S32`, assembled by `build.py` → one `index.html`. Old 7-board file archived to `docs/design/mockups/_archived/`, its honesty-vocabulary content rebuilt (not copied) into G0/C0*/the vault fragments.
@@ -59,10 +61,10 @@ Each `S*`/`C*` fragment is one HTML file under `fragments/`. Authoring a fragmen
 5. **Annotate honesty decisions.** Where a board renders a label overlay, an exclusion count, a both-sides split, or a staged panel, the annotation says *why* (the invariant it honors).
 
 **Per-fragment verification (the last step of every S/C task):**
-- Run: `python -c "import sys,re; h=open('docs/design/mockups/fragments/<file>').read(); assert 'http://' not in h and 'https://' not in re.sub(r'https://www.w3.org','',h), 'external ref'; print('offline-clean')"` → `offline-clean` (allow only the SVG namespace URL).
-- Run: `rg -n "<verbatim copy string(s) from this brief>" docs/design/mockups/fragments/<file>` → matches (proves the honesty copy is present verbatim).
-- Run: `rg -c "class=\"board\"" docs/design/mockups/fragments/<file>` → equals the state count in the brief.
-- Never the words "true"/"verified" as a status: `rg -in "\\b(verified|true)\\b" docs/design/mockups/fragments/<file>` → only in allowed non-status contexts (e.g. "verification"), reviewed by eye.
+- Offline-clean (strip the SVG namespace under **either** scheme before asserting, mirroring `build.py`): `python -c "import re; h=open('docs/design/mockups/fragments/<file>',encoding='utf-8').read(); s=re.sub(r'https?://www\.w3\.org[^\s\"'\'']*','',h); assert 'http://' not in s and 'https://' not in s, 'external ref'; print('offline-clean')"` → `offline-clean` (data: URIs carry no host and pass).
+- Honesty copy present — use `rg -F` (literal; the badge contains `[X, Y]`, a regex char class): for any board with a badge, `rg -Fc "distinct origins of kinds" <file>` and `rg -Fc "no known contradiction, as of" <file>` → ≥1; plus any other verbatim string this brief names, each grepped with `-F`.
+- Run: `rg -c "class=\"board\"" docs/design/mockups/fragments/<file>` → equals the state/board count in the brief.
+- Never "true"/"verified" as a status: `rg -in "\\b(verified|true)\\b" docs/design/mockups/fragments/<file>` → only in allowed non-status contexts (e.g. "verification", a "verified-fact count" noun labelled per its brief), reviewed by eye.
 - Commit the fragment.
 
 ---
@@ -71,7 +73,7 @@ Each `S*`/`C*` fragment is one HTML file under `fragments/`. Authoring a fragmen
 
 **Files:**
 - Move: `docs/design/mockups/knowledge-vault-mockups.html` → `docs/design/mockups/_archived/knowledge-vault-mockups.html`
-- Create: `docs/design/mockups/{assets,fragments}/.gitkeep`
+- Create dirs: `docs/design/mockups/{assets,fragments,_archived}` (empty dirs don't commit; they land with their first real file in Tasks 1/3 — no `.gitkeep` needed)
 
 - [ ] **Step 1: Archive the old file (git mv preserves history)**
 
@@ -108,7 +110,7 @@ Copy the `:root` (light) and dark custom-property blocks from `frontend/node_mod
 
 Run: `rg -c -- "--background|--foreground|--chart-|--primary|--border" docs/design/mockups/assets/theme.css` (expect the token set) and `rg -n "prefers-color-scheme: dark|\\[data-theme=\"dark\"\\]|\\.theme-dark" docs/design/mockups/assets/theme.css` (expect all three dark selectors).
 
-- [ ] **Step 3: Author `mockup.css`** — the board chrome authored against the tokens: `body` grid of `.board` cards on `var(--background)`; `.board` frame with `var(--border)`/`var(--radius)`; `.annotation` callout (muted, small); `.state-chip` (empty/loading/error/populated/staged/degraded pills); `.badge` variants (candidate/corroborated/disputed/confirmed + `.overlay-under-sourced`/`.overlay-stale` + `.badge-code`); `.layer-chip` (l0/l1/l2/l3); `.theme-toggle` JS-free via a checkbox that flips a `[data-theme]` on the board wrapper; side-by-side `.theme-light`/`.theme-dark` framings. No `@import`/remote `url()`.
+- [ ] **Step 3: Author `mockup.css`** — the board chrome authored against the tokens: `body` grid of `.board` cards on `var(--background)`; `.board` frame with `var(--border)`/`var(--radius)`; `.annotation` callout (muted, small); `.state-chip` (empty/loading/error/populated/staged/degraded/excluded pills); `.badge` variants (candidate/corroborated/disputed/confirmed + `.overlay-under-sourced`/`.overlay-stale` + `.badge-code`); `.layer-chip` (l0/l1/l2/l3); the per-board side-by-side `.theme-light`/`.theme-dark` framings (pure CSS — this is what guarantees theme parity in the mockup; there is no custom JS toggle, and the viewer's own toggle drives `[data-theme]` via the dual dark selectors in `theme.css`). No `@import`/remote `url()`.
 
 - [ ] **Step 4: Verify offline-clean** — Run: `rg -n "http://|https://|@import" docs/design/mockups/assets/mockup.css` → no matches.
 
@@ -128,14 +130,17 @@ git commit -m "docs(mockups): shared theme tokens + board chrome CSS"
 
 **Interfaces:**
 - Consumes: `assets/theme.css`, `assets/mockup.css`, `fragments/*.html` (ordered `G0`, `C0*`, `S01…S32`).
-- Produces: `docs/design/mockups/index.html` — one file, all CSS inlined, a sticky board-index nav, a global theme toggle.
+- Produces: `docs/design/mockups/index.html` — **body-content only** (no doctype/head/body, so it drops cleanly into the Artifact skeleton and still renders offline in any browser), all CSS inlined, a sticky board-index nav; theme parity comes from each board's side-by-side light/dark framings plus the dual dark selectors that let the viewer's own theme toggle drive `[data-theme]` (no custom JS toggle — CSP-safe).
 
 - [ ] **Step 1: Write `build.py` (stdlib only)**
 
 ```python
 #!/usr/bin/env python3
-"""Assemble the darkmem UI mockups into one self-contained index.html.
-No external deps, no network — inlines the shared CSS and every fragment.
+"""Assemble the darkmem UI mockups into one self-contained, Artifact-ready
+index.html body. No external deps, no network — inlines the shared CSS and
+every fragment. Emits body-content only (style + nav + main, no doctype/
+head/body) so it publishes cleanly through the Artifact tool's own skeleton
+and still renders offline in any browser.
 """
 from pathlib import Path
 import re, sys
@@ -144,12 +149,14 @@ ROOT = Path(__file__).parent
 FRAG = ROOT / "fragments"
 ASSETS = ROOT / "assets"
 
-# Deterministic fragment order: G0, then C0*, then S## ascending.
+# Deterministic order: G0, then C0*, then S## ascending. Read the numeric
+# suffix right after the leading letters — never strip every digit in the
+# slug (which would mis-sort e.g. "S18-5-phase-stepper").
 def order_key(p: Path):
     name = p.stem
     bucket = {"G": 0, "C": 1, "S": 2}.get(name[0], 9)
-    num = int(re.sub(r"\D", "", name) or 0)
-    return (bucket, num)
+    m = re.match(r"[A-Za-z]+(\d+)", name)
+    return (bucket, int(m.group(1)) if m else 0)
 
 def main():
     css = "\n".join((ASSETS / f).read_text(encoding="utf-8") for f in ("theme.css", "mockup.css"))
@@ -158,25 +165,20 @@ def main():
         sys.exit("no fragments found")
     bodies, nav = [], []
     for f in frags:
-        html = f.read_text(encoding="utf-8")
         anchor = f.stem
         nav.append(f'<a href="#{anchor}">{anchor}</a>')
-        bodies.append(f'<article id="{anchor}" class="fragment">\n{html}\n</article>')
-    # Reject any external reference before emitting.
-    joined = css + "\n".join(bodies)
-    bad = [m for m in re.findall(r'https?://[^\s"\')]+', joined)
-           if "www.w3.org" not in m]  # allow the SVG namespace only
+        bodies.append(f'<article id="{anchor}" class="fragment">\n{f.read_text(encoding="utf-8")}\n</article>')
+    # Reject any external reference before emitting (allow only the SVG
+    # namespace under either scheme; data: URIs have no host and pass).
+    joined = css + "".join(bodies)
+    bad = [m for m in re.findall(r'https?://[^\s"\')]+', joined) if "www.w3.org" not in m]
     if bad:
         sys.exit(f"external references present, not self-contained: {bad[:5]}")
-    out = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>darkmem — target UI mockups</title>
-<style>{css}</style></head>
-<body>
-<nav class="board-index">{''.join(nav)}</nav>
-<main>{''.join(bodies)}</main>
-</body></html>"""
+    out = (
+        f"<style>{css}</style>\n"
+        f'<nav class="board-index">{"".join(nav)}</nav>\n'
+        f'<main>{"".join(bodies)}</main>\n'
+    )
     (ROOT / "index.html").write_text(out, encoding="utf-8")
     print(f"built index.html from {len(frags)} fragments")
 
@@ -211,7 +213,7 @@ git commit -m "docs(mockups): self-contained assembler build.py"
 
 **Files:** Create `fragments/C01-verification-badges.html`
 
-**Brief.** The most-reused honesty component. Render, in both themes: the four ladder rungs (`candidate` served-labelled-below-verified, `corroborated` with the **verbatim badge string**, `disputed` shown with **both sides**, `confirmed` human-only) + the two overlay chips (`under-sourced`, `stale`) shown riding on a still-`corroborated` row (never a fifth rung) + the `code@commit` corroborated variant with `{commit_sha, basis, file_path, symbol_key}` provenance + the two **non-rung** treatments (L0 memory = no badge, lifecycle amber; terminal-`superseded` article = badge replaces rung). Annotate that the count is `COUNT(DISTINCT origin_key)`. **States:** one matrix board (all variants side by side).
+**Brief.** The most-reused honesty component. Render, in both themes: the four ladder rungs (`candidate` served-labelled-below-verified, `corroborated` with the **verbatim badge string**, `disputed` shown with **both sides**, `confirmed` human-only) + the two overlay chips (`under-sourced`, `stale`) shown riding on a still-`corroborated` row (never a fifth rung) + the `code@commit` corroborated variant with `{commit_sha, basis, file_path, symbol_key}` provenance + the two **non-rung** treatments (L0 memory = no badge, lifecycle amber; terminal-`superseded` article = badge replaces rung). The `confirmed` rung's **visible chip label is `human-ratified`** (never "confirmed" as visible text; claim suffix `, human-ratified`), and the `disputed` two-sided form is `disputed: 2 origins assert X, 1 origin asserts not-X, as of T`. Annotate that the count is `COUNT(DISTINCT origin_key)`. **States:** one matrix board (all variants side by side).
 
 - [ ] **Step 1:** Author per protocol + brief. Define the reusable `.badge*` markup other fragments copy.
 - [ ] **Step 2:** Verify per protocol — badge string present; `rg -n "under-sourced|stale|code@commit|candidate|corroborated|disputed|confirmed"` all present; no "verified"/"true" as status.
@@ -243,9 +245,9 @@ git commit -m "docs(mockups): self-contained assembler build.py"
 
 **Files:** Create `fragments/C04-render-states.html`
 
-**Brief.** The reusable state pattern every screen instantiates: **empty / loading / error / populated**, **plus** the **staged** variant (labelled with its phase) **plus** the **degraded** populated-with-caution variant (`showing keyword-only results`). Annotate each with its honesty rule (empty says why; error ≠ empty list; partial names its step; staged ≠ empty panel; degraded ≠ fewer rows). Both themes. **Verbatim copy:** cold-start line, degraded banner. **States:** six pattern cells.
+**Brief.** The reusable state pattern every screen instantiates: **empty / loading / error / populated**, **plus** the **staged** variant (labelled with its phase) **plus** the **degraded** populated-with-caution variant (`showing keyword-only results — semantic search unavailable`) **plus** the **empty-with-exclusions** variant (the exclusion strip on an otherwise-empty result — "0 shown, N excluded" — never a bare empty, doc 14 §5). Annotate each with its honesty rule (empty says why; error ≠ empty list; partial names its step; staged ≠ empty panel; degraded ≠ fewer rows; empty-with-exclusions ≠ bare empty). Both themes. **Verbatim copy:** cold-start line, full degraded banner. **States:** seven pattern cells.
 
-- [ ] **Step 1:** Author per protocol. **Step 2:** Verify (cold-start + degraded strings present; six `.state-chip` variants). **Step 3:** Commit.
+- [ ] **Step 1:** Author per protocol. **Step 2:** Verify (cold-start + full degraded strings present; seven `.state-chip` variants). **Step 3:** Commit.
 
 ---
 
@@ -254,7 +256,7 @@ git commit -m "docs(mockups): self-contained assembler build.py"
 Each task follows the **Fragment authoring protocol**. States are empty/loading/error/populated unless the brief adds staged/degraded.
 
 ### Task 8: `S01` Dashboard
-**Modules (doc 13 §4):** contribution calendar (UTC day buckets; a day click → `/activity/day/$date`), live feed, stat tiles (memory / verified-fact / open-review / buffer-depth counts), cold-start hints. **Empty** = fresh install, blank calendar + first-capture CTA (not a broken grid). **Verify:** calendar + feed + 4 tiles; empty-state CTA copy.
+**Modules (doc 13 §4):** contribution calendar (UTC day buckets; a day click → `/activity/day/$date`), live feed, stat tiles (memory / **corroborated-fact** — doc 13's "verified-fact count", labelled by the vault's rung name to avoid a status claim / open-review / buffer-depth counts), cold-start hints. **Empty** = fresh install, blank calendar + first-capture CTA (not a broken grid). **Verify:** calendar + feed + 4 tiles; empty-state CTA copy.
 
 ### Task 9: `S02` Memories — search & list
 **Modules:** search box + project scope + context chip, result list with layer/verification labels, "supports fact F" nesting. **States:** + **degraded** (`showing keyword-only results`). **Empty** distinguishes "no matches" vs "no memories exist" (two boards). **Error** = both-channel failure (not empty list). **Verify:** degraded banner + both empty-copy variants present.
@@ -266,7 +268,7 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 **Modules:** create-memory dialog, **edit-memory dialog**, command palette. **Verify:** both dialogs present.
 
 ### Task 12: `S05` Memory detail
-**Modules:** content, enrichment (`classified_type`/`summary`/`emotions`/`flags` — no `llm_` prefix), `technologies` chips, **supersession lineage** (amber badge + link to successor), **memory-relations** (`CONTRADICTS`/`ELABORATES`/`DEPENDS_ON`/`FOLLOWS`/`RELATES_TO`), **per-memory timeline** (events by object). **States:** + **superseded** (amber, retained not hidden). **Verify:** amber lineage + all five relation types + timeline present.
+**Modules:** content, enrichment (`classified_type`/`summary`/`emotions`/`flags` — no `llm_` prefix), `technologies` chips, **supersession lineage** (amber badge + link to successor), **memory-relations** (`CONTRADICTS`/`ELABORATES`/`DEPENDS_ON`/`FOLLOWS`/`RELATES_TO`), **per-memory timeline** (events by object, each transition naming its from→to rung where applicable, doc 14 §6). **States:** + **superseded** AND **deprecated** (both amber-labelled, retained not hidden — doc 13 §4). **Verify:** amber lineage (superseded + deprecated) + all five relation types + timeline present.
 
 **Wave A commit:** each task commits its own fragment per protocol.
 
@@ -290,7 +292,7 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 **Modules (doc 09 §3.4):** community list, labels, reports, **pin-suggestion nominations** (subject soft key, community label, "new or grown" reason, member count, anchored-verified-fact count) with accept (creates pinned subject) / dismiss (recorded). **Verify:** nomination fields + accept/dismiss present.
 
 ### Task 18: `S11` Knowledge — Review mode
-**Modules (doc 08 §6):** `review_state='open'` — disputed facts with **both sides** (no picked winner), under-sourced hysteresis, ungrounded/low-confidence articles; per-item **ratify-to-`confirmed`** (auth-only, writes a `human`-kind source). Consequence-ranked, not FIFO; served-labelled, never gated. Shares one `/knowledge/review` shell with S12 (mode toggle). **Empty** = healthy ("no disputes to adjudicate") as reassurance. **Verify:** both-sides + ratify + shared-shell annotation.
+**Modules (doc 08 §6):** `review_state='open'` — disputed facts with **both sides** (no picked winner), under-sourced hysteresis, ungrounded/low-confidence articles; per-item **ratify-to-`confirmed`** (auth-only, writes a `human`-kind source). Consequence-ranked, not FIFO; served-labelled, never gated. Shares one `/knowledge/review` shell with S12 (mode toggle). **States:** + a **`stale_labelled`** decayed section (unreviewed past `dispute_stale_days` — priority decays but the item stays served-labelled and reachable; decay is a priority change, NOT a resolution, doc 13 §6.2 / doc 14 §6). **Empty** = healthy ("no disputes to adjudicate") as reassurance. **Verify:** both-sides + ratify + shared-shell annotation + the decayed section present.
 
 ### Task 19: `S12` Knowledge — Hygiene mode
 **Modules (doc 08 §6):** candidate duplicates from dreaming, low-confidence memories, expiring-soon rows, superseded lineage; **bulk actions** (set/extend TTL, prune, supersede, confirm dedup). Shares the S11 shell. **Verify:** bulk actions + shared-shell annotation.
@@ -306,7 +308,7 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 **Modules (doc 10, 13 §4.2):** repo list + live indexing phase label, reindex dialog (`{full, enrich_symbols, generate_wiki}`), **fail-stale banner** (last-good graph marked stale, never wiped), **index-debt indicator**, **auto-provision registration state** (repo-hint → auto-registered), **"gated by repository, not project"** scope hint. **States:** + **stale**. **Verify:** fail-stale + auto-provision + repo-not-project hint present.
 
 ### Task 22: `S15` Code — Code Graph
-**Modules (doc 10 code-graph revamp, kept):** force/tree/circles layout switcher, camera + play/pause, command-palette search, Processes panel + Mermaid export, community colouring + navigator, symbol browser, blast-radius risk buckets. **Verify:** all six revamp features present.
+**Modules (doc 10 code-graph revamp, kept):** force/tree/circles layout switcher, camera + play/pause, command-palette search, Processes panel + Mermaid export, community colouring + navigator, symbol browser, blast-radius risk buckets. **Verify:** all seven revamp feature groups present.
 
 ### Task 23: `S16` Code — Wiki
 **Modules:** read-only wiki; **empty** state points at the reindex dialog (`GET /code/wiki` never implicitly generates). **Verify:** empty-state → reindex affordance.
@@ -322,7 +324,7 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 **Modules (doc 02 §5.2):** per-memory stepper (content embed → extract-and-classify → entity embed → dedup → write), terminal `completed`/`partial`/`failed`; a **partial names its failed step** (embed/extract/vector/graph), never a collapsed batch pass/fail. **Verify:** named-step partial present.
 
 ### Task 26: `S19` Activity — live feed
-**Modules:** the transient `/ws` stream while open. **Verify:** feed board in four states.
+**Modules:** the transient `/ws` stream while open; a **dispute-toast still-frame** — the one transient toast that carries honesty content (a `fact.verified` dispute alert, doc 13 §2.1 / spec §6; static frame, motion out of scope). **Verify:** feed board in four states + the dispute-toast still-frame.
 
 ### Task 27: `S20` Activity — failure triage
 **Modules:** `pipeline_failures` with retry, **poison rows surfaced** (not looping silently). **Verify:** poison-row + retry present.
@@ -380,7 +382,7 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 - [ ] **Step 1: Build** — Run: `python docs/design/mockups/build.py`. Expected: `built index.html from 37 fragments` (G0 + C01–C04 + S01–S32).
 - [ ] **Step 2: Self-containment gate** — Run: `rg -n "http://|https://" docs/design/mockups/index.html | rg -v "www.w3.org"`. Expected: no matches (only the SVG namespace allowed). Run: `rg -c "<article " docs/design/mockups/index.html` → 37.
 - [ ] **Step 3: Coverage gate** — Run: `rg -o "id=\"S[0-9]+" docs/design/mockups/index.html | sort -u | wc -l` → 32 screen fragments present. Confirm G0 + C01–C04 anchors present.
-- [ ] **Step 4: Honesty-copy gate** — Run: `rg -c "asserted by K distinct origins" docs/design/mockups/index.html` (≥1); `rg -c "no corroborated facts yet; candidates are served labelled" docs/design/mockups/index.html` (≥1); `rg -c "showing keyword-only results" docs/design/mockups/index.html` (≥1); `rg -in "status.{0,20}\\b(true|verified)\\b" docs/design/mockups/index.html` (0 — no status says true/verified).
+- [ ] **Step 4: Honesty-copy gate** (use `rg -F` for literals — the badge holds `[X, Y]`): `rg -Fc "asserted by K distinct origins of kinds [X, Y]" docs/design/mockups/index.html` (≥1 — the G0 literal template); `rg -Fc "distinct origins of kinds" docs/design/mockups/index.html` (≥ several — filled badges on screen boards); `rg -Fc "no corroborated facts yet; candidates are served labelled in search" docs/design/mockups/index.html` (≥1); `rg -Fc "showing keyword-only results — semantic search unavailable" docs/design/mockups/index.html` (≥1); `rg -Fc "human-ratified" docs/design/mockups/index.html` (≥1); `rg -in "status[^<]{0,20}\\b(true|verified)\\b" docs/design/mockups/index.html` (0 — no status says true/verified).
 - [ ] **Step 5: Render check** — open `index.html` via the run/browser tooling; confirm both themes toggle and boards render offline.
 - [ ] **Step 6: Commit** — `git add -A docs/design/mockups && git commit -m "docs(mockups): assemble self-contained index.html (37 fragments)"`.
 
@@ -396,7 +398,7 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 
 ### Task 42: Publish the artifact + record the URL
 
-- [ ] **Step 1:** Read the full `index.html` (required before publishing). Publish via the Artifact tool (`file_path: docs/design/mockups/index.html`, a `<title>` "darkmem — target UI mockups", a one-sentence description, a stable favicon, both-theme aware). It is our own design work-product (no impersonation) → publishing proactively is fine.
+- [ ] **Step 1:** Read the full `index.html` (required before publishing). It is **body-content only** (build.py emits no doctype/head/body), so it drops cleanly into the Artifact skeleton: pass the `title` "darkmem — target UI mockups" as a **parameter** (not a `<title>` tag), a one-sentence `description`, and a stable `favicon`; it is theme-aware via the dual dark selectors + side-by-side framings. It is our own design work-product (no impersonation) → publishing proactively is fine. **Publish as a NEW artifact** — do not reuse the retired 7-board artifact's URL; the old set is archived and superseded.
 - [ ] **Step 2:** Record the artifact URL in `docs/design/README.md` (UI Mockups status row) and save a darkmem memory (milestone) noting the fresh comprehensive set supersedes the 7-board artifact.
 - [ ] **Step 3:** Commit the README URL update.
 
@@ -412,6 +414,6 @@ Each task follows the **Fragment authoring protocol**. States are empty/loading/
 
 ## Self-Review (run after writing all tasks)
 
-1. **Spec coverage:** spec §4's form (G0 + C0* + S01–S32 + build.py → self-contained index.html → artifact) is Tasks 0–3/40/42; the 32-screen manifest is Waves A–F (S01–S32 map 1:1 to spec §4's table incl. edit/S04, both-sides/S07, auto-provision/S14, staged+populated/S22, inject-log/S30); the four-state + staged + degraded contract is C04 + each brief + the Task-40 gates; verbatim honesty copy is the Global Constraints + Task-40 gates; archive is Task 0; editorial touch-up is Task 43. ✓
+1. **Spec coverage:** spec §4's form (G0 + C0* + S01–S32 + build.py → self-contained index.html → artifact) is Tasks 0–3/40/42; the 32-screen manifest is Waves A–F (S01–S32 map 1:1 to spec §4's table incl. edit/S04, both-sides/S07, auto-provision/S14, staged+populated/S22, inject-log/S30); the four-state + staged + degraded + empty-with-exclusions contract is C04 + each brief + the Task-40 gates; verbatim honesty copy (badge template, `human-ratified`, full degraded banner, `LLM-guessed, not human-checked`) is the Global Constraints + Task-40 `rg -F` gates; archive is Task 0; editorial touch-up is Task 43. ✓
 2. **Placeholder scan:** briefs name exact modules/states/copy + a concrete verify; no "add appropriate…". The per-fragment HTML is authored at execution (correct right-sizing for a mockup deliverable — the plan fixes the brief + verification, not the pixels). ✓
 3. **Consistency:** the 37-fragment count (G0 + C01–04 + S01–32), the `.board`/`.badge`/`.layer-chip` class names, and the verbatim copy strings are used identically across `build.py`, the protocol, the briefs, and the Task-40 gates. ✓

@@ -74,7 +74,7 @@ git commit -m "docs(planning): scaffold feature-epics D1 skeleton"
 
 - [ ] **Step 1: E0 rows** — from doc 20 §2 (Phase 0) + docs 17/19: the single baseline migration with dormant objects landed inert (`repo_ids[]`, `documents`/`blocks`, the four partition templates incl. `triple_embeddings`), tag `target-new, inert`, owning doc 19; the eval harness (extraction F1 bench `exists-today` + retrieval eval `target-new`) behind a CI gate, owning doc 17; gate G-A. Each row: story bullets naming the doc-20 §2 deliverable, tag, owning doc, F-flow (F-none/F9), G-A.
 
-- [ ] **Step 2: E1 rows** — from doc 20 §2 (Phase 1) + docs 05/06/07/10/11/12/13: Capture + `memory_buffer` **with `origin_key` born at capture** (F1, doc 05, target-new); five-phase pipeline merged one-call topology (F2, doc 05, rebuild); L1 graph & taxonomy (doc 06, rebuild); retrieval with **SQL pushdown** + labels + trace (F3, doc 07, rebuild — pushdown is the G-B isolation prerequisite); code truth T1–T4 (F11, doc 10, rebuild); flattened LLM orchestrator (doc 11, rebuild); `events` substrate (doc 04 §8.1, target-new); contract + core UI surfaces (doc 12/13). Gate G-B.
+- [ ] **Step 2: E1 rows** — from doc 20 §2 (Phase 1) + docs 05/06/07/08/10/11/12/13: Capture + `memory_buffer` **with `origin_key` born at capture** (F1, doc 05, target-new; incl. the repo-hint handoff to F11 with doc 18's SSRF allowlist gate, target-new); five-phase pipeline merged one-call topology (F2, doc 05, rebuild); L1 graph & taxonomy (doc 06, rebuild); retrieval with **SQL pushdown** + labels + trace (F3, doc 07, rebuild — pushdown is the G-B isolation prerequisite); **supersession rules 1–6 verbatim (F4, doc 08 §2.1, exists-today)**; **expiry / TTL sweep (F5, doc 08, exists-today; the `expires_at` self-expiring-dated-fact activation half follows in E2/Phase 2)**; code truth T1–T4 (F11, doc 10, rebuild); flattened LLM orchestrator (doc 11, rebuild); `events` substrate (doc 04 §8.1, target-new); contract + core UI surfaces (doc 12/13). Gate G-B.
 
 - [ ] **Step 3: E2 rows** — from doc 20 §2 (Phase 2) + docs 08/06/09/10: verified facts + `fact_sources` (origin diversity over the Phase-1 `origin_key`) + the verification ladder (doc 08, target-new); review/hygiene queues (doc 08); `projects` registry (doc 04 §7); consolidation/"dreaming" job family + digest + undo (F6, doc 08); memory relations (doc 08 §5.5); topics (doc 09, F9/doc 06); the code deriver, born corroborated, **after G-C** (F11, doc 10). Gate G-C (deriver/exit) and G-D (→ Phase 3).
 
@@ -84,8 +84,9 @@ git commit -m "docs(planning): scaffold feature-epics D1 skeleton"
 
 - [ ] **Step 6: Verify F1–F11 coverage and gate correctness**
 
-Run: `rg -n "F1|F2|F3|F4|F5|F6|F7|F9|F10|F11" docs/planning/feature-epics.md | rg -c "F[0-9]"`
-Expected: every flow F1–F7, F9, F10, F11 appears at least once (F8 is horizon → EH1 in Task 3). Manually confirm each E-epic's gate matches doc 20 §4.
+Run one probe per committed flow (each must return ≥1):
+`for f in F1 F2 F3 F4 F5 F6 F7 F9 F10 F11; do printf "%s: " "$f"; rg -c "\b$f\b" docs/planning/feature-epics.md; done`
+Expected: every one of F1–F7, F9, F10, F11 ≥ 1 (F8 is horizon → EH1 in Task 3). Then manually confirm each E-epic's gate matches doc 20 §4 (E1 G-B, E2 G-C/G-D, E3 G-E, E4 demand).
 
 - [ ] **Step 7: Commit**
 
@@ -129,11 +130,11 @@ git commit -m "docs(planning): EH1/EH2 horizon-lane feature rows"
 - Consumes: doc 20 §5 (every split), §6 (tag timeline).
 - Produces: the non-exhaustive matrix and the F9 callouts that make the phase-first shape hide nothing.
 
-- [ ] **Step 1: Fill the matrix** with every doc-20 §5 split (non-exhaustive by intent, doc 20 is the authority): Code/F11 (P1 T1–T4 / P2 deriver / P4 push webhook); retrieval arms (P1-wire / P2-activate); doc 09 (topics P2 / articles P3); doc 15 (inject v1 P3 / `watch`+auto-scrape P4 / MCP-resource horizon); doc 19 (Phase-0 birth / H2 replay); `expires_at` (P1 exists / P2 activation); `w_importance`, `w_heat`, `w_recency`, `w_ppr`, dual-level, community injection (land P1/P2, activate P2 on retrieval-eval win with twin); `reranker_enabled` (phase: any); `applies_when` boost (P1 wire / P2 tune); `triple_embeddings` writer (P2+, trigram-miss-rate gated). Columns: Item | P0 | P1 | P2 | P3 | P4 | Horizon | Activation bar.
+- [ ] **Step 1: Fill the matrix** with every doc-20 §5 split (non-exhaustive by intent, doc 20 is the authority): Code/F11 (P1 T1–T4 / P2 deriver / P4 push webhook); retrieval arms (P1-wire / P2-activate); doc 09 (topics P2 / articles P3); doc 15 (inject v1 P3 / `watch`+auto-scrape P4 / MCP-resource horizon); doc 19 (Phase-0 birth / H2 replay); `expires_at` (P1 exists / P2 activation); `w_conf` (exists-today, read now, P1); `relation_rescue` (exists-today, on, P1, guarded by the F1 bench — reorder/remove only against a measured delta); `w_importance`, `w_heat`, `w_recency`, `w_ppr`, dual-level, community injection (land P1/P2, activate P2 on retrieval-eval win with twin — **graph arms need the snapshot job live first**); `reranker_enabled` (phase: any, measured win incl. p95 cost); `applies_when` boost (P1 wire / P2 tune); `triple_embeddings` writer (P2+, trigram-miss-rate gated — **counting only, `names_distinct` carried**). Columns: Item | P0 | P1 | P2 | P3 | P4 | Horizon | Activation bar.
 
-- [ ] **Step 2: Fill each epic's F9 callout** — one line per epic naming which UI surfaces ship with that phase's signals (doc 13 inventory): E1 → pipeline stepper + failure triage + core Memories/Dashboard/trace; E2 → verification badges + Review/Hygiene + dream digest + calendar; E3 → article + distribution surfaces. State that docs 13/14 bind these, owning no epic.
+- [ ] **Step 2: Fill each epic's F9 callout** — one line per epic naming which UI surfaces ship with that phase's signals (doc 13 inventory): E0 → none (harness/CI only, no UI surface this phase); E1 → pipeline stepper + failure triage + job board + **Dashboard incl. the contribution calendar** (Dashboard is E1 core UI and the calendar reads the P1 `events` substrate) + Memories/why-retrieved trace; E2 → verification badges + Review/Hygiene shell + dream digest + topic surfaces; E3 → article + distribution surfaces; E4 → `ApiKey`-use journaled to `events` + inject `watch`/curb surfaces; EH1 → the analysis/blocks surface; EH2 → none (backend replay, no new UI). State that docs 13/14 bind these, owning no epic.
 
-- [ ] **Step 3: Verify** — Run: `rg -n "reranker_enabled|applies_when|triple_embeddings|w_importance|w_ppr|dual-level" docs/planning/feature-epics.md`. Expected: every arm/flag from doc 20 §5 appears in the matrix. Confirm each epic has an F9 line.
+- [ ] **Step 3: Verify** — Run: `rg -n "w_conf|relation_rescue|reranker_enabled|applies_when|triple_embeddings|w_importance|w_heat|w_recency|w_ppr|dual-level|community" docs/planning/feature-epics.md`. Expected: all eight doc-20 §5 arm/flag rows appear in the matrix. Confirm each epic has an F9 line.
 
 - [ ] **Step 4: Commit**
 
@@ -151,7 +152,7 @@ git commit -m "docs(planning): phase-subsystem matrix + F9 callouts"
 
 - [ ] **Step 1: Placeholder + tag scan** — Run: `rg -n "TBD|TODO|FIXME|\\?\\?\\?" docs/planning/feature-epics.md`. Expected: no matches. Then confirm every feature row has all 6 fields populated (activation rows carry an activation bar).
 
-- [ ] **Step 2: Doc-20 §5 coverage cross-check** — walk doc 20 §5's two tables (F1–F11 dispositions, arm/flag table); confirm each item has a home in an epic row or the matrix. List and close any gap.
+- [ ] **Step 2: Doc-20 §5 coverage cross-check (per-item, not a walk)** — for each of the 11 flows (F1–F11) and each of the 8 arm/flag rows, run an explicit `rg -c "\b<item>\b"` probe and confirm ≥1; list and close any zero. Then sweep docs 05–19: confirm each owning doc appears in an epic row or the matrix (docs 13/14 are the two exceptions, homed by the F9 callouts per Global Constraints).
 
 - [ ] **Step 3: Adversarial review (optional but recommended)** — dispatch a Fable subagent (`model: fable`) to check E1–E4/EH gates against doc 20 §4, F1–F11 coverage, and no-new-decision fidelity; apply findings inline.
 
