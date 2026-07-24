@@ -1,0 +1,330 @@
+/* ==========================================================================
+   Board chrome for the Comprehensive UI Mockups (D2).
+
+   Authored entirely against the tokens declared in theme.css — every
+   color reference below is var(--token) or hsl(var(--token)), never a
+   literal. That's what makes a board correct under all four theme
+   entry points theme.css wires up: the OS `prefers-color-scheme`, the
+   viewer's own [data-theme] toggle, and a forced .theme-light /
+   .theme-dark class on an individual board. No stylesheet import
+   directive, no remote url() — self-contained.
+
+   Load order: theme.css then mockup.css (mockup.css only *consumes*
+   custom properties, it never declares --background/--primary/etc.
+   itself).
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px;
+  display: grid;
+  gap: 32px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- board frame -------------------------------------------------------- */
+
+.board {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.board-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid hsl(var(--border));
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.board-bar .board-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: hsl(var(--border));
+  flex: none;
+}
+
+.board-title {
+  font-size: 15px;
+  font-weight: 640;
+  color: hsl(var(--foreground));
+}
+
+.board-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- side-by-side theme framing -----------------------------------------
+   Wraps two boards (one tagged .theme-light, one .theme-dark) so a
+   fragment can show both themes at once, independent of the page-level
+   [data-theme] toggle or the viewer's OS preference. theme.css defines
+   the token values for .theme-light/.theme-dark; this file only lays
+   the pair out and labels them. */
+
+.theme-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .theme-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-row > .theme-light,
+.theme-row > .theme-dark {
+  position: relative;
+  padding-top: 40px;
+}
+
+.theme-row > .theme-light::before,
+.theme-row > .theme-dark::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.theme-row > .theme-light::before {
+  content: "theme: light";
+}
+
+.theme-row > .theme-dark::before {
+  content: "theme: dark";
+}
+
+/* ---- annotation callout -------------------------------------------------- */
+
+.annotation {
+  border-left: 2px solid hsl(var(--primary) / 0.55);
+  padding: 2px 0 2px 12px;
+  font-size: 12.5px;
+  color: hsl(var(--muted-foreground));
+}
+
+.annotation b,
+.annotation strong {
+  color: hsl(var(--foreground));
+  font-weight: 640;
+}
+
+.annotation.annotation-caution {
+  border-left-color: hsl(var(--warning) / 0.7);
+}
+
+.annotation.annotation-conflict {
+  border-left-color: hsl(var(--destructive) / 0.7);
+}
+
+/* ---- state chips ----------------------------------------------------------
+   empty / loading / error / populated / staged / degraded / excluded —
+   the seven honest states a surface must be able to render. */
+
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.state-chip.state-empty {
+  border-style: dashed;
+}
+
+.state-chip.state-loading {
+  color: hsl(var(--info));
+  border-color: hsl(var(--info) / 0.5);
+  background: hsl(var(--info) / 0.1);
+}
+
+.state-chip.state-error {
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.5);
+  background: hsl(var(--destructive) / 0.1);
+}
+
+.state-chip.state-populated {
+  color: hsl(var(--success));
+  border-color: hsl(var(--success) / 0.5);
+  background: hsl(var(--success) / 0.1);
+}
+
+.state-chip.state-staged {
+  border-style: dashed;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+}
+
+.state-chip.state-degraded {
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.5);
+  background: hsl(var(--warning) / 0.12);
+}
+
+.state-chip.state-excluded {
+  color: hsl(var(--muted-foreground));
+  border-style: dotted;
+  opacity: 0.85;
+}
+
+/* ---- verification badges --------------------------------------------------
+   candidate / corroborated / disputed / confirmed — the honesty-label
+   ladder. Colour maps to the doc-14 status roles: neutral -> muted,
+   supported -> primary, conflict -> destructive. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 560;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.badge.candidate {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px dashed hsl(var(--border));
+}
+
+.badge.corroborated {
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.6);
+  background: transparent;
+}
+
+.badge.confirmed {
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
+
+.badge.disputed {
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.55);
+  background: hsl(var(--destructive) / 0.1);
+}
+
+/* ---- overlay chips ----------------------------------------------------
+   Append after a badge; never replace it — the backend has not demoted
+   the row, these are advisory labels only. */
+
+.overlay-under-sourced,
+.overlay-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 550;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: hsl(var(--warning));
+  border: 1px dashed hsl(var(--warning) / 0.6);
+  background: hsl(var(--warning) / 0.12);
+}
+
+/* ---- code-origin badge --------------------------------------------------- */
+
+.badge-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--chart-5));
+  border: 1px solid hsl(var(--chart-5));
+  background: transparent;
+}
+
+/* ---- layer chips -----------------------------------------------------
+   l0 memory / l1 / l2 fact / l3 article. Per doc 14: surface-toned,
+   monospace, no accent, no status colour — quiet metadata that
+   classifies without judging. The l0..l3 modifiers stay on that same
+   neutral --muted/--border pairing (never a hue) and differ only by a
+   depth-of-synthesis opacity ramp, so a layer chip can never be
+   mistaken for a verification signal. */
+
+.layer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.layer-chip.l0 {
+  opacity: 0.7;
+}
+
+.layer-chip.l1 {
+  opacity: 0.8;
+}
+
+.layer-chip.l2 {
+  opacity: 0.9;
+}
+
+.layer-chip.l3 {
+  opacity: 1;
+}

@@ -1,0 +1,170 @@
+/* ==========================================================================
+   darkraise-ui@3.1.2 design tokens — light + dark, self-contained.
+
+   Provenance:
+   - LIGHT values are copied verbatim from the shipped `:root` block in
+     frontend/node_modules/darkraise-ui/dist/styles.css (the package's
+     `./styles.css` export, imported by frontend/src/styles/globals.css).
+   - DARK values are NOT present anywhere in that file as static CSS.
+     darkraise-ui's dark mode is generated at runtime by ThemeProvider
+     (dist/theme/index.js -> generateTokens(), bundled in
+     dist/chunk-BAL7XKOG.js) and written as inline styles once React
+     mounts; there is no `.dark` class or dark `:root` block shipped in
+     the CSS. The values below were computed by hand-evaluating that
+     same generateTokens() formula for the package's own defaults
+     (accentColor: "blue", surfaceColor: "slate", preset: "default",
+     mode: "dark" — see dist/chunk-BAL7XKOG.js themeConfig.defaults),
+     so they match what the running app actually renders in dark mode,
+     not a guess. Channel values reuse the package's own slate/blue/
+     emerald/amber palette entries (dist/chunk-BAL7XKOG.js
+     surfaceColors / accentColors).
+   - --chart-1..5: the shipped light block does not follow the engine's
+     getChartColors() rotation exactly (it reads as a hand-picked
+     blue/green/rose/amber/violet spread). Rather than switch hues
+     between themes, dark keeps that same five-hue identity and moves
+     each one from its `500` shade to its `400` shade — the exact
+     light->dark shade step generateTokens() itself uses for every
+     other accent-derived token (ring, info, warning, ...).
+   - --font-sans / --font-heading / --font-mono and the --radius-*
+     family are copied from the shipped `@theme` block (Tailwind v4
+     token-to-utility mapping) in the same styles.css; they are mode-
+     independent so they are declared once, not duplicated per theme.
+
+   Self-containment: no stylesheet import directive, no remote url() —
+   font stacks fall back to system fonts if "Inter" / "JetBrains Mono"
+   aren't installed.
+
+   Consumption convention (matches the shipped package exactly):
+     hsl(var(--background))   // channel-only tokens: background,
+                               // foreground, card, primary, muted,
+                               // border, destructive, success,
+                               // warning, info, ring, focus-ring, ...
+     var(--chart-1)            // chart-1..5 are pre-wrapped "hsl(...)"
+                               // strings — do NOT wrap again.
+   ========================================================================== */
+
+:root,
+.theme-light {
+  color-scheme: light;
+
+  /* mode-independent */
+  --radius: 0.5rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-button: 0.5rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* light */
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 222 47% 11%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 217 91% 60%;
+  --focus-ring: 217 91% 78%;
+  --chart-1: hsl(217 91% 60%);
+  --chart-2: hsl(142 71% 45%);
+  --chart-3: hsl(350 89% 60%);
+  --chart-4: hsl(38 92% 50%);
+  --chart-5: hsl(258 90% 66%);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* :not(.theme-light) so a page-level .theme-light override (should one
+     ever be applied to :root itself, rather than only to a nested
+     .board) still wins over the OS preference. */
+  :root:not(.theme-light) {
+    color-scheme: dark;
+
+    --background: 229 84% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 52%;
+    --success-foreground: 0 0% 100%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 222 47% 11%;
+    --info: 213 94% 68%;
+    --info-foreground: 0 0% 100%;
+    --border: 215 25% 27%;
+    --input: 215 25% 27%;
+    --ring: 217 91% 60%;
+    --focus-ring: 213 97% 87%;
+    --chart-1: hsl(213 94% 68%);
+    --chart-2: hsl(142 69% 58%);
+    --chart-3: hsl(351 95% 71%);
+    --chart-4: hsl(43 96% 56%);
+    --chart-5: hsl(255 92% 76%);
+  }
+}
+
+[data-theme="dark"],
+.theme-dark {
+  color-scheme: dark;
+
+  --background: 229 84% 5%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 158 64% 52%;
+  --success-foreground: 0 0% 100%;
+  --warning: 43 96% 56%;
+  --warning-foreground: 222 47% 11%;
+  --info: 213 94% 68%;
+  --info-foreground: 0 0% 100%;
+  --border: 215 25% 27%;
+  --input: 215 25% 27%;
+  --ring: 217 91% 60%;
+  --focus-ring: 213 97% 87%;
+  --chart-1: hsl(213 94% 68%);
+  --chart-2: hsl(142 69% 58%);
+  --chart-3: hsl(351 95% 71%);
+  --chart-4: hsl(43 96% 56%);
+  --chart-5: hsl(255 92% 76%);
+}
