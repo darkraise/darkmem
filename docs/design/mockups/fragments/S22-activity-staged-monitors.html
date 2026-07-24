@@ -1,0 +1,529 @@
+<style>
+  /* S22 board-local styles — the two Activity modules doc 13 section6.1
+     stages behind backends that do not exist yet: the buffer-depth
+     monitor (memory_buffer, doc 04 section8.6) and the dream-run monitor
+     (the consolidation job family, doc 08 section5). Every colour below
+     composes an existing token role (--success/--warning/--destructive/
+     --info/--primary/--muted-foreground) — nothing here redeclares
+     --token values or restyles .board/.annotation/.state-chip/.badge/
+     .c04-surface/.c04-staged at the class level; this fragment leans on
+     C04's surface/staged shapes directly (same convention S05/S07/S09/
+     S11/S16 already use) and only adds s22- layout around them.
+     Namespaced s22- so build.py's concatenation never collides with
+     another fragment's local styles. */
+
+  .s22-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s22-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s22-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+  .s22-intro code { font-family: var(--font-mono); font-size: 12px; background: hsl(var(--muted)); padding: 1px 5px; border-radius: var(--radius-sm); color: hsl(var(--foreground)); }
+
+  /* ---- dependency-order flow: shared by the buffer state machine
+     (3 nodes) and the dream job chain (6 nodes) — a compact dot + label
+     + status/cadence caption, connected left to right, mirroring the
+     step/connector grammar S18's pipeline stepper already established
+     for a different progress axis, kept visually distinct from the
+     seven .state-chip render states by using its own dot+connector
+     colouring rather than a state-chip pill per node. ---- */
+  .s22-flow { display: flex; align-items: flex-start; flex-wrap: wrap; row-gap: 16px; }
+  .s22-flow-node { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 116px; flex: none; text-align: center; }
+  .s22-flow-dot { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid hsl(var(--border)); background: hsl(var(--card)); flex: none; color: hsl(var(--muted-foreground)); }
+  .s22-flow-dot svg { width: 15px; height: 15px; }
+  .s22-flow-label { font-family: var(--font-mono); font-size: 11px; font-weight: 620; color: hsl(var(--foreground)); line-height: 1.25; }
+  .s22-flow-caption { font-size: 10.5px; color: hsl(var(--muted-foreground)); line-height: 1.3; }
+  .s22-flow-connector { flex: 1 1 20px; height: 2px; background: hsl(var(--border)); margin-top: 15px; min-width: 14px; }
+
+  .s22-flow-node.ok .s22-flow-dot { border-color: hsl(var(--success)); color: hsl(var(--success)); }
+  .s22-flow-connector.ok { background: hsl(var(--success)); }
+  .s22-flow-node.active .s22-flow-dot { border-color: hsl(var(--info)); color: hsl(var(--info)); background: hsl(var(--info) / 0.12); }
+  .s22-flow-node.active .s22-flow-label { color: hsl(var(--info)); }
+  .s22-flow-node.pending .s22-flow-dot { border-style: dashed; color: hsl(var(--muted-foreground) / 0.7); }
+  .s22-flow-connector.pending { background: hsl(var(--border)); }
+  .s22-flow-node.error .s22-flow-dot { border-color: hsl(var(--warning)); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.12); }
+  .s22-flow-node.error .s22-flow-label { color: hsl(var(--warning)); }
+
+  /* claimed -> error is a branch off the success path, not a fourth
+     step in series (doc 04 section8.6: "claimed --> error : attempts
+     exceeded") — drawn as a small corner note under the flow rather
+     than a forced linear node, so the diagram never implies error
+     follows done. */
+  .s22-branch-note { display: flex; align-items: center; gap: 7px; margin-top: 2px; font-size: 11.5px; color: hsl(var(--warning)); }
+  .s22-branch-note svg { width: 14px; height: 14px; flex: none; color: hsl(var(--warning)); }
+  .s22-branch-note code { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--warning)); }
+
+  /* ---- buffer state tiles: pending / claimed / done / error ---- */
+  .s22-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; border: 1px solid hsl(var(--border)); margin-top: 4px; }
+  .s22-bar-seg { height: 100%; }
+  .s22-bar-seg.pending { background: hsl(var(--muted-foreground) / 0.45); }
+  .s22-bar-seg.claimed { background: hsl(var(--info)); }
+  .s22-bar-seg.done { background: hsl(var(--success)); }
+  .s22-bar-seg.error { background: hsl(var(--warning)); }
+
+  .s22-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+  @media (max-width: 700px) { .s22-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .s22-tile { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s22-tile .dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--muted-foreground) / 0.5); }
+  .s22-tile.claimed .dot { background: hsl(var(--info)); }
+  .s22-tile.done .dot { background: hsl(var(--success)); }
+  .s22-tile.error .dot { background: hsl(var(--warning)); }
+  .s22-tile .head { display: flex; align-items: center; gap: 6px; }
+  .s22-tile .status { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+  .s22-tile .value { font-size: 20px; font-weight: 650; color: hsl(var(--foreground)); }
+  .s22-tile .desc { font-size: 11px; color: hsl(var(--muted-foreground)); line-height: 1.35; }
+  .s22-tile.error .status, .s22-tile.error .value { color: hsl(var(--warning)); }
+
+  /* ---- poison-row example + cross-link into Failure triage (S20) ---- */
+  .s22-poison-card { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.07); }
+  .s22-poison-card svg { width: 16px; height: 16px; color: hsl(var(--warning)); flex: none; margin-top: 1px; }
+  .s22-poison-card .body { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; }
+  .s22-poison-card .headline { font-size: 12.5px; font-weight: 620; color: hsl(var(--foreground)); }
+  .s22-poison-card .desc { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- cross-fragment link pill, matching S19's toast-link pattern ---- */
+  .s22-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: hsl(var(--primary)); white-space: nowrap; }
+  .s22-link svg { width: 13px; height: 13px; flex: none; }
+
+  /* ---- dream trigger row + lock note ---- */
+  .s22-trigger-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .s22-trigger-btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px; border: 1px solid hsl(var(--primary) / 0.55); background: hsl(var(--primary) / 0.1); color: hsl(var(--primary)); font-size: 12.5px; font-weight: 620; white-space: nowrap; }
+  .s22-trigger-btn svg { width: 13px; height: 13px; flex: none; }
+  .s22-cycle-meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .s22-narrative { font-size: 12.5px; color: hsl(var(--foreground)); margin-top: 12px; }
+  .s22-narrative b { font-family: var(--font-mono); font-weight: 620; }
+
+  .s22-hint-row { display: flex; gap: 9px; align-items: flex-start; margin-top: 10px; padding: 9px 11px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s22-hint-row svg { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); flex: none; margin-top: 1px; }
+  .s22-hint-row code { font-family: var(--font-mono); font-size: 11px; background: hsl(var(--muted)); padding: 0 4px; border-radius: var(--radius-sm); color: hsl(var(--foreground)); }
+
+  .s22-target-body { display: flex; flex-direction: column; gap: 2px; }
+</style>
+
+<div class="s22-intro">
+  <h2>S22 — Activity &middot; Staged monitors</h2>
+  <p>
+    Doc 13 &sect;6.1 stages two of Activity's six modules behind backends that do not exist yet: the
+    <b>buffer-depth monitor</b> (needs <code>memory_buffer</code>, doc 04 &sect;8.6) and the
+    <b>dream-run monitor</b> (needs the consolidation job family, doc 08 &sect;5). The other four &mdash;
+    the five-phase stepper (S18), the live feed (S19), failure triage (S20), and the job board (S21) &mdash;
+    already ship. Invariant 23 governs how a staged module is allowed to render: a live-looking panel bound
+    to a table that never writes would read as either broken or as a shipped-capability claim, so it stays
+    <b>labelled staged</b> until its signal exists &mdash; never a bare empty panel. To let this design still
+    be reviewed in full, each module below appears <b>twice</b>: once as the honestly labelled staged
+    placeholder that ships today's Activity, and once as its fully <b>populated target design</b>, so the
+    whole target surface is visible without any board claiming it ships.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S22-buffer-staged">
+  <h2>Buffer-depth monitor &mdash; staged</h2>
+  <div class="annotation">
+    <b>Why staged, not empty (invariant 23).</b> <code>memory_buffer</code> does not exist yet &mdash; Tier-A
+    capture still acks straight into the five-phase pipeline with no durable queue in front of it, so there
+    is no <code>pending</code>/<code>claimed</code>/<code>done</code>/<code>error</code> data this panel
+    could honestly show. A live-looking gauge here would either read as broken or imply the durable buffer
+    already ships; the phase-labelled placeholder is the honest alternative doc 14 &sect;5's staged pattern
+    defines.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Ingest buffer &mdash; memory_buffer</span>
+        <span class="meta">Activity &middot; staged module</span>
+        <span class="state-chip state-staged">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          staged
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-staged">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          <div class="body">
+            <span class="phase">target-new, staged &mdash; ships once memory_buffer (doc 04 &sect;8.6) is live</span>
+            <span class="headline">Buffer-depth monitor is staged</span>
+            <span class="waiting">
+              Once the durable Tier-B ingest buffer ships, this panel will show live
+              <code>pending</code> / <code>claimed</code> / <code>done</code> / <code>error</code> counts for
+              <code>memory_buffer</code>, with a poison row (attempts exceeded) surfacing here and in
+              Failure triage (S20) rather than looping forever.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S22-buffer-target">
+  <h2>Buffer-depth monitor &mdash; populated target design (hero, both themes)</h2>
+  <div class="annotation">
+    <b>The full target surface, not a live claim (invariant 23).</b> This is what the buffer-depth monitor
+    renders once <code>memory_buffer</code> ships, visualised in full so the design can be signed off without
+    this board implying the backend exists today &mdash; the staged board above is what actually ships until
+    then.
+  </div>
+  <div class="annotation">
+    <b>The memory_buffer state machine (doc 04 &sect;8.6).</b> A captured memory lands <code>pending</code>
+    the instant Tier A acks (202), before the five-phase pipeline claims it. A <code>buffer_flush</code>
+    worker claims a batch with <code>SELECT &hellip; FOR UPDATE SKIP LOCKED</code> (fixing memobase's
+    double-flush bug), flips it to <code>claimed</code>, then <code>done</code> once flushed &mdash;
+    <code>done</code> rows are swept past a short retention window so the table never grows unbounded. A row
+    whose <code>attempts</code> counter exceeds the retry threshold flips to <code>error</code> instead of
+    retrying forever: a poison row, surfaced here and in Failure triage (S20) rather than silently looping.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="c04-surface">
+          <div class="c04-surface-header">
+            <span class="title">Ingest buffer &mdash; memory_buffer</span>
+            <span class="meta">target design &middot; not yet live</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="c04-surface-body">
+            <div class="s22-flow">
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">pending</span>
+                <span class="s22-flow-caption">capture acked, 202</span>
+              </div>
+              <div class="s22-flow-connector ok"></div>
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div>
+                <span class="s22-flow-label">claimed</span>
+                <span class="s22-flow-caption">SKIP LOCKED, in flight</span>
+              </div>
+              <div class="s22-flow-connector ok"></div>
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div>
+                <span class="s22-flow-label">done</span>
+                <span class="s22-flow-caption">flushed, swept on a delay</span>
+              </div>
+            </div>
+            <div class="s22-branch-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5v6a2 2 0 0 0 2 2h8"/><path d="M15 9l4 4-4 4"/></svg>
+              <span><code>claimed &rarr; error</code> when <code>attempts</code> exceeds the retry threshold &mdash; poison, surfaced below and in triage</span>
+            </div>
+            <div class="s22-bar">
+              <div class="s22-bar-seg pending" style="flex-grow:18"></div>
+              <div class="s22-bar-seg claimed" style="flex-grow:4"></div>
+              <div class="s22-bar-seg done" style="flex-grow:214"></div>
+              <div class="s22-bar-seg error" style="flex-grow:4"></div>
+            </div>
+            <div class="s22-tiles">
+              <div class="s22-tile pending">
+                <div class="head"><span class="dot"></span><span class="status">pending</span></div>
+                <span class="value">18</span>
+                <span class="desc">capture acked, awaiting claim</span>
+              </div>
+              <div class="s22-tile claimed">
+                <div class="head"><span class="dot"></span><span class="status">claimed</span></div>
+                <span class="value">4</span>
+                <span class="desc">in flight to the five-phase pipeline</span>
+              </div>
+              <div class="s22-tile done">
+                <div class="head"><span class="dot"></span><span class="status">done</span></div>
+                <span class="value">214</span>
+                <span class="desc">flushed; retained briefly, then swept</span>
+              </div>
+              <div class="s22-tile error">
+                <div class="head"><span class="dot"></span><span class="status">error</span></div>
+                <span class="value">4</span>
+                <span class="desc">attempts exceeded &mdash; poison</span>
+              </div>
+            </div>
+            <div class="s22-poison-card">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <div class="body">
+                <span class="headline">1 buffer row flagged poison &mdash; attempts exceeded</span>
+                <span class="desc">project: darkmem &middot; attempts 5/5 &middot; last_error: "extraction timeout after 30s"</span>
+                <span class="s22-link">Open in Failure triage<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="c04-surface">
+          <div class="c04-surface-header">
+            <span class="title">Ingest buffer &mdash; memory_buffer</span>
+            <span class="meta">target design &middot; not yet live</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="c04-surface-body">
+            <div class="s22-flow">
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">pending</span>
+                <span class="s22-flow-caption">capture acked, 202</span>
+              </div>
+              <div class="s22-flow-connector ok"></div>
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div>
+                <span class="s22-flow-label">claimed</span>
+                <span class="s22-flow-caption">SKIP LOCKED, in flight</span>
+              </div>
+              <div class="s22-flow-connector ok"></div>
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div>
+                <span class="s22-flow-label">done</span>
+                <span class="s22-flow-caption">flushed, swept on a delay</span>
+              </div>
+            </div>
+            <div class="s22-branch-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5v6a2 2 0 0 0 2 2h8"/><path d="M15 9l4 4-4 4"/></svg>
+              <span><code>claimed &rarr; error</code> when <code>attempts</code> exceeds the retry threshold &mdash; poison, surfaced below and in triage</span>
+            </div>
+            <div class="s22-bar">
+              <div class="s22-bar-seg pending" style="flex-grow:18"></div>
+              <div class="s22-bar-seg claimed" style="flex-grow:4"></div>
+              <div class="s22-bar-seg done" style="flex-grow:214"></div>
+              <div class="s22-bar-seg error" style="flex-grow:4"></div>
+            </div>
+            <div class="s22-tiles">
+              <div class="s22-tile pending">
+                <div class="head"><span class="dot"></span><span class="status">pending</span></div>
+                <span class="value">18</span>
+                <span class="desc">capture acked, awaiting claim</span>
+              </div>
+              <div class="s22-tile claimed">
+                <div class="head"><span class="dot"></span><span class="status">claimed</span></div>
+                <span class="value">4</span>
+                <span class="desc">in flight to the five-phase pipeline</span>
+              </div>
+              <div class="s22-tile done">
+                <div class="head"><span class="dot"></span><span class="status">done</span></div>
+                <span class="value">214</span>
+                <span class="desc">flushed; retained briefly, then swept</span>
+              </div>
+              <div class="s22-tile error">
+                <div class="head"><span class="dot"></span><span class="status">error</span></div>
+                <span class="value">4</span>
+                <span class="desc">attempts exceeded &mdash; poison</span>
+              </div>
+            </div>
+            <div class="s22-poison-card">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <div class="body">
+                <span class="headline">1 buffer row flagged poison &mdash; attempts exceeded</span>
+                <span class="desc">project: darkmem &middot; attempts 5/5 &middot; last_error: "extraction timeout after 30s"</span>
+                <span class="s22-link">Open in Failure triage<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S22-dream-staged">
+  <h2>Dream-run monitor &mdash; staged</h2>
+  <div class="annotation">
+    <b>Why staged, not empty (invariant 23).</b> The consolidation job family &mdash;
+    <code>fact_lift</code>, <code>verification_recompute</code>, <code>contradiction_scan</code>,
+    <code>memory_dream</code>, <code>topic_detection</code>, <code>article_synthesis</code> (doc 08
+    &sect;5) &mdash; has no registered <code>JobRegistry</code> rows yet, so there is no cron, no lock
+    state, and no run history this panel could honestly show. Staging it here, labelled with what it is
+    waiting on, is the same invariant-23 treatment as the buffer monitor above, not a second bare empty
+    panel.
+  </div>
+  <div class="board-body">
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Consolidation cycle &mdash; dream-run monitor</span>
+        <span class="meta">Activity &middot; staged module</span>
+        <span class="state-chip state-staged">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          staged
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-staged">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          <div class="body">
+            <span class="phase">target-new, staged &mdash; ships once the consolidation job family (doc 08 &sect;5) is live</span>
+            <span class="headline">Dream-run monitor is staged</span>
+            <span class="waiting">
+              Once <code>fact_lift</code>, <code>verification_recompute</code>, <code>contradiction_scan</code>,
+              <code>memory_dream</code>, <code>topic_detection</code>, and <code>article_synthesis</code> are
+              registered Tier-C jobs, this panel will show a live run of the dependency chain &mdash; which
+              job is running, which are queued behind it, and the busy (409) outcome if "Dream now" lands on
+              a lock the scheduler already holds. The per-action ledger a completed cycle leaves behind is the
+              separate dream digest (S23).
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S22-dream-target">
+  <h2>Dream-run monitor &mdash; populated target design (hero, both themes)</h2>
+  <div class="annotation">
+    <b>The full target surface, not a live claim (invariant 23).</b> This is the dream-run monitor's target
+    design &mdash; the live view of a consolidation cycle in progress, distinct from the dream digest (S23),
+    which is the reversible, grouped ledger a completed cycle leaves behind. The staged board above is what
+    actually ships until the consolidation job family lands.
+  </div>
+  <div class="annotation">
+    <b>One worker, one dependency order, one lock per job (doc 08 &sect;5/&sect;5.1).</b> The several jobs
+    serialise through the same <code>JobRegistry</code> loop and single uvicorn worker every existing job
+    already uses; "Dream now" runs them in dependency order &mdash; <code>fact_lift &rarr;
+    verification_recompute &rarr; contradiction_scan &rarr; memory_dream &rarr; topic_detection &rarr;
+    article_synthesis</code> &mdash; rather than firing them concurrently, and a manual trigger that lands on
+    a lock the scheduled loop already holds returns busy (HTTP 409) instead of queueing behind it.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="c04-surface">
+          <div class="c04-surface-header">
+            <span class="title">Consolidation cycle &mdash; dream-run monitor</span>
+            <span class="meta">target design &middot; not yet live</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="c04-surface-body">
+            <div class="s22-trigger-row">
+              <span class="s22-trigger-btn"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5v14l11-7z"/></svg>Dream now</span>
+              <span class="s22-cycle-meta">last full cycle: 2026-07-23 03:00&ndash;03:04 UTC &middot; all 6 jobs completed</span>
+            </div>
+            <div class="s22-flow" style="margin-top:14px;">
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div>
+                <span class="s22-flow-label">fact_lift</span>
+                <span class="s22-flow-caption">done &middot; cron */15 * * * *</span>
+              </div>
+              <div class="s22-flow-connector ok"></div>
+              <div class="s22-flow-node active">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div>
+                <span class="s22-flow-label">verification_recompute</span>
+                <span class="s22-flow-caption">running &middot; cron */2 * * * *</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">contradiction_scan</span>
+                <span class="s22-flow-caption">queued &middot; cron 0 */6 * * *</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">memory_dream</span>
+                <span class="s22-flow-caption">queued &middot; cron 0 3 * * *</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">topic_detection</span>
+                <span class="s22-flow-caption">queued &middot; daily per project</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">article_synthesis</span>
+                <span class="s22-flow-caption">queued &middot; daily, debounced</span>
+              </div>
+            </div>
+            <div class="s22-narrative">
+              <b>verification_recompute</b> is running &mdash; draining <code>sources_changed</code> since
+              03:02:00. <b>contradiction_scan</b>, <b>memory_dream</b>, <b>topic_detection</b>, and
+              <b>article_synthesis</b> stay queued behind it in dependency order until it finishes.
+            </div>
+            <div class="s22-hint-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Each job holds its own per-job lock. A manual <code>Dream now</code> trigger that lands on
+                a lock the scheduled loop already holds returns <b>busy (HTTP 409)</b> rather than queueing
+                &mdash; the running job is never interrupted.</span>
+            </div>
+            <div style="margin-top:12px;">
+              <span class="s22-link">Open in Dream digest<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="c04-surface">
+          <div class="c04-surface-header">
+            <span class="title">Consolidation cycle &mdash; dream-run monitor</span>
+            <span class="meta">target design &middot; not yet live</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="c04-surface-body">
+            <div class="s22-trigger-row">
+              <span class="s22-trigger-btn"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5v14l11-7z"/></svg>Dream now</span>
+              <span class="s22-cycle-meta">last full cycle: 2026-07-23 03:00&ndash;03:04 UTC &middot; all 6 jobs completed</span>
+            </div>
+            <div class="s22-flow" style="margin-top:14px;">
+              <div class="s22-flow-node ok">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></div>
+                <span class="s22-flow-label">fact_lift</span>
+                <span class="s22-flow-caption">done &middot; cron */15 * * * *</span>
+              </div>
+              <div class="s22-flow-connector ok"></div>
+              <div class="s22-flow-node active">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></div>
+                <span class="s22-flow-label">verification_recompute</span>
+                <span class="s22-flow-caption">running &middot; cron */2 * * * *</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">contradiction_scan</span>
+                <span class="s22-flow-caption">queued &middot; cron 0 */6 * * *</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">memory_dream</span>
+                <span class="s22-flow-caption">queued &middot; cron 0 3 * * *</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">topic_detection</span>
+                <span class="s22-flow-caption">queued &middot; daily per project</span>
+              </div>
+              <div class="s22-flow-connector pending"></div>
+              <div class="s22-flow-node pending">
+                <div class="s22-flow-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></div>
+                <span class="s22-flow-label">article_synthesis</span>
+                <span class="s22-flow-caption">queued &middot; daily, debounced</span>
+              </div>
+            </div>
+            <div class="s22-narrative">
+              <b>verification_recompute</b> is running &mdash; draining <code>sources_changed</code> since
+              03:02:00. <b>contradiction_scan</b>, <b>memory_dream</b>, <b>topic_detection</b>, and
+              <b>article_synthesis</b> stay queued behind it in dependency order until it finishes.
+            </div>
+            <div class="s22-hint-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Each job holds its own per-job lock. A manual <code>Dream now</code> trigger that lands on
+                a lock the scheduled loop already holds returns <b>busy (HTTP 409)</b> rather than queueing
+                &mdash; the running job is never interrupted.</span>
+            </div>
+            <div style="margin-top:12px;">
+              <span class="s22-link">Open in Dream digest<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,690 @@
+<style>
+  /* S21 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S21-only layout: the
+     job-list surface and its per-job row, the config gear dialog (cron /
+     floor / ceiling / config_schema fields), and the busy(409) banner shown
+     after a manual trigger hits a held lock. Reads var(--token) /
+     hsl(var(--token)) only; no hex, no redeclared tokens. Namespaced s21-
+     so it can never collide with another fragment's local styles once
+     build.py concatenates them.
+
+     Per-job status (idle / running / last-run-failed) reuses the shared
+     .state-chip.state-populated / .state-loading / .state-error visuals
+     verbatim for the pill shape+colour — same precedent S14 set reusing
+     state-chip for a per-repo domain status ("ready"/"indexing") rather
+     than inventing a parallel chip vocabulary. Nothing here is one of the
+     seven canonical whole-board render states; it is a per-row label. */
+
+  .s21-intro { display: flex; flex-direction: column; gap: 6px; max-width: 920px; }
+  .s21-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s21-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the job-list surface every state below instantiates ---- */
+  .s21-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s21-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s21-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s21-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s21-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---- one job row ---- */
+  .s21-job { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s21-job.focus { border-color: hsl(var(--primary) / 0.45); background: hsl(var(--primary) / 0.03); }
+  .s21-job-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s21-job-top svg.icon { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s21-job-key { font-family: var(--font-mono); font-weight: 620; font-size: 13px; color: hsl(var(--foreground)); }
+  .s21-job-top .meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s21-job-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s21-job-sub code { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--foreground)); }
+  .s21-job-run { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s21-job-run b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s21-job-run.bad { color: hsl(var(--destructive)); }
+  .s21-job-run.bad b { color: hsl(var(--destructive)); }
+  .s21-job-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+  .s21-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background));
+    white-space: nowrap;
+  }
+  .s21-btn svg { width: 12px; height: 12px; flex: none; }
+  .s21-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s21-btn-caution { border-color: hsl(var(--warning) / 0.6); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.08); }
+  .s21-btn-icon { padding: 5px 8px; }
+
+  /* ---- never-run-yet placeholder (the honest content of THIS screen's
+     "empty" render state — see the S21-empty annotation for why an
+     empty job LIST is not something this backend can produce) ---- */
+  .s21-never { font-style: italic; opacity: 0.75; }
+
+  /* ---- loading skeleton ---- */
+  .s21-skel-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s21-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s21-skel-bar.chip { width: 70px; }
+  .s21-skel-bar.key { width: 150px; }
+  .s21-skel-bar.text { flex: 1 1 220px; }
+  .s21-skel-bar.meta { width: 90px; }
+
+  /* ---- error banner ---- */
+  .s21-error-banner {
+    display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5);
+    border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08);
+  }
+  .s21-error-banner svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s21-error-banner .body { display: flex; flex-direction: column; gap: 6px; }
+  .s21-error-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s21-error-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s21-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- config gear dialog ---- */
+  .s21-dialog { max-width: 480px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); overflow: hidden; }
+  .s21-dialog-header { display: flex; flex-direction: column; gap: 3px; padding: 12px 16px; border-bottom: 1px solid hsl(var(--border)); }
+  .s21-dialog-header .title { display: flex; align-items: center; gap: 7px; font-weight: 640; font-size: 14px; color: hsl(var(--foreground)); }
+  .s21-dialog-header .title svg { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s21-dialog-header .sub { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s21-dialog-body { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; }
+  .s21-field-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 16px; border-bottom: 1px dashed hsl(var(--border)); }
+  .s21-field-row:last-child { border-bottom: none; }
+  .s21-field-row .f-label-line { display: flex; align-items: baseline; gap: 8px; }
+  .s21-field-row .f-label { font-family: var(--font-mono); font-size: 12.5px; font-weight: 620; color: hsl(var(--foreground)); }
+  .s21-field-row .f-role { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+  .s21-field-row .f-input { font-family: var(--font-mono); font-size: 12.5px; padding: 5px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); color: hsl(var(--foreground)); width: fit-content; min-width: 160px; }
+  .s21-field-row .f-desc { font-size: 12px; color: hsl(var(--muted-foreground)); max-width: 380px; }
+  .s21-field-row .f-bounds { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s21-dialog-schema-head { padding: 8px 16px 0; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+  .s21-dialog-footer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid hsl(var(--border)); }
+  .s21-dialog-footer .lockline { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-right: auto; }
+
+  /* ---- busy(409) banner: not a whole-board render state (it is not one
+     of mockup.css's seven .state-chip variants) — a manual trigger that
+     lands on a held lock is a per-action outcome, so it renders as a
+     banner beside the job row that produced it, same shape family as
+     the error banner above but on the --warning role (a protective
+     block, not a failure of the job itself). ---- */
+  .s21-busy-banner {
+    display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--warning) / 0.55);
+    border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.1);
+  }
+  .s21-busy-banner svg { width: 17px; height: 17px; color: hsl(var(--warning)); flex: none; }
+  .s21-busy-banner .body { display: flex; flex-direction: column; gap: 5px; }
+  .s21-busy-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s21-busy-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s21-busy-banner .code { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--warning)); }
+  .s21-trace { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s21-trace .row { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; }
+  .s21-trace .row .t { color: hsl(var(--muted-foreground)); width: 84px; flex: none; }
+  .s21-trace .row .v { color: hsl(var(--foreground)); }
+</style>
+
+<div class="s21-intro">
+  <h2>S21 — Activity &middot; job board</h2>
+  <p>
+    The job-board module of Activity (doc 13 &sect;6.1, doc 02 &sect;5.3): the seven <code>JobRegistry</code>
+    jobs with their cron schedule, last-run/next-run, and status; the <b>per-job config gear dialog</b>
+    (cron expression, the <code>min_interval_seconds</code> floor, the <code>max_run_seconds</code> ceiling,
+    and any <code>config_schema</code> fields); the <b>manual trigger</b> action; and the <b>busy
+    (HTTP 409)</b> outcome when a trigger lands on a lock the scheduled loop already holds &mdash; it is
+    never queued behind the running job. Each job's cron may be five-field (minute precision) or six-field
+    (seconds-first, Quartz-style); <code>next-run</code> is computed from that expression via
+    <code>croniter</code>.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S21-empty">
+  <h2>Job board &mdash; empty (fresh install, no run history yet)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, and here it cannot mean "no jobs."</b> All seven jobs are registered in
+    code at process startup (<code>app/main.py</code>) &mdash; the list itself can never legitimately render
+    zero rows. The honest empty condition for this screen is a <b>fresh install with no run history</b>:
+    every job exists and is scheduled, but none has fired yet, so last-run is <i>never</i> and next-run is
+    the job's first computed tick. Rendering a fabricated "no jobs configured" state instead would misstate
+    what this backend can produce (doc 14 &sect;5's why-honesty rule, applied to a list that structurally
+    cannot be absent).
+  </div>
+  <div class="board-body">
+    <div class="s21-surface">
+      <div class="s21-surface-header">
+        <span class="title">Jobs</span>
+        <span class="meta">7 registered &middot; 0 runs recorded</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s21-surface-body">
+        <div class="s21-job">
+          <div class="s21-job-top">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+            <span class="s21-job-key">repo_sync</span>
+            <span class="meta">cron <code>*/5 * * * *</code></span>
+          </div>
+          <div class="s21-job-run s21-never">last run: never &middot; next run: first tick due 2026-07-24 14:20 UTC</div>
+        </div>
+        <div class="s21-job">
+          <div class="s21-job-top">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+            <span class="s21-job-key">expired_memory_cleanup</span>
+            <span class="meta">cron <code>*/15 * * * *</code></span>
+          </div>
+          <div class="s21-job-run s21-never">last run: never &middot; next run: first tick due 2026-07-24 14:30 UTC</div>
+        </div>
+        <div class="s21-job-run s21-never" style="padding: 2px 2px 0;">&hellip; and 5 more registered jobs, each waiting on its first scheduled tick.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S21-loading">
+  <h2>Job board &mdash; loading</h2>
+  <div class="annotation">
+    Loading skeletons mirror the exact icon / key / status-chip / meta slots the populated rows below fill
+    in, so the board never jumps once <code>GET /api/v1/jobs</code> resolves (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s21-surface">
+      <div class="s21-surface-header">
+        <span class="title">Jobs</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s21-surface-body">
+        <div class="s21-skel-row"><span class="s21-skel-bar chip"></span><span class="s21-skel-bar key"></span><span class="s21-skel-bar text"></span><span class="s21-skel-bar meta"></span></div>
+        <div class="s21-skel-row"><span class="s21-skel-bar chip"></span><span class="s21-skel-bar key"></span><span class="s21-skel-bar text"></span><span class="s21-skel-bar meta"></span></div>
+        <div class="s21-skel-row"><span class="s21-skel-bar chip"></span><span class="s21-skel-bar key"></span><span class="s21-skel-bar text"></span><span class="s21-skel-bar meta"></span></div>
+        <div class="s21-skel-row"><span class="s21-skel-bar chip"></span><span class="s21-skel-bar key"></span><span class="s21-skel-bar text"></span><span class="s21-skel-bar meta"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S21-error">
+  <h2>Job board &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list.</b> When the <code>config</code>-table read behind
+    <code>GET /api/v1/jobs</code> fails, the board raises a named error rather than returning zero rows
+    indistinguishable from the genuinely-never-run empty state above (invariant 14) &mdash; retry stays
+    offered, and the cause is the failing thing, never the user (doc 14 &sect;7 copy voice).
+  </div>
+  <div class="board-body">
+    <div class="s21-surface">
+      <div class="s21-surface-header">
+        <span class="title">Jobs</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s21-surface-body">
+        <div class="s21-error-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load job state &mdash; the config-table read failed</span>
+            <span class="desc">The <code>config</code> rows keyed <code>job:&lt;key&gt;</code> could not be
+              read. The job registry itself is unaffected &mdash; scheduled ticks keep running server-side
+              even while this board cannot display them.</span>
+            <span class="s21-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S21-populated">
+  <h2>Job board &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    All seven registered jobs (doc 02 &sect;5.3): <code>repo_sync</code>, <code>code_enrichment</code>,
+    <code>token_blocklist_cleanup</code>, <code>pipeline_failure_cleanup</code>,
+    <code>graph_orphan_cleanup</code>, <code>tag_orphan_cleanup</code>, <code>expired_memory_cleanup</code>.
+    Status reuses the shared <code>.state-chip</code> pill (composed, not reinvented) for a per-row domain
+    label: <b>idle</b> and <b>running</b> read <code>.state-populated</code> / <code>.state-loading</code>
+    verbatim; a failed last run reads <code>.state-error</code> without implying the job stopped scheduling
+    &mdash; <code>expired_memory_cleanup</code> below shows that distinction, its last run aborted by
+    <code>chk_superseded_has_pointer</code> (a dependent memory needed demotion before delete) while its next
+    tick still fires on schedule. <code>code_enrichment</code> is mid-run under its lock; its gear opens the
+    <b>S21-config-dialog</b> board below, and its <b>Trigger</b> button's outcome is the
+    <b>S21-busy</b> board below.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s21-surface">
+          <div class="s21-surface-header">
+            <span class="title">Jobs</span>
+            <span class="meta">7 registered &middot; 1 running &middot; 1 last-run failed</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s21-surface-body">
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">repo_sync</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 14:20 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>*/5 * * * *</code> &middot; every 5 minutes</div>
+              <div class="s21-job-run">last run <b>14:10 UTC</b> &mdash; ok, 3 repos synced (1 changed)</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure repo_sync">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job focus">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">code_enrichment</span>
+                <span class="state-chip state-loading">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  running
+                </span>
+                <span class="meta">lock held since 14:12:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>*/30 * * * * *</code> &middot; every 30s, six-field seconds-first &mdash; floor-capped, see gear</div>
+              <div class="s21-job-run">last completed run <b>14:07:00 UTC</b> &mdash; ok, 25 symbols enriched</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure code_enrichment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn s21-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">token_blocklist_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 2026-07-25 03:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>0 3 * * *</code> &middot; daily at 03:00 UTC</div>
+              <div class="s21-job-run">last run <b>2026-07-24 03:00 UTC</b> &mdash; ok, 142 tokens purged</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure token_blocklist_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">pipeline_failure_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 15:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 0 stale failures</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure pipeline_failure_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">graph_orphan_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 14:30 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>30 * * * *</code> &middot; hourly, at :30</div>
+              <div class="s21-job-run">last run <b>13:30 UTC</b> &mdash; ok, 6 orphan entities pruned</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure graph_orphan_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">tag_orphan_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 2026-07-25 04:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>0 4 * * *</code> &middot; daily at 04:00 UTC</div>
+              <div class="s21-job-run">last run <b>2026-07-24 04:00 UTC</b> &mdash; ok, 2 orphan tags removed</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure tag_orphan_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">expired_memory_cleanup</span>
+                <span class="state-chip state-error">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                  last run failed
+                </span>
+                <span class="meta">next 14:15 UTC (unaffected)</span>
+              </div>
+              <div class="s21-job-sub">cron <code>*/15 * * * *</code> &middot; every 15 minutes</div>
+              <div class="s21-job-run bad">last run <b>14:00 UTC</b> &mdash; failed: <code>chk_superseded_has_pointer</code> violation, 1 dependent memory was not demoted before delete</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure expired_memory_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn s21-btn-caution">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now (retry)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s21-surface">
+          <div class="s21-surface-header">
+            <span class="title">Jobs</span>
+            <span class="meta">7 registered &middot; 1 running &middot; 1 last-run failed</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s21-surface-body">
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">repo_sync</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 14:20 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>*/5 * * * *</code> &middot; every 5 minutes</div>
+              <div class="s21-job-run">last run <b>14:10 UTC</b> &mdash; ok, 3 repos synced (1 changed)</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure repo_sync">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job focus">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">code_enrichment</span>
+                <span class="state-chip state-loading">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  running
+                </span>
+                <span class="meta">lock held since 14:12:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>*/30 * * * * *</code> &middot; every 30s, six-field seconds-first &mdash; floor-capped, see gear</div>
+              <div class="s21-job-run">last completed run <b>14:07:00 UTC</b> &mdash; ok, 25 symbols enriched</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure code_enrichment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn s21-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">token_blocklist_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 2026-07-25 03:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>0 3 * * *</code> &middot; daily at 03:00 UTC</div>
+              <div class="s21-job-run">last run <b>2026-07-24 03:00 UTC</b> &mdash; ok, 142 tokens purged</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure token_blocklist_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">pipeline_failure_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 15:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 0 stale failures</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure pipeline_failure_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">graph_orphan_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 14:30 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>30 * * * *</code> &middot; hourly, at :30</div>
+              <div class="s21-job-run">last run <b>13:30 UTC</b> &mdash; ok, 6 orphan entities pruned</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure graph_orphan_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">tag_orphan_cleanup</span>
+                <span class="state-chip state-populated">idle</span>
+                <span class="meta">next 2026-07-25 04:00 UTC</span>
+              </div>
+              <div class="s21-job-sub">cron <code>0 4 * * *</code> &middot; daily at 04:00 UTC</div>
+              <div class="s21-job-run">last run <b>2026-07-24 04:00 UTC</b> &mdash; ok, 2 orphan tags removed</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure tag_orphan_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now
+                </button>
+              </div>
+            </div>
+
+            <div class="s21-job">
+              <div class="s21-job-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <span class="s21-job-key">expired_memory_cleanup</span>
+                <span class="state-chip state-error">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                  last run failed
+                </span>
+                <span class="meta">next 14:15 UTC (unaffected)</span>
+              </div>
+              <div class="s21-job-sub">cron <code>*/15 * * * *</code> &middot; every 15 minutes</div>
+              <div class="s21-job-run bad">last run <b>14:00 UTC</b> &mdash; failed: <code>chk_superseded_has_pointer</code> violation, 1 dependent memory was not demoted before delete</div>
+              <div class="s21-job-actions">
+                <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure expired_memory_cleanup">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+                </button>
+                <button type="button" class="s21-btn s21-btn-caution">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  Trigger now (retry)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S21-config-dialog">
+  <h2>Per-job config gear dialog &mdash; cron / floor / ceiling / config_schema</h2>
+  <div class="annotation">
+    Opened from the gear on <code>code_enrichment</code> above. <code>min_interval_seconds</code> is the
+    <b>floor</b>: the loop will not fire more often than this regardless of what the cron expression
+    computes &mdash; here it caps a runaway six-field <code>*/30 * * * * *</code> (every 30 seconds) down to
+    once per 5 minutes. <code>max_run_seconds</code> is the <b>ceiling</b> on a single run's duration. Below
+    those two, this job's own <code>config_schema</code> (a <code>FieldDescriptor</code> list) contributes
+    two more bounded fields. <code>PUT /api/v1/jobs/{key}/config</code> validates every field against its
+    declared type and min/max, rejects unknown keys, and writes under the <b>same per-job lock</b> the
+    scheduled tick and manual trigger already share &mdash; a save can never race a running tick.
+  </div>
+  <div class="board-body">
+    <div class="s21-dialog">
+      <div class="s21-dialog-header">
+        <span class="title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
+          Configure &mdash; code_enrichment
+        </span>
+        <span class="sub">config row: job:code_enrichment</span>
+      </div>
+      <div class="s21-dialog-body">
+        <div class="s21-field-row">
+          <div class="f-label-line"><span class="f-label">cron</span><span class="f-role">schedule</span></div>
+          <input class="f-input" type="text" value="*/30 * * * * *" readonly>
+          <span class="f-desc">Six-field, seconds-first (Quartz-style): every 30 seconds. Five-field
+            expressions (minute precision) are also accepted.</span>
+        </div>
+        <div class="s21-field-row">
+          <div class="f-label-line"><span class="f-label">min_interval_seconds</span><span class="f-role">floor</span></div>
+          <input class="f-input" type="number" value="300">
+          <span class="f-desc">The loop will not fire more often than this floor, no matter how aggressive
+            the cron above computes.</span>
+          <span class="f-bounds">min 5 &middot; max 86400</span>
+        </div>
+        <div class="s21-field-row">
+          <div class="f-label-line"><span class="f-label">max_run_seconds</span><span class="f-role">ceiling</span></div>
+          <input class="f-input" type="number" value="1800">
+          <span class="f-desc">A run still executing past this ceiling is treated as overrun.</span>
+          <span class="f-bounds">min 10 &middot; max 7200</span>
+        </div>
+        <div class="s21-dialog-schema-head">config_schema — job-specific fields</div>
+        <div class="s21-field-row">
+          <div class="f-label-line"><span class="f-label">batch_size</span><span class="f-role">int</span></div>
+          <input class="f-input" type="number" value="25">
+          <span class="f-desc">Pending symbols drained from the backlog per tick.</span>
+          <span class="f-bounds">min 1 &middot; max 200</span>
+        </div>
+        <div class="s21-field-row">
+          <div class="f-label-line"><span class="f-label">stale_after_days</span><span class="f-role">int</span></div>
+          <input class="f-input" type="number" value="14">
+          <span class="f-desc">A queued symbol older than this is skipped rather than enriched against a
+            possibly-moved line range.</span>
+          <span class="f-bounds">min 1 &middot; max 90</span>
+        </div>
+      </div>
+      <div class="s21-dialog-footer">
+        <span class="lockline">Writes acquire the same lock the scheduled tick uses.</span>
+        <button type="button" class="s21-btn">Cancel</button>
+        <button type="button" class="s21-btn s21-btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S21-busy">
+  <h2>Manual trigger on a held lock &mdash; busy (HTTP 409), never queued</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: busy is a protection, not a failure, and it is not a queue.</b>
+    <code>trigger(key)</code> acquires the <b>same</b> per-job <code>asyncio.Lock</code> the scheduled loop
+    holds while a tick is running, so a manual run and a scheduled run can never race. A trigger that lands
+    while the lock is held returns <b>busy &rarr; HTTP 409</b> immediately &mdash; the request is discarded,
+    never queued behind the in-flight run, and the human must retry once it finishes rather than stacking a
+    second execution (doc 02 &sect;5.3).
+  </div>
+  <div class="board-body">
+    <div class="s21-job focus">
+      <div class="s21-job-top">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+        <span class="s21-job-key">code_enrichment</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          running
+        </span>
+        <span class="meta">lock held since 14:12:00 UTC</span>
+      </div>
+      <div class="s21-job-actions">
+        <button type="button" class="s21-btn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Trigger now
+        </button>
+      </div>
+    </div>
+    <div class="s21-busy-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <div class="body">
+        <span class="headline">busy &mdash; code_enrichment is already running</span>
+        <span class="desc">The lock acquired at 14:12:00 UTC is still held. This trigger request was not
+          queued; try again once the current run finishes.</span>
+        <span class="code">HTTP 409 &middot; POST /api/v1/jobs/code_enrichment/trigger</span>
+      </div>
+    </div>
+    <div class="s21-trace">
+      <div class="row"><span class="t">requested</span><span class="v">14:14:22 UTC, manual, by an operator</span></div>
+      <div class="row"><span class="t">lock owner</span><span class="v">scheduled tick, held since 14:12:00 UTC</span></div>
+      <div class="row"><span class="t">outcome</span><span class="v">busy — discarded, not queued</span></div>
+      <div class="row"><span class="t">next chance</span><span class="v">retry manually, or wait for the run to release the lock</span></div>
+    </div>
+  </div>
+</section>

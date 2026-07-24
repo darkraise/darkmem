@@ -1,0 +1,407 @@
+<style>
+  /* S24 board-local styles. New layout widgets mockup.css/C0* do not define
+     yet (the day-drill header bar, day-nav, and the day's event timeline) —
+     namespaced s24- so it can never collide with another fragment's
+     local styles once build.py concatenates them. Everything below reads
+     var(--token)/hsl(var(--token)) only; nothing here redeclares a token or
+     restyles .board/.annotation/.theme-row/.theme-light/.theme-dark/
+     .state-chip/.badge/.layer-chip from assets/mockup.css. The event-row +
+     from->to rung-pair widget mirrors the doc-14 section 6 shared
+     component S05's per-object timeline already renders — same shape,
+     re-authored locally per the parallel-wave protocol rather than
+     depending on another fragment's board-local classes. Loading reuses
+     C04's .c04-surface/.c04-skel-row/.c04-skel-bar; error reuses
+     .c04-alert/.c04-retry; empty reuses .c04-empty — composed, not
+     redeclared, per the fragment authoring protocol's "compose the C04
+     state skeleton" step. */
+
+  .s24-intro { display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
+  .s24-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s24-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s24-daybar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px dashed hsl(var(--border)); }
+  .s24-crumb { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: hsl(var(--muted-foreground)); background: transparent; border: none; padding: 0; cursor: default; }
+  .s24-crumb svg { width: 13px; height: 13px; flex: none; }
+  .s24-route { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--foreground)); background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 3px 9px; }
+  .s24-daynav { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .s24-daynav button { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); background: transparent; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 4px 9px; cursor: default; }
+  .s24-utc-note { flex-basis: 100%; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s24-utc-note svg { width: 13px; height: 13px; flex: none; }
+  .s24-utc-note b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s24-timeline { display: flex; flex-direction: column; gap: 0; }
+  .s24-event-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px dashed hsl(var(--border)); }
+  .s24-event-row:first-child { border-top: none; padding-top: 0; }
+  .s24-event-time { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; padding-top: 2px; flex: none; width: 78px; }
+  .s24-event-chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm); background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); white-space: nowrap; flex: none; }
+  .s24-event-chip svg { width: 11px; height: 11px; flex: none; }
+  .s24-event-body { display: flex; flex-direction: column; gap: 5px; flex: 1 1 300px; min-width: 220px; }
+  .s24-event-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: hsl(var(--foreground)); background: transparent; border: none; padding: 0; text-align: left; cursor: default; }
+  .s24-event-link svg { width: 13px; height: 13px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s24-event-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* the from->to rung-pair widget (doc 14 section 6): two small .badge
+     pills joined by one arrow glyph — used only for verification
+     transitions, never for a plain lifecycle event. */
+  .s24-rung-pair { display: inline-flex; align-items: center; gap: 8px; }
+  .s24-rung-pair svg.arrow { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s24-rung-pair .badge { font-size: 12.5px; padding: 2px 9px; }
+
+  .s24-inject-detail { display: flex; flex-wrap: wrap; gap: 10px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s24-inject-detail b { color: hsl(var(--foreground)); font-weight: 600; }
+</style>
+
+<div class="s24-intro">
+  <h2>S24 &mdash; Activity: calendar day drill-down</h2>
+  <p>
+    <code>/activity/day/$date</code> &mdash; a calendar-day click drills into that UTC day-bucket's slice of
+    the durable <code>events</code> substrate (doc 13 &sect;6.4, doc 04 &sect;8.1). This is the same
+    event-row component the per-object timeline renders (doc 14 &sect;6, realised for one memory in S05):
+    <b>timestamp</b>, an <b>event-type chip</b> (neutral role, drawn from the closed <code>event_type</code>
+    vocabulary), an <b>object link</b>, and &mdash; only for verification transitions &mdash; the
+    <b>from&rarr;to rung pair</b> as two small <code>.badge</code> pills joined by an arrow. Every module
+    composes the shared vocabulary: <code>.badge</code> rungs from <code>mockup.css</code>, and C04's
+    surface/skeleton/alert/empty classes for the non-populated states. <b>populated</b> renders as the hero
+    in both themes; <b>loading</b>, <b>error</b>, and <b>empty</b> render once each in the default theme,
+    since the shared toggle guarantees theme parity.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S24-populated">
+  <h2>Activity day drill-down &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    A day with recorded activity. The list is exactly the events UTC day-bucket read
+    (<code>(project, ((created_at AT TIME ZONE 'UTC')::date))</code>, doc 04 &sect;8.1) for
+    <code>2026-07-20</code> &mdash; not the viewer's local calendar day. Seven distinct
+    <code>event_type</code> values appear across the day: <code>created</code>, <code>extracted</code>,
+    <code>verified</code>, <code>inject</code>, <code>consolidated</code>, <code>repo_synced</code>, and
+    <code>superseded</code>. The 09:41 row is a genuine verification transition &mdash; a fact this memory
+    helped corroborate was ratified by a human reviewer, so it renders <code>corroborated</code>
+    &rarr; <code>confirmed</code> (visible label "human-ratified", never the word "confirmed" as chip text)
+    using the same badge markup and reserved glyphs C01 defines. The 11:20 row is an <code>inject</code>
+    event &mdash; a distribution record of what was pushed to a connected client, per doc 13 &sect;6.5.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s24-daybar">
+          <button type="button" class="s24-crumb" data-route="/activity">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>
+            Activity calendar
+          </button>
+          <span class="s24-route">/activity/day/2026-07-20</span>
+          <span class="state-chip state-populated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            populated
+          </span>
+          <div class="s24-daynav">
+            <button type="button" data-route="/activity/day/2026-07-19">&lsaquo; Jul 19</button>
+            <button type="button" data-route="/activity/day/2026-07-21">Jul 21 &rsaquo;</button>
+          </div>
+          <span class="s24-utc-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <b>Days are UTC</b> &mdash; this list is the UTC calendar date, not your local one.
+          </span>
+        </div>
+        <div class="s24-timeline">
+          <div class="s24-event-row">
+            <span class="s24-event-time">07:58 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>created</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/memories/5c81e0f2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                memory 5c81e0f2 &mdash; "hybrid_search_enabled defaults on; RRF fusion runs k=60"
+              </button>
+              <span class="s24-event-note">captured via mcp</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">07:59 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>extracted</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/memories/5c81e0f2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                memory 5c81e0f2
+              </button>
+              <span class="s24-event-note">3 entities / 2 relations written to the graph (pipeline Phase 2)</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">09:41 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>verified</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/knowledge/facts/9b3e2c">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                fact &mdash; "hybrid_search_enabled is on by default; RRF k=60"
+              </button>
+              <span class="s24-rung-pair">
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified
+                </span>
+              </span>
+              <span class="s24-event-note">ratified by a human reviewer &mdash; asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">11:20 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>inject</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/settings/distribution">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                distribution target: claude-code (managed block)
+              </button>
+              <span class="s24-inject-detail">
+                <span><b>3 facts</b> injected (2 corroborated, 1 human-ratified)</span>
+                <span><b>640</b> / 1200 token budget</span>
+                <span>curb: <b>none applied</b></span>
+              </span>
+              <span class="s24-event-note">verification status and layer survived the injection &mdash; a corroborated fact renders as corroborated inside the tool, never re-labelled</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">13:47 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>consolidated</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/knowledge/facts/4f10ab">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                fact &mdash; "confidence_rank_gamma defaults to 0 &mdash; weighting is inactive until raised above zero"
+              </button>
+              <span class="s24-event-note">Tier-C consolidation cycle #142 folded 2 duplicate facts into this row</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">15:05 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>repo_synced</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/repos/darkmem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                repository darkmem
+              </button>
+              <span class="s24-event-note">HEAD advanced to a1b2c3d &mdash; 12 files changed, code graph re-indexed</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">18:30 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>superseded</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/memories/902fbb14">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                memory 902fbb14 &mdash; "the reranker scores every fused row, not just the top 40"
+              </button>
+              <span class="badge superseded">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                superseded
+              </span>
+              <span class="s24-event-note">superseded_by memory 33ad61c7 &mdash; the reranker cutoff doc was rewritten</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s24-daybar">
+          <button type="button" class="s24-crumb" data-route="/activity">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>
+            Activity calendar
+          </button>
+          <span class="s24-route">/activity/day/2026-07-20</span>
+          <span class="state-chip state-populated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            populated
+          </span>
+          <div class="s24-daynav">
+            <button type="button" data-route="/activity/day/2026-07-19">&lsaquo; Jul 19</button>
+            <button type="button" data-route="/activity/day/2026-07-21">Jul 21 &rsaquo;</button>
+          </div>
+          <span class="s24-utc-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <b>Days are UTC</b> &mdash; this list is the UTC calendar date, not your local one.
+          </span>
+        </div>
+        <div class="s24-timeline">
+          <div class="s24-event-row">
+            <span class="s24-event-time">07:58 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>created</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/memories/5c81e0f2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                memory 5c81e0f2 &mdash; "hybrid_search_enabled defaults on; RRF fusion runs k=60"
+              </button>
+              <span class="s24-event-note">captured via mcp</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">07:59 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>extracted</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/memories/5c81e0f2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                memory 5c81e0f2
+              </button>
+              <span class="s24-event-note">3 entities / 2 relations written to the graph (pipeline Phase 2)</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">09:41 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>verified</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/knowledge/facts/9b3e2c">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                fact &mdash; "hybrid_search_enabled is on by default; RRF k=60"
+              </button>
+              <span class="s24-rung-pair">
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated
+                </span>
+                <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified
+                </span>
+              </span>
+              <span class="s24-event-note">ratified by a human reviewer &mdash; asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">11:20 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>inject</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/settings/distribution">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                distribution target: claude-code (managed block)
+              </button>
+              <span class="s24-inject-detail">
+                <span><b>3 facts</b> injected (2 corroborated, 1 human-ratified)</span>
+                <span><b>640</b> / 1200 token budget</span>
+                <span>curb: <b>none applied</b></span>
+              </span>
+              <span class="s24-event-note">verification status and layer survived the injection &mdash; a corroborated fact renders as corroborated inside the tool, never re-labelled</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">13:47 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>consolidated</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/knowledge/facts/4f10ab">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                fact &mdash; "confidence_rank_gamma defaults to 0 &mdash; weighting is inactive until raised above zero"
+              </button>
+              <span class="s24-event-note">Tier-C consolidation cycle #142 folded 2 duplicate facts into this row</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">15:05 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>repo_synced</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/repos/darkmem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                repository darkmem
+              </button>
+              <span class="s24-event-note">HEAD advanced to a1b2c3d &mdash; 12 files changed, code graph re-indexed</span>
+            </div>
+          </div>
+          <div class="s24-event-row">
+            <span class="s24-event-time">18:30 UTC</span>
+            <span class="s24-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>superseded</span>
+            <div class="s24-event-body">
+              <button type="button" class="s24-event-link" data-route="/memories/902fbb14">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                memory 902fbb14 &mdash; "the reranker scores every fused row, not just the top 40"
+              </button>
+              <span class="badge superseded">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                superseded
+              </span>
+              <span class="s24-event-note">superseded_by memory 33ad61c7 &mdash; the reranker cutoff doc was rewritten</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S24-loading">
+  <h2>Activity day drill-down &mdash; loading</h2>
+  <div class="annotation">
+    Loading is a layout preview, not a spinner replacing the page (doc 14 &sect;5): skeleton rows mirror the
+    exact time/chip/link/note slots the populated board above fills in, reusing C04's
+    <code>.c04-skel-row</code>/<code>.c04-skel-bar</code> rather than a locally re-declared skeleton.
+  </div>
+  <div class="board-body">
+    <div class="s24-daybar">
+      <span class="s24-route">/activity/day/2026-07-20</span>
+      <span class="state-chip state-loading">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        loading
+      </span>
+    </div>
+    <div class="c04-surface">
+      <div class="c04-surface-body">
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+        <div class="c04-skel-row"><span class="c04-skel-bar chip"></span><span class="c04-skel-bar badge"></span><span class="c04-skel-bar text"></span><span class="c04-skel-bar meta"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S24-error">
+  <h2>Activity day drill-down &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list.</b> A failed day-bucket read raises a named error rather than
+    rendering an empty timeline indistinguishable from a genuine quiet day (doc 07 &sect;2, invariant 14) &mdash;
+    retry stays offered, and the calendar link back stays available.
+  </div>
+  <div class="board-body">
+    <div class="s24-daybar">
+      <span class="s24-route">/activity/day/2026-07-20</span>
+      <span class="state-chip state-error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        error
+      </span>
+    </div>
+    <div class="c04-alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <div class="body">
+        <span class="headline">Couldn't load activity for 2026-07-20 &mdash; the day-bucket query failed</span>
+        <span class="desc">The events read against the UTC day-bucket index timed out. This is not a claim that the day was quiet &mdash; retry, or pick another day from the calendar.</span>
+        <span class="c04-retry">Retry</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S24-empty">
+  <h2>Activity day drill-down &mdash; empty</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says WHY.</b> No activity on this day is an honest, ordinary outcome &mdash; the
+    empty state names the UTC bucket it checked rather than rendering a bare blank (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s24-daybar">
+      <span class="s24-route">/activity/day/2026-05-03</span>
+      <span class="state-chip state-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+        empty
+      </span>
+    </div>
+    <div class="c04-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 9h18"/></svg>
+      <span class="headline">No activity on this day</span>
+      <span class="why">No <code>events</code> rows fall in the UTC bucket for <b>2026-05-03</b> &mdash; nothing was created, verified, injected, or synced in this project on that date.</span>
+      <span class="why"><b>Days are UTC</b> &mdash; the bucket boundary is the UTC calendar date, not your local one, so a late-night local capture may land on the neighbouring day here.</span>
+    </div>
+  </div>
+</section>

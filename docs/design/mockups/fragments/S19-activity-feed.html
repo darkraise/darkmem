@@ -1,0 +1,456 @@
+<style>
+  /* S19 board-local styles. New layout widgets mockup.css does not define
+     (the live-feed panel, its rows, the toast-flag pill, and the dispute-
+     toast still-frame) — namespaced s19- so it can never collide with
+     another fragment's local styles once build.py concatenates every
+     fragment. Everything below reads var(--token) / hsl(var(--token))
+     only; nothing here redeclares a token or restyles .board/.annotation/
+     .state-chip/.badge/.layer-chip/.theme-light/.theme-dark from
+     assets/mockup.css. Reused shared components: .state-chip (empty/
+     loading/error/populated), .badge (candidate/corroborated/disputed),
+     .layer-chip (l2) for the fact rows the feed reports on. */
+
+  .s19-intro { display: flex; flex-direction: column; gap: 6px; max-width: 920px; }
+  .s19-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s19-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the feed panel every state below fills in ---- */
+  .s19-panel { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s19-panel-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s19-panel-head .title { font-weight: 620; font-size: 13px; color: hsl(var(--foreground)); }
+  .s19-panel-head .route { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s19-panel-head .spacer { flex: 1; min-width: 8px; }
+  .s19-live-dot { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--success)); }
+  .s19-live-dot .dot { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--success)); flex: none; }
+  .s19-panel-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+  /* ---- populated: feed rows ---- */
+  .s19-feed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .s19-feed-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 11px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card));
+  }
+  .s19-feed-row.is-toast { border-color: hsl(var(--destructive) / 0.45); background: hsl(var(--destructive) / 0.05); }
+  .s19-event-chip {
+    display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: 0.03em; padding: 2px 7px; border-radius: var(--radius-sm);
+    background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border));
+    white-space: nowrap;
+  }
+  .s19-feed-row .layer-chip { padding: 1px 7px; font-size: 10.5px; }
+  .s19-feed-row .badge { padding: 2px 8px; font-size: 11px; }
+  .s19-feed-row .badge svg { width: 11px; height: 11px; }
+  .s19-feed-row .text { flex: 1 1 260px; font-size: 13px; color: hsl(var(--foreground)); }
+  .s19-feed-row .time { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s19-feed-transition { display: inline-flex; align-items: center; gap: 5px; }
+  .s19-feed-transition .arrow { color: hsl(var(--muted-foreground)); font-family: var(--font-mono); font-size: 11px; }
+
+  .s19-toast-flag {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 10.5px;
+    padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+    color: hsl(var(--destructive)); border: 1px dashed hsl(var(--destructive) / 0.55); background: hsl(var(--destructive) / 0.1);
+  }
+  .s19-toast-flag svg { width: 11px; height: 11px; flex: none; }
+
+  .s19-feed-note { font-size: 12px; color: hsl(var(--muted-foreground)); padding-top: 2px; }
+
+  /* ---- empty: honest that the SESSION stream is quiet, not that the
+     vault has no history — a fourth register alongside doc 14 section 5's
+     none-yet / no-match / healthy-empty, scoped to a transient view ---- */
+  .s19-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 20px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s19-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s19-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s19-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 560px; }
+
+  /* ---- loading: skeleton rows mirroring the populated shape ---- */
+  .s19-skel-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s19-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s19-skel-bar.chip { width: 84px; }
+  .s19-skel-bar.text { flex: 1 1 auto; }
+  .s19-skel-bar.time { width: 70px; }
+  @keyframes s19-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+  .s19-skel-bar { animation: s19-pulse 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .s19-skel-bar { animation: none; opacity: 0.7; } }
+  .s19-handshake { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- error: a named disconnect, never an empty list ---- */
+  .s19-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s19-alert svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s19-alert .body { display: flex; flex-direction: column; gap: 5px; }
+  .s19-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s19-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s19-retry {
+    align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px;
+    border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent;
+  }
+  .s19-stale-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); padding: 2px 2px 0; }
+  .s19-stale-list { opacity: 0.55; filter: saturate(0.7); display: flex; flex-direction: column; gap: 8px; }
+
+  /* ---- the dispute-toast still-frame ---- */
+  .s19-viewport {
+    position: relative; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--background)); padding: 16px; min-height: 220px; overflow: hidden;
+  }
+  .s19-viewport-fade { display: flex; flex-direction: column; gap: 8px; opacity: 0.35; filter: saturate(0.6); pointer-events: none; }
+  .s19-viewport-label {
+    position: absolute; top: 10px; left: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: hsl(var(--muted-foreground));
+  }
+  .s19-toast-card {
+    position: absolute; right: 16px; bottom: 16px; width: min(360px, calc(100% - 32px));
+    display: flex; flex-direction: column; gap: 8px; padding: 12px 13px;
+    border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); box-shadow: 0 8px 24px hsl(var(--foreground) / 0.14);
+  }
+  .s19-toast-head { display: flex; align-items: center; gap: 8px; }
+  .s19-toast-head .badge { padding: 2px 8px; font-size: 11px; }
+  .s19-toast-head .badge svg { width: 11px; height: 11px; }
+  .s19-toast-head .headline { font-weight: 640; font-size: 13px; color: hsl(var(--foreground)); flex: 1; }
+  .s19-toast-head .time { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s19-toast-close { width: 18px; height: 18px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s19-toast-body { font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s19-toast-claim {
+    font-size: 12px; padding: 7px 9px; border-radius: var(--radius-sm);
+    border: 1px dashed hsl(var(--destructive) / 0.45); background: hsl(var(--destructive) / 0.08); color: hsl(var(--foreground));
+  }
+  .s19-toast-foot { display: flex; align-items: center; justify-content: flex-end; }
+  .s19-toast-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: hsl(var(--primary)); }
+  .s19-toast-link svg { width: 13px; height: 13px; }
+  .s19-still-frame-tag {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px;
+    border: 1px dashed hsl(var(--border)); color: hsl(var(--muted-foreground)); background: transparent;
+    align-self: flex-start;
+  }
+</style>
+
+<div class="s19-intro">
+  <h2>S19 — Activity: live feed</h2>
+  <p>
+    The Activity screen's live view (doc 13 &sect;2.1/&sect;6.1): the <b>transient <code>/ws</code> stream</b>
+    while this view stays open, rendered as an ordered feed list, plus the <b>dispute-toast still-frame</b>
+    &mdash; the one transient toast that carries honesty content, a <code>fact.verified</code> dispute alert
+    (doc 13 &sect;2.1, spec &sect;6). The toast's motion (slide-in, auto-dismiss timer) is explicitly out of
+    scope for this deliverable; only the frozen frame is authored. Four states below for the feed itself:
+    empty, loading, error, populated (hero, both themes); the still-frame is a fifth, dedicated board.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S19-empty">
+  <h2>Activity — live feed — empty</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, scoped to what a transient stream can honestly claim.</b> This is not
+    the vault's cold-start register (doc 13 &sect;5.1) &mdash; the project may have years of history. The
+    feed only ever shows what has streamed over <code>/ws</code> since this view mounted, so its empty copy
+    says exactly that: nothing has arrived <i>in this open session</i>, not "no activity ever" (doc 14
+    &sect;5's three registers, applied to a fourth, session-scoped case this screen introduces).
+  </div>
+  <div class="board-body">
+    <div class="s19-panel">
+      <div class="s19-panel-head">
+        <span class="title">Activity &mdash; live feed</span>
+        <span class="route">/activity</span>
+        <span class="spacer"></span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s19-panel-body">
+        <div class="s19-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No live events since this view opened</span>
+          <span class="why">
+            The feed streams only while Activity stays open &mdash; captures, pipeline runs, repo syncs, and
+            verification changes will appear here the moment they happen. For history before this view was
+            opened, see the per-object timeline or the calendar day drill-down, which read the durable
+            <code>events</code> substrate rather than this transient stream (doc 13 &sect;2.1/&sect;6.4).
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S19-loading">
+  <h2>Activity — live feed — loading</h2>
+  <div class="annotation">
+    Loading is the initial <code>/ws</code> handshake, not a spinner replacing the page (doc 14 &sect;5):
+    skeleton rows mirror the exact chip / badge / text / time slots the populated board below fills in, so
+    the surface never jumps once the socket connects and the first events arrive.
+  </div>
+  <div class="board-body">
+    <div class="s19-panel">
+      <div class="s19-panel-head">
+        <span class="title">Activity &mdash; live feed</span>
+        <span class="route">/activity</span>
+        <span class="spacer"></span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s19-panel-body">
+        <span class="s19-handshake">Connecting to <code>/ws</code>&hellip;</span>
+        <div class="s19-skel-row"><span class="s19-skel-bar chip"></span><span class="s19-skel-bar text"></span><span class="s19-skel-bar time"></span></div>
+        <div class="s19-skel-row"><span class="s19-skel-bar chip"></span><span class="s19-skel-bar text"></span><span class="s19-skel-bar time"></span></div>
+        <div class="s19-skel-row"><span class="s19-skel-bar chip"></span><span class="s19-skel-bar text"></span><span class="s19-skel-bar time"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S19-error">
+  <h2>Activity — live feed — error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list, and a lost socket is never the only record.</b> When
+    reconnection is exhausted, the panel raises a named disconnect with a manual retry rather than quietly
+    reverting to an empty list &mdash; and the last-known events stay visible, dimmed, because a WebSocket
+    message lost on disconnect must never be the sole record of what happened (doc 13 &sect;2.1: "a
+    WebSocket message is lost on a disconnect, so it may never be the *only* record of a lifecycle
+    transition"). The durable <code>events</code> substrate backs the timeline and calendar regardless of
+    this socket's state.
+  </div>
+  <div class="board-body">
+    <div class="s19-panel">
+      <div class="s19-panel-head">
+        <span class="title">Activity &mdash; live feed</span>
+        <span class="route">/activity</span>
+        <span class="spacer"></span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s19-panel-body">
+        <div class="s19-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Live feed disconnected &mdash; reconnect attempts exhausted</span>
+            <span class="desc">The <code>/ws</code> connection dropped and the exponential-backoff reconnect gave up after 5 attempts. The events below are the last known before the drop.</span>
+            <span class="s19-retry">Retry connection</span>
+          </div>
+        </div>
+        <span class="s19-stale-note">Last known &mdash; 14:41 UTC:</span>
+        <div class="s19-stale-list">
+          <div class="s19-feed-row">
+            <span class="s19-event-chip">pipeline.completed</span>
+            <span class="text">Extraction + classification finished for 4 memories</span>
+            <span class="time">14:38 UTC</span>
+          </div>
+          <div class="s19-feed-row">
+            <span class="s19-event-chip">repo.indexing_completed</span>
+            <span class="text">darkmem-core-backend reindexed &mdash; HEAD unchanged, symbols enriched</span>
+            <span class="time">14:22 UTC</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S19-populated">
+  <h2>Activity — live feed — populated (hero, both themes)</h2>
+  <div class="annotation">
+    The content state, composing the shared verification badge (<code>.badge</code>) and layer chip
+    (<code>.layer-chip</code>) for rows that report a fact's rung change, per the WebSocket-to-invalidation
+    mapping (doc 13 &sect;2.1 table). Most rows here invalidate a query cache silently; the row marked
+    <b>toast shown</b> is the one row in this table whose event (<code>fact.verified</code> dispute) also
+    fires the transient toast rendered as a still-frame in the board below &mdash; the only event in this
+    mapping that carries honesty content, per this task's scope (spec &sect;6). Rendered as the hero in both
+    themes; the other four boards in this fragment render once, in the default theme, since the shared
+    toggle in <code>mockup.css</code>/<code>theme.css</code> already guarantees theme parity.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s19-panel">
+          <div class="s19-panel-head">
+            <span class="title">Activity &mdash; live feed</span>
+            <span class="route">/activity</span>
+            <span class="spacer"></span>
+            <span class="s19-live-dot"><span class="dot"></span>connected</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s19-panel-body">
+            <ul class="s19-feed-list">
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">memory.created</span>
+                <span class="text">Captured "RRF k=60 keeps rank stable across reruns" from mcp</span>
+                <span class="time">14:52 UTC &mdash; just now</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">pipeline.completed</span>
+                <span class="text">Extraction + classification finished for 4 memories</span>
+                <span class="time">14:49 UTC &mdash; 3 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">fact.verified</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="s19-feed-transition">
+                  <span class="badge candidate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>candidate</span>
+                  <span class="arrow">&rarr;</span>
+                  <span class="badge corroborated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>corroborated</span>
+                </span>
+                <span class="text">"hybrid_search_enabled defaults on" promoted</span>
+                <span class="time">14:44 UTC &mdash; 8 min ago</span>
+              </li>
+              <li class="s19-feed-row is-toast">
+                <span class="s19-event-chip">fact.verified</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge disputed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                  disputed
+                </span>
+                <span class="text">"reranker default enablement" &mdash; disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts it is opt-in per profile, as of 2026-07-24</span>
+                <span class="s19-toast-flag">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                  toast shown &darr;
+                </span>
+                <span class="time">14:41 UTC &mdash; 11 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">consolidation.completed</span>
+                <span class="text">Dream cycle finished &mdash; 6 memories superseded, 2 facts promoted</span>
+                <span class="time">14:15 UTC &mdash; 37 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">topic.detected</span>
+                <span class="text">New topic community detected around "reranker configuration" (7 members)</span>
+                <span class="time">13:58 UTC &mdash; 54 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">repo.indexing_completed</span>
+                <span class="text">darkmem-core-backend reindexed &mdash; HEAD unchanged, symbols enriched</span>
+                <span class="time">13:40 UTC &mdash; 1 hr ago</span>
+              </li>
+            </ul>
+            <span class="s19-feed-note">This list is convenience only, not the record of truth &mdash; the per-object timeline and the calendar day drill-down reconstruct history from the durable <code>events</code> substrate, not from what this socket happened to deliver (doc 13 &sect;2.1/&sect;6.4).</span>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s19-panel">
+          <div class="s19-panel-head">
+            <span class="title">Activity &mdash; live feed</span>
+            <span class="route">/activity</span>
+            <span class="spacer"></span>
+            <span class="s19-live-dot"><span class="dot"></span>connected</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s19-panel-body">
+            <ul class="s19-feed-list">
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">memory.created</span>
+                <span class="text">Captured "RRF k=60 keeps rank stable across reruns" from mcp</span>
+                <span class="time">14:52 UTC &mdash; just now</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">pipeline.completed</span>
+                <span class="text">Extraction + classification finished for 4 memories</span>
+                <span class="time">14:49 UTC &mdash; 3 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">fact.verified</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="s19-feed-transition">
+                  <span class="badge candidate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>candidate</span>
+                  <span class="arrow">&rarr;</span>
+                  <span class="badge corroborated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>corroborated</span>
+                </span>
+                <span class="text">"hybrid_search_enabled defaults on" promoted</span>
+                <span class="time">14:44 UTC &mdash; 8 min ago</span>
+              </li>
+              <li class="s19-feed-row is-toast">
+                <span class="s19-event-chip">fact.verified</span>
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="badge disputed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                  disputed
+                </span>
+                <span class="text">"reranker default enablement" &mdash; disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts it is opt-in per profile, as of 2026-07-24</span>
+                <span class="s19-toast-flag">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                  toast shown &darr;
+                </span>
+                <span class="time">14:41 UTC &mdash; 11 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">consolidation.completed</span>
+                <span class="text">Dream cycle finished &mdash; 6 memories superseded, 2 facts promoted</span>
+                <span class="time">14:15 UTC &mdash; 37 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">topic.detected</span>
+                <span class="text">New topic community detected around "reranker configuration" (7 members)</span>
+                <span class="time">13:58 UTC &mdash; 54 min ago</span>
+              </li>
+              <li class="s19-feed-row">
+                <span class="s19-event-chip">repo.indexing_completed</span>
+                <span class="text">darkmem-core-backend reindexed &mdash; HEAD unchanged, symbols enriched</span>
+                <span class="time">13:40 UTC &mdash; 1 hr ago</span>
+              </li>
+            </ul>
+            <span class="s19-feed-note">This list is convenience only, not the record of truth &mdash; the per-object timeline and the calendar day drill-down reconstruct history from the durable <code>events</code> substrate, not from what this socket happened to deliver (doc 13 &sect;2.1/&sect;6.4).</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S19-dispute-toast">
+  <h2>Activity — dispute-toast still-frame</h2>
+  <div class="annotation annotation-conflict">
+    <b>The one transient toast that carries honesty content, frozen.</b> Per the WebSocket-to-invalidation
+    mapping (doc 13 &sect;2.1), several events fire a toast (a finished retry batch, a terminal repo state, a
+    finished dream cycle) but those are operational notices; the <code>fact.verified</code> <b>dispute</b> is
+    the only one whose toast body itself states an epistemic claim, so it is the one rendered here. The toast
+    collapses to the badge plus a one-line both-sides summary &mdash; the same collapse rule the split-panel
+    detail view uses in list contexts (doc 14 &sect;3.5) &mdash; so a fast-moving alert can never say
+    something the detail view (S07/C01) later contradicts. <b>Motion is out of scope</b> (spec &sect;6): the
+    slide-in entrance, the auto-dismiss timer, and the pulse-glow emphasis this triggers on the live feed row
+    above (doc 14 &sect;7) are not depicted &mdash; only this single frozen frame, positioned where the
+    toast stack renders over the open view.
+  </div>
+  <div class="board-body">
+    <span class="s19-still-frame-tag">static still-frame &mdash; motion out of scope</span>
+    <div class="s19-viewport">
+      <span class="s19-viewport-label">activity — live feed (behind the toast)</span>
+      <div class="s19-viewport-fade">
+        <div class="s19-skel-row" style="margin-top:26px;"><span class="s19-skel-bar chip"></span><span class="s19-skel-bar text"></span><span class="s19-skel-bar time"></span></div>
+        <div class="s19-skel-row"><span class="s19-skel-bar chip"></span><span class="s19-skel-bar text"></span><span class="s19-skel-bar time"></span></div>
+        <div class="s19-skel-row"><span class="s19-skel-bar chip"></span><span class="s19-skel-bar text"></span><span class="s19-skel-bar time"></span></div>
+      </div>
+      <div class="s19-toast-card">
+        <div class="s19-toast-head">
+          <span class="badge disputed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+            disputed
+          </span>
+          <span class="headline">Fact disputed</span>
+          <span class="time">just now</span>
+          <svg class="s19-toast-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+        </div>
+        <div class="s19-toast-body">"reranker default enablement" now has conflicting origins.</div>
+        <div class="s19-toast-claim">
+          disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts it is opt-in per profile, as of 2026-07-24
+        </div>
+        <div class="s19-toast-foot">
+          <span class="s19-toast-link">Open in Review<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

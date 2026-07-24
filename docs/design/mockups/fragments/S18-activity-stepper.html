@@ -1,0 +1,416 @@
+<style>
+  /* S18 board-local styles — the per-memory five-phase pipeline stepper
+     (doc 13 section6.1, doc 02 section5.2). Every colour below composes
+     an existing token role (success/warning/destructive/info via
+     --success/--warning/--destructive/--info, or --muted/--border for the
+     neutral pending/skipped states) — nothing here redeclares --token
+     values or restyles .board/.annotation/.state-chip/.badge at the class
+     level. Namespaced s18- so build.py's concatenation never collides
+     with another fragment's local styles.
+
+     Status icons stay deliberately generic (checkmark / spinner / hollow
+     dot / triangle-alert / minus / squiggle) rather than reusing any of
+     the five reserved honesty glyphs (dashed circle, merge, person-check,
+     scales, clock-back — doc 14 section7): a pipeline step is a progress
+     state, not a verification rung, and the two vocabularies must stay
+     visually disjoint. */
+
+  .s18-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s18-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s18-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+  .s18-intro code { font-family: var(--font-mono); font-size: 12px; background: hsl(var(--muted)); padding: 1px 5px; border-radius: var(--radius-sm); color: hsl(var(--foreground)); }
+
+  .s18-panel { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s18-panel-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s18-panel-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s18-panel-header .meta { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s18-panel-body { display: flex; flex-direction: column; }
+
+  .s18-row { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-bottom: 1px solid hsl(var(--border)); }
+  .s18-panel-body .s18-row:last-child { border-bottom: none; }
+
+  .s18-row-meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .s18-row-id { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s18-row-time { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s18-row-content { font-size: 13px; color: hsl(var(--foreground)); }
+
+  /* ---- the stepper itself: five phase nodes, content embed -> extract
+     & classify -> entity embed -> dedup -> write, connected left to
+     right in fixed order ---- */
+  .s18-stepper { display: flex; align-items: flex-start; gap: 0; }
+  .s18-step { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; flex: none; }
+  .s18-step-dot { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid hsl(var(--border)); background: hsl(var(--card)); flex: none; }
+  .s18-step-dot svg { width: 15px; height: 15px; }
+  .s18-step-num { font-family: var(--font-mono); font-size: 9.5px; color: hsl(var(--muted-foreground)); }
+  .s18-step-label { font-size: 11.5px; text-align: center; color: hsl(var(--muted-foreground)); line-height: 1.25; }
+  .s18-step-connector { flex: 1 1 auto; height: 2px; background: hsl(var(--border)); margin-top: 15px; min-width: 14px; }
+
+  .s18-step.s18-ok .s18-step-dot { border-color: hsl(var(--success)); color: hsl(var(--success)); }
+  .s18-step.s18-ok .s18-step-label { color: hsl(var(--foreground)); }
+  .s18-step-connector.s18-ok { background: hsl(var(--success)); }
+
+  .s18-step.s18-active .s18-step-dot { border-color: hsl(var(--info)); color: hsl(var(--info)); background: hsl(var(--info) / 0.12); }
+  .s18-step.s18-active .s18-step-label { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s18-step.s18-pending .s18-step-dot { color: hsl(var(--muted-foreground) / 0.55); }
+  .s18-step-connector.s18-pending { background: hsl(var(--border)); }
+
+  .s18-step.s18-error .s18-step-dot { border-color: hsl(var(--destructive)); color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.1); }
+  .s18-step.s18-error .s18-step-label { color: hsl(var(--destructive)); font-weight: 600; }
+  .s18-step-connector.s18-error { background: hsl(var(--destructive) / 0.5); }
+
+  .s18-step.s18-skipped .s18-step-dot { border-style: dashed; color: hsl(var(--muted-foreground) / 0.5); opacity: 0.6; }
+  .s18-step.s18-skipped .s18-step-label { color: hsl(var(--muted-foreground)); opacity: 0.6; }
+
+  .s18-step.s18-degraded .s18-step-dot { border-color: hsl(var(--warning)); border-style: dashed; color: hsl(var(--warning)); background: hsl(var(--warning) / 0.1); }
+  .s18-step.s18-degraded .s18-step-label { color: hsl(var(--warning)); font-weight: 600; }
+
+  /* the write step's dot splits when its two Phase-5 savepoints (vector
+     upsert, then graph write) disagree — encodes the two-savepoint
+     architecture directly instead of collapsing it to one colour. */
+  .s18-step-dot.s18-split { border: 2px solid hsl(var(--border)); background: conic-gradient(hsl(var(--success)) 0turn 0.5turn, hsl(var(--destructive)) 0.5turn 1turn); }
+
+  .s18-substeps { display: flex; gap: 4px; }
+  .s18-substep { font-family: var(--font-mono); font-size: 9.5px; padding: 1px 6px; border-radius: 999px; border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+  .s18-substep.s18-ok { border-color: hsl(var(--success) / 0.6); color: hsl(var(--success)); }
+  .s18-substep.s18-error { border-color: hsl(var(--destructive) / 0.6); color: hsl(var(--destructive)); }
+
+  /* ---- row footer: terminal chip + named failed step ---- */
+  .s18-row-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s18-row-meta2 { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+  /* new terminal-state chip modifiers — the pipeline's own vocabulary
+     (running / completed / partial / failed, doc 02 section5.2) is a
+     different axis from the seven render-state chips mockup.css already
+     declares (empty/loading/error/populated/staged/degraded/excluded),
+     so this composes .state-chip's shared pill shape and layers new
+     colour roles rather than repurposing a render-state word as a
+     pipeline label. */
+  .state-chip.s18-term-running { color: hsl(var(--info)); border-color: hsl(var(--info) / 0.5); background: hsl(var(--info) / 0.1); }
+  .state-chip.s18-term-completed { color: hsl(var(--success)); border-color: hsl(var(--success) / 0.5); background: hsl(var(--success) / 0.1); }
+  .state-chip.s18-term-partial { color: hsl(var(--warning)); border-color: hsl(var(--warning) / 0.5); background: hsl(var(--warning) / 0.12); }
+  .state-chip.s18-term-failed { color: hsl(var(--destructive)); border-color: hsl(var(--destructive) / 0.5); background: hsl(var(--destructive) / 0.1); }
+  .state-chip.s18-term-running svg, .state-chip.s18-term-completed svg, .state-chip.s18-term-partial svg, .state-chip.s18-term-failed svg { width: 12px; height: 12px; }
+
+  .s18-failed-step { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--foreground)); }
+  .s18-failed-step code { font-family: var(--font-mono); font-size: 11.5px; padding: 2px 7px; border-radius: var(--radius-sm); border: 1px solid hsl(var(--border)); background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+  .s18-failed-step.s18-warn code { border-color: hsl(var(--warning) / 0.6); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.1); }
+  .s18-failed-step.s18-conflict code { border-color: hsl(var(--destructive) / 0.6); color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.1); }
+
+  .s18-row-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<div class="s18-intro">
+  <h2>S18 — Activity: five-phase pipeline stepper</h2>
+  <p>
+    The per-memory module of the Activity shell (doc 13 §6.1, doc 02 §5.2): each captured memory's progress
+    through <code>content embed → extract-and-classify → entity embed → dedup → write</code>, ending in one of
+    three honest terminal states — <code>completed</code>, <code>partial</code>, or <code>failed</code>. A
+    <code>partial</code> memory always names exactly which step broke, using the same vocabulary the
+    <code>/ws</code> payload and <code>derive_memory_failed_step</code> use — <code>embed</code> /
+    <code>extract</code> / <code>vector</code> / <code>graph</code> — never a collapsed batch pass/fail
+    (invariant 14). Entity embed and dedup (phases 3–4) are batch-level ANN operations that degrade gracefully
+    on a miss rather than failing a single memory, so the named-failure vocabulary only ever points at phase 1
+    (<code>content_embedding</code>), phase 2 (<code>extraction</code> / <code>extraction_partial</code>), or
+    one of phase 5's two savepoints (<code>vector_write</code> / <code>graph_write</code>).
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S18-running">
+  <h2>S18 — pipeline stepper: running</h2>
+  <div class="annotation">
+    The non-terminal state every memory starts in once claimed from the buffer (doc 02 §5.2:
+    <code>[*] → running : claimed from buffer</code>). No <code>pipeline.*</code> event has fired yet — the
+    row updates live over <code>/ws</code> as each phase resolves.
+  </div>
+  <div class="board-body">
+    <div class="s18-panel">
+      <div class="s18-panel-header">
+        <span class="title">Pipeline — in flight</span>
+        <span class="meta">1 memory processing</span>
+      </div>
+      <div class="s18-panel-body">
+        <div class="s18-row">
+          <div class="s18-row-meta">
+            <span class="s18-row-id">mem_7c4e19</span>
+            <span class="s18-row-content">"DATABASE_URL is derived from the DB_* vars with percent-encoded credentials unless an explicit DATABASE_URL overrides it"</span>
+            <span class="s18-row-time">claimed 12s ago</span>
+          </div>
+          <div class="s18-stepper">
+            <div class="s18-step s18-ok">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span>
+              <span class="s18-step-num">1</span>
+              <span class="s18-step-label">Content embed</span>
+            </div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span>
+              <span class="s18-step-num">2</span>
+              <span class="s18-step-label">Extract &amp; classify</span>
+            </div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-active">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+              <span class="s18-step-num">3</span>
+              <span class="s18-step-label">Entity embed</span>
+            </div>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
+              <span class="s18-step-num">4</span>
+              <span class="s18-step-label">Dedup</span>
+            </div>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
+              <span class="s18-step-num">5</span>
+              <span class="s18-step-label">Write</span>
+            </div>
+          </div>
+          <div class="s18-row-foot">
+            <span class="state-chip s18-term-running">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              running
+            </span>
+            <span class="s18-row-note">phase 3 of 5 — cache lookup then embed misses, bounded by pipeline_concurrency</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S18-completed">
+  <h2>S18 — pipeline stepper: completed (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Terminal — completed.</b> All four checkpoints the <code>/ws</code> payload reports
+    (<code>embed</code>, <code>extract</code>, <code>vector</code>, <code>graph</code>) resolved
+    <code>ok</code>; <code>pipeline.completed</code> fires. Rendered as the hero in both themes; the other
+    three terminal/running states below render once, in the default theme, since the shared toggle already
+    guarantees theme parity.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s18-panel">
+          <div class="s18-panel-header">
+            <span class="title">Pipeline — recent</span>
+            <span class="meta">completed 2026-07-23 18:41</span>
+          </div>
+          <div class="s18-panel-body">
+            <div class="s18-row">
+              <div class="s18-row-meta">
+                <span class="s18-row-id">mem_2a9f04</span>
+                <span class="s18-row-content">"cookie_secure is tri-state: unset means Secure only when environment=production; an explicit false allows login over plain-HTTP LAN"</span>
+                <span class="s18-row-time">2026-07-23 18:41</span>
+              </div>
+              <div class="s18-stepper">
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">2</span><span class="s18-step-label">Extract &amp; classify</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">3</span><span class="s18-step-label">Entity embed</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">4</span><span class="s18-step-label">Dedup</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">5</span><span class="s18-step-label">Write</span></div>
+              </div>
+              <div class="s18-row-foot">
+                <span class="state-chip s18-term-completed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>
+                  completed
+                </span>
+                <span class="s18-row-meta2">entities: 6 · relations: 4</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s18-panel">
+          <div class="s18-panel-header">
+            <span class="title">Pipeline — recent</span>
+            <span class="meta">completed 2026-07-23 18:41</span>
+          </div>
+          <div class="s18-panel-body">
+            <div class="s18-row">
+              <div class="s18-row-meta">
+                <span class="s18-row-id">mem_2a9f04</span>
+                <span class="s18-row-content">"cookie_secure is tri-state: unset means Secure only when environment=production; an explicit false allows login over plain-HTTP LAN"</span>
+                <span class="s18-row-time">2026-07-23 18:41</span>
+              </div>
+              <div class="s18-stepper">
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">2</span><span class="s18-step-label">Extract &amp; classify</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">3</span><span class="s18-step-label">Entity embed</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">4</span><span class="s18-step-label">Dedup</span></div>
+                <span class="s18-step-connector s18-ok"></span>
+                <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">5</span><span class="s18-step-label">Write</span></div>
+              </div>
+              <div class="s18-row-foot">
+                <span class="state-chip s18-term-completed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg>
+                  completed
+                </span>
+                <span class="s18-row-meta2">entities: 6 · relations: 4</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S18-partial">
+  <h2>S18 — pipeline stepper: partial (named failed step)</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: a partial memory names its failed step — never a collapsed batch pass/fail.</b>
+    <code>pipeline.partial</code> fires whenever at least one checkpoint reports <code>ok</code> and at least
+    one does not; the failed step is read off the same status dict the <code>/ws</code> payload carries, via
+    <code>derive_memory_failed_step</code> — hard step errors (checked in phase order, first one wins) take
+    priority over a merely degraded extraction. The two rows below show both causes: a late-phase hard error
+    on one of Phase 5's two savepoints, and an early-phase degraded (but non-fatal) extraction.
+  </div>
+  <div class="board-body">
+    <div class="s18-panel">
+      <div class="s18-panel-header">
+        <span class="title">Pipeline — recent</span>
+        <span class="meta">2 memories partial</span>
+      </div>
+      <div class="s18-panel-body">
+        <div class="s18-row">
+          <div class="s18-row-meta">
+            <span class="s18-row-id">mem_5b13d0</span>
+            <span class="s18-row-content">"REPLACES targets are lowercased before the supersession detector compares them against memories.technologies"</span>
+            <span class="s18-row-time">2026-07-24 09:03</span>
+          </div>
+          <div class="s18-stepper">
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">2</span><span class="s18-step-label">Extract &amp; classify</span></div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">3</span><span class="s18-step-label">Entity embed</span></div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">4</span><span class="s18-step-label">Dedup</span></div>
+            <span class="s18-step-connector s18-error"></span>
+            <div class="s18-step s18-error">
+              <span class="s18-step-dot s18-split"></span>
+              <span class="s18-step-num">5</span>
+              <span class="s18-step-label">Write</span>
+              <span class="s18-substeps">
+                <span class="s18-substep s18-ok">vector</span>
+                <span class="s18-substep s18-error">graph</span>
+              </span>
+            </div>
+          </div>
+          <div class="s18-row-foot">
+            <span class="state-chip s18-term-partial">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              partial
+            </span>
+            <span class="s18-failed-step s18-conflict">failed step: <code>graph_write</code></span>
+            <span class="s18-row-meta2">entities: 5 · relations: 3</span>
+          </div>
+          <span class="s18-row-note">Vector write (savepoint A) committed independently — the memory is embedded and searchable. The entity/relationship graph write (savepoint B) failed and rolled back on its own; surfaces in Failure Triage (S20) for retry.</span>
+        </div>
+
+        <div class="s18-row">
+          <div class="s18-row-meta">
+            <span class="s18-row-id">mem_9e02f7</span>
+            <span class="s18-row-content">"confidence defaults to 0.75 and feeds _apply_confidence_weighting once confidence_rank_gamma is raised above zero"</span>
+            <span class="s18-row-time">2026-07-24 09:07</span>
+          </div>
+          <div class="s18-stepper">
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
+            <span class="s18-step-connector s18-error"></span>
+            <div class="s18-step s18-degraded">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg></span>
+              <span class="s18-step-num">2</span>
+              <span class="s18-step-label">Extract &amp; classify</span>
+            </div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">3</span><span class="s18-step-label">Entity embed</span></div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">4</span><span class="s18-step-label">Dedup</span></div>
+            <span class="s18-step-connector s18-ok"></span>
+            <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">5</span><span class="s18-step-label">Write</span></div>
+          </div>
+          <div class="s18-row-foot">
+            <span class="state-chip s18-term-partial">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              partial
+            </span>
+            <span class="s18-failed-step s18-warn">failed step: <code>extraction_partial</code></span>
+            <span class="s18-row-meta2">entities: 1 · relations: 0</span>
+          </div>
+          <span class="s18-row-note">Extraction returned a truncated response — degraded, not fatal. Content and vector are written and searchable; the entity graph carries only what parsed. A clean re-extraction resolves the row automatically.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S18-failed">
+  <h2>S18 — pipeline stepper: failed</h2>
+  <div class="annotation annotation-conflict">
+    <b>Terminal — failed.</b> <code>pipeline.failed</code> fires only when every checkpoint that actually ran
+    reports non-<code>ok</code> — a single early failure whose later steps still land as <code>skipped</code>
+    (not attempted) is <i>not</i> enough on its own; here content embedding <i>and</i> extraction both errored
+    independently, so vector and graph write never ran. <code>derive_memory_failed_step</code> checks hard
+    errors in phase order and the first one wins, so the named step is <code>content_embedding</code> even
+    though extraction failed too.
+  </div>
+  <div class="board-body">
+    <div class="s18-panel">
+      <div class="s18-panel-header">
+        <span class="title">Pipeline — recent</span>
+        <span class="meta">1 memory failed</span>
+      </div>
+      <div class="s18-panel-body">
+        <div class="s18-row">
+          <div class="s18-row-meta">
+            <span class="s18-row-id">mem_e41a88</span>
+            <span class="s18-row-content">"the two-tier entity-embedding cache checks the in-memory layer before the DB layer, falling back to embedding cache misses directly"</span>
+            <span class="s18-row-time">2026-07-24 03:52</span>
+          </div>
+          <div class="s18-stepper">
+            <div class="s18-step s18-error"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
+            <span class="s18-step-connector s18-error"></span>
+            <div class="s18-step s18-error"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span><span class="s18-step-num">2</span><span class="s18-step-label">Extract &amp; classify</span></div>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-skipped"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></span><span class="s18-step-num">3</span><span class="s18-step-label">Entity embed</span></div>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-skipped"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></span><span class="s18-step-num">4</span><span class="s18-step-label">Dedup</span></div>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-skipped">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/></svg></span>
+              <span class="s18-step-num">5</span>
+              <span class="s18-step-label">Write</span>
+              <span class="s18-substeps">
+                <span class="s18-substep">vector</span>
+                <span class="s18-substep">graph</span>
+              </span>
+            </div>
+          </div>
+          <div class="s18-row-foot">
+            <span class="state-chip s18-term-failed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              failed
+            </span>
+            <span class="s18-failed-step s18-conflict">failed step: <code>content_embedding</code></span>
+            <span class="s18-row-meta2">entities: 0 · relations: 0</span>
+          </div>
+          <span class="s18-row-note">Embedder outage — the chunked embed_batch call errored, then the concurrent extraction call errored independently on the same outage. Write never ran (vector and graph both stayed skipped). Retryable from Failure Triage (S20).</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

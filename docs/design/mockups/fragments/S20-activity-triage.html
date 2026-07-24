@@ -1,0 +1,497 @@
+<style>
+  /* S20 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip — and invents nothing that duplicates
+     them. New S20-only layout follows the same generic result-surface
+     pattern C04/S14 already established (surface/header/row/skeleton/empty/
+     alert), re-namespaced here rather than importing c04-*/s14-* directly,
+     per that established precedent (each fragment owns its own namespace
+     so build.py's concatenation never collides). Reads var(--token) /
+     hsl(var(--token)) only; no hex, no redeclared tokens.
+
+     One deliberate exception, same reasoning as S14's .s14-chip-stale:
+     .s20-chip-poison visually matches the shared .state-chip shape/sizing
+     but is NOT one of mockup.css's seven state-chip variants (empty/
+     loading/error/populated/staged/degraded/excluded) — "poison" is a
+     per-row status on an existing pipeline_failures row (an attempts
+     count that has stopped being informative), not a whole-screen render
+     state. Same reasoning for .s20-pipeline-tag (plain surface-toned
+     metadata, not a layer chip — pipeline_name is not one of the L0..L3
+     honesty layers, so reusing .layer-chip here would make the two axes
+     collide, exactly what doc 14 §3.3 forbids). */
+
+  .s20-intro { display: flex; flex-direction: column; gap: 6px; max-width: 920px; }
+  .s20-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s20-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the failure-list surface every state below instantiates ---- */
+  .s20-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s20-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); flex-wrap: wrap; }
+  .s20-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s20-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s20-surface-header .state-chip { margin-left: auto; }
+  .s20-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .s20-btn {
+    font-family: var(--font-mono); font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background));
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .s20-btn svg { width: 12px; height: 12px; flex: none; }
+  .s20-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s20-btn-caution { border-color: hsl(var(--warning) / 0.6); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.08); }
+  .s20-btn-ghost { border-style: dashed; color: hsl(var(--muted-foreground)); background: transparent; }
+  .s20-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+  /* ---- one failure row ---- */
+  .s20-row { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s20-row-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s20-row-top svg.icon { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s20-entity { font-weight: 610; font-size: 13px; color: hsl(var(--foreground)); }
+  .s20-pipeline-tag {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.02em; padding: 2px 8px;
+    border-radius: var(--radius-sm); border: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--muted-foreground));
+  }
+  .s20-row-top .meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  .s20-row-step, .s20-row-reason { display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; }
+  .s20-row-step .tag, .s20-row-reason .tag {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: hsl(var(--muted-foreground)); white-space: nowrap; padding-top: 2px; flex: none; width: 66px;
+  }
+  .s20-row-step .stepval { font-family: var(--font-mono); font-size: 12.5px; font-weight: 630; color: hsl(var(--foreground)); }
+  .s20-row-reason .msg { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); }
+
+  .s20-row-meta { display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); padding-top: 2px; border-top: 1px dashed hsl(var(--border)); }
+  .s20-row-actions { display: flex; gap: 8px; }
+
+  /* poison — per-row status overlay, see the note at the top of this
+     <style> block for why it is not .state-chip. */
+  .s20-row.poison { border-color: hsl(var(--warning) / 0.55); background: hsl(var(--warning) / 0.05); }
+  .s20-chip-poison {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px;
+    border: 1px dashed hsl(var(--warning) / 0.65); background: hsl(var(--warning) / 0.14);
+    color: hsl(var(--warning)); white-space: nowrap;
+  }
+  .s20-chip-poison svg { width: 12px; height: 12px; flex: none; }
+  .s20-poison-note {
+    display: flex; gap: 8px; padding: 8px 10px; border: 1px dashed hsl(var(--warning) / 0.5);
+    border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.07); font-size: 12px; color: hsl(var(--foreground));
+  }
+  .s20-poison-note svg { width: 14px; height: 14px; color: hsl(var(--warning)); flex: none; }
+
+  /* ---- empty (healthy) ---- */
+  .s20-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s20-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s20-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s20-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 64ch; }
+
+  /* ---- loading skeleton ---- */
+  .s20-skel-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s20-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s20-skel-bar.icon { width: 15px; height: 15px; border-radius: 4px; }
+  .s20-skel-bar.chip { width: 84px; }
+  .s20-skel-bar.text { flex: 1 1 260px; }
+  .s20-skel-bar.meta { width: 96px; }
+  .s20-skel-bar.action { width: 58px; }
+
+  /* ---- error (the list itself failed to load) ---- */
+  .s20-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s20-alert svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s20-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s20-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s20-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s20-alert .lastknown { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s20-retry { align-self: flex-start; }
+</style>
+
+<div class="s20-intro">
+  <h2>S20 — Activity &middot; Failure triage</h2>
+  <p>
+    The v1 <b>failure triage</b> module of the Activity shell (doc 13 &sect;6.1): <code>pipeline_failures</code>
+    rows &mdash; the same table <code>derive_memory_failed_step</code> and the code pipeline's
+    <code>derive_code_failed_step</code> write into today &mdash; each naming its <b>failed step</b> and its
+    <b>reason</b>, with a per-row <b>retry</b> (<code>POST /api/v1/pipeline-failures/{id}/retry</code>) and a
+    header-level <b>retry all</b> (<code>POST /api/v1/pipeline-failures/retry-all</code>). A row whose
+    <code>attempts</code> counter keeps climbing on the same failed step is surfaced as <b>poison</b> rather
+    than left to retry unnoticed &mdash; the visual counterpart to the buffer-monitor's "attempts exceeded"
+    poison state doc 13 &sect;6.1 describes for the staged <code>memory_buffer</code>, applied here to the
+    triage surface that already ships.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S20-empty">
+  <h2>Failure triage &mdash; empty (healthy)</h2>
+  <div class="annotation">
+    <b>Healthy-empty, not "nothing here."</b> Zero unresolved rows in <code>pipeline_failures</code> is a
+    positive state, not an absence to explain away (doc 14 &sect;5's third empty register: "a queue at
+    zero"), so the copy states plainly that recent runs completed cleanly rather than rendering a bare
+    blank indistinguishable from a broken triage list.
+  </div>
+  <div class="board-body">
+    <div class="s20-surface">
+      <div class="s20-surface-header">
+        <span class="title">Failure triage</span>
+        <span class="meta">pipeline_failures &middot; unresolved</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s20-surface-body">
+        <div class="s20-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 5-5"/></svg>
+          <span class="headline">No failures to triage</span>
+          <span class="why">Every memory-ingest and code-index run in the last 100 attempts completed
+            without an unresolved <code>pipeline_failures</code> row &mdash; nothing is stuck, nothing is
+            waiting on a retry.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S20-loading">
+  <h2>Failure triage &mdash; loading</h2>
+  <div class="annotation">
+    Skeleton rows mirror the exact icon / entity / pipeline-tag / meta / action slots the populated rows
+    below fill in, so the list never jumps once the query resolves (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s20-surface">
+      <div class="s20-surface-header">
+        <span class="title">Failure triage</span>
+        <span class="meta">pipeline_failures &middot; unresolved</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s20-surface-body">
+        <div class="s20-skel-row"><span class="s20-skel-bar icon"></span><span class="s20-skel-bar text"></span><span class="s20-skel-bar chip"></span><span class="s20-skel-bar meta"></span><span class="s20-skel-bar action"></span></div>
+        <div class="s20-skel-row"><span class="s20-skel-bar icon"></span><span class="s20-skel-bar text"></span><span class="s20-skel-bar chip"></span><span class="s20-skel-bar meta"></span><span class="s20-skel-bar action"></span></div>
+        <div class="s20-skel-row"><span class="s20-skel-bar icon"></span><span class="s20-skel-bar text"></span><span class="s20-skel-bar chip"></span><span class="s20-skel-bar meta"></span><span class="s20-skel-bar action"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S20-error">
+  <h2>Failure triage &mdash; error (list failed to load)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list.</b> A failed <code>GET /api/v1/pipeline-failures</code> request
+    is not the same thing as "no failures" &mdash; conflating the two would hide real unresolved rows behind
+    a healthy-looking empty state. The named failure keeps the last-known unresolved count visible and
+    offers retry, matching the language's standard error treatment (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s20-surface">
+      <div class="s20-surface-header">
+        <span class="title">Failure triage</span>
+        <span class="meta">pipeline_failures &middot; unresolved</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s20-surface-body">
+        <div class="s20-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load failure triage &mdash; request to GET /api/v1/pipeline-failures failed</span>
+            <span class="desc">The API did not respond within the request timeout.</span>
+            <span class="lastknown">last known: 4 unresolved, as of 2026-07-25 08:15 UTC (previous successful load)</span>
+            <button type="button" class="s20-btn s20-btn-caution s20-retry">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S20-populated">
+  <h2>Failure triage &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Each row names its failed step and its reason.</b> Row 1&ndash;3 are ordinary, single-digit-attempt
+    failures &mdash; a memory stuck on <code>extraction</code>, a memory stuck on
+    <code>content_embedding</code>, a repo stuck on <code>community_detection</code> &mdash; each with the
+    raw <code>error_message</code> shown verbatim (never summarised into a generic "failed"). Row 4 is
+    <b>poison</b>: the same failed step and the same error message across 7 attempts spanning 6 days &mdash;
+    an automatic retry would not resolve this, so it carries the caution-role poison chip and an inline note
+    naming why, rather than silently accumulating another identical attempt. <code>attempts</code> is an
+    unbounded counter server-side (no hard cap in <code>pipeline_failures</code>); the &ge;5 poison threshold
+    is a triage-surface heuristic, not a backend gate.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s20-surface">
+          <div class="s20-surface-header">
+            <span class="title">Failure triage</span>
+            <span class="meta">pipeline_failures &middot; 4 unresolved</span>
+            <div class="s20-header-actions">
+              <button type="button" class="s20-btn s20-btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                Retry all
+              </button>
+              <span class="state-chip state-populated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                populated
+              </span>
+            </div>
+          </div>
+          <div class="s20-surface-body">
+            <div class="s20-row">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>
+                <span class="s20-entity">memory &middot; &ldquo;Considering swapping the reranker for a cross-encoder model once&hellip;&rdquo;</span>
+                <span class="s20-pipeline-tag">memory_ingest</span>
+                <span class="meta">1 attempt</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">extraction</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">extraction call timed out after 30s (purpose: extraction, model: glm-4.6-flash)</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-25 08:10 UTC</span>
+                <span>last attempt 2026-07-25 08:10 UTC</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+
+            <div class="s20-row">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>
+                <span class="s20-entity">memory &middot; &ldquo;darkmem now derives DATABASE_URL from DB_PASSWORD; SETUP_SECRET removed&hellip;&rdquo;</span>
+                <span class="s20-pipeline-tag">memory_ingest</span>
+                <span class="meta">2 attempts</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">content_embedding</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">embedder connection refused &mdash; nomic-embed-text at 192.168.0.250:11434 (embedding purpose)</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-23 21:40 UTC</span>
+                <span>last attempt 2026-07-24 08:15 UTC</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+
+            <div class="s20-row">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s20-entity">code_repo &middot; darkmem-frontend</span>
+                <span class="s20-pipeline-tag">code_index</span>
+                <span class="meta">1 attempt</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">community_detection</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">Leiden partition step exceeded the phase budget on 41,208 edges</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-24 06:41 UTC</span>
+                <span>last attempt 2026-07-24 06:41 UTC</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+
+            <div class="s20-row poison">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>
+                <span class="s20-entity">memory &middot; &ldquo;Investigating whether the z.ai /v1/models endpoint can be trusted for&hellip;&rdquo;</span>
+                <span class="s20-pipeline-tag">memory_ingest</span>
+                <span class="s20-chip-poison">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></svg>
+                  poison
+                </span>
+                <span class="meta">7 attempts</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">extraction</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">extraction call timed out after 30s (purpose: extraction, model: glm-4.6-flash)</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-19 10:03 UTC</span>
+                <span>last attempt 2026-07-25 08:15 UTC</span>
+              </div>
+              <div class="s20-poison-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></svg>
+                <span>Same failed step and error message on all 7 attempts over 6 days &mdash; surfaced
+                  instead of retried again automatically. Retrying will not resolve this without a fix
+                  upstream (e.g. the extraction LLM profile); retry stays available as a manual, deliberate
+                  action.</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-caution">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry anyway
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s20-surface">
+          <div class="s20-surface-header">
+            <span class="title">Failure triage</span>
+            <span class="meta">pipeline_failures &middot; 4 unresolved</span>
+            <div class="s20-header-actions">
+              <button type="button" class="s20-btn s20-btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                Retry all
+              </button>
+              <span class="state-chip state-populated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                populated
+              </span>
+            </div>
+          </div>
+          <div class="s20-surface-body">
+            <div class="s20-row">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>
+                <span class="s20-entity">memory &middot; &ldquo;Considering swapping the reranker for a cross-encoder model once&hellip;&rdquo;</span>
+                <span class="s20-pipeline-tag">memory_ingest</span>
+                <span class="meta">1 attempt</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">extraction</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">extraction call timed out after 30s (purpose: extraction, model: glm-4.6-flash)</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-25 08:10 UTC</span>
+                <span>last attempt 2026-07-25 08:10 UTC</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+
+            <div class="s20-row">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>
+                <span class="s20-entity">memory &middot; &ldquo;darkmem now derives DATABASE_URL from DB_PASSWORD; SETUP_SECRET removed&hellip;&rdquo;</span>
+                <span class="s20-pipeline-tag">memory_ingest</span>
+                <span class="meta">2 attempts</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">content_embedding</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">embedder connection refused &mdash; nomic-embed-text at 192.168.0.250:11434 (embedding purpose)</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-23 21:40 UTC</span>
+                <span>last attempt 2026-07-24 08:15 UTC</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+
+            <div class="s20-row">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s20-entity">code_repo &middot; darkmem-frontend</span>
+                <span class="s20-pipeline-tag">code_index</span>
+                <span class="meta">1 attempt</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">community_detection</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">Leiden partition step exceeded the phase budget on 41,208 edges</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-24 06:41 UTC</span>
+                <span>last attempt 2026-07-24 06:41 UTC</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-primary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+
+            <div class="s20-row poison">
+              <div class="s20-row-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>
+                <span class="s20-entity">memory &middot; &ldquo;Investigating whether the z.ai /v1/models endpoint can be trusted for&hellip;&rdquo;</span>
+                <span class="s20-pipeline-tag">memory_ingest</span>
+                <span class="s20-chip-poison">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></svg>
+                  poison
+                </span>
+                <span class="meta">7 attempts</span>
+              </div>
+              <div class="s20-row-step"><span class="tag">failed step</span><span class="stepval">extraction</span></div>
+              <div class="s20-row-reason"><span class="tag">reason</span><span class="msg">extraction call timed out after 30s (purpose: extraction, model: glm-4.6-flash)</span></div>
+              <div class="s20-row-meta">
+                <span>first failed 2026-07-19 10:03 UTC</span>
+                <span>last attempt 2026-07-25 08:15 UTC</span>
+              </div>
+              <div class="s20-poison-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></svg>
+                <span>Same failed step and error message on all 7 attempts over 6 days &mdash; surfaced
+                  instead of retried again automatically. Retrying will not resolve this without a fix
+                  upstream (e.g. the extraction LLM profile); retry stays available as a manual, deliberate
+                  action.</span>
+              </div>
+              <div class="s20-row-actions">
+                <button type="button" class="s20-btn s20-btn-caution">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  Retry anyway
+                </button>
+                <button type="button" class="s20-btn s20-btn-ghost">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                  Forget
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
