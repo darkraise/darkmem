@@ -1,0 +1,8 @@
+# .NET build outputs (all spikes)
+*/bin/
+*/obj/
+
+# Spike-generated data (reproducible from the scripts; not source)
+dotnet-leiden-quality/graphs/
+dotnet-benchlib/prompt.txt
+dotnet-benchlib/reference.json
