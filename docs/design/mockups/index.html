@@ -18298,10 +18298,10 @@ body {
      and invents nothing that duplicates them. New S25-only layout: the
      config-row surface (group heading, key/description/value/pill), the
      w_* active/inactive pill (a per-row domain label distinct from the
-     seven whole-board .state-chip variants, same precedent S21 set for
-     per-job status and S03 set for .s03-scorebar.inactive — a dormant
-     ranking arm is not one of C04's seven states, it is a per-row read of
-     invariant 23), and the *_enabled switch (same shape family as S14's
+     seven whole-board .state-chip variants, same precedent S03 set for
+     .s03-scorebar.inactive — a dormant ranking arm is not one of C04's
+     seven states, it is a per-row read of invariant 23), and the
+     *_enabled switch (same shape family as S14's
      .s14-switch, reauthored here under the s25- namespace per the
      no-cross-fragment-class-reuse convention). Reads var(--token) /
      hsl(var(--token)) only; no hex, no redeclared tokens. Namespaced s25-
@@ -18553,7 +18553,7 @@ body {
         <div class="s25-surface">
           <div class="s25-surface-header">
             <span class="title">Flags</span>
-            <span class="meta">2 of 7 arms active &middot; 1 of 3 graph flags on</span>
+            <span class="meta">3 of 7 arms active &middot; 1 of 3 graph flags on</span>
             <span class="state-chip state-populated">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
               populated
@@ -18700,7 +18700,7 @@ body {
         <div class="s25-surface">
           <div class="s25-surface-header">
             <span class="title">Flags</span>
-            <span class="meta">2 of 7 arms active &middot; 1 of 3 graph flags on</span>
+            <span class="meta">3 of 7 arms active &middot; 1 of 3 graph flags on</span>
             <span class="state-chip state-populated">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
               populated
@@ -21154,18 +21154,21 @@ body {
 <section class="board" id="S29-error">
   <h2>Maintenance &mdash; error</h2>
   <div class="annotation annotation-conflict">
-    <b>Honesty rule: error &ne; empty grid.</b> <code>GET /api/v1/reembed/obsolete-counts</code> 503s
-    when the pipeline has no active embedder yet (<code>reembed.py</code>'s
-    <code>_resolve_fingerprint</code> guard) &mdash; that surfaces as a named error, never as a
-    quietly-zeroed card indistinguishable from the honest empty state above (invariant 14). Cleanup
-    ops and DB ops do not depend on this read and stay usable; only the re-embed card is blocked.
+    <b>Honesty rule: error &ne; empty grid.</b> When <code>GET /api/v1/reembed/obsolete-counts</code>
+    itself fails (a database or transport error), the board raises a named error rather than a card
+    indistinguishable from the honest empty state above (invariant 14). This is deliberately not the
+    "no active embedder" case: <code>get_obsolete_counts</code> does not guard with
+    <code>_resolve_fingerprint</code>, so an uninitialized pipeline returns <code>200</code> with every
+    count quietly zeroed instead &mdash; the exact zeroed-vs-empty risk this honesty rule exists to
+    catch. Cleanup ops and DB ops do not depend on this read and stay usable; only the re-embed card
+    is blocked.
   </div>
   <div class="board-body">
     <div class="s29-alert">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
       <div class="body">
-        <span class="headline">Couldn't load re-embed status &mdash; pipeline not initialized</span>
-        <span class="desc"><code>GET /api/v1/reembed/obsolete-counts</code> returned <code>503 Pipeline not initialized</code> (no active embedder is configured yet, Settings &rarr; LLM). Cleanup ops and DB ops below are unaffected.</span>
+        <span class="headline">Couldn't load re-embed status</span>
+        <span class="desc"><code>GET /api/v1/reembed/obsolete-counts</code> request failed (database/transport error). Note this is distinct from a missing embedder: with no active embedder, that endpoint does not 503 &mdash; it returns <code>200</code> with <code>{memories: 0, entities: 0, code_chunks: 0, current_fingerprint: ""}</code>. The routes that genuinely 503 on a missing embedder are the drill-down list endpoints (<code>list_obsolete_*</code>) and <code>prune-cache</code>, via <code>_resolve_fingerprint</code>. Cleanup ops and DB ops below are unaffected.</span>
         <span class="s29-retry">Retry</span>
       </div>
     </div>
@@ -21220,6 +21223,17 @@ body {
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">entities</span><span class="s29-op-meta">47 missing</span></div>
               <div class="s29-op-actions"><button type="button" class="s29-btn">Re-embed entities</button></div>
+              <div class="s29-confirm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Re-embed 47 entities now?</span>
+                  <span class="desc">Dispatches 47 embedding calls to the live embedding-purpose LLM. Not destructive &mdash; existing vectors under other fingerprints are left alone &mdash; but it cannot be cancelled once started, only blocked from a second concurrent run on this category (409 <code>already_running</code>).</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-primary">Confirm &mdash; start re-embed</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">code_chunks</span><span class="s29-op-meta">940 missing</span></div>
@@ -21256,10 +21270,32 @@ body {
               <div class="s29-op-top"><span class="s29-op-key">graph_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
               <div class="s29-op-desc">Deletes entities no live memory asserts and no surviving relation references (FK-cascade-safe).</div>
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Run graph_orphan_cleanup now?</span>
+                  <span class="desc">Deletes entities no live memory asserts and no surviving relation references &mdash; the FK cascades, so a referenced entity is never touched. This is the same job the hourly schedule already runs (Settings &rarr; Jobs / Activity job board) &mdash; this button just runs it now.</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; run now</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">tag_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Run tag_orphan_cleanup now?</span>
+                  <span class="desc">Deletes tags no live memory carries any more (<code>PostgresTagRepository.prune_orphans</code>). This is the same job the hourly schedule already runs (Settings &rarr; Jobs / Activity job board) &mdash; this button just runs it now.</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; run now</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">unresolved pipeline failures</span><span class="s29-op-meta">6 memory_ingest &middot; 1 code_repo</span></div>
@@ -21297,7 +21333,7 @@ body {
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
             </div>
             <div class="s29-op">
-              <div class="s29-op-top"><span class="s29-op-key">REINDEX</span><span class="s29-op-meta">ix_memories_technologies_gin</span></div>
+              <div class="s29-op-top"><span class="s29-op-key">REINDEX</span><span class="s29-op-meta">ix_memories_technologies</span></div>
               <div class="s29-op-desc">The GIN index supersession and retrieval filtering both consult (<code>memories.technologies</code>).</div>
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
             </div>
@@ -21335,6 +21371,17 @@ body {
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">entities</span><span class="s29-op-meta">47 missing</span></div>
               <div class="s29-op-actions"><button type="button" class="s29-btn">Re-embed entities</button></div>
+              <div class="s29-confirm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Re-embed 47 entities now?</span>
+                  <span class="desc">Dispatches 47 embedding calls to the live embedding-purpose LLM. Not destructive &mdash; existing vectors under other fingerprints are left alone &mdash; but it cannot be cancelled once started, only blocked from a second concurrent run on this category (409 <code>already_running</code>).</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-primary">Confirm &mdash; start re-embed</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">code_chunks</span><span class="s29-op-meta">940 missing</span></div>
@@ -21371,10 +21418,32 @@ body {
               <div class="s29-op-top"><span class="s29-op-key">graph_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
               <div class="s29-op-desc">Deletes entities no live memory asserts and no surviving relation references (FK-cascade-safe).</div>
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Run graph_orphan_cleanup now?</span>
+                  <span class="desc">Deletes entities no live memory asserts and no surviving relation references &mdash; the FK cascades, so a referenced entity is never touched. This is the same job the hourly schedule already runs (Settings &rarr; Jobs / Activity job board) &mdash; this button just runs it now.</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; run now</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">tag_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Run tag_orphan_cleanup now?</span>
+                  <span class="desc">Deletes tags no live memory carries any more (<code>PostgresTagRepository.prune_orphans</code>). This is the same job the hourly schedule already runs (Settings &rarr; Jobs / Activity job board) &mdash; this button just runs it now.</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; run now</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="s29-op">
               <div class="s29-op-top"><span class="s29-op-key">unresolved pipeline failures</span><span class="s29-op-meta">6 memory_ingest &middot; 1 code_repo</span></div>
@@ -21412,7 +21481,7 @@ body {
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
             </div>
             <div class="s29-op">
-              <div class="s29-op-top"><span class="s29-op-key">REINDEX</span><span class="s29-op-meta">ix_memories_technologies_gin</span></div>
+              <div class="s29-op-top"><span class="s29-op-key">REINDEX</span><span class="s29-op-meta">ix_memories_technologies</span></div>
               <div class="s29-op-desc">The GIN index supersession and retrieval filtering both consult (<code>memories.technologies</code>).</div>
               <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
             </div>
@@ -21429,7 +21498,7 @@ body {
   <h2>Re-embed &mdash; in-progress state (memories category running)</h2>
   <div class="annotation">
     What <code>POST /api/v1/reembed/memories</code> actually broadcasts: <code>pipeline.reembed_batch.progress</code>
-    events carrying <code>{batch_id, category, current, total, processed, errors, state}</code>, cycling
+    events carrying <code>{batch_id, category, current, total, processed, errors, state, error_message}</code>, cycling
     <code>started &rarr; progress &rarr; done</code> (<code>ReembedService</code>). A second click on
     <b>Re-embed memories</b> while this runs is rejected with <b>409 <code>already_running</code></b>,
     never queued &mdash; the same per-category lock shape S21's job board uses, scoped to
