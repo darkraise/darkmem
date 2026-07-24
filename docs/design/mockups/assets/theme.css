@@ -2,21 +2,31 @@
    darkraise-ui@3.1.2 design tokens — light + dark, self-contained.
 
    Provenance:
-   - LIGHT values are copied verbatim from the shipped `:root` block in
+   - These tokens reflect darkmem's own configured theme — accentColor:
+     "indigo", surfaceColor: "slate", preset: "default" — per
+     frontend/src/theme.config.ts and docs/design/14-ui-ux-design-
+     language.md §2, NOT the darkraise-ui package's generic default
+     (accentColor: "blue"). Neutral/surface channels (background,
+     card, border, ...) are slate either way, so the LIGHT neutrals
+     below are still copied verbatim from the shipped `:root` block in
      frontend/node_modules/darkraise-ui/dist/styles.css (the package's
      `./styles.css` export, imported by frontend/src/styles/globals.css).
-   - DARK values are NOT present anywhere in that file as static CSS.
-     darkraise-ui's dark mode is generated at runtime by ThemeProvider
-     (dist/theme/index.js -> generateTokens(), bundled in
-     dist/chunk-BAL7XKOG.js) and written as inline styles once React
-     mounts; there is no `.dark` class or dark `:root` block shipped in
-     the CSS. The values below were computed by hand-evaluating that
-     same generateTokens() formula for the package's own defaults
-     (accentColor: "blue", surfaceColor: "slate", preset: "default",
-     mode: "dark" — see dist/chunk-BAL7XKOG.js themeConfig.defaults),
-     so they match what the running app actually renders in dark mode,
-     not a guess. Channel values reuse the package's own slate/blue/
-     emerald/amber palette entries (dist/chunk-BAL7XKOG.js
+     Accent-bearing tokens (--primary, --ring, --focus-ring) do NOT
+     come from that file — they were re-derived for both light and
+     dark by hand-evaluating the package's generateTokens() formula
+     (dist/theme/index.js, bundled in dist/chunk-BAL7XKOG.js) with
+     accentColor: "indigo" swapped in for the shipped default.
+   - DARK neutrals are NOT present anywhere in styles.css as static
+     CSS. darkraise-ui's dark mode is generated at runtime by
+     ThemeProvider and written as inline styles once React mounts;
+     there is no `.dark` class or dark `:root` block shipped in the
+     CSS. The dark values below were likewise computed by hand-
+     evaluating generateTokens() for mode: "dark" with the same
+     accentColor: "indigo", surfaceColor: "slate", preset: "default"
+     inputs. --info/--success/--warning are hardcoded to blue/emerald/
+     amber by the formula itself regardless of accentColor, so they
+     stay untouched. Channel values reuse the package's own slate/
+     indigo/blue/emerald/amber palette entries (dist/chunk-BAL7XKOG.js
      surfaceColors / accentColors).
    - --chart-1..5: the shipped light block does not follow the engine's
      getChartColors() rotation exactly (it reads as a hand-picked
@@ -64,7 +74,7 @@
   --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
-  --primary: 217 91% 60%;
+  --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
   --secondary: 210 40% 96%;
   --secondary-foreground: 222 47% 11%;
@@ -82,8 +92,8 @@
   --info-foreground: 0 0% 100%;
   --border: 214 32% 91%;
   --input: 214 32% 91%;
-  --ring: 217 91% 60%;
-  --focus-ring: 217 91% 78%;
+  --ring: 239 84% 67%;
+  --focus-ring: 230 94% 82%;
   --chart-1: hsl(217 91% 60%);
   --chart-2: hsl(142 71% 45%);
   --chart-3: hsl(350 89% 60%);
@@ -104,7 +114,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
+    --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
     --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 98%;
@@ -122,8 +132,8 @@
     --info-foreground: 0 0% 100%;
     --border: 215 25% 27%;
     --input: 215 25% 27%;
-    --ring: 217 91% 60%;
-    --focus-ring: 213 97% 87%;
+    --ring: 239 84% 67%;
+    --focus-ring: 228 96% 89%;
     --chart-1: hsl(213 94% 68%);
     --chart-2: hsl(142 69% 58%);
     --chart-3: hsl(351 95% 71%);
@@ -142,7 +152,7 @@
   --card-foreground: 210 40% 98%;
   --popover: 222 47% 11%;
   --popover-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
+  --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
   --secondary: 217 33% 17%;
   --secondary-foreground: 210 40% 98%;
@@ -160,8 +170,8 @@
   --info-foreground: 0 0% 100%;
   --border: 215 25% 27%;
   --input: 215 25% 27%;
-  --ring: 217 91% 60%;
-  --focus-ring: 213 97% 87%;
+  --ring: 239 84% 67%;
+  --focus-ring: 228 96% 89%;
   --chart-1: hsl(213 94% 68%);
   --chart-2: hsl(142 69% 58%);
   --chart-3: hsl(351 95% 71%);
