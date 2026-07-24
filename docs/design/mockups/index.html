@@ -812,14 +812,14 @@ body {
         <div class="g0-type-row"><span class="sample" style="font-family:var(--font-mono);font-size:12px;">entity_name · commit_sha · L2</span><span class="meta">var(--font-mono) — identifiers only (doc 14 §7)</span></div>
       </div>
       <div class="annotation">
-        <b>Known gap, flagged rather than papered over.</b> Doc 14 §2/§9 fixes <code>text-sm</code> (14px) as
+        <b>Resolved — floor honoured, not a gap.</b> Doc 14 §2/§9 fixes <code>text-sm</code> (14px) as
         the floor for <em>all</em> app text including badges and chips — compactness must come from padding
         and weight, never sub-floor type, "because a label carrying the system's central truth claim must not
-        be the smallest text on the screen." The shared <code>mockup.css</code> chrome committed in Task 1
-        currently sizes <code>.badge</code> (12.5px), <code>.layer-chip</code> / <code>.overlay-*</code>
-        (11.5px) and <code>.state-chip</code> (11px) below that floor. This board renders those classes as
-        given rather than overriding shared chrome from within a single fragment — noted here as a
-        doc-14-vs-asset gap for a follow-up <code>mockup.css</code> pass, not silently resolved.
+        be the smallest text on the screen." The shared <code>mockup.css</code> chrome sizes
+        <code>.badge</code>, <code>.layer-chip</code> / <code>.overlay-*</code>, and <code>.state-chip</code>
+        at the 14px <code>text-sm</code> floor (commit d3df9cd raised all five app-component classes off their
+        prior 11–12.5px sizes); density comes from padding, not sub-floor type. This board renders those
+        classes as given, so what you see above is the floor in practice, not an exception to it.
       </div>
       <div class="g0-sub">
         <div class="g0-radius-row">
@@ -900,7 +900,7 @@ body {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
               human-ratified
             </span>
-            <span class="g0-claim">expansion — claim string + <b>", human-ratified"</b> suffix + who/when, e.g. "asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-20, human-ratified — ratified by a.lee, 2026-07-21"</span>
+            <span class="g0-claim">expansion — claim string + <b>", human-ratified"</b> suffix + who/when, e.g. "asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-20, human-ratified — ratified by a.lee, 2026-07-21"</span>
           </div>
           <div class="g0-row">
             <span class="badge disputed">
@@ -996,7 +996,7 @@ body {
                 disputed
               </span>
               <span class="assert">asserts X — cookie_secure defaults to enabled in production</span>
-              <span class="count">2 origins · kinds [memory, code]</span>
+              <span class="count">2 origins · kinds [code, memory]</span>
             </div>
             <div class="vs">vs</div>
             <div class="side">
@@ -1201,7 +1201,7 @@ body {
                     disputed
                   </span>
                   <span class="assert">asserts X — the reranker is enabled by default in production</span>
-                  <span class="count">2 origins · kinds [memory, code]</span>
+                  <span class="count">2 origins · kinds [code, memory]</span>
                 </div>
                 <div class="vs">vs</div>
                 <div class="side">
@@ -1220,7 +1220,7 @@ body {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
                 human-ratified
               </span>
-              <span class="c01-claim">asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-20<b>, human-ratified</b> — ratified by q.tran, 2026-07-21</span>
+              <span class="c01-claim">asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-20<b>, human-ratified</b> — ratified by q.tran, 2026-07-21</span>
             </div>
           </div>
           <div class="annotation">
@@ -1372,7 +1372,7 @@ body {
                     disputed
                   </span>
                   <span class="assert">asserts X — the reranker is enabled by default in production</span>
-                  <span class="count">2 origins · kinds [memory, code]</span>
+                  <span class="count">2 origins · kinds [code, memory]</span>
                 </div>
                 <div class="vs">vs</div>
                 <div class="side">
@@ -1391,7 +1391,7 @@ body {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
                 human-ratified
               </span>
-              <span class="c01-claim">asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-20<b>, human-ratified</b> — ratified by q.tran, 2026-07-21</span>
+              <span class="c01-claim">asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-20<b>, human-ratified</b> — ratified by q.tran, 2026-07-21</span>
             </div>
           </div>
           <div class="annotation">
@@ -2335,7 +2335,7 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
           <div class="body">
             <span class="headline">Couldn't load facts — both retrieval channels failed</span>
-            <span class="desc">Semantic and keyword channels both failed to respond. Showing the last successful result from 14:02.</span>
+            <span class="desc">Semantic and keyword channels both failed to respond. Showing no rows rather than a possibly-stale list — last successful load was 14:02.</span>
             <span class="c04-retry">Retry</span>
           </div>
         </div>
@@ -2386,7 +2386,7 @@ body {
                 corroborated
               </span>
               <span class="text">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
-              <span class="rowmeta">asserted by 3 origins</span>
+              <span class="rowmeta">asserted by 3 distinct origins</span>
             </div>
             <div class="c04-row">
               <span class="layer-chip l2">L2 · fact</span>
@@ -2426,7 +2426,7 @@ body {
                 corroborated
               </span>
               <span class="text">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
-              <span class="rowmeta">asserted by 3 origins</span>
+              <span class="rowmeta">asserted by 3 distinct origins</span>
             </div>
             <div class="c04-row">
               <span class="layer-chip l2">L2 · fact</span>
@@ -2612,6 +2612,13 @@ body {
   .s01-tile .label { font-size: 13px; color: hsl(var(--foreground)); font-weight: 560; }
   .s01-tile .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
   .s01-tile .meta.stale { color: hsl(var(--warning)); }
+  .s01-tile.staged { border-style: dashed; background: hsl(var(--muted) / 0.08); }
+  .s01-tile .phase-tag {
+    display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 999px; border: 1px dashed hsl(var(--muted-foreground) / 0.6);
+    color: hsl(var(--muted-foreground)); white-space: nowrap;
+  }
 
   .s01-tile-skel .icon-wrap { background: hsl(var(--muted)); }
   .s01-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); }
@@ -2785,10 +2792,11 @@ body {
           <span class="value">0</span>
           <span class="label">Open review items</span>
         </div>
-        <div class="s01-tile">
+        <div class="s01-tile staged">
           <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-          <span class="value">0</span>
+          <span class="value">—</span>
           <span class="label">Pipeline buffer depth</span>
+          <span class="phase-tag">target-new &middot; not yet live</span>
         </div>
       </div>
 
@@ -3144,11 +3152,11 @@ body {
           <span class="label">Open review items</span>
           <span class="meta stale">cached — 14:02 UTC</span>
         </div>
-        <div class="s01-tile">
+        <div class="s01-tile staged">
           <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-          <span class="value">42</span>
+          <span class="value">—</span>
           <span class="label">Pipeline buffer depth</span>
-          <span class="meta stale">cached — 14:02 UTC</span>
+          <span class="phase-tag">target-new &middot; not yet live</span>
         </div>
       </div>
 
@@ -3335,11 +3343,11 @@ body {
               <span class="label">Open review items</span>
               <span class="meta">consequence-ranked</span>
             </div>
-            <div class="s01-tile">
+            <div class="s01-tile staged">
               <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-              <span class="value">42</span>
+              <span class="value">—</span>
               <span class="label">Pipeline buffer depth</span>
-              <span class="meta">draining</span>
+              <span class="phase-tag">target-new &middot; not yet live</span>
             </div>
           </div>
 
@@ -3523,7 +3531,7 @@ body {
 
           <div class="s01-hints">
             <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> corroboration needs multiple distinct origins — memories captured alone stay <code>candidate</code> until a second source agrees.</span></div>
-            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer depth tile tracks the extraction queue — a rising number means captures are arriving faster than the pipeline drains them, not that anything is broken.</span></div>
+            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer-depth tile is a staged placeholder, not a live reading — it does not track the extraction queue today. The signal arrives with its backend, the durable <code>memory_buffer</code> (doc 04 &sect;8.6), which is not live yet.</span></div>
           </div>
         </div>
       </div>
@@ -3549,11 +3557,11 @@ body {
               <span class="label">Open review items</span>
               <span class="meta">consequence-ranked</span>
             </div>
-            <div class="s01-tile">
+            <div class="s01-tile staged">
               <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-              <span class="value">42</span>
+              <span class="value">—</span>
               <span class="label">Pipeline buffer depth</span>
-              <span class="meta">draining</span>
+              <span class="phase-tag">target-new &middot; not yet live</span>
             </div>
           </div>
 
@@ -3737,7 +3745,7 @@ body {
 
           <div class="s01-hints">
             <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> corroboration needs multiple distinct origins — memories captured alone stay <code>candidate</code> until a second source agrees.</span></div>
-            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer depth tile tracks the extraction queue — a rising number means captures are arriving faster than the pipeline drains them, not that anything is broken.</span></div>
+            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer-depth tile is a staged placeholder, not a live reading — it does not track the extraction queue today. The signal arrives with its backend, the durable <code>memory_buffer</code> (doc 04 &sect;8.6), which is not live yet.</span></div>
           </div>
         </div>
       </div>
@@ -4033,7 +4041,7 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
           <div class="body">
             <span class="headline">Couldn't load memories — both retrieval channels failed</span>
-            <span class="desc">Semantic and keyword channels both failed to respond. Showing the last successful result from 14:02.</span>
+            <span class="desc">Semantic and keyword channels both failed to respond. Showing no rows rather than a possibly-stale list — last successful load was 14:02.</span>
             <span class="s02-retry">Retry</span>
           </div>
         </div>
@@ -4102,7 +4110,7 @@ body {
                   corroborated
                 </span>
                 <span class="text">cookie_secure defaults to Secure only when environment=production</span>
-                <span class="meta">asserted by 3 origins</span>
+                <span class="meta">asserted by 3 distinct origins</span>
               </div>
               <div class="s02-row s02-nest-row">
                 <span class="layer-chip l0">L0 · memory</span>
@@ -4173,7 +4181,7 @@ body {
                   corroborated
                 </span>
                 <span class="text">cookie_secure defaults to Secure only when environment=production</span>
-                <span class="meta">asserted by 3 origins</span>
+                <span class="meta">asserted by 3 distinct origins</span>
               </div>
               <div class="s02-row s02-nest-row">
                 <span class="layer-chip l0">L0 · memory</span>
@@ -4537,7 +4545,7 @@ body {
                 corroborated
               </span>
               <span class="claim">cookie_secure defaults to Secure-only-in-production (tri-state; unset = secure when environment=production)</span>
-              <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [memory, code], no known contradiction, as of 2026-07-20</b></span>
+              <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</b></span>
             </div>
             <div class="s03-context-line">
               <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
@@ -4618,7 +4626,7 @@ body {
                 corroborated
               </span>
               <span class="claim">"Cookie &amp; session security — target design"</span>
-              <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-18</b></span>
+              <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-18</b></span>
             </div>
             <div class="s03-context-line">
               <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
@@ -4749,7 +4757,7 @@ body {
                 corroborated
               </span>
               <span class="claim">cookie_secure defaults to Secure-only-in-production (tri-state; unset = secure when environment=production)</span>
-              <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [memory, code], no known contradiction, as of 2026-07-20</b></span>
+              <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</b></span>
             </div>
             <div class="s03-context-line">
               <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
@@ -4830,7 +4838,7 @@ body {
                 corroborated
               </span>
               <span class="claim">"Cookie &amp; session security — target design"</span>
-              <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-18</b></span>
+              <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-18</b></span>
             </div>
             <div class="s03-context-line">
               <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>match</span>
@@ -5974,7 +5982,7 @@ body {
             <div class="s05-timeline">
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-10 09:14</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>created</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: this memory</span>
                   <span class="s05-event-note">captured via mcp</span>
@@ -5982,7 +5990,7 @@ body {
               </div>
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-10 09:14</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>classification.completed</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>extracted</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: this memory</span>
                   <span class="s05-event-note">classified_type set to fact (single-call merge with extraction)</span>
@@ -5990,7 +5998,7 @@ body {
               </div>
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-12 14:02</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>relation.added</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>extracted</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: this memory &mdash; RELATES_TO &rarr; memory 771e4f9a</span>
                   <span class="s05-event-note">"semantic_weight defaults to 0.7 in the RRF fusion formula"</span>
@@ -5998,7 +6006,7 @@ body {
               </div>
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-18 11:47</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>fact.verified</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>verified</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: fact &mdash; "the top-40 rerank cutoff is a latency/quality tradeoff"</span>
                   <span class="s05-rung-pair">
@@ -6113,7 +6121,7 @@ body {
             <div class="s05-timeline">
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-10 09:14</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>created</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: this memory</span>
                   <span class="s05-event-note">captured via mcp</span>
@@ -6121,7 +6129,7 @@ body {
               </div>
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-10 09:14</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>classification.completed</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>extracted</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: this memory</span>
                   <span class="s05-event-note">classified_type set to fact (single-call merge with extraction)</span>
@@ -6129,7 +6137,7 @@ body {
               </div>
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-12 14:02</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>relation.added</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>extracted</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: this memory &mdash; RELATES_TO &rarr; memory 771e4f9a</span>
                   <span class="s05-event-note">"semantic_weight defaults to 0.7 in the RRF fusion formula"</span>
@@ -6137,7 +6145,7 @@ body {
               </div>
               <div class="s05-event-row">
                 <span class="s05-event-time">2026-07-18 11:47</span>
-                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>fact.verified</span>
+                <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>verified</span>
                 <div class="s05-event-body">
                   <span class="s05-event-desc">object: fact &mdash; "the top-40 rerank cutoff is a latency/quality tradeoff"</span>
                   <span class="s05-rung-pair">
@@ -6229,14 +6237,14 @@ body {
         <div class="s05-timeline">
           <div class="s05-event-row">
             <span class="s05-event-time">2026-06-02 10:00</span>
-            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>created</span>
             <div class="s05-event-body">
               <span class="s05-event-desc">object: this memory</span>
             </div>
           </div>
           <div class="s05-event-row">
             <span class="s05-event-time">2026-07-18 11:47</span>
-            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.superseded</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>superseded</span>
             <div class="s05-event-body">
               <span class="s05-event-desc">object: this memory</span>
               <span class="s05-rung-pair">
@@ -6320,14 +6328,14 @@ body {
         <div class="s05-timeline">
           <div class="s05-event-row">
             <span class="s05-event-time">2026-05-01 08:00</span>
-            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.created</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>created</span>
             <div class="s05-event-body">
               <span class="s05-event-desc">object: this memory</span>
             </div>
           </div>
           <div class="s05-event-row">
             <span class="s05-event-time">2026-05-20 09:30</span>
-            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.superseded</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>superseded</span>
             <div class="s05-event-body">
               <span class="s05-event-desc">object: this memory</span>
               <span class="s05-rung-pair">
@@ -6343,7 +6351,7 @@ body {
           </div>
           <div class="s05-event-row">
             <span class="s05-event-time">2026-07-15 03:00</span>
-            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>memory.demoted</span>
+            <span class="s05-event-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/></svg>deprecated</span>
             <div class="s05-event-body">
               <span class="s05-event-desc">object: this memory</span>
               <span class="s05-rung-pair">
@@ -6681,7 +6689,7 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
           <div class="body">
             <span class="headline">Couldn't load facts — the request failed</span>
-            <span class="desc">The knowledge-facts list did not respond. Showing the last successful list from 14:02.</span>
+            <span class="desc">The knowledge-facts list did not respond. Showing no rows rather than a possibly-stale list — last successful load was 14:02.</span>
             <span class="s06-retry">Retry</span>
           </div>
         </div>
@@ -6768,7 +6776,7 @@ body {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
                   corroborated
                 </span>
-                <span class="meta">asserted by 3 origins</span>
+                <span class="meta">asserted by 3 distinct origins</span>
               </div>
               <span class="s06-triple">
                 <span class="subj">hybrid_search</span><span class="arrow">→</span>
@@ -6881,7 +6889,7 @@ body {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
                   corroborated
                 </span>
-                <span class="meta">asserted by 3 origins</span>
+                <span class="meta">asserted by 3 distinct origins</span>
               </div>
               <span class="s06-triple">
                 <span class="subj">hybrid_search</span><span class="arrow">→</span>
@@ -7082,7 +7090,7 @@ body {
                 corroborated
               </span>
             </div>
-            <div class="c01-claim"><b>asserted by 4 distinct origins of kinds [memory, code, block], no known contradiction, as of 2026-07-22</b></div>
+            <div class="c01-claim"><b>asserted by 4 distinct origins of kinds [block, code, memory], no known contradiction, as of 2026-07-22</b></div>
           </div>
 
           <div class="s07-module">
@@ -7227,7 +7235,7 @@ body {
                 corroborated
               </span>
             </div>
-            <div class="c01-claim"><b>asserted by 4 distinct origins of kinds [memory, code, block], no known contradiction, as of 2026-07-22</b></div>
+            <div class="c01-claim"><b>asserted by 4 distinct origins of kinds [block, code, memory], no known contradiction, as of 2026-07-22</b></div>
           </div>
 
           <div class="s07-module">
@@ -7513,7 +7521,7 @@ body {
             </span>
             <span class="s07-side-object">object_name: on_by_default</span>
             <span class="assert">asserts X &mdash; the reranker is enabled by default in production</span>
-            <span class="count">2 origins &middot; kinds [memory, code]</span>
+            <span class="count">2 origins &middot; kinds [code, memory]</span>
 
             <span class="s07-side-sub">sources &mdash; grouped by origin_key</span>
             <div class="s07-source-rows">
@@ -7844,7 +7852,7 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
           <div class="body">
             <span class="headline">Couldn't load articles — the knowledge API request failed</span>
-            <span class="desc">The vault service did not respond. Showing the last successful list from 13:40 is not available for this project — retry to load current articles.</span>
+            <span class="desc">The vault service did not respond. Showing no rows rather than a possibly-stale list — last successful load was 13:40.</span>
             <span class="s08-retry">Retry</span>
           </div>
         </div>
@@ -8533,8 +8541,7 @@ body {
           <span>subject: <b>embedder-fingerprint-partitioning &middot; concept</b></span>
           <span>project: <b>darkmem</b></span>
           <span>synthesised: <b>2026-07-19 03:00</b></span>
-          <span>fact_set_hash (current): <b>8b31e9d2f4a7</b></span>
-          <span>fact_set_hash (at synthesis): <b>8b31e9d2f4a7</b> &rarr; <b>stale</b></span>
+          <span>fact_set_hash: at synthesis <b>8b31e9d2f4a7</b> &rarr; current <b>c7d4a10f92b6</b> (changed &rarr; <b>stale</b>)</span>
         </div>
         <div class="s09-badge-row">
           <span class="layer-chip l3">L3 &middot; article</span>
@@ -9079,7 +9086,7 @@ body {
             <div class="s10-nom-card">
               <div class="s10-nom-head">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
-                <span class="s10-nom-subject">retry_backoff_strategy (config_flag)</span>
+                <span class="s10-nom-subject">retry_backoff_strategy (concept)</span>
                 <span class="s10-reason-chip">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l1.5 5L19 9l-5.5 2L12 16l-1.5-5L5 9l5.5-2Z"/></svg>
                   new community
@@ -9111,13 +9118,13 @@ body {
             <div class="s10-nom-card">
               <div class="s10-nom-head">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
-                <span class="s10-nom-subject">confidence_rank_gamma (config_flag)</span>
+                <span class="s10-nom-subject">confidence_rank_gamma (concept)</span>
                 <span class="s10-reason-chip">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
                   grown: 8 → 15 members
                 </span>
               </div>
-              <div class="s10-nom-support">supporting community: <b>Confidence-weighted ranking</b></div>
+              <div class="s10-nom-support">supporting community: <b>Hybrid search &amp; RRF weighting</b></div>
               <div class="s10-nom-meta-row">
                 <span class="s10-nom-meta-item">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
@@ -9238,7 +9245,7 @@ body {
             <div class="s10-nom-card">
               <div class="s10-nom-head">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
-                <span class="s10-nom-subject">retry_backoff_strategy (config_flag)</span>
+                <span class="s10-nom-subject">retry_backoff_strategy (concept)</span>
                 <span class="s10-reason-chip">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l1.5 5L19 9l-5.5 2L12 16l-1.5-5L5 9l5.5-2Z"/></svg>
                   new community
@@ -9270,13 +9277,13 @@ body {
             <div class="s10-nom-card">
               <div class="s10-nom-head">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 .29.71l9 9a1 1 0 0 0 1.42 0l7-7a1 1 0 0 0 0-1.42l-9-9A1 1 0 0 0 11 3Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>
-                <span class="s10-nom-subject">confidence_rank_gamma (config_flag)</span>
+                <span class="s10-nom-subject">confidence_rank_gamma (concept)</span>
                 <span class="s10-reason-chip">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
                   grown: 8 → 15 members
                 </span>
               </div>
-              <div class="s10-nom-support">supporting community: <b>Confidence-weighted ranking</b></div>
+              <div class="s10-nom-support">supporting community: <b>Hybrid search &amp; RRF weighting</b></div>
               <div class="s10-nom-meta-row">
                 <span class="s10-nom-meta-item">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
@@ -9372,6 +9379,18 @@ body {
   .s11-decayed-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
   .s11-decayed-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
 
+  /* ---- decayed queue-state chip: a plain review_state label, never the
+     reserved overlay-stale/clock-back glyph (that pair is closed to L3
+     articles only, doc 12 §4 / doc 14 §3.4/§7). Neutral muted tone —
+     signals "priority changed," not a caution or honesty-ladder state. ---- */
+  .s11-decay-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono);
+    font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm);
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+  .s11-decay-chip svg { width: 12px; height: 12px; flex: none; }
+
   /* ---- the ratify AlertDialog: the strongest confirmation treatment ---- */
   .s11-scene { position: relative; border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; background: hsl(var(--background)); min-height: 230px; }
   .s11-backdrop { padding: 16px; filter: blur(0.5px); opacity: 0.5; pointer-events: none; user-select: none; }
@@ -9447,7 +9466,7 @@ body {
                   disputed
                 </span>
                 <span class="assert">asserts X — the reranker is enabled by default in production</span>
-                <span class="count">2 origins · kinds [memory, code]</span>
+                <span class="count">2 origins · kinds [code, memory]</span>
               </div>
               <div class="vs">vs</div>
               <div class="side">
@@ -9597,9 +9616,9 @@ body {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
                     disputed
                   </span>
-                  <span class="overlay-stale">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
-                    stale_labelled
+                  <span class="s11-decay-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
+                    decayed &mdash; still served labelled
                   </span>
                 </div>
                 <span class="s11-hyst-note">
@@ -9670,7 +9689,7 @@ body {
                   disputed
                 </span>
                 <span class="assert">asserts X — the reranker is enabled by default in production</span>
-                <span class="count">2 origins · kinds [memory, code]</span>
+                <span class="count">2 origins · kinds [code, memory]</span>
               </div>
               <div class="vs">vs</div>
               <div class="side">
@@ -9820,9 +9839,9 @@ body {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
                     disputed
                   </span>
-                  <span class="overlay-stale">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
-                    stale_labelled
+                  <span class="s11-decay-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
+                    decayed &mdash; still served labelled
                   </span>
                 </div>
                 <span class="s11-hyst-note">
@@ -11006,6 +11025,16 @@ body {
   .s13-ctx-skel-bar.chip { width: 44px; }
   .s13-ctx-skel-bar.badge { width: 70px; }
   .s13-ctx-skel-bar.text { flex: 1 1 auto; }
+
+  /* ---- degraded: populated + caution, never fewer rows — same contract
+     as S02's degraded board (doc 07 §2), because Chat rides the identical
+     one ranking path (doc 07 §9, invariant 17). ---- */
+  .s13-degraded-banner {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border: 1px solid hsl(var(--warning) / 0.55); border-radius: var(--radius-sm);
+    background: hsl(var(--warning) / 0.12); font-size: 11.5px; color: hsl(var(--foreground));
+  }
+  .s13-degraded-banner svg { width: 14px; height: 14px; flex: none; color: hsl(var(--warning)); }
 </style>
 
 <!-- ================================================================= -->
@@ -11130,7 +11159,7 @@ body {
               </span>
             </div>
             <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
-            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified</b></span>
           </div>
 
           <div class="s13-ctx-row">
@@ -11254,7 +11283,7 @@ body {
               </span>
             </div>
             <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
-            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified</b></span>
           </div>
 
           <div class="s13-ctx-row">
@@ -11498,6 +11527,109 @@ body {
             <span class="headline">No context available</span>
             <span class="desc">Both channels failed before ranking ran — there are no rows to label.</span>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S13-degraded">
+  <h2>S13 — Chat: degraded — keyword-only context for this turn</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: degraded &ne; fewer rows (doc 07 &sect;2, CLAUDE.md retrieval contract).</b> Chat rides
+    the same one ranking path as Memories (doc 07 &sect;9, invariant 17), so a one-sided semantic-channel
+    failure degrades this turn's context gracefully to the surviving keyword channel — the full row count
+    that channel found still renders, flagged by the persistent caution banner, never a silently shorter
+    context panel. The reply itself is still composed normally; only the context sourcing is caveated.
+  </div>
+  <div class="board-body">
+    <div class="s13-shell">
+      <div class="s13-threads">
+        <div class="s13-threads-header">
+          <span class="title">Conversations</span>
+          <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+        </div>
+        <div class="s13-thread-list">
+          <div class="s13-thread-item active">
+            <span class="t-title">Retrieval &amp; ranking questions</span>
+            <span class="t-meta"><span>just now</span><span>7 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">cookie_secure LAN login flow</span>
+            <span class="t-meta"><span>1d ago</span><span>3 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">supersession window default</span>
+            <span class="t-meta"><span>3d ago</span><span>5 msgs</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="s13-pane">
+        <div class="s13-pane-header">
+          <span class="p-title">Retrieval &amp; ranking questions</span>
+          <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+        </div>
+        <div class="s13-messages">
+          <div class="s13-msg user">
+            <span class="role">you</span>
+            <div class="s13-bubble">Is the reranker on by default, and what's our RRF k?</div>
+          </div>
+          <div class="s13-msg assistant">
+            <span class="role">assistant</span>
+            <div class="s13-bubble">
+              <div class="chat-prose">
+                <p>Yes — <code>hybrid_search_enabled</code> is on by default, with Reciprocal Rank Fusion at <code>k = 60</code>. The reranker (<code>reranker_enabled</code>) stays off by default.</p>
+              </div>
+            </div>
+            <span class="s13-turn-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>2 sources used this turn, keyword-only — see context panel</span>
+          </div>
+        </div>
+        <div class="s13-composer">
+          <span class="s13-composer-field">Ask about your memory…</span>
+          <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+        </div>
+      </div>
+
+      <div class="s13-context">
+        <div class="s13-context-header">
+          <span class="c-title">Context used for this turn</span>
+          <span class="state-chip state-degraded">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            degraded
+          </span>
+        </div>
+        <div class="s13-degraded-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span><b>showing keyword-only results — semantic search unavailable</b></span>
+        </div>
+        <div class="s13-context-note">Same composed, labelled rows the Memories why-retrieved trace renders — no chat-only re-derivation.</div>
+
+        <div class="s13-ctx-row">
+          <div class="row-top">
+            <span class="layer-chip l2">L2 &middot; fact</span>
+            <span class="badge confirmed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+              human-ratified
+            </span>
+          </div>
+          <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
+          <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+          <span class="s13-turn-meta">channel: keyword</span>
+        </div>
+
+        <div class="s13-ctx-row">
+          <div class="row-top">
+            <span class="layer-chip l2">L2 &middot; fact</span>
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+          </div>
+          <span class="claim">reranker_enabled stays off by default; a separate flag from hybrid_search_enabled</span>
+          <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</b></span>
+          <span class="s13-turn-meta">channel: keyword</span>
         </div>
       </div>
     </div>
@@ -17218,7 +17350,7 @@ body {
                 <span class="layer-chip l2">L2 &middot; fact</span>
                 <div class="s23-entry-main">
                   <span class="s23-entry-title">the reranker LLM-scores the top 40 RRF-ranked rows after fusion</span>
-                  <span class="s23-entry-claim">asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-24<b>, human-ratified</b> &mdash; ratified by q.tran, 2026-07-24</span>
+                  <span class="s23-entry-claim">asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-24<b>, human-ratified</b> &mdash; ratified by q.tran, 2026-07-24</span>
                 </div>
                 <span class="s23-transition">
                   <span class="badge corroborated">
@@ -17326,7 +17458,7 @@ body {
                 disputed
               </span>
               <span class="assert">asserts X &mdash; the reranker is enabled by default in production</span>
-              <span class="count">2 origins &middot; kinds [memory, code]</span>
+              <span class="count">2 origins &middot; kinds [code, memory]</span>
             </div>
             <div class="vs">vs</div>
             <div class="side">
@@ -17657,7 +17789,7 @@ body {
                 <span class="layer-chip l2">L2 &middot; fact</span>
                 <div class="s23-entry-main">
                   <span class="s23-entry-title">the reranker LLM-scores the top 40 RRF-ranked rows after fusion</span>
-                  <span class="s23-entry-claim">asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-24<b>, human-ratified</b> &mdash; ratified by q.tran, 2026-07-24</span>
+                  <span class="s23-entry-claim">asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-24<b>, human-ratified</b> &mdash; ratified by q.tran, 2026-07-24</span>
                 </div>
                 <span class="s23-transition">
                   <span class="badge corroborated">
@@ -17765,7 +17897,7 @@ body {
                 disputed
               </span>
               <span class="assert">asserts X &mdash; the reranker is enabled by default in production</span>
-              <span class="count">2 origins &middot; kinds [memory, code]</span>
+              <span class="count">2 origins &middot; kinds [code, memory]</span>
             </div>
             <div class="vs">vs</div>
             <div class="side">

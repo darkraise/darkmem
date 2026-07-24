@@ -246,6 +246,16 @@
   .s13-ctx-skel-bar.chip { width: 44px; }
   .s13-ctx-skel-bar.badge { width: 70px; }
   .s13-ctx-skel-bar.text { flex: 1 1 auto; }
+
+  /* ---- degraded: populated + caution, never fewer rows — same contract
+     as S02's degraded board (doc 07 §2), because Chat rides the identical
+     one ranking path (doc 07 §9, invariant 17). ---- */
+  .s13-degraded-banner {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border: 1px solid hsl(var(--warning) / 0.55); border-radius: var(--radius-sm);
+    background: hsl(var(--warning) / 0.12); font-size: 11.5px; color: hsl(var(--foreground));
+  }
+  .s13-degraded-banner svg { width: 14px; height: 14px; flex: none; color: hsl(var(--warning)); }
 </style>
 
 <!-- ================================================================= -->
@@ -370,7 +380,7 @@
               </span>
             </div>
             <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
-            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified</b></span>
           </div>
 
           <div class="s13-ctx-row">
@@ -494,7 +504,7 @@
               </span>
             </div>
             <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
-            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified</b></span>
           </div>
 
           <div class="s13-ctx-row">
@@ -738,6 +748,109 @@
             <span class="headline">No context available</span>
             <span class="desc">Both channels failed before ranking ran — there are no rows to label.</span>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S13-degraded">
+  <h2>S13 — Chat: degraded — keyword-only context for this turn</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: degraded &ne; fewer rows (doc 07 &sect;2, CLAUDE.md retrieval contract).</b> Chat rides
+    the same one ranking path as Memories (doc 07 &sect;9, invariant 17), so a one-sided semantic-channel
+    failure degrades this turn's context gracefully to the surviving keyword channel — the full row count
+    that channel found still renders, flagged by the persistent caution banner, never a silently shorter
+    context panel. The reply itself is still composed normally; only the context sourcing is caveated.
+  </div>
+  <div class="board-body">
+    <div class="s13-shell">
+      <div class="s13-threads">
+        <div class="s13-threads-header">
+          <span class="title">Conversations</span>
+          <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+        </div>
+        <div class="s13-thread-list">
+          <div class="s13-thread-item active">
+            <span class="t-title">Retrieval &amp; ranking questions</span>
+            <span class="t-meta"><span>just now</span><span>7 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">cookie_secure LAN login flow</span>
+            <span class="t-meta"><span>1d ago</span><span>3 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">supersession window default</span>
+            <span class="t-meta"><span>3d ago</span><span>5 msgs</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="s13-pane">
+        <div class="s13-pane-header">
+          <span class="p-title">Retrieval &amp; ranking questions</span>
+          <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+        </div>
+        <div class="s13-messages">
+          <div class="s13-msg user">
+            <span class="role">you</span>
+            <div class="s13-bubble">Is the reranker on by default, and what's our RRF k?</div>
+          </div>
+          <div class="s13-msg assistant">
+            <span class="role">assistant</span>
+            <div class="s13-bubble">
+              <div class="chat-prose">
+                <p>Yes — <code>hybrid_search_enabled</code> is on by default, with Reciprocal Rank Fusion at <code>k = 60</code>. The reranker (<code>reranker_enabled</code>) stays off by default.</p>
+              </div>
+            </div>
+            <span class="s13-turn-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>2 sources used this turn, keyword-only — see context panel</span>
+          </div>
+        </div>
+        <div class="s13-composer">
+          <span class="s13-composer-field">Ask about your memory…</span>
+          <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+        </div>
+      </div>
+
+      <div class="s13-context">
+        <div class="s13-context-header">
+          <span class="c-title">Context used for this turn</span>
+          <span class="state-chip state-degraded">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            degraded
+          </span>
+        </div>
+        <div class="s13-degraded-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span><b>showing keyword-only results — semantic search unavailable</b></span>
+        </div>
+        <div class="s13-context-note">Same composed, labelled rows the Memories why-retrieved trace renders — no chat-only re-derivation.</div>
+
+        <div class="s13-ctx-row">
+          <div class="row-top">
+            <span class="layer-chip l2">L2 &middot; fact</span>
+            <span class="badge confirmed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+              human-ratified
+            </span>
+          </div>
+          <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
+          <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+          <span class="s13-turn-meta">channel: keyword</span>
+        </div>
+
+        <div class="s13-ctx-row">
+          <div class="row-top">
+            <span class="layer-chip l2">L2 &middot; fact</span>
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+          </div>
+          <span class="claim">reranker_enabled stays off by default; a separate flag from hybrid_search_enabled</span>
+          <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</b></span>
+          <span class="s13-turn-meta">channel: keyword</span>
         </div>
       </div>
     </div>

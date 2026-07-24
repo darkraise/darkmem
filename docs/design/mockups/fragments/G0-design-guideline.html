@@ -216,14 +216,14 @@
         <div class="g0-type-row"><span class="sample" style="font-family:var(--font-mono);font-size:12px;">entity_name · commit_sha · L2</span><span class="meta">var(--font-mono) — identifiers only (doc 14 §7)</span></div>
       </div>
       <div class="annotation">
-        <b>Known gap, flagged rather than papered over.</b> Doc 14 §2/§9 fixes <code>text-sm</code> (14px) as
+        <b>Resolved — floor honoured, not a gap.</b> Doc 14 §2/§9 fixes <code>text-sm</code> (14px) as
         the floor for <em>all</em> app text including badges and chips — compactness must come from padding
         and weight, never sub-floor type, "because a label carrying the system's central truth claim must not
-        be the smallest text on the screen." The shared <code>mockup.css</code> chrome committed in Task 1
-        currently sizes <code>.badge</code> (12.5px), <code>.layer-chip</code> / <code>.overlay-*</code>
-        (11.5px) and <code>.state-chip</code> (11px) below that floor. This board renders those classes as
-        given rather than overriding shared chrome from within a single fragment — noted here as a
-        doc-14-vs-asset gap for a follow-up <code>mockup.css</code> pass, not silently resolved.
+        be the smallest text on the screen." The shared <code>mockup.css</code> chrome sizes
+        <code>.badge</code>, <code>.layer-chip</code> / <code>.overlay-*</code>, and <code>.state-chip</code>
+        at the 14px <code>text-sm</code> floor (commit d3df9cd raised all five app-component classes off their
+        prior 11–12.5px sizes); density comes from padding, not sub-floor type. This board renders those
+        classes as given, so what you see above is the floor in practice, not an exception to it.
       </div>
       <div class="g0-sub">
         <div class="g0-radius-row">
@@ -304,7 +304,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
               human-ratified
             </span>
-            <span class="g0-claim">expansion — claim string + <b>", human-ratified"</b> suffix + who/when, e.g. "asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-20, human-ratified — ratified by a.lee, 2026-07-21"</span>
+            <span class="g0-claim">expansion — claim string + <b>", human-ratified"</b> suffix + who/when, e.g. "asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-20, human-ratified — ratified by a.lee, 2026-07-21"</span>
           </div>
           <div class="g0-row">
             <span class="badge disputed">
@@ -400,7 +400,7 @@
                 disputed
               </span>
               <span class="assert">asserts X — cookie_secure defaults to enabled in production</span>
-              <span class="count">2 origins · kinds [memory, code]</span>
+              <span class="count">2 origins · kinds [code, memory]</span>
             </div>
             <div class="vs">vs</div>
             <div class="side">

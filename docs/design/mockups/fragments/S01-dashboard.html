@@ -36,6 +36,13 @@
   .s01-tile .label { font-size: 13px; color: hsl(var(--foreground)); font-weight: 560; }
   .s01-tile .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
   .s01-tile .meta.stale { color: hsl(var(--warning)); }
+  .s01-tile.staged { border-style: dashed; background: hsl(var(--muted) / 0.08); }
+  .s01-tile .phase-tag {
+    display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 999px; border: 1px dashed hsl(var(--muted-foreground) / 0.6);
+    color: hsl(var(--muted-foreground)); white-space: nowrap;
+  }
 
   .s01-tile-skel .icon-wrap { background: hsl(var(--muted)); }
   .s01-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); }
@@ -209,10 +216,11 @@
           <span class="value">0</span>
           <span class="label">Open review items</span>
         </div>
-        <div class="s01-tile">
+        <div class="s01-tile staged">
           <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-          <span class="value">0</span>
+          <span class="value">—</span>
           <span class="label">Pipeline buffer depth</span>
+          <span class="phase-tag">target-new &middot; not yet live</span>
         </div>
       </div>
 
@@ -568,11 +576,11 @@
           <span class="label">Open review items</span>
           <span class="meta stale">cached — 14:02 UTC</span>
         </div>
-        <div class="s01-tile">
+        <div class="s01-tile staged">
           <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-          <span class="value">42</span>
+          <span class="value">—</span>
           <span class="label">Pipeline buffer depth</span>
-          <span class="meta stale">cached — 14:02 UTC</span>
+          <span class="phase-tag">target-new &middot; not yet live</span>
         </div>
       </div>
 
@@ -759,11 +767,11 @@
               <span class="label">Open review items</span>
               <span class="meta">consequence-ranked</span>
             </div>
-            <div class="s01-tile">
+            <div class="s01-tile staged">
               <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-              <span class="value">42</span>
+              <span class="value">—</span>
               <span class="label">Pipeline buffer depth</span>
-              <span class="meta">draining</span>
+              <span class="phase-tag">target-new &middot; not yet live</span>
             </div>
           </div>
 
@@ -947,7 +955,7 @@
 
           <div class="s01-hints">
             <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> corroboration needs multiple distinct origins — memories captured alone stay <code>candidate</code> until a second source agrees.</span></div>
-            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer depth tile tracks the extraction queue — a rising number means captures are arriving faster than the pipeline drains them, not that anything is broken.</span></div>
+            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer-depth tile is a staged placeholder, not a live reading — it does not track the extraction queue today. The signal arrives with its backend, the durable <code>memory_buffer</code> (doc 04 &sect;8.6), which is not live yet.</span></div>
           </div>
         </div>
       </div>
@@ -973,11 +981,11 @@
               <span class="label">Open review items</span>
               <span class="meta">consequence-ranked</span>
             </div>
-            <div class="s01-tile">
+            <div class="s01-tile staged">
               <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19v-4"/></svg></div>
-              <span class="value">42</span>
+              <span class="value">—</span>
               <span class="label">Pipeline buffer depth</span>
-              <span class="meta">draining</span>
+              <span class="phase-tag">target-new &middot; not yet live</span>
             </div>
           </div>
 
@@ -1161,7 +1169,7 @@
 
           <div class="s01-hints">
             <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> corroboration needs multiple distinct origins — memories captured alone stay <code>candidate</code> until a second source agrees.</span></div>
-            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer depth tile tracks the extraction queue — a rising number means captures are arriving faster than the pipeline drains them, not that anything is broken.</span></div>
+            <div class="s01-hint-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Cold-start hint:</b> the buffer-depth tile is a staged placeholder, not a live reading — it does not track the extraction queue today. The signal arrives with its backend, the durable <code>memory_buffer</code> (doc 04 &sect;8.6), which is not live yet.</span></div>
           </div>
         </div>
       </div>

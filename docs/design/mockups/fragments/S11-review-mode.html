@@ -59,6 +59,18 @@
   .s11-decayed-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
   .s11-decayed-note { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
 
+  /* ---- decayed queue-state chip: a plain review_state label, never the
+     reserved overlay-stale/clock-back glyph (that pair is closed to L3
+     articles only, doc 12 §4 / doc 14 §3.4/§7). Neutral muted tone —
+     signals "priority changed," not a caution or honesty-ladder state. ---- */
+  .s11-decay-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono);
+    font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm);
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+  .s11-decay-chip svg { width: 12px; height: 12px; flex: none; }
+
   /* ---- the ratify AlertDialog: the strongest confirmation treatment ---- */
   .s11-scene { position: relative; border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; background: hsl(var(--background)); min-height: 230px; }
   .s11-backdrop { padding: 16px; filter: blur(0.5px); opacity: 0.5; pointer-events: none; user-select: none; }
@@ -134,7 +146,7 @@
                   disputed
                 </span>
                 <span class="assert">asserts X — the reranker is enabled by default in production</span>
-                <span class="count">2 origins · kinds [memory, code]</span>
+                <span class="count">2 origins · kinds [code, memory]</span>
               </div>
               <div class="vs">vs</div>
               <div class="side">
@@ -284,9 +296,9 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
                     disputed
                   </span>
-                  <span class="overlay-stale">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
-                    stale_labelled
+                  <span class="s11-decay-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
+                    decayed &mdash; still served labelled
                   </span>
                 </div>
                 <span class="s11-hyst-note">
@@ -357,7 +369,7 @@
                   disputed
                 </span>
                 <span class="assert">asserts X — the reranker is enabled by default in production</span>
-                <span class="count">2 origins · kinds [memory, code]</span>
+                <span class="count">2 origins · kinds [code, memory]</span>
               </div>
               <div class="vs">vs</div>
               <div class="side">
@@ -507,9 +519,9 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
                     disputed
                   </span>
-                  <span class="overlay-stale">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
-                    stale_labelled
+                  <span class="s11-decay-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
+                    decayed &mdash; still served labelled
                   </span>
                 </div>
                 <span class="s11-hyst-note">
