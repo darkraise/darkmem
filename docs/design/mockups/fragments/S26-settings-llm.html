@@ -1,0 +1,663 @@
+<style>
+  /* S26 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S26-only layout: the
+     six-purpose-card grid, the inline field grid each card edits, the
+     api_kind selector, the classifier_kind / reasoning segmented toggles,
+     the code-summarization sub-bucket rows, the removed-provider-chrome
+     panel, and the save/live-reload confirmation trace. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s26- so it can never collide with another fragment's local
+     styles once build.py concatenates them.
+
+     Note: purpose "Tier A/B/C" chips are a NEW neutral label, deliberately
+     NOT `.badge` or `.layer-chip` — both of those are reserved for the
+     verification-ladder and memory-layer vocabularies (mockup.css), and
+     reusing either here for a call-tier label would risk reading as an
+     epistemic signal this screen does not carry. */
+
+  .s26-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s26-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s26-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the six-card grid every populated/loading/error state instantiates ---- */
+  .s26-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 760px) { .s26-grid { grid-template-columns: 1fr; } }
+  .s26-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s26-card.wide { grid-column: 1 / -1; }
+  .s26-card.dirty { border-color: hsl(var(--warning) / 0.5); background: hsl(var(--warning) / 0.04); }
+
+  .s26-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s26-card-head svg.icon { width: 17px; height: 17px; color: hsl(var(--primary)); flex: none; }
+  .s26-purpose { font-family: var(--font-mono); font-weight: 640; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s26-tier { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); background: hsl(var(--muted)); white-space: nowrap; }
+  .s26-role { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  .s26-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .s26-field { display: flex; flex-direction: column; gap: 3px; }
+  .s26-field.span2 { grid-column: 1 / -1; }
+  .s26-field .lbl { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: hsl(var(--muted-foreground)); }
+  .s26-input, .s26-select {
+    font-family: var(--font-mono); font-size: 12.5px; padding: 5px 9px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--background)); color: hsl(var(--foreground)); width: 100%;
+  }
+  .s26-input.mono { font-size: 12px; }
+  .s26-hint { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s26-hint.caution { color: hsl(var(--warning)); }
+  .s26-hint b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- segmented on/off toggle group — reused for classifier_kind (llm/local)
+     and the reasoning boolean field (off/on); two positions only, never a
+     third, so one component covers both without inventing a switch widget ---- */
+  .s26-toggle-group { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted) / 0.4); width: fit-content; }
+  .s26-toggle-opt { padding: 3px 11px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s26-toggle-opt[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+  .s26-classifier-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px dashed hsl(var(--primary) / 0.4); border-radius: var(--radius-sm); background: hsl(var(--primary) / 0.05); }
+  .s26-classifier-row .lbl { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--foreground)); }
+
+  .s26-reasoning-row { display: flex; align-items: center; gap: 8px; }
+  .s26-reasoning-row .lbl { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: hsl(var(--muted-foreground)); }
+
+  /* ---- code-summarization sub-buckets, nested in the summarization card ---- */
+  .s26-buckets { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px dashed hsl(var(--border)); }
+  .s26-buckets-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+  .s26-bucket-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .s26-bucket-grid { grid-template-columns: 1fr; } }
+  .s26-bucket { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); }
+  .s26-bucket .key { font-family: var(--font-mono); font-weight: 620; font-size: 12px; color: hsl(var(--foreground)); }
+  .s26-bucket .note { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .s26-card-foot { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
+  .s26-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 11.5px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background));
+    white-space: nowrap;
+  }
+  .s26-btn svg { width: 12px; height: 12px; flex: none; }
+  .s26-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s26-card-foot .lockline { margin-left: auto; font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- removed provider/profile/ml-profile chrome — annotated deletion ---- */
+  .s26-removed { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s26-removed-head { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+  .s26-removed-head svg { width: 14px; height: 14px; flex: none; }
+  .s26-removed-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s26-removed-pill { font-family: var(--font-mono); font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px dashed hsl(var(--border)); color: hsl(var(--muted-foreground)); text-decoration: line-through; text-decoration-thickness: 1.5px; opacity: 0.75; }
+  .s26-removed-cols { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s26-removed-cols s { text-decoration-thickness: 1.5px; }
+
+  /* ---- loading skeleton, mirrors the card shape ---- */
+  .s26-skel-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s26-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); }
+  .s26-skel-bar.head { width: 40%; }
+  .s26-skel-bar.role { width: 70%; height: 8px; }
+  .s26-skel-bar.field { height: 26px; }
+  .s26-skel-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+
+  /* ---- empty: honest about why, never a bare blank ---- */
+  .s26-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s26-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s26-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s26-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s26-empty .why b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s26-empty-cta { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--primary) / 0.5); border-radius: 999px; color: hsl(var(--primary)); background: transparent; }
+
+  /* ---- error: a named failed SAVE, draft retained, never an empty list ---- */
+  .s26-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s26-alert svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s26-alert .body { display: flex; flex-direction: column; gap: 5px; }
+  .s26-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s26-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s26-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- save -> live-reload confirmation ---- */
+  .s26-confirm { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--success) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--success) / 0.08); }
+  .s26-confirm svg { width: 18px; height: 18px; color: hsl(var(--success)); flex: none; }
+  .s26-confirm .body { display: flex; flex-direction: column; gap: 4px; }
+  .s26-confirm .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s26-confirm .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s26-trace { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s26-trace .row { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; flex-wrap: wrap; }
+  .s26-trace .row .t { color: hsl(var(--muted-foreground)); width: 110px; flex: none; }
+  .s26-trace .row .v { color: hsl(var(--foreground)); }
+</style>
+
+<div class="s26-intro">
+  <h2>S26 — Settings &middot; LLM</h2>
+  <p>
+    The flattened LLM configuration surface (doc 13 &sect;7, doc 11, doc 04 &sect;7): <b>six inline purpose
+    cards</b> &mdash; <code>embedding</code> / <code>extraction</code> / <code>classification</code> /
+    <code>reasoning</code> / <code>summarization</code> / <code>reranker</code> &mdash; each editing
+    <code>{model, base_url, api_key, api_kind, params, dimensions?, reasoning?}</code> directly on the row,
+    no indirection. The <code>classification</code> card carries the inline <b>classifier_kind</b> toggle
+    (<code>llm | local</code>); the <code>summarization</code> card carries the three
+    <b>code-summarization buckets</b> (symbol / module / overview). There is deliberately <b>no
+    provider/profile/ml-profile chrome</b> &mdash; those management surfaces are removed with the flattening,
+    shown struck through below rather than omitted silently. <code>api_kind</code> renders as a plain
+    selector; every vendor auth/reasoning/structured-output quirk it selects resolves server-side (doc 11
+    &sect;4) and is never re-implemented here. A save triggers the live-reload confirmation, because there
+    are no <code>LLM_*</code> env vars and the change takes effect without a redeploy (invariants 18/19).
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S26-empty">
+  <h2>Settings &middot; LLM &mdash; empty</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, and here it cannot mean "no purposes configured."</b> All six purpose
+    rows are written by the setup wizard's finalize step (<code>app/services/llm_seed.py</code>, doc 11
+    &sect;7) before any authenticated route &mdash; Settings included &mdash; becomes reachable, and every
+    seed defaults to the local Ollama install so a no-credentials fresh install still ends up with six live
+    rows. So this grid cannot legitimately show zero cards for a running install. The one honest empty
+    condition left is a <b>config-integrity gap</b>: the <code>llm_purpose_configs</code> table was reset
+    (a DB restore, a re-run migration) without re-running the wizard's finalize step, so the six-row read
+    genuinely comes back empty. The empty state names that condition and offers the one recovery action that
+    actually fixes it, rather than inventing a picker over rows that do not exist.
+  </div>
+  <div class="board-body">
+    <div class="s26-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+      <span class="headline">No purpose rows found</span>
+      <span class="why"><b>llm_purpose_configs read zero rows &mdash; the setup wizard's finalize step has not seeded this install (or the table was reset after it ran)</b></span>
+      <span class="why">This is not a "no purposes exist by design" state &mdash; every install needs all six rows to serve embedding, extraction, and chat calls at all.</span>
+      <button type="button" class="s26-empty-cta">Re-run setup wizard finalize</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S26-loading">
+  <h2>Settings &middot; LLM &mdash; loading</h2>
+  <div class="annotation">
+    Loading skeletons mirror the exact head / role / field-grid slots the populated cards below fill in, so
+    the six-card grid never jumps once <code>GET /api/v1/llm/config</code> resolves (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s26-grid">
+      <div class="s26-skel-card">
+        <span class="s26-skel-bar head"></span>
+        <span class="s26-skel-bar role"></span>
+        <div class="s26-skel-row2"><span class="s26-skel-bar field"></span><span class="s26-skel-bar field"></span></div>
+        <span class="s26-skel-bar field"></span>
+      </div>
+      <div class="s26-skel-card">
+        <span class="s26-skel-bar head"></span>
+        <span class="s26-skel-bar role"></span>
+        <div class="s26-skel-row2"><span class="s26-skel-bar field"></span><span class="s26-skel-bar field"></span></div>
+        <span class="s26-skel-bar field"></span>
+      </div>
+      <div class="s26-skel-card">
+        <span class="s26-skel-bar head"></span>
+        <span class="s26-skel-bar role"></span>
+        <div class="s26-skel-row2"><span class="s26-skel-bar field"></span><span class="s26-skel-bar field"></span></div>
+        <span class="s26-skel-bar field"></span>
+      </div>
+      <div class="s26-skel-card">
+        <span class="s26-skel-bar head"></span>
+        <span class="s26-skel-bar role"></span>
+        <div class="s26-skel-row2"><span class="s26-skel-bar field"></span><span class="s26-skel-bar field"></span></div>
+        <span class="s26-skel-bar field"></span>
+      </div>
+    </div>
+    <div class="board-bar"><span class="board-dot"></span><span class="state-chip state-loading"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>loading</span></div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S26-error">
+  <h2>Settings &middot; LLM &mdash; error (a failed save, draft retained)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error here means a failed SAVE, and the draft survives it.</b> Doc 13 &sect;7 fixes this
+    screen's error state precisely: <i>"error on a failed save keeps the draft and surfaces the reason."</i>
+    The orchestrator rebuild that a save triggers (doc 11 &sect;3) can itself fail &mdash; an unreachable
+    <code>base_url</code>, a rejected key &mdash; and when it does, the edited field values stay exactly as
+    typed rather than reverting to the last-saved row, and the banner names the failing thing, never the user
+    (invariant 14).
+  </div>
+  <div class="board-body">
+    <div class="s26-grid">
+      <div class="s26-card dirty">
+        <div class="s26-card-head">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h1M8 13h1M15 9h1M15 13h1M12 4v3M12 17v3"/></svg>
+          <span class="s26-purpose">reasoning</span>
+          <span class="s26-tier">tier A / C</span>
+        </div>
+        <span class="s26-role">memory_reason, conversational chat, Tier-C dream-refine judgments</span>
+        <div class="s26-fields">
+          <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="gpt-5.1-mini"></div>
+          <div class="s26-field">
+            <span class="lbl">api_kind</span>
+            <select class="s26-select"><option selected>openai</option><option>ollama</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+          </div>
+          <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="api.openai.cm/v1"></div>
+          <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" type="password" value="sk-••••••••••••4f2a"></div>
+          <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="false">off</button><button type="button" class="s26-toggle-opt" aria-pressed="true">on</button></div></div>
+          <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0.7}'></div>
+        </div>
+        <div class="s26-card-foot">
+          <button type="button" class="s26-btn s26-btn-primary">Save</button>
+          <span class="lockline">edited: base_url &mdash; unsaved</span>
+        </div>
+      </div>
+    </div>
+    <div class="s26-alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <div class="body">
+        <span class="headline">Couldn't save reasoning &mdash; the orchestrator rebuild failed</span>
+        <span class="desc">Connect to <code>api.openai.cm</code> timed out after 10s (connect timeout, doc 11 &sect;3). The live orchestrator was NOT swapped &mdash; the previous configuration is still serving requests. Your edits above are kept exactly as typed; nothing was overwritten.</span>
+        <span class="s26-retry">Retry save</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S26-populated">
+  <h2>Settings &middot; LLM &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    The six inline purpose cards (doc 11 &sect;2, doc 04 &sect;7), each a self-contained connection binding
+    with no provider/profile indirection &mdash; one row, edited directly. <code>api_kind</code> renders as a
+    plain selector (<code>openai</code> / <code>ollama</code> / <code>anthropic</code> / <code>google</code>
+    / <code>deepseek</code> / <code>zai</code>, doc 11 &sect;4); every auth scheme, reasoning-disable knob,
+    and structured-output caveat that value implies is resolved by the backend orchestrator, never
+    re-implemented in this form (invariant 18). <code>dimensions</code> renders only on
+    <code>embedding</code> (the only purpose that carries it); <code>reasoning</code> renders as the on/off
+    toggle on every chat-capable purpose except <code>embedding</code>, which has no reasoning mode to
+    disable.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s26-grid">
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="5"/><circle cx="15" cy="15" r="5"/></svg>
+              <span class="s26-purpose">embedding</span>
+              <span class="s26-tier">tier A / B / C</span>
+            </div>
+            <span class="s26-role">every vector: content, entity, code chunk, query</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3-embedding:0.6b"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-field"><span class="lbl">dimensions</span><input class="s26-input" type="number" value="1024"></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"batch_size": 64}'></div>
+            </div>
+            <span class="s26-hint caution"><b>anthropic</b> and <b>deepseek</b> expose no embeddings endpoint &mdash; selecting either here 404s on every request (doc 11 &sect;4); this hint is derived from <code>api_kind</code> directly, not a stored provider flag.</span>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+              <span class="s26-purpose">extraction</span>
+              <span class="s26-tier">tier B</span>
+            </div>
+            <span class="s26-role">the merged ingest call &mdash; entities + relations + classification fields</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3:4b-instruct"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0}'></div>
+            </div>
+            <span class="s26-hint">seeded <code>reasoning: off</code> &mdash; a hidden chain-of-thought would otherwise peg the output cap on a reasoning-by-default vendor and truncate the extraction JSON.</span>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 12l-8 8-9-9V4h7l9 9Z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+              <span class="s26-purpose">classification</span>
+              <span class="s26-tier">tier B</span>
+            </div>
+            <span class="s26-role">classification, folded into extraction in simple mode</span>
+            <div class="s26-classifier-row">
+              <span class="lbl">classifier_kind</span>
+              <div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">llm</button><button type="button" class="s26-toggle-opt" aria-pressed="false">local</button></div>
+              <span class="s26-hint">re-homes the dropped <code>ml_profile_ref</code> indirection inline (doc 11 &sect;2) &mdash; a two-value field on this row, not a picker over a deleted table.</span>
+            </div>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3:4b-instruct"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0}'></div>
+            </div>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card wide">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15H6z"/><path d="M9 11h6M9 15h6M9 7h3"/></svg>
+              <span class="s26-purpose">summarization</span>
+              <span class="s26-tier">tier B / C</span>
+            </div>
+            <span class="s26-role">code enrichment + wiki, fanning out to three code-summarization buckets; Tier-C topic/community reports</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3:4b-instruct"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0.3}'></div>
+            </div>
+            <div class="s26-buckets">
+              <span class="s26-buckets-label">code-summarization buckets &mdash; each carries its own model + prompt, one summarization connection (doc 11 &sect;2)</span>
+              <div class="s26-bucket-grid">
+                <div class="s26-bucket">
+                  <span class="key">symbol</span>
+                  <input class="s26-input" value="qwen3:4b-instruct">
+                  <span class="note">short, cheap, high-volume &mdash; not billed at the overview model's rate</span>
+                </div>
+                <div class="s26-bucket">
+                  <span class="key">module</span>
+                  <input class="s26-input" value="qwen3:4b-instruct">
+                  <span class="note">per-file rollups</span>
+                </div>
+                <div class="s26-bucket">
+                  <span class="key">overview</span>
+                  <input class="s26-input" value="qwen3:8b-instruct">
+                  <span class="note">repo-level, priced for depth</span>
+                </div>
+              </div>
+            </div>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4v16M7 4l-3 3M7 4l3 3"/><path d="M17 20V4M17 20l-3-3M17 20l3-3"/></svg>
+              <span class="s26-purpose">reranker</span>
+              <span class="s26-tier">tier A</span>
+            </div>
+            <span class="s26-role">retrieval rerank scoring, top-40 RRF rows, flag-gated</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="glm-4.6-flash"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option selected>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="api.z.ai/api/paas/v4"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" type="password" value="••••••••••••91cd"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0, "max_tokens": 16}'></div>
+            </div>
+            <span class="s26-hint">the rerank purpose whose <code>reranker_enabled</code> activation toggle lives on Settings &middot; Flags (S25), not here.</span>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h1M8 13h1M15 9h1M15 13h1M12 4v3M12 17v3"/></svg>
+              <span class="s26-purpose">reasoning</span>
+              <span class="s26-tier">tier A / C</span>
+            </div>
+            <span class="s26-role">memory_reason, conversational chat, Tier-C dream-refine judgments</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="gpt-5.1-mini"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>openai</option><option>ollama</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="api.openai.com/v1"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" type="password" value="sk-••••••••••••4f2a"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="false">off</button><button type="button" class="s26-toggle-opt" aria-pressed="true">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0.7}'></div>
+            </div>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s26-grid">
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="5"/><circle cx="15" cy="15" r="5"/></svg>
+              <span class="s26-purpose">embedding</span>
+              <span class="s26-tier">tier A / B / C</span>
+            </div>
+            <span class="s26-role">every vector: content, entity, code chunk, query</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3-embedding:0.6b"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-field"><span class="lbl">dimensions</span><input class="s26-input" type="number" value="1024"></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"batch_size": 64}'></div>
+            </div>
+            <span class="s26-hint caution"><b>anthropic</b> and <b>deepseek</b> expose no embeddings endpoint &mdash; selecting either here 404s on every request (doc 11 &sect;4); this hint is derived from <code>api_kind</code> directly, not a stored provider flag.</span>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+              <span class="s26-purpose">extraction</span>
+              <span class="s26-tier">tier B</span>
+            </div>
+            <span class="s26-role">the merged ingest call &mdash; entities + relations + classification fields</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3:4b-instruct"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0}'></div>
+            </div>
+            <span class="s26-hint">seeded <code>reasoning: off</code> &mdash; a hidden chain-of-thought would otherwise peg the output cap on a reasoning-by-default vendor and truncate the extraction JSON.</span>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 12l-8 8-9-9V4h7l9 9Z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+              <span class="s26-purpose">classification</span>
+              <span class="s26-tier">tier B</span>
+            </div>
+            <span class="s26-role">classification, folded into extraction in simple mode</span>
+            <div class="s26-classifier-row">
+              <span class="lbl">classifier_kind</span>
+              <div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">llm</button><button type="button" class="s26-toggle-opt" aria-pressed="false">local</button></div>
+              <span class="s26-hint">re-homes the dropped <code>ml_profile_ref</code> indirection inline (doc 11 &sect;2) &mdash; a two-value field on this row, not a picker over a deleted table.</span>
+            </div>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3:4b-instruct"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0}'></div>
+            </div>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card wide">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15H6z"/><path d="M9 11h6M9 15h6M9 7h3"/></svg>
+              <span class="s26-purpose">summarization</span>
+              <span class="s26-tier">tier B / C</span>
+            </div>
+            <span class="s26-role">code enrichment + wiki, fanning out to three code-summarization buckets; Tier-C topic/community reports</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="qwen3:4b-instruct"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="localhost:11434"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" placeholder="not required for ollama"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0.3}'></div>
+            </div>
+            <div class="s26-buckets">
+              <span class="s26-buckets-label">code-summarization buckets &mdash; each carries its own model + prompt, one summarization connection (doc 11 &sect;2)</span>
+              <div class="s26-bucket-grid">
+                <div class="s26-bucket">
+                  <span class="key">symbol</span>
+                  <input class="s26-input" value="qwen3:4b-instruct">
+                  <span class="note">short, cheap, high-volume &mdash; not billed at the overview model's rate</span>
+                </div>
+                <div class="s26-bucket">
+                  <span class="key">module</span>
+                  <input class="s26-input" value="qwen3:4b-instruct">
+                  <span class="note">per-file rollups</span>
+                </div>
+                <div class="s26-bucket">
+                  <span class="key">overview</span>
+                  <input class="s26-input" value="qwen3:8b-instruct">
+                  <span class="note">repo-level, priced for depth</span>
+                </div>
+              </div>
+            </div>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4v16M7 4l-3 3M7 4l3 3"/><path d="M17 20V4M17 20l-3-3M17 20l3-3"/></svg>
+              <span class="s26-purpose">reranker</span>
+              <span class="s26-tier">tier A</span>
+            </div>
+            <span class="s26-role">retrieval rerank scoring, top-40 RRF rows, flag-gated</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="glm-4.6-flash"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option>ollama</option><option>openai</option><option>anthropic</option><option>google</option><option>deepseek</option><option selected>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="api.z.ai/api/paas/v4"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" type="password" value="••••••••••••91cd"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="true">off</button><button type="button" class="s26-toggle-opt" aria-pressed="false">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0, "max_tokens": 16}'></div>
+            </div>
+            <span class="s26-hint">the rerank purpose whose <code>reranker_enabled</code> activation toggle lives on Settings &middot; Flags (S25), not here.</span>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+
+          <div class="s26-card">
+            <div class="s26-card-head">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h1M8 13h1M15 9h1M15 13h1M12 4v3M12 17v3"/></svg>
+              <span class="s26-purpose">reasoning</span>
+              <span class="s26-tier">tier A / C</span>
+            </div>
+            <span class="s26-role">memory_reason, conversational chat, Tier-C dream-refine judgments</span>
+            <div class="s26-fields">
+              <div class="s26-field"><span class="lbl">model</span><input class="s26-input" value="gpt-5.1-mini"></div>
+              <div class="s26-field">
+                <span class="lbl">api_kind</span>
+                <select class="s26-select"><option selected>openai</option><option>ollama</option><option>anthropic</option><option>google</option><option>deepseek</option><option>zai</option></select>
+              </div>
+              <div class="s26-field span2"><span class="lbl">base_url</span><input class="s26-input" value="api.openai.com/v1"></div>
+              <div class="s26-field"><span class="lbl">api_key</span><input class="s26-input" type="password" value="sk-••••••••••••4f2a"></div>
+              <div class="s26-reasoning-row"><span class="lbl">reasoning</span><div class="s26-toggle-group"><button type="button" class="s26-toggle-opt" aria-pressed="false">off</button><button type="button" class="s26-toggle-opt" aria-pressed="true">on</button></div></div>
+              <div class="s26-field span2"><span class="lbl">params (jsonb)</span><input class="s26-input mono" value='{"temperature": 0.7}'></div>
+            </div>
+            <div class="s26-card-foot">
+              <button type="button" class="s26-btn s26-btn-primary">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="s26-removed">
+      <div class="s26-removed-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        removed with the flattening &mdash; not rendered, not disabled, deleted
+      </div>
+      <div class="s26-removed-row">
+        <span class="s26-removed-pill">llm-providers tab</span>
+        <span class="s26-removed-pill">llm-profiles tab</span>
+        <span class="s26-removed-pill">ml-profiles tab</span>
+      </div>
+      <div class="s26-removed-cols">columns dropped from every purpose row: <s>provider_ref</s> &middot; <s>profile_ref</s> &middot; <s>ml_profile_ref</s></div>
+    </div>
+    <div class="annotation">
+      <b>No provider/profile chrome renders here, at any state &mdash; not even a disabled picker.</b>
+      darkmem is not an LLM proxy: each purpose is one row the operator edits directly, so the
+      <code>llm_providers</code> / <code>llm_profiles</code> / <code>ml_profiles</code> tables and every
+      <code>*_ref</code> column are dropped outright with this flattening (doc 04 &sect;7, doc 11 &sect;2).
+      A profile picker over a schema with no profiles table would be scaffolding rendered as a feature
+      (invariant 23, doc 13 &sect;7) &mdash; so the honest move is deletion, not a greyed-out control that
+      implies a capability this schema no longer has anywhere to store.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S26-save">
+  <h2>Save &rarr; live-reload confirmation</h2>
+  <div class="annotation">
+    <b>No <code>LLM_*</code> env vars exist &mdash; a save takes effect without a redeploy (invariants
+    18/19).</b> On save the app constructs a fresh <code>LLMOrchestrator</code> from the current six purpose
+    rows and swaps the in-process reference atomically; there is no second worker to notify and no shared
+    external cache to invalidate (doc 11 &sect;3, invariant 13 &mdash; single uvicorn worker is what makes
+    the swap atomic without cross-worker coordination). The superseded client's connection pool drains rather
+    than dropping in-flight calls.
+  </div>
+  <div class="board-body">
+    <div class="s26-confirm">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+      <div class="body">
+        <span class="headline">Saved &mdash; reasoning purpose updated</span>
+        <span class="desc">The orchestrator was rebuilt from all six purpose rows and the live reference was swapped in-process. This change is already serving requests &mdash; no redeploy needed.</span>
+      </div>
+    </div>
+    <div class="s26-trace">
+      <div class="row"><span class="t">saved</span><span class="v">purpose = reasoning &middot; field changed = base_url</span></div>
+      <div class="row"><span class="t">orchestrator</span><span class="v">new instance built from six purpose rows, reference swapped atomically</span></div>
+      <div class="row"><span class="t">superseded client</span><span class="v">draining &mdash; closes once in-flight calls finish</span></div>
+      <div class="row"><span class="t">redeploy needed</span><span class="v">no &mdash; config lives in DB rows, read at boot and on live reload</span></div>
+    </div>
+  </div>
+</section>

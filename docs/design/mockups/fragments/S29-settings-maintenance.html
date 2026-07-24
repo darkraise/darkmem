@@ -1,0 +1,492 @@
+<style>
+  /* S29 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S29-only layout: the
+     three-card maintenance-ops grid (re-embed / cleanup ops / DB ops), each
+     card's action row, the inline armed-confirmation panel every trigger in
+     this board opens (Cancel/Confirm — never a bare destructive click), the
+     progress bar for a running re-embed batch, and the illustrative-action
+     tag for a DB-op that has no dedicated one-click endpoint yet. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s29- so it can never collide with another fragment's local
+     styles once build.py concatenates them.
+
+     Relationship to sibling boards (so a reviewer does not read this as a
+     duplicate invention): graph_orphan_cleanup / tag_orphan_cleanup /
+     expired_memory_cleanup are the SAME JobRegistry jobs S21 (Activity job
+     board) and S27 (Settings -> Jobs) render with cron/config-gear chrome
+     (doc 02 §5.3) — this board exposes them as one-click "run now, with
+     confirmation" ops tiles instead, the framing doc 13 §7 calls out
+     separately ("the re-embed and cleanup operations"). Unresolved pipeline
+     failures here is a COUNT + link-out, not the full retry worklist —
+     that list already lives at Activity -> Failure Triage (S20, doc 13
+     §6). Nothing here re-implements either surface. */
+
+  .s29-intro { display: flex; flex-direction: column; gap: 6px; max-width: 920px; }
+  .s29-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s29-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s29-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 900px) { .s29-grid { grid-template-columns: 1fr; } }
+
+  .s29-card { display: flex; flex-direction: column; gap: 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); padding: 12px 14px; }
+  .s29-card-head { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px dashed hsl(var(--border)); }
+  .s29-card-head svg { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s29-card-head .title { font-weight: 620; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s29-card-head .count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  .s29-op { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-bottom: 1px dashed hsl(var(--border)); }
+  .s29-op:last-child { border-bottom: none; }
+  .s29-op-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s29-op-key { font-family: var(--font-mono); font-weight: 610; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s29-op-meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; white-space: nowrap; }
+  .s29-op-desc { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s29-op-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .s29-illustrative { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 999px; color: hsl(var(--muted-foreground)); border: 1px dashed hsl(var(--border)); background: transparent; }
+
+  .s29-btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background)); white-space: nowrap; }
+  .s29-btn svg { width: 12px; height: 12px; flex: none; }
+  .s29-btn-caution { border-color: hsl(var(--warning) / 0.6); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.08); }
+  .s29-btn-danger { border-color: hsl(var(--destructive) / 0.6); color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.08); }
+  .s29-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s29-btn-quiet { color: hsl(var(--muted-foreground)); }
+  .s29-btn[disabled] { opacity: 0.55; }
+
+  /* ---- inline armed-confirmation panel: opened by every trigger above,
+     never a bare destructive click. Warning-toned by default; the panel
+     that deletes rows (cleanup) escalates to the destructive token so a
+     data-loss confirm reads distinctly from a cost/duration-only one
+     (re-embed backfills, it does not delete). ---- */
+  .s29-confirm { display: flex; gap: 9px; padding: 10px 11px; border-radius: var(--radius-sm); border: 1px solid hsl(var(--warning) / 0.55); background: hsl(var(--warning) / 0.1); }
+  .s29-confirm.danger { border-color: hsl(var(--destructive) / 0.55); background: hsl(var(--destructive) / 0.08); }
+  .s29-confirm svg { width: 16px; height: 16px; flex: none; color: hsl(var(--warning)); }
+  .s29-confirm.danger svg { color: hsl(var(--destructive)); }
+  .s29-confirm .body { display: flex; flex-direction: column; gap: 5px; }
+  .s29-confirm .headline { font-weight: 620; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s29-confirm .desc { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s29-confirm .footer { display: flex; gap: 8px; margin-top: 2px; }
+
+  /* ---- re-embed progress (in-progress state) ---- */
+  .s29-progress-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s29-progress-track { height: 8px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+  .s29-progress-fill { height: 100%; background: hsl(var(--info)); border-radius: 999px; }
+  .s29-progress-nums { display: flex; gap: 14px; font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); flex-wrap: wrap; }
+  .s29-progress-nums b { color: hsl(var(--foreground)); font-weight: 620; }
+  .s29-progress-nums .bad { color: hsl(var(--destructive)); }
+  .s29-trace { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s29-trace .row { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; }
+  .s29-trace .row .t { color: hsl(var(--muted-foreground)); width: 96px; flex: none; }
+  .s29-trace .row .v { color: hsl(var(--foreground)); }
+
+  /* ---- loading / empty / error ---- */
+  .s29-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); }
+  .s29-skel-bar.w60 { width: 60%; }
+  .s29-skel-bar.w40 { width: 40%; }
+  .s29-skel-bar.full { width: 100%; }
+  .s29-empty-line { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s29-empty-line b { color: hsl(var(--foreground)); font-weight: 610; }
+  .s29-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s29-alert svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s29-alert .body { display: flex; flex-direction: column; gap: 5px; }
+  .s29-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s29-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s29-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+</style>
+
+<div class="s29-intro">
+  <h2>S29 &mdash; Settings &middot; Maintenance</h2>
+  <p>
+    The Maintenance tab of Settings (doc 13 &sect;7): three operator-facing modules &mdash;
+    <b>re-embed</b> (backfilling memories/entities/code chunks missing a vector under the currently
+    active embedder fingerprint, doc 04 &sect;5), <b>cleanup ops</b> (one-click triggers for the
+    orphan-entity, orphan-tag, and expired-memory JobRegistry jobs, plus a count-and-link-out to
+    unresolved pipeline failures), and <b>DB ops</b> (per-fingerprint cache pruning and the
+    Postgres-level housekeeping a heavy re-embed or cleanup pass leaves behind). Every trigger opens
+    an inline confirmation before it runs &mdash; re-embed's confirms cost and duration (it only
+    backfills missing rows, it deletes nothing), cleanup's and DB ops' confirm data loss.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S29-empty">
+  <h2>Maintenance &mdash; empty (nothing currently needs attention)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty here cannot mean "modules unavailable."</b> All three modules always exist
+    &mdash; the empty condition is a healthy quiescent vault: every memory/entity has a row under the
+    active fingerprint, zero unresolved <code>pipeline_failures</code>, and no cache to prune. Same
+    discipline S21's job board applies to "no run history yet" (this board's sibling for the shared
+    cleanup jobs): the honest empty state names what is actually absent, never fabricates "no
+    maintenance available."
+  </div>
+  <div class="board-body">
+    <div class="s29-grid">
+      <div class="s29-card">
+        <div class="s29-card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          <span class="title">Re-embed</span>
+          <span class="state-chip state-empty">empty</span>
+        </div>
+        <div class="s29-empty-line">Active fingerprint <b>bge-large-en-v1.5|1024</b> &mdash; 0 memories, 0 entities, 0 code chunks missing a vector. Nothing to backfill.</div>
+      </div>
+      <div class="s29-card">
+        <div class="s29-card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          <span class="title">Cleanup ops</span>
+          <span class="state-chip state-empty">empty</span>
+        </div>
+        <div class="s29-empty-line">0 orphan entities, 0 orphan tags, 0 expired memories, <b>0</b> unresolved pipeline failures. All three cleanup jobs are still scheduled (doc 02 &sect;5.3) &mdash; there is simply nothing pending right now.</div>
+      </div>
+      <div class="s29-card">
+        <div class="s29-card-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+          <span class="title">DB ops</span>
+          <span class="state-chip state-empty">empty</span>
+        </div>
+        <div class="s29-empty-line">No retired embedder caches to prune (this is the only embedder darkmem has ever used). No maintenance run logged yet.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S29-loading">
+  <h2>Maintenance &mdash; loading</h2>
+  <div class="annotation">
+    Skeleton bars mirror each card's header + first two rows so the board does not reflow once
+    <code>GET /api/v1/reembed/obsolete-counts</code> and <code>GET /api/v1/pipeline-failures/counts</code>
+    resolve (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s29-grid">
+      <div class="s29-card">
+        <div class="s29-card-head"><span class="state-chip state-loading">loading</span></div>
+        <div class="s29-skel-bar w60"></div>
+        <div class="s29-skel-bar w40"></div>
+      </div>
+      <div class="s29-card">
+        <div class="s29-card-head"><span class="state-chip state-loading">loading</span></div>
+        <div class="s29-skel-bar full"></div>
+        <div class="s29-skel-bar w60"></div>
+      </div>
+      <div class="s29-card">
+        <div class="s29-card-head"><span class="state-chip state-loading">loading</span></div>
+        <div class="s29-skel-bar w60"></div>
+        <div class="s29-skel-bar w40"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S29-error">
+  <h2>Maintenance &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty grid.</b> <code>GET /api/v1/reembed/obsolete-counts</code> 503s
+    when the pipeline has no active embedder yet (<code>reembed.py</code>'s
+    <code>_resolve_fingerprint</code> guard) &mdash; that surfaces as a named error, never as a
+    quietly-zeroed card indistinguishable from the honest empty state above (invariant 14). Cleanup
+    ops and DB ops do not depend on this read and stay usable; only the re-embed card is blocked.
+  </div>
+  <div class="board-body">
+    <div class="s29-alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <div class="body">
+        <span class="headline">Couldn't load re-embed status &mdash; pipeline not initialized</span>
+        <span class="desc"><code>GET /api/v1/reembed/obsolete-counts</code> returned <code>503 Pipeline not initialized</code> (no active embedder is configured yet, Settings &rarr; LLM). Cleanup ops and DB ops below are unaffected.</span>
+        <span class="s29-retry">Retry</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S29-populated">
+  <h2>Maintenance &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    Every trigger below opens the same inline <b>armed-confirmation</b> shape before it runs (never a
+    bare destructive click): re-embed's confirm names cost and duration only &mdash; the backfill
+    upserts missing rows under the active fingerprint, it never deletes an existing vector, so its
+    panel stays on the caution (<code>--warning</code>) token. The expired-memory sweep and the cache
+    prune actually delete/drop rows, so their panels escalate to the conflict (<code>--destructive</code>)
+    token &mdash; the same colour-by-consequence split doc 14 &sect;3.1 uses for badges, reused here for
+    a different kind of honesty signal (what happens if you click Confirm). VACUUM ANALYZE / REINDEX
+    carry the <b>illustrative</b> tag: standard Postgres housekeeping surfaced here because it is where
+    an operator would reach for it after a heavy re-embed or cleanup pass, not because a dedicated
+    darkmem endpoint exists for either yet (only the cache prune and the three cleanup jobs are real
+    routes today) &mdash; flagged rather than silently implied as shipped.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s29-grid">
+
+          <div class="s29-card">
+            <div class="s29-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              <span class="title">Re-embed</span>
+              <span class="count">fp: bge-large-en-v1.5|1024</span>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">memories</span><span class="s29-op-meta">182 missing a vector</span></div>
+              <div class="s29-op-desc">Backfills memories with no row in <code>memory_embeddings__bge_large_en_v1_5_1024</code>. Runs in the background; POST returns 202 immediately.</div>
+              <div class="s29-op-actions">
+                <button type="button" class="s29-btn s29-btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>Re-embed memories</button>
+              </div>
+              <div class="s29-confirm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Re-embed 182 memories now?</span>
+                  <span class="desc">Dispatches 182 embedding calls to the live embedding-purpose LLM. Not destructive &mdash; existing vectors under other fingerprints are left alone &mdash; but it cannot be cancelled once started, only blocked from a second concurrent run on this category (409 <code>already_running</code>).</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-primary">Confirm &mdash; start re-embed</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">entities</span><span class="s29-op-meta">47 missing</span></div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn">Re-embed entities</button></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">code_chunks</span><span class="s29-op-meta">940 missing</span></div>
+              <div class="s29-op-desc">Cross-fingerprint code-chunk backfill is not implemented server-side; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success (<code>reembed.py</code>).</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn" disabled>Re-embed code chunks</button><span class="s29-illustrative">use Repositories &rarr; Reindex</span></div>
+            </div>
+          </div>
+
+          <div class="s29-card">
+            <div class="s29-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              <span class="title">Cleanup ops</span>
+              <span class="count">7 unresolved failures</span>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">expired_memory_cleanup</span><span class="s29-op-meta">14 past expires_at</span></div>
+              <div class="s29-op-desc">Deletes memories past their TTL. 2 have dependents pointing at them via <code>superseded_by</code> &mdash; those are demoted to <code>deprecated</code> first, per <code>chk_superseded_has_pointer</code>.</div>
+              <div class="s29-op-actions">
+                <button type="button" class="s29-btn s29-btn-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Run sweep now</button>
+              </div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Delete 14 expired memories now?</span>
+                  <span class="desc">Permanent. 2 dependents are demoted to <code>deprecated</code> (<code>superseded_by</code> cleared) before their target is deleted, satisfying <code>chk_superseded_has_pointer</code>. This is the same job the hourly schedule already runs (Settings &rarr; Jobs / Activity job board) &mdash; this button just runs it now.</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; delete now</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">graph_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
+              <div class="s29-op-desc">Deletes entities no live memory asserts and no surviving relation references (FK-cascade-safe).</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">tag_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">unresolved pipeline failures</span><span class="s29-op-meta">6 memory_ingest &middot; 1 code_repo</span></div>
+              <div class="s29-op-desc">The full retry worklist lives at Activity &rarr; Failure Triage (S20); this is a count and a shortcut, not a second copy of that list.</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn">Retry all</button><button type="button" class="s29-btn s29-btn-quiet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>View in Activity</button></div>
+            </div>
+          </div>
+
+          <div class="s29-card">
+            <div class="s29-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              <span class="title">DB ops</span>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">prune obsolete caches</span><span class="s29-op-meta">3 retired fingerprints</span></div>
+              <div class="s29-op-desc">Drops <code>entity_embedding_cache</code> child tables for every fingerprint except the active one: <code>nomic-embed-text|768</code>, <code>text-embedding-3-small|1536</code>, <code>bge-base-en-v1.5|768</code>.</div>
+              <div class="s29-op-actions">
+                <button type="button" class="s29-btn s29-btn-danger">Prune caches</button>
+              </div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Drop 3 retired cache tables now?</span>
+                  <span class="desc"><code>DROP TABLE</code>, irreversible. Each cache rebuilds lazily the next time its embedder is used, but any current hit-rate savings on those fingerprints are lost immediately (<code>ReembedService.prune_obsolete_cache_entries</code>).</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; drop tables</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">VACUUM ANALYZE</span><span class="s29-op-meta">memory_embeddings__&hellip;5_1024</span></div>
+              <div class="s29-op-desc">340 MB, last analyzed 6 days ago &mdash; due after the memories re-embed above.</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">REINDEX</span><span class="s29-op-meta">ix_memories_technologies_gin</span></div>
+              <div class="s29-op-desc">The GIN index supersession and retrieval filtering both consult (<code>memories.technologies</code>).</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s29-grid">
+
+          <div class="s29-card">
+            <div class="s29-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              <span class="title">Re-embed</span>
+              <span class="count">fp: bge-large-en-v1.5|1024</span>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">memories</span><span class="s29-op-meta">182 missing a vector</span></div>
+              <div class="s29-op-desc">Backfills memories with no row in <code>memory_embeddings__bge_large_en_v1_5_1024</code>. Runs in the background; POST returns 202 immediately.</div>
+              <div class="s29-op-actions">
+                <button type="button" class="s29-btn s29-btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>Re-embed memories</button>
+              </div>
+              <div class="s29-confirm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Re-embed 182 memories now?</span>
+                  <span class="desc">Dispatches 182 embedding calls to the live embedding-purpose LLM. Not destructive &mdash; existing vectors under other fingerprints are left alone &mdash; but it cannot be cancelled once started, only blocked from a second concurrent run on this category (409 <code>already_running</code>).</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-primary">Confirm &mdash; start re-embed</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">entities</span><span class="s29-op-meta">47 missing</span></div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn">Re-embed entities</button></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">code_chunks</span><span class="s29-op-meta">940 missing</span></div>
+              <div class="s29-op-desc">Cross-fingerprint code-chunk backfill is not implemented server-side; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success (<code>reembed.py</code>).</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn" disabled>Re-embed code chunks</button><span class="s29-illustrative">use Repositories &rarr; Reindex</span></div>
+            </div>
+          </div>
+
+          <div class="s29-card">
+            <div class="s29-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              <span class="title">Cleanup ops</span>
+              <span class="count">7 unresolved failures</span>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">expired_memory_cleanup</span><span class="s29-op-meta">14 past expires_at</span></div>
+              <div class="s29-op-desc">Deletes memories past their TTL. 2 have dependents pointing at them via <code>superseded_by</code> &mdash; those are demoted to <code>deprecated</code> first, per <code>chk_superseded_has_pointer</code>.</div>
+              <div class="s29-op-actions">
+                <button type="button" class="s29-btn s29-btn-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Run sweep now</button>
+              </div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Delete 14 expired memories now?</span>
+                  <span class="desc">Permanent. 2 dependents are demoted to <code>deprecated</code> (<code>superseded_by</code> cleared) before their target is deleted, satisfying <code>chk_superseded_has_pointer</code>. This is the same job the hourly schedule already runs (Settings &rarr; Jobs / Activity job board) &mdash; this button just runs it now.</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; delete now</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">graph_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
+              <div class="s29-op-desc">Deletes entities no live memory asserts and no surviving relation references (FK-cascade-safe).</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">tag_orphan_cleanup</span><span class="s29-op-meta">on schedule</span></div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">unresolved pipeline failures</span><span class="s29-op-meta">6 memory_ingest &middot; 1 code_repo</span></div>
+              <div class="s29-op-desc">The full retry worklist lives at Activity &rarr; Failure Triage (S20); this is a count and a shortcut, not a second copy of that list.</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn">Retry all</button><button type="button" class="s29-btn s29-btn-quiet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>View in Activity</button></div>
+            </div>
+          </div>
+
+          <div class="s29-card">
+            <div class="s29-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              <span class="title">DB ops</span>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">prune obsolete caches</span><span class="s29-op-meta">3 retired fingerprints</span></div>
+              <div class="s29-op-desc">Drops <code>entity_embedding_cache</code> child tables for every fingerprint except the active one: <code>nomic-embed-text|768</code>, <code>text-embedding-3-small|1536</code>, <code>bge-base-en-v1.5|768</code>.</div>
+              <div class="s29-op-actions">
+                <button type="button" class="s29-btn s29-btn-danger">Prune caches</button>
+              </div>
+              <div class="s29-confirm danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+                <div class="body">
+                  <span class="headline">Drop 3 retired cache tables now?</span>
+                  <span class="desc"><code>DROP TABLE</code>, irreversible. Each cache rebuilds lazily the next time its embedder is used, but any current hit-rate savings on those fingerprints are lost immediately (<code>ReembedService.prune_obsolete_cache_entries</code>).</span>
+                  <div class="footer">
+                    <button type="button" class="s29-btn s29-btn-quiet">Cancel</button>
+                    <button type="button" class="s29-btn s29-btn-danger">Confirm &mdash; drop tables</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">VACUUM ANALYZE</span><span class="s29-op-meta">memory_embeddings__&hellip;5_1024</span></div>
+              <div class="s29-op-desc">340 MB, last analyzed 6 days ago &mdash; due after the memories re-embed above.</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
+            </div>
+            <div class="s29-op">
+              <div class="s29-op-top"><span class="s29-op-key">REINDEX</span><span class="s29-op-meta">ix_memories_technologies_gin</span></div>
+              <div class="s29-op-desc">The GIN index supersession and retrieval filtering both consult (<code>memories.technologies</code>).</div>
+              <div class="s29-op-actions"><button type="button" class="s29-btn s29-btn-caution">Run now</button><span class="s29-illustrative">no dedicated endpoint yet</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S29-reembed-progress">
+  <h2>Re-embed &mdash; in-progress state (memories category running)</h2>
+  <div class="annotation">
+    What <code>POST /api/v1/reembed/memories</code> actually broadcasts: <code>pipeline.reembed_batch.progress</code>
+    events carrying <code>{batch_id, category, current, total, processed, errors, state}</code>, cycling
+    <code>started &rarr; progress &rarr; done</code> (<code>ReembedService</code>). A second click on
+    <b>Re-embed memories</b> while this runs is rejected with <b>409 <code>already_running</code></b>,
+    never queued &mdash; the same per-category lock shape S21's job board uses, scoped to
+    <code>memories</code> only: entities and code chunks stay re-embeddable concurrently, because the
+    lock is per category, not global.
+  </div>
+  <div class="board-body">
+    <div class="s29-card" style="max-width: 480px;">
+      <div class="s29-card-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        <span class="title">Re-embed &middot; memories</span>
+        <span class="state-chip state-loading">running</span>
+      </div>
+      <div class="s29-progress-head">
+        <div class="s29-progress-track" style="flex: 1;"><div class="s29-progress-fill" style="width: 75%;"></div></div>
+        <span style="font-family: var(--font-mono); font-size: 12px; color: hsl(var(--foreground));">75%</span>
+      </div>
+      <div class="s29-progress-nums">
+        <span>processed <b>134</b></span>
+        <span>errors <b class="bad">2</b></span>
+        <span>current <b>136</b> / 182</span>
+      </div>
+      <div class="s29-op-actions"><button type="button" class="s29-btn" disabled>Re-embed memories</button></div>
+    </div>
+    <div class="s29-trace">
+      <div class="row"><span class="t">batch_id</span><span class="v">f7a2c9de-4b31-4e08-9a6c-1d5e2f0a8b13</span></div>
+      <div class="row"><span class="t">fingerprint</span><span class="v">bge-large-en-v1.5|1024</span></div>
+      <div class="row"><span class="t">second click</span><span class="v">409 already_running &mdash; discarded, not queued</span></div>
+      <div class="row"><span class="t">2 errors so far</span><span class="v">embedding-purpose LLM timeout on 2 rows; batch continues, will surface in the next Cleanup ops &rarr; unresolved-failures count if they persist</span></div>
+    </div>
+  </div>
+</section>

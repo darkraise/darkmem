@@ -1,0 +1,595 @@
+<style>
+  /* S28 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S28-only layout: the
+     Security tab's module grid (auth / tokens / TOFU / LAN-trust-doors /
+     the dormant ApiKey card), its form fields, host-allowlist chips, the
+     token-lifecycle mini flow, and the scope chips. Reads var(--token) /
+     hsl(var(--token)) only; no hex, no redeclared tokens. Namespaced s28-
+     so it can never collide with another fragment's local styles once
+     build.py concatenates them.
+
+     Per-module status pills reuse the shared .state-chip.state-populated
+     visual verbatim for a domain label ("claimed", "session active") —
+     same precedent S21 set reusing state-chip for a per-row domain status
+     rather than inventing a parallel chip vocabulary. The dormant ApiKey
+     card is deliberately NOT a state-chip variant: it is not one of the
+     seven canonical whole-board states, it is a permanently-inert feature
+     card (doc 18 §5, activation-gated) that renders identically no matter
+     which of the four states below the rest of the panel is in — so it
+     gets its own local .s28-phase-tag, never "staged" (staged means a
+     backend signal not writing yet; this is a design fixed but
+     deliberately unwired until an operator-triggered activation). */
+
+  .s28-intro { display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
+  .s28-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s28-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the settings surface every state below instantiates ---- */
+  .s28-panel { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s28-panel-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s28-panel-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s28-panel-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s28-panel-body { padding: 14px; }
+
+  .s28-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .s28-grid { grid-template-columns: 1fr; } }
+  .s28-grid > .s28-full { grid-column: 1 / -1; }
+
+  /* ---- one module card ---- */
+  .s28-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s28-card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s28-card-header svg.icon { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s28-card-title { font-weight: 620; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s28-card-tag { margin-left: auto; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s28-card-body { display: flex; flex-direction: column; gap: 9px; }
+  .s28-card-sub { padding-top: 8px; margin-top: 2px; border-top: 1px dashed hsl(var(--border)); display: flex; flex-direction: column; gap: 8px; }
+  .s28-sub-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+
+  /* ---- key/value row ---- */
+  .s28-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+  .s28-row .k { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); min-width: 128px; flex: none; }
+  .s28-row .v { color: hsl(var(--foreground)); }
+  .s28-row .v code { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); }
+
+  /* ---- form fields ---- */
+  .s28-field { display: flex; flex-direction: column; gap: 3px; }
+  .s28-field label { font-size: 11.5px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s28-field input { font-family: var(--font-mono); font-size: 12.5px; padding: 6px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  .s28-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .s28-field-row .s28-field { flex: 1 1 160px; }
+
+  .s28-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 11.5px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background));
+    white-space: nowrap; align-self: flex-start;
+  }
+  .s28-btn svg { width: 12px; height: 12px; flex: none; }
+  .s28-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s28-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+  .s28-note { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s28-note.caution { color: hsl(var(--warning)); }
+  .s28-note b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- token lifecycle mini flow ---- */
+  .s28-pillflow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .s28-pillflow .step { font-family: var(--font-mono); font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.4); color: hsl(var(--foreground)); white-space: nowrap; }
+  .s28-pillflow .step.active { border-color: hsl(var(--primary) / 0.55); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s28-pillflow .arrow { color: hsl(var(--muted-foreground)); font-size: 12px; }
+
+  /* ---- LAN-trust door list ---- */
+  .s28-door { display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s28-door-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s28-door-path { font-family: var(--font-mono); font-weight: 620; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s28-door-defense { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s28-door-desc { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  .s28-chiplist { display: flex; gap: 6px; flex-wrap: wrap; }
+  .s28-hostchip { font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  .s28-hostchip.wild { border-style: dashed; color: hsl(var(--warning)); border-color: hsl(var(--warning) / 0.55); }
+
+  /* ---- the dormant ApiKey card — Phase-4 activation, designed not wired.
+     Deliberately styled as inert: dashed border, muted background, every
+     interactive control disabled. This is the load-bearing honesty
+     surface of the whole board (doc 18 §5, invariant 23) — it must never
+     read as "on" in any state, including populated. ---- */
+  .s28-dormant { border-style: dashed; background: hsl(var(--muted) / 0.1); }
+  .s28-phase-tag {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: auto;
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3px 9px; border-radius: 999px; border: 1px dashed hsl(var(--muted-foreground) / 0.6);
+    color: hsl(var(--muted-foreground)); white-space: nowrap;
+  }
+  .s28-dormant .s28-card-title { color: hsl(var(--muted-foreground)); }
+  .s28-dormant .s28-field input,
+  .s28-dormant .s28-hostchip { color: hsl(var(--muted-foreground)); border-style: dashed; opacity: 0.75; }
+  .s28-scope-chip { font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px dashed hsl(var(--muted-foreground) / 0.5); color: hsl(var(--muted-foreground)); }
+  .s28-scope-chip.never { border-color: hsl(var(--destructive) / 0.5); color: hsl(var(--destructive)); }
+
+  /* ---- loading skeleton ---- */
+  .s28-skel-card { display: flex; flex-direction: column; gap: 9px; padding: 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s28-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s28-skel-bar.title { width: 110px; height: 12px; }
+  .s28-skel-bar.full { width: 100%; }
+  .s28-skel-bar.w60 { width: 60%; }
+  .s28-skel-bar.w40 { width: 40%; }
+
+  /* ---- error alert ---- */
+  .s28-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s28-alert svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s28-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s28-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s28-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s28-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+</style>
+
+<div class="s28-intro">
+  <h2>S28 &mdash; Settings &middot; Security</h2>
+  <p>
+    The Security tab (doc 13 &sect;7, doc 18): <b>auth</b> (the admin password-change form and the signed-in
+    session's cookie-JWT state), <b>tokens</b> (the refresh/blocklist rotation state and the
+    mass-revocation-by-<code>iat</code> rule a password change triggers), and <b>TOFU status</b> (the
+    trust-on-first-use setup claim and the <code>require_uninitialized</code> gate it leaves behind). The
+    panel also renders the <b>LAN trust model</b> honestly as the v1 committed posture (doc 18 &sect;2:
+    <code>/mcp</code> unauthenticated behind the Host allowlist only, <code>/api/v1</code>+<code>/ws</code>
+    behind the human cookie, <code>/setup</code> as TOFU) and keeps the dormant <code>ApiKey</code> bearer
+    path visibly <b>Phase&#8209;4, designed but not wired</b> &mdash; every write today still passes
+    <code>api_key_id=None</code> &mdash; so nothing on this screen ever overclaims a credential path that does
+    not exist yet (invariant 23).
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S28-empty">
+  <h2>Security &mdash; empty (fresh install, just past the TOFU claim)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, and here it cannot mean "no security config."</b> Auth and TOFU status
+    are never legitimately absent &mdash; the moment the setup wizard finalizes, <code>admin_password_hash</code>
+    exists and <code>require_uninitialized</code> is already gating <code>/setup</code>. The honest empty
+    condition for this screen is a <b>fresh box with zero event history</b>: no token rotations yet, no
+    lockouts yet, the MCP allowlist still at its shipped default (localhost-only, <code>MCP_ALLOWED_HOSTS</code>
+    unset). The TOFU status card below is this board's required verification surface (doc 13 &sect;7) and it
+    already reads <b>claimed</b>, never "empty" &mdash; a bootstrap outcome is not a list that can have zero
+    rows.
+  </div>
+  <div class="board-body">
+    <div class="s28-panel">
+      <div class="s28-panel-header">
+        <span class="title">Security</span>
+        <span class="meta">0 blocklisted tokens &middot; 0 lockouts recorded</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s28-panel-body">
+        <div class="s28-grid">
+          <div class="s28-card">
+            <div class="s28-card-header">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z"/></svg>
+              <span class="s28-card-title">Auth</span>
+            </div>
+            <div class="s28-card-body">
+              <div class="s28-row"><span class="k">session</span><span class="v">signed in &mdash; cookie-JWT minted at setup finalize</span></div>
+              <div class="s28-row"><span class="k">lockouts</span><span class="v">none recorded yet</span></div>
+            </div>
+          </div>
+          <div class="s28-card">
+            <div class="s28-card-header">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="s28-card-title">Tokens</span>
+            </div>
+            <div class="s28-card-body">
+              <div class="s28-row"><span class="k">blocklist</span><span class="v">0 rows &mdash; no refresh or password change has rotated a token yet</span></div>
+            </div>
+          </div>
+          <div class="s28-card s28-full">
+            <div class="s28-card-header">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+              <span class="s28-card-title">Setup &mdash; trust-on-first-use</span>
+              <span class="state-chip state-populated">claimed</span>
+            </div>
+            <div class="s28-card-body">
+              <div class="s28-row"><span class="k">claimed</span><span class="v">2026-07-24 08:41 UTC &mdash; this wizard run is the box's only owner</span></div>
+              <div class="s28-row"><span class="k">gate</span><span class="v"><code>require_uninitialized</code> now 403s every request to <code>/api/v1/setup/*</code></span></div>
+              <div class="s28-row"><span class="k">journaled</span><span class="v"><code>events: setup_completed</code> @ 2026-07-24 08:41 UTC</span></div>
+              <div class="s28-note">No <code>SETUP_SECRET</code> was needed or used &mdash; the first party to finish the wizard owns the box; every later attempt gets the same 403 shown above.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S28-loading">
+  <h2>Security &mdash; loading</h2>
+  <div class="annotation">
+    Skeleton bars mirror the module cards' exact title / row / status-pill slots so the board never jumps once
+    the security config rows (<code>token_blocklist</code> counts, lockout history, the TOFU claim row, the
+    MCP allowlist) resolve (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s28-panel">
+      <div class="s28-panel-header">
+        <span class="title">Security</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s28-panel-body">
+        <div class="s28-grid">
+          <div class="s28-skel-card">
+            <span class="s28-skel-bar title"></span>
+            <span class="s28-skel-bar full"></span>
+            <span class="s28-skel-bar w60"></span>
+          </div>
+          <div class="s28-skel-card">
+            <span class="s28-skel-bar title"></span>
+            <span class="s28-skel-bar full"></span>
+            <span class="s28-skel-bar w40"></span>
+          </div>
+          <div class="s28-skel-card">
+            <span class="s28-skel-bar title"></span>
+            <span class="s28-skel-bar w60"></span>
+            <span class="s28-skel-bar full"></span>
+          </div>
+          <div class="s28-skel-card">
+            <span class="s28-skel-bar title"></span>
+            <span class="s28-skel-bar full"></span>
+            <span class="s28-skel-bar w40"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S28-error">
+  <h2>Security &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list, and it does not mean you were signed out.</b> When the
+    <code>config</code>/<code>token_blocklist</code> read behind this panel fails, the board raises a named
+    error instead of quietly showing zero rows indistinguishable from the genuinely-fresh empty state above
+    (invariant 14). Your own cookie session is unaffected &mdash; you are still authenticated, since reaching
+    Settings already required it &mdash; this failure is scoped to the panel's own read, not to auth itself.
+  </div>
+  <div class="board-body">
+    <div class="s28-panel">
+      <div class="s28-panel-header">
+        <span class="title">Security</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s28-panel-body">
+        <div class="s28-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load security state &mdash; the config-table read failed</span>
+            <span class="desc">Token-blocklist counts, lockout history, and the TOFU claim timestamp could not
+              be read. You're still signed in and the password-change form below still works &mdash; only this
+              panel's read-side is degraded.</span>
+            <span class="s28-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S28-populated">
+  <h2>Security &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    Five module cards: <b>Auth</b> (session state, password change, per-IP login rate limiting), <b>Tokens</b>
+    (blocklist rotation, the three-exit lifecycle, <code>cookie_secure</code>'s tri-state), <b>Setup &mdash;
+    trust-on-first-use</b> (the required verification surface for this board), <b>LAN trust model</b> (the
+    three doors of doc 18 &sect;2, rendered as the shipped v1 posture, plus the live <code>MCP_ALLOWED_HOSTS</code>
+    allowlist), and the dashed, muted <b>programmatic ApiKey bearer</b> card &mdash; every field and button
+    inside it is disabled, because the <code>api_keys</code> table is dormant and unwired (doc 18 &sect;5):
+    this is a Phase&#8209;4 activation item with a fixed design, not a toggle a v1 operator can flip.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s28-panel">
+          <div class="s28-panel-header">
+            <span class="title">Security</span>
+            <span class="meta">186 blocklisted &middot; 2 lockouts / 30d</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s28-panel-body">
+            <div class="s28-grid">
+
+              <div class="s28-card">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z"/></svg>
+                  <span class="s28-card-title">Auth</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-row"><span class="k">session</span><span class="v">signed in &mdash; cookie-JWT, HttpOnly, HS256, issued 2026-07-24 09:12 UTC, <code>jti</code> 7f3a&hellip;c02e</span></div>
+                  <div class="s28-field-row">
+                    <div class="s28-field"><label>Current password</label><input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+                    <div class="s28-field"><label>New password</label><input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+                    <div class="s28-field"><label>Confirm new password</label><input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+                  </div>
+                  <button type="button" class="s28-btn s28-btn-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+                    Change password
+                  </button>
+                  <div class="s28-note caution"><b>Changing your password revokes every token minted before this moment</b> &mdash; the <code>iat</code> check treats them as dead on arrival, so any other signed-in session is signed out immediately.</div>
+                  <div class="s28-card-sub">
+                    <span class="s28-sub-label">login rate limiting &mdash; per-ip with lockout</span>
+                    <div class="s28-row"><span class="k">attempt threshold</span><span class="v">5 failed attempts</span></div>
+                    <div class="s28-row"><span class="k">lockout window</span><span class="v">15 minutes</span></div>
+                    <div class="s28-row"><span class="k">ip source</span><span class="v"><code>X-Real-IP</code> (bundled-nginx posture, trusted proxy) &mdash; the leftmost <code>X-Forwarded-For</code> is never trusted; flips to the raw transport peer under the app-as-edge one-image build (target-new, doc 18 &sect;4)</span></div>
+                    <div class="s28-row"><span class="k">journaled</span><span class="v">2 <code>auth_lockout</code> events in the last 30 days</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s28-card">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <span class="s28-card-title">Tokens</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-row"><span class="k">blocklist</span><span class="v">186 rows &mdash; swept by <code>token_blocklist_cleanup</code>, hourly, only after natural expiry</span></div>
+                  <div class="s28-note">Revocation must outlive the token, never the reverse &mdash; a blocklisted <code>jti</code> is checked on every authenticated request until its own <code>exp</code> passes.</div>
+                  <div class="s28-pillflow">
+                    <span class="step active">active</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">blocklisted (rotation)</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">swept</span>
+                  </div>
+                  <div class="s28-pillflow">
+                    <span class="step active">active</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">dead by <code>iat</code> (password change &mdash; ALL pre-change tokens)</span>
+                  </div>
+                  <div class="s28-pillflow">
+                    <span class="step active">active</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">expired (<code>exp</code> elapses)</span>
+                  </div>
+                  <div class="s28-card-sub">
+                    <span class="s28-sub-label">cookie_secure &mdash; tri-state</span>
+                    <div class="s28-row"><span class="k">value</span><span class="v"><code>false</code> &mdash; explicit, permits login over plain-HTTP LAN</span></div>
+                    <div class="s28-note">Unset would mean Secure-only when <code>environment=production</code>; this deployment set it explicitly for the no-TLS home LAN and it flips back to enforced-Secure the moment an exposed deployment puts TLS in front.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s28-card s28-full">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+                  <span class="s28-card-title">Setup &mdash; trust-on-first-use</span>
+                  <span class="state-chip state-populated">claimed</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-row"><span class="k">claimed</span><span class="v">2026-05-02 08:03 UTC &mdash; this wizard run is the box's only owner</span></div>
+                  <div class="s28-row"><span class="k">gate</span><span class="v"><code>require_uninitialized</code> 403s every request to <code>/api/v1/setup/*</code> now that <code>admin_password_hash</code> exists</span></div>
+                  <div class="s28-row"><span class="k">journaled</span><span class="v"><code>events: setup_completed</code> @ 2026-05-02 08:03 UTC</span></div>
+                  <div class="s28-note">There is no <code>SETUP_SECRET</code> and none will be reintroduced &mdash; on a single-human LAN box the secret-distribution problem is strictly worse than the TOFU race it would close, and the race window is bounded by the LAN boundary plus the minutes between first boot and the wizard.</div>
+                </div>
+              </div>
+
+              <div class="s28-card s28-full">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+                  <span class="s28-card-title">LAN trust model</span>
+                  <span class="s28-card-tag">v1 committed posture</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-note">darkmem trusts its LAN, authenticates its human, and attributes &mdash; but does not authenticate &mdash; its agents (doc 18 &sect;1). Three postures, one service layer underneath all of them:</div>
+                  <div class="s28-door">
+                    <div class="s28-door-top"><span class="s28-door-path">/mcp</span><span class="s28-door-defense">Host allowlist only, no credential</span></div>
+                    <div class="s28-door-desc">Unauthenticated by design (invariant 20). A foreign <code>Host</code> header gets <b>421</b>, fixed by extending the allowlist &mdash; never by disabling the check.</div>
+                    <div class="s28-chiplist">
+                      <span class="s28-hostchip">localhost (always)</span>
+                      <span class="s28-hostchip">192.168.0.195:8000</span>
+                      <span class="s28-hostchip wild">* &mdash; disables the check entirely (explicit operator decision, not a fix)</span>
+                    </div>
+                  </div>
+                  <div class="s28-door">
+                    <div class="s28-door-top"><span class="s28-door-path">/api/v1 + /ws</span><span class="s28-door-defense">cookie JWT &mdash; the human door</span></div>
+                    <div class="s28-door-desc">The one authenticated door on this box; <code>/ws</code> rejects a missing/invalid/revoked token with close code 1008 before joining the broadcast set.</div>
+                  </div>
+                  <div class="s28-door">
+                    <div class="s28-door-top"><span class="s28-door-path">/setup</span><span class="s28-door-defense">trust-on-first-use, open only until claimed</span></div>
+                    <div class="s28-door-desc">See the Setup card above &mdash; closes itself permanently the moment the first wizard run completes.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s28-card s28-full s28-dormant">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="3.2"/><path d="M10.3 12.7 20 3"/><path d="M16 7l3 3"/><path d="M3 3l18 18"/></svg>
+                  <span class="s28-card-title">Programmatic ApiKey bearer</span>
+                  <span class="s28-phase-tag">Phase-4 &middot; designed, not wired</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-note">The <code>api_keys</code> table exists in the schema but is dormant &mdash; every write on this box today still passes <code>api_key_id=None</code>. This card previews the fixed design (doc 18 &sect;5) so no interim feature invents a second credential shape; it is <b>not available in this deployment</b> and every control below is disabled.</div>
+                  <div class="s28-field-row">
+                    <div class="s28-field"><label>Key label</label><input type="text" placeholder="unavailable until activation" disabled></div>
+                    <div class="s28-field"><label>Scope</label><input type="text" placeholder="capture / read / admin" disabled></div>
+                    <div class="s28-field"><label>Expiry</label><input type="text" placeholder="optional" disabled></div>
+                  </div>
+                  <button type="button" class="s28-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="3.2"/><path d="M10.3 12.7 20 3"/><path d="M16 7l3 3"/></svg>
+                    Create key &mdash; unavailable until activation
+                  </button>
+                  <div class="s28-chiplist">
+                    <span class="s28-scope-chip">capture</span>
+                    <span class="s28-scope-chip">read</span>
+                    <span class="s28-scope-chip">admin</span>
+                    <span class="s28-scope-chip never">ratify &mdash; never a scope, human cookie session only</span>
+                  </div>
+                  <div class="s28-note">Activates on the first genuine off-LAN need &mdash; an exposed deployment or the repo push-webhook receiver, whichever comes first &mdash; and is a recorded design, not a v1 commitment (doc 18 &sect;5, invariant 23). The Host allowlist above stays on even after activation; a bearer key is defense in addition to it, never instead of it.</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s28-panel">
+          <div class="s28-panel-header">
+            <span class="title">Security</span>
+            <span class="meta">186 blocklisted &middot; 2 lockouts / 30d</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s28-panel-body">
+            <div class="s28-grid">
+
+              <div class="s28-card">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z"/></svg>
+                  <span class="s28-card-title">Auth</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-row"><span class="k">session</span><span class="v">signed in &mdash; cookie-JWT, HttpOnly, HS256, issued 2026-07-24 09:12 UTC, <code>jti</code> 7f3a&hellip;c02e</span></div>
+                  <div class="s28-field-row">
+                    <div class="s28-field"><label>Current password</label><input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+                    <div class="s28-field"><label>New password</label><input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+                    <div class="s28-field"><label>Confirm new password</label><input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"></div>
+                  </div>
+                  <button type="button" class="s28-btn s28-btn-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+                    Change password
+                  </button>
+                  <div class="s28-note caution"><b>Changing your password revokes every token minted before this moment</b> &mdash; the <code>iat</code> check treats them as dead on arrival, so any other signed-in session is signed out immediately.</div>
+                  <div class="s28-card-sub">
+                    <span class="s28-sub-label">login rate limiting &mdash; per-ip with lockout</span>
+                    <div class="s28-row"><span class="k">attempt threshold</span><span class="v">5 failed attempts</span></div>
+                    <div class="s28-row"><span class="k">lockout window</span><span class="v">15 minutes</span></div>
+                    <div class="s28-row"><span class="k">ip source</span><span class="v"><code>X-Real-IP</code> (bundled-nginx posture, trusted proxy) &mdash; the leftmost <code>X-Forwarded-For</code> is never trusted; flips to the raw transport peer under the app-as-edge one-image build (target-new, doc 18 &sect;4)</span></div>
+                    <div class="s28-row"><span class="k">journaled</span><span class="v">2 <code>auth_lockout</code> events in the last 30 days</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s28-card">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <span class="s28-card-title">Tokens</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-row"><span class="k">blocklist</span><span class="v">186 rows &mdash; swept by <code>token_blocklist_cleanup</code>, hourly, only after natural expiry</span></div>
+                  <div class="s28-note">Revocation must outlive the token, never the reverse &mdash; a blocklisted <code>jti</code> is checked on every authenticated request until its own <code>exp</code> passes.</div>
+                  <div class="s28-pillflow">
+                    <span class="step active">active</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">blocklisted (rotation)</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">swept</span>
+                  </div>
+                  <div class="s28-pillflow">
+                    <span class="step active">active</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">dead by <code>iat</code> (password change &mdash; ALL pre-change tokens)</span>
+                  </div>
+                  <div class="s28-pillflow">
+                    <span class="step active">active</span>
+                    <span class="arrow">&rarr;</span>
+                    <span class="step">expired (<code>exp</code> elapses)</span>
+                  </div>
+                  <div class="s28-card-sub">
+                    <span class="s28-sub-label">cookie_secure &mdash; tri-state</span>
+                    <div class="s28-row"><span class="k">value</span><span class="v"><code>false</code> &mdash; explicit, permits login over plain-HTTP LAN</span></div>
+                    <div class="s28-note">Unset would mean Secure-only when <code>environment=production</code>; this deployment set it explicitly for the no-TLS home LAN and it flips back to enforced-Secure the moment an exposed deployment puts TLS in front.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s28-card s28-full">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+                  <span class="s28-card-title">Setup &mdash; trust-on-first-use</span>
+                  <span class="state-chip state-populated">claimed</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-row"><span class="k">claimed</span><span class="v">2026-05-02 08:03 UTC &mdash; this wizard run is the box's only owner</span></div>
+                  <div class="s28-row"><span class="k">gate</span><span class="v"><code>require_uninitialized</code> 403s every request to <code>/api/v1/setup/*</code> now that <code>admin_password_hash</code> exists</span></div>
+                  <div class="s28-row"><span class="k">journaled</span><span class="v"><code>events: setup_completed</code> @ 2026-05-02 08:03 UTC</span></div>
+                  <div class="s28-note">There is no <code>SETUP_SECRET</code> and none will be reintroduced &mdash; on a single-human LAN box the secret-distribution problem is strictly worse than the TOFU race it would close, and the race window is bounded by the LAN boundary plus the minutes between first boot and the wizard.</div>
+                </div>
+              </div>
+
+              <div class="s28-card s28-full">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+                  <span class="s28-card-title">LAN trust model</span>
+                  <span class="s28-card-tag">v1 committed posture</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-note">darkmem trusts its LAN, authenticates its human, and attributes &mdash; but does not authenticate &mdash; its agents (doc 18 &sect;1). Three postures, one service layer underneath all of them:</div>
+                  <div class="s28-door">
+                    <div class="s28-door-top"><span class="s28-door-path">/mcp</span><span class="s28-door-defense">Host allowlist only, no credential</span></div>
+                    <div class="s28-door-desc">Unauthenticated by design (invariant 20). A foreign <code>Host</code> header gets <b>421</b>, fixed by extending the allowlist &mdash; never by disabling the check.</div>
+                    <div class="s28-chiplist">
+                      <span class="s28-hostchip">localhost (always)</span>
+                      <span class="s28-hostchip">192.168.0.195:8000</span>
+                      <span class="s28-hostchip wild">* &mdash; disables the check entirely (explicit operator decision, not a fix)</span>
+                    </div>
+                  </div>
+                  <div class="s28-door">
+                    <div class="s28-door-top"><span class="s28-door-path">/api/v1 + /ws</span><span class="s28-door-defense">cookie JWT &mdash; the human door</span></div>
+                    <div class="s28-door-desc">The one authenticated door on this box; <code>/ws</code> rejects a missing/invalid/revoked token with close code 1008 before joining the broadcast set.</div>
+                  </div>
+                  <div class="s28-door">
+                    <div class="s28-door-top"><span class="s28-door-path">/setup</span><span class="s28-door-defense">trust-on-first-use, open only until claimed</span></div>
+                    <div class="s28-door-desc">See the Setup card above &mdash; closes itself permanently the moment the first wizard run completes.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s28-card s28-full s28-dormant">
+                <div class="s28-card-header">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="3.2"/><path d="M10.3 12.7 20 3"/><path d="M16 7l3 3"/><path d="M3 3l18 18"/></svg>
+                  <span class="s28-card-title">Programmatic ApiKey bearer</span>
+                  <span class="s28-phase-tag">Phase-4 &middot; designed, not wired</span>
+                </div>
+                <div class="s28-card-body">
+                  <div class="s28-note">The <code>api_keys</code> table exists in the schema but is dormant &mdash; every write on this box today still passes <code>api_key_id=None</code>. This card previews the fixed design (doc 18 &sect;5) so no interim feature invents a second credential shape; it is <b>not available in this deployment</b> and every control below is disabled.</div>
+                  <div class="s28-field-row">
+                    <div class="s28-field"><label>Key label</label><input type="text" placeholder="unavailable until activation" disabled></div>
+                    <div class="s28-field"><label>Scope</label><input type="text" placeholder="capture / read / admin" disabled></div>
+                    <div class="s28-field"><label>Expiry</label><input type="text" placeholder="optional" disabled></div>
+                  </div>
+                  <button type="button" class="s28-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="3.2"/><path d="M10.3 12.7 20 3"/><path d="M16 7l3 3"/></svg>
+                    Create key &mdash; unavailable until activation
+                  </button>
+                  <div class="s28-chiplist">
+                    <span class="s28-scope-chip">capture</span>
+                    <span class="s28-scope-chip">read</span>
+                    <span class="s28-scope-chip">admin</span>
+                    <span class="s28-scope-chip never">ratify &mdash; never a scope, human cookie session only</span>
+                  </div>
+                  <div class="s28-note">Activates on the first genuine off-LAN need &mdash; an exposed deployment or the repo push-webhook receiver, whichever comes first &mdash; and is a recorded design, not a v1 commitment (doc 18 &sect;5, invariant 23). The Host allowlist above stays on even after activation; a bearer key is defense in addition to it, never instead of it.</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

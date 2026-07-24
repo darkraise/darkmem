@@ -1,0 +1,812 @@
+<style>
+  /* S30 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .badge/.badge.corroborated/
+     .badge.superseded, .layer-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S30-only layout: the
+     per-client connect-status row, the managed-block preview (marker-
+     bounded, doc 15 section 3.2), the curb switch, the inject-content-
+     policy card, the inject log, the render-watermark register, and the
+     labels-survive-injection demonstration panel. Reads var(--token) /
+     hsl(var(--token)) only; no hex, no redeclared tokens. Namespaced s30-
+     so it can never collide with another fragment's local styles once
+     build.py concatenates them.
+
+     The connect-status pill reuses the shared .state-chip verbatim for
+     its pill shape+colour (state-populated = connected, state-empty =
+     not connected) — same precedent S14/S21 set reusing state-chip for a
+     per-row domain status rather than inventing a parallel chip
+     vocabulary. It is not one of the four whole-board render states. */
+
+  .s30-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s30-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s30-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s30-section { display: flex; flex-direction: column; gap: 10px; }
+  .s30-section > h3 { margin: 0; font-size: 14px; font-weight: 640; color: hsl(var(--foreground)); display: flex; align-items: center; gap: 7px; }
+  .s30-section > h3 svg { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); flex: none; }
+
+  /* ---- the surface every state instantiates ---- */
+  .s30-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s30-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); flex-wrap: wrap; }
+  .s30-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s30-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s30-surface-body { padding: 14px; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ---- per-client connect-status row ---- */
+  .s30-client { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s30-client.curbed { border-color: hsl(var(--warning) / 0.5); background: hsl(var(--warning) / 0.05); }
+  .s30-client.disconnected { border-style: dashed; }
+  .s30-client-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s30-client-top svg.icon { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s30-client-name { font-weight: 620; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s30-client-top .meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s30-client-paths { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-family: var(--font-mono); font-size: 11.5px; }
+  .s30-client-paths dt { color: hsl(var(--muted-foreground)); }
+  .s30-client-paths dd { margin: 0; color: hsl(var(--foreground)); word-break: break-word; }
+  .s30-client-row2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s30-client-row2 b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- curb switch — reused visual vocabulary of a binary on/off pill,
+     board-local since mockup.css declares no shared switch primitive
+     (same choice S14's reindex-toggle dialog made) ---- */
+  .s30-curb-line { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+  .s30-curb-label { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s30-switch { width: 34px; height: 19px; border-radius: 999px; background: hsl(var(--primary) / 0.28); border: 1px solid hsl(var(--primary) / 0.6); position: relative; flex: none; }
+  .s30-switch::after { content: ""; position: absolute; top: 1px; right: 1px; width: 15px; height: 15px; border-radius: 50%; background: hsl(var(--primary)); }
+  .s30-switch.off { background: hsl(var(--muted)); border-color: hsl(var(--border)); }
+  .s30-switch.off::after { right: auto; left: 1px; background: hsl(var(--muted-foreground)); }
+
+  .s30-curbed-note { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.1); font-size: 12px; color: hsl(var(--foreground)); }
+  .s30-curbed-note svg { width: 13px; height: 13px; color: hsl(var(--warning)); flex: none; }
+
+  .s30-cta-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .s30-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background));
+    white-space: nowrap;
+  }
+  .s30-btn svg { width: 12px; height: 12px; flex: none; }
+  .s30-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s30-btn-caution { border-color: hsl(var(--warning) / 0.6); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.08); }
+
+  /* ---- managed-block preview: marker-bounded, doc 15 section 3.2 ---- */
+  .s30-block-preview { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); color: hsl(var(--foreground)); overflow-x: auto; white-space: pre; }
+  .s30-block-preview .marker { color: hsl(var(--muted-foreground)); }
+  .s30-block-preview .human { color: hsl(var(--muted-foreground)); font-style: italic; }
+  .s30-block-preview .hdr { color: hsl(var(--muted-foreground)); }
+
+  /* ---- inject content policy card ---- */
+  .s30-policy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .s30-policy-grid { grid-template-columns: 1fr; } }
+  .s30-policy-fill { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px; flex-wrap: wrap; padding: 10px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s30-policy-fill .arrow { color: hsl(var(--muted-foreground)); }
+  .s30-config-row { display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s30-config-row .k { font-family: var(--font-mono); font-size: 12px; font-weight: 620; color: hsl(var(--foreground)); }
+  .s30-config-row .v { font-family: var(--font-mono); font-size: 13px; color: hsl(var(--primary)); }
+  .s30-config-row .d { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- inject log ---- */
+  .s30-log-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); font-size: 12.5px; flex-wrap: wrap; }
+  .s30-log-row.curb { border-color: hsl(var(--warning) / 0.5); background: hsl(var(--warning) / 0.05); }
+  .s30-log-row svg.evt { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s30-log-row.curb svg.evt { color: hsl(var(--warning)); }
+  .s30-log-target { font-family: var(--font-mono); font-weight: 620; color: hsl(var(--foreground)); }
+  .s30-log-time { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s30-log-detail { color: hsl(var(--muted-foreground)); flex: 1 1 200px; }
+  .s30-log-detail b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s30-log-meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  /* ---- labels-survive-injection demonstration ---- */
+  .s30-inject-preview { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.1); }
+  .s30-inject-item { display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s30-inject-item .row1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s30-inject-item .txt { font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s30-inject-item .as-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s30-inject-item .as-label b { color: hsl(var(--foreground)); }
+
+  /* ---- render watermark register ---- */
+  .s30-watermark-row { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0; font-family: var(--font-mono); font-size: 11.5px; padding: 9px 11px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s30-watermark-row dt { color: hsl(var(--muted-foreground)); }
+  .s30-watermark-row dd { margin: 0; color: hsl(var(--foreground)); word-break: break-word; }
+
+  /* ---- empty / loading / error surfaces (board-local, own visual
+     vocabulary — same family as C04's but re-authored per fragment,
+     the pattern S21/S14 already established rather than cross-
+     referencing another fragment's local classes) ---- */
+  .s30-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 18px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s30-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s30-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s30-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 620px; }
+  .s30-empty .why b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s30-skel-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s30-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s30-skel-bar.chip { width: 70px; }
+  .s30-skel-bar.name { width: 120px; }
+  .s30-skel-bar.text { flex: 1 1 200px; }
+  .s30-skel-bar.meta { width: 90px; }
+
+  .s30-error-banner { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s30-error-banner svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s30-error-banner .body { display: flex; flex-direction: column; gap: 6px; }
+  .s30-error-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s30-error-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 640px; }
+  .s30-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+</style>
+
+<div class="s30-intro">
+  <h2>S30 — Settings &middot; Distribution</h2>
+  <p>
+    The Distribution tab of Settings (doc 13 &sect;6.5, doc 15): <b>connect status per client</b> (Claude
+    Code, Cursor, Codex CLI, Cline), <b>per-target managed-block configuration</b> (the marker-bounded block
+    written into each tool's native session-context file, doc 15 &sect;3.2), the <b>inject content policy
+    and token budget</b> (what gets injected and under what <code>config</code>-row budget, doc 15
+    &sect;3.4), the <b>curb control</b> (the human sees and curbs push &mdash; never a silent context swap,
+    doc 01 F10), the <b>inject log</b> (the durable <code>event_type=inject</code> record, doc 15 &sect;7),
+    the <b>render watermark</b> (a <code>config</code> row, not a table, doc 04 &sect;7), and
+    <b>labels-survive-injection</b> visibility &mdash; a corroborated fact is pushed into a tool's context
+    still labelled corroborated, a superseded memory still labelled superseded. Almost everything this board
+    renders is target-new (doc 15 &sect;1's scaffolding-honesty note): the pull door
+    (<code>memory_search</code> over <code>/mcp</code>) exists today, but <code>DistributionService</code>,
+    auto-inject, and the managed-block writer are all target work.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S30-empty">
+  <h2>Distribution &mdash; empty (no clients connected)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, and offers the fix.</b> A fresh install has run no onboarding command
+    yet, so no client's MCP config has been written and no push has ever fired &mdash; the empty state names
+    that cause and surfaces the exact one-command fix (doc 15 &sect;5) rather than a bare blank.
+  </div>
+  <div class="board-body">
+    <div class="s30-surface">
+      <div class="s30-surface-header">
+        <span class="title">Distribution</span>
+        <span class="meta">0 clients connected</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s30-surface-body">
+        <div class="s30-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v4"/><path d="M15 2v4"/><path d="M7 6h10v4a5 5 0 0 1-10 0V6Z"/><path d="M12 15v6"/></svg>
+          <span class="headline">No clients connected</span>
+          <span class="why">darkmem has not been wired into any agent tool yet &mdash; no <code>.mcp.json</code>,
+            <code>.cursor/mcp.json</code>, <code>~/.codex/config.toml</code>, or Cline MCP settings entry
+            points here. Connect one to start pulling context via MCP tools and, optionally, pushing an
+            auto-injected managed block.</span>
+          <div class="s30-cta-row">
+            <button type="button" class="s30-btn s30-btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+              darkmem onboard &mdash; detect &amp; connect all installed tools
+            </button>
+            <button type="button" class="s30-btn">darkmem connect claude-code</button>
+            <button type="button" class="s30-btn">darkmem connect cursor</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S30-loading">
+  <h2>Distribution &mdash; loading</h2>
+  <div class="annotation">
+    Loading skeletons mirror the exact icon / name / status-chip / meta slots the populated client rows
+    below fill in, so the board never jumps once the connect-status and inject-log reads resolve (doc 14
+    &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s30-surface">
+      <div class="s30-surface-header">
+        <span class="title">Distribution</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s30-surface-body">
+        <div class="s30-skel-row"><span class="s30-skel-bar chip"></span><span class="s30-skel-bar name"></span><span class="s30-skel-bar text"></span><span class="s30-skel-bar meta"></span></div>
+        <div class="s30-skel-row"><span class="s30-skel-bar chip"></span><span class="s30-skel-bar name"></span><span class="s30-skel-bar text"></span><span class="s30-skel-bar meta"></span></div>
+        <div class="s30-skel-row"><span class="s30-skel-bar chip"></span><span class="s30-skel-bar name"></span><span class="s30-skel-bar text"></span><span class="s30-skel-bar meta"></span></div>
+        <div class="s30-skel-row"><span class="s30-skel-bar chip"></span><span class="s30-skel-bar name"></span><span class="s30-skel-bar text"></span><span class="s30-skel-bar meta"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S30-error">
+  <h2>Distribution &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list.</b> When the render-watermark <code>config</code> rows or the
+    <code>events</code> read behind the inject log fails, the board raises a named error rather than
+    returning zero rows indistinguishable from the genuine no-clients empty state (invariant 14) &mdash;
+    retry stays offered, and each connected client's own push keeps running server-side even while this
+    board cannot display it (the same "the mechanism is unaffected by the display failing" framing S21 uses
+    for the job registry).
+  </div>
+  <div class="board-body">
+    <div class="s30-surface">
+      <div class="s30-surface-header">
+        <span class="title">Distribution</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s30-surface-body">
+        <div class="s30-error-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load distribution state &mdash; the config/events read failed</span>
+            <span class="desc">The <code>distribution:watermark:*</code> <code>config</code> rows and the
+              <code>inject</code>/<code>inject_curbed</code> <code>events</code> rows could not be read.
+              This is a display failure only: a client whose push was already active keeps injecting on its
+              own session-start cadence, and a curb already in effect stays in effect &mdash; neither is
+              controlled by this board's own uptime.</span>
+            <span class="s30-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S30-populated">
+  <h2>Distribution &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    Four clients from doc 15 &sect;3.3's adapter registry (Claude Code, Cursor, Codex CLI, Cline) &mdash;
+    three connected and pushing, one <b>curbed</b> (Codex CLI: connected, but the human turned push off),
+    one <b>not yet connected</b> (Cline, its onboarding CTA shown inline &mdash; a per-row state distinct
+    from the whole-board empty above, which requires zero clients). Every module the brief names is
+    represented: connect status per client, per-target managed-block config, the inject content policy and
+    token budget, the curb control, the populated inject log, the render watermark, and a dedicated
+    labels-survive-injection panel.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+
+      <!-- ================= LIGHT ================= -->
+      <div class="theme-light">
+        <div class="s30-surface">
+          <div class="s30-surface-header">
+            <span class="title">Distribution</span>
+            <span class="meta">3 connected &middot; 1 curbed &middot; 1 not connected</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s30-surface-body">
+
+            <!-- ---- 1. connect status per client ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v4"/><path d="M15 2v4"/><path d="M7 6h10v4a5 5 0 0 1-10 0V6Z"/><path d="M12 15v6"/></svg>
+                Connect status per client
+              </h3>
+
+              <div class="s30-client">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span class="s30-client-name">Claude Code</span>
+                  <span class="state-chip state-populated">connected</span>
+                  <span class="meta">handshake ok &middot; 14 tools listed</span>
+                </div>
+                <dl class="s30-client-paths">
+                  <dt>context file</dt><dd>CLAUDE.md</dd>
+                  <dt>mcp config</dt><dd>.mcp.json</dd>
+                </dl>
+                <div class="s30-client-row2">
+                  <span>push: <b>active</b> &middot; last inject 14:12 UTC &middot; 8 items, 1,840/2,000 tokens</span>
+                  <div class="s30-curb-line">
+                    <span class="s30-curb-label">curb push</span>
+                    <span class="s30-switch" aria-hidden="true"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s30-client">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span class="s30-client-name">Cursor</span>
+                  <span class="state-chip state-populated">connected</span>
+                  <span class="meta">handshake ok &middot; 14 tools listed</span>
+                </div>
+                <dl class="s30-client-paths">
+                  <dt>context file</dt><dd>.cursor/rules/darkmem.mdc</dd>
+                  <dt>mcp config</dt><dd>.cursor/mcp.json</dd>
+                </dl>
+                <div class="s30-client-row2">
+                  <span>push: <b>active</b> &middot; last inject 14:10 UTC &middot; 6 items, 1,510/2,000 tokens</span>
+                  <div class="s30-curb-line">
+                    <span class="s30-curb-label">curb push</span>
+                    <span class="s30-switch" aria-hidden="true"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s30-client curbed">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span class="s30-client-name">Codex CLI</span>
+                  <span class="state-chip state-populated">connected</span>
+                  <span class="meta">handshake ok &middot; 14 tools listed</span>
+                </div>
+                <dl class="s30-client-paths">
+                  <dt>context file</dt><dd>AGENTS.md</dd>
+                  <dt>mcp config</dt><dd>~/.codex/config.toml [mcp_servers]</dd>
+                </dl>
+                <div class="s30-client-row2">
+                  <span>push: <b>curbed</b> by operator, 2026-07-24 13:58 UTC</span>
+                  <div class="s30-curb-line">
+                    <span class="s30-curb-label">curb push</span>
+                    <span class="s30-switch off" aria-hidden="true"></span>
+                  </div>
+                </div>
+                <div class="s30-curbed-note">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg>
+                  Pull (MCP tools) is unaffected &mdash; only push stopped. <code>AGENTS.md</code>'s managed
+                  block was rewritten to an empty marker pair, not removed; re-enabling resumes idempotently.
+                </div>
+              </div>
+
+              <div class="s30-client disconnected">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+                  <span class="s30-client-name">Cline</span>
+                  <span class="state-chip state-empty">not connected</span>
+                  <span class="meta">no MCP config detected</span>
+                </div>
+                <div class="s30-client-row2">
+                  <span>Its adapter row exists in the registry (context file <code>.clinerules/darkmem.md</code>) but no <code>darkmem connect cline</code> has run yet.</span>
+                </div>
+                <div class="s30-cta-row">
+                  <button type="button" class="s30-btn s30-btn-primary">darkmem connect cline</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- 2. per-target managed-block configuration ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+                Per-target managed-block configuration &mdash; CLAUDE.md example
+              </h3>
+              <div class="s30-block-preview"><span class="human"># Project notes
+(the human's own rules — never touched)
+</span><span class="marker">&lt;!-- darkmem:begin --&gt;</span>
+<span class="hdr"># generated 2026-07-24T14:12:03Z, project darkmem, 8 items, 1,840/2,000 tokens</span>
+- [L2 · corroborated] hybrid_search_enabled is on by default; RRF k=60
+- [L2 · corroborated] confidence_rank_gamma defaults to 0 — inactive until raised
+- [L0 · summary] pipeline Phase 5 writes vector + graph in two savepoints
+  &hellip; 5 more, truth-first order, top-K under the token budget
+<span class="marker">&lt;!-- darkmem:end --&gt;</span></div>
+              <div class="s30-client-row2">
+                <span>Only the bytes between the two markers change on refresh (strip-before-rewrite, doc
+                  15 &sect;3.2); the human's own content above the block is never touched.</span>
+              </div>
+            </div>
+
+            <!-- ---- 3. inject content policy + token budget ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>
+                Inject content policy &amp; token budget
+              </h3>
+              <div class="s30-policy-fill">
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="arrow">&rarr;</span>
+                <span class="layer-chip l3">L3 &middot; article</span>
+                <span class="arrow">&rarr;</span>
+                <span class="layer-chip l0">L0 &middot; summary</span>
+                <span class="arrow">&rarr;</span>
+                <span>fill truth-first until the budget is spent, then stop (top-K, stated in the block header — not silent degradation)</span>
+              </div>
+              <div class="s30-policy-grid">
+                <div class="s30-config-row">
+                  <span class="k">inject_token_budget</span>
+                  <span class="v">2,000 tokens</span>
+                  <span class="d">config row, per-target tunable — Codex CLI overrides to 1,200 below</span>
+                </div>
+                <div class="s30-config-row">
+                  <span class="k">refresh cadence</span>
+                  <span class="v">session-start</span>
+                  <span class="d">one F3 read + one idempotent write per session; watch mode is a deferred, config-gated Phase-4 enhancement</span>
+                </div>
+                <div class="s30-config-row">
+                  <span class="k">cold-start fallback</span>
+                  <span class="v">candidates, labelled</span>
+                  <span class="d">served only when nothing corroborated/confirmed fits the budget yet</span>
+                </div>
+              </div>
+              <div class="s30-config-row">
+                <span class="k">codex-cli override</span>
+                <span class="v">inject_token_budget = 1,200 tokens</span>
+                <span class="d">a smaller per-target budget, tuned for AGENTS.md's terser convention — the adapter registry and the budget are both config rows, never hard-coded (convention 9)</span>
+              </div>
+            </div>
+
+            <!-- ---- 4. inject log ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                Inject log &mdash; which inject happened where
+              </h3>
+              <div class="s30-log-row">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                <span class="s30-log-target">claude-code</span>
+                <span class="s30-log-detail">event_type <b>inject</b> &middot; project darkmem &middot; 8 items</span>
+                <span class="s30-log-time">2026-07-24 14:12:03 UTC</span>
+                <span class="s30-log-meta">1,840/2,000 tok</span>
+              </div>
+              <div class="s30-log-row">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                <span class="s30-log-target">cursor</span>
+                <span class="s30-log-detail">event_type <b>inject</b> &middot; project darkmem &middot; 6 items</span>
+                <span class="s30-log-time">2026-07-24 14:10:41 UTC</span>
+                <span class="s30-log-meta">1,510/2,000 tok</span>
+              </div>
+              <div class="s30-log-row curb">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg>
+                <span class="s30-log-target">codex-cli</span>
+                <span class="s30-log-detail">event_type <b>inject_curbed</b> &middot; push disabled by operator q.tran</span>
+                <span class="s30-log-time">2026-07-24 13:58:12 UTC</span>
+                <span class="s30-log-meta">block &rarr; empty markers</span>
+              </div>
+              <div class="s30-log-row">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                <span class="s30-log-target">codex-cli</span>
+                <span class="s30-log-detail">event_type <b>inject</b> &middot; project darkmem &middot; 5 items (last delivery before the curb above)</span>
+                <span class="s30-log-time">2026-07-24 13:40:02 UTC</span>
+                <span class="s30-log-meta">960/1,200 tok</span>
+              </div>
+              <div class="annotation">
+                <code>inject_curbed</code> is a target-new addition to doc 04 &sect;8.1's closed
+                <code>event_type</code> vocabulary &mdash; edited into the taxonomy before any code writes
+                it, never bypassed with a free-form value (doc 15 &sect;7). Each row records that the server
+                <i>selected and returned</i> N items for a target; it is not a receipt that the client's file
+                was actually written &mdash; an honest limit of the pull-then-write model, stated rather than
+                implied away.
+              </div>
+            </div>
+
+            <!-- ---- 5. labels survive injection ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 13V7a2 2 0 0 0-2-2h-6L4 13l8 8 8-8Z"/><circle cx="8.5" cy="9.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+                Labels survive injection &mdash; expanding the 14:12 UTC claude-code delivery
+              </h3>
+              <div class="s30-inject-preview">
+                <div class="s30-inject-item">
+                  <div class="row1">
+                    <span class="layer-chip l2">L2 &middot; fact</span>
+                    <span class="badge corroborated">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                      corroborated
+                    </span>
+                    <span class="as-label">injected as: <b>corroborated</b></span>
+                  </div>
+                  <span class="txt">asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20 &mdash; hybrid_search_enabled is on by default; RRF k=60</span>
+                </div>
+                <div class="s30-inject-item">
+                  <div class="row1">
+                    <span class="layer-chip l0">L0 &middot; memory</span>
+                    <span class="badge superseded">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                      superseded
+                    </span>
+                    <span class="as-label">injected as: <b>superseded</b>, amber, lineage-requested</span>
+                  </div>
+                  <span class="txt">"the reranker was skipped by default" &mdash; superseded_by &rarr; memory 7a1c4e0, kept only because this session's declared context asked for supersession lineage on retrieval ranking</span>
+                </div>
+              </div>
+              <div class="annotation">
+                Neither item is relabelled on the way into the tool: a <code>corroborated</code> fact keeps
+                its full badge claim, and a <code>superseded</code> memory keeps its amber lifecycle label
+                rather than being silently promoted to active or dropped (doc 13 &sect;6.5, doc 15 &sect;3.4,
+                invariant 14). The <code>.badge</code>/<code>.layer-chip</code> markup here is composed
+                verbatim from C01/C02, not re-derived.
+              </div>
+            </div>
+
+            <!-- ---- 6. render watermark ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-6-4-6 4Z"/></svg>
+                Render watermark &mdash; a config row, not a table
+              </h3>
+              <dl class="s30-watermark-row">
+                <dt>distribution:watermark:claude-code</dt><dd>{ items: 8, delivered: 2026-07-24T14:12:03Z, project: darkmem }</dd>
+                <dt>distribution:watermark:cursor</dt><dd>{ items: 6, delivered: 2026-07-24T14:10:41Z, project: darkmem }</dd>
+                <dt>distribution:watermark:codex-cli</dt><dd>{ items: 0, delivered: 2026-07-24T13:58:12Z, project: darkmem, note: curbed }</dd>
+              </dl>
+              <div class="annotation">
+                One <code>config</code> row per target (doc 04 &sect;7) &mdash; no per-client heavy table, no
+                queue, no broker (invariant 1). Used only for idempotent diffing on the next inject cycle and
+                to render "last injected T, N items" here; it is the server's best knowledge of the last
+                delivered set, not a proof the file was rewritten (doc 15 &sect;7).
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= DARK ================= -->
+      <div class="theme-dark">
+        <div class="s30-surface">
+          <div class="s30-surface-header">
+            <span class="title">Distribution</span>
+            <span class="meta">3 connected &middot; 1 curbed &middot; 1 not connected</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s30-surface-body">
+
+            <!-- ---- 1. connect status per client ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v4"/><path d="M15 2v4"/><path d="M7 6h10v4a5 5 0 0 1-10 0V6Z"/><path d="M12 15v6"/></svg>
+                Connect status per client
+              </h3>
+
+              <div class="s30-client">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span class="s30-client-name">Claude Code</span>
+                  <span class="state-chip state-populated">connected</span>
+                  <span class="meta">handshake ok &middot; 14 tools listed</span>
+                </div>
+                <dl class="s30-client-paths">
+                  <dt>context file</dt><dd>CLAUDE.md</dd>
+                  <dt>mcp config</dt><dd>.mcp.json</dd>
+                </dl>
+                <div class="s30-client-row2">
+                  <span>push: <b>active</b> &middot; last inject 14:12 UTC &middot; 8 items, 1,840/2,000 tokens</span>
+                  <div class="s30-curb-line">
+                    <span class="s30-curb-label">curb push</span>
+                    <span class="s30-switch" aria-hidden="true"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s30-client">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span class="s30-client-name">Cursor</span>
+                  <span class="state-chip state-populated">connected</span>
+                  <span class="meta">handshake ok &middot; 14 tools listed</span>
+                </div>
+                <dl class="s30-client-paths">
+                  <dt>context file</dt><dd>.cursor/rules/darkmem.mdc</dd>
+                  <dt>mcp config</dt><dd>.cursor/mcp.json</dd>
+                </dl>
+                <div class="s30-client-row2">
+                  <span>push: <b>active</b> &middot; last inject 14:10 UTC &middot; 6 items, 1,510/2,000 tokens</span>
+                  <div class="s30-curb-line">
+                    <span class="s30-curb-label">curb push</span>
+                    <span class="s30-switch" aria-hidden="true"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="s30-client curbed">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span class="s30-client-name">Codex CLI</span>
+                  <span class="state-chip state-populated">connected</span>
+                  <span class="meta">handshake ok &middot; 14 tools listed</span>
+                </div>
+                <dl class="s30-client-paths">
+                  <dt>context file</dt><dd>AGENTS.md</dd>
+                  <dt>mcp config</dt><dd>~/.codex/config.toml [mcp_servers]</dd>
+                </dl>
+                <div class="s30-client-row2">
+                  <span>push: <b>curbed</b> by operator, 2026-07-24 13:58 UTC</span>
+                  <div class="s30-curb-line">
+                    <span class="s30-curb-label">curb push</span>
+                    <span class="s30-switch off" aria-hidden="true"></span>
+                  </div>
+                </div>
+                <div class="s30-curbed-note">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg>
+                  Pull (MCP tools) is unaffected &mdash; only push stopped. <code>AGENTS.md</code>'s managed
+                  block was rewritten to an empty marker pair, not removed; re-enabling resumes idempotently.
+                </div>
+              </div>
+
+              <div class="s30-client disconnected">
+                <div class="s30-client-top">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+                  <span class="s30-client-name">Cline</span>
+                  <span class="state-chip state-empty">not connected</span>
+                  <span class="meta">no MCP config detected</span>
+                </div>
+                <div class="s30-client-row2">
+                  <span>Its adapter row exists in the registry (context file <code>.clinerules/darkmem.md</code>) but no <code>darkmem connect cline</code> has run yet.</span>
+                </div>
+                <div class="s30-cta-row">
+                  <button type="button" class="s30-btn s30-btn-primary">darkmem connect cline</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- 2. per-target managed-block configuration ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+                Per-target managed-block configuration &mdash; CLAUDE.md example
+              </h3>
+              <div class="s30-block-preview"><span class="human"># Project notes
+(the human's own rules — never touched)
+</span><span class="marker">&lt;!-- darkmem:begin --&gt;</span>
+<span class="hdr"># generated 2026-07-24T14:12:03Z, project darkmem, 8 items, 1,840/2,000 tokens</span>
+- [L2 · corroborated] hybrid_search_enabled is on by default; RRF k=60
+- [L2 · corroborated] confidence_rank_gamma defaults to 0 — inactive until raised
+- [L0 · summary] pipeline Phase 5 writes vector + graph in two savepoints
+  &hellip; 5 more, truth-first order, top-K under the token budget
+<span class="marker">&lt;!-- darkmem:end --&gt;</span></div>
+              <div class="s30-client-row2">
+                <span>Only the bytes between the two markers change on refresh (strip-before-rewrite, doc
+                  15 &sect;3.2); the human's own content above the block is never touched.</span>
+              </div>
+            </div>
+
+            <!-- ---- 3. inject content policy + token budget ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>
+                Inject content policy &amp; token budget
+              </h3>
+              <div class="s30-policy-fill">
+                <span class="layer-chip l2">L2 &middot; fact</span>
+                <span class="arrow">&rarr;</span>
+                <span class="layer-chip l3">L3 &middot; article</span>
+                <span class="arrow">&rarr;</span>
+                <span class="layer-chip l0">L0 &middot; summary</span>
+                <span class="arrow">&rarr;</span>
+                <span>fill truth-first until the budget is spent, then stop (top-K, stated in the block header — not silent degradation)</span>
+              </div>
+              <div class="s30-policy-grid">
+                <div class="s30-config-row">
+                  <span class="k">inject_token_budget</span>
+                  <span class="v">2,000 tokens</span>
+                  <span class="d">config row, per-target tunable — Codex CLI overrides to 1,200 below</span>
+                </div>
+                <div class="s30-config-row">
+                  <span class="k">refresh cadence</span>
+                  <span class="v">session-start</span>
+                  <span class="d">one F3 read + one idempotent write per session; watch mode is a deferred, config-gated Phase-4 enhancement</span>
+                </div>
+                <div class="s30-config-row">
+                  <span class="k">cold-start fallback</span>
+                  <span class="v">candidates, labelled</span>
+                  <span class="d">served only when nothing corroborated/confirmed fits the budget yet</span>
+                </div>
+              </div>
+              <div class="s30-config-row">
+                <span class="k">codex-cli override</span>
+                <span class="v">inject_token_budget = 1,200 tokens</span>
+                <span class="d">a smaller per-target budget, tuned for AGENTS.md's terser convention — the adapter registry and the budget are both config rows, never hard-coded (convention 9)</span>
+              </div>
+            </div>
+
+            <!-- ---- 4. inject log ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                Inject log &mdash; which inject happened where
+              </h3>
+              <div class="s30-log-row">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                <span class="s30-log-target">claude-code</span>
+                <span class="s30-log-detail">event_type <b>inject</b> &middot; project darkmem &middot; 8 items</span>
+                <span class="s30-log-time">2026-07-24 14:12:03 UTC</span>
+                <span class="s30-log-meta">1,840/2,000 tok</span>
+              </div>
+              <div class="s30-log-row">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                <span class="s30-log-target">cursor</span>
+                <span class="s30-log-detail">event_type <b>inject</b> &middot; project darkmem &middot; 6 items</span>
+                <span class="s30-log-time">2026-07-24 14:10:41 UTC</span>
+                <span class="s30-log-meta">1,510/2,000 tok</span>
+              </div>
+              <div class="s30-log-row curb">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg>
+                <span class="s30-log-target">codex-cli</span>
+                <span class="s30-log-detail">event_type <b>inject_curbed</b> &middot; push disabled by operator q.tran</span>
+                <span class="s30-log-time">2026-07-24 13:58:12 UTC</span>
+                <span class="s30-log-meta">block &rarr; empty markers</span>
+              </div>
+              <div class="s30-log-row">
+                <svg class="evt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                <span class="s30-log-target">codex-cli</span>
+                <span class="s30-log-detail">event_type <b>inject</b> &middot; project darkmem &middot; 5 items (last delivery before the curb above)</span>
+                <span class="s30-log-time">2026-07-24 13:40:02 UTC</span>
+                <span class="s30-log-meta">960/1,200 tok</span>
+              </div>
+              <div class="annotation">
+                <code>inject_curbed</code> is a target-new addition to doc 04 &sect;8.1's closed
+                <code>event_type</code> vocabulary &mdash; edited into the taxonomy before any code writes
+                it, never bypassed with a free-form value (doc 15 &sect;7). Each row records that the server
+                <i>selected and returned</i> N items for a target; it is not a receipt that the client's file
+                was actually written &mdash; an honest limit of the pull-then-write model, stated rather than
+                implied away.
+              </div>
+            </div>
+
+            <!-- ---- 5. labels survive injection ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 13V7a2 2 0 0 0-2-2h-6L4 13l8 8 8-8Z"/><circle cx="8.5" cy="9.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+                Labels survive injection &mdash; expanding the 14:12 UTC claude-code delivery
+              </h3>
+              <div class="s30-inject-preview">
+                <div class="s30-inject-item">
+                  <div class="row1">
+                    <span class="layer-chip l2">L2 &middot; fact</span>
+                    <span class="badge corroborated">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                      corroborated
+                    </span>
+                    <span class="as-label">injected as: <b>corroborated</b></span>
+                  </div>
+                  <span class="txt">asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20 &mdash; hybrid_search_enabled is on by default; RRF k=60</span>
+                </div>
+                <div class="s30-inject-item">
+                  <div class="row1">
+                    <span class="layer-chip l0">L0 &middot; memory</span>
+                    <span class="badge superseded">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10a4 4 0 0 1 4 4v2"/><path d="M14 8l4 4-4 4"/></svg>
+                      superseded
+                    </span>
+                    <span class="as-label">injected as: <b>superseded</b>, amber, lineage-requested</span>
+                  </div>
+                  <span class="txt">"the reranker was skipped by default" &mdash; superseded_by &rarr; memory 7a1c4e0, kept only because this session's declared context asked for supersession lineage on retrieval ranking</span>
+                </div>
+              </div>
+              <div class="annotation">
+                Neither item is relabelled on the way into the tool: a <code>corroborated</code> fact keeps
+                its full badge claim, and a <code>superseded</code> memory keeps its amber lifecycle label
+                rather than being silently promoted to active or dropped (doc 13 &sect;6.5, doc 15 &sect;3.4,
+                invariant 14). The <code>.badge</code>/<code>.layer-chip</code> markup here is composed
+                verbatim from C01/C02, not re-derived.
+              </div>
+            </div>
+
+            <!-- ---- 6. render watermark ---- -->
+            <div class="s30-section">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-6-4-6 4Z"/></svg>
+                Render watermark &mdash; a config row, not a table
+              </h3>
+              <dl class="s30-watermark-row">
+                <dt>distribution:watermark:claude-code</dt><dd>{ items: 8, delivered: 2026-07-24T14:12:03Z, project: darkmem }</dd>
+                <dt>distribution:watermark:cursor</dt><dd>{ items: 6, delivered: 2026-07-24T14:10:41Z, project: darkmem }</dd>
+                <dt>distribution:watermark:codex-cli</dt><dd>{ items: 0, delivered: 2026-07-24T13:58:12Z, project: darkmem, note: curbed }</dd>
+              </dl>
+              <div class="annotation">
+                One <code>config</code> row per target (doc 04 &sect;7) &mdash; no per-client heavy table, no
+                queue, no broker (invariant 1). Used only for idempotent diffing on the next inject cycle and
+                to render "last injected T, N items" here; it is the server's best knowledge of the last
+                delivered set, not a proof the file was rewritten (doc 15 &sect;7).
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>

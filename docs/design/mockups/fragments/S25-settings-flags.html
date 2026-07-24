@@ -1,0 +1,554 @@
+<style>
+  /* S25 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S25-only layout: the
+     config-row surface (group heading, key/description/value/pill), the
+     w_* active/inactive pill (a per-row domain label distinct from the
+     seven whole-board .state-chip variants, same precedent S21 set for
+     per-job status and S03 set for .s03-scorebar.inactive — a dormant
+     ranking arm is not one of C04's seven states, it is a per-row read of
+     invariant 23), and the *_enabled switch (same shape family as S14's
+     .s14-switch, reauthored here under the s25- namespace per the
+     no-cross-fragment-class-reuse convention). Reads var(--token) /
+     hsl(var(--token)) only; no hex, no redeclared tokens. Namespaced s25-
+     so it can never collide with another fragment's local styles once
+     build.py concatenates them.
+
+     Status colour roles follow doc 14 §3.1's four-role mapping applied to
+     a NEW context (a tunable, not the verification ladder): an ACTIVE arm
+     reads supported/--primary (it is a live, spent signal); an INACTIVE
+     arm reads neutral/--muted with a dashed border (built but unspent —
+     the same "provisional/dormant" visual metaphor C04/S03 already use
+     for a dashed-circle icon, reapplied here rather than reinvented). */
+
+  .s25-intro { display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
+  .s25-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s25-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the config surface every state below instantiates ---- */
+  .s25-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s25-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); flex-wrap: wrap; }
+  .s25-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s25-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s25-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+
+  /* ---- module group ---- */
+  .s25-group { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; margin-top: 8px; border-top: 1px dashed hsl(var(--border)); }
+  .s25-group:first-child { padding-top: 0; margin-top: 0; border-top: none; }
+  .s25-group-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .s25-group-head .name { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+  .s25-group-head .doc { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); opacity: 0.8; }
+
+  /* ---- one config row (w_* arm, N field, or job cadence) ---- */
+  .s25-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); flex-wrap: wrap; }
+  .s25-row .k { font-family: var(--font-mono); font-weight: 620; font-size: 12.5px; color: hsl(var(--foreground)); white-space: nowrap; }
+  .s25-row .arm { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s25-row .desc { flex: 1 1 220px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s25-row .coded-default { font-family: var(--font-mono); font-size: 10.5px; font-style: italic; color: hsl(var(--muted-foreground)); }
+
+  .s25-input {
+    font-family: var(--font-mono); font-size: 12.5px; padding: 5px 9px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--background)); color: hsl(var(--foreground));
+    width: 78px; text-align: right;
+  }
+  .s25-input[readonly] { color: hsl(var(--muted-foreground)); background: hsl(var(--muted) / 0.3); }
+
+  /* ---- active / inactive pill — a per-row domain label, not a whole-
+     board .state-chip; see file header for why. ---- */
+  .s25-pill { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .s25-pill svg { width: 12px; height: 12px; flex: none; }
+  .s25-pill.active { color: hsl(var(--primary)); border: 1px solid hsl(var(--primary) / 0.55); background: hsl(var(--primary) / 0.1); }
+  .s25-pill.inactive { color: hsl(var(--muted-foreground)); border: 1px dashed hsl(var(--border)); background: hsl(var(--muted) / 0.4); }
+
+  /* ---- *_enabled switch ---- */
+  .s25-switch-row { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s25-switch-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s25-switch-top .k { font-family: var(--font-mono); font-weight: 620; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s25-switch-top .desc { flex: 1 1 220px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s25-switch { width: 34px; height: 19px; border-radius: 999px; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); position: relative; flex: none; margin-left: auto; }
+  .s25-switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 15px; height: 15px; border-radius: 50%; background: hsl(var(--muted-foreground)); }
+  .s25-switch.on { background: hsl(var(--primary) / 0.28); border-color: hsl(var(--primary) / 0.6); }
+  .s25-switch.on::after { left: auto; right: 1px; background: hsl(var(--primary)); }
+  .s25-switch-sub { display: flex; align-items: center; gap: 8px; padding-left: 2px; flex-wrap: wrap; }
+  .s25-switch-sub .paired { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s25-switch-sub .paired b { color: hsl(var(--foreground)); font-weight: 600; font-family: var(--font-sans); }
+  .s25-no-weight { font-size: 11.5px; font-style: italic; color: hsl(var(--muted-foreground)); padding-left: 2px; }
+
+  /* ---- corroboration gate note ---- */
+  .s25-gate-note { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s25-gate-note b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  /* ---- job cadence compact list ---- */
+  .s25-job-line { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); font-size: 12px; flex-wrap: wrap; }
+  .s25-job-line svg.icon { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s25-job-line .k { font-family: var(--font-mono); font-weight: 610; font-size: 12px; color: hsl(var(--foreground)); white-space: nowrap; }
+  .s25-job-line code { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s25-job-line .note { margin-left: auto; font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s25-jobs-footnote { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s25-jobs-footnote code { font-family: var(--font-mono); font-size: 11px; }
+
+  /* ---- loading skeleton ---- */
+  .s25-skel-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s25-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s25-skel-bar.key { width: 150px; }
+  .s25-skel-bar.text { flex: 1 1 220px; }
+  .s25-skel-bar.val { width: 60px; }
+  .s25-skel-bar.pill { width: 84px; }
+
+  /* ---- error banner ---- */
+  .s25-error-banner { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s25-error-banner svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s25-error-banner .body { display: flex; flex-direction: column; gap: 6px; }
+  .s25-error-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s25-error-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s25-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- empty: coded-default note ---- */
+  .s25-empty-banner { display: flex; gap: 10px; padding: 12px 14px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s25-empty-banner svg { width: 18px; height: 18px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s25-empty-banner .body { display: flex; flex-direction: column; gap: 5px; }
+  .s25-empty-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s25-empty-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+</style>
+
+<div class="s25-intro">
+  <h2>S25 — Settings &middot; Flags</h2>
+  <p>
+    The feature-flags/tunables tab of the flattened Settings IA (doc 13 &sect;7): the seven
+    <code>rank_fusion_factor</code> / RRF-list / context-boost <b>w_*</b> ranking-arm weights (doc 04
+    &sect;9, doc 07 &sect;3/&sect;6/&sect;11), the three graph-augmentation <b><code>*_enabled</code></b>
+    flags (doc 07 &sect;4/&sect;11), the corroboration <b>N</b> promotion gate with its diversity/time
+    rule (doc 08 &sect;4.1), and a <b>job-cadence</b> summary (doc 02 &sect;5.3). Every value here is a
+    <code>config</code> row read through <code>get_feature_flags_dict</code>'s merge-over-coded-defaults
+    (5-second TTL single-flight cache) &mdash; nothing on this screen is computed, only read and written.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S25-empty">
+  <h2>Flags &mdash; empty (fresh install, no config row written yet)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, and here it cannot mean "no flags."</b> <code>get_feature_flags_dict</code>
+    merges DB values <i>over</i> <code>FEATURE_FLAGS_DEFAULTS</code> (<code>app/config.py</code>), so a flag
+    absent from the <code>config</code> row still resolves to a complete, correct, coded default &mdash; the
+    honest empty condition is a fresh install that has never written an override, not a missing list. Every
+    row below is tagged <span class="coded-default">(coded default)</span> to say so.
+  </div>
+  <div class="board-body">
+    <div class="s25-surface">
+      <div class="s25-surface-header">
+        <span class="title">Flags</span>
+        <span class="meta">no overrides written &middot; serving coded defaults</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s25-surface-body">
+        <div class="s25-empty-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          <div class="body">
+            <span class="headline">No overrides yet &mdash; every value below is a coded default</span>
+            <span class="desc">This is a working, correct state, not a broken one: the pipeline and retrieval
+              path already dispatch against these defaults. Saving any field here writes the first
+              <code>config</code> row keyed <code>feature_flags</code>.</span>
+          </div>
+        </div>
+        <div class="s25-row"><span class="k">w_conf</span><span class="arm">confidence_rank_gamma</span><span class="desc">rank_fusion_factor arm &mdash; confidence</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">w_importance</span><span class="desc">rank_fusion_factor arm &mdash; importance</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">w_heat</span><span class="desc">rank_fusion_factor arm &mdash; heat</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">w_recency</span><span class="desc">rank_fusion_factor arm &mdash; recency</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">w_ppr</span><span class="desc">RRF list weight &mdash; PPR-ranked memories</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">w_dual</span><span class="desc">RRF list weight &mdash; dual-level relation channel</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">w_context_boost</span><span class="desc">post-fusion multiplier &mdash; applies_when match boost</span><span class="coded-default">0 (coded default)</span></div>
+        <div class="s25-row"><span class="k">ppr_enabled</span><span class="desc">graph augmentation flag</span><span class="coded-default">off (coded default)</span></div>
+        <div class="s25-row"><span class="k">dual_level_enabled</span><span class="desc">graph augmentation flag</span><span class="coded-default">off (coded default)</span></div>
+        <div class="s25-row"><span class="k">community_injection_enabled</span><span class="desc">graph augmentation flag</span><span class="coded-default">off (coded default)</span></div>
+        <div class="s25-row"><span class="k">corroboration_n_base / n_diverse</span><span class="desc">corroboration promotion gate (doc 08 &sect;4.1)</span><span class="coded-default">3 / 2 (coded default)</span></div>
+        <div class="s25-row"><span class="k">7 job cadences</span><span class="desc">JobRegistry cron expressions</span><span class="coded-default">registration-time defaults</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S25-loading">
+  <h2>Flags &mdash; loading</h2>
+  <div class="annotation">
+    Loading skeletons mirror the exact key / description / value / pill slots the populated rows below fill
+    in, so the board never jumps once <code>GET /api/v1/config/feature_flags</code> resolves (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s25-surface">
+      <div class="s25-surface-header">
+        <span class="title">Flags</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s25-surface-body">
+        <div class="s25-skel-row"><span class="s25-skel-bar key"></span><span class="s25-skel-bar text"></span><span class="s25-skel-bar val"></span><span class="s25-skel-bar pill"></span></div>
+        <div class="s25-skel-row"><span class="s25-skel-bar key"></span><span class="s25-skel-bar text"></span><span class="s25-skel-bar val"></span><span class="s25-skel-bar pill"></span></div>
+        <div class="s25-skel-row"><span class="s25-skel-bar key"></span><span class="s25-skel-bar text"></span><span class="s25-skel-bar val"></span><span class="s25-skel-bar pill"></span></div>
+        <div class="s25-skel-row"><span class="s25-skel-bar key"></span><span class="s25-skel-bar text"></span><span class="s25-skel-bar val"></span><span class="s25-skel-bar pill"></span></div>
+        <div class="s25-skel-row"><span class="s25-skel-bar key"></span><span class="s25-skel-bar text"></span><span class="s25-skel-bar val"></span><span class="s25-skel-bar pill"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S25-error">
+  <h2>Flags &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list.</b> When the <code>config</code>-row read behind this screen fails,
+    the board raises a named error rather than returning zero rows indistinguishable from a healthy
+    all-defaults state (invariant 14). Nothing downstream stalls: the orchestrator and retrieval path keep
+    dispatching under the <b>last successfully cached</b> flags (the 5-second single-flight cache,
+    <code>_get_feature_flags_cached</code>) even while this board cannot display or edit them.
+  </div>
+  <div class="board-body">
+    <div class="s25-surface">
+      <div class="s25-surface-header">
+        <span class="title">Flags</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s25-surface-body">
+        <div class="s25-error-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load flags &mdash; the config-row read failed</span>
+            <span class="desc">The <code>config</code> row keyed <code>feature_flags</code> could not be read.
+              Editing is unavailable until this resolves; the running pipeline and retrieval path are
+              unaffected, since both read from the last successfully cached merge, not this screen.</span>
+            <span class="s25-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S25-populated">
+  <h2>Flags &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Invariant 23, read into this screen: a <code>w_*</code> arm defaulting to 0 renders
+    <span class="s25-pill inactive" style="vertical-align:middle;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+      inactive
+    </span> &mdash; the built-but-unspent signal, never omitted, never implied to be "off entirely."</b>
+    Raising it above zero is a <b>deliberate, measured activation</b>, tuned against the retrieval harness
+    (doc 17, convention 9), never flipped by intuition and never a silent default. Below, <code>w_conf</code>
+    (via <code>confidence_rank_gamma</code>) and <code>w_dual</code> are shown
+    <span class="s25-pill active" style="vertical-align:middle;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+      active
+    </span> (measured, non-zero) on this instance, while <code>w_importance</code>, <code>w_heat</code>,
+    <code>w_recency</code>, and <code>w_ppr</code> remain inactive at their coded default of 0 &mdash;
+    the same live instance and weights snapshot as the S03 "why retrieved" trace, so this screen is the
+    editing surface for exactly the arms that trace panel renders as dormant vs spent.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s25-surface">
+          <div class="s25-surface-header">
+            <span class="title">Flags</span>
+            <span class="meta">2 of 7 arms active &middot; 1 of 3 graph flags on</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s25-surface-body">
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">rank_fusion_factor arms</span><span class="doc">doc 04 &sect;9 &middot; doc 07 &sect;3</span></div>
+              <div class="s25-row">
+                <span class="k">w_conf</span><span class="arm">confidence_rank_gamma</span>
+                <span class="desc">1 + w&middot;(confidence &minus; 0.75)</span>
+                <input class="s25-input" type="number" step="0.05" value="0.40">
+                <span class="s25-pill active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>active</span>
+              </div>
+              <div class="s25-row">
+                <span class="k">w_importance</span>
+                <span class="desc">1 + w&middot;(importance &minus; 0.5) &mdash; column populated, unread before this arm ships</span>
+                <input class="s25-input" type="number" step="0.05" value="0">
+                <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+              </div>
+              <div class="s25-row">
+                <span class="k">w_heat</span>
+                <span class="desc">1 + w&middot;heat_norm, heat computed in SQL from memory_access_stats</span>
+                <input class="s25-input" type="number" step="0.05" value="0">
+                <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+              </div>
+              <div class="s25-row">
+                <span class="k">w_recency</span>
+                <span class="desc">1 + w&middot;recency_norm, from last_accessed / created_at</span>
+                <input class="s25-input" type="number" step="0.05" value="0">
+                <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">graph augmentation &mdash; RRF list weights + *_enabled flags</span><span class="doc">doc 07 &sect;4 / &sect;11</span></div>
+              <div class="s25-switch-row">
+                <div class="s25-switch-top">
+                  <span class="k">ppr_enabled</span>
+                  <span class="desc">personalized PageRank list, seeded from the query's resolved entities, read from a cached in-process snapshot</span>
+                  <span class="s25-switch"></span>
+                </div>
+                <div class="s25-switch-sub">
+                  <span class="paired">paired weight <b>w_ppr</b></span>
+                  <input class="s25-input" type="number" step="0.05" value="0" style="width:60px;">
+                  <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+                </div>
+              </div>
+              <div class="s25-switch-row">
+                <div class="s25-switch-top">
+                  <span class="k">dual_level_enabled</span>
+                  <span class="desc">global relation arm over relation_embeddings, scoped through asserting memories</span>
+                  <span class="s25-switch on"></span>
+                </div>
+                <div class="s25-switch-sub">
+                  <span class="paired">paired weight <b>w_dual</b></span>
+                  <input class="s25-input" type="number" step="0.05" value="0.15" style="width:60px;">
+                  <span class="s25-pill active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>active</span>
+                </div>
+              </div>
+              <div class="s25-switch-row">
+                <div class="s25-switch-top">
+                  <span class="k">community_injection_enabled</span>
+                  <span class="desc">injects a resolved community's report_string as local context</span>
+                  <span class="s25-switch"></span>
+                </div>
+                <div class="s25-no-weight">context augmentation, not a ranking signal &mdash; no paired RRF weight (doc 07 &sect;4)</div>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">context match boost</span><span class="doc">doc 07 &sect;6</span></div>
+              <div class="s25-row">
+                <span class="k">w_context_boost</span>
+                <span class="desc">post-fusion multiplier on a MATCH outcome only &mdash; NEUTRAL carries a label with no boost, CONFLICT excludes and counts</span>
+                <input class="s25-input" type="number" step="0.05" value="0.25">
+                <span class="s25-pill active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>active</span>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">corroboration promotion gate</span><span class="doc">doc 08 &sect;4.1</span></div>
+              <div class="s25-row">
+                <span class="k">corroboration_n_base</span>
+                <span class="desc">distinct origin_keys required to promote candidate &rarr; corroborated, default case</span>
+                <input class="s25-input" type="number" step="1" value="3" style="width:56px;">
+              </div>
+              <div class="s25-row">
+                <span class="k">corroboration_n_diverse</span>
+                <span class="desc">lowered N when the diversity/time gate below is met</span>
+                <input class="s25-input" type="number" step="1" value="2" style="width:56px;">
+              </div>
+              <div class="s25-gate-note">
+                <span><b>Diversity/time gate:</b> N drops from 3 to 2 when the origins differ in source-kind
+                  (e.g. memory + code beats three memories) <b>or</b> are &ge; 7 days apart across distinct
+                  sessions. Source-kind diversity outweighs raw count; derived rows (a fact, an article) never
+                  count as an origin, and an origin of unknown identity merges to one &mdash; the count
+                  undercounts, it never manufactures agreement.</span>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">job cadences</span><span class="doc">doc 02 &sect;5.3 &middot; JobRegistry</span></div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">repo_sync</span><code>*/5 * * * *</code><span class="note">every 5 minutes</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">code_enrichment</span><code>*/10 * * * * *</code><span class="note">every 10s, six-field seconds-first</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">token_blocklist_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">pipeline_failure_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">graph_orphan_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">tag_orphan_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">expired_memory_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-jobs-footnote">
+                Cron only, read-mostly summary &mdash; each job's <code>min_interval_seconds</code> floor,
+                <code>max_run_seconds</code> ceiling, manual trigger, and <code>config_schema</code> fields are
+                edited in the dedicated Settings &rarr; Jobs tab, not duplicated here.
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s25-surface">
+          <div class="s25-surface-header">
+            <span class="title">Flags</span>
+            <span class="meta">2 of 7 arms active &middot; 1 of 3 graph flags on</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s25-surface-body">
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">rank_fusion_factor arms</span><span class="doc">doc 04 &sect;9 &middot; doc 07 &sect;3</span></div>
+              <div class="s25-row">
+                <span class="k">w_conf</span><span class="arm">confidence_rank_gamma</span>
+                <span class="desc">1 + w&middot;(confidence &minus; 0.75)</span>
+                <input class="s25-input" type="number" step="0.05" value="0.40">
+                <span class="s25-pill active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>active</span>
+              </div>
+              <div class="s25-row">
+                <span class="k">w_importance</span>
+                <span class="desc">1 + w&middot;(importance &minus; 0.5) &mdash; column populated, unread before this arm ships</span>
+                <input class="s25-input" type="number" step="0.05" value="0">
+                <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+              </div>
+              <div class="s25-row">
+                <span class="k">w_heat</span>
+                <span class="desc">1 + w&middot;heat_norm, heat computed in SQL from memory_access_stats</span>
+                <input class="s25-input" type="number" step="0.05" value="0">
+                <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+              </div>
+              <div class="s25-row">
+                <span class="k">w_recency</span>
+                <span class="desc">1 + w&middot;recency_norm, from last_accessed / created_at</span>
+                <input class="s25-input" type="number" step="0.05" value="0">
+                <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">graph augmentation &mdash; RRF list weights + *_enabled flags</span><span class="doc">doc 07 &sect;4 / &sect;11</span></div>
+              <div class="s25-switch-row">
+                <div class="s25-switch-top">
+                  <span class="k">ppr_enabled</span>
+                  <span class="desc">personalized PageRank list, seeded from the query's resolved entities, read from a cached in-process snapshot</span>
+                  <span class="s25-switch"></span>
+                </div>
+                <div class="s25-switch-sub">
+                  <span class="paired">paired weight <b>w_ppr</b></span>
+                  <input class="s25-input" type="number" step="0.05" value="0" style="width:60px;">
+                  <span class="s25-pill inactive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>inactive</span>
+                </div>
+              </div>
+              <div class="s25-switch-row">
+                <div class="s25-switch-top">
+                  <span class="k">dual_level_enabled</span>
+                  <span class="desc">global relation arm over relation_embeddings, scoped through asserting memories</span>
+                  <span class="s25-switch on"></span>
+                </div>
+                <div class="s25-switch-sub">
+                  <span class="paired">paired weight <b>w_dual</b></span>
+                  <input class="s25-input" type="number" step="0.05" value="0.15" style="width:60px;">
+                  <span class="s25-pill active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>active</span>
+                </div>
+              </div>
+              <div class="s25-switch-row">
+                <div class="s25-switch-top">
+                  <span class="k">community_injection_enabled</span>
+                  <span class="desc">injects a resolved community's report_string as local context</span>
+                  <span class="s25-switch"></span>
+                </div>
+                <div class="s25-no-weight">context augmentation, not a ranking signal &mdash; no paired RRF weight (doc 07 &sect;4)</div>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">context match boost</span><span class="doc">doc 07 &sect;6</span></div>
+              <div class="s25-row">
+                <span class="k">w_context_boost</span>
+                <span class="desc">post-fusion multiplier on a MATCH outcome only &mdash; NEUTRAL carries a label with no boost, CONFLICT excludes and counts</span>
+                <input class="s25-input" type="number" step="0.05" value="0.25">
+                <span class="s25-pill active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>active</span>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">corroboration promotion gate</span><span class="doc">doc 08 &sect;4.1</span></div>
+              <div class="s25-row">
+                <span class="k">corroboration_n_base</span>
+                <span class="desc">distinct origin_keys required to promote candidate &rarr; corroborated, default case</span>
+                <input class="s25-input" type="number" step="1" value="3" style="width:56px;">
+              </div>
+              <div class="s25-row">
+                <span class="k">corroboration_n_diverse</span>
+                <span class="desc">lowered N when the diversity/time gate below is met</span>
+                <input class="s25-input" type="number" step="1" value="2" style="width:56px;">
+              </div>
+              <div class="s25-gate-note">
+                <span><b>Diversity/time gate:</b> N drops from 3 to 2 when the origins differ in source-kind
+                  (e.g. memory + code beats three memories) <b>or</b> are &ge; 7 days apart across distinct
+                  sessions. Source-kind diversity outweighs raw count; derived rows (a fact, an article) never
+                  count as an origin, and an origin of unknown identity merges to one &mdash; the count
+                  undercounts, it never manufactures agreement.</span>
+              </div>
+            </div>
+
+            <div class="s25-group">
+              <div class="s25-group-head"><span class="name">job cadences</span><span class="doc">doc 02 &sect;5.3 &middot; JobRegistry</span></div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">repo_sync</span><code>*/5 * * * *</code><span class="note">every 5 minutes</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">code_enrichment</span><code>*/10 * * * * *</code><span class="note">every 10s, six-field seconds-first</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">token_blocklist_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">pipeline_failure_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">graph_orphan_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">tag_orphan_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-job-line">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span class="k">expired_memory_cleanup</span><code>0 * * * *</code><span class="note">hourly</span>
+              </div>
+              <div class="s25-jobs-footnote">
+                Cron only, read-mostly summary &mdash; each job's <code>min_interval_seconds</code> floor,
+                <code>max_run_seconds</code> ceiling, manual trigger, and <code>config_schema</code> fields are
+                edited in the dedicated Settings &rarr; Jobs tab, not duplicated here.
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

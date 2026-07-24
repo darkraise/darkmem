@@ -1,0 +1,858 @@
+<style>
+  /* S27 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip — and invents nothing that duplicates
+     them. New S27-only layout: the per-job configuration card (enabled
+     switch, editable cron field, read-only floor/ceiling constants, editable
+     config_schema fields) and its loading/error surfaces. Namespaced s27- so
+     it can never collide with S21's s21- styles once build.py concatenates
+     every fragment.
+
+     Contract mirrored verbatim from S21-activity-jobs.html (the Activity
+     job board, corrected first): min_interval_seconds (floor) and
+     max_run_seconds (ceiling) are fixed Job-dataclass constants set once at
+     registration in app/main.py — no write path for either, so both render
+     read-only here exactly as they do in S21's gear dialog. The difference
+     is scope, not contract: S21 is the *operational* board (run history,
+     manual Trigger, the busy/409 outcome) and therefore shows cron as
+     read-only ("edited elsewhere"); THIS screen — Settings -> Jobs — is
+     that "elsewhere": cron and the enabled switch are editable here via
+     PUT /api/v1/jobs/{key}, and config_schema fields (e.g. code_enrichment's
+     batch_size) are editable via PUT /api/v1/jobs/{key}/config, same as
+     S21's gear dialog. Run history, Trigger now, and the busy(409) banner
+     are deliberately absent from this screen — they live on S21. */
+
+  .s27-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s27-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s27-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- the config-list surface every state below instantiates ---- */
+  .s27-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s27-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s27-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s27-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s27-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* ---- one job's config card ---- */
+  .s27-job { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s27-job.off { opacity: 0.82; }
+  .s27-job-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s27-job-head svg.icon { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s27-job-id { display: flex; flex-direction: column; gap: 1px; }
+  .s27-job-key { font-family: var(--font-mono); font-weight: 620; font-size: 13px; color: hsl(var(--foreground)); }
+  .s27-job-name { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s27-job-head .meta { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s27-job-desc { margin: 0; font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 780px; }
+
+  .s27-switch-wrap { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+  .s27-switch { position: relative; width: 34px; height: 19px; border-radius: 999px; border: 1px solid hsl(var(--border)); background: hsl(var(--muted)); flex: none; }
+  .s27-switch.is-on { background: hsl(var(--primary) / 0.85); border-color: hsl(var(--primary)); }
+  .s27-switch-thumb { position: absolute; top: 1px; left: 1px; width: 15px; height: 15px; border-radius: 50%; background: hsl(var(--card)); }
+  .s27-switch.is-on .s27-switch-thumb { left: calc(100% - 16px); background: hsl(var(--primary-foreground)); }
+  .s27-switch-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+
+  /* ---- field sections: schedule (editable) / constants (read-only) / config_schema (editable if declared) ---- */
+  .s27-section { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.08); }
+  .s27-section-const { background: transparent; }
+  .s27-section-head { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--foreground)); }
+  .s27-role { font-family: var(--font-mono); font-size: 10px; text-transform: none; letter-spacing: 0; color: hsl(var(--muted-foreground)); }
+
+  .s27-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+  .s27-f { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+  .s27-f-label { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s27-f-type { font-weight: 400; color: hsl(var(--muted-foreground)); text-transform: lowercase; }
+  .s27-input { font-family: var(--font-mono); font-size: 12.5px; padding: 5px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); color: hsl(var(--foreground)); width: 230px; }
+  .s27-input-num { width: 100px; }
+  .s27-f-hint { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .s27-const-grid { display: flex; gap: 22px; flex-wrap: wrap; }
+  .s27-const { display: flex; flex-direction: column; gap: 2px; }
+  .s27-const-label { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .s27-const-value { font-family: var(--font-mono); font-size: 13px; font-weight: 620; color: hsl(var(--foreground)); }
+
+  .s27-none { font-style: italic; opacity: 0.75; font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0; }
+  .s27-default-tag { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 999px; border: 1px dashed hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+
+  .s27-btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11.5px; padding: 5px 12px; border-radius: 999px; border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background)); white-space: nowrap; }
+  .s27-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+
+  /* ---- loading skeleton ---- */
+  .s27-skel-row { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); flex-wrap: wrap; }
+  .s27-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s27-skel-bar.chip { width: 60px; }
+  .s27-skel-bar.key { width: 160px; }
+  .s27-skel-bar.field { width: 230px; }
+  .s27-skel-bar.btn { width: 96px; margin-left: auto; }
+
+  /* ---- error banner ---- */
+  .s27-error-banner { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s27-error-banner svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s27-error-banner .body { display: flex; flex-direction: column; gap: 6px; }
+  .s27-error-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s27-error-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s27-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+</style>
+
+<div class="s27-intro">
+  <h2>S27 — Settings &middot; Jobs</h2>
+  <p>
+    The <code>JobRegistry</code> configuration surface (doc 13 &sect;7, doc 02 &sect;5.3) for the same seven
+    registered jobs S21's Activity job board monitors &mdash; read here for editing rather than operating.
+    This screen edits <code>cron</code> and <code>enabled</code> per job
+    (<code>PUT /api/v1/jobs/&#123;key&#125;</code>) and any job-declared <code>config_schema</code> fields
+    (<code>PUT /api/v1/jobs/&#123;key&#125;/config</code>); <code>min_interval_seconds</code> (the floor) and
+    <code>max_run_seconds</code> (the ceiling) stay <b>read-only registration constants</b> here, exactly as
+    they do on S21's gear dialog &mdash; there is no write path for either. Both writes share the job's
+    <code>asyncio.Lock</code> with the scheduled loop, so a save can never race a running tick; a cron-only
+    edit takes effect on the job's <i>next</i> scheduled tick, while flipping <code>enabled</code> restarts
+    the loop immediately. Run history, the manual <b>Trigger now</b> action, and the busy (HTTP 409) outcome
+    live on S21's Activity job board, not here.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S27-empty">
+  <h2>Jobs configuration &mdash; empty (fresh install, no per-job overrides saved yet)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why, and here it cannot mean "no jobs."</b> All seven jobs are registered in
+    code at process startup (<code>app/main.py</code>) &mdash; the list itself can never legitimately render
+    zero rows, same invariant as S21's empty board. The honest empty condition for a <i>configuration</i>
+    surface is different from S21's "no run history": no <code>config</code> row exists yet for any job, so
+    every field below is <code>load_config</code>'s synthesized default (the job's <code>default_cron</code>,
+    an implicit enabled switch, and each declared <code>config_schema</code> field's own default) rather than
+    a persisted override &mdash; nothing is written until the first Save.
+  </div>
+  <div class="board-body">
+    <div class="s27-surface">
+      <div class="s27-surface-header">
+        <span class="title">Jobs configuration</span>
+        <span class="meta">7 registered &middot; 0 with a saved override</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s27-surface-body">
+        <div class="s27-job">
+          <div class="s27-job-head">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+            <div class="s27-job-id">
+              <span class="s27-job-key">repo_sync</span>
+              <span class="s27-job-name">Repository Sync</span>
+            </div>
+            <span class="meta">config row: job:repo_sync (unwritten)</span>
+            <span class="s27-switch-wrap">
+              <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="repo_sync enabled"><span class="s27-switch-thumb"></span></span>
+              <span class="s27-switch-label">enabled <span class="s27-default-tag">default</span></span>
+            </span>
+          </div>
+          <div class="s27-section">
+            <div class="s27-section-head">schedule <span class="s27-role">editable, showing default_cron &mdash; not yet saved</span></div>
+            <div class="s27-row">
+              <div class="s27-f">
+                <span class="s27-f-label">cron</span>
+                <input class="s27-input" type="text" value="*/5 * * * *">
+                <span class="s27-f-hint">five-field, minute precision &mdash; every 5 minutes</span>
+              </div>
+              <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+            </div>
+          </div>
+        </div>
+        <div class="s27-job">
+          <div class="s27-job-head">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+            <div class="s27-job-id">
+              <span class="s27-job-key">code_enrichment</span>
+              <span class="s27-job-name">Code Symbol Enrichment</span>
+            </div>
+            <span class="meta">config row: job:code_enrichment (unwritten)</span>
+            <span class="s27-switch-wrap">
+              <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="code_enrichment enabled"><span class="s27-switch-thumb"></span></span>
+              <span class="s27-switch-label">enabled <span class="s27-default-tag">default</span></span>
+            </span>
+          </div>
+          <div class="s27-section">
+            <div class="s27-section-head">config_schema <span class="s27-role">editable, showing field default &mdash; not yet saved</span></div>
+            <div class="s27-row">
+              <div class="s27-f">
+                <span class="s27-f-label">batch_size <span class="s27-f-type">int</span></span>
+                <input class="s27-input s27-input-num" type="number" value="5">
+                <span class="s27-f-hint">min 1 &middot; max 100 <span class="s27-default-tag">default</span></span>
+              </div>
+              <button type="button" class="s27-btn s27-btn-primary">Save config</button>
+            </div>
+          </div>
+        </div>
+        <div class="s27-none" style="padding: 2px 2px 0;">&hellip; and 5 more registered jobs, each reading its registration default until a first Save persists a <code>config</code> row.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S27-loading">
+  <h2>Jobs configuration &mdash; loading</h2>
+  <div class="annotation">
+    Loading skeletons mirror the exact icon / key / field / button slots the populated cards below fill in,
+    so the board never jumps once <code>GET /api/v1/jobs</code> resolves (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s27-surface">
+      <div class="s27-surface-header">
+        <span class="title">Jobs configuration</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s27-surface-body">
+        <div class="s27-skel-row"><span class="s27-skel-bar chip"></span><span class="s27-skel-bar key"></span><span class="s27-skel-bar field"></span><span class="s27-skel-bar btn"></span></div>
+        <div class="s27-skel-row"><span class="s27-skel-bar chip"></span><span class="s27-skel-bar key"></span><span class="s27-skel-bar field"></span><span class="s27-skel-bar btn"></span></div>
+        <div class="s27-skel-row"><span class="s27-skel-bar chip"></span><span class="s27-skel-bar key"></span><span class="s27-skel-bar field"></span><span class="s27-skel-bar btn"></span></div>
+        <div class="s27-skel-row"><span class="s27-skel-bar chip"></span><span class="s27-skel-bar key"></span><span class="s27-skel-bar field"></span><span class="s27-skel-bar btn"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S27-error">
+  <h2>Jobs configuration &mdash; error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error &ne; empty list.</b> When the <code>config</code>-table read behind
+    <code>GET /api/v1/jobs</code> fails, this Settings board raises a named error rather than returning zero
+    rows indistinguishable from the genuinely-never-saved empty state above (invariant 14) &mdash; retry stays
+    offered, and the cause is the failing thing, never the user (doc 14 &sect;7 copy voice). The job registry
+    itself, and every scheduled loop it runs, is unaffected on the server side while this Settings screen
+    cannot read or edit it.
+  </div>
+  <div class="board-body">
+    <div class="s27-surface">
+      <div class="s27-surface-header">
+        <span class="title">Jobs configuration</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="s27-surface-body">
+        <div class="s27-error-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load job configuration &mdash; the config-table read failed</span>
+            <span class="desc">The <code>config</code> rows keyed <code>job:&lt;key&gt;</code> could not be
+              read, so cron/enabled/config_schema values cannot be shown or edited here. Scheduled ticks keep
+              running server-side on their last-saved schedule regardless.</span>
+            <span class="s27-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S27-populated">
+  <h2>Jobs configuration &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    All seven registered jobs (doc 02 &sect;5.3): <code>repo_sync</code>, <code>code_enrichment</code>,
+    <code>token_blocklist_cleanup</code>, <code>pipeline_failure_cleanup</code>,
+    <code>graph_orphan_cleanup</code>, <code>tag_orphan_cleanup</code>, <code>expired_memory_cleanup</code>.
+    Each card's <b>schedule</b> section (cron + the enabled switch) is editable and saves through
+    <code>PUT /api/v1/jobs/&#123;key&#125;</code>; the <b>registration constants</b> section
+    (<code>min_interval_seconds</code> floor, <code>max_run_seconds</code> ceiling) is always read-only, the
+    same treatment S21's gear dialog gives them &mdash; never depict them as editable. The
+    <b>config_schema</b> section is editable and saves through
+    <code>PUT /api/v1/jobs/&#123;key&#125;/config</code> only where a job declares fields:
+    <code>code_enrichment</code> is the only one of the seven with a declared field
+    (<code>batch_size</code>, default 5, min 1, max 100) &mdash; the other six honestly show "no fields
+    declared" rather than an empty editable form. <code>tag_orphan_cleanup</code> below is shown switched
+    off, to demonstrate that state: disabling stops its scheduled loop from restarting, but every field stays
+    editable so it can be turned back on. Operational monitoring &mdash; last-run status, the manual Trigger
+    action, the busy(409) outcome &mdash; is out of scope for this Settings board; see S21-populated /
+    S21-config-dialog / S21-busy on the Activity job board.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s27-surface">
+          <div class="s27-surface-header">
+            <span class="title">Jobs configuration</span>
+            <span class="meta">7 registered &middot; 1 disabled</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s27-surface-body">
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">repo_sync</span>
+                  <span class="s27-job-name">Repository Sync</span>
+                </div>
+                <span class="meta">config row: job:repo_sync</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="repo_sync enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Fetches every repo with auto-sync enabled and runs the code indexing pipeline. The per-repo Reindex button bypasses this loop and runs immediately.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/repo_sync</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="*/5 * * * *">
+                    <span class="s27-f-hint">five-field, minute precision &mdash; every 5 minutes</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">30</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">1800</span></div>
+                </div>
+                <span class="s27-f-hint">Fixed <code>Job</code>-dataclass attributes set once at registration in <code>app/main.py</code> &mdash; no write path for either.</span>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">repo_sync declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">code_enrichment</span>
+                  <span class="s27-job-name">Code Symbol Enrichment</span>
+                </div>
+                <span class="meta">config row: job:code_enrichment</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="code_enrichment enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Runs one batch of LLM summarisation against pending code symbols (function / class / method docs).</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/code_enrichment</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="*/10 * * * * *">
+                    <span class="s27-f-hint">six-field, seconds-first (Quartz-style) &mdash; every 10 seconds</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">1</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">600</span></div>
+                </div>
+                <span class="s27-f-hint">The loop never fires more often than the floor, no matter how aggressive the cron above computes; not editable via config.</span>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">editable &middot; PUT /api/v1/jobs/code_enrichment/config</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">batch_size <span class="s27-f-type">int</span></span>
+                    <input class="s27-input s27-input-num" type="number" value="5">
+                    <span class="s27-f-hint">Code symbols summarised per scheduled run. min 1 &middot; max 100</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save config</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">token_blocklist_cleanup</span>
+                  <span class="s27-job-name">Token Blocklist Cleanup</span>
+                </div>
+                <span class="meta">config row: job:token_blocklist_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="token_blocklist_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Deletes expired entries from the auth token blocklist. Safe to leave on; disable only if you are debugging revocation.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/token_blocklist_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">token_blocklist_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">pipeline_failure_cleanup</span>
+                  <span class="s27-job-name">Pipeline Failure Cleanup</span>
+                </div>
+                <span class="meta">config row: job:pipeline_failure_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="pipeline_failure_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Prunes orphaned pipeline-failure rows and resolved entries older than 30 days. Safe to leave on.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/pipeline_failure_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">pipeline_failure_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">graph_orphan_cleanup</span>
+                  <span class="s27-job-name">Graph Orphan Cleanup</span>
+                </div>
+                <span class="meta">config row: job:graph_orphan_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="graph_orphan_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Prunes entity-graph ghosts &mdash; entities and relations that no live memory asserts any more (left by deleted memories). Keeps entity dedup from collapsing fresh entities onto stale ghosts. Safe to leave on.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/graph_orphan_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">graph_orphan_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job off">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">tag_orphan_cleanup</span>
+                  <span class="s27-job-name">Tag Orphan Cleanup</span>
+                </div>
+                <span class="meta">config row: job:tag_orphan_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch" role="switch" aria-checked="false" aria-label="tag_orphan_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">disabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Prunes tags no live memory carries any more (left behind when memories are deleted). Keeps the dashboard tag count and the tag filter from showing unused tags. Switched off here &mdash; its scheduled loop will not restart until re-enabled.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/tag_orphan_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour (kept while disabled, so re-enabling resumes on schedule)</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">tag_orphan_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">expired_memory_cleanup</span>
+                  <span class="s27-job-name">Expired Memory Cleanup</span>
+                </div>
+                <span class="meta">config row: job:expired_memory_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="expired_memory_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Deletes memories past their expires_at TTL. Without this a client-set TTL is never honored. Safe to leave on.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/expired_memory_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">expired_memory_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s27-surface">
+          <div class="s27-surface-header">
+            <span class="title">Jobs configuration</span>
+            <span class="meta">7 registered &middot; 1 disabled</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s27-surface-body">
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">repo_sync</span>
+                  <span class="s27-job-name">Repository Sync</span>
+                </div>
+                <span class="meta">config row: job:repo_sync</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="repo_sync enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Fetches every repo with auto-sync enabled and runs the code indexing pipeline. The per-repo Reindex button bypasses this loop and runs immediately.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/repo_sync</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="*/5 * * * *">
+                    <span class="s27-f-hint">five-field, minute precision &mdash; every 5 minutes</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">30</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">1800</span></div>
+                </div>
+                <span class="s27-f-hint">Fixed <code>Job</code>-dataclass attributes set once at registration in <code>app/main.py</code> &mdash; no write path for either.</span>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">repo_sync declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">code_enrichment</span>
+                  <span class="s27-job-name">Code Symbol Enrichment</span>
+                </div>
+                <span class="meta">config row: job:code_enrichment</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="code_enrichment enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Runs one batch of LLM summarisation against pending code symbols (function / class / method docs).</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/code_enrichment</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="*/10 * * * * *">
+                    <span class="s27-f-hint">six-field, seconds-first (Quartz-style) &mdash; every 10 seconds</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">1</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">600</span></div>
+                </div>
+                <span class="s27-f-hint">The loop never fires more often than the floor, no matter how aggressive the cron above computes; not editable via config.</span>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">editable &middot; PUT /api/v1/jobs/code_enrichment/config</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">batch_size <span class="s27-f-type">int</span></span>
+                    <input class="s27-input s27-input-num" type="number" value="5">
+                    <span class="s27-f-hint">Code symbols summarised per scheduled run. min 1 &middot; max 100</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save config</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">token_blocklist_cleanup</span>
+                  <span class="s27-job-name">Token Blocklist Cleanup</span>
+                </div>
+                <span class="meta">config row: job:token_blocklist_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="token_blocklist_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Deletes expired entries from the auth token blocklist. Safe to leave on; disable only if you are debugging revocation.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/token_blocklist_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">token_blocklist_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">pipeline_failure_cleanup</span>
+                  <span class="s27-job-name">Pipeline Failure Cleanup</span>
+                </div>
+                <span class="meta">config row: job:pipeline_failure_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="pipeline_failure_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Prunes orphaned pipeline-failure rows and resolved entries older than 30 days. Safe to leave on.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/pipeline_failure_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">pipeline_failure_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">graph_orphan_cleanup</span>
+                  <span class="s27-job-name">Graph Orphan Cleanup</span>
+                </div>
+                <span class="meta">config row: job:graph_orphan_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="graph_orphan_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Prunes entity-graph ghosts &mdash; entities and relations that no live memory asserts any more (left by deleted memories). Keeps entity dedup from collapsing fresh entities onto stale ghosts. Safe to leave on.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/graph_orphan_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">graph_orphan_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job off">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">tag_orphan_cleanup</span>
+                  <span class="s27-job-name">Tag Orphan Cleanup</span>
+                </div>
+                <span class="meta">config row: job:tag_orphan_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch" role="switch" aria-checked="false" aria-label="tag_orphan_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">disabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Prunes tags no live memory carries any more (left behind when memories are deleted). Keeps the dashboard tag count and the tag filter from showing unused tags. Switched off here &mdash; its scheduled loop will not restart until re-enabled.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/tag_orphan_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour (kept while disabled, so re-enabling resumes on schedule)</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">tag_orphan_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+            <div class="s27-job">
+              <div class="s27-job-head">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+                <div class="s27-job-id">
+                  <span class="s27-job-key">expired_memory_cleanup</span>
+                  <span class="s27-job-name">Expired Memory Cleanup</span>
+                </div>
+                <span class="meta">config row: job:expired_memory_cleanup</span>
+                <span class="s27-switch-wrap">
+                  <span class="s27-switch is-on" role="switch" aria-checked="true" aria-label="expired_memory_cleanup enabled"><span class="s27-switch-thumb"></span></span>
+                  <span class="s27-switch-label">enabled</span>
+                </span>
+              </div>
+              <p class="s27-job-desc">Deletes memories past their expires_at TTL. Without this a client-set TTL is never honored. Safe to leave on.</p>
+              <div class="s27-section">
+                <div class="s27-section-head">schedule <span class="s27-role">editable &middot; PUT /api/v1/jobs/expired_memory_cleanup</span></div>
+                <div class="s27-row">
+                  <div class="s27-f">
+                    <span class="s27-f-label">cron</span>
+                    <input class="s27-input" type="text" value="0 * * * *">
+                    <span class="s27-f-hint">five-field &mdash; hourly, on the hour</span>
+                  </div>
+                  <button type="button" class="s27-btn s27-btn-primary">Save schedule</button>
+                </div>
+              </div>
+              <div class="s27-section s27-section-const">
+                <div class="s27-section-head">registration constants <span class="s27-role">read-only</span></div>
+                <div class="s27-const-grid">
+                  <div class="s27-const"><span class="s27-const-label">min_interval_seconds (floor)</span><span class="s27-const-value">60</span></div>
+                  <div class="s27-const"><span class="s27-const-label">max_run_seconds (ceiling)</span><span class="s27-const-value">300</span></div>
+                </div>
+              </div>
+              <div class="s27-section">
+                <div class="s27-section-head">config_schema <span class="s27-role">no fields declared for this job</span></div>
+                <p class="s27-none">expired_memory_cleanup declares no config_schema &mdash; nothing beyond schedule to configure.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
