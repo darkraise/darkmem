@@ -64,7 +64,9 @@ boots clean and boot-time reconciliation is idempotent (doc 20 §4).
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+None — Phase 0 ships the eval harness and the baseline migration only; there is no UI
+surface this phase (doc 13 §4 lists no Phase-0 screen; the harness and CI gate are
+developer-facing, not product UI).
 
 ---
 
@@ -96,7 +98,11 @@ channel (doc 20 §4).
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+The five-phase pipeline stepper, failure triage, and job board (Activity shell v1
+modules, doc 13 §6.1) + the Dashboard, including the contribution calendar — the
+Dashboard is E1's core UI surface, and the calendar reads the Phase-1 `events`
+date-bucket substrate (doc 13 §4, doc 04 §8.1) — + the Memories search surface with its
+why-retrieved trace (doc 13 §4/§5.4).
 
 ---
 
@@ -125,7 +131,10 @@ the groundedness judge's precision/recall clears the bar on a labelled gold set
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+Verification badges rendered verbatim (doc 13 §5.3) + the Review/Hygiene triage shell
+(doc 13 §6.2) + the dream digest with per-action/per-batch undo (doc 13 §6.3) + the
+Topics tab of the Knowledge shell — browsing, report injection, pin-suggestion diff
+(doc 13 §5).
 
 ---
 
@@ -151,7 +160,11 @@ metric (doc 20 §4).
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+The Articles tab of the Knowledge shell — grounded prose, inline claim citations, the
+claim-support-coverage readout, and the stale label (doc 13 §5.2) + the distribution
+surfaces: the Settings → Distribution tab (per-target managed-block config, inject
+content policy, curb control) and inject records surfaced as journaled events in the
+timeline/calendar (doc 13 §6.5).
 
 ---
 
@@ -175,7 +188,10 @@ consumer) opens this phase; nothing in Phases 0–3 depends on it (doc 20 §10).
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+`ApiKey`-use journaled to `events` and surfaced in the per-object timeline (doc 13
+§6.4, doc 18 §5) + the inject `watch`-mode and curb surfaces on the Distribution tab —
+the human can see and curb push, never a silent context swap (doc 13 §6.5, doc 15
+§3.5).
 
 ---
 
@@ -200,7 +216,9 @@ coverage) is defined before build starts and gates before ship (doc 20 §4).
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+The analysis surface — grounded Q&A over blocks, single-document summary, and
+emergent cross-document connections (doc 16 §6) — is the horizon lane's one UI
+surface; there is no separate blocks-browsing screen beyond it.
 
 ---
 
@@ -225,7 +243,8 @@ before any parity claim: byte-identical LLM-cache reuse and exact F1-scorer pari
 
 ### F9 — signal-ships-with-UI (this phase)
 
-*Filled in Task 4.*
+None — Phase H2 is a backend stack replay (harness parity, the DbUp baseline, registry
+DDL, the pipeline/code-indexing port); no new UI ships (doc 19 §7).
 
 ---
 
@@ -234,7 +253,25 @@ before any parity claim: byte-identical LLM-cache reuse and exact F1-scorer pari
 Non-exhaustive by intent: it enumerates every doc-20 §5 split (every arm, flag, and
 subsystem whose ship point and activation point differ), and doc 20 is the authority.
 
+**Docs 13/14 disposition.** Docs 13 (frontend architecture/IA) and 14 (UI/UX design
+language) own no epic of their own — mirroring doc 20 §5's framing of F9 (Observe &
+curate: committed, every phase, "it is not a phase," principle 10). Every UI surface
+docs 13/14 specify binds to the epic whose phase its backing signal ships in, through
+that epic's F9 callout above; there is no separate UI phase or UI epic.
+
 | Item | P0 | P1 | P2 | P3 | P4 | Horizon | Activation bar |
 |---|---|---|---|---|---|---|---|
-
-*Rows added in Task 4.*
+| F11 Index code | — | T1–T4 hardening: fail-stale, index-debt drain, `code_reconcile`, summary carry-over (doc 10 §3) | Deriver — imports-only Layer-1 assertions via `assert_from_repo`, after G-C (doc 10 §6) | — | Push webhook, replacing polling for the pushed repo (doc 10 §5) | — | Deriver: G-C (Phase-2 exit); push webhook: gated on the `ApiKey` exposed-deployment activation, demand-gated (doc 10 §5) |
+| Retrieval — ranking arms (general) | — | Core retrieve ships: SQL pushdown + labels + trace + RRF fusion; arms wire at zero (P1-wire) | Per-arm activation on a measured retrieval-eval win (P2-activate) | — | — | — | See the individual arm/flag rows below |
+| Topics & articles (doc 09) | — | — | Topics — Leiden communities, browsing/injection/pin-diff, G-C (doc 09 §3) | Subject articles + citations behind the groundedness gate, G-D/G-E (doc 09 §4) | — | — | Topics: G-C; articles: per-article coverage above the runtime threshold in production |
+| Inject / distribution (doc 15) | — | — | — | Inject v1 — managed file block, session-start refresh, G-D (doc 15 §3) | `watch` mode + auto-scrape opt-in, demand-gated (doc 15 §3.5/§4) | MCP-resource inject transport (doc 15 §3.3) | Phase 3 → 4 is appetite/demand, not a metric |
+| Migration substrate (doc 19) | Dormant objects land inert: `repo_ids[]`, `documents`/`blocks`, per-fingerprint embedding templates, G-A (doc 19 §2–§3) | — | — | — | — | H2 — SQL-first baseline replay via DbUp + registry-DDL port, G-G (doc 19 §7) | P0: G-A, boot-time reconciliation idempotent; H2: G-G, harness ports first — byte-identical LLM-cache reuse + exact F1-scorer parity |
+| `expires_at` | — | exists-today — caller-set TTL, demote-before-delete sweep (doc 08 §2.3) | activation — self-expiring dated facts, follows with the temporal passes (doc 08 §2.3) | — | — | — | Temporal-pass measured win |
+| `w_conf` (confidence arm) | — | exists-today, read now | — | — | — | — | Harness-tuned magnitude |
+| `relation_rescue` | — | exists-today, on | — | — | — | — | Guarded by the F1 bench — reorder/remove only against a measured delta |
+| `w_importance` | — | — | activation — populated, unread today | — | — | — | Retrieval-eval win with twin |
+| `w_heat`, `w_recency` | — | — | target-new — `memory_access_stats` side table | — | — | — | Retrieval-eval win with twin |
+| `w_ppr`, dual-level, community injection | — | — | target-new, flags default 0; graph arms need the snapshot job live first | — | — | — | Retrieval-eval win with twin; graph arms need the snapshot job live first |
+| `reranker_enabled` | — | exists-today, dormant | — | — | — | — | Phase: any — activates on a measured win including p95 cost, whichever phase clears the bar first |
+| `applies_when` boost magnitude | — | wire (target-new) | tune | — | — | — | Magnitude is `config`; the boost-plus-label and conflict-count rules are hard rules, never tuned |
+| `triple_embeddings` writer | template lands inert (doc 04 §5.3) | — | writer activates, P2+ | — | — | — | Trigram miss-rate above its stated bar; counting only, `names_distinct` carried |
