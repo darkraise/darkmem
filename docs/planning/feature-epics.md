@@ -16,7 +16,7 @@ F1–F11 dispositions.
 
 ## Divergence rule
 
-**Divergence rule:** on any conflict between this doc and docs 13/14/20, the corpus doc wins; this doc is an organizational view, never an override.
+On any conflict between this doc and docs 13/14/20, the corpus doc wins; this doc is an organizational view, never an override.
 
 ## Legend
 
@@ -272,6 +272,6 @@ that epic's F9 callout above; there is no separate UI phase or UI epic.
 | `w_importance` | — | — | activation — populated, unread today | — | — | — | Retrieval-eval win with twin |
 | `w_heat`, `w_recency` | — | — | target-new — `memory_access_stats` side table | — | — | — | Retrieval-eval win with twin |
 | `w_ppr`, dual-level, community injection | — | — | target-new, flags default 0; graph arms need the snapshot job live first | — | — | — | Retrieval-eval win with twin; graph arms need the snapshot job live first |
-| `reranker_enabled` | — | exists-today, dormant | — | — | — | — | Phase: any — activates on a measured win including p95 cost, whichever phase clears the bar first |
+| `reranker_enabled` | — | — | — | — | — | — | exists-today, dormant. Phase: any — measured win incl. p95 cost, whichever phase clears the bar first |
 | `applies_when` boost magnitude | — | wire (target-new) | tune | — | — | — | Magnitude is `config`; the boost-plus-label and conflict-count rules are hard rules, never tuned |
 | `triple_embeddings` writer | template lands inert (doc 04 §5.3) | — | writer activates, P2+ | — | — | — | Trigram miss-rate above its stated bar; counting only, `names_distinct` carried |
