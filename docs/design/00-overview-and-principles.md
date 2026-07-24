@@ -13,6 +13,32 @@ Part of the unified target design — see `docs/design/README.md` for the frame 
 
 In one line: **one brain, self-hosted — the knowledge engine every AI tool reads from and writes to, growing into the personal memory engine its human thinks with.**
 
+The system at a glance — many front doors write into one Postgres, where capture flows through the Layer 1 graph and background verification into the knowledge vault, then back out to every tool by pull and push.
+
+```mermaid
+flowchart LR
+    subgraph doors["Front doors"]
+        mcp["MCP clients"]
+        rest["REST / SDK"]
+        agent["Coding-agent sessions"]
+        browser["Browser AI chats — target"]
+    end
+
+    subgraph pg["One Postgres + pgvector"]
+        direction TB
+        ingest["Capture + ingest<br/>extract + classify"]
+        graph["Layer 1 graph<br/>entities + relations"]
+        consolidate["Consolidate + verify<br/>background"]
+        vault["Knowledge vault<br/>verified facts + articles"]
+        retrieval["Graph-augmented retrieval"]
+        ingest --> graph --> consolidate --> vault --> retrieval
+        graph --> retrieval
+    end
+
+    doors -->|write| ingest
+    retrieval -->|"pull and push"| doors
+```
+
 ## 2. Who it is for
 
 - **Core consumer — AI coding agents** (Claude Code, Cursor, Codex, Cline, and any MCP client). They read context at the start of work and write back verified facts, decisions, and bugfixes. darkmem's job is to make an agent in a fresh session as informed as one that lived through the prior sessions.
@@ -47,6 +73,41 @@ The target darkmem is a coherent system with seven capabilities, each earning it
 
 This is a big target, and it is **accepted as the target** (see the README's locked frame): existing features and the full evolution are designed as one system, from first principles, with a rebuild treated as an acceptable path.
 
+The knowledge vault as four layers, each with one job — episodic memory, the raw extracted graph, verified bi-temporal facts, and synthesized subject articles grounded back to those facts.
+
+```mermaid
+flowchart TB
+    L0["Layer 0 — Memory<br/>episodic recall, append-only"]
+    L1["Layer 1 — Extracted graph<br/>entities + relations, raw candidate signal"]
+    L2["Layer 2 — Verified facts<br/>bi-temporal, verification ladder"]
+    L3["Layer 3 — Subject articles<br/>synthesized, one per subject"]
+
+    L0 -->|extract| L1
+    L1 -->|verify| L2
+    L2 -->|synthesize| L3
+    L3 -.->|cites| L2
+
+    code["Code graph — imports"] -.->|deriver| L2
+    docs["Documents / blocks — horizon"] -.->|extract| L1
+```
+
+How a fact climbs the verification ladder inside Layer 2 — the machine can promote to corroborated but only a human reaches confirmed, and any contradiction moves it to disputed.
+
+```mermaid
+stateDiagram-v2
+    [*] --> candidate: freshly extracted signal
+    candidate --> corroborated: K distinct origins, no contradiction
+    candidate --> confirmed: human ratifies
+    corroborated --> confirmed: human ratifies
+    corroborated --> disputed: contradiction
+    confirmed --> disputed: contradiction
+    disputed --> corroborated: resolved, re-promoted
+    note right of corroborated
+        machine ceiling — never claims "true";
+        deterministic code facts are born here
+    end note
+```
+
 ## 5. Non-goals (what darkmem is deliberately NOT)
 
 - **Not a cloud multi-tenant SaaS.** Single-instance, self-hosted, local-network trust is the model. Multi-*project* scoping is in; multi-*tenant* operator tooling is not.
@@ -65,6 +126,24 @@ The design must keep these — they are why darkmem is not just another memory l
 - **A tree-sitter code knowledge graph** (blast-radius, communities, processes, rename) over MCP — no memory competitor has this.
 - **Rich, theme-reactive visualisations** — among the strongest UIs in the category.
 - **A single-Postgres footprint** — cleaner than the multi-service category it competes in, and the direction the field is consolidating toward.
+
+The five moats that keep darkmem more than another memory layer, all resting on a single-Postgres core.
+
+```mermaid
+flowchart TB
+    core(("darkmem<br/>defensible moats"))
+    m1["Deterministic extraction post-processor<br/>~40 tested cleanup passes"]
+    m2["Per-fingerprint embedder partitioning<br/>rotation is first-class"]
+    m3["Tree-sitter code knowledge graph<br/>blast-radius, communities, processes, rename"]
+    m4["Rich theme-reactive visualisations"]
+    m5["Single-Postgres footprint<br/>no second datastore"]
+
+    core --- m1
+    core --- m2
+    core --- m3
+    core --- m4
+    core --- m5
+```
 
 ## 7. Design principles (binding rules)
 

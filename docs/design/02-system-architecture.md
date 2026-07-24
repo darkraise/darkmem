@@ -80,6 +80,36 @@ flowchart TD
 
 **Four layers, one dependency direction: API → services → repositories → data, and never the other way.** Each layer has a single responsibility and may depend only on the layer beneath it. The rule is what keeps the system legible as it grows: a route change cannot silently rewrite SQL, a repository cannot reach up into HTTP concerns, and a service can be tested against a session without a running web server.
 
+The strict downward dependency: two front doors converge on one service layer, services own the only path to repositories, repositories own the only SQL to Postgres, and only the composition root reaches across a boundary — to construct, never to call.
+
+```mermaid
+flowchart TD
+    subgraph API["API layer — two front doors"]
+        REST["REST / WebSocket routes"]
+        MCP["MCP mount /mcp"]
+    end
+
+    SVC["Services layer — all business logic · no SQL · no HTTP"]
+
+    subgraph REPO["Repositories layer — the only SQL"]
+        REL2["Relational"]
+        VEC2["Vector — per fingerprint"]
+        GR["Graph"]
+        CG["Code graph"]
+    end
+
+    DATA[("Data layer — single Postgres + pgvector")]
+
+    REST --> SVC
+    MCP --> SVC
+    SVC --> REPO
+    REPO --> DATA
+
+    ROOT["Composition root"]
+    ROOT -. "constructs" .-> REPO
+    ROOT -. "injects into" .-> SVC
+```
+
 **The API layer is the only front door, and there are two of them onto one service layer.** This is doc 01's F1 made structural — *one vault, many front doors*. REST routes (`auth`, `memories`, `tags`, `graph`, `analytics`, `config`, `pipeline`, `vectors`, `chat`, `repos`, `code`, `setup`, `system`, `jobs`, and the rest) and the FastMCP server mounted at `/mcp` are **two entry surfaces onto the same services**, resolved per request through the dependency wiring. An MCP `memory_add` and a REST `POST /memories` both call the same `MemoryService` and the same pipeline; they differ only in transport, authentication posture, and how `source` is resolved. The WebSocket surface at `/ws` is a third API-layer concern — outbound only — and auth is enforced as a FastAPI *dependency*, not as middleware (the sole middleware in the app is CORS). Keeping the two front doors thin and convergent is what prevents the MCP and REST paths from drifting into two subtly different memory engines.
 
 **The services layer holds every business rule and owns no SQL and no HTTP.** Each service takes a database session and, where needed, the LLM orchestrator, and returns domain results. This is where ingestion phases, retrieval fusion, supersession, consolidation (target), code indexing, and job scheduling live. A service may call other services and may call repositories; it may not import anything from the API layer.
@@ -106,6 +136,20 @@ Each capability maps to a native Postgres mechanism:
 | Flexible payloads | `jsonb` — entity properties, event payloads, config rows |
 | Job / async signalling | in-process `JobRegistry` cron; buffer claims via `FOR UPDATE SKIP LOCKED` (target) |
 
+Every capability rides one native Postgres mechanism — a single hub with no second datastore to keep consistent.
+
+```mermaid
+graph LR
+    PG[("Single Postgres + pgvector — no second store")]
+    PG -->|"pgvector cosine + HNSW, per fingerprint"| V["Vector / semantic search"]
+    PG -->|"ts_rank over search_vector"| K["Keyword search"]
+    PG -->|"recursive CTEs"| G["Multi-hop graph traversal"]
+    PG -->|"in-process igraph snapshot"| P["Converged PageRank (target)"]
+    PG -->|"leidenalg + igraph, off-path job"| C["Community detection"]
+    PG -->|"jsonb"| J["Flexible payloads"]
+    PG -->|"cron + FOR UPDATE SKIP LOCKED"| Q["Job / async signalling"]
+```
+
 **What was considered and rejected, and why.** These are recorded as decisions so a future contributor does not reopen them without cause:
 
 - **Neo4j or any external graph database — rejected.** Recursive CTEs cover multi-hop traversal and in-process igraph covers converged PageRank, so a second graph store buys nothing but a split source of truth, a second backup, and cross-store consistency problems. The graph is a *view over the same rows*, not a separate database.
@@ -118,6 +162,39 @@ Each capability maps to a native Postgres mechanism:
 ## 5. Sync vs async paths
 
 **Three tiers, and one binding boundary rule between them: no LLM reconciliation ever sits on the synchronous path (principle 6).** Capture and retrieval must stay fast and deterministic; everything that contradicts, consolidates, synthesises, or evolves is deferred to a background job. The tiers are the synchronous request path (Tier A), the asynchronous ingest pipeline (Tier B), and the background job registry (Tier C).
+
+The three tiers and the one boundary rule between them — synchronous capture and retrieval, the asynchronous five-phase ingest, and cron-dispatched jobs where all reconciliation lives.
+
+```mermaid
+flowchart LR
+    C["REST / MCP client"]
+
+    subgraph TA["Tier A — synchronous request path"]
+        CAP["Capture — resolve, validate, ack"]
+        RETR["Retrieval — embed, RRF fuse, rerank"]
+    end
+
+    subgraph TB["Tier B — async ingest"]
+        BUF["Buffer — SKIP LOCKED claim (target)"]
+        PIPE["ProcessingPipeline — five phases"]
+    end
+
+    subgraph TC["Tier C — background jobs"]
+        JOBS["JobRegistry — cron, per-job lock"]
+        RECON["Reconciliation — consolidate, reflect (target)"]
+    end
+
+    C --> CAP
+    C --> RETR
+    CAP -->|"flush"| BUF
+    BUF --> PIPE
+    JOBS --> RECON
+    PIPE -.->|"/ws progress"| C
+
+    RULE["Principle 6 — reconciliation never on A or B"]
+    RULE -.-> TA
+    RULE -.-> TB
+```
 
 ### 5.1 Tier A — the synchronous request path
 
@@ -133,6 +210,32 @@ The latency intent is explicit: Tier A is the p95-sensitive surface the eval har
 **Buffer-flush feeds the five-phase pipeline, bounded and idempotent, with per-memory progress broadcast.** The target claims buffered memories (via `FOR UPDATE SKIP LOCKED`) and flushes a batch through `ProcessingPipeline.process_batch`: (1) content embed in one chunked call, (2) extract + classify — folded into one LLM call when the classifier is LLM-backed and the mode is simple, otherwise two concurrent calls, (3) entity embed with a two-tier cache, (4) dedup and canonicalise via one type-constrained ANN probe per unique `(name, entity_type)` pair, (5) write the graph, recompute `technologies`, and run supersession. Each phase is a hard checkpoint, per-phase fan-out is bounded by `pipeline_concurrency`, and re-extraction is idempotent — a memory's prior graph contributions are stripped before the new set is written. Phase 5 splits into two savepoints so a graph failure does not roll back the vector write (§7). Progress is broadcast over `/ws` as `pipeline.completed | partial | failed` per memory, and a per-memory failure row records or resolves what broke.
 
 **Honest note on "async" today.** The tier is *designed* as buffer-then-flush, but the as-is runtime awaits `process_batch` inside the capture call — "async" currently means asyncio-phased fan-out, not deferral, and there is no durable ingest queue or background ingest worker yet. The buffer-flush transport is the named target that closes this gap (§11), and the LLM contradiction check that the target's temporal work implies is a Tier-C consumer, never a Tier-B step.
+
+The target capture-to-write path: capture acknowledges before ingest, a claimed buffer feeds the five-phase pipeline, and per-memory progress is broadcast over the WebSocket.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as API capture
+    participant PG as Postgres
+    participant BUF as Buffer
+    participant PIPE as Pipeline
+    participant WS as WebSocket
+
+    C->>API: capture via REST or MCP
+    API->>API: resolve source + project, validate
+    API->>PG: commit buffer row (memory row created at flush)
+    API-->>C: 202 accept — ack before ingest (target)
+    BUF->>PIPE: claim batch — FOR UPDATE SKIP LOCKED
+    PIPE->>PIPE: Phase 1 content embed (chunked)
+    PIPE->>PG: register fingerprint before any write
+    PIPE->>PIPE: Phase 2 extract + classify (LLM)
+    PIPE->>PG: Phase 3 entity embed — two-tier cache
+    PIPE->>PG: Phase 4 dedup — type-constrained ANN probe
+    PIPE->>PG: Phase 5 write — savepoint A vector, B graph
+    PIPE-->>WS: pipeline.completed / partial / failed
+    WS-->>C: live per-memory progress
+```
 
 ### 5.3 Tier C — background jobs
 
@@ -204,7 +307,24 @@ Each component below states its responsibility, its collaborators, whether it is
 
 ## 8. Deployment topology
 
-**Deployment constraint (target): the entire darkmem application — backend and the built frontend — ships as ONE Docker image; Postgres is the only other image.** This collapses today's split of a separate API container and an nginx/UI container into a single application artifact. Postgres/pgvector stays its own standard image, so its data volume, backups, and major-version upgrades remain independent of the app (the maintainer's confirmed scope is one image for the *app*, not an all-in-one appliance that bakes in the database). The reverse-proxy duties nginx holds today — serving the SPA, routing `/api`/`/ws`/`/health`, setting the `X-Real-IP` the login rate-limiter trusts, and keeping `/mcp` off the `:80` UI origin — are absorbed one of two ways, a decision handed to doc 03 alongside the stack choice: either the application process serves the built frontend and is the edge itself (idiomatic for .NET Kestrel; available in Python via FastAPI static files, but then the app *is* the edge and `trust_proxy_headers` flips off), or nginx is co-packaged *inside* the one app image and launched by the entrypoint beside the app (preserves today's `X-Real-IP`/allowlist behaviour at the cost of two processes per container). Either way the shipped deliverable is one app image plus Postgres.
+**Deployment constraint (target): the entire darkmem application — backend and the built frontend — ships as ONE Docker image; Postgres is the only other image.** This collapses today's split of a separate API container and an nginx/UI container into a single application artifact. Postgres/pgvector stays its own standard image, so its data volume, backups, and major-version upgrades remain independent of the app (the maintainer's confirmed scope is one image for the *app*, not an all-in-one appliance that bakes in the database). The reverse-proxy duties nginx holds today — serving the SPA, routing `/api`/`/ws`/`/health`, setting the `X-Real-IP` the login rate-limiter trusts, and keeping `/mcp` off the `:80` UI origin — are absorbed one of two ways, an edge-absorption sub-decision deferred to doc 03 — on the **retained Python/FastAPI stack** (the backend language is settled per doc 00's locked frame and annex 03a, not open): either the application process serves the built frontend and is the edge itself (via FastAPI static files, but then the app *is* the edge and `trust_proxy_headers` flips off), or nginx is co-packaged *inside* the one app image and launched by the entrypoint beside the app (preserves today's `X-Real-IP`/allowlist behaviour at the cost of two processes per container). Either way the shipped deliverable is one app image plus Postgres. (The .NET-Kestrel serve-the-SPA idiom belongs to the deferred post-target .NET migration in annex 03a, not this build.)
+
+The shipped topology: one app image that serves the SPA and terminates the edge, one separate Postgres image, and distribution clients that speak MCP or REST from outside the box.
+
+```mermaid
+flowchart TD
+    subgraph HOST["Single self-hosted box — host networking"]
+        subgraph APP["darkmem app image — one artifact"]
+            EDGE["FastAPI edge — serves SPA + REST + /ws + /mcp"]
+        end
+        PGD[("Postgres + pgvector — separate standard image")]
+    end
+
+    Browser["Browser UI"] -->|":80 · :8000 — REST + /ws"| EDGE
+    Agent["AI agents"] -->|":8000/mcp — loopback / LAN allowlist"| EDGE
+    Clients["Distribution clients — CLI · SDK · extension"] -->|"MCP or REST, from outside the box"| EDGE
+    EDGE -->|"bounded pool · alembic at startup"| PGD
+```
 
 **darkmem deploys as a single self-hosted instance — one box, one Postgres, in-process jobs and caches.** Today the production compose runs three services on host networking: the FastAPI app under uvicorn on `:8000` (`ENVIRONMENT=production`), a bundled nginx serving the built React frontend on `:80`, and the pgvector Postgres bound to loopback. nginx reverse-proxies `/api/`, `/ws` (with a long read timeout), and `/health` to the app, and **deliberately does not re-expose `/mcp` on the UI origin (`:80`)**. The app itself binds `:8000` on all interfaces (`--host 0.0.0.0`), so under host networking that port *is* LAN-reachable by design: agents reach the tool surface there directly — loopback always, and LAN hosts once named in `MCP_ALLOWED_HOSTS` — with the Host allowlist as the only gate, not a second proxy hop. Not proxying `/mcp` keeps it off the browser-facing UI origin; it does not (and is not meant to) keep it off the LAN. Required secrets are `DB_PASSWORD` and a `JWT_SECRET` of at least 32 characters (validated in production); `COOKIE_SECURE=false` allows login over plain-HTTP LAN, and `MCP_ALLOWED_HOSTS` opens the Host allowlist to named LAN agents. Migrations run at startup via the entrypoint (`alembic upgrade head`, then `exec uvicorn …`). The dev compose is the same app on bridge networking with Postgres on a non-default host port, uvicorn under `--reload` with a raised keep-alive timeout, and no secrets required; it overrides the command to skip the startup migration.
 
@@ -216,7 +336,7 @@ Each component below states its responsibility, its collaborators, whether it is
 
 ## 9. How the target extensions fit without a re-architecture
 
-**The rebuild is a clean re-layering on the *same* stack and topology, and every target subsystem is additive.** Python/FastAPI, async SQLAlchemy, Postgres/pgvector, React, and MCP are retained (doc 00's locked frame); "rebuild" means re-cutting the layers cleanly, not adopting new technology. Each target-new subsystem lands as some combination of *a new service, a new job, and a repository extension* against the four layers already described — no new datastore, no new tier, no new front door:
+**The rebuild is a clean re-layering on the *same* stack and topology, and every target subsystem is additive.** Python/FastAPI, async SQLAlchemy, Postgres/pgvector, React, and MCP are retained (doc 00's locked frame, reaffirmed 2026-07-24 by annex 03a's .NET viability study — .NET proven fully feasible at 24/0/0 but deferred to a post-target migration on appetite/benefit, with the `spikes/` corpus kept as that migration's de-risking record); "rebuild" means re-cutting the layers cleanly, not adopting new technology. Each target-new subsystem lands as some combination of *a new service, a new job, and a repository extension* against the four layers already described — no new datastore, no new tier, no new front door:
 
 | Target-new subsystem | Attaches as | Layer touched |
 |---|---|---|
@@ -261,7 +381,7 @@ Each with a recommended stance, so downstream docs inherit a default rather than
 - **Push / auto-inject delivery transport.** How injected context reaches a target tool (managed-block file writes, an MCP resource, a tool-side shim) is a distribution mechanism. *Defer to doc 15*; the architecture fixes only that push reuses the F3 retrieval path and is a Tier-C/client-side concern, never a second ranking path.
 - **Distribution auth for exposed deployments.** The optional API-key/bearer hardening over the streamable-HTTP surface (and whether it wires the currently-dormant `ApiKey` model) is a security decision. *Defer to doc 18*; the LAN default stays unauthenticated behind the Host allowlist.
 - **Single-worker snapshot versus multi-replica.** The cached in-process igraph snapshot assumes one worker. *Recommendation: keep the single-worker assumption for v1* and treat multi-replica (sticky routing or a serialised snapshot table) as a flagged Phase-4 decision, not a v1 requirement.
-- **Single-image edge: app-serves-static versus nginx-in-image.** The confirmed one-image constraint (§8) requires absorbing nginx's reverse-proxy role into the single app image. *Recommendation: let the application process serve the built SPA and terminate the edge* (one process; idiomatic if the backend is .NET Kestrel), flipping `trust_proxy_headers` off since the app is no longer behind a proxy; fall back to co-packaging nginx in the same image only if a feature it provides (asset caching, header rewriting) proves load-bearing. Settle in doc 03 with the stack decision.
+- **Single-image edge: app-serves-static versus nginx-in-image.** The confirmed one-image constraint (§8) requires absorbing nginx's reverse-proxy role into the single app image. *Recommendation: let the application process (FastAPI) serve the built SPA and terminate the edge* (one process), flipping `trust_proxy_headers` off since the app is no longer behind a proxy; fall back to co-packaging nginx in the same image only if a feature it provides (asset caching, header rewriting) proves load-bearing. Settle this edge-absorption sub-decision in doc 03, on the retained Python stack — the stack itself is already decided (annex 03a; Python retained, .NET deferred).
 
 ---
 
