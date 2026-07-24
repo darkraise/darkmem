@@ -1,0 +1,745 @@
+<style>
+  /* S13 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .badge (+ rungs), .layer-chip — and
+     invents nothing that duplicates them. Everything below is new S13-only
+     layout: the three-column chat shell (thread list / message pane /
+     context panel), the message bubbles, and the app's real chat-prose
+     register (doc 14 §2's named irreducible-custom exception — frontend/src
+     styles/globals.css defines it against Tailwind + a literal hex; this
+     re-derives the same register from theme tokens only, no hex, so the
+     mockup obeys the no-hardcoded-hex rule the real component cannot).
+     Reads var(--token) / hsl(var(--token)) only; no redeclared tokens.
+     Namespaced s13- so it can never collide with another fragment's local
+     styles once build.py concatenates them. */
+
+  .s13-shell {
+    display: grid;
+    grid-template-columns: 200px minmax(280px, 1fr) 260px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .s13-shell { grid-template-columns: 1fr; }
+  }
+
+  /* ---- module 1: thread list ---- */
+  .s13-threads {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .s13-threads-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 12px; border-bottom: 1px solid hsl(var(--border));
+  }
+  .s13-threads-header .title { font-weight: 640; font-size: 13px; color: hsl(var(--foreground)); }
+  .s13-new-btn {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+    font-weight: 600; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid hsl(var(--primary)); color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary)); white-space: nowrap;
+  }
+  .s13-new-btn svg { width: 12px; height: 12px; }
+  .s13-search-field {
+    display: flex; align-items: center; gap: 6px; margin: 8px 10px 4px;
+    padding: 6px 10px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--background));
+  }
+  .s13-search-field svg { width: 13px; height: 13px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s13-search-field span { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s13-thread-list { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 10px; }
+  .s13-thread-item {
+    display: flex; flex-direction: column; gap: 3px; padding: 8px 10px;
+    border-radius: var(--radius-sm); border: 1px solid transparent;
+  }
+  .s13-thread-item.active {
+    background: hsl(var(--primary) / 0.1); border-color: hsl(var(--primary) / 0.3);
+  }
+  .s13-thread-item .t-title { font-size: 12.5px; font-weight: 590; color: hsl(var(--foreground)); }
+  .s13-thread-item .t-meta {
+    display: flex; align-items: center; gap: 8px; font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+  .s13-thread-empty {
+    margin: 6px 10px 12px; padding: 16px 12px; border: 1px dashed hsl(var(--border));
+    border-radius: var(--radius-sm); display: flex; flex-direction: column;
+    align-items: flex-start; gap: 4px; background: hsl(var(--muted) / 0.15);
+  }
+  .s13-thread-empty svg { width: 18px; height: 18px; color: hsl(var(--muted-foreground)); }
+  .s13-thread-empty .headline { font-size: 12.5px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s13-thread-empty .why { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- module 2: message pane ---- */
+  .s13-pane {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); display: flex; flex-direction: column;
+    min-height: 360px;
+  }
+  .s13-pane-header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid hsl(var(--border));
+  }
+  .s13-pane-header .p-title { font-weight: 640; font-size: 13px; color: hsl(var(--foreground)); margin-right: auto; }
+  /* two distinct chips, never conflated (Global Constraints): the project
+     scope pill sets query scope; the context chip declares session
+     applies_when. Same visual distinction S02 draws — solid vs dashed. */
+  .s13-scope-pill {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px;
+    border-radius: 999px; border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted)); color: hsl(var(--foreground)); font-size: 11.5px;
+  }
+  .s13-scope-pill svg { width: 11px; height: 11px; color: hsl(var(--muted-foreground)); }
+  .s13-context-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px;
+    border-radius: 999px; border: 1px dashed hsl(var(--border));
+    color: hsl(var(--muted-foreground)); font-size: 11.5px; font-style: italic;
+  }
+  .s13-context-chip svg { width: 11px; height: 11px; }
+
+  .s13-messages { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+  .s13-msg { display: flex; flex-direction: column; gap: 4px; max-width: 86%; }
+  .s13-msg.user { align-self: flex-end; align-items: flex-end; }
+  .s13-msg.assistant { align-self: flex-start; align-items: flex-start; }
+  .s13-msg .role {
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: hsl(var(--muted-foreground));
+  }
+  .s13-bubble {
+    padding: 9px 13px; border-radius: var(--radius-sm); font-size: 13px;
+    line-height: 1.5;
+  }
+  .s13-msg.user .s13-bubble {
+    background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  }
+  .s13-msg.assistant .s13-bubble {
+    background: hsl(var(--muted) / 0.5); color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border));
+  }
+  .s13-turn-meta {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+  .s13-turn-meta svg { width: 11px; height: 11px; }
+
+  /* the app's real chat-prose register (globals.css), re-derived from
+     tokens instead of the shipped Tailwind + literal-hex version — the
+     ONLY change from the real component is the colour source, never the
+     typographic intent. */
+  .chat-prose { display: flex; flex-direction: column; gap: 8px; }
+  .chat-prose p { margin: 0; }
+  .chat-prose code {
+    font-family: var(--font-mono); font-size: 12px; color: hsl(var(--primary));
+    background: hsl(var(--muted)); border-radius: 4px; padding: 1px 5px;
+  }
+  .chat-prose ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+  .chat-prose strong { color: hsl(var(--foreground)); font-weight: 650; }
+
+  .s13-composer {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    border-top: 1px solid hsl(var(--border));
+  }
+  .s13-composer-field {
+    flex: 1; padding: 8px 12px; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); background: hsl(var(--background));
+    font-size: 12.5px; color: hsl(var(--muted-foreground));
+  }
+  .s13-send-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: var(--radius-sm); flex: none;
+    background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  }
+  .s13-send-btn svg { width: 14px; height: 14px; }
+
+  /* new-conversation prompt (the empty register, doc 13 §4.1) */
+  .s13-new-convo {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; padding: 28px 16px; text-align: center;
+  }
+  .s13-new-convo svg { width: 26px; height: 26px; color: hsl(var(--muted-foreground)); }
+  .s13-new-convo .headline { font-size: 14px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s13-new-convo .sub { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 46ch; }
+  .s13-starter-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+  .s13-starter-chip {
+    font-size: 12px; padding: 6px 12px; border-radius: 999px;
+    border: 1px dashed hsl(var(--border)); color: hsl(var(--foreground));
+    background: hsl(var(--card));
+  }
+
+  /* loading: skeleton reply, streaming-shape not a spinner overlay */
+  .s13-skel-line { height: 9px; border-radius: 4px; background: hsl(var(--muted)); }
+  .s13-skel-line.w70 { width: 70%; }
+  .s13-skel-line.w45 { width: 45%; }
+  .s13-skel-line.w85 { width: 85%; }
+  .s13-typing { display: inline-flex; align-items: center; gap: 4px; }
+  .s13-typing i {
+    width: 5px; height: 5px; border-radius: 999px; background: hsl(var(--muted-foreground));
+    display: inline-block; opacity: 0.6;
+  }
+
+  /* error bubble — a named failure, never a silently empty reply */
+  .s13-alert {
+    display: flex; gap: 9px; padding: 10px 12px; border-radius: var(--radius-sm);
+    border: 1px solid hsl(var(--destructive) / 0.5); background: hsl(var(--destructive) / 0.08);
+  }
+  .s13-alert svg { width: 16px; height: 16px; flex: none; color: hsl(var(--destructive)); }
+  .s13-alert .body { display: flex; flex-direction: column; gap: 4px; }
+  .s13-alert .headline { font-weight: 600; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s13-alert .desc { font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s13-retry {
+    align-self: flex-start; font-family: var(--font-mono); font-size: 11px;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid hsl(var(--destructive) / 0.5);
+    color: hsl(var(--destructive)); background: transparent;
+  }
+
+  /* ---- module 3: context panel — the same layer-chip + verification-badge
+     vocabulary as Memories' why-retrieved trace (S03), because Chat rides
+     the identical one ranking path (doc 07 §9). This panel is the lighter,
+     always-visible summary; the full score-bar breakdown lives one level
+     deeper behind the same trace affordance S03 renders in full. */
+  .s13-context {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); display: flex; flex-direction: column; gap: 10px;
+    padding: 12px;
+  }
+  .s13-context-header { display: flex; align-items: center; gap: 8px; }
+  .s13-context-header .c-title { font-weight: 640; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s13-context-note { font-size: 11px; color: hsl(var(--muted-foreground)); line-height: 1.5; }
+
+  .s13-ctx-row {
+    display: flex; flex-direction: column; gap: 5px; padding: 9px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--background));
+  }
+  .s13-ctx-row .row-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .s13-ctx-row .claim { font-size: 12px; color: hsl(var(--foreground)); flex-basis: 100%; }
+  .s13-ctx-row .badge-claim {
+    font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground));
+  }
+  .s13-ctx-row .badge-claim b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s13-exclusion-chip {
+    display: flex; align-items: center; gap: 7px; padding: 6px 9px;
+    border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm);
+    background: hsl(var(--warning) / 0.08); font-size: 11px; color: hsl(var(--foreground));
+  }
+  .s13-exclusion-chip svg { width: 13px; height: 13px; flex: none; color: hsl(var(--warning)); }
+  .s13-exclusion-chip .tag {
+    margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .s13-ctx-empty {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 6px; padding: 22px 10px; text-align: center;
+    border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--muted) / 0.12);
+  }
+  .s13-ctx-empty svg { width: 18px; height: 18px; color: hsl(var(--muted-foreground)); }
+  .s13-ctx-empty .headline { font-size: 12px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s13-ctx-empty .why { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .s13-ctx-skel-row {
+    display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+  }
+  .s13-ctx-skel-bar { height: 9px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s13-ctx-skel-bar.chip { width: 44px; }
+  .s13-ctx-skel-bar.badge { width: 70px; }
+  .s13-ctx-skel-bar.text { flex: 1 1 auto; }
+</style>
+
+<!-- ================================================================= -->
+<section class="board" id="S13-populated">
+  <h2>S13 — Chat: thread list, message pane, context panel (populated)</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §4.1's Chat inventory — the thread list, the
+    message pane (conversation over memory), and a <b>context panel</b> that shows the retrieval
+    context the current turn used. Chat's reads ride the same one ranking path as Memories
+    (doc 07 §9, invariant 17), so the context panel renders the identical <code>.layer-chip</code>
+    and <code>.badge</code> vocabulary <code>C01</code>/<code>C02</code> define once and
+    <code>S03</code> instantiates for Memories — never a bespoke chat-only honesty treatment.
+  </div>
+  <div class="annotation">
+    <b>Two distinct chips in the pane header, never conflated (Global Constraints).</b> The
+    project scope pill (solid border) sets the <code>project</code> every retrieval call in this
+    thread uses; the context chip (dashed, italic) is the separate, optional session
+    <code>applies_when</code> declaration — the same visual distinction S02's search bar draws.
+  </div>
+
+  <div class="theme-row">
+    <div class="theme-light">
+      <div class="s13-shell">
+
+        <div class="s13-threads">
+          <div class="s13-threads-header">
+            <span class="title">Conversations</span>
+            <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+          </div>
+          <div class="s13-search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search conversations…</span>
+          </div>
+          <div class="s13-thread-list">
+            <div class="s13-thread-item active">
+              <span class="t-title">Retrieval &amp; ranking questions</span>
+              <span class="t-meta"><span>just now</span><span>6 msgs</span></span>
+            </div>
+            <div class="s13-thread-item">
+              <span class="t-title">cookie_secure LAN login flow</span>
+              <span class="t-meta"><span>1d ago</span><span>3 msgs</span></span>
+            </div>
+            <div class="s13-thread-item">
+              <span class="t-title">supersession window default</span>
+              <span class="t-meta"><span>3d ago</span><span>5 msgs</span></span>
+            </div>
+            <div class="s13-thread-item">
+              <span class="t-title">pipeline phase 5 write savepoints</span>
+              <span class="t-meta"><span>1w ago</span><span>2 msgs</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s13-pane">
+          <div class="s13-pane-header">
+            <span class="p-title">Retrieval &amp; ranking questions</span>
+            <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+            <span class="s13-context-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>context: not declared</span>
+          </div>
+          <div class="s13-messages">
+            <div class="s13-msg user">
+              <span class="role">you</span>
+              <div class="s13-bubble">What does the supersession window default to?</div>
+            </div>
+            <div class="s13-msg assistant">
+              <span class="role">assistant</span>
+              <div class="s13-bubble">90 days — <code>SUPERSESSION_WINDOW_DAYS = 90</code>. A candidate only flips an older row to superseded if it's still active and inside that window.</div>
+            </div>
+            <div class="s13-msg user">
+              <span class="role">you</span>
+              <div class="s13-bubble">Is the reranker on by default, and what's our RRF k?</div>
+            </div>
+            <div class="s13-msg assistant">
+              <span class="role">assistant</span>
+              <div class="s13-bubble">
+                <div class="chat-prose">
+                  <p>Yes — <code>hybrid_search_enabled</code> is on by default, fusing semantic and keyword channels via Reciprocal Rank Fusion with <code>k = 60</code>. The reranker is a separate flag (<code>reranker_enabled</code>) and stays off by default.</p>
+                  <ul>
+                    <li><code>hybrid_search_enabled</code> — <strong>on</strong>, RRF <code>k=60</code></li>
+                    <li><code>reranker_enabled</code> — <strong>off</strong> by default</li>
+                    <li><code>confidence_rank_gamma</code> — <strong>0</strong> (inactive until raised above zero)</li>
+                  </ul>
+                </div>
+              </div>
+              <span class="s13-turn-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>3 sources used this turn — see context panel</span>
+            </div>
+          </div>
+          <div class="s13-composer">
+            <span class="s13-composer-field">Ask about your memory…</span>
+            <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+          </div>
+        </div>
+
+        <div class="s13-context">
+          <div class="s13-context-header">
+            <span class="c-title">Context used for this turn</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s13-context-note">Same composed, labelled rows the Memories why-retrieved trace renders — no chat-only re-derivation.</div>
+
+          <div class="s13-ctx-row">
+            <div class="row-top">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+            </div>
+            <span class="claim">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
+            <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</b></span>
+          </div>
+
+          <div class="s13-ctx-row">
+            <div class="row-top">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified
+              </span>
+            </div>
+            <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
+            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+          </div>
+
+          <div class="s13-ctx-row">
+            <div class="row-top">
+              <span class="layer-chip l0">L0 · memory</span>
+            </div>
+            <span class="claim">"Considering moving the reranker to a cross-encoder model"</span>
+            <span class="badge-claim">no verification badge on this row — <b>badge: null</b>, verification_status: null (L0 memories carry lifecycle, not the ladder)</span>
+          </div>
+
+          <div class="s13-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+            <span><b>1 row excluded</b> — status is superseded, not active</span>
+            <span class="tag">by_status</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="theme-dark">
+      <div class="s13-shell">
+
+        <div class="s13-threads">
+          <div class="s13-threads-header">
+            <span class="title">Conversations</span>
+            <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+          </div>
+          <div class="s13-search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search conversations…</span>
+          </div>
+          <div class="s13-thread-list">
+            <div class="s13-thread-item active">
+              <span class="t-title">Retrieval &amp; ranking questions</span>
+              <span class="t-meta"><span>just now</span><span>6 msgs</span></span>
+            </div>
+            <div class="s13-thread-item">
+              <span class="t-title">cookie_secure LAN login flow</span>
+              <span class="t-meta"><span>1d ago</span><span>3 msgs</span></span>
+            </div>
+            <div class="s13-thread-item">
+              <span class="t-title">supersession window default</span>
+              <span class="t-meta"><span>3d ago</span><span>5 msgs</span></span>
+            </div>
+            <div class="s13-thread-item">
+              <span class="t-title">pipeline phase 5 write savepoints</span>
+              <span class="t-meta"><span>1w ago</span><span>2 msgs</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="s13-pane">
+          <div class="s13-pane-header">
+            <span class="p-title">Retrieval &amp; ranking questions</span>
+            <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+            <span class="s13-context-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>context: not declared</span>
+          </div>
+          <div class="s13-messages">
+            <div class="s13-msg user">
+              <span class="role">you</span>
+              <div class="s13-bubble">What does the supersession window default to?</div>
+            </div>
+            <div class="s13-msg assistant">
+              <span class="role">assistant</span>
+              <div class="s13-bubble">90 days — <code>SUPERSESSION_WINDOW_DAYS = 90</code>. A candidate only flips an older row to superseded if it's still active and inside that window.</div>
+            </div>
+            <div class="s13-msg user">
+              <span class="role">you</span>
+              <div class="s13-bubble">Is the reranker on by default, and what's our RRF k?</div>
+            </div>
+            <div class="s13-msg assistant">
+              <span class="role">assistant</span>
+              <div class="s13-bubble">
+                <div class="chat-prose">
+                  <p>Yes — <code>hybrid_search_enabled</code> is on by default, fusing semantic and keyword channels via Reciprocal Rank Fusion with <code>k = 60</code>. The reranker is a separate flag (<code>reranker_enabled</code>) and stays off by default.</p>
+                  <ul>
+                    <li><code>hybrid_search_enabled</code> — <strong>on</strong>, RRF <code>k=60</code></li>
+                    <li><code>reranker_enabled</code> — <strong>off</strong> by default</li>
+                    <li><code>confidence_rank_gamma</code> — <strong>0</strong> (inactive until raised above zero)</li>
+                  </ul>
+                </div>
+              </div>
+              <span class="s13-turn-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>3 sources used this turn — see context panel</span>
+            </div>
+          </div>
+          <div class="s13-composer">
+            <span class="s13-composer-field">Ask about your memory…</span>
+            <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+          </div>
+        </div>
+
+        <div class="s13-context">
+          <div class="s13-context-header">
+            <span class="c-title">Context used for this turn</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s13-context-note">Same composed, labelled rows the Memories why-retrieved trace renders — no chat-only re-derivation.</div>
+
+          <div class="s13-ctx-row">
+            <div class="row-top">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated
+              </span>
+            </div>
+            <span class="claim">confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero</span>
+            <span class="badge-claim">badge — <b>asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20</b></span>
+          </div>
+
+          <div class="s13-ctx-row">
+            <div class="row-top">
+              <span class="layer-chip l2">L2 · fact</span>
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified
+              </span>
+            </div>
+            <span class="claim">hybrid_search_enabled is on by default; RRF k=60</span>
+            <span class="badge-claim">badge — <b>asserted by 4 distinct origins of kinds [memory, code, human], no known contradiction, as of 2026-07-15, human-ratified</b></span>
+          </div>
+
+          <div class="s13-ctx-row">
+            <div class="row-top">
+              <span class="layer-chip l0">L0 · memory</span>
+            </div>
+            <span class="claim">"Considering moving the reranker to a cross-encoder model"</span>
+            <span class="badge-claim">no verification badge on this row — <b>badge: null</b>, verification_status: null (L0 memories carry lifecycle, not the ladder)</span>
+          </div>
+
+          <div class="s13-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>
+            <span><b>1 row excluded</b> — status is superseded, not active</span>
+            <span class="tag">by_status</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="annotation">
+    <b>Why the L0 row carries no badge.</b> The candidate-fact reading of "considering a cross-encoder"
+    stays a raw memory (L0) here — episodic recall is not a claim (doc 14 §3.2) — so it renders with
+    <code>badge: null</code> exactly as S03's L0 rows do, never paired with a rung badge it hasn't
+    earned.
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S13-empty">
+  <h2>S13 — Chat: empty — new-conversation prompt</h2>
+  <div class="annotation">
+    <b>Doc 13 §4's assigned empty register for Chat.</b> Unlike Memories' empty state (which
+    distinguishes "no matches" from "no memories exist"), Chat's empty state is a single honest
+    register: nothing has been asked yet in this thread. The prompt is forward-looking — starter
+    chips, not a blank pane — and the context panel mirrors the same honesty: it has nothing to show
+    <i>because no turn has run</i>, not because retrieval failed.
+  </div>
+  <div class="board-body">
+    <div class="s13-shell">
+      <div class="s13-threads">
+        <div class="s13-threads-header">
+          <span class="title">Conversations</span>
+          <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+        </div>
+        <div class="s13-thread-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 21l1-5.4A8.5 8.5 0 1 1 21 11.5Z"/></svg>
+          <span class="headline">No conversations yet</span>
+          <span class="why">Click "New" to start one.</span>
+        </div>
+      </div>
+
+      <div class="s13-pane">
+        <div class="s13-pane-header">
+          <span class="p-title">New conversation</span>
+          <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+          <span class="s13-context-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>context: not declared</span>
+        </div>
+        <div class="s13-new-convo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 21l1-5.4A8.5 8.5 0 1 1 21 11.5Z"/></svg>
+          <span class="headline">Ask about your memory, facts, or code</span>
+          <span class="sub">Chat reads the same ranked, labelled results Memories and the vault do — nothing here is answered from an unlabelled guess.</span>
+          <div class="s13-starter-row">
+            <span class="s13-starter-chip">Is the reranker on by default?</span>
+            <span class="s13-starter-chip">What changed in cookie_secure this week?</span>
+            <span class="s13-starter-chip">Summarize open review-queue disputes</span>
+          </div>
+        </div>
+        <div class="s13-composer">
+          <span class="s13-composer-field">Ask about your memory…</span>
+          <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+        </div>
+      </div>
+
+      <div class="s13-context">
+        <div class="s13-context-header">
+          <span class="c-title">Context used for this turn</span>
+          <span class="state-chip state-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+            empty
+          </span>
+        </div>
+        <div class="s13-ctx-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          <span class="headline">No context yet</span>
+          <span class="why">Nothing has been asked in this thread — send a message to see the labelled rows it retrieved.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S13-loading">
+  <h2>S13 — Chat: loading — retrieving context, streaming a reply</h2>
+  <div class="annotation">
+    Non-hero state, shown once in the default theme (theme parity is guaranteed by the shared
+    toggle, per the fragment authoring protocol). The context panel's skeleton mirrors the exact
+    layer-chip / badge / claim slots the populated board fills in, so the layout never jumps once
+    the turn resolves — the same discipline C04/S02's loading skeletons use.
+  </div>
+  <div class="board-body">
+    <div class="s13-shell">
+      <div class="s13-threads">
+        <div class="s13-threads-header">
+          <span class="title">Conversations</span>
+          <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+        </div>
+        <div class="s13-thread-list">
+          <div class="s13-thread-item active">
+            <span class="t-title">Retrieval &amp; ranking questions</span>
+            <span class="t-meta"><span>just now</span><span>7 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">cookie_secure LAN login flow</span>
+            <span class="t-meta"><span>1d ago</span><span>3 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">supersession window default</span>
+            <span class="t-meta"><span>3d ago</span><span>5 msgs</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="s13-pane">
+        <div class="s13-pane-header">
+          <span class="p-title">Retrieval &amp; ranking questions</span>
+          <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+        </div>
+        <div class="s13-messages">
+          <div class="s13-msg user">
+            <span class="role">you</span>
+            <div class="s13-bubble">What does "under-sourced" mean for a fact?</div>
+          </div>
+          <div class="s13-msg assistant">
+            <span class="role">assistant</span>
+            <div class="s13-bubble">
+              <span class="s13-typing"><i></i><i></i><i></i></span>
+            </div>
+            <span class="s13-turn-meta">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              retrieving context…
+            </span>
+          </div>
+        </div>
+        <div class="s13-composer">
+          <span class="s13-composer-field">Ask about your memory…</span>
+          <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+        </div>
+      </div>
+
+      <div class="s13-context">
+        <div class="s13-context-header">
+          <span class="c-title">Context used for this turn</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s13-ctx-skel-row"><span class="s13-ctx-skel-bar chip"></span><span class="s13-ctx-skel-bar badge"></span><span class="s13-ctx-skel-bar text"></span></div>
+        <div class="s13-ctx-skel-row"><span class="s13-ctx-skel-bar chip"></span><span class="s13-ctx-skel-bar badge"></span><span class="s13-ctx-skel-bar text"></span></div>
+        <div class="s13-ctx-skel-row"><span class="s13-ctx-skel-bar chip"></span><span class="s13-ctx-skel-bar text"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S13-error">
+  <h2>S13 — Chat: error — both retrieval channels failed for this turn</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ silently empty reply.</b> Because Chat spends the same ranking path as
+    Memories, it inherits doc 07 §2's rule verbatim: a one-sided channel failure degrades gracefully
+    with a caution banner, but a <b>both-sided</b> failure raises a named error, never an answer
+    quietly composed from nothing. The context panel names the same failure the message bubble does
+    — one honest state, not two disagreeing ones.
+  </div>
+  <div class="board-body">
+    <div class="s13-shell">
+      <div class="s13-threads">
+        <div class="s13-threads-header">
+          <span class="title">Conversations</span>
+          <span class="s13-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New</span>
+        </div>
+        <div class="s13-thread-list">
+          <div class="s13-thread-item active">
+            <span class="t-title">cookie_secure LAN login flow</span>
+            <span class="t-meta"><span>just now</span><span>4 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">Retrieval &amp; ranking questions</span>
+            <span class="t-meta"><span>2h ago</span><span>6 msgs</span></span>
+          </div>
+          <div class="s13-thread-item">
+            <span class="t-title">supersession window default</span>
+            <span class="t-meta"><span>3d ago</span><span>5 msgs</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="s13-pane">
+        <div class="s13-pane-header">
+          <span class="p-title">cookie_secure LAN login flow</span>
+          <span class="s13-scope-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6h18M3 18h18"/></svg>project: darkmem</span>
+        </div>
+        <div class="s13-messages">
+          <div class="s13-msg user">
+            <span class="role">you</span>
+            <div class="s13-bubble">Summarize what changed in cookie_secure this month.</div>
+          </div>
+          <div class="s13-msg assistant">
+            <span class="role">assistant</span>
+            <div class="s13-alert">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              <div class="body">
+                <span class="headline">Couldn't answer — both retrieval channels failed</span>
+                <span class="desc">Semantic and keyword channels both failed to respond, so no ranked context exists to answer from.</span>
+                <span class="s13-retry">Retry</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="s13-composer">
+          <span class="s13-composer-field">Ask about your memory…</span>
+          <span class="s13-send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></span>
+        </div>
+      </div>
+
+      <div class="s13-context">
+        <div class="s13-context-header">
+          <span class="c-title">Context used for this turn</span>
+          <span class="state-chip state-error">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            error
+          </span>
+        </div>
+        <div class="s13-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">No context available</span>
+            <span class="desc">Both channels failed before ranking ran — there are no rows to label.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

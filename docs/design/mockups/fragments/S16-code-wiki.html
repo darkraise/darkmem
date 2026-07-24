@@ -1,0 +1,394 @@
+<style>
+  /* S16 board-local styles — Code / Wiki: a read-only view over generated
+     code documentation (nav/toc + prose) plus its four render states. No
+     shared class for a doc-body layout or a repo-scope chip exists yet
+     (mockup.css owns board/annotation/state-chip/badge/badge-code/
+     layer-chip only; C04 owns the state-skeleton primitives this fragment
+     composes rather than redeclares), so everything here is namespaced
+     s16- and reads var(--token)/hsl(var(--token)) only — no literal hex,
+     no redeclared token, no restyling of .board/.annotation/.state-chip/
+     .badge-code/.theme-light/.theme-dark/.c04-* from elsewhere.
+
+     Prose register: the wiki body is generated documentation prose (like
+     doc 13/14 themselves), not chat — short declarative sentences,
+     symbol/path names in <code>, no first person, no dialogue framing. */
+
+  .s16-intro { display: flex; flex-direction: column; gap: 6px; max-width: 960px; }
+  .s16-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s16-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- repo-scope bar: deliberately NOT the project switcher (C03) ---- */
+  .s16-scope-bar {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+    padding: 8px 10px; margin-bottom: 2px;
+    border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--muted) / 0.25);
+  }
+  .s16-repo-chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--card)); font-size: 12.5px; color: hsl(var(--foreground));
+  }
+  .s16-repo-chip svg { width: 13px; height: 13px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s16-repo-chip .cap {
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: hsl(var(--muted-foreground));
+  }
+  .s16-repo-meta { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s16-repo-meta b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s16-scope-note {
+    margin-left: auto; font-size: 11.5px; color: hsl(var(--muted-foreground)); font-style: italic;
+  }
+
+  /* ---- doc layout: toc + prose column ---- */
+  .s16-layout { display: grid; grid-template-columns: 190px 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 700px) {
+    .s16-layout { grid-template-columns: 1fr; }
+  }
+
+  .s16-toc { display: flex; flex-direction: column; gap: 2px; padding: 8px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s16-toc-title { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); padding: 3px 6px 5px; }
+  .s16-toc-item { padding: 5px 7px; border-radius: var(--radius-sm); font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s16-toc-item.active { background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); font-weight: 590; }
+  .s16-toc-item .sub { display: block; padding-left: 10px; font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  .s16-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .s16-gen-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); padding-bottom: 8px; border-bottom: 1px dashed hsl(var(--border)); }
+  .s16-gen-meta b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .s16-prose h3 { margin: 0 0 4px; font-size: 14px; font-weight: 630; color: hsl(var(--foreground)); }
+  .s16-prose h3:not(:first-child) { margin-top: 14px; }
+  .s16-prose p { margin: 0; font-size: 13px; line-height: 1.7; color: hsl(var(--foreground)); }
+  .s16-prose p + p { margin-top: 8px; }
+  .s16-prose code { font-family: var(--font-mono); font-size: 0.92em; }
+  .s16-prose ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: hsl(var(--foreground)); display: flex; flex-direction: column; gap: 3px; }
+
+  /* ---- empty: honest about why, points AT the control, not just AT the reason ---- */
+  .s16-cta-row { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .s16-cta-button {
+    display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px;
+    border-radius: var(--radius-sm); border: 1px solid hsl(var(--primary));
+    background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+    font-size: 12.5px; font-weight: 600;
+  }
+  .s16-cta-button svg { width: 14px; height: 14px; flex: none; }
+
+  /* ---- reindex-dialog preview: what the CTA opens, shown inline so the
+     empty state points at the real control rather than a vague promise ---- */
+  .s16-reindex-preview { width: 100%; max-width: 420px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); overflow: hidden; }
+  .s16-reindex-header { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); }
+  .s16-reindex-title { font-size: 13px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s16-reindex-desc { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s16-reindex-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+  .s16-toggle-row { display: flex; align-items: flex-start; gap: 9px; }
+  .s16-toggle-box { width: 15px; height: 15px; flex: none; margin-top: 1px; border-radius: 4px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); display: flex; align-items: center; justify-content: center; }
+  .s16-toggle-row.checked .s16-toggle-box { border-color: hsl(var(--primary)); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .s16-toggle-box svg { width: 11px; height: 11px; }
+  .s16-toggle-text { display: flex; flex-direction: column; gap: 1px; }
+  .s16-toggle-key { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--foreground)); }
+  .s16-toggle-hint { font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s16-reindex-row.emphasis { padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius-sm); background: hsl(var(--primary) / 0.08); border: 1px dashed hsl(var(--primary) / 0.45); }
+  .s16-reindex-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.25); }
+  .s16-reindex-run { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid hsl(var(--primary)); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 12px; font-weight: 600; }
+</style>
+
+<div class="s16-intro">
+  <h2>S16 — Code · Wiki</h2>
+  <p>
+    The read-only third tab of the Code section: generated code documentation rendered as prose with a
+    section nav/table of contents, realising doc 13 §4.2 and doc 10 §8. <code>GET /code/wiki</code> only
+    reads what a prior reindex already generated — it never triggers generation on browse — so the
+    <b>empty</b> board below points directly at the reindex dialog's <code>generate_wiki</code> toggle
+    rather than describing it from a distance. Every module here composes shared vocabulary rather than
+    re-deriving it: <code>.state-chip</code>, <code>.badge-code</code>, and C04's
+    <code>.c04-surface</code>/<code>.c04-empty</code>/<code>.c04-alert</code>/<code>.c04-skel-row</code>
+    skeleton. <b>Populated</b> renders as the hero in both themes; <b>empty</b>, <b>loading</b>, and
+    <b>error</b> render once each in the default theme, since the shared toggle already guarantees theme
+    parity.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S16-populated">
+  <h2>Code · Wiki — populated (hero, both themes)</h2>
+  <div class="annotation">
+    <b>Nav/toc + generated prose, nothing more.</b> The wiki is a rendering of what <code>WikiGenerator</code>
+    already wrote during a reindex that had the <code>generate_wiki</code> toggle enabled — this view never
+    re-derives or edits that content, it only reads and navigates it (doc 10 §8). The generation metadata
+    line under the
+    toc names the commit the prose describes and whether the symbol/module summarisation it draws on has
+    finished draining, so a reader can tell how current the doc is without cross-checking Repositories.
+  </div>
+  <div class="annotation annotation-conflict">
+    <b>Gated by repository, not project (doc 01 §8's deliberate exception, doc 13 §4.2).</b> The scope
+    control below is a <b>repo picker</b>, not the global project switcher from C03 — the two are visually
+    distinct on purpose. A repo can be shared by several projects, so switching the project switcher
+    elsewhere in the app never filters this graph; a user has to pick a different repo here to see a
+    different codebase's wiki.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s16-scope-bar">
+          <span class="s16-repo-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+            <span class="cap">repo</span> darkmem/backend
+          </span>
+          <span class="s16-repo-meta">branch <b>main</b> · HEAD <span class="badge-code">a1c9f02</span></span>
+          <span class="s16-scope-note">repo-scoped — not the project switcher</span>
+        </div>
+        <div class="s16-layout">
+          <nav class="s16-toc">
+            <div class="s16-toc-title">Contents</div>
+            <div class="s16-toc-item active">Overview</div>
+            <div class="s16-toc-item">Ingestion pipeline</div>
+            <div class="s16-toc-item">api/routes</div>
+            <div class="s16-toc-item">api/mcp</div>
+            <div class="s16-toc-item">services</div>
+            <div class="s16-toc-item">repositories</div>
+            <div class="s16-toc-item">models</div>
+          </nav>
+          <div class="s16-body">
+            <div class="s16-gen-meta">
+              generated <b>2026-07-20 04:12</b> · at <span class="badge-code">a1c9f02</span> · symbol
+              enrichment <b>complete</b> · module summaries <b>complete</b>
+            </div>
+            <div class="s16-prose">
+              <h3>Overview</h3>
+              <p>
+                <code>backend/app</code> is a FastAPI service organised into <code>api/routes</code> (REST),
+                <code>api/mcp</code> (the FastMCP tool family mounted at <code>/mcp</code>),
+                <code>services</code> (the ingestion pipeline and its supporting orchestration),
+                <code>repositories</code> (graph, relational, and vector data access), and
+                <code>models</code>/<code>schemas</code>. The process entry point is
+                <code>app/main.py</code>, which also registers the seven periodic jobs under
+                <code>JobRegistry</code>.
+              </p>
+              <h3>Ingestion pipeline</h3>
+              <p>
+                <code>ProcessingPipeline.process_batch</code> is the central write path. It moves a batch of
+                memories through five phases — content embed, extract-and-classify, entity embed with cache,
+                dedup, and write — committing the vector and graph halves of phase five in separate
+                savepoints so a graph failure never rolls back the vector write.
+              </p>
+              <ul>
+                <li><code>services/pipeline.py</code> — phase orchestration, savepoint boundaries</li>
+                <li><code>services/extraction_clean.py</code> — entity/relationship extraction</li>
+                <li><code>services/code_pipeline.py</code> — this repository's own indexing path</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s16-scope-bar">
+          <span class="s16-repo-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+            <span class="cap">repo</span> darkmem/backend
+          </span>
+          <span class="s16-repo-meta">branch <b>main</b> · HEAD <span class="badge-code">a1c9f02</span></span>
+          <span class="s16-scope-note">repo-scoped — not the project switcher</span>
+        </div>
+        <div class="s16-layout">
+          <nav class="s16-toc">
+            <div class="s16-toc-title">Contents</div>
+            <div class="s16-toc-item active">Overview</div>
+            <div class="s16-toc-item">Ingestion pipeline</div>
+            <div class="s16-toc-item">api/routes</div>
+            <div class="s16-toc-item">api/mcp</div>
+            <div class="s16-toc-item">services</div>
+            <div class="s16-toc-item">repositories</div>
+            <div class="s16-toc-item">models</div>
+          </nav>
+          <div class="s16-body">
+            <div class="s16-gen-meta">
+              generated <b>2026-07-20 04:12</b> · at <span class="badge-code">a1c9f02</span> · symbol
+              enrichment <b>complete</b> · module summaries <b>complete</b>
+            </div>
+            <div class="s16-prose">
+              <h3>Overview</h3>
+              <p>
+                <code>backend/app</code> is a FastAPI service organised into <code>api/routes</code> (REST),
+                <code>api/mcp</code> (the FastMCP tool family mounted at <code>/mcp</code>),
+                <code>services</code> (the ingestion pipeline and its supporting orchestration),
+                <code>repositories</code> (graph, relational, and vector data access), and
+                <code>models</code>/<code>schemas</code>. The process entry point is
+                <code>app/main.py</code>, which also registers the seven periodic jobs under
+                <code>JobRegistry</code>.
+              </p>
+              <h3>Ingestion pipeline</h3>
+              <p>
+                <code>ProcessingPipeline.process_batch</code> is the central write path. It moves a batch of
+                memories through five phases — content embed, extract-and-classify, entity embed with cache,
+                dedup, and write — committing the vector and graph halves of phase five in separate
+                savepoints so a graph failure never rolls back the vector write.
+              </p>
+              <ul>
+                <li><code>services/pipeline.py</code> — phase orchestration, savepoint boundaries</li>
+                <li><code>services/extraction_clean.py</code> — entity/relationship extraction</li>
+                <li><code>services/code_pipeline.py</code> — this repository's own indexing path</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S16-empty">
+  <h2>Code · Wiki — empty (points at the reindex dialog)</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: never implicitly generate on browse (doc 10 §8).</b>
+    <code>GET /code/wiki</code> reads or returns empty — it never spends LLM budget just because a page was
+    opened. So the empty state does not say "check back later"; it names the exact control
+    (<code>generate_wiki</code>) and shows the dialog it lives in, because a wiki only ever appears here as
+    the side effect of a reindex a human opted into.
+  </div>
+  <div class="board-body">
+    <div class="s16-scope-bar">
+      <span class="s16-repo-chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="cap">repo</span> darkmem/frontend
+      </span>
+      <span class="s16-repo-meta">branch <b>main</b> · HEAD <span class="badge-code">7e02b19</span> · indexed, never wiki'd</span>
+    </div>
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Wiki — repo: darkmem/frontend</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3"/><path d="M9 12h6M9 15h6"/></svg>
+          <span class="headline">No wiki generated yet for this repository</span>
+          <span class="why">
+            This repo has been indexed (its code graph and symbols are current as of
+            <b>7e02b19</b>), but <code>generate_wiki</code> has never been enabled on a reindex, so there is
+            no generated documentation to read yet.
+          </span>
+        </div>
+        <div class="s16-cta-row">
+          <span class="s16-cta-button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            Open reindex dialog
+          </span>
+          <div class="s16-reindex-preview">
+            <div class="s16-reindex-header">
+              <span class="s16-reindex-title">Reindex repository</span>
+              <span class="s16-reindex-desc">POST /repos/{id}/reindex — all three toggles default off.</span>
+            </div>
+            <div class="s16-reindex-body">
+              <div class="s16-toggle-row">
+                <span class="s16-toggle-box"></span>
+                <span class="s16-toggle-text"><span class="s16-toggle-key">full</span><span class="s16-toggle-hint">re-parse everything, not just the changed-file set</span></span>
+              </div>
+              <div class="s16-toggle-row">
+                <span class="s16-toggle-box"></span>
+                <span class="s16-toggle-text"><span class="s16-toggle-key">enrich_symbols</span><span class="s16-toggle-hint">drain pending symbol summaries inline</span></span>
+              </div>
+              <div class="s16-toggle-row checked s16-reindex-row emphasis">
+                <span class="s16-toggle-box">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4 10-10"/></svg>
+                </span>
+                <span class="s16-toggle-text"><span class="s16-toggle-key">generate_wiki</span><span class="s16-toggle-hint">the one toggle that will populate this tab</span></span>
+              </div>
+            </div>
+            <div class="s16-reindex-footer">
+              <span class="s16-reindex-run">Run reindex</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S16-loading">
+  <h2>Code · Wiki — loading</h2>
+  <div class="annotation">
+    Skeleton bars mirror the populated board's toc rows and prose paragraphs, reusing C04's
+    <code>.c04-skel-row</code>/<code>.c04-skel-bar</code> classes per the fragment authoring protocol rather
+    than a locally re-declared skeleton — this is a layout preview of a <code>GET /code/wiki</code> read in
+    flight, not a spinner replacing the page.
+  </div>
+  <div class="board-body">
+    <div class="s16-scope-bar">
+      <span class="s16-repo-chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="cap">repo</span> darkmem/backend
+      </span>
+    </div>
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Wiki — repo: darkmem/backend</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="s16-layout">
+          <nav class="s16-toc">
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+          </nav>
+          <div class="s16-body">
+            <div class="c04-skel-row"><span class="c04-skel-bar meta"></span><span class="c04-skel-bar chip"></span><span class="c04-skel-bar meta"></span></div>
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+            <div class="c04-skel-row"><span class="c04-skel-bar text"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S16-error">
+  <h2>Code · Wiki — error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: error ≠ empty list.</b> A failed <code>GET /code/wiki</code> read is a named failure
+    with a retry, never a silent fall-through to the empty board above — conflating the two would make a
+    transient read failure look like "nobody ever generated this," which is a different fact.
+  </div>
+  <div class="board-body">
+    <div class="s16-scope-bar">
+      <span class="s16-repo-chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="cap">repo</span> darkmem/backend
+      </span>
+    </div>
+    <div class="c04-surface">
+      <div class="c04-surface-header">
+        <span class="title">Wiki — repo: darkmem/backend</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+      </div>
+      <div class="c04-surface-body">
+        <div class="c04-alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div class="body">
+            <span class="headline">Couldn't load the wiki</span>
+            <span class="desc">
+              The request to <code>GET /code/wiki</code> failed before any content rendered. This is a read
+              failure, not a generation attempt — retrying only re-reads what is already stored; it never
+              triggers a new wiki generation.
+            </span>
+            <span class="c04-retry">Retry</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

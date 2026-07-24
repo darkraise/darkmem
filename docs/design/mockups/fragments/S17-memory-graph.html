@@ -1,0 +1,632 @@
+<style>
+  /* S17 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation (+ .annotation-caution / .annotation-conflict),
+     .state-chip — and invents nothing that duplicates them. Everything
+     below is new S17-only layout: the search field, the force/tree/
+     community layout switcher, the canvas frame + inline-SVG graph sketch,
+     the entity-type legend, and the community navigator panel. Node fill,
+     halo fill/stroke, and edge stroke are all var(--chart-N) / hsl(var(--
+     token)) — no hex anywhere. Node/halo colour draws only from the four
+     non-caution chart members (--chart-1/2/3/5), never --chart-4 — the
+     same caution-token exclusion already established for score arms
+     (doc 14 §3.1, C02, S03) applied here so a topic halo or entity dot is
+     never misreadable as the language's caution/warning colour. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s17- so it can never collide with another fragment's local
+     styles once build.py concatenates them. */
+
+  .s17-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-bottom: 12px; margin-bottom: 2px; border-bottom: 1px dashed hsl(var(--border)); }
+
+  .s17-search-field { display: flex; align-items: center; gap: 8px; flex: 1 1 240px; padding: 7px 12px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); }
+  .s17-search-field svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s17-search-text { font-size: 14px; color: hsl(var(--foreground)); }
+  .s17-search-text.s17-placeholder { color: hsl(var(--muted-foreground)); }
+  .s17-search-hint { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  /* the force/tree/community layout switcher — a segmented tab strip,
+     mirroring the review-shell-tabs pattern but namespaced s17 so this
+     fragment stays standalone-checkable. */
+  .s17-switcher { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted) / 0.4); }
+  .s17-switcher-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 610; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s17-switcher-btn svg { width: 13px; height: 13px; }
+  .s17-switcher-btn[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+  /* ---- canvas + navigator layout ---- */
+  .s17-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; align-items: start; }
+  @media (max-width: 640px) { .s17-layout { grid-template-columns: 1fr; } }
+
+  .s17-canvas-frame { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); overflow: hidden; }
+  .s17-canvas-header { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s17-canvas-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s17-canvas-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s17-canvas-body { padding: 10px 12px 6px; }
+  .s17-svg { width: 100%; height: auto; display: block; }
+
+  .s17-legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 12px 12px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s17-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .s17-legend-swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .s17-legend-swatch.tool { background: var(--chart-1); }
+  .s17-legend-swatch.database { background: var(--chart-2); }
+  .s17-legend-swatch.concept { background: var(--chart-3); }
+  .s17-legend-swatch.algorithm { background: var(--chart-5); }
+  .s17-legend-line { width: 16px; height: 0; border-top: 1.4px solid hsl(var(--muted-foreground) / 0.7); }
+  .s17-legend-line.bridge { border-top-style: dashed; border-top-color: hsl(var(--foreground) / 0.7); border-top-width: 1.6px; }
+
+  /* ---- graph sketch: halos, edges, nodes — all token-derived ---- */
+  .s17-halo-a { fill: var(--chart-1); fill-opacity: 0.13; stroke: var(--chart-1); stroke-opacity: 0.55; stroke-width: 1.3; stroke-dasharray: 4 3; }
+  .s17-halo-b { fill: var(--chart-3); fill-opacity: 0.13; stroke: var(--chart-3); stroke-opacity: 0.55; stroke-width: 1.3; stroke-dasharray: 4 3; }
+  .s17-halo-c { fill: var(--chart-5); fill-opacity: 0.13; stroke: var(--chart-5); stroke-opacity: 0.55; stroke-width: 1.3; stroke-dasharray: 4 3; }
+
+  .s17-edge { stroke: hsl(var(--muted-foreground)); stroke-opacity: 0.6; stroke-width: 1.3; fill: none; }
+  .s17-edge-bridge { stroke: hsl(var(--foreground)); stroke-opacity: 0.55; stroke-width: 1.5; stroke-dasharray: 5 3; fill: none; }
+
+  .s17-node { stroke: hsl(var(--card)); stroke-width: 2; }
+  .s17-node.tool { fill: var(--chart-1); }
+  .s17-node.database { fill: var(--chart-2); }
+  .s17-node.concept { fill: var(--chart-3); }
+  .s17-node.algorithm { fill: var(--chart-5); }
+  .s17-node.is-match { stroke: hsl(var(--ring)); stroke-width: 3; }
+  .s17-node-label { font-family: var(--font-mono); font-size: 10.5px; fill: hsl(var(--foreground)); }
+
+  /* loading: faint unlabelled scatter, mirroring node positions with no
+     resolved edges/labels yet — a layout preview, not a spinner (doc 14 §5) */
+  .s17-skel-node { fill: hsl(var(--muted-foreground)); fill-opacity: 0.35; }
+  .s17-skel-edge { stroke: hsl(var(--muted-foreground)); stroke-opacity: 0.2; stroke-width: 1.2; stroke-dasharray: 2 3; fill: none; }
+
+  /* ---- empty canvas ---- */
+  .s17-canvas-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 26px 18px; margin: 2px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s17-canvas-empty svg { width: 24px; height: 24px; color: hsl(var(--muted-foreground)); }
+  .s17-canvas-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s17-canvas-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 60ch; }
+
+  /* ---- error alert ---- */
+  .s17-alert { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08); }
+  .s17-alert svg { width: 18px; height: 18px; flex: none; color: hsl(var(--destructive)); }
+  .s17-alert .body { display: flex; flex-direction: column; gap: 6px; }
+  .s17-alert .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s17-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s17-retry { align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid hsl(var(--destructive) / 0.5); border-radius: 999px; color: hsl(var(--destructive)); background: transparent; }
+
+  /* ---- community navigator ---- */
+  .s17-nav { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); overflow: hidden; display: flex; flex-direction: column; }
+  .s17-nav-header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s17-nav-header svg { width: 14px; height: 14px; flex: none; color: hsl(var(--muted-foreground)); }
+  .s17-nav-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s17-nav-header .count { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s17-nav-list { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+  .s17-nav-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s17-nav-swatch { width: 11px; height: 11px; border-radius: 3px; margin-top: 2px; flex: none; }
+  .s17-nav-swatch.a { background: var(--chart-1); }
+  .s17-nav-swatch.b { background: var(--chart-3); }
+  .s17-nav-swatch.c { background: var(--chart-5); }
+  .s17-nav-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+  .s17-nav-label { font-size: 12.5px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s17-nav-meta { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .s17-nav-focus { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; padding-top: 2px; }
+  .s17-nav-focus svg { width: 11px; height: 11px; }
+  .s17-nav-empty { padding: 16px 14px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s17-nav-note { padding: 0 12px 12px; font-size: 11.5px; color: hsl(var(--muted-foreground)); border-top: 1px dashed hsl(var(--border)); margin-top: 2px; padding-top: 8px; }
+
+  /* ---- loading: skeleton nav rows ---- */
+  .s17-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); }
+  .s17-skel-nav-row { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s17-skel-nav-row .s17-skel-bar.sw { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .s17-skel-nav-row .s17-skel-bar.txt { flex: 1 1 auto; }
+</style>
+
+<!-- ============================================================= -->
+<section class="board" id="S17-empty">
+  <h2>S17 — Memory Graph: empty, no graph yet</h2>
+  <div class="annotation">
+    <b>Scope of this fragment.</b> Realises doc 13 §4.1's Memory Graph inventory (the entity-graph explorer,
+    exists today at <code>/unified-graph</code>): the <b>force / tree / community layout switcher</b>,
+    <b>search</b> over entities &amp; relations, and the <b>community navigator</b>. It renders the
+    <b>L1 candidate graph</b> — the pre-corroboration entities and relations a memory's extraction phase
+    writes (doc 13 §4, C02) — plus the emergent <b>topics</b> a Leiden clustering pass detects over that
+    graph (doc 06 §7). A community is never rendered as a node in this canvas (invariant 5); the populated
+    board below shows how the navigator keeps that distinction visible.
+  </div>
+  <div class="annotation annotation-caution">
+    <b>Critical — built-but-unspent (invariant 23, doc 13 §4.1, doc 07 §4).</b> This explorer is a browsing
+    surface only. The PPR ranked-list signal, the dual-level relation channel, and community-report
+    injection — the three ways doc 07 §4 describes "spending" this graph on retrieval — are <b>target-new</b>:
+    every gating flag (<code>ppr_enabled</code>, <code>dual_level_enabled</code>, <code>community_injection_enabled</code>)
+    defaults off, so Memories search stays byte-equivalent to today's vector+FTS hybrid regardless of what
+    anyone browses here. Opening, clustering, or searching this graph does <b>not</b> change what search
+    returns — that wiring is doc 07 §4's target, not shipped behaviour, and this board must not read as if it
+    already is.
+  </div>
+  <div class="annotation">
+    <b>Honesty rule — empty says why (doc 14 §5).</b> A project with no captured memories has no extracted
+    entities or relations, so there is nothing to lay out and nothing for the clustering pass to group. The
+    chrome — search field, layout switcher, community navigator — stays visible and inert rather than
+    vanishing, so the screen reads as "not fed yet," never as broken.
+  </div>
+  <div class="board-body">
+    <div class="s17-toolbar">
+      <div class="s17-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s17-search-text s17-placeholder">Search entities &amp; relations…</span>
+      </div>
+      <div class="s17-switcher" role="tablist" aria-label="Graph layout">
+        <span class="s17-switcher-btn" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="10" cy="18" r="2"/><path d="M8 7l8 1M8 8l2 9"/></svg>
+          Force
+        </span>
+        <span class="s17-switcher-btn" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="4" r="2"/><path d="M12 6v3M12 9H6M12 9h6M6 9v4M18 9v4"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="16" r="2"/></svg>
+          Tree
+        </span>
+        <span class="s17-switcher-btn" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><circle cx="12" cy="17" r="3"/><path d="M8 12a5 5 0 0 0 8 0" stroke-dasharray="2 2"/></svg>
+          Community
+        </span>
+      </div>
+    </div>
+    <div class="s17-layout">
+      <div class="s17-canvas-frame">
+        <div class="s17-canvas-header">
+          <span class="title">Entity graph — project: darkmem</span>
+          <span class="state-chip state-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+            empty
+          </span>
+        </div>
+        <div class="s17-canvas-body">
+          <div class="s17-canvas-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6 8l5 8M18 8l-5 8" stroke-dasharray="2 2"/></svg>
+            <span class="headline">No entity graph yet</span>
+            <span class="why">Project darkmem has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured — Phase 2 of ingestion writes the extraction graph, and topic communities appear after the next clustering pass runs over it (doc 06 §7).</span>
+          </div>
+        </div>
+      </div>
+      <div class="s17-nav">
+        <div class="s17-nav-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11L6 17M12 11l6 6"/></svg>
+          <span class="title">Community navigator</span>
+        </div>
+        <div class="s17-nav-empty">No communities detected yet — clustering runs over the entity graph once one exists.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S17-loading">
+  <h2>S17 — Memory Graph: loading</h2>
+  <div class="annotation">
+    A faint, unlabelled node scatter mirrors the populated canvas's rough shape with no resolved labels,
+    edges, or halos yet — a layout preview, not a spinner overlaying the page (doc 14 §5). The navigator
+    shows skeleton rows in the same slot its populated rows will fill.
+  </div>
+  <div class="board-body">
+    <div class="s17-toolbar">
+      <div class="s17-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s17-search-text s17-placeholder">Search entities &amp; relations…</span>
+      </div>
+      <div class="s17-switcher" role="tablist" aria-label="Graph layout">
+        <span class="s17-switcher-btn" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="10" cy="18" r="2"/><path d="M8 7l8 1M8 8l2 9"/></svg>
+          Force
+        </span>
+        <span class="s17-switcher-btn" role="tab" aria-selected="false">Tree</span>
+        <span class="s17-switcher-btn" role="tab" aria-selected="false">Community</span>
+      </div>
+    </div>
+    <div class="s17-layout">
+      <div class="s17-canvas-frame">
+        <div class="s17-canvas-header">
+          <span class="title">Entity graph — project: darkmem</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s17-canvas-body">
+          <svg class="s17-svg" viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Graph resolving — unlabelled node scatter, no edges or communities resolved yet">
+            <path class="s17-skel-edge" d="M150,80 L110,130"/>
+            <path class="s17-skel-edge" d="M150,80 L200,140"/>
+            <path class="s17-skel-edge" d="M470,70 L420,120"/>
+            <path class="s17-skel-edge" d="M470,70 L520,130"/>
+            <path class="s17-skel-edge" d="M300,220 L250,260"/>
+            <path class="s17-skel-edge" d="M300,220 L350,260"/>
+            <circle class="s17-skel-node" cx="150" cy="80" r="9"/>
+            <circle class="s17-skel-node" cx="110" cy="130" r="9"/>
+            <circle class="s17-skel-node" cx="200" cy="140" r="9"/>
+            <circle class="s17-skel-node" cx="470" cy="70" r="9"/>
+            <circle class="s17-skel-node" cx="420" cy="120" r="9"/>
+            <circle class="s17-skel-node" cx="520" cy="130" r="9"/>
+            <circle class="s17-skel-node" cx="300" cy="220" r="9"/>
+            <circle class="s17-skel-node" cx="250" cy="260" r="9"/>
+            <circle class="s17-skel-node" cx="350" cy="260" r="9"/>
+          </svg>
+        </div>
+      </div>
+      <div class="s17-nav">
+        <div class="s17-nav-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11L6 17M12 11l6 6"/></svg>
+          <span class="title">Community navigator</span>
+          <span class="state-chip state-loading">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            loading
+          </span>
+        </div>
+        <div class="s17-nav-list">
+          <div class="s17-skel-nav-row"><span class="s17-skel-bar sw"></span><span class="s17-skel-bar txt"></span></div>
+          <div class="s17-skel-nav-row"><span class="s17-skel-bar sw"></span><span class="s17-skel-bar txt"></span></div>
+          <div class="s17-skel-nav-row"><span class="s17-skel-bar sw"></span><span class="s17-skel-bar txt"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S17-error">
+  <h2>S17 — Memory Graph: error</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule — error ≠ empty graph (invariant 14).</b> A failed graph fetch never falls back to the
+    "no graph yet" placeholder above — that copy asserts a genuinely, checkedly empty graph, and reusing it
+    after a fetch failure would misreport a fetch problem as a cold-start fact. The named error stays up
+    until retried; the layout switcher and search stay visible but have nothing to act on.
+  </div>
+  <div class="board-body">
+    <div class="s17-toolbar">
+      <div class="s17-search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+        <span class="s17-search-text s17-placeholder">Search entities &amp; relations…</span>
+      </div>
+      <div class="s17-switcher" role="tablist" aria-label="Graph layout">
+        <span class="s17-switcher-btn" role="tab" aria-selected="true">Force</span>
+        <span class="s17-switcher-btn" role="tab" aria-selected="false">Tree</span>
+        <span class="s17-switcher-btn" role="tab" aria-selected="false">Community</span>
+      </div>
+    </div>
+    <div class="s17-layout">
+      <div class="s17-canvas-frame">
+        <div class="s17-canvas-header">
+          <span class="title">Entity graph — project: darkmem</span>
+          <span class="state-chip state-error">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            error
+          </span>
+        </div>
+        <div class="s17-canvas-body">
+          <div class="s17-alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <div class="body">
+              <span class="headline">Couldn't load the entity graph</span>
+              <span class="desc">The graph endpoint failed to respond after 3 attempts. Showing no graph rather than a possibly-stale layout — last successful load was 2026-07-20 11:02.</span>
+              <span class="s17-retry">Retry</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="s17-nav">
+        <div class="s17-nav-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11L6 17M12 11l6 6"/></svg>
+          <span class="title">Community navigator</span>
+          <span class="state-chip state-error">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            error
+          </span>
+        </div>
+        <div class="s17-nav-empty">Community list unavailable — it depends on the same graph fetch that just failed.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S17-populated">
+  <h2>S17 — Memory Graph: populated (hero, both themes)</h2>
+  <div class="annotation annotation-caution">
+    <b>Critical — browsing this graph is not what ranks search today (invariant 23, doc 07 §4).</b> Every
+    node, edge, and halo below is real, rendered L1/topic structure — but clicking through it, running a
+    search in the box above, or switching layouts changes only what this screen shows, never what
+    <code>Memories</code> search returns. PPR seeding, the dual-level relation channel, and community-report
+    injection are the target-new mechanisms that would spend this graph on ranking (doc 07 §4); until an
+    operator turns on <code>ppr_enabled</code> / <code>dual_level_enabled</code> / <code>community_injection_enabled</code>,
+    this explorer stays a read-only window onto structure retrieval does not yet consult.
+  </div>
+  <div class="annotation">
+    <b>Communities render as halos, never as nodes (invariant 5).</b> The three tinted, dashed ellipses behind
+    the clusters are the topic communities the navigator lists at right — background context for a set of
+    entities, not an extra node a user could click as if it were itself an extracted entity. Each halo's
+    token colour matches its navigator row's swatch so the two views read as one structure, while a node's
+    fill colour is a completely separate axis (entity type) — colour never carries a single meaning alone
+    (doc 14 §3).
+  </div>
+  <div class="annotation">
+    <b>L1 carries no verification rung.</b> These are pre-corroboration entities/relations straight from
+    extraction (doc 13 §4, C02's "L1 is never directly served" note) — nodes here intentionally carry no
+    candidate/corroborated/disputed rung badge; that ladder applies to L2 facts, which the Knowledge vault
+    renders, not to this raw graph.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s17-toolbar">
+          <div class="s17-search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+            <span class="s17-search-text">postgres</span>
+          </div>
+          <span class="s17-search-hint">1 entity matched</span>
+          <div class="s17-switcher" role="tablist" aria-label="Graph layout">
+            <span class="s17-switcher-btn" role="tab" aria-selected="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="10" cy="18" r="2"/><path d="M8 7l8 1M8 8l2 9"/></svg>
+              Force
+            </span>
+            <span class="s17-switcher-btn" role="tab" aria-selected="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="4" r="2"/><path d="M12 6v3M12 9H6M12 9h6M6 9v4M18 9v4"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="16" r="2"/></svg>
+              Tree
+            </span>
+            <span class="s17-switcher-btn" role="tab" aria-selected="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><circle cx="12" cy="17" r="3"/><path d="M8 12a5 5 0 0 0 8 0" stroke-dasharray="2 2"/></svg>
+              Community
+            </span>
+          </div>
+        </div>
+        <div class="s17-layout">
+          <div class="s17-canvas-frame">
+            <div class="s17-canvas-header">
+              <span class="title">Entity graph — project: darkmem</span>
+              <span class="meta">12 entities · 12 relations · 3 topics</span>
+              <span class="state-chip state-populated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                populated
+              </span>
+            </div>
+            <div class="s17-canvas-body">
+              <svg class="s17-svg" viewBox="0 0 680 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stylised entity graph: three topic clusters — retrieval and ranking, storage and embeddings, pipeline and extraction — linked by two cross-topic relations, force layout">
+                <ellipse class="s17-halo-a" cx="150" cy="140" rx="112" ry="90"/>
+                <ellipse class="s17-halo-b" cx="500" cy="125" rx="112" ry="88"/>
+                <ellipse class="s17-halo-c" cx="320" cy="315" rx="120" ry="72"/>
+
+                <path class="s17-edge" d="M150,95 L100,145"/>
+                <path class="s17-edge" d="M150,95 L205,155"/>
+                <path class="s17-edge" d="M100,145 L145,195"/>
+                <path class="s17-edge" d="M205,155 L145,195"/>
+
+                <path class="s17-edge" d="M500,85 L440,135"/>
+                <path class="s17-edge" d="M440,135 L500,180"/>
+                <path class="s17-edge" d="M555,145 L500,180"/>
+                <path class="s17-edge" d="M500,85 L555,145"/>
+
+                <path class="s17-edge" d="M320,280 L262,325"/>
+                <path class="s17-edge" d="M320,280 L378,325"/>
+                <path class="s17-edge" d="M262,325 L320,358"/>
+                <path class="s17-edge" d="M378,325 L320,358"/>
+
+                <path class="s17-edge-bridge" d="M100,145 L555,145"/>
+                <path class="s17-edge-bridge" d="M320,280 L555,145"/>
+
+                <g>
+                  <circle class="s17-node tool" cx="150" cy="95" r="9"/>
+                  <text class="s17-node-label" x="163" y="99">reranker</text>
+                  <circle class="s17-node concept" cx="100" cy="145" r="9"/>
+                  <text class="s17-node-label" x="43" y="132">hybrid_search</text>
+                  <circle class="s17-node algorithm" cx="205" cy="155" r="9"/>
+                  <text class="s17-node-label" x="218" y="159">rrf_fusion</text>
+                  <circle class="s17-node concept" cx="145" cy="195" r="9"/>
+                  <text class="s17-node-label" x="40" y="212">confidence_rank_gamma</text>
+
+                  <circle class="s17-node database is-match" cx="500" cy="85" r="9"/>
+                  <text class="s17-node-label" x="513" y="89">postgres</text>
+                  <circle class="s17-node tool" cx="440" cy="135" r="9"/>
+                  <text class="s17-node-label" x="365" y="122">pgvector</text>
+                  <circle class="s17-node concept" cx="555" cy="145" r="9"/>
+                  <text class="s17-node-label" x="568" y="149">entity_embeddings</text>
+                  <circle class="s17-node concept" cx="500" cy="180" r="9"/>
+                  <text class="s17-node-label" x="440" y="200">embedder_fingerprint</text>
+
+                  <circle class="s17-node concept" cx="320" cy="280" r="9"/>
+                  <text class="s17-node-label" x="333" y="277">extraction_phase</text>
+                  <circle class="s17-node concept" cx="262" cy="325" r="9"/>
+                  <text class="s17-node-label" x="170" y="329">classification</text>
+                  <circle class="s17-node concept" cx="378" cy="325" r="9"/>
+                  <text class="s17-node-label" x="391" y="329">dedup_threshold</text>
+                  <circle class="s17-node tool" cx="320" cy="358" r="9"/>
+                  <text class="s17-node-label" x="255" y="378">JobRegistry</text>
+                </g>
+              </svg>
+              <div class="s17-legend">
+                <span class="s17-legend-item"><span class="s17-legend-swatch tool"></span>tool</span>
+                <span class="s17-legend-item"><span class="s17-legend-swatch database"></span>database</span>
+                <span class="s17-legend-item"><span class="s17-legend-swatch concept"></span>concept</span>
+                <span class="s17-legend-item"><span class="s17-legend-swatch algorithm"></span>algorithm</span>
+                <span class="s17-legend-item s17-legend-edge"><span class="s17-legend-line"></span>relation, within topic</span>
+                <span class="s17-legend-item s17-legend-edge"><span class="s17-legend-line bridge"></span>relation, cross-topic</span>
+              </div>
+            </div>
+          </div>
+          <div class="s17-nav">
+            <div class="s17-nav-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11L6 17M12 11l6 6"/></svg>
+              <span class="title">Community navigator</span>
+              <span class="count">3 topics</span>
+            </div>
+            <div class="s17-nav-list">
+              <div class="s17-nav-item">
+                <span class="s17-nav-swatch a"></span>
+                <span class="s17-nav-main">
+                  <span class="s17-nav-label">Retrieval &amp; ranking</span>
+                  <span class="s17-nav-meta">4 entities · detected 2026-07-18</span>
+                </span>
+                <span class="s17-nav-focus">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                  Focus
+                </span>
+              </div>
+              <div class="s17-nav-item">
+                <span class="s17-nav-swatch b"></span>
+                <span class="s17-nav-main">
+                  <span class="s17-nav-label">Storage &amp; embeddings</span>
+                  <span class="s17-nav-meta">4 entities · detected 2026-07-18</span>
+                </span>
+                <span class="s17-nav-focus">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                  Focus
+                </span>
+              </div>
+              <div class="s17-nav-item">
+                <span class="s17-nav-swatch c"></span>
+                <span class="s17-nav-main">
+                  <span class="s17-nav-label">Pipeline &amp; extraction</span>
+                  <span class="s17-nav-meta">4 entities · detected 2026-07-21</span>
+                </span>
+                <span class="s17-nav-focus">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                  Focus
+                </span>
+              </div>
+            </div>
+            <div class="s17-nav-note">Topics are read-only labels from a Leiden clustering pass over the entity graph (doc 06 §7) — browsing them here does not feed ranking (see the critical annotation above).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-dark">
+        <div class="s17-toolbar">
+          <div class="s17-search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.5-4.5"/></svg>
+            <span class="s17-search-text">postgres</span>
+          </div>
+          <span class="s17-search-hint">1 entity matched</span>
+          <div class="s17-switcher" role="tablist" aria-label="Graph layout">
+            <span class="s17-switcher-btn" role="tab" aria-selected="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="10" cy="18" r="2"/><path d="M8 7l8 1M8 8l2 9"/></svg>
+              Force
+            </span>
+            <span class="s17-switcher-btn" role="tab" aria-selected="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="4" r="2"/><path d="M12 6v3M12 9H6M12 9h6M6 9v4M18 9v4"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="16" r="2"/></svg>
+              Tree
+            </span>
+            <span class="s17-switcher-btn" role="tab" aria-selected="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><circle cx="12" cy="17" r="3"/><path d="M8 12a5 5 0 0 0 8 0" stroke-dasharray="2 2"/></svg>
+              Community
+            </span>
+          </div>
+        </div>
+        <div class="s17-layout">
+          <div class="s17-canvas-frame">
+            <div class="s17-canvas-header">
+              <span class="title">Entity graph — project: darkmem</span>
+              <span class="meta">12 entities · 12 relations · 3 topics</span>
+              <span class="state-chip state-populated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                populated
+              </span>
+            </div>
+            <div class="s17-canvas-body">
+              <svg class="s17-svg" viewBox="0 0 680 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stylised entity graph: three topic clusters — retrieval and ranking, storage and embeddings, pipeline and extraction — linked by two cross-topic relations, force layout">
+                <ellipse class="s17-halo-a" cx="150" cy="140" rx="112" ry="90"/>
+                <ellipse class="s17-halo-b" cx="500" cy="125" rx="112" ry="88"/>
+                <ellipse class="s17-halo-c" cx="320" cy="315" rx="120" ry="72"/>
+
+                <path class="s17-edge" d="M150,95 L100,145"/>
+                <path class="s17-edge" d="M150,95 L205,155"/>
+                <path class="s17-edge" d="M100,145 L145,195"/>
+                <path class="s17-edge" d="M205,155 L145,195"/>
+
+                <path class="s17-edge" d="M500,85 L440,135"/>
+                <path class="s17-edge" d="M440,135 L500,180"/>
+                <path class="s17-edge" d="M555,145 L500,180"/>
+                <path class="s17-edge" d="M500,85 L555,145"/>
+
+                <path class="s17-edge" d="M320,280 L262,325"/>
+                <path class="s17-edge" d="M320,280 L378,325"/>
+                <path class="s17-edge" d="M262,325 L320,358"/>
+                <path class="s17-edge" d="M378,325 L320,358"/>
+
+                <path class="s17-edge-bridge" d="M100,145 L555,145"/>
+                <path class="s17-edge-bridge" d="M320,280 L555,145"/>
+
+                <g>
+                  <circle class="s17-node tool" cx="150" cy="95" r="9"/>
+                  <text class="s17-node-label" x="163" y="99">reranker</text>
+                  <circle class="s17-node concept" cx="100" cy="145" r="9"/>
+                  <text class="s17-node-label" x="43" y="132">hybrid_search</text>
+                  <circle class="s17-node algorithm" cx="205" cy="155" r="9"/>
+                  <text class="s17-node-label" x="218" y="159">rrf_fusion</text>
+                  <circle class="s17-node concept" cx="145" cy="195" r="9"/>
+                  <text class="s17-node-label" x="40" y="212">confidence_rank_gamma</text>
+
+                  <circle class="s17-node database is-match" cx="500" cy="85" r="9"/>
+                  <text class="s17-node-label" x="513" y="89">postgres</text>
+                  <circle class="s17-node tool" cx="440" cy="135" r="9"/>
+                  <text class="s17-node-label" x="365" y="122">pgvector</text>
+                  <circle class="s17-node concept" cx="555" cy="145" r="9"/>
+                  <text class="s17-node-label" x="568" y="149">entity_embeddings</text>
+                  <circle class="s17-node concept" cx="500" cy="180" r="9"/>
+                  <text class="s17-node-label" x="440" y="200">embedder_fingerprint</text>
+
+                  <circle class="s17-node concept" cx="320" cy="280" r="9"/>
+                  <text class="s17-node-label" x="333" y="277">extraction_phase</text>
+                  <circle class="s17-node concept" cx="262" cy="325" r="9"/>
+                  <text class="s17-node-label" x="170" y="329">classification</text>
+                  <circle class="s17-node concept" cx="378" cy="325" r="9"/>
+                  <text class="s17-node-label" x="391" y="329">dedup_threshold</text>
+                  <circle class="s17-node tool" cx="320" cy="358" r="9"/>
+                  <text class="s17-node-label" x="255" y="378">JobRegistry</text>
+                </g>
+              </svg>
+              <div class="s17-legend">
+                <span class="s17-legend-item"><span class="s17-legend-swatch tool"></span>tool</span>
+                <span class="s17-legend-item"><span class="s17-legend-swatch database"></span>database</span>
+                <span class="s17-legend-item"><span class="s17-legend-swatch concept"></span>concept</span>
+                <span class="s17-legend-item"><span class="s17-legend-swatch algorithm"></span>algorithm</span>
+                <span class="s17-legend-item s17-legend-edge"><span class="s17-legend-line"></span>relation, within topic</span>
+                <span class="s17-legend-item s17-legend-edge"><span class="s17-legend-line bridge"></span>relation, cross-topic</span>
+              </div>
+            </div>
+          </div>
+          <div class="s17-nav">
+            <div class="s17-nav-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11L6 17M12 11l6 6"/></svg>
+              <span class="title">Community navigator</span>
+              <span class="count">3 topics</span>
+            </div>
+            <div class="s17-nav-list">
+              <div class="s17-nav-item">
+                <span class="s17-nav-swatch a"></span>
+                <span class="s17-nav-main">
+                  <span class="s17-nav-label">Retrieval &amp; ranking</span>
+                  <span class="s17-nav-meta">4 entities · detected 2026-07-18</span>
+                </span>
+                <span class="s17-nav-focus">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                  Focus
+                </span>
+              </div>
+              <div class="s17-nav-item">
+                <span class="s17-nav-swatch b"></span>
+                <span class="s17-nav-main">
+                  <span class="s17-nav-label">Storage &amp; embeddings</span>
+                  <span class="s17-nav-meta">4 entities · detected 2026-07-18</span>
+                </span>
+                <span class="s17-nav-focus">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                  Focus
+                </span>
+              </div>
+              <div class="s17-nav-item">
+                <span class="s17-nav-swatch c"></span>
+                <span class="s17-nav-main">
+                  <span class="s17-nav-label">Pipeline &amp; extraction</span>
+                  <span class="s17-nav-meta">4 entities · detected 2026-07-21</span>
+                </span>
+                <span class="s17-nav-focus">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                  Focus
+                </span>
+              </div>
+            </div>
+            <div class="s17-nav-note">Topics are read-only labels from a Leiden clustering pass over the entity graph (doc 06 §7) — browsing them here does not feed ranking (see the critical annotation above).</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

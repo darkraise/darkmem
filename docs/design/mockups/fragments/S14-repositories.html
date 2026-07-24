@@ -1,0 +1,727 @@
+<style>
+  /* S14 board-local styles. Composes the SHARED chrome classes verbatim —
+     .board, .annotation, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. New S14-only layout: the
+     repo-scope header bar (the inert project switcher + the explicit
+     gated-by-repository hint), the repo list surface and its rows, the
+     live phase ticker, the fail-stale banner, the index-debt chip, the
+     reindex dialog (three toggles), and the auto-provision flow. Reads
+     var(--token) / hsl(var(--token)) only; no hex, no redeclared tokens.
+     Namespaced s14- so it can never collide with another fragment's local
+     styles once build.py concatenates them.
+
+     One deliberate exception: .s14-chip-stale below visually matches the
+     shared .state-chip shape/sizing but is NOT one of mockup.css's seven
+     state-chip variants (empty/loading/error/populated/staged/degraded/
+     excluded) — `stale` is a repositories.status value doc 10 §3 (T1)
+     adds, a per-repo status, not a whole-screen render state, and this
+     fragment does not touch assets/mockup.css (out of this task's scope,
+     shared by every parallel author). Same reasoning for
+     .s14-auto-badge (--info role, matching the precedent state-chip
+     state-loading already sets for that token) and the "ready" text
+     inside a reused .state-chip.state-populated chip. */
+
+  .s14-intro { display: flex; flex-direction: column; gap: 6px; max-width: 920px; }
+  .s14-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s14-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- header bar: the inert project switcher + the explicit gated-by-repo hint ---- */
+  .s14-scope-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding-bottom: 12px; margin-bottom: 2px; border-bottom: 1px dashed hsl(var(--border));
+  }
+  .s14-scope-title { font-size: 15px; font-weight: 640; color: hsl(var(--foreground)); margin-right: auto; }
+  .s14-scope-inert {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px;
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+    background: hsl(var(--muted) / 0.4); color: hsl(var(--muted-foreground)); font-size: 12.5px;
+    opacity: 0.65;
+  }
+  .s14-scope-inert svg { width: 13px; height: 13px; flex: none; }
+  .s14-scope-inert .s14-inert-tag {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 1px 6px; border: 1px dashed hsl(var(--border)); border-radius: 999px;
+  }
+  .s14-scope-hint {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px;
+    border: 1px solid hsl(var(--primary) / 0.45); border-radius: var(--radius-sm);
+    background: hsl(var(--primary) / 0.08); color: hsl(var(--primary)); font-size: 12.5px; font-weight: 560;
+  }
+  .s14-scope-hint svg { width: 14px; height: 14px; flex: none; }
+
+  /* ---- the repo-list surface every state below instantiates ---- */
+  .s14-surface { border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); overflow: hidden; background: hsl(var(--card)); }
+  .s14-surface-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.3); }
+  .s14-surface-header .title { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s14-surface-header .meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s14-surface-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---- one repo row ---- */
+  .s14-repo { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); }
+  .s14-repo.focus { border-color: hsl(var(--primary) / 0.45); background: hsl(var(--primary) / 0.03); }
+  .s14-repo-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s14-repo-top svg.icon { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s14-repo-name { font-weight: 620; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s14-repo-top .meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .s14-repo-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .s14-repo-sub code { font-family: var(--font-mono); font-size: 11px; }
+  .s14-repo-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+  .s14-btn {
+    font-family: var(--font-mono); font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); background: hsl(var(--background));
+    white-space: nowrap;
+  }
+  .s14-btn-primary { border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); background: hsl(var(--primary) / 0.08); }
+  .s14-btn-caution { border-color: hsl(var(--warning) / 0.6); color: hsl(var(--warning)); background: hsl(var(--warning) / 0.08); }
+
+  /* stale — a per-repo status, not a screen render state; see the note
+     at the top of this <style> block for why it is not .state-chip. */
+  .s14-chip-stale {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 14px;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px;
+    border: 1px dashed hsl(var(--warning) / 0.6); background: hsl(var(--warning) / 0.12);
+    color: hsl(var(--warning)); white-space: nowrap;
+  }
+  .s14-chip-stale svg { width: 12px; height: 12px; flex: none; }
+
+  /* index-debt — caution role, dashed border: the shared "provisional/
+     outstanding" visual marker (doc 14 §3.4's dashed convention), reused
+     here for T2's converging-but-not-yet-drained debt rather than
+     redeclared with new semantics. */
+  .s14-debt-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+    border: 1px dashed hsl(var(--warning) / 0.55); background: hsl(var(--warning) / 0.08);
+    color: hsl(var(--warning)); font-size: 12px; white-space: nowrap;
+  }
+  .s14-debt-chip svg { width: 12px; height: 12px; flex: none; }
+
+  /* auto-provisioned — informational tag, --info role (the same token
+     mockup.css's own .state-chip.state-loading already uses for
+     "in-progress/system-driven", not one of the four honesty-badge
+     status roles). */
+  .s14-auto-badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px;
+    font-size: 11.5px; border: 1px solid hsl(var(--info) / 0.5); color: hsl(var(--info));
+    background: hsl(var(--info) / 0.1); white-space: nowrap;
+  }
+  .s14-auto-badge svg { width: 11px; height: 11px; flex: none; }
+
+  /* ---- fail-stale banner (T1) ---- */
+  .s14-stale-banner {
+    display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--warning) / 0.5);
+    border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.08);
+  }
+  .s14-stale-banner svg { width: 18px; height: 18px; color: hsl(var(--warning)); flex: none; }
+  .s14-stale-banner .body { display: flex; flex-direction: column; gap: 6px; }
+  .s14-stale-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s14-stale-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s14-stale-banner .served { font-size: 12.5px; color: hsl(var(--foreground)); }
+
+  /* ---- clone/index error banner ---- */
+  .s14-error-banner {
+    display: flex; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--destructive) / 0.5);
+    border-radius: var(--radius-sm); background: hsl(var(--destructive) / 0.08);
+  }
+  .s14-error-banner svg { width: 18px; height: 18px; color: hsl(var(--destructive)); flex: none; }
+  .s14-error-banner .body { display: flex; flex-direction: column; gap: 6px; }
+  .s14-error-banner .headline { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+  .s14-error-banner .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s14-error-banner .msg { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--destructive)); }
+
+  /* ---- live phase ticker (the indexing state) ---- */
+  .s14-phase-list { display: flex; flex-direction: column; gap: 4px; }
+  .s14-phase-item {
+    display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: var(--radius-sm);
+    font-size: 12.5px; color: hsl(var(--muted-foreground));
+  }
+  .s14-phase-item .n { font-family: var(--font-mono); font-size: 11px; width: 20px; flex: none; }
+  .s14-phase-item .label { flex: 1 1 auto; }
+  .s14-phase-item .tag { font-family: var(--font-mono); font-size: 10.5px; margin-left: auto; }
+  .s14-phase-item.done { color: hsl(var(--foreground)); }
+  .s14-phase-item.done .n { color: hsl(var(--primary)); }
+  .s14-phase-item.current {
+    color: hsl(var(--foreground)); font-weight: 620; background: hsl(var(--info) / 0.1);
+    border: 1px solid hsl(var(--info) / 0.4);
+  }
+  .s14-phase-item.current .n { color: hsl(var(--info)); }
+  .s14-phase-item.pending { opacity: 0.55; }
+  .s14-phase-item.skipped { opacity: 0.45; font-style: italic; }
+
+  /* ---- empty state ---- */
+  .s14-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 16px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s14-empty svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+  .s14-empty .headline { font-weight: 600; font-size: 13.5px; color: hsl(var(--foreground)); }
+  .s14-empty .why { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 64ch; }
+
+  /* ---- loading skeleton ---- */
+  .s14-skel-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+  .s14-skel-bar { height: 10px; border-radius: 4px; background: hsl(var(--muted)); flex: none; }
+  .s14-skel-bar.chip { width: 64px; }
+  .s14-skel-bar.text { flex: 1 1 220px; }
+  .s14-skel-bar.meta { width: 90px; }
+
+  /* ---- reindex dialog ---- */
+  .s14-dialog { max-width: 460px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); overflow: hidden; }
+  .s14-dialog-header { display: flex; flex-direction: column; gap: 3px; padding: 12px 16px; border-bottom: 1px solid hsl(var(--border)); }
+  .s14-dialog-header .title { font-weight: 640; font-size: 14px; color: hsl(var(--foreground)); }
+  .s14-dialog-header .sub { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s14-dialog-body { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
+  .s14-toggle-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; }
+  .s14-toggle-row .t-text { display: flex; flex-direction: column; gap: 3px; }
+  .s14-toggle-row .t-label { font-family: var(--font-mono); font-size: 12.5px; font-weight: 620; color: hsl(var(--foreground)); }
+  .s14-toggle-row .t-desc { font-size: 12px; color: hsl(var(--muted-foreground)); max-width: 320px; }
+  .s14-switch { width: 34px; height: 19px; border-radius: 999px; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); position: relative; flex: none; margin-left: auto; margin-top: 2px; }
+  .s14-switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 15px; height: 15px; border-radius: 50%; background: hsl(var(--muted-foreground)); }
+  .s14-switch.on { background: hsl(var(--primary) / 0.28); border-color: hsl(var(--primary) / 0.6); }
+  .s14-switch.on::after { left: auto; right: 1px; background: hsl(var(--primary)); }
+  .s14-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid hsl(var(--border)); }
+
+  /* ---- auto-provision flow ---- */
+  .s14-flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+  .s14-flow-step { display: flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); color: hsl(var(--foreground)); }
+  .s14-flow-step svg { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); flex: none; }
+  .s14-flow-step.tierc { border-style: dashed; color: hsl(var(--muted-foreground)); }
+  .s14-flow-arrow { color: hsl(var(--muted-foreground)); font-family: var(--font-mono); }
+  .s14-defaults-list { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.12); }
+  .s14-defaults-list .row { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; }
+  .s14-defaults-list .row .k { color: hsl(var(--foreground)); }
+  .s14-defaults-list .row .v { color: hsl(var(--muted-foreground)); margin-left: auto; }
+  .s14-provenance { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .s14-provenance svg { width: 13px; height: 13px; flex: none; }
+  .s14-provenance a, .s14-provenance .link { color: hsl(var(--primary)); }
+</style>
+
+<div class="s14-intro">
+  <h2>S14 — Code &middot; Repositories</h2>
+  <p>
+    The repo-list module of the consolidated Code section (doc 13 &sect;4.2, doc 10): each row's
+    <b>live indexing phase label</b> (the <code>repo.indexing_*</code> phase rewritten per
+    <code>/ws</code> tick, <code>lib/websocket.ts</code>), the <b>fail-stale banner</b> (T1 &mdash; a
+    failed index keeps the last-good graph in place, marked stale, never wiped), the
+    <b>index-debt indicator</b> (T2 &mdash; dependent-caller re-trace overflow past the 500 cap,
+    persisted and drained via continuation batches, never dropped), the <b>reindex dialog</b>'s three
+    toggles (<code>{full, enrich_symbols, generate_wiki}</code>), and the <b>auto-provision
+    registration state</b> (F11 &mdash; an untracked repo hint on a captured memory auto-registering a
+    repository entirely in Tier C, never on the capture path). The header hint below makes visible that
+    this section is <b>gated by repository, not project</b> (doc 01 &sect;8's deliberate exception,
+    doc 10 &sect;7) &mdash; the global project switcher is shown inert here rather than silently doing
+    nothing.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-empty">
+  <h2>Repositories &mdash; empty (none registered)</h2>
+  <div class="annotation">
+    <b>Honesty rule: empty says why.</b> A project with no repository registered yet reads as "nothing
+    indexed so far," not a broken list, and names both paths a repo takes to appear here &mdash; manual
+    registration, or F11 auto-provision the next time a captured memory names an untracked repo
+    (doc 10 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s14-scope-bar">
+      <span class="s14-scope-title">Code &middot; Repositories</span>
+      <span class="s14-scope-hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 5 3 12l5 7"/><path d="M16 5l5 7-5 7"/></svg>
+        gated by repository, not project
+      </span>
+    </div>
+    <div class="s14-surface">
+      <div class="s14-surface-header">
+        <span class="title">Repositories</span>
+        <span class="state-chip state-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          empty
+        </span>
+      </div>
+      <div class="s14-surface-body">
+        <div class="s14-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l3-5h12l3 5"/><path d="M3 8h18"/><path d="M9 12h6"/></svg>
+          <span class="headline">No repositories registered yet</span>
+          <span class="why">Register one manually, or capture a memory that names a repo &mdash; an
+            untracked hint auto-registers here (F11) once the allowlist gate clears it, entirely in
+            Tier C, never on the capture path.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-loading">
+  <h2>Repositories &mdash; loading</h2>
+  <div class="annotation">
+    Loading skeletons mirror the exact icon / name / status-chip / meta slots the populated rows below
+    fill in, so the list never jumps once the repo set resolves (doc 14 &sect;5).
+  </div>
+  <div class="board-body">
+    <div class="s14-scope-bar">
+      <span class="s14-scope-title">Code &middot; Repositories</span>
+      <span class="s14-scope-hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 5 3 12l5 7"/><path d="M16 5l5 7-5 7"/></svg>
+        gated by repository, not project
+      </span>
+    </div>
+    <div class="s14-surface">
+      <div class="s14-surface-header">
+        <span class="title">Repositories</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          loading
+        </span>
+      </div>
+      <div class="s14-surface-body">
+        <div class="s14-skel-row"><span class="s14-skel-bar chip"></span><span class="s14-skel-bar text"></span><span class="s14-skel-bar meta"></span></div>
+        <div class="s14-skel-row"><span class="s14-skel-bar chip"></span><span class="s14-skel-bar text"></span><span class="s14-skel-bar meta"></span></div>
+        <div class="s14-skel-row"><span class="s14-skel-bar chip"></span><span class="s14-skel-bar text"></span><span class="s14-skel-bar meta"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-populated">
+  <h2>Repositories &mdash; populated (hero, both themes)</h2>
+  <div class="annotation">
+    The repo list, healthy set. Row 2 carries the <b>index-debt indicator</b> (T2), row 3 carries the
+    <b>auto-provisioned</b> tag (F11), row 4 is mid-index with its <b>live phase label</b> inline &mdash;
+    the full phase ticker for a mid-index repo is <b>S14-indexing</b> below. The header's project
+    switcher renders <i>inert</i> (dimmed, "not applied here") rather than omitted, because doc 13
+    &sect;4.2 requires the distinction to be visible, not merely correct in the data layer.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s14-scope-bar">
+          <span class="s14-scope-title">Code &middot; Repositories</span>
+          <span class="s14-scope-inert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+            project: darkmem-core-backend
+            <span class="s14-inert-tag">not applied here</span>
+          </span>
+          <span class="s14-scope-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 5 3 12l5 7"/><path d="M16 5l5 7-5 7"/></svg>
+            gated by repository, not project
+          </span>
+        </div>
+        <div class="s14-surface">
+          <div class="s14-surface-header">
+            <span class="title">Repositories</span>
+            <span class="meta">4 tracked</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s14-surface-body">
+            <div class="s14-repo">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">darkmem-core-backend</span>
+                <span class="state-chip state-populated">ready</span>
+                <span class="meta">HEAD e91a3f2</span>
+              </div>
+              <div class="s14-repo-sub">branch <code>main</code> &middot; last indexed 2026-07-24 09:12 UTC &middot; auto_sync on</div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn">Open code graph</button>
+                <button type="button" class="s14-btn s14-btn-primary">Reindex&hellip;</button>
+              </div>
+            </div>
+
+            <div class="s14-repo">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">darkmem-frontend</span>
+                <span class="state-chip state-populated">ready</span>
+                <span class="meta">HEAD 7c410ab</span>
+              </div>
+              <div class="s14-repo-sub">branch <code>main</code> &middot; last indexed 2026-07-24 06:40 UTC &middot; auto_sync on</div>
+              <div class="s14-repo-sub">
+                <span class="s14-debt-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M2 13l10 5 10-5"/></svg>
+                  168 dependent files queued &middot; draining via next sync
+                </span>
+              </div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn">Open code graph</button>
+                <button type="button" class="s14-btn s14-btn-primary">Reindex&hellip;</button>
+              </div>
+            </div>
+
+            <div class="s14-repo">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">acme-storefront-api</span>
+                <span class="state-chip state-populated">ready</span>
+                <span class="meta">HEAD 0f88d19</span>
+              </div>
+              <div class="s14-repo-sub">
+                <span class="s14-auto-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  auto-provisioned 2026-07-22
+                </span>
+                branch <code>main</code> &middot; last indexed 2026-07-24 04:05 UTC
+              </div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn">Open code graph</button>
+                <button type="button" class="s14-btn s14-btn-primary">Reindex&hellip;</button>
+              </div>
+            </div>
+
+            <div class="s14-repo focus">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">legacy-billing-service</span>
+                <span class="state-chip state-loading">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  indexing
+                </span>
+                <span class="meta">HEAD a12c9de</span>
+              </div>
+              <div class="s14-repo-sub">phase 06 of 14 &middot; call tracing &mdash; resolving call sites to owner-qualified targets</div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn" disabled>Reindex running&hellip;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s14-scope-bar">
+          <span class="s14-scope-title">Code &middot; Repositories</span>
+          <span class="s14-scope-inert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+            project: darkmem-core-backend
+            <span class="s14-inert-tag">not applied here</span>
+          </span>
+          <span class="s14-scope-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 5 3 12l5 7"/><path d="M16 5l5 7-5 7"/></svg>
+            gated by repository, not project
+          </span>
+        </div>
+        <div class="s14-surface">
+          <div class="s14-surface-header">
+            <span class="title">Repositories</span>
+            <span class="meta">4 tracked</span>
+            <span class="state-chip state-populated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+              populated
+            </span>
+          </div>
+          <div class="s14-surface-body">
+            <div class="s14-repo">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">darkmem-core-backend</span>
+                <span class="state-chip state-populated">ready</span>
+                <span class="meta">HEAD e91a3f2</span>
+              </div>
+              <div class="s14-repo-sub">branch <code>main</code> &middot; last indexed 2026-07-24 09:12 UTC &middot; auto_sync on</div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn">Open code graph</button>
+                <button type="button" class="s14-btn s14-btn-primary">Reindex&hellip;</button>
+              </div>
+            </div>
+
+            <div class="s14-repo">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">darkmem-frontend</span>
+                <span class="state-chip state-populated">ready</span>
+                <span class="meta">HEAD 7c410ab</span>
+              </div>
+              <div class="s14-repo-sub">branch <code>main</code> &middot; last indexed 2026-07-24 06:40 UTC &middot; auto_sync on</div>
+              <div class="s14-repo-sub">
+                <span class="s14-debt-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M2 13l10 5 10-5"/></svg>
+                  168 dependent files queued &middot; draining via next sync
+                </span>
+              </div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn">Open code graph</button>
+                <button type="button" class="s14-btn s14-btn-primary">Reindex&hellip;</button>
+              </div>
+            </div>
+
+            <div class="s14-repo">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">acme-storefront-api</span>
+                <span class="state-chip state-populated">ready</span>
+                <span class="meta">HEAD 0f88d19</span>
+              </div>
+              <div class="s14-repo-sub">
+                <span class="s14-auto-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+                  auto-provisioned 2026-07-22
+                </span>
+                branch <code>main</code> &middot; last indexed 2026-07-24 04:05 UTC
+              </div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn">Open code graph</button>
+                <button type="button" class="s14-btn s14-btn-primary">Reindex&hellip;</button>
+              </div>
+            </div>
+
+            <div class="s14-repo focus">
+              <div class="s14-repo-top">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                <span class="s14-repo-name">legacy-billing-service</span>
+                <span class="state-chip state-loading">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                  indexing
+                </span>
+                <span class="meta">HEAD a12c9de</span>
+              </div>
+              <div class="s14-repo-sub">phase 06 of 14 &middot; call tracing &mdash; resolving call sites to owner-qualified targets</div>
+              <div class="s14-repo-actions">
+                <button type="button" class="s14-btn" disabled>Reindex running&hellip;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-indexing">
+  <h2>Repositories &mdash; indexing (live phase ticker)</h2>
+  <div class="annotation">
+    <b>The live phase label is rewritten per tick, never a static "indexing&hellip;" spinner.</b> Each
+    <code>repo.indexing_*</code> broadcast over <code>/ws</code> advances this exact ticker
+    (<code>lib/websocket.ts</code>, doc 13 &sect;2.1); the fourteen phases are doc 10 &sect;2's fixed
+    pipeline topology, unchanged by the reshape. <code>enrich_symbols</code> and
+    <code>generate_wiki</code> were left off for this run, so phases 13&ndash;14 are labelled
+    <i>skipped &mdash; opt-in, not requested</i> rather than silently missing from the list.
+  </div>
+  <div class="board-body">
+    <div class="s14-repo focus">
+      <div class="s14-repo-top">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="s14-repo-name">legacy-billing-service</span>
+        <span class="state-chip state-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          indexing
+        </span>
+        <span class="meta">HEAD a12c9de &middot; incremental, not full</span>
+      </div>
+      <div class="s14-phase-list">
+        <div class="s14-phase-item done"><span class="n">01</span><span class="label">File discovery &mdash; rename-aware diff</span><span class="tag">done</span></div>
+        <div class="s14-phase-item done"><span class="n">02</span><span class="label">Parsing &mdash; tree-sitter AST, size-budgeted</span><span class="tag">done</span></div>
+        <div class="s14-phase-item done"><span class="n">03</span><span class="label">Structure &mdash; nodes/edges, strip-before-rewrite</span><span class="tag">done</span></div>
+        <div class="s14-phase-item done"><span class="n">04</span><span class="label">Import resolution + Kahn topo sort</span><span class="tag">done</span></div>
+        <div class="s14-phase-item done"><span class="n">05</span><span class="label">Named bindings</span><span class="tag">done</span></div>
+        <div class="s14-phase-item current"><span class="n">06</span><span class="label">Call tracing &mdash; resolving call sites to owner-qualified targets</span><span class="tag">current</span></div>
+        <div class="s14-phase-item pending"><span class="n">07</span><span class="label">Heritage / MRO</span><span class="tag">pending</span></div>
+        <div class="s14-phase-item pending"><span class="n">08</span><span class="label">Cross-file binding</span><span class="tag">pending</span></div>
+        <div class="s14-phase-item pending"><span class="n">09</span><span class="label">Community detection (Leiden)</span><span class="tag">pending</span></div>
+        <div class="s14-phase-item pending"><span class="n">10</span><span class="label">Process detection</span><span class="tag">pending</span></div>
+        <div class="s14-phase-item pending"><span class="n">11</span><span class="label">Validation &mdash; prune low-confidence calls</span><span class="tag">pending</span></div>
+        <div class="s14-phase-item pending"><span class="n">12</span><span class="label">Embeddings &mdash; per-fingerprint, register-before-insert</span><span class="tag">pending</span></div>
+        <div class="s14-phase-item skipped"><span class="n">13</span><span class="label">Enrich symbols</span><span class="tag">skipped &mdash; opt-in</span></div>
+        <div class="s14-phase-item skipped"><span class="n">14</span><span class="label">Generate wiki</span><span class="tag">skipped &mdash; opt-in</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-stale">
+  <h2>Repositories &mdash; stale (fail-stale banner, T1)</h2>
+  <div class="annotation annotation-caution">
+    <b>Honesty rule: fail-stale, not fail-empty.</b> A pipeline exception no longer wipes the repo graph
+    (the old behaviour was <code>_delete_all_repo_data</code> on any exception, which could wipe-and-error
+    loop). The last-good graph stays in place, labelled <code>stale</code>, and every code tool
+    (<code>code_search</code>, <code>code_symbol</code>, <code>code_context</code>, &hellip;) keeps
+    serving it &mdash; degraded honesty, never an emptied graph (doc 10 &sect;3, invariant 14).
+  </div>
+  <div class="board-body">
+    <div class="s14-repo focus">
+      <div class="s14-repo-top">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="s14-repo-name">payments-service</span>
+        <span class="s14-chip-stale">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          stale
+        </span>
+        <span class="meta">last-good HEAD 4b7e120</span>
+      </div>
+      <div class="s14-stale-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <div class="body">
+          <span class="headline">Last index failed &mdash; serving the last-good graph, marked stale</span>
+          <span class="desc">Cause: an unhandled exception during phase 09 (community detection) &mdash;
+            the Leiden partitioning step timed out. The run failed before reaching phase 14, and nothing
+            was deleted.</span>
+          <span class="served">The graph indexed 2026-07-19 14:02 UTC (HEAD 4b7e120) is still served to
+            every code tool, labelled <b>stale</b>, until the next run succeeds.</span>
+        </div>
+      </div>
+      <div class="s14-repo-actions">
+        <button type="button" class="s14-btn">Open code graph (stale)</button>
+        <button type="button" class="s14-btn s14-btn-caution">Reindex now</button>
+      </div>
+      <div class="s14-repo-sub">auto_sync will also retry on the next scheduled sync &mdash; the stale
+        label clears automatically the moment a run succeeds.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-error">
+  <h2>Repositories &mdash; error (clone/index failure)</h2>
+  <div class="annotation annotation-conflict">
+    <b>Honesty rule: the failure message is surfaced, not summarised away.</b> Repeated <code>auto_sync</code>
+    failures disable sync and record the raw cause in <code>pipeline_failures</code> (per-repo, doc 10
+    &sect;3); this is distinct from the <code>stale</code> case above &mdash; here indexing never
+    completed even once for the current HEAD attempt, so there is no fresher graph being withheld, only a
+    named blocker and a manual way past it.
+  </div>
+  <div class="board-body">
+    <div class="s14-repo focus">
+      <div class="s14-repo-top">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="s14-repo-name">internal-tools-cli</span>
+        <span class="state-chip state-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          error
+        </span>
+        <span class="meta">auto_sync disabled</span>
+      </div>
+      <div class="s14-error-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <div class="body">
+          <span class="headline">Clone failed &mdash; 3 consecutive attempts</span>
+          <span class="desc">auto_sync disabled after the third failure to protect the sync loop from
+            spinning on a broken remote.</span>
+          <span class="msg">git@github.com:acme/internal-tools-cli.git &mdash; Permission denied
+            (publickey). Could not read from remote repository.</span>
+        </div>
+      </div>
+      <div class="s14-repo-actions">
+        <button type="button" class="s14-btn s14-btn-caution">Reindex now (manual)</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-reindex-dialog">
+  <h2>Reindex dialog &mdash; the three toggles</h2>
+  <div class="annotation">
+    <code>POST /repos/{id}/reindex</code> accepts exactly <code>{full, enrich_symbols, generate_wiki}</code>,
+    all default <code>false</code> (doc 10 &sect;8). Structural indexing (the symbol/edge graph,
+    communities, processes, chunk embeddings) always runs regardless of these toggles &mdash; they only
+    gate the two LLM-cost-heavy phases (13, 14) and whether the diff is discarded in favour of a full
+    rebuild.
+  </div>
+  <div class="board-body">
+    <div class="s14-dialog">
+      <div class="s14-dialog-header">
+        <span class="title">Reindex &mdash; darkmem-core-backend</span>
+        <span class="sub">current HEAD e91a3f2 &middot; last indexed 2026-07-24 09:12 UTC</span>
+      </div>
+      <div class="s14-dialog-body">
+        <div class="s14-toggle-row">
+          <div class="t-text">
+            <span class="t-label">full</span>
+            <span class="t-desc">Rebuild the entire repo graph from scratch, ignoring
+              <code>last_indexed_commit</code>. Off runs the incremental diff (changed files only since
+              the last indexed HEAD).</span>
+          </div>
+          <span class="s14-switch" aria-hidden="true"></span>
+        </div>
+        <div class="s14-toggle-row">
+          <div class="t-text">
+            <span class="t-label">enrich_symbols</span>
+            <span class="t-desc">Drain the pending-symbol LLM-summary backlog inline during this run,
+              bounded and scoped to this repo. Off leaves symbols draining lazily via the
+              <code>code_enrichment</code> background job.</span>
+          </div>
+          <span class="s14-switch" aria-hidden="true"></span>
+        </div>
+        <div class="s14-toggle-row">
+          <div class="t-text">
+            <span class="t-label">generate_wiki</span>
+            <span class="t-desc">Generate the LLM wiki over the graph after this run completes.
+              <code>GET /code/wiki</code> is read-only and never triggers generation on its own &mdash;
+              this toggle is the only way a wiki gets built.</span>
+          </div>
+          <span class="s14-switch" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="s14-dialog-footer">
+        <button type="button" class="s14-btn">Cancel</button>
+        <button type="button" class="s14-btn s14-btn-primary">Run reindex</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S14-auto-provision">
+  <h2>Auto-provision registration state (F11)</h2>
+  <div class="annotation">
+    Execution is entirely Tier C, never on the capture path (doc 10 &sect;5). Capture only resolves and
+    validates the hint against the allowlist gate (doc 18) and queues F11; the clone and first index run
+    off the hot path. The resulting <code>Repository</code> row is a many-to-many
+    <code>project_repositories</code> association over one shared repo &mdash; two projects referencing
+    the same remote own the same graph, not private copies.
+  </div>
+  <div class="board-body">
+    <div class="s14-flow">
+      <span class="s14-flow-step">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6c0-1.66 3.58-3 8-3s8 1.34 8 3-3.58 3-8 3-8-1.34-8-3Z"/><path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+        Memory captured, carries a repo hint
+      </span>
+      <span class="s14-flow-arrow">&rarr;</span>
+      <span class="s14-flow-step">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        Allowlist gate validates the remote (doc 18)
+      </span>
+      <span class="s14-flow-arrow">&rarr;</span>
+      <span class="s14-flow-step tierc">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        Tier C queue &mdash; never on the capture path
+      </span>
+      <span class="s14-flow-arrow">&rarr;</span>
+      <span class="s14-flow-step">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        Repository auto-registered
+      </span>
+      <span class="s14-flow-arrow">&rarr;</span>
+      <span class="s14-flow-step">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        Clone + first index, off the hot path
+      </span>
+    </div>
+
+    <div class="s14-defaults-list">
+      <div class="row"><span class="k">auto_sync=true</span><span class="v">stays current without a manual step</span></div>
+      <div class="row"><span class="k">enrich_symbols=false</span><span class="v">LLM cost stays opt-in even for an auto-provisioned repo</span></div>
+      <div class="row"><span class="k">generate_wiki=false</span><span class="v">opt-in, on-demand only</span></div>
+    </div>
+
+    <div class="s14-repo">
+      <div class="s14-repo-top">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        <span class="s14-repo-name">acme-storefront-api</span>
+        <span class="state-chip state-populated">ready</span>
+      </div>
+      <div class="s14-repo-sub">
+        <span class="s14-auto-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+          auto-provisioned 2026-07-22
+        </span>
+      </div>
+      <div class="s14-provenance">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6c0-1.66 3.58-3 8-3s8 1.34 8 3-3.58 3-8 3-8-1.34-8-3Z"/><path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+        registered from memory: <span class="link">"the storefront API lives at
+        github.com/acme/storefront-api, deployed alongside checkout&hellip;"</span>
+      </div>
+    </div>
+  </div>
+</section>
