@@ -1,0 +1,750 @@
+<style>
+  :root {
+    --ground: #f6f8fc;
+    --panel: #ffffff;
+    --elevated: #ffffff;
+    --border: #dfe5ef;
+    --border-strong: #c6cfde;
+    --fg: #10182a;
+    --muted-fg: #5c6b83;
+    --muted-bg: #eef2f8;
+    --accent: #4f46e5;        /* indigo-600 — the "supported" role */
+    --accent-fg: #ffffff;
+    --accent-weak: #eaecfd;
+    --accent-line: #6366f1;
+    --caution: #b45309;        /* amber = --chart-4, the reserved caution role */
+    --caution-line: #d97706;
+    --caution-weak: #fdf4e3;
+    --conflict: #c62d2d;       /* destructive */
+    --conflict-line: #dc2626;
+    --conflict-weak: #fdeeee;
+    --chart-1: #4f46e5;
+    --chart-2: #7c3aed;
+    --chart-3: #db2777;
+    --chart-5: #0891b2;
+    --shadow: 0 1px 2px rgba(16,24,42,.06), 0 8px 24px -12px rgba(16,24,42,.18);
+    --radius: 12px;
+    --radius-sm: 7px;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0a0e18;
+      --panel: #0e1422;
+      --elevated: #141c2d;
+      --border: #23304a;
+      --border-strong: #33425f;
+      --fg: #e4e9f2;
+      --muted-fg: #93a1b8;
+      --muted-bg: #182034;
+      --accent: #818cf8;
+      --accent-fg: #0a0e18;
+      --accent-weak: rgba(129,140,248,.13);
+      --accent-line: #818cf8;
+      --caution: #fbbf24;
+      --caution-line: #f59e0b;
+      --caution-weak: rgba(251,191,36,.12);
+      --conflict: #f87171;
+      --conflict-line: #ef4444;
+      --conflict-weak: rgba(248,113,113,.12);
+      --chart-1: #818cf8;
+      --chart-2: #a78bfa;
+      --chart-3: #f472b6;
+      --chart-5: #22d3ee;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f6f8fc; --panel: #ffffff; --elevated: #ffffff; --border: #dfe5ef;
+    --border-strong: #c6cfde; --fg: #10182a; --muted-fg: #5c6b83; --muted-bg: #eef2f8;
+    --accent: #4f46e5; --accent-fg: #ffffff; --accent-weak: #eaecfd; --accent-line: #6366f1;
+    --caution: #b45309; --caution-line: #d97706; --caution-weak: #fdf4e3;
+    --conflict: #c62d2d; --conflict-line: #dc2626; --conflict-weak: #fdeeee;
+    --chart-1: #4f46e5; --chart-2: #7c3aed; --chart-3: #db2777; --chart-5: #0891b2;
+    --shadow: 0 1px 2px rgba(16,24,42,.06), 0 8px 24px -12px rgba(16,24,42,.18);
+  }
+  :root[data-theme="dark"] {
+    --ground: #0a0e18; --panel: #0e1422; --elevated: #141c2d; --border: #23304a;
+    --border-strong: #33425f; --fg: #e4e9f2; --muted-fg: #93a1b8; --muted-bg: #182034;
+    --accent: #818cf8; --accent-fg: #0a0e18; --accent-weak: rgba(129,140,248,.13); --accent-line: #818cf8;
+    --caution: #fbbf24; --caution-line: #f59e0b; --caution-weak: rgba(251,191,36,.12);
+    --conflict: #f87171; --conflict-line: #ef4444; --conflict-weak: rgba(248,113,113,.12);
+    --chart-1: #818cf8; --chart-2: #a78bfa; --chart-3: #f472b6; --chart-5: #22d3ee;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--fg);
+    font-family: var(--font-sans); font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 0 24px 96px; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.2; }
+  a { color: var(--accent); }
+
+  /* ---- masthead ---- */
+  .masthead { padding: 60px 0 30px; border-bottom: 1px solid var(--border); }
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--muted-fg); margin-bottom: 16px;
+  }
+  .masthead h1 { font-size: 34px; font-weight: 680; letter-spacing: -.015em; max-width: 20ch; }
+  .masthead .lede { margin-top: 16px; max-width: 68ch; color: var(--muted-fg); font-size: 15.5px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .tag {
+    font-family: var(--font-mono); font-size: 11.5px; padding: 4px 9px;
+    border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted-fg);
+  }
+
+  /* ---- section scaffolding ---- */
+  section { padding-top: 54px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .sec-num { font-family: var(--font-mono); font-size: 13px; color: var(--accent); font-weight: 600; }
+  .sec-head h2 { font-size: 21px; font-weight: 640; letter-spacing: -.01em; }
+  .sec-intro { color: var(--muted-fg); max-width: 74ch; margin: 8px 0 26px; }
+
+  /* ---- mockup layout: viewport + annotation rail ---- */
+  .board { display: grid; grid-template-columns: 1fr 300px; gap: 22px; align-items: start; }
+  @media (max-width: 860px) { .board { grid-template-columns: 1fr; } }
+  .viewport {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .vp-bar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); background: var(--elevated);
+  }
+  .vp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
+  .vp-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted-fg); margin-left: 6px; }
+  .vp-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .rail { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 18px; }
+  .note { border-left: 2px solid var(--accent-line); padding: 2px 0 2px 13px; }
+  .note b { font-weight: 640; }
+  .note p { margin: 3px 0 0; font-size: 13px; color: var(--muted-fg); }
+  .note.caution { border-color: var(--caution-line); }
+  .note.conflict { border-color: var(--conflict-line); }
+
+  /* ---- honesty vocabulary primitives ---- */
+  .cluster { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip-layer {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .02em;
+    padding: 2px 8px; border-radius: var(--radius-sm);
+    background: var(--muted-bg); color: var(--muted-fg); border: 1px solid var(--border);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 560; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .badge svg { width: 14px; height: 14px; flex: none; }
+  .badge.candidate { background: var(--muted-bg); color: var(--muted-fg); border: 1px dashed var(--border-strong); }
+  .badge.corroborated { color: var(--accent); border: 1px solid var(--accent-line); background: transparent; }
+  .badge.confirmed { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+  .badge.disputed { color: var(--conflict); border: 1px solid var(--conflict-line); background: var(--conflict-weak); }
+  .badge.superseded { color: var(--caution); border: 1px solid var(--caution-line); background: var(--caution-weak); }
+  .chip-overlay {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 550;
+    padding: 2px 8px; border-radius: 999px; color: var(--caution);
+    border: 1px dashed var(--caution-line); background: var(--caution-weak);
+  }
+  .chip-overlay svg { width: 12px; height: 12px; }
+  .claim { font-family: var(--font-mono); font-size: 12px; color: var(--muted-fg); line-height: 1.5; }
+  .lifecycle { font-size: 11.5px; font-weight: 550; color: var(--muted-fg); }
+
+  /* ---- result rows ---- */
+  .rows { display: flex; flex-direction: column; gap: 10px; }
+  .row {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 11px 13px; background: var(--elevated); display: flex; flex-direction: column; gap: 7px;
+  }
+  .row .headline { font-size: 13.5px; font-weight: 560; line-height: 1.4; }
+  .row .sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .sec-label {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted-fg); margin: 4px 0 2px;
+  }
+  .supports {
+    margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--border);
+    font-size: 12.5px; color: var(--muted-fg);
+  }
+
+  /* ---- exclusion strip ---- */
+  .exclusion {
+    display: flex; align-items: center; gap: 9px; padding: 8px 12px; border-radius: var(--radius-sm);
+    background: var(--caution-weak); border: 1px solid var(--caution-line); color: var(--caution);
+    font-size: 12.5px;
+  }
+  .exclusion svg { width: 15px; height: 15px; flex: none; }
+  .exclusion .link { margin-left: auto; text-decoration: underline; cursor: pointer; }
+
+  /* ---- trace ledger ---- */
+  .ledger { display: flex; flex-direction: column; gap: 7px; }
+  .arm { display: grid; grid-template-columns: 96px 1fr 52px; align-items: center; gap: 10px; font-size: 12px; }
+  .arm .name { font-family: var(--font-mono); color: var(--muted-fg); }
+  .arm .track { height: 8px; border-radius: 999px; background: var(--muted-bg); overflow: hidden; }
+  .arm .fill { height: 100%; border-radius: 999px; }
+  .arm .val { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+  .arm.dormant .name, .arm.dormant .val { color: var(--muted-fg); opacity: .6; }
+  .arm.dormant .fill { background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, transparent 3px, transparent 6px); }
+  .arm.rank { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 2px; }
+  .arm.rank .name { color: var(--fg); font-weight: 600; }
+  .arm.rank .val { color: var(--accent); font-weight: 700; }
+  .rank-flag { font-size: 10.5px; color: var(--accent); font-family: var(--font-mono); }
+
+  /* ---- dispute both-sides ---- */
+  .dispute { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; align-items: stretch;
+    border: 1px solid var(--conflict-line); border-radius: var(--radius-sm); overflow: hidden; }
+  .dispute .side { padding: 11px 13px; display: flex; flex-direction: column; gap: 6px; }
+  .dispute .side.a { background: var(--elevated); }
+  .dispute .side.b { background: var(--elevated); }
+  .dispute .vs { display: flex; align-items: center; justify-content: center; padding: 0 12px;
+    background: var(--conflict-weak); color: var(--conflict); font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: .1em; border-left: 1px solid var(--conflict-line); border-right: 1px solid var(--conflict-line); }
+  .dispute .assert { font-size: 12.5px; font-weight: 550; }
+  .dispute .count { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-fg); }
+  @media (max-width: 520px) { .dispute { grid-template-columns: 1fr; } .dispute .vs { border: none; border-top: 1px solid var(--conflict-line); border-bottom: 1px solid var(--conflict-line); padding: 4px; } }
+
+  /* ---- sources audit ---- */
+  .sources { display: flex; flex-direction: column; gap: 6px; }
+  .source { display: flex; align-items: center; gap: 9px; font-size: 12.5px; padding: 6px 2px; }
+  .source .kind { font-family: var(--font-mono); font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+    background: var(--muted-bg); color: var(--muted-fg); border: 1px solid var(--border); text-transform: uppercase; letter-spacing: .06em; }
+  .source .kind.human { color: var(--accent); border-color: var(--accent-line); background: var(--accent-weak); }
+  .source .kind.code { color: var(--chart-5); border-color: var(--chart-5); }
+  .source .when { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--muted-fg); }
+
+  /* ---- review triage ---- */
+  .queue-item { display: flex; align-items: center; gap: 12px; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--elevated); }
+  .rank-badge { font-family: var(--font-mono); font-size: 11px; color: var(--muted-fg); width: 26px; text-align: center; }
+  .queue-item .grow { flex: 1; min-width: 0; }
+  .queue-item .q-head { font-size: 13px; font-weight: 550; }
+  .queue-item .q-meta { font-size: 11.5px; color: var(--muted-fg); margin-top: 2px; }
+  .btn { font-family: var(--font-sans); font-size: 12.5px; font-weight: 560; padding: 5px 12px;
+    border-radius: var(--radius-sm); border: 1px solid var(--accent-line); cursor: pointer; white-space: nowrap; }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .btn.ghost { background: transparent; color: var(--accent); }
+  .consequence { font-family: var(--font-mono); font-size: 10.5px; color: var(--caution); }
+
+  /* ---- calendar ---- */
+  .cal { display: grid; grid-template-columns: repeat(26, 1fr); gap: 3px; }
+  .cal i { aspect-ratio: 1; border-radius: 2px; background: var(--muted-bg); }
+  .cal i.l1 { background: color-mix(in srgb, var(--accent) 28%, var(--muted-bg)); }
+  .cal i.l2 { background: color-mix(in srgb, var(--accent) 52%, var(--muted-bg)); }
+  .cal i.l3 { background: color-mix(in srgb, var(--accent) 74%, var(--muted-bg)); }
+  .cal i.l4 { background: var(--accent); }
+  .cal-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-fg); margin-top: 8px; }
+  .cal-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+  /* ---- timeline ---- */
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl { display: grid; grid-template-columns: 74px 16px 1fr; gap: 10px; align-items: start; padding-bottom: 14px; }
+  .tl .t { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-fg); text-align: right; padding-top: 1px; }
+  .tl .dotcol { display: flex; flex-direction: column; align-items: center; }
+  .tl .d { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 3px; }
+  .tl .line { width: 2px; flex: 1; background: var(--border); margin-top: 2px; }
+  .tl .ev { font-size: 12.5px; }
+  .tl .ev .et { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-fg); }
+
+  /* ---- four states ---- */
+  .states { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 700px) { .states { grid-template-columns: 1fr; } }
+  .state {
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; background: var(--elevated);
+    min-height: 132px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .state .st-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted-fg); }
+  .skel { height: 11px; border-radius: 4px; background: linear-gradient(90deg, var(--muted-bg), var(--border), var(--muted-bg));
+    background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .state.empty .cta { margin-top: auto; }
+  .staged { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted-fg);
+    font-family: var(--font-mono); border: 1px dashed var(--border-strong); border-radius: 999px; padding: 3px 10px; align-self: flex-start; }
+  @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+  /* ---- swatch grid ---- */
+  .swatch { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 760px) { .swatch { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; box-shadow: var(--shadow); }
+  .card h3 { font-size: 13px; font-weight: 620; margin-bottom: 3px; }
+  .card .desc { font-size: 12.5px; color: var(--muted-fg); margin-bottom: 13px; }
+  .card .demo { display: flex; flex-direction: column; gap: 10px; }
+  .roles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .role { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .role .sw { width: 15px; height: 15px; border-radius: 4px; border: 1px solid rgba(128,128,128,.25); flex: none; }
+  .role code { font-family: var(--font-mono); font-size: 11px; color: var(--muted-fg); }
+
+  .foot { margin-top: 66px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--muted-fg); font-size: 12.5px; }
+  .foot code { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg); }
+  .divider-note { font-size: 12px; color: var(--muted-fg); font-style: italic; }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">darkmem · design doc 14 · visual sub-phase</div>
+    <h1>Making the knowledge vault tell the truth about itself</h1>
+    <p class="lede">These mockups realize the honesty-label design language of doc&nbsp;14 over the screen
+      inventory of doc&nbsp;13. Every surface here obeys one thesis: an agent or a person reading a fact
+      should see <em>exactly</em> how well-supported it is — never more. The system's ceiling is
+      <b>corroborated</b> ("asserted by K distinct origins"); only a human's mark reaches
+      <b>confirmed</b>; and the word <b>verified</b> appears nowhere. Rendered on the shipped
+      <span class="mono">darkraise-ui@3.1.1</span> token system: indigo accent, slate surface, dark by default.</p>
+    <div class="meta-row">
+      <span class="tag">token substrate: exists today</span>
+      <span class="tag">honesty vocabulary: target-new</span>
+      <span class="tag">use your OS / toggle for light · dark</span>
+    </div>
+  </header>
+
+  <!-- ========================= A. VOCABULARY ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">A</span><h2>The honesty-label vocabulary</h2></div>
+    <p class="sec-intro">The whole language is a handful of primitives. Two axes stay orthogonal on purpose:
+      the <b>layer chip</b> says <em>what kind of thing</em> a row is (memory, fact, article); the
+      <b>verification badge</b> says <em>how well-supported</em> it is. A fact is L2 <em>and</em> corroborated —
+      never one dressed up as the other.</p>
+
+    <div class="swatch">
+
+      <div class="card">
+        <h3>Status colour roles</h3>
+        <p class="desc">Four roles, each mapped onto an existing theme token — never a literal colour. Amber
+          (<code>--chart-4</code>) is reserved for caution and never used for a score arm.</p>
+        <div class="roles">
+          <div class="role"><span class="sw" style="background:var(--muted-bg)"></span><div><b>neutral</b> <code>muted</code></div></div>
+          <div class="role"><span class="sw" style="background:var(--accent)"></span><div><b>supported</b> <code>accent</code></div></div>
+          <div class="role"><span class="sw" style="background:var(--caution)"></span><div><b>caution</b> <code>--chart-4</code></div></div>
+          <div class="role"><span class="sw" style="background:var(--conflict)"></span><div><b>conflict</b> <code>destructive</code></div></div>
+        </div>
+        <p class="desc" style="margin:13px 0 0">No fifth "success green" role exists — green-as-good is the
+          visual synonym of "true," and no rung earns it.</p>
+      </div>
+
+      <div class="card">
+        <h3>Layer chips</h3>
+        <p class="desc">Surface-toned, monospace key, no accent, no status colour. Quiet metadata that classifies
+          without judging — always <em>before</em> the badge, so a row reads "what kind → how supported."</p>
+        <div class="demo">
+          <div class="cluster">
+            <span class="chip-layer">L0 memory</span>
+            <span class="chip-layer">L2 fact</span>
+            <span class="chip-layer">L3 article</span>
+          </div>
+          <p class="desc" style="margin:0">Expansion names the layer in words — "fact — Layer&nbsp;2 of the vault" —
+            and never says "verified," even here.</p>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / -1">
+        <h3>Verification badges — the ladder</h3>
+        <p class="desc">One composed component, four rung treatments. Colour never carries meaning alone: every
+          badge pairs its token with a semantic icon and a text label, WCAG-AA in both themes. The expansion is
+          doc&nbsp;12's <span class="mono">badge.claim</span> string, shown verbatim or not at all.</p>
+        <div class="demo" style="gap:16px">
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="cluster">
+              <span class="badge candidate">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+                candidate</span>
+              <span class="claim">raw extracted signal — not yet corroborated; served only when nothing verified fits.</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="cluster">
+              <span class="badge corroborated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                corroborated</span>
+              <span class="claim">asserted by 3 distinct origins of kinds [mcp, api], no known contradiction, as of 2026-07-20.</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="cluster">
+              <span class="badge confirmed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                human-ratified</span>
+              <span class="claim">asserted by 3 distinct origins of kinds [mcp, api], no known contradiction, as of 2026-07-20, human-ratified.</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="cluster">
+              <span class="badge disputed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 7h12"/><path d="M6 7l-3 6h6z"/><path d="M18 7l3 6h-6z"/><path d="M4 20h16"/></svg>
+                disputed</span>
+              <span class="claim">disputed: 2 origins assert X, 1 origin asserts not-X, as of 2026-07-22.</span>
+            </div>
+          </div>
+
+          <div class="divider-note">The <b>human-ratified</b> badge is the only rung a human can mint, so its icon is a
+            person-with-check — a human figure, never a padlock or a bare checkmark. A plain checkmark appears nowhere in the ladder.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Overlay chips</h3>
+        <p class="desc">Labels, not rungs. They append after the badge — amber, dashed — and never recolour or
+          replace it, because the backend has <em>not</em> demoted the row.</p>
+        <div class="demo">
+          <div class="cluster">
+            <span class="badge corroborated" style="font-size:12px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated</span>
+            <span class="chip-overlay">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3s5 5 5 9a5 5 0 0 1-10 0c0-1.5.7-3 1.5-4"/><path d="M4 20h6"/></svg>
+              under-sourced</span>
+            <span class="chip-overlay">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/><path d="M4 6l2 2"/></svg>
+              stale</span>
+          </div>
+          <p class="desc" style="margin:0"><span class="mono">under-sourced</span> → "origin count dropped below N;
+            will demote if not re-corroborated." <span class="mono">stale</span> → "synthesised before the latest verified change."</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Lifecycle labels (L0 memory)</h3>
+        <p class="desc">Episodic recall is not a claim, so memory rows carry <em>no</em> verification badge —
+          they wear a lifecycle label instead.</p>
+        <div class="demo">
+          <div class="cluster">
+            <span class="chip-layer">L0 memory</span>
+            <span class="lifecycle">active</span>
+          </div>
+          <div class="cluster">
+            <span class="chip-layer">L0 memory</span>
+            <span class="badge superseded" style="font-size:12px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 1 1 3 6"/><path d="M4 20v-4h4"/></svg>
+              superseded</span>
+            <span class="claim" style="font-size:11.5px">→ lineage</span>
+          </div>
+          <p class="desc" style="margin:0">A terminal <span class="mono">superseded</span> article uses this same
+            caution treatment — replacing the rung badge, with a link to the superseding article — rather than becoming a fifth rung.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================= B. KNOWLEDGE SEARCH ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">B</span><h2>Knowledge search — the four-layer read</h2></div>
+    <p class="sec-intro">The composed read returns facts, articles, and memories sectioned by layer, every row
+      labelled and badged. A memory that <em>supports</em> a returned fact groups under it rather than counting
+      as its own hit — so the same evidence is never triple-counted.</p>
+    <div class="board">
+      <div class="viewport">
+        <div class="vp-bar"><span class="vp-dot"></span><span class="vp-title">/knowledge/search — "which vector store did we standardise on?"</span></div>
+        <div class="vp-body">
+
+          <div class="exclusion">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>2 rows excluded</b> — conflicting-context (dev-only facts, current scope is <span class="mono">env=prod</span>)</span>
+            <span class="link">show anyway</span>
+          </div>
+
+          <div class="sec-label">Facts · Layer 2</div>
+          <div class="rows">
+            <div class="row">
+              <div class="headline">The project standardised on pgvector as the single vector store.</div>
+              <div class="sub">
+                <span class="chip-layer">L2 fact</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated</span>
+              </div>
+              <span class="claim">asserted by 3 distinct origins of kinds [mcp, api, code], no known contradiction, as of 2026-07-20.</span>
+              <div class="supports">↳ supported by memory · "migrated qdrant → pgvector, one child table per fingerprint"</div>
+            </div>
+            <div class="row">
+              <div class="headline">Embedding tables are partitioned per fingerprint; cross-fingerprint joins are undefined.</div>
+              <div class="sub">
+                <span class="chip-layer">L2 fact</span>
+                <span class="badge confirmed">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M4 20a5 5 0 0 1 9-3"/><path d="M15 17l2 2 4-4"/></svg>
+                  human-ratified</span>
+              </div>
+              <span class="claim">asserted by 4 distinct origins of kinds [api, code], no known contradiction, as of 2026-07-18, human-ratified.</span>
+            </div>
+          </div>
+
+          <div class="sec-label">Articles · Layer 3</div>
+          <div class="rows">
+            <div class="row">
+              <div class="headline">Retrieval architecture — hybrid RRF over per-fingerprint partitions</div>
+              <div class="sub">
+                <span class="chip-layer">L3 article</span>
+                <span class="badge corroborated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+                  corroborated</span>
+                <span class="chip-overlay">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2 2"/><path d="M4 6l2 2"/></svg>
+                  stale</span>
+              </div>
+              <span class="claim">grounded in 9 facts · synthesised before the latest verified change.</span>
+            </div>
+          </div>
+
+          <div class="sec-label">Memory · Layer 0</div>
+          <div class="rows">
+            <div class="row">
+              <div class="headline">"Decided to drop the qdrant sidecar — one Postgres, pgvector for everything."</div>
+              <div class="sub"><span class="chip-layer">L0 memory</span><span class="lifecycle">active · learned_in default</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <aside class="rail">
+        <div class="note"><b>Sectioned, not flattened.</b><p>The <span class="mono">fused=false</span> shape keeps
+          layers visible — the structure <em>is</em> the explanation. A fused ranked list is the alternate mode.</p></div>
+        <div class="note caution"><b>Exclusion is surfaced, never silent.</b><p>The strip shows the count and the
+          reason, computed before any empty state. "show anyway" is one click. Invariant&nbsp;14.</p></div>
+        <div class="note"><b>Evidence groups, never multiplies.</b><p>The supporting memory indents under its fact —
+          <span class="mono">K</span> counts distinct origins, not rows.</p></div>
+        <div class="note caution"><b>Stale ≠ demoted.</b><p>The article keeps its corroborated badge; the amber
+          overlay just flags that a verified change landed after synthesis.</p></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========================= C. TRACE PANEL ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">C</span><h2>"Why retrieved" — the trace ledger</h2></div>
+    <p class="sec-intro">The trace renders doc&nbsp;07's payload field-for-field: a ledger, not a story. Every
+      ranking arm is a token-coloured bar with its raw value beside it; a dormant arm shows as
+      <em>inactive</em>, never omitted and never faked as a zero. The caution amber is deliberately absent here —
+      an arm bar can never be mistaken for a warning.</p>
+    <div class="board">
+      <div class="viewport">
+        <div class="vp-bar"><span class="vp-dot"></span><span class="vp-title">trace · row #1 · "standardised on pgvector"</span></div>
+        <div class="vp-body">
+          <div class="ledger">
+            <div class="arm"><span class="name">semantic</span><span class="track"><span class="fill" style="width:88%;background:var(--chart-1)"></span></span><span class="val">0.88</span></div>
+            <div class="arm"><span class="name">keyword</span><span class="track"><span class="fill" style="width:61%;background:var(--chart-2)"></span></span><span class="val">0.61</span></div>
+            <div class="arm"><span class="name">ppr</span><span class="track"><span class="fill" style="width:44%;background:var(--chart-3)"></span></span><span class="val">0.44</span></div>
+            <div class="arm dormant"><span class="name">dual-level</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">inactive</span></div>
+            <div class="arm"><span class="name">rerank</span><span class="track"><span class="fill" style="width:72%;background:var(--chart-5)"></span></span><span class="val">7.2</span></div>
+            <div class="arm rank"><span class="name">rrf_score</span><span class="track"><span class="fill" style="width:81%;background:var(--accent)"></span></span><span class="val">0.081</span></div>
+          </div>
+          <div class="cluster" style="margin-top:2px">
+            <span class="rank-flag">▲ ordering signal</span>
+            <span class="claim" style="font-size:11px">— rrf_score decides the rank; raw modality scores are shown for audit, never as the order.</span>
+          </div>
+        </div>
+      </div>
+      <aside class="rail">
+        <div class="note"><b>Ledger, not narrative.</b><p>No generated "this matched because…" sentence that could
+          drift from the numbers — the panel shows the numbers.</p></div>
+        <div class="note"><b>Dormant arms stay visible.</b><p>A <span class="mono">w_*</span> weight of 0 renders
+          hatched and labelled "inactive" — built-but-unspent looks built-but-unspent. Invariant&nbsp;23.</p></div>
+        <div class="note"><b>Arm colours skip the caution token.</b><p>Bars draw from
+          <span class="mono">--chart-1/2/3/5</span> — never the amber <span class="mono">--chart-4</span>.</p></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========================= D. AUDIT + DISPUTE ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">D</span><h2>Auditing the count · holding a dispute</h2></div>
+    <p class="sec-intro">The badge claims "K distinct origins" — the sources panel is where a person checks that
+      claim, origin by origin. When two sides genuinely conflict, the fact is served <em>disputed</em>, both sides
+      at equal visual weight; the system never picks a winner for you.</p>
+    <div class="board">
+      <div class="viewport">
+        <div class="vp-bar"><span class="vp-dot"></span><span class="vp-title">fact · sources audit + dispute</span></div>
+        <div class="vp-body">
+          <div class="headline" style="font-size:14px">The primary API binds 0.0.0.0 behind the bundled nginx.</div>
+          <div class="cluster">
+            <span class="chip-layer">L2 fact</span>
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated · K=3</span>
+          </div>
+          <div class="sec-label">Origins backing K</div>
+          <div class="sources">
+            <div class="source"><span class="kind">mcp</span> agent write · "nginx sets X-Real-IP to the peer" <span class="when">07-11</span></div>
+            <div class="source"><span class="kind code">code</span> <span class="mono">nginx.conf@88c8d10</span> · proxy_pass config <span class="when">07-14</span></div>
+            <div class="source"><span class="kind human">human</span> ratification pending — review queue <span class="when">—</span></div>
+          </div>
+
+          <div class="sec-label" style="margin-top:6px">A contradicted fact</div>
+          <div class="dispute">
+            <div class="side a">
+              <div class="assert">cookie_secure defaults to true</div>
+              <div class="count">2 origins · [api, code] · as of 07-09</div>
+            </div>
+            <div class="vs">VS</div>
+            <div class="side b">
+              <div class="assert">cookie_secure is tri-state, unset by default</div>
+              <div class="count">1 origin · [mcp] · as of 07-22</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="rail">
+        <div class="note"><b>K is auditable.</b><p>Each origin is one row of the count —
+          <span class="mono">COUNT(DISTINCT origin_key)</span>, never a row count. The human origin is the review decision itself.</p></div>
+        <div class="note"><b>Code origins are commit-addressed.</b><p>A <span class="mono">code@commit</span> mark
+          makes a born-corroborated code fact checkable against the exact revision.</p></div>
+        <div class="note conflict"><b>Both sides, equal weight.</b><p>A disputed fact is never silently dropped or
+          auto-resolved — it renders the conflict for a human to adjudicate.</p></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========================= E. REVIEW TRIAGE ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">E</span><h2>Review triage — the single human door</h2></div>
+    <p class="sec-intro">Ratification to <b>confirmed</b> is the one power a machine never holds — it lives only on
+      the authenticated UI, never on the unauthenticated MCP surface. The queue is consequence-ranked (retrieval
+      frequency × subject salience), never FIFO, and it is an override the human works, never a gate the system waits on.</p>
+    <div class="board">
+      <div class="viewport">
+        <div class="vp-bar"><span class="vp-dot"></span><span class="vp-title">/knowledge/review — 24 open · ranked by consequence</span></div>
+        <div class="vp-body">
+          <div class="queue-item">
+            <span class="rank-badge">01</span>
+            <div class="grow">
+              <div class="q-head">Auth tokens rotate on refresh and password-change.</div>
+              <div class="q-meta"><span class="mono">corroborated · K=3 · [api, code]</span> · <span class="consequence">retrieved 47× / 30d</span></div>
+            </div>
+            <button class="btn ghost">inspect</button>
+            <button class="btn primary">ratify</button>
+          </div>
+          <div class="queue-item">
+            <span class="rank-badge">02</span>
+            <div class="grow">
+              <div class="q-head">cookie_secure default — <span style="color:var(--conflict)">disputed</span></div>
+              <div class="q-meta"><span class="mono">2 assert · 1 counters</span> · <span class="consequence">high salience subject</span></div>
+            </div>
+            <button class="btn ghost">inspect</button>
+            <button class="btn primary">resolve</button>
+          </div>
+          <div class="queue-item">
+            <span class="rank-badge">03</span>
+            <div class="grow">
+              <div class="q-head">Migration files reduce to one baseline pre-release.</div>
+              <div class="q-meta"><span class="mono">candidate · K=1</span> · <span class="consequence">retrieved 6× / 30d</span></div>
+            </div>
+            <button class="btn ghost">inspect</button>
+            <button class="btn primary">ratify</button>
+          </div>
+        </div>
+      </div>
+      <aside class="rail">
+        <div class="note"><b>One door for confirmed power.</b><p>Ratify has no MCP twin — the LAN agent surface must
+          never mint the human's imprimatur. The UI is the door that carries it.</p></div>
+        <div class="note caution"><b>Consequence-ranked, not FIFO.</b><p>The facts an agent actually reads most, on
+          the highest-salience subjects, rise first — triage effort follows impact.</p></div>
+        <div class="note"><b>Never a read-path gate.</b><p>An item stays served-and-labelled in retrieval whatever
+          its queue state; the queue is an override, not a bottleneck.</p></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========================= F. ACTIVITY ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">F</span><h2>Activity — the durable event stream</h2></div>
+    <p class="sec-intro">Every lifecycle transition journals one append-only <span class="mono">events</span> row.
+      The contribution calendar buckets them per UTC day; the timeline is one object's full history. No heavy
+      per-client tables — an event row and, for pushes, a render-watermark config row.</p>
+    <div class="board">
+      <div class="viewport">
+        <div class="vp-bar"><span class="vp-dot"></span><span class="vp-title">/events — calendar · timeline · dream digest</span></div>
+        <div class="vp-body">
+          <div class="sec-label">Contribution calendar · per UTC-day</div>
+          <div class="cal">
+            <i></i><i class="l1"></i><i class="l2"></i><i></i><i class="l1"></i><i class="l3"></i><i class="l4"></i><i class="l2"></i><i></i><i class="l1"></i><i class="l2"></i><i class="l4"></i><i class="l3"></i><i></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l2"></i><i class="l1"></i><i></i><i class="l2"></i><i class="l3"></i><i class="l1"></i><i class="l2"></i><i class="l4"></i>
+            <i class="l1"></i><i class="l3"></i><i></i><i class="l2"></i><i class="l1"></i><i class="l4"></i><i class="l3"></i><i></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i></i><i class="l1"></i><i class="l2"></i><i class="l4"></i><i class="l3"></i><i class="l2"></i><i></i><i class="l1"></i><i class="l3"></i><i class="l2"></i><i class="l4"></i><i class="l1"></i><i></i><i class="l2"></i><i class="l3"></i>
+          </div>
+          <div class="cal-legend">less <i style="background:var(--muted-bg)"></i><i style="background:color-mix(in srgb,var(--accent) 28%,var(--muted-bg))"></i><i style="background:color-mix(in srgb,var(--accent) 52%,var(--muted-bg))"></i><i style="background:color-mix(in srgb,var(--accent) 74%,var(--muted-bg))"></i><i style="background:var(--accent)"></i> more · click a day → its UTC activity</div>
+
+          <div class="sec-label" style="margin-top:8px">Timeline · fact #a3f1</div>
+          <div class="timeline">
+            <div class="tl"><span class="t mono">07-11 09:14</span><span class="dotcol"><span class="d"></span><span class="line"></span></span><span class="ev"><span class="et">fact_extracted</span><br>born candidate from mcp ingest</span></div>
+            <div class="tl"><span class="t mono">07-14 22:03</span><span class="dotcol"><span class="d"></span><span class="line"></span></span><span class="ev"><span class="et">sources_changed</span><br>2nd origin (code@88c8d10) → corroborated</span></div>
+            <div class="tl"><span class="t mono">07-20 08:40</span><span class="dotcol"><span class="d"></span></span><span class="ev"><span class="et">human_confirmed</span><br>ratified in review queue</span></div>
+          </div>
+
+          <div class="sec-label" style="margin-top:8px">Dream digest · last consolidation run</div>
+          <div class="row">
+            <div class="q-meta" style="color:var(--fg)">12 facts corroborated · 3 articles re-synthesised · 1 dispute opened · 4 memories consolidated</div>
+          </div>
+        </div>
+      </div>
+      <aside class="rail">
+        <div class="note"><b>UTC-day buckets.</b><p>The calendar index is an immutable
+          <span class="mono">AT TIME ZONE 'UTC'</span> cast; the client renders in the viewer's zone knowing the boundary.</p></div>
+        <div class="note"><b>Append-only, no <span class="mono">POST /events</span>.</b><p>A forbid-trigger blocks
+          update/delete; services emit rows. The read API is strictly GET.</p></div>
+        <div class="note"><b>Consolidation is observable.</b><p>The dream digest surfaces what the background run
+          changed — verification moves, re-syntheses, new disputes — never a silent mutation.</p></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========================= G. FOUR STATES ========================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">G</span><h2>Four honest screen states</h2></div>
+    <p class="sec-intro">Every surface designs all four states up front. The rule that matters most is the last one:
+      a monitor for a table that does not yet write shows a labelled <em>staged</em> state — never a fake-populated
+      panel and never one that reads as broken.</p>
+    <div class="states">
+      <div class="state empty">
+        <span class="st-label">empty</span>
+        <div style="font-weight:560">No clients connected yet</div>
+        <p class="desc" style="margin:0">Connect Claude Code, Cursor, or Codex to start auto-injecting verified context.</p>
+        <button class="btn primary cta" style="align-self:flex-start">Connect a client</button>
+      </div>
+      <div class="state">
+        <span class="st-label">loading</span>
+        <div class="skel" style="width:70%"></div>
+        <div class="skel" style="width:92%"></div>
+        <div class="skel" style="width:54%"></div>
+        <div class="skel" style="width:80%"></div>
+      </div>
+      <div class="state">
+        <span class="st-label">error / degraded</span>
+        <div class="exclusion" style="background:var(--caution-weak)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span>Keyword channel is down — showing semantic results only</span>
+        </div>
+        <p class="desc" style="margin:0">A degraded channel is a caution banner <em>over surviving results</em> —
+          never an empty list that reads as "nothing found."</p>
+      </div>
+      <div class="state">
+        <span class="st-label">staged (invariant 23)</span>
+        <span class="staged">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
+          backend not yet writing</span>
+        <div style="font-weight:560">Dream-run monitor</div>
+        <p class="desc" style="margin:0">Ships when the consolidation job family lands. Rendering an empty panel now
+          would claim a capability that isn't built — so it announces itself as staged instead.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p><b>Provenance.</b> These mockups realize <code>docs/design/14-ui-ux-design-language.md</code> over the screen
+      inventory of <code>docs/design/13-frontend-architecture-and-ia.md</code>, using the shipped
+      <code>darkraise-ui@3.1.1</code> theme tokens (accent indigo, surface slate, dark default). Badge claim strings
+      are doc&nbsp;12's <code>badge.claim</code> field verbatim; the four status roles map to
+      <code>muted</code> / <code>accent</code> / <code>--chart-4</code> / <code>destructive</code>.</p>
+    <p class="divider-note">Left to detailing during build: exact icon sizing and chip padding on the theme grid,
+      per-screen placement of the results-status strip, the dispute split-vs-stacked breakpoint, and calendar cell
+      sizing. The <em>encodings</em> shown here are closed and may not be altered — a screen that renders "true" or
+      "verified," colours a score arm amber, or drops a disputed side fails review against doc&nbsp;14.</p>
+  </footer>
+
+</div>
