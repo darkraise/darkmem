@@ -524,6 +524,73 @@ body {
 .layer-chip.l3 {
   opacity: 1;
 }
+
+/* ---- review shell ------------------------------------------------------
+   Shared chrome for /knowledge/review's two modes (doc 13 §6.2, doc 08
+   §6): one route, one shell, a mode toggle swaps the query, never the
+   route. S11 (Review) and S12 (Hygiene) both consume this verbatim and
+   differ only in which .review-shell-tab carries aria-selected="true" —
+   promoted here after the two fragments, authored in parallel, landed
+   with divergent bespoke chrome (Wave-B reconciliation). */
+
+.review-shell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 2px;
+  border-bottom: 1px dashed hsl(var(--border));
+}
+
+.review-shell-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  width: fit-content;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  background: hsl(var(--muted) / 0.4);
+}
+
+.review-shell-tab {
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 610;
+  color: hsl(var(--muted-foreground));
+}
+
+.review-shell-tab[aria-selected="true"] {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.review-shell-route {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.review-shell-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.review-shell-scope svg {
+  width: 13px;
+  height: 13px;
+  color: hsl(var(--muted-foreground));
+}
 </style>
 <nav class="board-index"><a href="#G0-design-guideline">G0-design-guideline</a><a href="#C01-verification-badges">C01-verification-badges</a><a href="#C02-layer-chips">C02-layer-chips</a><a href="#C03-global-chrome">C03-global-chrome</a><a href="#C04-render-states">C04-render-states</a><a href="#S01-dashboard">S01-dashboard</a><a href="#S02-memories-search">S02-memories-search</a><a href="#S03-memories-trace">S03-memories-trace</a><a href="#S04-memories-create">S04-memories-create</a><a href="#S05-memory-detail">S05-memory-detail</a><a href="#S06-facts-tab">S06-facts-tab</a><a href="#S07-fact-detail">S07-fact-detail</a><a href="#S08-articles-tab">S08-articles-tab</a><a href="#S09-article-detail">S09-article-detail</a><a href="#S10-topics-tab">S10-topics-tab</a><a href="#S11-review-mode">S11-review-mode</a><a href="#S12-hygiene-mode">S12-hygiene-mode</a></nav>
 <main><article id="G0-design-guideline" class="fragment">
@@ -6731,7 +6798,7 @@ body {
               </span>
               <span class="s06-dispute-line">disputed: 2 origins assert extraction purpose uses glm-4.5-flash, 1 origin asserts extraction purpose uses gpt-5.4-mini, as of 2026-07-15</span>
               <div class="s06-context-row">
-                <span class="s06-context-chip">purpose=extraction <span class="tag">llm_guessed</span></span>
+                <span class="s06-context-chip">purpose=extraction <span class="tag">LLM-guessed, not human-checked</span></span>
               </div>
             </div>
 
@@ -6753,7 +6820,7 @@ body {
               <div class="s06-context-row">
                 <span class="s06-context-chip s06-context-none">no context restriction</span>
               </div>
-              <span class="s06-rank-note">lifted from L1, served labelled, ranked below every verified rung — extracted signal, not yet corroborated</span>
+              <span class="s06-rank-note">lifted from an L1 relation, served labelled, ranked below every verified rung — extracted signal, not yet corroborated</span>
             </div>
 
           </div>
@@ -6844,7 +6911,7 @@ body {
               </span>
               <span class="s06-dispute-line">disputed: 2 origins assert extraction purpose uses glm-4.5-flash, 1 origin asserts extraction purpose uses gpt-5.4-mini, as of 2026-07-15</span>
               <div class="s06-context-row">
-                <span class="s06-context-chip">purpose=extraction <span class="tag">llm_guessed</span></span>
+                <span class="s06-context-chip">purpose=extraction <span class="tag">LLM-guessed, not human-checked</span></span>
               </div>
             </div>
 
@@ -9260,15 +9327,9 @@ body {
 
   .s11-shell { display: flex; flex-direction: column; gap: 14px; }
 
-  /* ---- the mode toggle: one shell, two modes, never two routes ---- */
-  .s11-mode-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .s11-mode-toggle {
-    display: inline-flex; gap: 2px; padding: 3px; width: fit-content;
-    border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted) / 0.4);
-  }
-  .s11-mode-tab { padding: 5px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 610; color: hsl(var(--muted-foreground)); }
-  .s11-mode-tab.is-active { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px hsl(var(--foreground) / 0.1); }
-  .s11-mode-note { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  /* ---- the shared triage shell (mode toggle, route, scope pill) lives in
+     assets/mockup.css as .review-shell — S12 renders the same markup with
+     its own tab selected (Wave-B reconciliation). ---- */
 
   /* ---- queue header + the served-labelled callout ---- */
   .s11-queue-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 9px; border-bottom: 1px solid hsl(var(--border)); }
@@ -9343,16 +9404,19 @@ body {
   <div class="theme-row">
     <div class="theme-light">
       <div class="s11-shell">
-        <div class="s11-mode-row">
-          <div class="s11-mode-toggle" role="tablist" aria-label="Triage mode">
-            <span class="s11-mode-tab is-active" role="tab" aria-selected="true">Review</span>
-            <span class="s11-mode-tab" role="tab" aria-selected="false">Hygiene</span>
+        <div class="review-shell">
+          <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+            <span class="review-shell-tab" role="tab" aria-selected="true">Review</span>
+            <span class="review-shell-tab" role="tab" aria-selected="false">Hygiene</span>
           </div>
-          <span class="s11-mode-note">one /knowledge/review shell · mode swaps the query, not the route</span>
+          <span class="review-shell-route">/knowledge/review</span>
+          <span class="review-shell-scope">project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
         </div>
 
         <div class="s11-queue-header">
-          <span class="title">Review queue — project: darkmem</span>
+          <span class="title">Review queue</span>
           <span class="state-chip state-populated">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
             populated
@@ -9563,16 +9627,19 @@ body {
 
     <div class="theme-dark">
       <div class="s11-shell">
-        <div class="s11-mode-row">
-          <div class="s11-mode-toggle" role="tablist" aria-label="Triage mode">
-            <span class="s11-mode-tab is-active" role="tab" aria-selected="true">Review</span>
-            <span class="s11-mode-tab" role="tab" aria-selected="false">Hygiene</span>
+        <div class="review-shell">
+          <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+            <span class="review-shell-tab" role="tab" aria-selected="true">Review</span>
+            <span class="review-shell-tab" role="tab" aria-selected="false">Hygiene</span>
           </div>
-          <span class="s11-mode-note">one /knowledge/review shell · mode swaps the query, not the route</span>
+          <span class="review-shell-route">/knowledge/review</span>
+          <span class="review-shell-scope">project: darkmem
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
         </div>
 
         <div class="s11-queue-header">
-          <span class="title">Review queue — project: darkmem</span>
+          <span class="title">Review queue</span>
           <span class="state-chip state-populated">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
             populated
@@ -9847,16 +9914,19 @@ body {
     toggle stays visible: the shell itself is not empty, only this mode's queue is.
   </div>
   <div class="s11-shell">
-    <div class="s11-mode-row">
-      <div class="s11-mode-toggle" role="tablist" aria-label="Triage mode">
-        <span class="s11-mode-tab is-active" role="tab" aria-selected="true">Review</span>
-        <span class="s11-mode-tab" role="tab" aria-selected="false">Hygiene</span>
+    <div class="review-shell">
+      <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+        <span class="review-shell-tab" role="tab" aria-selected="true">Review</span>
+        <span class="review-shell-tab" role="tab" aria-selected="false">Hygiene</span>
       </div>
-      <span class="s11-mode-note">one /knowledge/review shell · mode swaps the query, not the route</span>
+      <span class="review-shell-route">/knowledge/review</span>
+      <span class="review-shell-scope">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
     </div>
     <div class="c04-surface">
       <div class="c04-surface-header">
-        <span class="title">Review queue — project: darkmem</span>
+        <span class="title">Review queue</span>
         <span class="state-chip state-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>
           empty
@@ -9882,9 +9952,19 @@ body {
     <code>.c04-skel-bar</code> classes rather than a locally re-declared skeleton (doc 14 §5).
   </div>
   <div class="s11-shell">
+    <div class="review-shell">
+      <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+        <span class="review-shell-tab" role="tab" aria-selected="true">Review</span>
+        <span class="review-shell-tab" role="tab" aria-selected="false">Hygiene</span>
+      </div>
+      <span class="review-shell-route">/knowledge/review</span>
+      <span class="review-shell-scope">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
     <div class="c04-surface">
       <div class="c04-surface-header">
-        <span class="title">Review queue — project: darkmem</span>
+        <span class="title">Review queue</span>
         <span class="state-chip state-loading">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
           loading
@@ -9907,9 +9987,19 @@ body {
     indistinguishable from a genuine "caught up" state — retry stays offered (doc 07 §2, invariant 14).
   </div>
   <div class="s11-shell">
+    <div class="review-shell">
+      <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+        <span class="review-shell-tab" role="tab" aria-selected="true">Review</span>
+        <span class="review-shell-tab" role="tab" aria-selected="false">Hygiene</span>
+      </div>
+      <span class="review-shell-route">/knowledge/review</span>
+      <span class="review-shell-scope">project: darkmem
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </span>
+    </div>
     <div class="c04-surface">
       <div class="c04-surface-header">
-        <span class="title">Review queue — project: darkmem</span>
+        <span class="title">Review queue</span>
         <span class="state-chip state-error">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
           error
@@ -9933,54 +10023,25 @@ body {
 <style>
   /* S12 board-local styles. Composes the SHARED chrome classes verbatim —
      .board, .annotation, .state-chip, .badge (+ .badge.superseded /
-     .badge.deprecated), .layer-chip — and invents nothing that duplicates
-     them. Everything below is new S12-only layout: the shared triage-shell
-     header (route label + Review/Hygiene mode toggle + project scope pill,
-     mirroring the S11 shell this screen shares), the four hygiene-category
-     surfaces (candidate duplicates, low-confidence memories, expiring-soon
-     rows, superseded lineage), their per-category bulk-action toolbars, and
-     the checkbox/row/why-ranked primitives. S11 has not landed as a file
-     yet (parallel wave), so this header is authored fresh from doc 13 §6.2
-     / doc 08 §6 rather than copied from an existing S11 fragment; its
-     structure (route label, segmented mode toggle, scope pill) is kept
-     deliberately plain so an S11 author reusing it later does not have to
-     unwind anything S12-specific. Reads var(--token) / hsl(var(--token))
-     only; no hex, no redeclared tokens. Namespaced s12- so it can never
-     collide with another fragment's local styles once build.py
-     concatenates them. Note: hygiene rows are all L0 memories, so per the
-     non-rung rule (doc 14 §3.2 / C01 group 4) they never carry a
-     candidate/corroborated/disputed/confirmed rung badge — only the
-     .badge.superseded / .badge.deprecated lifecycle-amber treatment where
-     the row's own status warrants it (the lineage category), otherwise no
-     badge at all. Dedup pairs use a bespoke .s12-dup-pair layout rather
-     than C01's .c01-dispute split panel — a candidate-duplicate pair is
+     .badge.deprecated), .layer-chip, and now .review-shell (the route +
+     Review/Hygiene mode toggle + project scope pill, shared verbatim with
+     S11 — Wave-B reconciliation) — and invents nothing that duplicates
+     them. Everything below is new S12-only layout: the four hygiene-
+     category surfaces (candidate duplicates, low-confidence memories,
+     expiring-soon rows, superseded lineage), their per-category
+     bulk-action toolbars, and the checkbox/row/why-ranked primitives.
+     Reads var(--token) / hsl(var(--token)) only; no hex, no redeclared
+     tokens. Namespaced s12- so it can never collide with another
+     fragment's local styles once build.py concatenates them. Note:
+     hygiene rows are all L0 memories, so per the non-rung rule (doc 14
+     §3.2 / C01 group 4) they never carry a candidate/corroborated/
+     disputed/confirmed rung badge — only the .badge.superseded /
+     .badge.deprecated lifecycle-amber treatment where the row's own
+     status warrants it (the lineage category), otherwise no badge at
+     all. Dedup pairs use a bespoke .s12-dup-pair layout rather than
+     C01's .c01-dispute split panel — a candidate-duplicate pair is
      not a disputed-fact both-sides claim, and reusing that panel would
      blur two different honesty concepts. */
-
-  .s12-shell-bar {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-    padding-bottom: 12px; margin-bottom: 2px;
-    border-bottom: 1px dashed hsl(var(--border));
-  }
-  .s12-route { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
-
-  .s12-mode-toggle {
-    display: inline-flex; border: 1px solid hsl(var(--border));
-    border-radius: 999px; overflow: hidden;
-  }
-  .s12-mode-tab {
-    padding: 5px 14px; font-size: 12.5px; color: hsl(var(--muted-foreground));
-    background: transparent; white-space: nowrap;
-  }
-  .s12-mode-tab.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 600; }
-
-  .s12-scope-pill {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 11px; border-radius: 999px; white-space: nowrap;
-    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
-    color: hsl(var(--foreground)); font-size: 13px; margin-left: auto;
-  }
-  .s12-scope-pill svg { width: 12px; height: 12px; color: hsl(var(--muted-foreground)); }
 
   /* ---- the four category surfaces ---- */
   .s12-categories { display: flex; flex-direction: column; gap: 14px; }
@@ -10085,14 +10146,13 @@ body {
     (memory-level rows). Switching the tab swaps the query, not the URL.
   </div>
   <div class="board-body">
-    <div class="s12-shell-bar">
-      <span class="s12-route">/knowledge/review</span>
-      <div class="s12-mode-toggle">
-        <span class="s12-mode-tab">Review</span>
-        <span class="s12-mode-tab active">Hygiene</span>
+    <div class="review-shell">
+      <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+        <span class="review-shell-tab" role="tab" aria-selected="false">Review</span>
+        <span class="review-shell-tab" role="tab" aria-selected="true">Hygiene</span>
       </div>
-      <span class="s12-scope-pill">
-        project: darkmem
+      <span class="review-shell-route">/knowledge/review</span>
+      <span class="review-shell-scope">project: darkmem
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
       </span>
     </div>
@@ -10137,14 +10197,13 @@ body {
     layout preview, not a spinner replacing the page (doc 14 §5).
   </div>
   <div class="board-body">
-    <div class="s12-shell-bar">
-      <span class="s12-route">/knowledge/review</span>
-      <div class="s12-mode-toggle">
-        <span class="s12-mode-tab">Review</span>
-        <span class="s12-mode-tab active">Hygiene</span>
+    <div class="review-shell">
+      <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+        <span class="review-shell-tab" role="tab" aria-selected="false">Review</span>
+        <span class="review-shell-tab" role="tab" aria-selected="true">Hygiene</span>
       </div>
-      <span class="s12-scope-pill">
-        project: darkmem
+      <span class="review-shell-route">/knowledge/review</span>
+      <span class="review-shell-scope">project: darkmem
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
       </span>
     </div>
@@ -10213,14 +10272,13 @@ body {
     current.
   </div>
   <div class="board-body">
-    <div class="s12-shell-bar">
-      <span class="s12-route">/knowledge/review</span>
-      <div class="s12-mode-toggle">
-        <span class="s12-mode-tab">Review</span>
-        <span class="s12-mode-tab active">Hygiene</span>
+    <div class="review-shell">
+      <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+        <span class="review-shell-tab" role="tab" aria-selected="false">Review</span>
+        <span class="review-shell-tab" role="tab" aria-selected="true">Hygiene</span>
       </div>
-      <span class="s12-scope-pill">
-        project: darkmem
+      <span class="review-shell-route">/knowledge/review</span>
+      <span class="review-shell-scope">project: darkmem
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
       </span>
     </div>
@@ -10260,7 +10318,9 @@ body {
     duplicates</i> (associative-edge pairs dreaming flagged without a correction, doc 08 §9) get
     <b>confirm dedup</b> or, when one memory actually corrects the other rather than merely restating it,
     <b>supersede</b> instead — dreaming never hard-merges or deletes a memory itself. <i>Low-confidence
-    memories</i> and <i>expiring-soon rows</i> get <b>set/extend a TTL</b> or <b>prune</b>. <i>Superseded
+    memories</i> get <b>set a TTL</b> or <b>prune</b>; <i>expiring-soon rows</i> get <b>extend the TTL</b>
+    or <b>let expire</b> — a row already on its way out is reprieved or allowed to lapse, never bulk-pruned
+    outright. <i>Superseded
     lineage</i> gets <b>prune</b> to compact old chain links — pruning a memory another row still points
     <code>superseded_by</code> at first demotes that dependent to <code>deprecated</code> with the pointer
     cleared, so the <code>chk_superseded_has_pointer</code> constraint holds throughout the batch rather than
@@ -10269,14 +10329,13 @@ body {
   <div class="board-body">
     <div class="theme-row">
       <div class="theme-light">
-        <div class="s12-shell-bar">
-          <span class="s12-route">/knowledge/review</span>
-          <div class="s12-mode-toggle">
-            <span class="s12-mode-tab">Review</span>
-            <span class="s12-mode-tab active">Hygiene</span>
+        <div class="review-shell">
+          <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+            <span class="review-shell-tab" role="tab" aria-selected="false">Review</span>
+            <span class="review-shell-tab" role="tab" aria-selected="true">Hygiene</span>
           </div>
-          <span class="s12-scope-pill">
-            project: darkmem
+          <span class="review-shell-route">/knowledge/review</span>
+          <span class="review-shell-scope">project: darkmem
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
           </span>
         </div>
@@ -10483,14 +10542,13 @@ body {
       </div>
 
       <div class="theme-dark">
-        <div class="s12-shell-bar">
-          <span class="s12-route">/knowledge/review</span>
-          <div class="s12-mode-toggle">
-            <span class="s12-mode-tab">Review</span>
-            <span class="s12-mode-tab active">Hygiene</span>
+        <div class="review-shell">
+          <div class="review-shell-tabs" role="tablist" aria-label="Triage mode">
+            <span class="review-shell-tab" role="tab" aria-selected="false">Review</span>
+            <span class="review-shell-tab" role="tab" aria-selected="true">Hygiene</span>
           </div>
-          <span class="s12-scope-pill">
-            project: darkmem
+          <span class="review-shell-route">/knowledge/review</span>
+          <span class="review-shell-scope">project: darkmem
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
           </span>
         </div>

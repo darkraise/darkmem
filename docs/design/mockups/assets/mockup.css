@@ -343,3 +343,70 @@ body {
 .layer-chip.l3 {
   opacity: 1;
 }
+
+/* ---- review shell ------------------------------------------------------
+   Shared chrome for /knowledge/review's two modes (doc 13 §6.2, doc 08
+   §6): one route, one shell, a mode toggle swaps the query, never the
+   route. S11 (Review) and S12 (Hygiene) both consume this verbatim and
+   differ only in which .review-shell-tab carries aria-selected="true" —
+   promoted here after the two fragments, authored in parallel, landed
+   with divergent bespoke chrome (Wave-B reconciliation). */
+
+.review-shell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 2px;
+  border-bottom: 1px dashed hsl(var(--border));
+}
+
+.review-shell-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  width: fit-content;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  background: hsl(var(--muted) / 0.4);
+}
+
+.review-shell-tab {
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 610;
+  color: hsl(var(--muted-foreground));
+}
+
+.review-shell-tab[aria-selected="true"] {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.review-shell-route {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.review-shell-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.review-shell-scope svg {
+  width: 13px;
+  height: 13px;
+  color: hsl(var(--muted-foreground));
+}
