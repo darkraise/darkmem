@@ -59,6 +59,11 @@
   .s18-step.s18-error .s18-step-label { color: hsl(var(--destructive)); font-weight: 600; }
   .s18-step-connector.s18-error { background: hsl(var(--destructive) / 0.5); }
 
+  /* feeds a degraded (non-fatal) step — warning, not the hard-failure red
+     .s18-error uses, so a "degraded, not fatal" transition never reads as
+     a hard failure in the connector colour. */
+  .s18-step-connector.s18-degraded { background: hsl(var(--warning) / 0.5); }
+
   .s18-step.s18-skipped .s18-step-dot { border-style: dashed; color: hsl(var(--muted-foreground) / 0.5); opacity: 0.6; }
   .s18-step.s18-skipped .s18-step-label { color: hsl(var(--muted-foreground)); opacity: 0.6; }
 
@@ -106,13 +111,19 @@
     The per-memory module of the Activity shell (doc 13 §6.1, doc 02 §5.2): each captured memory's progress
     through <code>content embed → extract-and-classify → entity embed → dedup → write</code>, ending in one of
     three honest terminal states — <code>completed</code>, <code>partial</code>, or <code>failed</code>. A
-    <code>partial</code> memory always names exactly which step broke, using the same vocabulary the
-    <code>/ws</code> payload and <code>derive_memory_failed_step</code> use — <code>embed</code> /
-    <code>extract</code> / <code>vector</code> / <code>graph</code> — never a collapsed batch pass/fail
-    (invariant 14). Entity embed and dedup (phases 3–4) are batch-level ANN operations that degrade gracefully
-    on a miss rather than failing a single memory, so the named-failure vocabulary only ever points at phase 1
-    (<code>content_embedding</code>), phase 2 (<code>extraction</code> / <code>extraction_partial</code>), or
-    one of phase 5's two savepoints (<code>vector_write</code> / <code>graph_write</code>).
+    <code>partial</code> memory always names exactly which step broke, using
+    <code>pipeline_failures.failed_step</code>'s durable named-step vocabulary as
+    <code>derive_memory_failed_step</code> resolves it — <code>content_embedding</code>,
+    <code>extraction</code>, <code>extraction_partial</code>, <code>vector_write</code>,
+    <code>graph_write</code> — never a collapsed batch pass/fail (invariant 14). The <code>/ws</code> payload
+    (<code>PipelineStatus</code>) carries a different, shorter set of fields for the same four checkpoints —
+    <code>embed</code> / <code>extract</code> / <code>vector</code> / <code>graph</code>, each resolving to
+    <code>ok</code> / <code>error</code> / <code>partial</code> / <code>skipped</code> — which
+    <code>derive_memory_failed_step</code> reads to produce the named step above; the two vocabularies are
+    related, not identical. Entity embed and dedup (phases 3–4) are batch-level ANN operations that degrade
+    gracefully on a miss rather than failing a single memory, so the named-failure vocabulary only ever points
+    at phase 1 (<code>content_embedding</code>), phase 2 (<code>extraction</code> / <code>extraction_partial</code>),
+    or one of phase 5's two savepoints (<code>vector_write</code> / <code>graph_write</code>).
   </p>
 </div>
 
@@ -121,8 +132,13 @@
   <h2>S18 — pipeline stepper: running</h2>
   <div class="annotation">
     The non-terminal state every memory starts in once claimed from the buffer (doc 02 §5.2:
-    <code>[*] → running : claimed from buffer</code>). No <code>pipeline.*</code> event has fired yet — the
-    row updates live over <code>/ws</code> as each phase resolves.
+    <code>[*] → running : claimed from buffer</code>). The pipeline broadcasts exactly <b>one</b> terminal
+    <code>pipeline.*</code> event per memory, after all five phases finish (<code>pipeline.py</code>, the
+    <code>process_memory</code> broadcast) — <code>PipelineStatus</code> (<code>events.py</code>) has no
+    progress or current-phase field, and there is no <code>pipeline.running</code> /
+    <code>pipeline.progress</code> event, so the client has no way to know which phase is currently executing.
+    The stepper below renders every node <code>pending</code> — it is the decomposition the one eventual
+    terminal broadcast resolves into, not a live per-phase progress bar.
   </div>
   <div class="board-body">
     <div class="s18-panel">
@@ -138,20 +154,20 @@
             <span class="s18-row-time">claimed 12s ago</span>
           </div>
           <div class="s18-stepper">
-            <div class="s18-step s18-ok">
-              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
               <span class="s18-step-num">1</span>
               <span class="s18-step-label">Content embed</span>
             </div>
-            <span class="s18-step-connector s18-ok"></span>
-            <div class="s18-step s18-ok">
-              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
               <span class="s18-step-num">2</span>
               <span class="s18-step-label">Extract &amp; classify</span>
             </div>
-            <span class="s18-step-connector s18-ok"></span>
-            <div class="s18-step s18-active">
-              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
               <span class="s18-step-num">3</span>
               <span class="s18-step-label">Entity embed</span>
             </div>
@@ -173,7 +189,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
               running
             </span>
-            <span class="s18-row-note">phase 3 of 5 — cache lookup then embed misses, bounded by pipeline_concurrency</span>
+            <span class="s18-row-note">processing — awaiting the terminal result. All five phases resolve server-side before <code>/ws</code> reports one status (completed/partial/failed); there is no incremental per-phase progress event.</span>
           </div>
         </div>
       </div>
@@ -329,7 +345,7 @@
           </div>
           <div class="s18-stepper">
             <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
-            <span class="s18-step-connector s18-error"></span>
+            <span class="s18-step-connector s18-degraded"></span>
             <div class="s18-step s18-degraded">
               <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg></span>
               <span class="s18-step-num">2</span>

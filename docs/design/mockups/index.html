@@ -14138,6 +14138,11 @@ body {
   .s18-step.s18-error .s18-step-label { color: hsl(var(--destructive)); font-weight: 600; }
   .s18-step-connector.s18-error { background: hsl(var(--destructive) / 0.5); }
 
+  /* feeds a degraded (non-fatal) step — warning, not the hard-failure red
+     .s18-error uses, so a "degraded, not fatal" transition never reads as
+     a hard failure in the connector colour. */
+  .s18-step-connector.s18-degraded { background: hsl(var(--warning) / 0.5); }
+
   .s18-step.s18-skipped .s18-step-dot { border-style: dashed; color: hsl(var(--muted-foreground) / 0.5); opacity: 0.6; }
   .s18-step.s18-skipped .s18-step-label { color: hsl(var(--muted-foreground)); opacity: 0.6; }
 
@@ -14185,13 +14190,19 @@ body {
     The per-memory module of the Activity shell (doc 13 §6.1, doc 02 §5.2): each captured memory's progress
     through <code>content embed → extract-and-classify → entity embed → dedup → write</code>, ending in one of
     three honest terminal states — <code>completed</code>, <code>partial</code>, or <code>failed</code>. A
-    <code>partial</code> memory always names exactly which step broke, using the same vocabulary the
-    <code>/ws</code> payload and <code>derive_memory_failed_step</code> use — <code>embed</code> /
-    <code>extract</code> / <code>vector</code> / <code>graph</code> — never a collapsed batch pass/fail
-    (invariant 14). Entity embed and dedup (phases 3–4) are batch-level ANN operations that degrade gracefully
-    on a miss rather than failing a single memory, so the named-failure vocabulary only ever points at phase 1
-    (<code>content_embedding</code>), phase 2 (<code>extraction</code> / <code>extraction_partial</code>), or
-    one of phase 5's two savepoints (<code>vector_write</code> / <code>graph_write</code>).
+    <code>partial</code> memory always names exactly which step broke, using
+    <code>pipeline_failures.failed_step</code>'s durable named-step vocabulary as
+    <code>derive_memory_failed_step</code> resolves it — <code>content_embedding</code>,
+    <code>extraction</code>, <code>extraction_partial</code>, <code>vector_write</code>,
+    <code>graph_write</code> — never a collapsed batch pass/fail (invariant 14). The <code>/ws</code> payload
+    (<code>PipelineStatus</code>) carries a different, shorter set of fields for the same four checkpoints —
+    <code>embed</code> / <code>extract</code> / <code>vector</code> / <code>graph</code>, each resolving to
+    <code>ok</code> / <code>error</code> / <code>partial</code> / <code>skipped</code> — which
+    <code>derive_memory_failed_step</code> reads to produce the named step above; the two vocabularies are
+    related, not identical. Entity embed and dedup (phases 3–4) are batch-level ANN operations that degrade
+    gracefully on a miss rather than failing a single memory, so the named-failure vocabulary only ever points
+    at phase 1 (<code>content_embedding</code>), phase 2 (<code>extraction</code> / <code>extraction_partial</code>),
+    or one of phase 5's two savepoints (<code>vector_write</code> / <code>graph_write</code>).
   </p>
 </div>
 
@@ -14200,8 +14211,13 @@ body {
   <h2>S18 — pipeline stepper: running</h2>
   <div class="annotation">
     The non-terminal state every memory starts in once claimed from the buffer (doc 02 §5.2:
-    <code>[*] → running : claimed from buffer</code>). No <code>pipeline.*</code> event has fired yet — the
-    row updates live over <code>/ws</code> as each phase resolves.
+    <code>[*] → running : claimed from buffer</code>). The pipeline broadcasts exactly <b>one</b> terminal
+    <code>pipeline.*</code> event per memory, after all five phases finish (<code>pipeline.py</code>, the
+    <code>process_memory</code> broadcast) — <code>PipelineStatus</code> (<code>events.py</code>) has no
+    progress or current-phase field, and there is no <code>pipeline.running</code> /
+    <code>pipeline.progress</code> event, so the client has no way to know which phase is currently executing.
+    The stepper below renders every node <code>pending</code> — it is the decomposition the one eventual
+    terminal broadcast resolves into, not a live per-phase progress bar.
   </div>
   <div class="board-body">
     <div class="s18-panel">
@@ -14217,20 +14233,20 @@ body {
             <span class="s18-row-time">claimed 12s ago</span>
           </div>
           <div class="s18-stepper">
-            <div class="s18-step s18-ok">
-              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
               <span class="s18-step-num">1</span>
               <span class="s18-step-label">Content embed</span>
             </div>
-            <span class="s18-step-connector s18-ok"></span>
-            <div class="s18-step s18-ok">
-              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
               <span class="s18-step-num">2</span>
               <span class="s18-step-label">Extract &amp; classify</span>
             </div>
-            <span class="s18-step-connector s18-ok"></span>
-            <div class="s18-step s18-active">
-              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+            <span class="s18-step-connector s18-pending"></span>
+            <div class="s18-step s18-pending">
+              <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg></span>
               <span class="s18-step-num">3</span>
               <span class="s18-step-label">Entity embed</span>
             </div>
@@ -14252,7 +14268,7 @@ body {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
               running
             </span>
-            <span class="s18-row-note">phase 3 of 5 — cache lookup then embed misses, bounded by pipeline_concurrency</span>
+            <span class="s18-row-note">processing — awaiting the terminal result. All five phases resolve server-side before <code>/ws</code> reports one status (completed/partial/failed); there is no incremental per-phase progress event.</span>
           </div>
         </div>
       </div>
@@ -14408,7 +14424,7 @@ body {
           </div>
           <div class="s18-stepper">
             <div class="s18-step s18-ok"><span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4 10-10"/></svg></span><span class="s18-step-num">1</span><span class="s18-step-label">Content embed</span></div>
-            <span class="s18-step-connector s18-error"></span>
+            <span class="s18-step-connector s18-degraded"></span>
             <div class="s18-step s18-degraded">
               <span class="s18-step-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg></span>
               <span class="s18-step-num">2</span>
@@ -15620,9 +15636,9 @@ body {
           <div class="s21-job-top">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
             <span class="s21-job-key">expired_memory_cleanup</span>
-            <span class="meta">cron <code>*/15 * * * *</code></span>
+            <span class="meta">cron <code>0 * * * *</code></span>
           </div>
-          <div class="s21-job-run s21-never">last run: never &middot; next run: first tick due 2026-07-24 14:30 UTC</div>
+          <div class="s21-job-run s21-never">last run: never &middot; next run: first tick due 2026-07-24 15:00 UTC</div>
         </div>
         <div class="s21-job-run s21-never" style="padding: 2px 2px 0;">&hellip; and 5 more registered jobs, each waiting on its first scheduled tick.</div>
       </div>
@@ -15749,7 +15765,7 @@ body {
                 </span>
                 <span class="meta">lock held since 14:12:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>*/30 * * * * *</code> &middot; every 30s, six-field seconds-first &mdash; floor-capped, see gear</div>
+              <div class="s21-job-sub">cron <code>*/10 * * * * *</code> &middot; every 10s, six-field seconds-first &mdash; floor/ceiling are registration constants, see gear</div>
               <div class="s21-job-run">last completed run <b>14:07:00 UTC</b> &mdash; ok, 25 symbols enriched</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure code_enrichment">
@@ -15767,10 +15783,10 @@ body {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
                 <span class="s21-job-key">token_blocklist_cleanup</span>
                 <span class="state-chip state-populated">idle</span>
-                <span class="meta">next 2026-07-25 03:00 UTC</span>
+                <span class="meta">next 15:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>0 3 * * *</code> &middot; daily at 03:00 UTC</div>
-              <div class="s21-job-run">last run <b>2026-07-24 03:00 UTC</b> &mdash; ok, 142 tokens purged</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 142 tokens purged</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure token_blocklist_cleanup">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
@@ -15807,10 +15823,10 @@ body {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
                 <span class="s21-job-key">graph_orphan_cleanup</span>
                 <span class="state-chip state-populated">idle</span>
-                <span class="meta">next 14:30 UTC</span>
+                <span class="meta">next 15:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>30 * * * *</code> &middot; hourly, at :30</div>
-              <div class="s21-job-run">last run <b>13:30 UTC</b> &mdash; ok, 6 orphan entities pruned</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 6 orphan entities pruned</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure graph_orphan_cleanup">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
@@ -15827,10 +15843,10 @@ body {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
                 <span class="s21-job-key">tag_orphan_cleanup</span>
                 <span class="state-chip state-populated">idle</span>
-                <span class="meta">next 2026-07-25 04:00 UTC</span>
+                <span class="meta">next 15:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>0 4 * * *</code> &middot; daily at 04:00 UTC</div>
-              <div class="s21-job-run">last run <b>2026-07-24 04:00 UTC</b> &mdash; ok, 2 orphan tags removed</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 2 orphan tags removed</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure tag_orphan_cleanup">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
@@ -15850,9 +15866,9 @@ body {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
                   last run failed
                 </span>
-                <span class="meta">next 14:15 UTC (unaffected)</span>
+                <span class="meta">next 15:00 UTC (unaffected)</span>
               </div>
-              <div class="s21-job-sub">cron <code>*/15 * * * *</code> &middot; every 15 minutes</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
               <div class="s21-job-run bad">last run <b>14:00 UTC</b> &mdash; failed: <code>chk_superseded_has_pointer</code> violation, 1 dependent memory was not demoted before delete</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure expired_memory_cleanup">
@@ -15908,7 +15924,7 @@ body {
                 </span>
                 <span class="meta">lock held since 14:12:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>*/30 * * * * *</code> &middot; every 30s, six-field seconds-first &mdash; floor-capped, see gear</div>
+              <div class="s21-job-sub">cron <code>*/10 * * * * *</code> &middot; every 10s, six-field seconds-first &mdash; floor/ceiling are registration constants, see gear</div>
               <div class="s21-job-run">last completed run <b>14:07:00 UTC</b> &mdash; ok, 25 symbols enriched</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure code_enrichment">
@@ -15926,10 +15942,10 @@ body {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
                 <span class="s21-job-key">token_blocklist_cleanup</span>
                 <span class="state-chip state-populated">idle</span>
-                <span class="meta">next 2026-07-25 03:00 UTC</span>
+                <span class="meta">next 15:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>0 3 * * *</code> &middot; daily at 03:00 UTC</div>
-              <div class="s21-job-run">last run <b>2026-07-24 03:00 UTC</b> &mdash; ok, 142 tokens purged</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 142 tokens purged</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure token_blocklist_cleanup">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
@@ -15966,10 +15982,10 @@ body {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
                 <span class="s21-job-key">graph_orphan_cleanup</span>
                 <span class="state-chip state-populated">idle</span>
-                <span class="meta">next 14:30 UTC</span>
+                <span class="meta">next 15:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>30 * * * *</code> &middot; hourly, at :30</div>
-              <div class="s21-job-run">last run <b>13:30 UTC</b> &mdash; ok, 6 orphan entities pruned</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 6 orphan entities pruned</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure graph_orphan_cleanup">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
@@ -15986,10 +16002,10 @@ body {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
                 <span class="s21-job-key">tag_orphan_cleanup</span>
                 <span class="state-chip state-populated">idle</span>
-                <span class="meta">next 2026-07-25 04:00 UTC</span>
+                <span class="meta">next 15:00 UTC</span>
               </div>
-              <div class="s21-job-sub">cron <code>0 4 * * *</code> &middot; daily at 04:00 UTC</div>
-              <div class="s21-job-run">last run <b>2026-07-24 04:00 UTC</b> &mdash; ok, 2 orphan tags removed</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
+              <div class="s21-job-run">last run <b>14:00 UTC</b> &mdash; ok, 2 orphan tags removed</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure tag_orphan_cleanup">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8.05 8.05 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.6a8.05 8.05 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.97 7.97 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8.05 8.05 0 0 0 1.7 1l.4 2.6h3.8l.4-2.6a8.05 8.05 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>
@@ -16009,9 +16025,9 @@ body {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
                   last run failed
                 </span>
-                <span class="meta">next 14:15 UTC (unaffected)</span>
+                <span class="meta">next 15:00 UTC (unaffected)</span>
               </div>
-              <div class="s21-job-sub">cron <code>*/15 * * * *</code> &middot; every 15 minutes</div>
+              <div class="s21-job-sub">cron <code>0 * * * *</code> &middot; hourly, on the hour</div>
               <div class="s21-job-run bad">last run <b>14:00 UTC</b> &mdash; failed: <code>chk_superseded_has_pointer</code> violation, 1 dependent memory was not demoted before delete</div>
               <div class="s21-job-actions">
                 <button type="button" class="s21-btn s21-btn-icon" aria-label="Configure expired_memory_cleanup">
@@ -16032,16 +16048,21 @@ body {
 
 <!-- ============================================================= -->
 <section class="board" id="S21-config-dialog">
-  <h2>Per-job config gear dialog &mdash; cron / floor / ceiling / config_schema</h2>
+  <h2>Per-job config gear dialog &mdash; cron (edited elsewhere) / floor &amp; ceiling (read-only) / config_schema (editable)</h2>
   <div class="annotation">
-    Opened from the gear on <code>code_enrichment</code> above. <code>min_interval_seconds</code> is the
+    Opened from the gear on <code>code_enrichment</code> above. <code>min_interval_seconds</code> (the
     <b>floor</b>: the loop will not fire more often than this regardless of what the cron expression
-    computes &mdash; here it caps a runaway six-field <code>*/30 * * * * *</code> (every 30 seconds) down to
-    once per 5 minutes. <code>max_run_seconds</code> is the <b>ceiling</b> on a single run's duration. Below
-    those two, this job's own <code>config_schema</code> (a <code>FieldDescriptor</code> list) contributes
-    two more bounded fields. <code>PUT /api/v1/jobs/{key}/config</code> validates every field against its
-    declared type and min/max, rejects unknown keys, and writes under the <b>same per-job lock</b> the
-    scheduled tick and manual trigger already share &mdash; a save can never race a running tick.
+    computes) and <code>max_run_seconds</code> (the <b>ceiling</b> on a single run's duration) are fixed
+    <code>Job</code>-dataclass attributes set once at registration in <code>app/main.py</code> &mdash; there
+    is no write path for either, so both render read-only here, the same treatment as <code>cron</code>
+    above them. The only field this dialog can actually save lives below, under this job's own
+    <code>config_schema</code> (a <code>FieldDescriptor</code> list declared at registration) &mdash; for
+    <code>code_enrichment</code> that's a single field, <code>batch_size</code>. <code>cron</code> and
+    <code>enabled</code> are edited through a separate endpoint, <code>PUT /api/v1/jobs/{key}</code>;
+    <code>config_schema</code> fields go through <code>PUT /api/v1/jobs/{key}/config</code>, which validates
+    every field against its declared type and min/max, rejects unknown keys, and writes under the <b>same
+    per-job lock</b> the scheduled tick and manual trigger already share &mdash; a save can never race a
+    running tick.
   </div>
   <div class="board-body">
     <div class="s21-dialog">
@@ -16054,41 +16075,35 @@ body {
       </div>
       <div class="s21-dialog-body">
         <div class="s21-field-row">
-          <div class="f-label-line"><span class="f-label">cron</span><span class="f-role">schedule</span></div>
-          <input class="f-input" type="text" value="*/30 * * * * *" readonly>
-          <span class="f-desc">Six-field, seconds-first (Quartz-style): every 30 seconds. Five-field
-            expressions (minute precision) are also accepted.</span>
+          <div class="f-label-line"><span class="f-label">cron</span><span class="f-role">schedule &middot; read-only here</span></div>
+          <input class="f-input" type="text" value="*/10 * * * * *" readonly>
+          <span class="f-desc">Six-field, seconds-first (Quartz-style): every 10 seconds. Five-field
+            expressions (minute precision) are also accepted. Edited via <code>PUT /api/v1/jobs/{key}</code>,
+            not this dialog's Save.</span>
         </div>
         <div class="s21-field-row">
-          <div class="f-label-line"><span class="f-label">min_interval_seconds</span><span class="f-role">floor</span></div>
-          <input class="f-input" type="number" value="300">
+          <div class="f-label-line"><span class="f-label">min_interval_seconds</span><span class="f-role">floor &middot; read-only</span></div>
+          <input class="f-input" type="text" value="1" readonly>
           <span class="f-desc">The loop will not fire more often than this floor, no matter how aggressive
-            the cron above computes.</span>
-          <span class="f-bounds">min 5 &middot; max 86400</span>
+            the cron above computes. A <code>Job</code>-dataclass constant fixed at registration &mdash; not
+            editable via config.</span>
         </div>
         <div class="s21-field-row">
-          <div class="f-label-line"><span class="f-label">max_run_seconds</span><span class="f-role">ceiling</span></div>
-          <input class="f-input" type="number" value="1800">
-          <span class="f-desc">A run still executing past this ceiling is treated as overrun.</span>
-          <span class="f-bounds">min 10 &middot; max 7200</span>
+          <div class="f-label-line"><span class="f-label">max_run_seconds</span><span class="f-role">ceiling &middot; read-only</span></div>
+          <input class="f-input" type="text" value="600" readonly>
+          <span class="f-desc">A run still executing past this ceiling is treated as overrun. Also a
+            registration-time constant, not editable via config.</span>
         </div>
-        <div class="s21-dialog-schema-head">config_schema — job-specific fields</div>
+        <div class="s21-dialog-schema-head">config_schema — job-specific, editable field</div>
         <div class="s21-field-row">
           <div class="f-label-line"><span class="f-label">batch_size</span><span class="f-role">int</span></div>
-          <input class="f-input" type="number" value="25">
-          <span class="f-desc">Pending symbols drained from the backlog per tick.</span>
-          <span class="f-bounds">min 1 &middot; max 200</span>
-        </div>
-        <div class="s21-field-row">
-          <div class="f-label-line"><span class="f-label">stale_after_days</span><span class="f-role">int</span></div>
-          <input class="f-input" type="number" value="14">
-          <span class="f-desc">A queued symbol older than this is skipped rather than enriched against a
-            possibly-moved line range.</span>
-          <span class="f-bounds">min 1 &middot; max 90</span>
+          <input class="f-input" type="number" value="5">
+          <span class="f-desc">Code symbols summarised per scheduled run.</span>
+          <span class="f-bounds">min 1 &middot; max 100</span>
         </div>
       </div>
       <div class="s21-dialog-footer">
-        <span class="lockline">Writes acquire the same lock the scheduled tick uses.</span>
+        <span class="lockline">config_schema writes acquire the same lock the scheduled tick uses.</span>
         <button type="button" class="s21-btn">Cancel</button>
         <button type="button" class="s21-btn s21-btn-primary">Save</button>
       </div>
@@ -17023,7 +17038,7 @@ body {
                 </span>
                 <span class="s23-undo-disabled">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-                  <span>Undo unavailable &mdash; <b>a newer change rewrote this object.</b> Memory a91f0c3 was edited again 2026-07-24 04:10, outside this cycle; the before-state this undo would restore is no longer current.</span>
+                  <span>Undo unavailable &mdash; <b>a newer change rewrote this object.</b> This memory was edited again 2026-07-24 04:10, outside this cycle; the before-state this undo would restore is no longer current.</span>
                 </span>
               </div>
               <span class="s23-more">+2 more superseded this cycle</span>
@@ -17462,7 +17477,7 @@ body {
                 </span>
                 <span class="s23-undo-disabled">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-                  <span>Undo unavailable &mdash; <b>a newer change rewrote this object.</b> Memory a91f0c3 was edited again 2026-07-24 04:10, outside this cycle; the before-state this undo would restore is no longer current.</span>
+                  <span>Undo unavailable &mdash; <b>a newer change rewrote this object.</b> This memory was edited again 2026-07-24 04:10, outside this cycle; the before-state this undo would restore is no longer current.</span>
                 </span>
               </div>
               <span class="s23-more">+2 more superseded this cycle</span>
