@@ -26,17 +26,65 @@ export interface RawBulkMemory {
 // chk_superseded_has_pointer invariant: superseded always carries a pointer.
 const SUPERSEDED_EVERY = 97
 
-export function enrichBulkMemories(rows: RawBulkMemory[]): DemoMemory[] {
+const DAY_MS = 86_400_000
+const MINUTE_MS = 60_000
+const SPREAD_DAYS = 364
+
+function hash32(n: number): number {
+  return (Math.imul(n + 1, 2654435761) >>> 0) % 2 ** 31
+}
+
+// ~1 in 5 calendar days carries no captures at all, so the year heatmap and
+// the timeline scrubber both show honest gaps instead of a uniform wash.
+function isQuietDay(daysAgo: number): boolean {
+  return daysAgo > 0 && hash32(daysAgo * 31) % 5 === 0
+}
+
+function spreadDaysAgo(i: number): number {
+  const u = (hash32(i) % 10_000) / 10_000
+  const recentBurst = hash32(i + 70_001) % 3 === 0
+  let d = recentBurst ? Math.floor(u * 56) : Math.floor(u * SPREAD_DAYS)
+  for (let hop = 0; isQuietDay(d) && hop < 3; hop++) d = d > 1 ? d - 1 : d + 2
+  return d
+}
+
+/**
+ * Deterministic per-index timestamp spread over the last ~12 months, relative
+ * to `now` — recent weeks are denser, quiet days stay empty. This is what
+ * makes the year heatmap and the timeline scrubber meaningful demo surfaces.
+ */
+export function spreadCreatedAt(i: number, now: number): string {
+  const todayStart = new Date(now)
+  todayStart.setHours(0, 0, 0, 0)
+  const daysAgo = spreadDaysAgo(i)
+  const dayStart = todayStart.getTime() - daysAgo * DAY_MS
+  let minute = hash32(i * 7 + 13) % (24 * 60)
+  if (daysAgo === 0) {
+    const elapsed = Math.max(
+      1,
+      Math.floor((now - todayStart.getTime()) / MINUTE_MS),
+    )
+    minute %= elapsed
+  }
+  return new Date(dayStart + minute * MINUTE_MS).toISOString()
+}
+
+export function enrichBulkMemories(
+  rows: RawBulkMemory[],
+  now: number = Date.now(),
+): DemoMemory[] {
   return rows.map((row, i) => {
     const predecessorId =
       i > 0 && i % SUPERSEDED_EVERY === 0 ? rows[i - 1]?.id : undefined
     const superseded = predecessorId != null
+    const created_at = spreadCreatedAt(i, now)
     return {
       ...row,
+      created_at,
       source_agent: null,
       importance: 5,
       metadata: {},
-      updated_at: row.created_at,
+      updated_at: created_at,
       expires_at: null,
       is_archived: false,
       llm_classified_type: row.memory_type,

@@ -1,75 +1,121 @@
-import type { DemoMemory } from "@/demo/types"
+import { localDayKey } from "@/lib/format"
 
-export interface MemoryTimelineEntry {
-  id: string
-  excerpt: string
-  time: string
-  status: DemoMemory["status"]
-}
+const DAY_MS = 86_400_000
 
-export interface MemoryTimelineGroup {
-  /** Local calendar day, YYYY-MM-DD — stable React key. */
+export interface TimelineMonthTick {
+  /** YYYY-MM — stable React key. */
   key: string
-  /** "Today" / "Yesterday" / a formatted date. */
+  /** "Jul" for a plain month, the year ("2026") at each January boundary. */
   label: string
-  entries: MemoryTimelineEntry[]
+  isYear: boolean
+  /** 0 = top of the axis (newest) … 1 = bottom (oldest). */
+  fraction: number
 }
 
-const EXCERPT_LEN = 64
-
-function dayKey(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${d.getFullYear()}-${m}-${day}`
+export interface TimelineDayMarker {
+  /** Local calendar day, YYYY-MM-DD. */
+  key: string
+  fraction: number
+  count: number
 }
 
-function dayLabel(d: Date, now: Date): string {
-  const today = dayKey(now)
-  const yesterday = dayKey(new Date(now.getTime() - 86_400_000))
-  const key = dayKey(d)
-  if (key === today) return "Today"
-  if (key === yesterday) return "Yesterday"
-  return d.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  })
+export interface TimelineScale {
+  /** Newest memory timestamp (top of the axis). */
+  newestMs: number
+  /** Oldest memory timestamp (bottom of the axis). */
+  oldestMs: number
+  /** Always ≥ one day so fractions stay finite. */
+  spanMs: number
+  /** Month boundaries, newest first. */
+  months: TimelineMonthTick[]
+  /** One marker per day that holds memories — density, not content. */
+  days: TimelineDayMarker[]
+  maxDayCount: number
+}
+
+function clamp01(f: number): number {
+  return Math.min(1, Math.max(0, f))
 }
 
 /**
- * Group memories into per-day timeline buckets, most-recent first — the
- * left-rail navigation model for the Memories browse/search surface. Input
- * order does not matter; the result is always chronological (desc).
+ * Build the vertical time-scale model for the Memories scrubber: a linear
+ * time axis from the newest row (top) to the oldest (bottom), month ticks,
+ * and per-day density markers. Returns null when there is nothing to scale.
  */
-export function groupMemoriesByDay(
-  memories: DemoMemory[],
-  now: Date = new Date(),
-): MemoryTimelineGroup[] {
-  const sorted = [...memories].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at),
-  )
-  const groups: MemoryTimelineGroup[] = []
-  for (const memory of sorted) {
-    const at = new Date(memory.created_at)
-    const key = dayKey(at)
-    const entry: MemoryTimelineEntry = {
-      id: memory.id,
-      excerpt:
-        memory.content.length > EXCERPT_LEN
-          ? `${memory.content.slice(0, EXCERPT_LEN).trimEnd()}…`
-          : memory.content,
-      time: at.toLocaleTimeString(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      status: memory.status,
-    }
-    const last = groups[groups.length - 1]
-    if (last && last.key === key) {
-      last.entries.push(entry)
+export function buildTimelineScale(
+  memories: { created_at: string }[],
+): TimelineScale | null {
+  if (memories.length === 0) return null
+
+  let newestMs = -Infinity
+  let oldestMs = Infinity
+  const counts = new Map<string, { ms: number; count: number }>()
+  for (const m of memories) {
+    const t = Date.parse(m.created_at)
+    if (Number.isNaN(t)) continue
+    if (t > newestMs) newestMs = t
+    if (t < oldestMs) oldestMs = t
+    const key = localDayKey(new Date(t))
+    const entry = counts.get(key)
+    if (entry) {
+      entry.count += 1
+      if (t < entry.ms) entry.ms = t
     } else {
-      groups.push({ key, label: dayLabel(at, now), entries: [entry] })
+      counts.set(key, { ms: t, count: 1 })
     }
   }
-  return groups
+  if (!Number.isFinite(newestMs)) return null
+
+  const spanMs = Math.max(newestMs - oldestMs, DAY_MS)
+  const fraction = (t: number) => clamp01((newestMs - t) / spanMs)
+
+  const days: TimelineDayMarker[] = []
+  let maxDayCount = 0
+  for (const [key, { ms, count }] of counts) {
+    days.push({ key, fraction: fraction(ms), count })
+    if (count > maxDayCount) maxDayCount = count
+  }
+  days.sort((a, b) => a.fraction - b.fraction)
+
+  const months: TimelineMonthTick[] = []
+  const cursor = new Date(newestMs)
+  cursor.setDate(1)
+  cursor.setHours(0, 0, 0, 0)
+  const oldestMonthStart = new Date(oldestMs)
+  oldestMonthStart.setDate(1)
+  oldestMonthStart.setHours(0, 0, 0, 0)
+  while (cursor.getTime() >= oldestMonthStart.getTime()) {
+    const isYear = cursor.getMonth() === 0
+    const tickFraction = fraction(cursor.getTime())
+    const previous = months[months.length - 1]
+    // A partial bottom month clamps onto the previous tick — skip the
+    // collision rather than render two labels on top of each other.
+    if (!previous || tickFraction - previous.fraction >= 0.02) {
+      months.push({
+        key: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
+        label: isYear
+          ? String(cursor.getFullYear())
+          : cursor.toLocaleDateString(undefined, { month: "short" }),
+        isYear,
+        fraction: tickFraction,
+      })
+    }
+    cursor.setMonth(cursor.getMonth() - 1)
+  }
+
+  return { newestMs, oldestMs, spanMs, months, days, maxDayCount }
+}
+
+/** Axis fraction (0 top / 1 bottom) of an absolute timestamp. */
+export function dateToFraction(scale: TimelineScale, ms: number): number {
+  return clamp01((scale.newestMs - ms) / scale.spanMs)
+}
+
+/** Local calendar day under an axis fraction. */
+export function fractionToDayKey(
+  scale: TimelineScale,
+  fraction: number,
+): string {
+  const ms = scale.newestMs - clamp01(fraction) * scale.spanMs
+  return localDayKey(new Date(ms))
 }

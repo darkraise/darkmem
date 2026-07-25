@@ -33,6 +33,22 @@ describe("enrichBulkMemories", () => {
     expect(m.llm_classified_type).toBe("fact")
   })
 
+  it("spreads created_at deterministically across the last ~12 months", () => {
+    const now = new Date("2026-07-25T12:00:00").getTime()
+    const a = enrichBulkMemories(rawRows(1000), now)
+    const b = enrichBulkMemories(rawRows(1000), now)
+    expect(a.map((m) => m.created_at)).toEqual(b.map((m) => m.created_at))
+    const yearAgo = now - 366 * 86_400_000
+    const distinctDays = new Set<string>()
+    for (const m of a) {
+      const t = Date.parse(m.created_at)
+      expect(t).toBeLessThanOrEqual(now)
+      expect(t).toBeGreaterThanOrEqual(yearAgo)
+      distinctDays.add(m.created_at.slice(0, 10))
+    }
+    expect(distinctDays.size).toBeGreaterThan(150)
+  })
+
   it("never produces a superseded row without a pointer (chk mirror)", () => {
     const rows = enrichBulkMemories(rawRows(300))
     const superseded = rows.filter((m) => m.status === "superseded")

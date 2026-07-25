@@ -1,3 +1,4 @@
+import { localDayKey } from "@/lib/format"
 import type {
   ActivityEvent,
   ContributionDay,
@@ -15,27 +16,74 @@ export function buildDashboardStats(memoryCount: number): DashboardStats {
 }
 
 const DAY_MS = 86_400_000
+const YEAR_DAYS = 364
 
-// Knuth multiplicative hash keeps the calendar deterministic per day index
-// while looking organically sparse.
-function seededCount(dayIndex: number): number {
-  const h = (dayIndex * 2654435761) % 2 ** 31
-  const v = h % 10
-  return v < 4 ? 0 : v - 3
+export interface ContributionSourceRow {
+  created_at: string
+  memory_type?: string | null
+  verification_status?: string | null
 }
 
+interface DayAggregate {
+  count: number
+  types: Map<string, number>
+  verified: number
+}
+
+/**
+ * Derive the full-year contribution calendar from the memory set itself, so
+ * a heatmap cell's count always matches what the Memories timeline shows for
+ * that day. Range: the Monday on/before (today − 52 weeks) through today,
+ * chronological, one entry per local calendar day.
+ */
 export function buildContributions(
-  weeks = 26,
+  memories: ContributionSourceRow[],
   now = Date.now(),
 ): ContributionDay[] {
-  const total = weeks * 7
-  return Array.from({ length: total }, (_, i) => {
-    const daysAgo = total - 1 - i
-    return {
-      date: new Date(now - daysAgo * DAY_MS).toISOString().slice(0, 10),
-      count: seededCount(daysAgo),
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(today.getTime() - YEAR_DAYS * DAY_MS)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+
+  const byDay = new Map<string, DayAggregate>()
+  for (const m of memories) {
+    const at = new Date(m.created_at)
+    if (Number.isNaN(at.getTime())) continue
+    const key = localDayKey(at)
+    let agg = byDay.get(key)
+    if (!agg) {
+      agg = { count: 0, types: new Map(), verified: 0 }
+      byDay.set(key, agg)
     }
-  })
+    agg.count += 1
+    const type = m.memory_type ?? "untyped"
+    agg.types.set(type, (agg.types.get(type) ?? 0) + 1)
+    if (
+      m.verification_status === "corroborated" ||
+      m.verification_status === "confirmed"
+    ) {
+      agg.verified += 1
+    }
+  }
+
+  const days: ContributionDay[] = []
+  const cursor = new Date(start)
+  while (cursor.getTime() <= today.getTime()) {
+    const key = localDayKey(cursor)
+    const agg = byDay.get(key)
+    days.push({
+      date: key,
+      count: agg?.count ?? 0,
+      types: agg
+        ? [...agg.types.entries()]
+            .map(([label, count]) => ({ label, count }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+        : [],
+      verified: agg?.verified ?? 0,
+    })
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return days
 }
 
 const FEED: Array<Omit<ActivityEvent, "id" | "at"> & { minutesAgo: number }> = [

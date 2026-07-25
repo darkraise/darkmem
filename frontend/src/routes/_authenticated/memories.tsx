@@ -3,7 +3,6 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   Brain,
   ChevronDown,
-  History,
   Inbox,
   Loader2,
   Plus,
@@ -24,7 +23,8 @@ import {
 } from "darkraise-ui/components/select"
 import { PageChrome } from "@/components/app-chrome"
 import { cn } from "darkraise-ui/lib"
-import { relativeTime } from "@/lib/format"
+import { dayKeyToMs, localDayKey, relativeTime } from "@/lib/format"
+import { isValidDay } from "@/demo/activity"
 import { useDemoMemories } from "@/demo/hooks"
 import { distinctProjects, searchDemoMemories } from "@/demo/memories"
 import type { DemoMemory, MemoryTrace } from "@/demo/types"
@@ -36,12 +36,18 @@ import {
 } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
+import { TimelineScrubber } from "@/features/memories/components/timeline-scrubber"
 import {
-  groupMemoriesByDay,
-  type MemoryTimelineGroup,
+  buildTimelineScale,
+  dateToFraction,
 } from "@/features/memories/timeline"
 
 export const Route = createFileRoute("/_authenticated/memories")({
+  // The click-to-date contract: /memories?date=YYYY-MM-DD positions the
+  // scrubber and scrolls the results to that day (heatmap cell clicks).
+  validateSearch: (search: Record<string, unknown>): { date?: string } => ({
+    date: isValidDay(search.date) ? search.date : undefined,
+  }),
   component: MemoriesPage,
 })
 
@@ -49,12 +55,6 @@ const BROWSE_PAGE = 50
 
 const CONTEXT_OPTIONS = ["env=prod", "env=dev"]
 const CONTEXT_NONE = "__none__"
-
-const STATUS_DOT: Record<DemoMemory["status"], string> = {
-  active: "bg-success",
-  superseded: "bg-warning",
-  deprecated: "bg-muted-foreground",
-}
 
 function MemoryRow({
   memory,
@@ -148,72 +148,9 @@ function MemoryRow({
   )
 }
 
-/**
- * Left-rail chronological navigation over the rows currently on the
- * results surface — day buckets, most-recent first, each entry scrolls
- * its row into view. Collapses away below xl; it is navigation, not data.
- */
-function TimelineRail({
-  groups,
-  focusedId,
-  onSelect,
-}: {
-  groups: MemoryTimelineGroup[]
-  focusedId: string | null
-  onSelect: (id: string) => void
-}) {
-  return (
-    <nav aria-label="Memory timeline" className="space-y-4">
-      <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-sm tracking-wide uppercase">
-        <History aria-hidden className="h-3.5 w-3.5" />
-        Timeline
-      </span>
-      {groups.map((group) => (
-        <div key={group.key}>
-          <span className="text-foreground/80 block text-sm font-semibold">
-            {group.label}
-            <span className="text-muted-foreground ml-1.5 font-mono font-normal">
-              {group.entries.length}
-            </span>
-          </span>
-          <div className="border-border mt-1.5 ml-1 space-y-0.5 border-l pl-3">
-            {group.entries.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => onSelect(entry.id)}
-                className={cn(
-                  "relative block w-full rounded-sm px-1.5 py-1 text-left transition-colors",
-                  entry.id === focusedId
-                    ? "bg-primary/10"
-                    : "hover:bg-muted/50",
-                )}
-              >
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute top-2.5 -left-[17.5px] h-2 w-2 rounded-full border-2",
-                    "border-background",
-                    STATUS_DOT[entry.status],
-                  )}
-                />
-                <span className="text-muted-foreground block font-mono text-[10px]">
-                  {entry.time}
-                </span>
-                <span className="line-clamp-2 block text-sm leading-snug">
-                  {entry.excerpt}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </nav>
-  )
-}
-
 function MemoriesPage() {
   const memories = useDemoMemories()
+  const { date: dateParam } = Route.useSearch()
 
   const [query, setQuery] = useState("")
   const [scope, setScope] = useState("all")
@@ -223,8 +160,11 @@ function MemoriesPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [scrubFraction, setScrubFraction] = useState(0)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const focusTimer = useRef<number | undefined>(undefined)
+  const pendingSeekId = useRef<string | null>(null)
+  const handledDate = useRef<string | null>(null)
 
   const projects = useMemo(() => distinctProjects(memories), [memories])
   const searching = query.trim().length > 0
@@ -252,9 +192,11 @@ function MemoriesPage() {
     [searching, outcome, browseRows, browseLimit],
   )
 
-  const timelineGroups = useMemo(
-    () => groupMemoriesByDay(visibleRows),
-    [visibleRows],
+  // The scrubber's axis covers the whole browse corpus, not just the loaded
+  // pages — seeking past the loaded tail expands browseLimit to reach it.
+  const scale = useMemo(
+    () => (searching ? null : buildTimelineScale(browseRows)),
+    [browseRows, searching],
   )
 
   const hasMore = !searching && browseRows.length > browseLimit
@@ -293,14 +235,104 @@ function MemoriesPage() {
     setExpandedId(null)
   }
 
-  const focusRow = (id: string) => {
+  const scrollRowIntoView = (id: string) => {
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
     document
       .getElementById(`memory-row-${id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      ?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" })
     setFocusedId(id)
     window.clearTimeout(focusTimer.current)
     focusTimer.current = window.setTimeout(() => setFocusedId(null), 1800)
   }
+
+  // Jump the results surface to a calendar day: land on the newest row of
+  // that day (or the nearest older day), loading more pages if the target
+  // sits past the infinite-scroll tail.
+  const seekToDate = (dayKey: string) => {
+    if (!scale || browseRows.length === 0) return
+    let idx = browseRows.findIndex(
+      (m) => localDayKey(new Date(m.created_at)) <= dayKey,
+    )
+    if (idx === -1) idx = browseRows.length - 1
+    const target = browseRows[idx]
+    if (!target) return
+    const clampedMs = Math.min(
+      scale.newestMs,
+      Math.max(scale.oldestMs, dayKeyToMs(dayKey)),
+    )
+    setScrubFraction(dateToFraction(scale, clampedMs))
+    if (idx >= browseLimit) {
+      setBrowseLimit(
+        Math.ceil((idx + 1) / BROWSE_PAGE) * BROWSE_PAGE + BROWSE_PAGE,
+      )
+      pendingSeekId.current = target.id
+    } else {
+      scrollRowIntoView(target.id)
+    }
+  }
+
+  // Completes a seek that had to grow browseLimit first: scroll once the
+  // target row has actually rendered.
+  useEffect(() => {
+    const id = pendingSeekId.current
+    if (!id || !visibleRows.some((m) => m.id === id)) return
+    pendingSeekId.current = null
+    requestAnimationFrame(() => scrollRowIntoView(id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRows])
+
+  // The heatmap's click-to-date contract: ?date=YYYY-MM-DD lands the
+  // timeline on that day, once per distinct value.
+  useEffect(() => {
+    if (!dateParam || !scale || handledDate.current === dateParam) return
+    handledDate.current = dateParam
+    seekToDate(dateParam)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateParam, scale])
+
+  // Scroll → indicator sync: binary-search the row at the top edge of the
+  // #main-content scroll area (rows share document order with visibleRows).
+  useEffect(() => {
+    if (searching || !scale) return
+    const container = document.getElementById("main-content")
+    if (!container) return
+    let raf = 0
+    const sync = () => {
+      raf = 0
+      if (visibleRows.length === 0) return
+      const topEdge = container.getBoundingClientRect().top + 120
+      let lo = 0
+      let hi = visibleRows.length - 1
+      let found = visibleRows.length - 1
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1
+        const row = visibleRows[mid]
+        const el = row ? document.getElementById(`memory-row-${row.id}`) : null
+        if (!el) break
+        if (el.getBoundingClientRect().bottom >= topEdge) {
+          found = mid
+          hi = mid - 1
+        } else {
+          lo = mid + 1
+        }
+      }
+      const current = visibleRows[found]
+      if (current) {
+        setScrubFraction(dateToFraction(scale, Date.parse(current.created_at)))
+      }
+    }
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(sync)
+    }
+    container.addEventListener("scroll", onScroll, { passive: true })
+    sync()
+    return () => {
+      container.removeEventListener("scroll", onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [searching, scale, visibleRows])
 
   return (
     <div className="space-y-4">
@@ -382,17 +414,22 @@ function MemoriesPage() {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[15rem_minmax(0,1fr)]">
-        {/* timeline rail — sticky within the content scroll area */}
-        <div className="sticky top-0 hidden max-h-[calc(100vh-8rem)] self-start overflow-y-auto pr-1 xl:block">
-          {visibleRows.length > 0 && (
-            <TimelineRail
-              groups={timelineGroups}
-              focusedId={focusedId}
-              onSelect={focusRow}
+      <div
+        className={cn(
+          "grid grid-cols-1 items-start gap-5",
+          !searching && scale && "lg:grid-cols-[3.5rem_minmax(0,1fr)]",
+        )}
+      >
+        {/* time-scale scrubber — a line of time, not a list of memories */}
+        {!searching && scale && (
+          <div className="sticky top-2 hidden h-[calc(100vh-11rem)] self-start lg:block">
+            <TimelineScrubber
+              scale={scale}
+              position={scrubFraction}
+              onSeek={seekToDate}
             />
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
           <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">

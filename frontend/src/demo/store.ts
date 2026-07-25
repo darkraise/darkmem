@@ -198,7 +198,7 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
   ...initialSettings(),
   stats: initialStats,
   events: buildActivityFeed(),
-  contributions: buildContributions(),
+  contributions: buildContributions(initialMemories),
   ...initialKnowledge(),
   lastDetectionRun: LAST_DETECTION_RUN,
   // Deep-copy so reindex mutations never write back into the fixtures.

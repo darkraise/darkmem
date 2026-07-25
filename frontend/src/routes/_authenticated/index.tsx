@@ -16,7 +16,6 @@ import {
   StatLabel,
   StatValue,
 } from "darkraise-ui/components/stat"
-import { cn } from "darkraise-ui/lib"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
 import {
@@ -24,8 +23,9 @@ import {
   useDemoEvents,
   useDemoStats,
 } from "@/demo/hooks"
-import type { ActivityEvent, ContributionDay } from "@/demo/types"
+import type { ActivityEvent } from "@/demo/types"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
+import { YearHeatmap } from "@/features/dashboard/year-heatmap"
 
 export const Route = createFileRoute("/_authenticated/")({
   component: DashboardPage,
@@ -55,42 +55,6 @@ function StatTile({
         </Stat>
       </CardContent>
     </Card>
-  )
-}
-
-function intensityClass(count: number): string {
-  if (count === 0) return "bg-muted"
-  if (count === 1) return "bg-primary/25"
-  if (count <= 3) return "bg-primary/50"
-  if (count <= 5) return "bg-primary/75"
-  return "bg-primary"
-}
-
-function ContributionCalendar({ days }: { days: ContributionDay[] }) {
-  return (
-    <div className="space-y-2">
-      <div className="overflow-x-auto pb-1">
-        <div className="grid w-max grid-flow-col grid-rows-7 gap-1">
-          {days.map((day) => (
-            <div
-              key={day.date}
-              title={`${day.date}: ${day.count} event${day.count === 1 ? "" : "s"}`}
-              className={cn("h-3 w-3 rounded-sm", intensityClass(day.count))}
-            />
-          ))}
-        </div>
-      </div>
-      <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
-        <span>Less</span>
-        {[0, 1, 2, 4, 6].map((count) => (
-          <span
-            key={count}
-            className={cn("h-3 w-3 rounded-sm", intensityClass(count))}
-          />
-        ))}
-        <span>More</span>
-      </div>
-    </div>
   )
 }
 
@@ -184,7 +148,7 @@ function DashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ContributionCalendar days={contributions} />
+          <YearHeatmap days={contributions} />
         </CardContent>
       </Card>
 

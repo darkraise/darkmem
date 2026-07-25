@@ -32,9 +32,19 @@ export interface ActivityEvent {
   at: string
 }
 
+export interface ContributionTypeCount {
+  label: string
+  count: number
+}
+
 export interface ContributionDay {
+  /** Local calendar day, YYYY-MM-DD. */
   date: string
   count: number
+  /** Per-memory_type breakdown, count desc — popover detail. */
+  types: ContributionTypeCount[]
+  /** Rows carrying a corroborated/confirmed verification badge. */
+  verified: number
 }
 
 export type MemoryRelationType =
