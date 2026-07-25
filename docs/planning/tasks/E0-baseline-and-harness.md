@@ -110,14 +110,21 @@ frozen reference point every later phase compares against.
       drift is noise vs regression) — this is the number Phase 1 is judged against
 - [ ] Written to `gate-ledger.md` under G-A
 
-**Verify.** `cd backend && python scripts/extraction_bench/run_bench.py` — output pasted
-into the ledger entry verbatim.
+**Verify.** Both invocations, output pasted into the ledger entry verbatim (the bench
+reads LLM config from the database, so the URL is required — runbook §7):
+```bash
+cd backend
+export DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
+python scripts/extraction_bench/run_bench.py
+python scripts/extraction_bench/run_bench.py --gold gold_heldout.json
+```
 
 ---
 
 ## Lane B — the retrieval eval (target-new)
 
-Runs concurrently with Lane A after T0.03; independent of Lane C entirely.
+Starts after T0.02; the eval end (T0.09–T0.10) additionally needs T0.03's ingested
+corpus. Independent of Lane C entirely.
 
 #### T0.06 — Retrieval gold set + query-type slices
 
@@ -129,8 +136,11 @@ exactly the dishonesty doc 17 forbids. Prior work (2026-04-16) found paraphrase,
 and fact slices weakest — start there.
 
 **Done when:**
-- [ ] Slices defined and documented: at minimum exact, paraphrase, typo, fact, multi-hop
-- [ ] Each slice has enough pairs for a stable number, and the count per slice is stated
+- [ ] All **seven** doc-17 §4 slices defined and documented — four query-type (exact,
+      paraphrase, typo, fact) and three capability (multi-hop, temporal,
+      knowledge-update). The capability slices are not optional: they are exactly what
+      the Phase-2 arm activations must move to earn their flags
+- [ ] ≥ 100 pairs total (doc 17 §11), with the count per slice stated
 - [ ] Gold lives as JSON on disk (invariant 1 — no experiment-tracking service)
 - [ ] Slice definitions are written down well enough that a later contributor can add
       pairs without drifting the definition
@@ -171,7 +181,7 @@ unable to emit an accuracy number without one.
 
 #### T0.09 — Full-context baseline comparator
 
-`Model: Opus 5` · `Depends: T0.08` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Depends: T0.03, T0.08` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The comparison that makes retrieval numbers mean anything: the same gold
 queries answered by stuffing full context, so every retrieval claim reads "as good as
@@ -183,7 +193,8 @@ full context at a fraction of the cost" — or admits it is not.
       comparison is the argument for retrieval existing)
 - [ ] Comparator output states both sides, never only the delta
 
-**Verify.** `cd backend && python scripts/benchlib/run_retrieval_eval.py --with-baseline`
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_full_context_baseline.py -q`
+— the `run_retrieval_eval.py` entry point is T0.10's deliverable and does not exist yet.
 
 #### T0.10 — Retrieval eval runner + dated report
 
@@ -244,8 +255,15 @@ window where the schema can be rewritten rather than migrated.
 - [ ] The full backend suite passes against a database built from the baseline alone
 - [ ] The old revisions are removed, not chained behind it
 
-**Verify.** `psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_baseline_check;"`
-then `DATABASE_URL=...darkmem_baseline_check python -m alembic upgrade head && python -m pytest -q`
+**Verify.** `conftest.py` overwrites `DATABASE_URL` with `TEST_DATABASE_URL`, so the
+second command must set the latter or it silently tests `darkmem_test` instead:
+```bash
+PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_baseline_check;"
+cd backend
+export CHECK_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_baseline_check
+DATABASE_URL=$CHECK_URL python -m alembic upgrade head
+TEST_DATABASE_URL=$CHECK_URL python -m pytest -q
+```
 
 #### T0.13 — Dormant objects landed inert
 
@@ -266,7 +284,7 @@ relation, article, `triple_embeddings`) — reviewed, frozen, **with no writer**
 
 #### T0.14 — Boot-time partition reconciliation, idempotent
 
-`Model: Opus 5` · `Depends: T0.13` · `Doc: 19 §2` · `Tag: rebuild` · `Gate: G-A`
+`Model: Opus 5` · `Depends: T0.13` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
 **What.** At every startup, loop the `embedders` registry and run the parameterised DDL
 that guarantees each fingerprint's four child tables exist. Register-before-insert, and
@@ -286,15 +304,25 @@ manual double-boot against a scratch database.
 
 `Model: Haiku 4.5` · `Depends: T0.14` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
-**What.** Write down the rule that ends the regenerate-freely window: after the homelab
-cutover, the baseline is frozen and every later change is an ordinary additive revision.
+**What.** Write down two rules, not one. First the rule that ends the regenerate-freely
+window: after the homelab cutover (T1.54) the baseline is frozen and every later change is
+an ordinary additive revision. Second — and this is the one every E1–E3 schema task needs
+— **how to change the schema while the window is open**, because until the freeze the
+baseline is a shared mutable file that several lanes will want to edit.
 
 **Done when:**
-- [ ] The protocol is documented with the freeze trigger stated
+- [ ] Both protocols documented: the freeze trigger, and the during-window rule that a
+      schema change **regenerates the baseline** rather than appending revision 0002
+- [ ] The during-window rule states that schema changes **serialise through one owner per
+      epic** — concurrent regeneration of one file conflicts every time
+- [ ] A CI assertion holds `alembic history` at **exactly one revision** until the freeze
+      tag exists (doc 19 §2), wired into `scripts/gate.sh`
 - [ ] `CLAUDE.md`'s migration section updated to match
 - [ ] The freeze date is left blank until the cutover actually happens (no fictional date)
 
-**Verify.** `rg -n "freeze" CLAUDE.md docs/planning/baseline-schema-inventory.md`
+**Verify.** `rg -n "freeze" CLAUDE.md docs/planning/baseline-schema-inventory.md` and
+`./scripts/gate.sh` — the single-revision assertion fails after a deliberate second
+revision is added.
 
 ---
 

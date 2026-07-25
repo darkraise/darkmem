@@ -145,7 +145,7 @@ never manufactured by a crawler visiting the same page twice.
 
 #### T3.09 — Managed-block writer, client-side pull-then-write
 
-`Model: Opus 5` · `Depends: T2.41` · `Doc: 15 §3.1–§3.2` · `Tag: target-new` · `Gate: G-D`
+`Model: Opus 5` · `Depends: T2.41` · `Doc: 15 §3.1–§3.2` · `Tag: target-new` · `Gate: G-E`
 
 **What.** The client pulls the F3 fused, labelled selection and rewrites a
 marker-bounded managed block in the tool's native context file. **The server never writes
@@ -160,7 +160,7 @@ the client's filesystem** — that boundary is the whole trust posture of this f
 
 #### T3.10 — Truth-first content fill under a token budget
 
-`Model: Opus 5` · `Depends: T3.09` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-D`
+`Model: Opus 5` · `Depends: T3.09, T2.43` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Fill order is L2 facts, then L3 articles, then L0 memory summaries, under a
 `config` token budget. Every item carries its layer, verification, and badge labels — an
@@ -175,7 +175,7 @@ injected claim without its label is the silent-authority failure invariant 14 fo
 
 #### T3.11 — Per-tool adapters (Claude Code, Cursor, Codex, Cline)
 
-`Model: Sonnet 5` · `Depends: T3.09` · `Doc: 15 §3.3` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.09` · `Doc: 15 §3.3` · `Tag: target-new` · `Gate: G-E`
 
 **What.** A managed file block per target tool: `CLAUDE.md`, Cursor's rules, `AGENTS.md`,
 Cline. Session-start refresh cadence; `watch` mode is deferred to Phase 4 (T4.06).
@@ -186,7 +186,7 @@ tool is refused with a message, not a best guess; refresh happens at session sta
 
 #### T3.12 — Inject records journaled as events
 
-`Model: Sonnet 5` · `Depends: T3.11, T1.07` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.11, T1.07` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Every injection journals what was pushed, to which target, under which budget —
 the human can always see what the agent was told.
@@ -201,7 +201,7 @@ records surface in the timeline and calendar.
 
 #### T3.13 — `darkmem connect <tool>`
 
-`Model: Sonnet 5` · `Depends: T3.11` · `Doc: 15 §5` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.11` · `Doc: 15 §5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Writes the tool's MCP config from a maintained adapter registry and verifies via
 the stateless `initialize → tools/list` handshake.
@@ -216,19 +216,20 @@ the stateless `initialize → tools/list` handshake.
 
 #### T3.14 — Minimal TypeScript + Python SDKs
 
-`Model: Sonnet 5` · `Depends: T1.42` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.25` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Three verbs only — `capture`, `search`, `declareContext` — over the doc 12
 contract. **Ratify, review, and vault-admin stay out**: the SDK is for agents, and
 ratification is a human single-door act.
 
-**Done when:** three verbs each in both languages; generated from the contract, not
-hand-maintained; a ratify call is not expressible.
-**Verify.** SDK contract tests green in both languages.
+**Done when:** three verbs each in both languages, over the T3.25 scaffold; a ratify
+call is **not expressible** — asserted by a test that greps the generated surface, not
+by review.
+**Verify.** `cd sdks/ts && npm test` and `cd sdks/python && python -m pytest -q`
 
 #### T3.15 — Browser capture extension
 
-`Model: Sonnet 5` · `Depends: T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.26` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Packages a **human-selected** AI-chat exchange and posts it through the ordinary
 capture front door. v1 is human-triggered only — never auto-scraped (that is T4.07,
@@ -237,10 +238,11 @@ demand-gated and opt-in).
 **Done when:**
 - [ ] Adapters for ChatGPT / Claude.ai / Gemini web plus a plain-selection fallback
 - [ ] Deduped by content fingerprint and a per-install `origin_key`
-- [ ] No automatic capture path exists in v1, proven by review
+- [ ] No automatic capture path exists in v1 — asserted by a test over the built
+      bundle, not by review ("proven by review" is not objectively checkable)
 - [ ] Uses the ordinary REST/MCP door into `memory_buffer` — no new pipeline
 
-**Verify.** Extension integration test + `cd backend && python -m pytest tests/test_browser_capture.py -q`
+**Verify.** `cd extension && npm test` + `cd backend && python -m pytest tests/test_browser_capture.py -q`
 
 ---
 
@@ -252,7 +254,7 @@ Phase 3.
 
 #### T3.16 — `session_checkpoints` table + REST/MCP surface
 
-`Model: Sonnet 5` · `Depends: T1.11` · `Doc: spec §Feature-2, 04, 12` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T1.11` · `Doc: spec §Feature-2, 04, 12` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Keyed on `origin_key` (the agent-run identity). `POST`/`GET /checkpoints` plus
 MCP `checkpoint_save` / `checkpoint_latest`, holding a compact `summary` and structured
@@ -264,7 +266,7 @@ query; payload size is bounded.
 
 #### T3.17 — Resume as a specialised inject
 
-`Model: Opus 5` · `Depends: T3.16, T3.10` · `Doc: 15 §3.2` · `Tag: target-new` · `Gate: G-D`
+`Model: Opus 5` · `Depends: T3.16, T3.10` · `Doc: 15 §3.2` · `Tag: target-new` · `Gate: G-E`
 
 **What.** At session start the latest checkpoint writes into the managed block under the
 token budget, so a fresh session loads a budgeted digest instead of reloading full
@@ -276,7 +278,7 @@ checkpoint degrades to the ordinary inject; `checkpoint_saved` / `resumed` journ
 
 #### T3.18 — Checkpoints are operational, not vault knowledge
 
-`Model: Sonnet 5` · `Depends: T3.16` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.16` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** A checkpoint carries **no verification badge** — it is operational state, not a
 claim about the world. Conflating the two would put unverified agent notes into the vault.
@@ -291,7 +293,7 @@ are excluded from retrieval's vault channels.
 
 #### T3.19 — Settings → Distribution tab
 
-`Model: Sonnet 5` · `Depends: T3.11` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.11` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Per-target managed-block config, inject content policy, and the curb control.
 
@@ -301,7 +303,7 @@ single control stops all injection immediately.
 
 #### T3.20 — Inject records in timeline and calendar
 
-`Model: Sonnet 5` · `Depends: T3.12` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.12` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Injections appear as journaled events — the human can see and curb push, never
 a silent context swap.
@@ -312,7 +314,7 @@ clicking one shows exactly what was pushed.
 
 #### T3.21 — Session checkpoints / resume view
 
-`Model: Sonnet 5` · `Depends: T3.17` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Depends: T3.17` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Per-run digest, next-steps, and copy-resume in the Activity shell.
 
@@ -326,14 +328,74 @@ injected text; `checkpoint_saved` / `resumed` events visible.
 
 #### T3.22 — G-E evidence run
 
-`Model: Fable 5` · `Depends: T3.06, T3.08` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Fable 5` · `Depends: T3.05, T3.06, T3.08, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** L3 shipped **and** the per-article coverage distribution holding above the
 runtime threshold in production — a distribution, not a single flattering article.
 
-**Done when:** the coverage distribution is reported (not just a mean); the threshold was
-stated before measuring; F7 shipped; verdict in `gate-ledger.md`.
+**Done when:** the coverage distribution is reported (not just a mean); the threshold
+was stated before measuring; F7 shipped; verdict in `gate-ledger.md`; `CLAUDE.md`
+refreshed to the shipped L3 shape. The production read is the one sanctioned exception
+to "nothing automated touches `darkmem`" — it is **read-only** and may never write.
 **Verify.** `cd backend && python scripts/benchlib/run_coverage_distribution.py`
+
+---
+
+## Lane H — added by review
+
+#### T3.23 — Articles retrieval channel + `article_embeddings` writer
+
+`Model: Opus 5` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E`
+
+**What.** Doc 07 §2 makes the articles channel target-new and semantic over
+`article_embeddings__<slug>` — the last of the four inert partition templates to get a
+writer, and the channel without which T3.10's truth-first inject fill has no L3 tier to
+read.
+
+**Done when:**
+- [ ] The template loses its inert label; the schema inventory names this as its writer
+- [ ] Semantic channel with scope pushdown from the first commit
+- [ ] Composed under doc 07 §5's rules (T2.43), never fused ad hoc
+- [ ] A stale article is returned labelled stale, not withheld
+
+**Verify.** `cd backend && python -m pytest tests/test_articles_channel.py -q`
+
+#### T3.24 — Coverage-distribution runner
+
+`Model: Sonnet 5` · `Depends: T3.03` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+
+**What.** The plumbing behind T3.22's verify. Reports the **distribution** of per-article
+claim-support coverage, not a mean — one well-covered article is not evidence.
+
+**Done when:**
+- [ ] Distribution reported with percentiles, not a summary statistic
+- [ ] The production read is **read-only** (the sanctioned exception in runbook §7)
+- [ ] Runs against a named snapshot so the number is reproducible
+
+**Verify.** `cd backend && python scripts/benchlib/run_coverage_distribution.py`
+
+#### T3.25 — SDK scaffold and generator
+
+`Model: Sonnet 5` · `Depends: T1.42` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
+
+**What.** Split out of T3.14, which bundled codegen infrastructure for two languages into
+one task. This one names the generator and lands the layout: `sdks/ts/`, `sdks/python/`,
+generated from the doc-12 contract.
+
+**Done when:** the generator is named and runs from a documented command; both packages
+build; regeneration is idempotent.
+**Verify.** `cd sdks && make generate && git diff --exit-code`
+
+#### T3.26 — Browser-extension scaffold
+
+`Model: Sonnet 5` · `Depends: T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+
+**What.** Split out of T3.15. The extension shell under `extension/` with the plain-selection
+fallback and the per-install `origin_key`, before any site adapter exists.
+
+**Done when:** the shell posts a human-selected block through the ordinary capture door;
+per-install `origin_key` is stable across restarts; no site adapter is required to work.
+**Verify.** `cd extension && npm test`
 
 ---
 

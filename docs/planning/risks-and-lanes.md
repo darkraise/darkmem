@@ -52,9 +52,22 @@ Lane A (LLM orchestrator + events, T1.01–T1.09)
 **Do Lane A first, alone.** It is nine tasks and it unblocks everything; running it
 concurrently with consumers means rebuilding against a moving orchestrator.
 
-After Lane A: **four agents can run B, C, D, F concurrently.** Lane E waits on C; Lane G's
-tasks each wait on their specific backend signal, so G interleaves rather than running as
-a block.
+After Lane A: **two to three agents, not four.** The original claim of four was checked
+against the real backend layout and does not hold — the lanes are dependency-disjoint but
+not *file*-disjoint:
+
+| Collision | Files | Consequence |
+|---|---|---|
+| Lane C ↔ Lane D | `repositories/vector.py`, `repositories/graph.py` | T1.21/T1.26 and T1.29 rewrite the same repos. **Start D after T1.21 lands.** |
+| Lane B ↔ D ↔ G | `api/routes/memories.py`, `api/mcp/server.py` | The capture doors, the `memory_reason` fix, and T1.42's envelope all edit them |
+| Lane B ↔ Lane F | `app/main.py` | T1.13 and T1.40 both register jobs |
+| Any schema task | the single baseline revision | Regenerating it concurrently conflicts every time — runbook §8 serialises these through one owner per epic |
+
+Since tasks are commits on one epic branch and this repo has no remote, concurrent agents
+need **separate worktrees** (`git worktree add`) and a rebase cadence, not just separate
+task rows. Lane E waits on C; Lane G's tasks each wait on their specific backend signal,
+so G interleaves rather than running as a block. Lanes I and J (the cutover and the
+orphaned surfaces) run late: I is post-G-B by design, J after T1.58 flips demo mode off.
 
 **The critical path through E1** is Lane A → Lane C (13 tasks, all the pipeline surgery) →
 T1.50. Lane C is where the schedule lives; staffing it first is the highest-leverage
@@ -132,9 +145,12 @@ do. Lane assignment is the unit of parallelism, not the task.
 | **Plan rot** — the plan and the code diverge silently | 156 tasks written in advance will be wrong in places; an agent that works around a wrong task instead of fixing it makes the plan progressively fictional | The amendment protocol makes updating the plan part of the task, and Tier 1 needs no permission | An empty amendment log after a dozen completed tasks — that is not a good sign, it means fixes are going unrecorded |
 | **UI drifts ahead of its signal** | The frontend skeleton already renders demo versions of Phase-1, -2, and -3 surfaces. Shipping a surface over demo data reads as done | Every UI task's acceptance names the live backend signal it must bind to; principle 10 puts the surface in the same phase as its signal, not earlier | A UI task marked `done` whose backend task is still `todo` |
 | **Arms activated on a flattering aggregate** | An arm that helps overall while destroying the paraphrase slice looks like a win | Retrieval eval reports per-slice always; the aggregate never replaces slices; activation needs the latency/cost twin | An activation-log row with an aggregate delta and no slice breakdown |
-| **The inert set gets written to early** | T0.13 lands seven objects with no writer. A well-meaning task wiring one early breaks the scaffolding-not-substrate invariant and makes an unshipped thing look shipped | Each inert object names its first-writer task; a test asserts no writes | Any write to `repo_ids[]`, `documents`, `blocks`, or the four templates before T2.27 / TH1.02 / TH1.05 / T2.33 |
+| **The inert set gets written to early** | T0.13 lands seven objects with no writer. A well-meaning task wiring one early breaks the scaffolding-not-substrate invariant and makes an unshipped thing look shipped | Each inert object names its first-writer task; a test asserts no writes | Any write before its named writer: `repo_ids[]` → T2.27, `documents`/`blocks` → TH1.02, `block_embeddings` → TH1.05, `triple_embeddings` → T2.33, `relation_embeddings` → T2.49, `article_embeddings` → T3.23, `events.api_key_id`/`actor` → T4.02 |
 | **Three-database confusion** | A harness pointed at `darkmem_test`, or a test at `darkmem`, corrupts data or produces meaningless numbers | The runbook §7 states the rule; benchlib overrides `DATABASE_URL` before the first `app.*` import | Any new script importing `app.*` before setting its database URL |
 | **Model tier chosen for cost, not fit** | A cheap model on an invariant-bearing task produces work that is expensive to detect and expensive to unwind | The runbook forbids downgrading a tier to save budget; cut scope instead | A Sonnet-tier commit touching pipeline phases, supersession, or fusion |
+| **The cutover destroys data** | T1.51–T1.54 move the real homelab database onto the rebuilt engine. This is the only unrecoverable step in the plan, and the first draft had no task for it at all | Cutover runs **after** G-B, never before; T1.53 rehearses the whole thing on a `pg_dump` copy and proves the restore path, which doubles as the rollback; a fresh dump is taken immediately before the real run | Any attempt to reorder the cutover ahead of G-B "to test with real data" — that inverts the safety property |
+| **A gate runner is written by the model that judges it** | Runbook §2 splits measurement design (Fable) from measurement plumbing (Sonnet/Opus) precisely so the number is not marked by its own author | The runners are separate Sonnet tasks: T2.44, T2.51, T2.52, T3.24, TH1.17 | A Fable gate task whose commit also creates its own runner script |
+| **The recorded baseline goes stale** | G-B is parity against T0.05's numbers. If that model is deprecated or drifts between G-A and G-B, the tolerance becomes unmeasurable and the gate silently loses meaning | Record model, git sha, and fingerprint with the baseline; the LLM cache pins the outputs | A model deprecation notice, or an F1 delta that moves without a code change |
 
 ### Known-issue watchlist (already bitten once)
 

@@ -26,7 +26,7 @@ than disabling the check (invariants 20, 21).
 
 #### T4.01 — Bearer credential shape + closed scope set
 
-`Model: Opus 5` · `Depends: exposure trigger` · `Doc: 18 §5` · `Tag: activation` · `Gate: demand-gated`
+`Model: Opus 5` · `Trigger: first exposed deployment` · `Depends: T1.62` · `Doc: 18 §5` · `Tag: activation` · `Gate: demand-gated`
 
 **What.** The `api_keys` table exists today and is unwired — every write passes
 `api_key_id=None`. Wire it to `dmk_<key_id>_<secret>` with a closed scope set:
@@ -60,12 +60,19 @@ key rather than being dropped; the columns lose their inert label.
 
 `Model: Opus 5` · `Depends: T4.01` · `Doc: 18 §4, §9` · `Tag: activation` · `Gate: demand-gated`
 
-**What.** Under exposure `trust_proxy_headers` returns on, `cookie_secure` is enforced,
-and an operator TLS proxy sits in front.
+**What.** Under exposure an operator TLS proxy sits in front, so the IP-source strategy
+flips **back** to the header path and `cookie_secure` is enforced.
+
+**The base posture is app-as-edge, not nginx.** T1.62 ships one image with the app as
+the edge, `trust_proxy_headers` **off**, and the limiter reading the transport peer
+(docs 19 §5, 18 §4). This task is the exposed-deployment case where a trusted proxy
+exists again — it re-enables the header strategy T1.62 kept live and tested; it does
+not restore nginx as the default.
 
 **Done when:**
-- [ ] Client IP is read from `X-Real-IP` set by the bundled nginx — **never** the
-      spoofable leftmost `X-Forwarded-For`
+- [ ] With a trusted proxy in front, `trust_proxy_headers` on and the limiter reads the
+      proxy's own header (`X-Real-IP`) — **never** the spoofable leftmost
+      `X-Forwarded-For`, which is trusted in no posture
 - [ ] `cookie_secure` enforced when exposed; the tri-state LAN behaviour is unchanged
 - [ ] Login rate limiting and lockout verified against the proxied IP
 - [ ] A deployment checklist documents the operator's TLS responsibility

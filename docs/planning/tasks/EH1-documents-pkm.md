@@ -33,7 +33,7 @@ and escalate (doc 16 §1, doc 01 §3.4).
 
 #### TH1.01 — Faithfulness metric definition (before any build)
 
-`Model: Fable 5` · `Depends: G-F appetite` · `Doc: 16 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Fable 5` · `Trigger: G-F appetite stated` · `Depends: —` · `Doc: 16 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Define span-support coverage — entailed claims / total claims — **before build
 starts**. Doc 20 §4 makes this ordering explicit, and it is the one sequencing rule in
@@ -150,7 +150,7 @@ as grounded** (invariant 14).
 
 #### TH1.10 — Faithfulness ship gate (G-F evidence)
 
-`Model: Fable 5` · `Depends: TH1.09` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Fable 5` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Double duty: TH1.09 is the per-answer runtime gate; this is the **ship** gate.
 The metric defined in TH1.01 must clear its bar on a labelled gold set before H1 ships.
@@ -238,6 +238,18 @@ with the lane, labelled horizon.
 **Done when:** Q&A shows per-sentence citations with spans; a withheld answer says so
 plainly; summaries render visibly unbadged; the surface is labelled as horizon in the IA.
 **Verify.** `cd frontend && npm test -- documents && npm run test:e2e -- documents`
+
+
+#### TH1.17 — Faithfulness-gate runner
+
+`Model: Sonnet 5` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F`
+
+**What.** The plumbing behind TH1.10's verify, built by Sonnet so the Fable gate task only
+designs the bar and reads the number (runbook §2).
+
+**Done when:** scores span-support coverage against block-span entailment gold; reports
+per-slice; emits its cost twin.
+**Verify.** `cd backend && python scripts/benchlib/run_faithfulness_gate.py`
 
 ---
 

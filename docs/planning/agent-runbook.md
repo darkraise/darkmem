@@ -23,9 +23,18 @@ before writing any code:
 3. **Search darkmem itself.** `memory_search` for the subsystem you are about to touch —
    past root causes and decisions are stored there and are frequently the difference
    between a fix and a re-fix.
-4. **Check `progress.md` for the task's dependencies.** If a `Depends` task is not
-   `done`, stop: you are about to build on an interface that does not exist yet.
-5. **Read the existing code before changing it.** Most tasks are rebuilds of working
+4. **Check the epic's entry gate in [`gate-ledger.md`](gate-ledger.md).** Every epic
+   header names one. **If that gate is open, stop** — the tasks below it are not startable
+   yet, whatever their `Depends` field says. Gates are barriers, not checkpoints to work
+   through: starting the truth core on an unproven retrieval layer means every fact count
+   inherits that doubt. A task deliberately exempt from its epic's gate says so in its own
+   text.
+5. **Check `progress.md` for the task's dependencies.** If a `Depends` task is not
+   `done`, stop: you are about to build on an interface that does not exist yet. A
+   `Trigger:` field (rather than `Depends:`) means the task waits on a real-world event,
+   not on other work.
+6. **Claim the task** before starting — §5's claim protocol. One owner at a time.
+7. **Read the existing code before changing it.** Most tasks are rebuilds of working
    subsystems. Match the surrounding idiom.
 
 ## 2. Model routing
@@ -120,10 +129,21 @@ Every epic file ends with a table. One row per amendment:
 |---|---|---|---|---|
 | 2026-07-26 | T1.12 | 2 | Split into T1.12 + T1.12b; added dependency on T1.07 | Buffer claim needed the `events` writer that T1.07 lands, which the original ordering missed |
 
-## 5. Branch, commit, and review
+## 5. Branch, commit, claim, and review
 
 - **Branch per epic, not per task**: `feat/e1-engine-core`. Tasks are commits on it.
   A task large enough to want its own branch is a task that should have been split.
+- **`progress.md` is canonical on `main`, not on the epic branch.** Otherwise the "live
+  status" file forks per branch and no copy is true. Update it with a single commit
+  touching only your own row, cherry-picked or committed directly to `main`. This repo has
+  no remote, so concurrent agents share state through the working tree.
+- **Claim protocol.** Claiming is one commit that sets your task's `Owner` and moves it to
+  `wip`. If two agents race, the later commit loses and that agent picks another task —
+  cheap, because the loser has done no work yet. Never start work on a row someone else
+  owns.
+- **Concurrent agents need separate worktrees**, not separate branches in one checkout.
+  `git worktree add` per agent; see [`risks-and-lanes.md`](risks-and-lanes.md) for which
+  lanes actually touch disjoint files, because several do not.
 - **Conventional commits**, one logical change each:
   `<type>(<scope>): <subject>` — 50-char imperative subject, body explaining what and why
   at 72 columns. Scope is the subsystem (`pipeline`, `retrieval`, `frontend`, `harness`).
@@ -173,4 +193,41 @@ cd frontend && npm run dev               # vite :3636, proxies /api /health /ws
 **Three databases, three purposes, zero overlap** (doc 17 §9): `darkmem` (real),
 `darkmem_test` (pytest, dropped and migrated every run), `darkmem_bench` (eval corpora).
 A task that points a harness at `darkmem_test`, or a test at `darkmem`, is a defect
-regardless of whether it passes.
+regardless of whether it passes. The one sanctioned exception is a **read-only** gate
+probe measuring production behaviour (G-E's coverage distribution); it may read `darkmem`
+and may never write to it.
+
+**`DATABASE_URL` does not point where you expect.** `conftest.py` unconditionally
+overwrites it with `TEST_DATABASE_URL` — so setting `DATABASE_URL` in front of `pytest`
+silently tests the wrong database. Set `TEST_DATABASE_URL` instead. And the derived
+default resolves to port **5432** while the dev Postgres runs on **5433**, so any bare
+shell command that reaches the database needs an explicit URL.
+
+**The extraction bench does not work cold.** `scripts/extraction_bench/.cache/` is
+gitignored and machine-local, and `--algo-only` exits non-zero on any uncached content.
+The cache key is `sha256(content + system_prompt)`, so **any prompt change invalidates
+it**. Before `--algo-only` can serve as a merge gate on a fresh worktree, someone must run
+the live pass — which needs both an explicit `DATABASE_URL` (the bench reads LLM config
+from the database) and a live extraction model:
+
+```bash
+cd backend
+DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem \
+  python scripts/extraction_bench/run_bench.py                      # live, warms the cache
+DATABASE_URL=... python scripts/extraction_bench/run_bench.py --gold gold_heldout.json
+python scripts/extraction_bench/run_bench.py --algo-only            # warm cache only
+```
+
+## 8. Changing the schema before the freeze
+
+Until the homelab cutover, the schema is **one baseline revision that is regenerated, not
+migrated** (doc 19 §2). That makes the baseline file a shared mutable artifact, so:
+
+- **A task that adds a table regenerates the baseline.** It does not append revision 0002.
+  The single-revision property is asserted in CI (T0.15) and holds until the freeze tag.
+- **Schema changes serialise through one owner per epic.** Two agents regenerating the same
+  baseline file concurrently will conflict every time. Before touching it, check
+  `progress.md` for another `wip` task whose files include the baseline, and wait.
+- **After the freeze event, this inverts**: the baseline is frozen and every change is an
+  ordinary additive revision. T0.15 records the trigger; do not apply the freeze early
+  because it makes coordination easier.

@@ -18,21 +18,28 @@ next, in what order, by which agent, and how anyone knows it is done*.
 | [`gate-ledger.md`](gate-ledger.md) | The measured evidence that cleared each gate G-A…G-G. | At a phase boundary. |
 | [`e2e-test-plan.md`](e2e-test-plan.md) | What gets end-to-end coverage, with what fixtures, at which merge gate. | When a task's acceptance names an e2e spec. |
 | [`risks-and-lanes.md`](risks-and-lanes.md) | What may run concurrently, what strictly serialises, and the failure modes to watch. | When scheduling more than one agent. |
+| [`plan-review.md`](plan-review.md) | The 2026-07-25 adversarial review: 49 findings and their dispositions. | When you suspect the plan is wrong — check whether a reviewer already found it. |
 
 ## The task files
 
 | Epic | File | Tasks | Phase gate |
 |---|---|---|---|
-| E0 — Baseline & harness | [`tasks/E0-baseline-and-harness.md`](tasks/E0-baseline-and-harness.md) | T0.01–T0.17 (17) | G-A |
-| E1 — Engine core at target shape | [`tasks/E1-engine-core.md`](tasks/E1-engine-core.md) | T1.01–T1.50 (50) | G-B |
-| E2 — The truth core (L2) | [`tasks/E2-truth-core.md`](tasks/E2-truth-core.md) | T2.01–T2.41 (41) | G-C / G-D |
-| E3 — Synthesis & reach (L3) | [`tasks/E3-synthesis-and-reach.md`](tasks/E3-synthesis-and-reach.md) | T3.01–T3.22 (22) | G-E |
-| E4 — Hardening & scale | [`tasks/E4-hardening-and-scale.md`](tasks/E4-hardening-and-scale.md) | T4.01–T4.10 (10) | demand-gated |
-| EH1 — Documents / PKM (horizon) | [`tasks/EH1-documents-pkm.md`](tasks/EH1-documents-pkm.md) | TH1.01–TH1.16 (16) | G-F |
+| E0 — Baseline & harness | [`tasks/E0-baseline-and-harness.md`](tasks/E0-baseline-and-harness.md) | 17 | G-A |
+| E1 — Engine core at target shape | [`tasks/E1-engine-core.md`](tasks/E1-engine-core.md) | 65 | G-B |
+| E2 — The truth core (L2) | [`tasks/E2-truth-core.md`](tasks/E2-truth-core.md) | 53 | G-C / G-D |
+| E3 — Synthesis & reach (L3) | [`tasks/E3-synthesis-and-reach.md`](tasks/E3-synthesis-and-reach.md) | 26 | G-E |
+| E4 — Hardening & scale | [`tasks/E4-hardening-and-scale.md`](tasks/E4-hardening-and-scale.md) | 10 | demand-gated |
+| EH1 — Documents / PKM (horizon) | [`tasks/EH1-documents-pkm.md`](tasks/EH1-documents-pkm.md) | 17 | G-F |
 | EH2 — .NET migration (horizon) | [`tasks/EH2-dotnet-migration.md`](tasks/EH2-dotnet-migration.md) | outline only | G-G |
 
-**156 tasks** across six executable epics. Each carries a model tier, its dependencies,
+**188 tasks** across six executable epics. Each carries a model tier, its dependencies,
 its owning design doc, its honesty tag, and the gate it serves.
+
+The corpus was adversarially reviewed on 2026-07-25 by three independent Fable-tier
+reviewers; 49 findings and their dispositions are in
+[`plan-review.md`](plan-review.md). That review added 32 tasks the first draft had
+missed — chiefly the homelab cutover, the deployment artifact, demo retirement, the
+measurement runners, and the facts/articles retrieval channels.
 
 EH2 is deliberately **not** broken into tasks. It is appetite-gated behind G-G, which
 requires the Python target shipped first; task-level detail written now would be

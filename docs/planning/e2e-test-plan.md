@@ -12,7 +12,7 @@ There is no hosted CI; the gate is a **scripted discipline** (doc 17 §9). Three
 |---|---|---|---|
 | **Floor** | `python -m pytest -q` · `npm run typecheck && npm test && npm run build` | Every merge | Every merge |
 | **Extraction** | `python scripts/extraction_bench/run_bench.py --algo-only` | Any change touching the extraction surface | That merge |
-| **E2E** | `npm run test:e2e` + the API e2e suite | Release candidates, and any task whose acceptance names an e2e spec | The release |
+| **E2E** | `npm run test:e2e` + the API e2e suite (built by T1.64) | Release candidates, and any task whose acceptance names an e2e spec | The release |
 
 `scripts/gate.sh` (T0.16) runs rings 1–2; `scripts/gate.sh --full` adds ring 3.
 
@@ -35,6 +35,17 @@ passes.
 
 Frontend e2e runs against **demo mode** by default (the `DEMO` flag and `src/demo/`
 fixtures) and against a live stack only for the flows marked *live* below.
+
+**Two things must be true before a live-stack browser run works, and neither is true
+today.** `playwright.config.ts`'s `webServer` starts only vite, so a live run needs the
+backend started alongside it; and `DEMO` currently defaults *on*, so a spec asserting
+"reads live backend state" would pass against fixtures. T1.58 flips the default and
+T1.64 documents the live-run invocation (`VITE_DEMO=0` plus a running backend). Until
+then, treat any live-mode assertion as unproven.
+
+**The API e2e suite does not exist yet.** T1.64 builds it with a stated entry point and
+database posture, and records what happens to `docs/e2e/scripts/` — which run against a
+live server without the drop-and-migrate discipline this plan assumes.
 
 ---
 
@@ -81,6 +92,10 @@ One row per business flow (F1–F11). "Ring" is where the coverage lives.
 A small, permanent set of specs asserting the rules that are cheap to assert and
 catastrophic to regress (doc 17 §9). **These never get deleted or skipped**, and each
 should fail loudly if its rule is removed.
+
+Each spec is named in its owning task's **Done when**, so the task cannot complete
+without it — a coverage table alone would let every owner finish honestly while the
+suite stayed empty.
 
 | Spec | Asserts | Owning task |
 |---|---|---|

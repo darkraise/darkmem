@@ -34,7 +34,10 @@ three levels of resolution on every call; the target keeps the config flat.
 **Done when:**
 - [ ] Six live purposes carry their connection details inline
 - [ ] The three `*_ref` columns and their tables are gone from the read path
-- [ ] Existing homelab config migrates without a manual re-entry step
+- [ ] Greenfield is the default: drop/recreate and **re-run the setup wizard**
+      (doc 11 §9.4). A one-time transform is a convenience taken only if the mapping
+      proves trivial — doc 20 §10 exists precisely to stop a plan assuming a migration
+      nobody committed to. Memory data is a separate question, owned by T1.51
 - [ ] Purpose resolution is one query, asserted by a test that counts queries
 
 **Verify.** `cd backend && python -m pytest tests/test_llm_config.py -q`
@@ -67,7 +70,9 @@ DeepSeek needs `thinking:{type:disabled}`; Gemini's OpenAI shim honours only
 - [ ] `openai` / `ollama` / `anthropic` / `google` / `deepseek` / `zai` each dispatch
       correctly, with quirks isolated to the dispatch layer
 - [ ] No vendor conditional survives at any call site
-- [ ] `supports_embedding` still gates the embedding-purpose picker
+- [ ] The runtime `api_kind`-keyed assertion is the surviving embed guard, and the
+      settings picker re-derives its cannot-embed hint from `api_kind` directly —
+      `supports_embedding` lived on the provider table T1.01 deletes (doc 11 §4)
 - [ ] Each recorded quirk above has a regression test
 
 **Verify.** `cd backend && python -m pytest tests/test_api_kind_dispatch.py -q`
@@ -170,7 +175,10 @@ minted at accept so the caller gets a real handle back from a 202.
 
 **Done when:**
 - [ ] Buffer row persists content, resolved `source`/`origin_key`/`project`, and status
-- [ ] UUIDv7 minted at accept and carried through to the `memories` row unchanged
+- [ ] UUIDv7 minted at accept and carried through to the `memories` row unchanged.
+      Name the source: stdlib `uuid.uuid7` is 3.14+, while `pyproject` pins
+      `requires-python >=3.12` — either raise the floor or take the `uuid6` package,
+      but decide rather than assume
 - [ ] Buffer survives a process restart (this is the durability the tier depends on)
 
 **Verify.** `cd backend && python -m pytest tests/test_memory_buffer.py -q`
@@ -179,20 +187,27 @@ minted at accept so the caller gets a real handle back from a 202.
 
 `Model: Opus 5` · `Depends: T1.10` · `Doc: 05 §2.1` · `Tag: target-new` · `Gate: G-B`
 
-**What.** `origin_key` is the capture-session/agent-run identity, and every later
-corroboration count in E2 is `COUNT(DISTINCT origin_key)` over it. **When identity is
-genuinely unknown it merges to ONE origin per `(source, project)`** — undercount, never
-manufacture agreement. Getting this wrong in Phase 1 silently inflates every verification
-number in Phase 2.
+**What.** `origin_key` is the capture-session / per-boot agent-run identity, and every
+later corroboration count in E2 is `COUNT(DISTINCT origin_key)` over it. Getting this
+wrong in Phase 1 silently inflates every verification number in Phase 2.
+
+**This is not the `source` resolution chain.** `source` resolves explicit arg > the
+`X-Darkmem-Client` header > a User-Agent product map > `mcp`, and that chain belongs to
+T1.42. `origin_key` has its own, shorter chain (doc 05 §2.1): a declared
+`X-Darkmem-Origin` header carrying the caller's capture-session id, composed as
+`source ‖ ':' ‖ origin_id`; failing that, the merge-to-one fallback
+`'unknown:' ‖ source ‖ ':' ‖ project`. **When identity is genuinely unknown it merges to
+ONE origin** — undercount, never manufacture agreement.
 
 **Done when:**
-- [ ] Resolution order documented and tested: explicit arg > client header > user-agent
-      map > the merge-to-one fallback
+- [ ] Resolution implements doc 05 §2.1's chain exactly: declared origin id →
+      `source:origin_id`, else `unknown:source:project`
 - [ ] Unknown identity provably collapses to one origin per `(source, project)`
 - [ ] A test asserts two unknown-identity captures from one source do **not** count as
       two origins
-- [ ] `memory_batch_add` resolves on the raw entry dicts before validation, so an absent
-      value is distinguishable from an explicit default
+- [ ] **A per-request random is forbidden** (doc 05 §12) — it counterfeits independence
+      and would make every corroboration count a fiction. A test asserts two captures with
+      no declared origin produce the *same* key, not two fresh ones
 
 **Verify.** `cd backend && python -m pytest tests/test_origin_key.py -q`
 
@@ -221,7 +236,11 @@ processed twice or stranded.
 **Done when:**
 - [ ] Concurrent claimers never double-process a row
 - [ ] A crashed claim is reclaimable (no permanent lease leak)
-- [ ] Batch size respects the 1–100 cap both doors already enforce
+- [ ] Claim batch is `buffer_claim_batch` (a `config` row, default 32, sized near the
+      embed chunk) — **not** the capture door's 1–100 cap, which governs a different
+      boundary (doc 05 §3)
+- [ ] Doc 05 §3.1's buffer contract holds: poison rows bounded by `buffer_max_attempts`
+      then moved to `error` for triage, stale claims visible, `done` rows retained
 - [ ] Registered under `JobRegistry` with a cron, a `min_interval_seconds` floor, and a
       per-job lock like every other job
 
@@ -235,7 +254,11 @@ processed twice or stranded.
 the pipeline inline.
 
 **Done when:**
-- [ ] `wait_process` returns the processed memory, not an ack
+- [ ] `wait_process` writes the buffer row and then drives **that row's flush**
+      synchronously — it bypasses the scheduled flush, not the buffer write
+- [ ] Bounded by `buffer_wait_timeout_seconds` (config row, recommended default 10s);
+      **on timeout it degrades to the plain 202 accept**, telling the caller it is
+      still processing rather than hanging (doc 05 §2.2, invariant 14)
 - [ ] The bypass runs the identical pipeline — never a second code path
 - [ ] Default remains buffered; the bypass is opt-in per call
 
@@ -263,7 +286,7 @@ clones.** The hint is validated against doc 18's SSRF allowlist before anything 
 
 #### T1.16 — Phase 1: content embed + register-before-insert
 
-`Model: Sonnet 5` · `Depends: T1.03` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Depends: T1.03` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** One chunked embed call for the batch, returning vectors + fingerprint. The
 fingerprint is registered exactly once before any partition write.
@@ -288,7 +311,12 @@ under a different gate state is **not** bit-identical — record that caveat in 
 - [ ] Merged path fires when classifier is LLM-backed and mode is `simple`
 - [ ] Any other config keeps the two-concurrent-call path
 - [ ] Seed `sha256(content)[:8]` forwarded, so identical input reproduces (doc 17 §7)
-- [ ] F1 bench shows no regression against the T0.05 baseline
+- [ ] `run_bench.py` updated to exercise the **merged shipping path** with its gate
+      state pinned, and the cache re-recorded. The bench assembles its own call from
+      `prompt_constants` rather than going through the pipeline, so without this it
+      would measure a non-shipping configuration — exactly what T0.03 forbids
+- [ ] F1 bench shows no regression against the T0.05 baseline (whose tolerance must
+      already anticipate this prompt change)
 
 **Verify.** `cd backend && python scripts/extraction_bench/run_bench.py` — compare to T0.05.
 
@@ -307,7 +335,7 @@ classification runs in-process.
 
 #### T1.19 — Phase 3: entity embed with the two-level cache
 
-`Model: Sonnet 5` · `Depends: T1.16` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Depends: T1.16` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Memory cache → DB cache → embed the misses, writing new vectors back to both,
 keyed `(name_lower, fingerprint)`.
@@ -370,15 +398,20 @@ and switches to the new fingerprint rather than writing into the old partition.
 
 `Model: Sonnet 5` · `Depends: T1.17` · `Doc: 06 §3` · `Tag: rebuild` · `Gate: G-B`
 
-**What.** Entity, relationship, tech, memory types, plus the target memory-relation set.
-Pure normalisers; unknown entity types fall back to `concept`, unknown relations to
-`RELATED_TO`; `LEGACY_*` maps rewrite historical names at runtime.
+**What.** Entity, relationship, tech, and memory types. Pure normalisers; unknown entity
+types fall back to `concept`, unknown relations to `RELATED_TO`; `LEGACY_*` maps rewrite
+historical names at runtime. The memory-relation vocabulary is **reserved** here and
+owned by T2.15 — one vocabulary, one owner, landed taxonomy-first before doc 08's
+consolidation passes emit any edge (doc 06 §10).
 
 **Done when:**
 - [ ] Only tabled values are ever stored (invariant 5)
 - [ ] `LEGACY_*` rewrites keep old rows matching new code (e.g. `framework`→`tool`,
       `RUNS_ON`→`DEPLOYED_ON`, `debug`→`problem`)
 - [ ] Normalisers are pure functions with no DB access
+- [ ] `MEMORY_TYPES` widens 7 -> 9 with **episodic** and **procedural** (doc 06 §3);
+      `insight` and `profile` do **not** join. This changes the extraction prompt, so
+      it lands taxonomy-first and is measured on the F1 bench like any prompt change
 
 **Verify.** `cd backend && python -m pytest tests/test_taxonomy.py -q`
 
@@ -434,7 +467,7 @@ the FK cascades, so deleting a referenced entity destroys another memory's edge.
 
 #### T1.27 — `technologies` denorm recompute
 
-`Model: Sonnet 5` · `Depends: T1.26` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Depends: T1.26` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Recompute `memories.technologies` from entities whose type is in `TECH_TYPES`,
 lowercase, GIN-indexed. Supersession and the retrieval filter both read this column
@@ -477,7 +510,11 @@ without this (invariant 14).
 **Done when:**
 - [ ] Every channel filters in SQL; no post-filtering in Python anywhere
 - [ ] `memory_reason` specifically is proven leak-free
-- [ ] Query plans confirm the predicates are used, not evaluated after a full scan
+- [ ] Query plans confirm index use on the **keyword and direct-scan** channels. The
+      semantic channel cannot: an HNSW scan applies the pushed-down predicate as a
+      post-scan filter over its candidate stream, so its win is correctness and
+      reduced over-fetch, not an index-scan plan — and the `limit x 3` fetch
+      multiplier stays (doc 04 §10, doc 07 §7)
 - [ ] String/`UUID` id normalisation happens at the boundary so matches cannot silently drop
 
 **Verify.** `cd backend && python -m pytest tests/test_retrieval_pushdown.py -q`
@@ -486,10 +523,14 @@ without this (invariant 14).
 
 `Model: Opus 5` · `Depends: T1.29` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
 
-**What.** Reciprocal Rank Fusion at k=60 over semantic + keyword, weighted by
-`semantic_weight` (default 0.7), collapsed into one `rank_fusion_factor` formula.
-Consumers order by `rrf_score`; the per-modality `score` key survives on the row and is
-the first-seen side's raw score — never the ordering signal.
+**What.** Two classes of signal, kept separate (doc 07 §3). Every signal producing a
+**ranked list** joins one Reciprocal Rank Fusion at k=60 as a weighted input —
+`semantic_weight` (default 0.7) is a list weight there. Every signal producing a
+**per-row scalar** is a deterministic post-fusion multiplier, and `rank_fusion_factor`
+is that multiplier, composing the `w_conf`/`w_importance`/`w_heat`/`w_recency` arms.
+Nothing collapses the fusion into the factor. Consumers order by `rrf_score`; the
+per-modality `score` key survives on the row and is the first-seen side's raw score —
+never the ordering signal.
 
 **Done when:**
 - [ ] `rrf_score` is the only ordering signal, asserted by test
@@ -691,7 +732,7 @@ doc 20 forbids.
 
 #### T1.42 — REST/MCP payload envelope and two-door parity
 
-`Model: Opus 5` · `Depends: T1.33` · `Doc: 12 §2–§6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Depends: T1.12, T1.14, T1.33` · `Doc: 12 §2–§6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** One service layer, two front doors (invariant 17). Envelope, source/context
 resolution, and the auth-and-trust posture ship as the callable contract over the Phase-1
@@ -705,7 +746,8 @@ signals.
 - [ ] MCP Host allowlist / DNS-rebinding protection unchanged; a LAN 421 is fixed by
       extending the allowlist, never by disabling the check
 
-**Verify.** `cd backend && python -m pytest tests/test_api tests/test_mcp -q`
+**Verify.** `cd backend && python -m pytest tests/test_api tests/test_mcp.py tests/test_mcp_batch.py tests/test_mcp_transport_security.py -q` — MCP tests are flat
+files, not a `tests/test_mcp/` package.
 
 #### T1.43 — Dashboard + contribution calendar
 
@@ -817,7 +859,7 @@ real state rather than on a poll.
 
 #### T1.50 — G-B evidence run and ledger entry
 
-`Model: Fable 5` · `Depends: all E1 lanes` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Fable 5` · `Depends: T0.16, T1.24, T1.35, T1.44` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Clear G-B, adversarially. Three numbers, all of which must hold.
 
@@ -827,8 +869,274 @@ real state rather than on a poll.
 - [ ] Isolation probe returns zero on every channel
 - [ ] All three, their artifacts, and the verdict written to `gate-ledger.md`
 - [ ] Any shortfall recorded and G-B left open — never widen a bar to fit a result
+- [ ] `CLAUDE.md` refreshed to the shipped shape: LLM configuration, `events` replacing
+      `audit_log`, capture tiers and `memory_buffer`, the collapsed migration chain,
+      and the job list. Runbook §1 makes it every agent's bootstrap contract, so a
+      stale one poisons every later task
 
 **Verify.** `./scripts/gate.sh --full` plus `python scripts/benchlib/run_isolation_probe.py`
+
+---
+
+## Lane I — the homelab cutover (added by review, finding B-F1)
+
+**This lane is the only place in the plan where irrecoverable user data is at stake.**
+It was missing entirely from the first draft. It runs at the tail of E1, **after G-B** —
+real data moves onto the rebuilt engine only once that engine has proven itself, never
+before.
+
+#### T1.51 — Cutover transform + carried-set column map
+
+`Model: Opus 5` · `Depends: T0.12, T1.01, T1.23` · `Doc: 19 §4` · `Tag: target-new` · `Gate: G-B`
+
+**What.** The one-time transform from today's schema to the baseline: the `llm_` renames,
+`origin_key` landing NULL on carried rows, lineage carried verbatim, and the carried set
+itself — memories, tags, conversations. Everything outside that set is rebuilt, not
+carried.
+
+**Done when:**
+- [ ] The carried set is enumerated explicitly, and everything outside it is named as
+      rebuilt so nothing is carried by accident
+- [ ] `origin_key` is NULL on carried rows and the corroboration arithmetic treats NULL as
+      "no origin", never as a shared one (this is the T1.11 rule applied to history)
+- [ ] Supersession lineage (`status`, `superseded_by`) carries verbatim — a transform that
+      breaks `chk_superseded_has_pointer` fails loudly rather than dropping the pointer
+- [ ] The transform is re-runnable against a fresh restore, because the rehearsal in T1.53
+      will run it more than once
+
+**Verify.** `cd backend && python -m pytest tests/test_cutover_transform.py -q`
+
+#### T1.52 — Tier-C re-extraction backfill + verification counts
+
+`Model: Opus 5` · `Depends: T1.51, T1.13, T1.26` · `Doc: 19 §4` · `Tag: target-new` · `Gate: G-B`
+
+**What.** Carried memories have no graph under the rebuilt extractor. Re-extract them as
+Tier-C work through the ordinary pipeline, then verify by counts — not by spot-checking.
+
+**Done when:**
+- [ ] Backfill runs off the hot path and is resumable after interruption
+- [ ] Failures land in `pipeline_failures` for triage rather than being skipped
+- [ ] Verification is by count: memories in = memories out, and the F1 gate run against
+      the carried corpus matches the T0.05 baseline within tolerance
+- [ ] A partial backfill is visibly partial — never reported as complete
+
+**Verify.** `cd backend && python -m pytest tests/test_cutover_backfill.py -q`
+
+#### T1.53 — Cutover rehearsal on a dump copy + restore drill
+
+`Model: Sonnet 5` · `Depends: T1.52` · `Doc: 19 §4, §9` · `Tag: target-new` · `Gate: G-B`
+
+**What.** Rehearse the whole cutover against a `pg_dump` copy of the real database. Doc 19
+notes this doubles as the first restore drill — which is also the rollback story if the
+frozen baseline turns out wrong.
+
+**Done when:**
+- [ ] Full rehearsal on a restored copy, end to end, with the verification counts green
+- [ ] The restore path is proven, timed, and written down — this is the rollback
+- [ ] A nightly `pg_dump` cadence is documented (doc 19 §9.2)
+- [ ] The rehearsal never touches the real database
+
+**Verify.** Rehearsal transcript archived under `docs/e2e/`, with the restore timing.
+
+#### T1.54 — Execute the cutover, verify, apply the freeze tag
+
+`Model: Fable 5` · `Depends: T1.53, T1.50, T0.15` · `Doc: 19 §2, §4` · `Tag: target-new` · `Gate: G-B`
+
+**What.** The real thing, once and only once, after G-B has cleared. Then apply the freeze
+tag that ends the regenerate-freely window.
+
+**Done when:**
+- [ ] A fresh `pg_dump` is taken immediately before, and its restore path verified
+- [ ] Verification counts and the F1 gate run green **on the real data** post-cutover
+- [ ] The freeze tag is applied and T0.15's CI assertion flips to enforcing additive
+      revisions
+- [ ] `CLAUDE.md` and the schema inventory record the freeze date — the real one
+- [ ] If verification fails, the documented restore runs and the freeze is **not** applied
+
+**Verify.** Post-cutover counts + `./scripts/gate.sh --full` on the live instance,
+archived to `gate-ledger.md` alongside the G-B entry.
+
+---
+
+## Lane J — the surfaces the rebuild orphans (added by review, findings B-F3, B-F4, B-F10)
+
+**Principle 10 is not optional here.** T1.01 deletes the tables today's Settings screens
+edit, and demo mode currently defaults *on* with 64 files importing `src/demo/`. Without
+this lane, E1 ships a backend nobody can configure behind a UI that renders fixtures.
+
+#### T1.55 — Settings → LLM: six inline purpose cards
+
+`Model: Sonnet 5` · `Depends: T1.01, T1.04` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Rebuild the tab against the flattened config: six inline purpose cards plus the
+`classifier_kind` toggle. **Delete the provider and profile pickers** — doc 13 §7 names
+leaving a profile picker over a schema with no profiles table as an invariant-23
+violation, not merely dead UI.
+
+**Done when:**
+- [ ] Six purpose cards edit inline connection details; no `*_ref` indirection remains
+- [ ] Provider/profile/ml-profile UIs are deleted, not hidden
+- [ ] The cannot-embed hint derives from `api_kind` (see T1.03)
+
+**Verify.** `cd frontend && npm test -- settings-llm`
+
+#### T1.56 — Setup wizard finalize against the flattened config
+
+`Model: Sonnet 5` · `Depends: T1.01` · `Doc: 11 §9.4` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** The wizard writes seed-plus-overlay into the flattened `llm_purpose_configs`.
+This is also the supported path for an existing install, since T1.01 makes wizard re-run
+the default rather than a config transform.
+
+**Done when:**
+- [ ] Finalize writes flattened rows; no reference to the dropped tables survives
+- [ ] A re-run against an initialised instance is safe and idempotent
+- [ ] Trust-on-first-use gating is unchanged (doc 18)
+
+**Verify.** `cd frontend && npm test -- setup-wizard` and `cd backend && python -m pytest tests/test_setup.py -q`
+
+#### T1.57 — Settings → Flags, bound to `config`
+
+`Model: Sonnet 5` · `Depends: T1.31` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** The arms rendered honestly. Every `w_*` at zero shows as **inactive** with its
+activation bar named — that labelling is the UI half of the arms-at-zero honesty T1.31
+lands in the backend.
+
+**Done when:**
+- [ ] Dormant arms render as inactive, never omitted (a hidden zero reads as absent)
+- [ ] Corroboration N and job cadences editable as `config` rows
+- [ ] Flipping a flag with no measured win is possible but visibly unmeasured
+
+**Verify.** `cd frontend && npm test -- settings-flags`
+
+#### T1.58 — Retire demo mode as the default
+
+`Model: Sonnet 5` · `Depends: T1.42` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** `DEMO` currently defaults on (`VITE_DEMO !== "0"`). Flip it: real API and auth
+are the default, and `src/demo/` becomes test-fixture-only.
+
+**Done when:**
+- [ ] Real mode is the default; demo is explicitly opted into
+- [ ] No production route imports from `src/demo/` — asserted by a lint rule, not review
+      (the existing `no-restricted-imports` rule already encodes the intent)
+- [ ] The login/auth path works against the real backend end to end
+
+**Verify.** `cd frontend && npm run lint && npm run test:e2e -- auth`
+
+#### T1.59 — Bind the Code section to live data
+
+`Model: Sonnet 5` · `Depends: T1.42, T1.58` · `Doc: 13 §4.2` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Repositories (live indexing status, reindex dialog), Code Graph, and Wiki
+against the real backend. T1.46 binds only the two new signals; these are the surfaces
+around them.
+
+**Done when:**
+- [ ] Repo status, phase ticker, and reindex all drive real runs
+- [ ] Code Graph reads the real graph; the Explorer's file tree comes from the index
+- [ ] Wiki is read-only and never triggers generation on browse
+
+**Verify.** `cd frontend && npm run test:e2e -- code`
+
+#### T1.60 — Bind Chat and the Memory Graph explorer
+
+`Model: Sonnet 5` · `Depends: T1.44, T1.58` · `Doc: 13 §4.1` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Both are doc-13 committed surfaces with no task in the first draft. Chat renders
+retrieved context **with its labels and trace** — an unlabelled citation in a chat answer
+is the silent-authority failure invariant 14 forbids.
+
+**Done when:**
+- [ ] Chat shows layer, verification, and superseded/stale labels on every cited row
+- [ ] Memory Graph reads the real graph with project scope applied in SQL
+- [ ] Neither surface reads `src/demo/`
+
+**Verify.** `cd frontend && npm test -- chat memory-graph`
+
+#### T1.61 — Activity: feed, day view, and the buffer monitor
+
+`Model: Sonnet 5` · `Depends: T1.08, T1.10` · `Doc: 13 §6.1` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** The Activity shell's remaining modules over `events` and `memory_buffer`. The
+buffer monitor is doc 13 §6.1's named surface for poison rows — the visible half of
+T1.13's `buffer_max_attempts` bounding.
+
+**Done when:**
+- [ ] Feed and day views read `/events`; no client-side aggregation
+- [ ] Buffer monitor shows claimed, stale, and poison rows with their attempt counts
+- [ ] A poison row is actionable from the UI, not just visible
+
+**Verify.** `cd frontend && npm test -- activity`
+
+#### T1.62 — App-as-edge deployment artifact
+
+`Model: Opus 5` · `Depends: T1.42, T1.58` · `Doc: 19 §5, 18 §4` · `Tag: target-new` · `Gate: G-B`
+
+**What.** One image containing FastAPI **and** the built SPA, with the app as the network
+edge. nginx goes away, `trust_proxy_headers` flips **off**, and the login rate limiter
+reads the transport peer. Both IP-source strategies stay live and tested, because the
+nginx fallback and the exposed-deployment horizon each restore the header path.
+
+**Done when:**
+- [ ] One image serves API and SPA; compose surface is the two secrets, host networking,
+      `repo_data` volume, Postgres `shm_size`
+- [ ] `trust_proxy_headers` defaults **off**; the limiter reads `request.client.host`
+- [ ] The leftmost `X-Forwarded-For` is read in **no** posture, proven by test
+- [ ] Both strategies are tested, so a posture change is a config flip, not a rewrite
+- [ ] Exactly one uvicorn worker (invariant 13)
+
+**Verify.** `cd backend && python -m pytest tests/test_client_ip_attribution.py -q` plus a
+clean `docker compose up -d` boot with `/health` 200.
+
+#### T1.63 — Bind Settings: Security, Maintenance, Jobs
+
+`Model: Sonnet 5` · `Depends: T1.58` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** The remaining Settings tabs against real endpoints, including the job board's
+409-on-held-lock behaviour.
+
+**Done when:**
+- [ ] Jobs tab drives real triggers and shows a held lock as busy, never as queued
+- [ ] Maintenance operations confirm before running and journal to `events`
+- [ ] Security tab reflects the real posture, including which IP strategy is active
+
+**Verify.** `cd frontend && npm test -- settings`
+
+#### T1.64 — API e2e suite + the honesty specs
+
+`Model: Sonnet 5` · `Depends: T0.16, T1.42` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-B`
+
+**What.** The e2e plan's ring 3 names an "API e2e suite" that does not exist. Build it,
+with a stated location and database posture, and land the eight honesty specs it owns.
+Today's `docs/e2e/scripts/` run against a live server without the drop-and-migrate
+discipline — decide whether to port or replace them, and say which.
+
+**Done when:**
+- [ ] The suite has one documented entry point and runs against `darkmem_test`
+- [ ] The eight honesty specs from the e2e plan exist and each fails if its rule is removed
+- [ ] `scripts/gate.sh --full` invokes it
+- [ ] The disposition of `docs/e2e/scripts/` is recorded — ported, replaced, or retired
+
+**Verify.** `./scripts/gate.sh --full`
+
+#### T1.65 — `projectStore`, `contextStore`, and the project switcher
+
+`Model: Sonnet 5` · `Depends: T1.29, T1.34` · `Doc: 13 §2` · `Tag: target-new` · `Gate: G-B`
+
+**What.** The UI face of the isolation work: a global project scope feeding every query
+key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
+`declareContext` verb will set.
+
+**Done when:**
+- [ ] Project scope is in every query key, so switching projects cannot serve stale rows
+- [ ] Context declaration is visible and clearly distinct from project scope — conflating
+      the isolation boundary with the context hint is the confusion the Memories surface
+      already guards against
+- [ ] An undeclared context renders as undeclared, never as a default
+
+**Verify.** `cd frontend && npm test -- stores`
 
 ---
 

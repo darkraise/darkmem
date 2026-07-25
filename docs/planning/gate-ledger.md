@@ -35,7 +35,8 @@ its artifact path, and a verdict — not when someone believes the work is done.
 
 ## G-A — Phase 0 → 1
 
-**Owning task:** T0.17. **Bar lives in:** harness CI.
+**Owning task:** T0.17. **Bar lives in:** a harness constant (there is no hosted CI —
+the gate is a scripted discipline, doc 17 §9).
 
 Three probes, all of which must hold:
 
@@ -62,7 +63,7 @@ Run context: git sha —, model —, fingerprint —, date —.
 
 ## G-B — Phase 1 → 2
 
-**Owning task:** T1.50. **Bar lives in:** harness CI + `config`.
+**Owning task:** T1.50. **Bar lives in:** a harness constant + `config`.
 
 | Probe | Bar | Measured | Twin | Artifact | Verdict |
 |---|---|---|---|---|---|
@@ -109,8 +110,10 @@ assertions into the vault at the ladder's second rung.
 | `verification` judge precision on labelled entailment gold | — | — | — | — |
 | `verification` judge recall on labelled entailment gold | — | — | — | — |
 
-**Gold set:** built in T2.25, **before** the judge, so the judge cannot be tuned to its own
-test. Seeded from real synthesis drafts once L2 is live.
+**Gold set:** built in T2.25, **before** the judge, so the judge cannot be tuned to its
+own test. Material comes from running `article_synthesis` in a labelled non-shipping
+mode against `darkmem_bench`, plus hand-authored claim/fact pairs — **not** from real
+Phase-3 drafts, which do not exist until after this gate clears.
 
 **Consequence of a miss:** E3 stays closed. Below the bar, no L3 article ships as grounded —
 enforced in code (T3.03), not by policy.
@@ -120,6 +123,9 @@ enforced in code (T3.03), not by policy.
 ## G-E — L3 → F7
 
 **Owning task:** T3.22. **Bar lives in:** `config`.
+
+Measured by T3.24's runner. The production read is the one sanctioned exception to
+"nothing automated touches `darkmem`" — it is **read-only** and may never write.
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|

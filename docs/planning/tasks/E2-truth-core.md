@@ -22,7 +22,7 @@ never availability — candidates are served labelled, never withheld (invariant
 
 #### T2.01 — `knowledge_triples` rebuild: the bi-temporal belief axis
 
-`Model: Opus 5` · `Depends: T1.06` · `Doc: 08 §3–§4` · `Tag: rebuild + target-new` · `Gate: G-C`
+`Model: Opus 5` · `Depends: T1.50, T1.06` · `Doc: 08 §3–§4` · `Tag: rebuild + target-new` · `Gate: G-C`
 
 **What.** Two orthogonal axes: belief (open → window-closed → expired) and verification
 (candidate → corroborated → confirmed, plus disputed). Conflating them is the modelling
@@ -81,7 +81,7 @@ and the diversity rule as `config` rows.
 
 #### T2.05 — Human ratification is the only path to `confirmed`
 
-`Model: Sonnet 5` · `Depends: T2.03` · `Doc: 08 §4.4` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Depends: T2.03` · `Doc: 08 §4.4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Only a human ratifying, writing a `human`-kind `fact_sources` row, reaches
 `confirmed`. No machine path exists.
@@ -168,10 +168,14 @@ rows; no fact is born above `corroborated` except via T2.28's parse-is-verificat
 
 #### T2.11 — `contradiction_scan`
 
-`Model: Opus 5` · `Depends: T2.04` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Depends: T2.04, T2.26` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
-**What.** Find contradiction candidates via the `pg_trgm` shortlist and adjudicate with
-the `verification` judge. The shortlist's measured miss rate is what gates T2.33.
+**What.** Generate contradiction candidates from **same-endpoint facts plus a
+`pg_trgm`-on-`fact` shortlist** (doc 08 §5.3 — the combined generator, not the trigram
+half alone), then adjudicate with the `verification` judge. The judge must already be
+qualified: the Phase-2 veto is its first consumer, and T2.26's rule is that no
+consumer ships on an unqualified judge. The generator's measured miss rate (T2.52) is
+what gates T2.33.
 
 **Done when:** shortlist recall is measured and recorded; adjudication uses the judge, not
 a heuristic; misses are counted, not hidden.
@@ -355,9 +359,15 @@ served labelled — decay changes priority, never verification status.
 
 `Model: Fable 5` · `Depends: T2.03` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
 
-**What.** Claim/fact entailment gold, seeded from real synthesis drafts once L2 is live.
-This gold set is what G-D measures against; build it before the judge so the judge cannot
-be tuned to its own test.
+**What.** Claim/fact entailment gold. This is what G-D measures against, so build it
+before the judge — otherwise the judge is tuned to its own test.
+
+**Where the material comes from, since Phase-3 drafts do not exist yet.** Running
+`article_synthesis` manually in a **labelled non-shipping mode against
+`darkmem_bench`** produces raw drafts to label; supplement with hand-authored
+claim/fact pairs over live L2 facts. Nothing produced this way ships as an article —
+it exists to be labelled. Waiting for real drafts would deadlock the gate, since
+drafts come from T3.02, which is behind the gate this task feeds.
 
 **Done when:** grounded and ungrounded sentences both represented, including hard
 near-misses; labelling rationale recorded; gold is JSON on disk.
@@ -434,7 +444,7 @@ deliverable; the arms stay at zero until T2.31 measures them.
 
 #### T2.30 — `w_importance` activation
 
-`Model: Fable 5` · `Depends: T1.31` · `Doc: 07 §3` · `Tag: activation` · `Gate: G-C`
+`Model: Fable 5` · `Depends: T1.31, T2.44` · `Doc: 07 §3` · `Tag: activation` · `Gate: standing`
 
 **What.** The column is populated but unread today. Measure, then activate or leave at zero.
 **Activation bar:** a positive retrieval-eval delta with its twin.
@@ -445,7 +455,7 @@ its number are in the ledger — including a decision to leave it at zero.
 
 #### T2.31 — `w_heat` / `w_recency` activation
 
-`Model: Fable 5` · `Depends: T2.29` · `Doc: 07 §3` · `Tag: activation` · `Gate: G-C`
+`Model: Fable 5` · `Depends: T2.29, T2.44` · `Doc: 07 §3` · `Tag: target-new + activation` · `Gate: standing`
 
 **What.** Same protocol, over the T2.29 feeder. **Activation bar:** retrieval-eval win
 with twin.
@@ -469,7 +479,7 @@ it is not a ranking signal (doc 17 §2).
 
 #### T2.33 — `triple_embeddings` writer, miss-rate gated
 
-`Model: Opus 5` · `Depends: T2.11, T0.13` · `Doc: 08 §5.3` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Depends: T2.52, T0.13` · `Doc: 08 §5.3` · `Tag: target-new` · `Gate: standing`
 
 **What.** First writer to the template landed inert in T0.13 — and it ships **only** if
 T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar. Groups facts for
@@ -484,16 +494,28 @@ inert; `names_distinct` is carried into the grouping.
 
 `Model: Sonnet 5` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
 
-**What.** The activation half of Phase-1's caller-set TTL: facts carrying a date expire
-themselves. Deterministic — no measured bar, it follows with the temporal passes.
+**What.** Two different mechanisms that must not be conflated (doc 08 §2.3 vs §9).
 
-**Done when:** a dated fact expires without a caller setting TTL; the demote-before-delete
-ordering from T1.37 is reused, not reimplemented.
+**Memory side:** extraction populates `memories.expires_at` from a memory's own stated
+expiry date (the write path is doc 05's; the sweep that spends it is T1.37's, reused
+unchanged including demote-before-delete).
+
+**Fact side:** a fact carrying a stated future expiry gets its belief window
+**pre-closed** at that date by a lightweight arm of `verification_recompute` —
+**invalidate-not-delete**, so the row survives as history. The facts table needs no
+delete job at all (doc 08 §5); applying T1.37's delete sweep to `knowledge_triples`
+would destroy the history the whole bi-temporal model exists to keep.
+
+**Done when:**
+- [ ] A dated memory expires without a caller setting TTL, through T1.37's sweep
+- [ ] A dated fact's window pre-closes; the row is never deleted, proven by test
+- [ ] No code path deletes from `knowledge_triples`
+
 **Verify.** `cd backend && python -m pytest tests/test_self_expiring_facts.py -q`
 
 #### T2.35 — `applies_when` magnitude tuning
 
-`Model: Sonnet 5` · `Depends: T1.34` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Depends: T1.34, T2.44` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: standing`
 
 **What.** Tune the `config` magnitude wired in T1.34. The boost-plus-label and
 conflict-count rules stay hard rules — only the magnitude is tuned.
@@ -554,15 +576,17 @@ between runs; accept/dismiss round-trips.
 
 #### T2.40 — G-C evidence run
 
-`Model: Fable 5` · `Depends: T2.06, T2.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Fable 5` · `Depends: T2.06, T2.09, T2.10, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Promotion rate `(promoted / eligible)` sliced by source-kind diversity and by
 which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
 under the stated bar; every ladder transition journaled.
 
 **Done when:** all three measured from the `events` journal by SQL; bars stated as
-`config` before measuring, not after; verdict in `gate-ledger.md`; a miss leaves G-C open
-and the deriver lane (T2.27–T2.28) closed.
+`config` before measuring, not after; **facts have actually flowed through the ladder**
+(a 0/0 promotion rate is under-powered, not a pass); verdict in `gate-ledger.md`;
+`CLAUDE.md` refreshed to the shipped L2 shape; a miss leaves G-C open and the deriver
+lane (T2.27–T2.28) closed.
 **Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
 
 #### T2.41 — G-D evidence run
@@ -575,6 +599,201 @@ gate that opens Phase 3.
 **Done when:** precision and recall recorded per class; the bar was stated before the run;
 verdict in `gate-ledger.md`; E3 stays closed on a miss.
 **Verify.** `cd backend && python scripts/benchlib/run_judge_qualification.py --gate`
+
+---
+
+## Lane L — mechanisms the first draft missed (added by review)
+
+Findings A-4, A-5, A-13, B-F7, B-F9. Each traces to a design-doc mechanism with no owning
+task; without them E2 ships facts nobody can retrieve and G-C measures machinery that was
+never built.
+
+#### T2.42 — Facts retrieval channel, born with pushdown
+
+`Model: Opus 5` · `Depends: T2.03, T1.29` · `Doc: 07 §2` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 07 §2 makes the facts channel target-new and **born with SQL project/status
+pushdown** — it never has a pre-pushdown generation to regress from. Without it, E2's
+whole truth core is unreachable by search.
+
+**Done when:**
+- [ ] Channel queries `knowledge_triples` with scope predicates in SQL from the first commit
+- [ ] Verification state and belief window ride every returned row as labels
+- [ ] Disputed facts are returned **labelled with both sides**, never filtered out
+
+**Verify.** `cd backend && python -m pytest tests/test_facts_channel.py -q`
+
+#### T2.43 — Four-layer composition, labelling, and grouping
+
+`Model: Opus 5` · `Depends: T2.42` · `Doc: 07 §5` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 07 §5's composition rules across memory / facts / articles / code:
+verified-above-labelled-candidate ordering, disputed served with both sides, results
+grouped under their fact so evidence is **never triple-counted**, cold-start returning
+labelled candidates rather than nothing, and the sectioned-vs-fused output shapes.
+
+**Done when:**
+- [ ] Ordering and grouping rules each have a test that fails if the rule is removed
+- [ ] Triple-counting is impossible: three memories supporting one fact render as one
+      grouped result, not three hits
+- [ ] Cold start returns labelled candidates — an empty vault is not an empty answer
+
+**Verify.** `cd backend && python -m pytest tests/test_layer_composition.py -q`
+
+#### T2.44 — Arm-ablation interface for the retrieval eval
+
+`Model: Sonnet 5` · `Depends: T0.10, T1.31` · `Doc: 17 §4` · `Tag: target-new` · `Gate: standing`
+
+**What.** The plumbing behind `run_retrieval_eval.py --arm <name>`, which T2.30, T2.31,
+T2.35 and T2.50 all invoke and which T0.10 never scoped. Sonnet builds it; the Fable
+activation tasks only design the bar and read the result (runbook §2).
+
+**Done when:**
+- [ ] `--arm` runs the eval with a named arm on and off, reporting per-slice deltas
+- [ ] Every run emits its latency/cost twin, since an accuracy number without one is
+      inadmissible
+- [ ] Ablation pins the fingerprint — no cross-fingerprint comparison (invariant 2)
+
+**Verify.** `cd backend && python scripts/benchlib/run_retrieval_eval.py --arm w_importance`
+
+#### T2.45 — The Tier-C `supersede()` primitive + status bridge
+
+`Model: Opus 5` · `Depends: T2.01, T1.36` · `Doc: 08 §2.2, §3.4` · `Tag: target-new` · `Gate: G-C`
+
+**What.** T2.12 calls `supersede()` but nothing builds it. Doc 08 §2.2 makes it a Tier-C
+primitive distinct from T1.36's write-time detector, and §3.4's status bridge decides what
+happens to an asserting memory when its fact is invalidated: `superseded` only under two
+guards, otherwise `deprecated`.
+
+**Done when:**
+- [ ] The primitive is the single path by which consolidation supersedes anything
+- [ ] The status bridge's two guards are tested independently; the default is `deprecated`
+- [ ] `chk_superseded_has_pointer` holds through every transition
+
+**Verify.** `cd backend && python -m pytest tests/test_supersede_primitive.py -q`
+
+#### T2.46 — Demotion hysteresis and the `under-sourced` label
+
+`Model: Opus 5` · `Depends: T2.09` · `Doc: 08 §4.3, §9` · `Tag: target-new` · `Gate: G-C`
+
+**What.** A fact that loses a source does not drop rung immediately: it enters a labelled
+`under-sourced` state for `verification_demote_grace_cycles`, tracked by a
+`demotion_pending_since` column. Without hysteresis a flapping source flaps the ladder,
+and every flap is a visible badge change.
+
+**Done when:**
+- [ ] `demotion_pending_since` lands on the schema; grace cycles are a `config` row
+- [ ] An under-sourced fact is **served labelled**, not withheld
+- [ ] Regaining a source inside the grace window cancels the demotion cleanly
+
+**Verify.** `cd backend && python -m pytest tests/test_demotion_hysteresis.py -q`
+
+#### T2.47 — The enqueue-for-verification emit hook
+
+`Model: Opus 5` · `Depends: T1.21, T2.02` · `Doc: 05 §8.4, 08 §3.3` · `Tag: target-new` · `Gate: G-C`
+
+**What.** The emit side of the hook that tells verification a fact's evidence moved: the
+`sources_changed` `events` value landed taxonomy-first, emitted from Phase 5 and from the
+withdrawal sweep, with the inline expire-on-last-source-withdrawal path — and a
+**provenance no-op guard** so a re-extraction that changes nothing emits nothing.
+
+**Done when:**
+- [ ] `sources_changed` is in the closed events vocabulary before any emitter uses it
+- [ ] A no-op re-extraction emits no event, proven by test (otherwise every reprocess
+      would look like evidence churn)
+- [ ] Losing the last source expires inline rather than waiting for a sweep
+
+**Verify.** `cd backend && python -m pytest tests/test_sources_changed_emit.py -q`
+
+#### T2.48 — Citation re-verifier + code-fact lifecycle
+
+`Model: Opus 5` · `Depends: T2.28` · `Doc: 10 §6` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 10 §6's second sanctioned crossing: a Tier-C re-verifier walks
+`fact_sources(kind='code')` rows whose `detail.symbol_key` falls in a run's changed or
+deleted file set, marks the row stale and **downgrades the citing fact's badge — never
+auto-expires it**. A dependency removed leaves the fact invalidate-not-deleted when code
+was its sole source.
+
+**Done when:**
+- [ ] A changed symbol downgrades rather than expiring — the human decides, not the parser
+- [ ] Sole-source removal invalidates without deleting
+- [ ] Re-verification is idempotent per repo run
+
+**Verify.** `cd backend && python -m pytest tests/test_citation_reverifier.py -q`
+
+#### T2.49 — `relation_embeddings` refresh job + writer
+
+`Model: Sonnet 5` · `Depends: T2.32, T0.13` · `Doc: 04 §5.3, 07 §4, 19 §6` · `Tag: target-new` · `Gate: G-C`
+
+**What.** First writer to one of the two inert partition templates that had no named owner,
+and the JobRegistry refresh arm doc 19 §6 lists.
+
+**Done when:**
+- [ ] The template loses its inert label and the schema inventory records this task as its
+      first writer
+- [ ] Refresh is Tier-C with its own cron, floor, and lock
+- [ ] No cross-fingerprint comparison (invariant 2)
+
+**Verify.** `cd backend && python -m pytest tests/test_relation_embeddings.py -q`
+
+#### T2.50 — Graph-arm activation measurement
+
+`Model: Fable 5` · `Depends: T2.32, T2.44` · `Doc: 07 §3, 17 §2` · `Tag: activation` · `Gate: standing`
+
+**What.** Split out of T2.32 so the model that builds the snapshot does not also judge its
+number (runbook §2). Measures `w_ppr`, dual-level, and community injection.
+**Activation bar:** a retrieval-eval win with its twin — except community injection, which
+is measured on **answer-quality/groundedness, not MRR**, because it augments context rather
+than ranking (doc 17 §2).
+
+**Done when:**
+- [ ] Each arm measured separately, per slice, with the twin
+- [ ] Community injection scored on the reasoning gold set, never on MRR
+- [ ] Arms that do not clear stay at zero, and that outcome is recorded as a result
+
+**Verify.** `cd backend && python scripts/benchlib/run_retrieval_eval.py --arm w_ppr,dual_level`
+
+#### T2.51 — Promotion-metrics runner
+
+`Model: Sonnet 5` · `Depends: T2.06` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+
+**What.** The SQL-over-`events` runner T2.40 invokes: promotion rate sliced by source-kind
+diversity and by which N fired, plus the false-promotion audit. Built by Sonnet so the
+Fable gate task only designs the bar and reads the number.
+
+**Done when:**
+- [ ] Every metric derives from the journal alone — no instrumentation side-tables
+- [ ] Slices are reported separately; no aggregate replaces them
+- [ ] A vacuous 0/0 is reported as under-powered, not as a pass
+
+**Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
+
+#### T2.52 — Contradiction-shortlist miss-rate runner
+
+`Model: Sonnet 5` · `Depends: T2.11` · `Doc: 17 §5.2` · `Tag: target-new` · `Gate: standing`
+
+**What.** Measures the recall of the **combined** candidate generator — same-endpoint
+facts plus the `pg_trgm` shortlist — against contradiction-pair gold. Its number is the
+bar T2.33 must exceed before the `triple_embeddings` writer ships at all.
+
+**Done when:**
+- [ ] Measures the combined generator, not the trigram half alone
+- [ ] Miss rate reported against gold with the bar stated beforehand
+- [ ] Result recorded whether or not it justifies T2.33
+
+**Verify.** `cd backend && python scripts/benchlib/run_contradiction_missrate.py`
+
+#### T2.53 — Register `topic_detection` on the schedule
+
+`Model: Haiku 4.5` · `Depends: T2.18, T2.08` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+
+**What.** The feature row says each dream-family job has its own cron, floor, and ceiling;
+`topic_detection` was built (T2.18) but never scheduled.
+
+**Done when:** registered under the umbrella with cron, floor, and per-job lock; a manual
+trigger while held returns 409.
+**Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py -q`
 
 ---
 
