@@ -1,0 +1,176 @@
+# Agent runbook — the task contract
+
+**Status:** living document, opened 2026-07-25. Every task in `tasks/` is executed
+under this contract.
+
+This is what an agent needs to pick up a darkmem task cold: how to bootstrap context,
+which model tier to run at, what "done" means, what to do when the plan turns out to be
+wrong, and when to stop and ask.
+
+---
+
+## 1. Bootstrapping a task
+
+An agent starting a task has no memory of the session that wrote the plan. Do this
+before writing any code:
+
+1. **Read the task's owning design doc section.** Every task names one (e.g. `Doc 05 §3`).
+   The task tells you *what* to build; the design doc tells you *why it is shaped that
+   way* and which invariants bind it. A task is a pointer, never a replacement.
+2. **Read `CLAUDE.md` at the repo root.** It is the business-logic baseline: the domain
+   model, pipeline phases, taxonomy rules, and the cross-cutting invariants. A change
+   that breaks one of its listed invariants is a behaviour change, not a cleanup.
+3. **Search darkmem itself.** `memory_search` for the subsystem you are about to touch —
+   past root causes and decisions are stored there and are frequently the difference
+   between a fix and a re-fix.
+4. **Check `progress.md` for the task's dependencies.** If a `Depends` task is not
+   `done`, stop: you are about to build on an interface that does not exist yet.
+5. **Read the existing code before changing it.** Most tasks are rebuilds of working
+   subsystems. Match the surrounding idiom.
+
+## 2. Model routing
+
+Every task carries a **Model** field. The tiers, and what earns them:
+
+| Tier | Use for | Signals |
+|---|---|---|
+| **Haiku 4.5** | Mechanical, fully specified, low-branching work. | Config rows and seed data; test fixtures against a stated shape; markup/CSS edits; mechanical renames; doc scaffolds; single-file additions with an explicit interface given. |
+| **Sonnet 5** | Standard feature work against an established pattern. | One service method plus its tests; a REST route matching `api-rest-conventions.md`; a UI surface built on an existing component; a migration whose shape the task states; a JobRegistry job with a stated cron and config schema. |
+| **Opus 5** | Cross-cutting or invariant-bearing work. | Pipeline phase surgery; retrieval fusion or SQL pushdown; the supersession and verification ladders; the baseline schema; anything touching more than three subsystems, or any task whose failure mode is a silent correctness drift rather than a crash. |
+| **Fable 5** | Hardest reasoning, and adversarial verification of the above. | Designing a gate's metric and bar; judge qualification; false-promotion audit methodology; contradiction-veto semantics; reviewing an Opus-tier task before its gate is claimed; any Tier-3 amendment (§4). |
+
+Three standing rules:
+
+- **Escalate on discovery, never on difficulty of typing.** If a Sonnet-tier task turns
+  out to touch an invariant, stop and re-run it at Opus. Note the escalation in the
+  amendment log — a task whose tier was wrong is a planning signal worth keeping.
+- **Measurement design and measurement plumbing are different tasks.** Where a task's
+  acceptance is a number (any gate task), Fable designs the metric and the bar; Sonnet
+  or Opus writes the harness code that produces it. Do not let the model that wrote the
+  code also decide whether its number is good enough.
+- **Never downgrade a task's tier to save budget.** If cost is a concern, cut scope or
+  defer the task; a cheap model on an invariant-bearing task produces work that is
+  expensive to detect and expensive to unwind.
+
+## 3. Definition of done
+
+A task is `done` only when **all** of these hold. There is no partial credit and no
+"done pending review".
+
+- [ ] Every **Done when** checkbox on the task is satisfied.
+- [ ] The task's **Verify** command was actually run, and its real output is recorded in
+      the completion note. Not "should pass" — the output.
+- [ ] The repo-wide floor is green: `cd backend && python -m pytest -q` and, for any
+      frontend change, `cd frontend && npm run typecheck && npm test && npm run build`.
+- [ ] Any task touching the extraction surface additionally has
+      `python scripts/extraction_bench/run_bench.py --algo-only` green (doc 17 §9).
+- [ ] New behaviour has a test. New *invariant-bearing* behaviour has a test that fails
+      if the invariant is removed.
+- [ ] Every process the run started is dead (dev servers, test hosts, watchers).
+- [ ] The work is committed in Conventional Commit form, one logical change per commit.
+- [ ] `progress.md` is updated: status, commit sha, and a one-line note.
+
+**Honest reporting is part of done.** If a check fails, say so with the output and leave
+the task `blocked` or `in-progress`. A task marked `done` with a failing suite is the one
+defect this whole corpus is built to prevent (invariant 14).
+
+## 4. The amendment protocol
+
+**Plans are living documents. An agent that discovers the plan is wrong is required to
+fix the plan, not to quietly work around it.** Reality found during execution outranks a
+plan written in advance — but the design corpus outranks both.
+
+Three tiers, by blast radius:
+
+### Tier 1 — correct it and log it
+
+Task-local reality: a wrong file path, a missing step, a step that turns out
+unnecessary, a task that should be split in two, an underestimated model tier.
+
+**Do:** edit the task in its epic file, append a row to that file's **Amendment log**,
+carry on. No permission needed.
+
+### Tier 2 — correct it, log it, and surface it
+
+The change reaches beyond this task: a newly discovered dependency between tasks, a task
+that belongs in a different epic, changed acceptance criteria, a task that becomes
+unnecessary because another task subsumed it, a new task the plan missed.
+
+**Do:** edit every affected epic file *and* `progress.md`, append to the amendment log
+with the rationale, and call the change out explicitly in the completion report so the
+next scheduling decision accounts for it. Still no permission needed — but it must be
+visible, never silent.
+
+### Tier 3 — stop and escalate
+
+The discovery contradicts the design corpus or the roadmap: a design doc is wrong or
+ambiguous; a gate's definition or bar would have to change; phase order would have to
+change; an honesty tag would have to be reclassified (e.g. calling something
+`exists-today` that is actually `rebuild`); or an invariant would have to be relaxed.
+
+**Do not proceed.** Write up what you found, what the doc says, and why they cannot both
+be true, and stop. The divergence rule holds: the corpus doc wins until a human decides
+otherwise. Tier-3 items are the ones worth a Fable-tier analysis before anyone answers.
+
+### Amendment log format
+
+Every epic file ends with a table. One row per amendment:
+
+| Date | Task | Tier | Change | Why |
+|---|---|---|---|---|
+| 2026-07-26 | T1.12 | 2 | Split into T1.12 + T1.12b; added dependency on T1.07 | Buffer claim needed the `events` writer that T1.07 lands, which the original ordering missed |
+
+## 5. Branch, commit, and review
+
+- **Branch per epic, not per task**: `feat/e1-engine-core`. Tasks are commits on it.
+  A task large enough to want its own branch is a task that should have been split.
+- **Conventional commits**, one logical change each:
+  `<type>(<scope>): <subject>` — 50-char imperative subject, body explaining what and why
+  at 72 columns. Scope is the subsystem (`pipeline`, `retrieval`, `frontend`, `harness`).
+- **Reference the task id in the commit body**, not the subject: `Task: T1.12`.
+- **Review before a gate, not before every task.** Per-task review at this volume costs
+  more than it catches. What must be reviewed: every Opus-tier task, and every task whose
+  output feeds a gate claim — reviewed at Fable tier, adversarially (try to refute the
+  claim, not to confirm it).
+
+## 6. When to stop and ask
+
+Stop, do not improvise, when:
+
+- A Tier-3 amendment surfaced (§4).
+- A gate number lands below its bar. That is the gate working. Report the number; never
+  re-run until it passes, and never widen the bar to fit the result.
+- A task requires a credential, an external service, or a destructive operation on real
+  data that the task did not explicitly authorise.
+- Two design docs disagree with each other.
+- The same task fails verification three times for different reasons — the plan, not the
+  attempt, is probably wrong.
+
+## 7. Environment facts an agent will need
+
+Verified working commands (see `CLAUDE.md` for the full set):
+
+```bash
+# Backend tests — needs darkmem_test on the dev-compose Postgres (127.0.0.1:5433)
+cd backend && python -m pytest -q
+
+# Extraction regression bench (mandatory for extraction-surface changes)
+cd backend && python scripts/extraction_bench/run_bench.py --algo-only
+
+# Frontend gates
+cd frontend && npm run typecheck && npm test && npm run build
+cd frontend && npm run test:e2e          # Playwright, release candidates only
+
+# Migrations (host-side runs must set DATABASE_URL — alembic.ini's URL is ignored)
+cd backend && python -m alembic upgrade head
+
+# Dev stack
+docker compose -f docker-compose.dev.yml up -d
+./scripts/start_dev_server.sh            # alembic upgrade + uvicorn :8000
+cd frontend && npm run dev               # vite :3636, proxies /api /health /ws
+```
+
+**Three databases, three purposes, zero overlap** (doc 17 §9): `darkmem` (real),
+`darkmem_test` (pytest, dropped and migrated every run), `darkmem_bench` (eval corpora).
+A task that points a harness at `darkmem_test`, or a test at `darkmem`, is a defect
+regardless of whether it passes.
