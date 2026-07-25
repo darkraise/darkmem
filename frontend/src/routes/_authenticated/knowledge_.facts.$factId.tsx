@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowLeft, FileQuestion } from "lucide-react"
+import { ArrowLeft, FileQuestion, Library } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
-import { PageHeader } from "darkraise-ui/layout"
+import { useSetPageChrome } from "@/components/app-chrome"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { useDemoFact } from "@/demo/hooks"
 import type { FactLadderEvent } from "@/demo/types"
@@ -62,9 +62,20 @@ function FactDetailPage() {
   const { factId } = Route.useParams()
   const fact = useDemoFact(factId)
 
+  useSetPageChrome({
+    icon: Library,
+    title: "Fact detail",
+    description:
+      "One L2 fact — its sources, ladder history, belief window, and context.",
+    breadcrumbs: [
+      { label: "Knowledge", href: "/knowledge" },
+      { label: "Facts", href: "/knowledge?tab=facts" },
+    ],
+  })
+
   if (!fact) {
     return (
-      <div className="p-6">
+      <div>
         <EmptyState
           icon={<FileQuestion aria-hidden className="h-6 w-6" />}
           title="Fact not found"
@@ -85,21 +96,7 @@ function FactDetailPage() {
   const disputed = fact.verification_status === "disputed"
 
   return (
-    <div className="space-y-4 p-6">
-      <Link
-        to="/knowledge"
-        search={{ tab: "facts" }}
-        className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm transition-colors"
-      >
-        <ArrowLeft aria-hidden className="h-4 w-4" />
-        Knowledge · Facts
-      </Link>
-
-      <PageHeader
-        title="Fact detail"
-        description="One L2 fact — its sources, ladder history, belief window, and context."
-      />
-
+    <div className="space-y-4">
       <div className="border-border bg-card space-y-4 rounded-lg border p-5">
         <Module title="Fact">
           <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">

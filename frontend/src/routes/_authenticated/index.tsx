@@ -3,6 +3,7 @@ import {
   Brain,
   ClipboardCheck,
   FileText,
+  LayoutDashboard,
   ListChecks,
   Timer,
   Workflow,
@@ -15,8 +16,8 @@ import {
   StatLabel,
   StatValue,
 } from "darkraise-ui/components/stat"
-import { PageHeader } from "darkraise-ui/layout"
 import { cn } from "darkraise-ui/lib"
+import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
 import {
   useDemoContributions,
@@ -138,8 +139,9 @@ function DashboardPage() {
   const todayCount = contributions[contributions.length - 1]?.count ?? 0
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader
+    <div className="space-y-4">
+      <PageChrome
+        icon={LayoutDashboard}
         title="Dashboard"
         description="What the vault knows and what changed recently."
       />

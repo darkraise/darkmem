@@ -1,10 +1,17 @@
 import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowLeft, ArrowRight, FileQuestion, Link2, Pencil } from "lucide-react"
+import {
+  ArrowLeft,
+  ArrowRight,
+  Brain,
+  FileQuestion,
+  Link2,
+  Pencil,
+} from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
-import { PageHeader } from "darkraise-ui/layout"
+import { useSetPageChrome } from "@/components/app-chrome"
 import { useDemoMemories } from "@/demo/hooks"
 import { deriveTimeline, distinctProjects } from "@/demo/memories"
 import type { DemoMemory, MemoryTimelineEvent } from "@/demo/types"
@@ -178,9 +185,22 @@ function MemoryDetailPage() {
   const projects = useMemo(() => distinctProjects(memories), [memories])
   const [editOpen, setEditOpen] = useState(false)
 
+  useSetPageChrome({
+    icon: Brain,
+    title: "Memory detail",
+    description: "One memory, its enrichment, and its lineage.",
+    breadcrumbs: [{ label: "Memories", href: "/memories" }],
+    actions: memory ? (
+      <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+        <Pencil className="mr-2 size-4" />
+        Edit
+      </Button>
+    ) : undefined,
+  })
+
   if (!memory) {
     return (
-      <div className="p-6">
+      <div>
         <EmptyState
           icon={<FileQuestion aria-hidden className="h-6 w-6" />}
           title="Memory not found"
@@ -201,33 +221,15 @@ function MemoryDetailPage() {
   const timeline = deriveTimeline(memory)
 
   return (
-    <div className="space-y-4 p-6">
-      <Link
-        to="/memories"
-        className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm transition-colors"
-      >
-        <ArrowLeft aria-hidden className="h-4 w-4" />
-        Memories
-      </Link>
-
-      <div className="flex flex-wrap items-start justify-between gap-4 gap-y-2">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <PageHeader
-            title="Memory detail"
-            description="One memory, its enrichment, and its lineage."
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <LifecycleBadge status={memory.status} />
+        {memory.verification_status && (
+          <VerificationBadge
+            status={memory.verification_status}
+            detail={memory.verification_detail}
           />
-          <LifecycleBadge status={memory.status} />
-          {memory.verification_status && (
-            <VerificationBadge
-              status={memory.verification_status}
-              detail={memory.verification_detail}
-            />
-          )}
-        </div>
-        <Button variant="outline" onClick={() => setEditOpen(true)}>
-          <Pencil className="mr-2 size-4" />
-          Edit
-        </Button>
+        )}
       </div>
 
       <div className="border-border bg-card space-y-4 rounded-lg border p-5">

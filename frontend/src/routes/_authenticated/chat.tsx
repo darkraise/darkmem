@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { PageHeader } from "darkraise-ui/layout"
+import { MessageSquare } from "lucide-react"
+import { PageChrome } from "@/components/app-chrome"
 import { useDemoChatThreads } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import { DemoThreadList } from "@/features/chat/components/demo-thread-list"
@@ -40,8 +41,9 @@ function ChatPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader
+    <div className="space-y-4">
+      <PageChrome
+        icon={MessageSquare}
         title="Chat"
         description="Conversation over memory — every turn's retrieval context stays visible, labelled with the same vocabulary Memories uses."
       />

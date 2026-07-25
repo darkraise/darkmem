@@ -5,7 +5,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
-import { PageHeader } from "darkraise-ui/layout"
+import { Library } from "lucide-react"
+import { PageChrome } from "@/components/app-chrome"
 import { FactsTab } from "@/features/knowledge/components/facts-tab"
 import { ArticlesTab } from "@/features/knowledge/components/articles-tab"
 import { TopicsTab } from "@/features/knowledge/components/topics-tab"
@@ -28,8 +29,9 @@ function KnowledgePage() {
   const navigate = Route.useNavigate()
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader
+    <div className="space-y-4">
+      <PageChrome
+        icon={Library}
         title="Knowledge"
         description="The verified vault: facts, articles, topics, and the review queue."
       />

@@ -220,7 +220,60 @@
   translate: none;
 }
 
-/* Full-bleed pages (graph canvases) cancel the layout shell's p-6 content
+/* App chrome (owner review Pass 1). The page identity (breadcrumb + icon +
+   title + description + actions) renders inside the layout header's
+   `dr-layout-header-end` slot, which ships as a right-aligned ml-auto strip.
+   Let it fill the bar and let the header grow to fit the two-row block.
+   Scoped to sidebar/stacked; the top-nav header also carries the primary nav
+   and stays single-row (the chrome block hides its crumbs/description rows
+   there, below). Unlayered so these beat the @layer components defaults. */
+.dr-sidebar-layout .dr-layout-header,
+.dr-stacked-layout .dr-layout-header {
+  height: auto;
+  min-height: 3.5rem;
+  padding-block: 0.5rem;
+}
+.dr-sidebar-layout .dr-layout-header-end,
+.dr-stacked-layout .dr-layout-header-end {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 0;
+}
+.dr-top-nav-layout .dm-chrome-crumbs,
+.dr-top-nav-layout .dm-chrome-desc {
+  display: none;
+}
+
+/* Search moved into the sidebar (SidebarSearch in the sidebarHeader slot).
+   LayoutHeader hardcodes its own SearchCommand when given no children, so
+   hide that trigger in the sidebar layout only — its Ctrl+K binding is
+   pre-empted by SidebarSearch's capture-phase listener. Top-nav/stacked
+   have no sidebar slot and keep the built-in header search. */
+.dr-sidebar-layout .dr-layout-header > .dr-search-command-trigger {
+  display: none;
+}
+
+/* Sidebar search trigger: icon-only when the sidebar is collapsed. */
+.dr-sidebar-layout-aside[data-collapsed="true"] .dm-sidebar-search-label,
+.dr-sidebar-layout-aside[data-collapsed="true"] .dm-sidebar-search-kbd {
+  display: none;
+}
+.dr-sidebar-layout-aside[data-collapsed="true"] .dr-search-command-trigger {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* Tighter content margins: the shell shipped p-6 (24px) and most screens
+   stacked their own p-6 on top. Route-level padding was removed; the shell
+   padding is reduced here. The full-bleed rule below still wins (higher
+   specificity) and zeroes it for graph canvases. */
+.dr-sidebar-layout-content,
+.dr-stacked-layout-content,
+.dr-top-nav-layout-content {
+  padding: 1rem 1.25rem;
+}
+
+/* Full-bleed pages (graph canvases) cancel the layout shell's content
    padding so the content spreads edge-to-edge. Unlayered, so it overrides the
    @layer components `.dr-*-layout-content` padding regardless of layout mode. */
 body.content-full-bleed .dr-sidebar-layout-content,

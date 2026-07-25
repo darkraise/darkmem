@@ -1,9 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowLeft, FileQuestion, GitBranch, TriangleAlert } from "lucide-react"
+import {
+  ArrowLeft,
+  FileQuestion,
+  GitBranch,
+  Library,
+  TriangleAlert,
+} from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Progress } from "darkraise-ui/components/progress"
-import { PageHeader } from "darkraise-ui/layout"
+import { useSetPageChrome } from "@/components/app-chrome"
 import { cn } from "darkraise-ui/lib"
 import {
   LayerChip,
@@ -111,9 +117,20 @@ function ArticleDetailPage() {
   const article = useDemoArticle(articleId)
   const facts = useDemoFacts()
 
+  useSetPageChrome({
+    icon: Library,
+    title: "Article detail",
+    description:
+      "One L3 article — synthesised, grounded prose whose every claim links to the verified fact that entails it.",
+    breadcrumbs: [
+      { label: "Knowledge", href: "/knowledge" },
+      { label: "Articles", href: "/knowledge?tab=articles" },
+    ],
+  })
+
   if (!article) {
     return (
-      <div className="p-6">
+      <div>
         <EmptyState
           icon={<FileQuestion aria-hidden className="h-6 w-6" />}
           title="Article not found"
@@ -135,21 +152,7 @@ function ArticleDetailPage() {
   const successor = article.superseded_by
 
   return (
-    <div className="space-y-4 p-6">
-      <Link
-        to="/knowledge"
-        search={{ tab: "articles" }}
-        className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm transition-colors"
-      >
-        <ArrowLeft aria-hidden className="h-4 w-4" />
-        Knowledge · Articles
-      </Link>
-
-      <PageHeader
-        title="Article detail"
-        description="One L3 article — synthesised, grounded prose whose every claim links to the verified fact that entails it."
-      />
-
+    <div className="space-y-4">
       <div className="border-border bg-card max-w-4xl space-y-4 rounded-lg border p-5">
         <Module title="Article">
           <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">

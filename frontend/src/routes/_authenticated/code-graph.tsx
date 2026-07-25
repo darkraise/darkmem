@@ -78,6 +78,7 @@ import {
   useCodeGraphTheme,
   communityColor,
 } from "@/features/graph/lib/code-graph-theme"
+import { useSetPageChrome } from "@/components/app-chrome"
 
 export const Route = createFileRoute("/_authenticated/code-graph")({
   component: CodeGraphPage,
@@ -127,6 +128,11 @@ function CodeGraphPage() {
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   useFullBleedContent()
+  useSetPageChrome({
+    icon: Network,
+    title: "Code Graph",
+    description: "The symbol graph of an indexed repository.",
+  })
 
   const [selectedNode, setSelectedNode] = useState<{
     id: string

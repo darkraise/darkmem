@@ -30,21 +30,79 @@ type LinkProps = {
   onClick?: (e: MouseEvent<HTMLAnchorElement>) => void
 }
 
+export interface NavHrefTarget {
+  to: string
+  search?: Record<string, string>
+}
+
+/**
+ * Nav hrefs may carry a query string (`/code?tab=graph`); TanStack's `to`
+ * is a bare path, so split the href into `{ to, search }` before handing it
+ * to Link/navigate.
+ */
+export function splitNavHref(href: string): NavHrefTarget {
+  const qIndex = href.indexOf("?")
+  if (qIndex === -1) return { to: href }
+  const search: Record<string, string> = {}
+  for (const [key, value] of new URLSearchParams(href.slice(qIndex + 1))) {
+    search[key] = value
+  }
+  return { to: href.slice(0, qIndex), search }
+}
+
+/**
+ * Active matching for nav links. darkraise-ui's SidebarItem passes
+ * `activeExact: true` for every leaf, which — mapped to TanStack's
+ * `{ exact: true }` — deselected the parent nav item on detail views
+ * (`/memories/$id` no longer matched `/memories`). Instead: "/" matches
+ * exactly (anything else would make it always active), every other path
+ * matches itself or a strict path-segment prefix (so `/memories-old`
+ * never matches `/memories`), and an href query string additionally
+ * requires those params to equal the current (validated) search — which
+ * lets the three `/code?tab=...` children highlight independently.
+ */
+export function isNavHrefActive(
+  href: string,
+  pathname: string,
+  search: Record<string, unknown>,
+): boolean {
+  const target = splitNavHref(href)
+  const pathActive =
+    target.to === "/"
+      ? pathname === "/"
+      : pathname === target.to || pathname.startsWith(target.to + "/")
+  if (!pathActive) return false
+  if (!target.search) return true
+  return Object.entries(target.search).every(
+    ([key, value]) => String(search[key] ?? "") === value,
+  )
+}
+
 function AdapterLink({
   to,
   className,
   activeClassName,
-  activeExact,
   style,
   children,
   onClick,
 }: LinkProps) {
+  const pathname = useTanstackLocation({ select: (l) => l.pathname })
+  const search = useTanstackLocation({ select: (l) => l.search }) as Record<
+    string,
+    unknown
+  >
+  const target = splitNavHref(to)
+  const active =
+    activeClassName !== undefined && isNavHrefActive(to, pathname, search)
   return (
     <TanstackLink
-      to={to}
-      className={className}
-      activeProps={activeClassName ? { className: activeClassName } : undefined}
-      activeOptions={activeExact ? { exact: true } : undefined}
+      to={target.to}
+      search={target.search}
+      className={
+        active && activeClassName
+          ? [className, activeClassName].filter(Boolean).join(" ")
+          : className
+      }
       style={style}
       onClick={onClick}
     >
@@ -58,7 +116,8 @@ function useAdapterNavigate(): (to: string) => void {
   return (to: string) => {
     // Adapter surface accepts a plain path string; delegate to TanStack's
     // object-form navigate so type-safe params still flow through in the app.
-    navigate({ to })
+    const target = splitNavHref(to)
+    navigate({ to: target.to, search: target.search })
   }
 }
 

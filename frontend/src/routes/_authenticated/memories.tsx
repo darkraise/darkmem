@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ChevronDown, Inbox, Plus, Search, SearchX, X } from "lucide-react"
+import {
+  Brain,
+  ChevronDown,
+  Inbox,
+  Plus,
+  Search,
+  SearchX,
+  X,
+} from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
@@ -12,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import { PageHeader } from "darkraise-ui/layout"
+import { PageChrome } from "@/components/app-chrome"
 import { cn } from "darkraise-ui/lib"
 import { relativeTime } from "@/lib/format"
 import { useDemoMemories } from "@/demo/hooks"
@@ -160,17 +168,18 @@ function MemoriesPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4 gap-y-2">
-        <PageHeader
-          title="Memories"
-          description={`${memories.length.toLocaleString()} captured — the L0 capture-and-search surface`}
-        />
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 size-4" />
-          Create memory
-        </Button>
-      </div>
+    <div className="space-y-4">
+      <PageChrome
+        icon={Brain}
+        title="Memories"
+        description={`${memories.length.toLocaleString()} captured — the L0 capture-and-search surface`}
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 size-4" />
+            Create memory
+          </Button>
+        }
+      />
 
       {/* Search bar: query + the two distinct scope controls. The project
           pill is the isolation scope; the context chip declares the session

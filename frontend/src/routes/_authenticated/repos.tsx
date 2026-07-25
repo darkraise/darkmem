@@ -45,10 +45,10 @@ import {
   DialogFooter,
   DialogClose,
 } from "darkraise-ui/components/dialog"
-import { PageHeader } from "darkraise-ui/layout"
 import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
-import { Plus, RefreshCw, X } from "lucide-react"
+import { FolderGit2, Plus, RefreshCw, X } from "lucide-react"
+import { PageChrome } from "@/components/app-chrome"
 import { EditRepoDialog } from "@/features/repos/components/edit-repo-dialog"
 import { relativeTime } from "@/lib/format"
 import { ignorePortaledOverlayPointerDown } from "@/lib/portal-overlays"
@@ -475,8 +475,8 @@ function RepositoriesPage() {
   ]
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader title="Repositories" />
+    <div className="space-y-4">
+      <PageChrome icon={FolderGit2} title="Repositories" />
 
       <Tabs
         value={tab}

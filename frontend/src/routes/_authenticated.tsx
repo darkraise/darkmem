@@ -6,11 +6,14 @@ import {
 } from "@tanstack/react-router"
 import {
   Activity,
+  BookOpen,
   Brain,
   Code2,
+  FolderGit2,
   LayoutDashboard,
   Library,
   MessageSquare,
+  Network,
   Settings,
   Waypoints,
 } from "lucide-react"
@@ -27,6 +30,11 @@ import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
 import { DEMO } from "@/demo/flag"
 import { DetailLevelToggle } from "@/components/darkmem"
+import {
+  AppPageHeader,
+  BackToTop,
+  SidebarSearch,
+} from "@/components/app-chrome"
 
 const nav: NavGroup[] = [
   {
@@ -41,7 +49,20 @@ const nav: NavGroup[] = [
   {
     label: "Explore",
     items: [
-      { label: "Code", href: "/code", icon: Code2 },
+      {
+        label: "Code",
+        href: "/code",
+        icon: Code2,
+        children: [
+          {
+            label: "Repositories",
+            href: "/code?tab=repositories",
+            icon: FolderGit2,
+          },
+          { label: "Code Graph", href: "/code?tab=graph", icon: Network },
+          { label: "Code Wiki", href: "/code?tab=wiki", icon: BookOpen },
+        ],
+      },
       { label: "Memory Graph", href: "/memory-graph", icon: Waypoints },
     ],
   },
@@ -108,12 +129,19 @@ function AuthenticatedLayout() {
   return (
     <Shell
       nav={nav}
-      headerSlot={<DetailLevelToggle />}
+      headerSlot={
+        <>
+          <AppPageHeader />
+          <DetailLevelToggle />
+        </>
+      }
+      sidebarHeader={<SidebarSearch nav={nav} />}
       user={{ name: DEMO ? "Demo" : "Admin", email: "" }}
       onLogout={handleLogout}
     >
       {!DEMO && <LiveUpdates />}
       <Outlet />
+      <BackToTop />
     </Shell>
   )
 }

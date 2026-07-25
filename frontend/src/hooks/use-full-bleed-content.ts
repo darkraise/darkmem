@@ -6,9 +6,10 @@ import { useEffect } from "react"
  * class + a rule in globals.css), so a full-height canvas (graph pages) can
  * spread edge-to-edge. Padding is restored on unmount for normal pages.
  */
-export function useFullBleedContent() {
+export function useFullBleedContent(enabled = true) {
   useEffect(() => {
+    if (!enabled) return
     document.body.classList.add("content-full-bleed")
     return () => document.body.classList.remove("content-full-bleed")
-  }, [])
+  }, [enabled])
 }

@@ -3,7 +3,8 @@ import { useUnifiedGraph } from "@/hooks/api"
 import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "darkraise-ui/components/button"
-import { Filter, PanelRightClose } from "lucide-react"
+import { Filter, PanelRightClose, Waypoints } from "lucide-react"
+import { useSetPageChrome } from "@/components/app-chrome"
 import { GraphSkeleton } from "@/features/graph/components/graph-skeleton"
 import { MiniGraph } from "@/features/graph/components/mini-graph"
 import { GraphFilterPanel } from "@/features/graph/components/graph-filter-panel"
@@ -31,6 +32,11 @@ type ViewMode = "2d" | "3d"
 
 function UnifiedGraphPage() {
   useFullBleedContent()
+  useSetPageChrome({
+    icon: Waypoints,
+    title: "Unified Graph",
+    description: "Memories, entities, and their similarity structure.",
+  })
   const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
   const [, setGraphReady] = useState(false)

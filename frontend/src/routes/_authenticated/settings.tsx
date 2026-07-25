@@ -5,7 +5,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
-import { PageHeader } from "darkraise-ui/layout"
+import { Settings } from "lucide-react"
+import { PageChrome } from "@/components/app-chrome"
 import { FlagsTab } from "@/features/settings/components/flags-tab"
 import { LLMTab } from "@/features/settings/components/llm-tab"
 import { JobsSettingsTab } from "@/features/settings/components/jobs-settings-tab"
@@ -37,8 +38,9 @@ function SettingsPage() {
   const navigate = Route.useNavigate()
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader
+    <div className="space-y-4">
+      <PageChrome
+        icon={Settings}
         title="Settings"
         description="Configuration: tunables, LLM purposes, jobs, security posture, maintenance, and distribution."
       />

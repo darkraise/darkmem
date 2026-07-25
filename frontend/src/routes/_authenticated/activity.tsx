@@ -5,7 +5,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
-import { PageHeader } from "darkraise-ui/layout"
+import { Activity } from "lucide-react"
+import { PageChrome } from "@/components/app-chrome"
 import { DAY_DRILL_DEFAULT } from "@/demo/data/activity-curated"
 import { isValidDay } from "@/demo/activity"
 import { PipelineTab } from "@/features/activity/components/pipeline-tab"
@@ -44,8 +45,9 @@ function ActivityPage() {
   const navigate = Route.useNavigate()
 
   return (
-    <div className="space-y-4 p-6">
-      <PageHeader
+    <div className="space-y-4">
+      <PageChrome
+        icon={Activity}
         title="Activity"
         description="What the system is doing: pipeline runs, jobs, monitors, and digests."
       />
