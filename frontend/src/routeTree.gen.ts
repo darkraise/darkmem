@@ -25,6 +25,8 @@ import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/c
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
 import { Route as AuthenticatedMemoriesMemoryIdRouteImport } from './routes/_authenticated/memories_.$memoryId'
+import { Route as AuthenticatedKnowledgeFactsFactIdRouteImport } from './routes/_authenticated/knowledge_.facts.$factId'
+import { Route as AuthenticatedKnowledgeArticlesArticleIdRouteImport } from './routes/_authenticated/knowledge_.articles.$articleId'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -107,6 +109,18 @@ const AuthenticatedMemoriesMemoryIdRoute =
     path: '/memories/$memoryId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedKnowledgeFactsFactIdRoute =
+  AuthenticatedKnowledgeFactsFactIdRouteImport.update({
+    id: '/knowledge_/facts/$factId',
+    path: '/knowledge/facts/$factId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedKnowledgeArticlesArticleIdRoute =
+  AuthenticatedKnowledgeArticlesArticleIdRouteImport.update({
+    id: '/knowledge_/articles/$articleId',
+    path: '/knowledge/articles/$articleId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -123,6 +137,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
   '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
+  '/knowledge/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
+  '/knowledge/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
@@ -139,6 +155,8 @@ export interface FileRoutesByTo {
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
   '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
+  '/knowledge/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
+  '/knowledge/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -158,6 +176,8 @@ export interface FileRoutesById {
   '/_guest/setup': typeof GuestSetupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/memories_/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
+  '/_authenticated/knowledge_/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
+  '/_authenticated/knowledge_/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -176,6 +196,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/memories/$memoryId'
+    | '/knowledge/articles/$articleId'
+    | '/knowledge/facts/$factId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -192,6 +214,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/memories/$memoryId'
+    | '/knowledge/articles/$articleId'
+    | '/knowledge/facts/$factId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -210,6 +234,8 @@ export interface FileRouteTypes {
     | '/_guest/setup'
     | '/_authenticated/'
     | '/_authenticated/memories_/$memoryId'
+    | '/_authenticated/knowledge_/articles/$articleId'
+    | '/_authenticated/knowledge_/facts/$factId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -331,6 +357,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMemoriesMemoryIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/knowledge_/facts/$factId': {
+      id: '/_authenticated/knowledge_/facts/$factId'
+      path: '/knowledge/facts/$factId'
+      fullPath: '/knowledge/facts/$factId'
+      preLoaderRoute: typeof AuthenticatedKnowledgeFactsFactIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/knowledge_/articles/$articleId': {
+      id: '/_authenticated/knowledge_/articles/$articleId'
+      path: '/knowledge/articles/$articleId'
+      fullPath: '/knowledge/articles/$articleId'
+      preLoaderRoute: typeof AuthenticatedKnowledgeArticlesArticleIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -347,6 +387,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedMemoriesMemoryIdRoute: typeof AuthenticatedMemoriesMemoryIdRoute
+  AuthenticatedKnowledgeArticlesArticleIdRoute: typeof AuthenticatedKnowledgeArticlesArticleIdRoute
+  AuthenticatedKnowledgeFactsFactIdRoute: typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -362,6 +404,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedMemoriesMemoryIdRoute: AuthenticatedMemoriesMemoryIdRoute,
+  AuthenticatedKnowledgeArticlesArticleIdRoute:
+    AuthenticatedKnowledgeArticlesArticleIdRoute,
+  AuthenticatedKnowledgeFactsFactIdRoute:
+    AuthenticatedKnowledgeFactsFactIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

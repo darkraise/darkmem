@@ -1,58 +1,67 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { PageHeader } from "darkraise-ui/layout"
-import { ClipboardCheck, FileText, ListChecks, Tags } from "lucide-react"
 import {
-  PlaceholderTabs,
-  type PlaceholderTab,
-} from "@/components/placeholder-tabs"
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
+import { PageHeader } from "darkraise-ui/layout"
+import { FactsTab } from "@/features/knowledge/components/facts-tab"
+import { ArticlesTab } from "@/features/knowledge/components/articles-tab"
+import { TopicsTab } from "@/features/knowledge/components/topics-tab"
+import { ReviewTab } from "@/features/knowledge/components/review-tab"
+
+const TAB_VALUES = ["facts", "articles", "topics", "review"] as const
+export type KnowledgeTab = (typeof TAB_VALUES)[number]
 
 export const Route = createFileRoute("/_authenticated/knowledge")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: TAB_VALUES.includes(search.tab as KnowledgeTab)
+      ? (search.tab as KnowledgeTab)
+      : undefined,
+  }),
   component: KnowledgePage,
 })
 
-const TABS: PlaceholderTab[] = [
-  {
-    value: "facts",
-    label: "Facts",
-    icon: <ListChecks />,
-    title: "The fact ledger lands here",
-    description:
-      "L2 knowledge triples with the verification ladder, sources, and context scopes. Built in Wave 2.",
-  },
-  {
-    value: "articles",
-    label: "Articles",
-    icon: <FileText />,
-    title: "Synthesised articles land here",
-    description:
-      "L3 living documents with citations back to the facts and memories that support them. Built in Wave 2.",
-  },
-  {
-    value: "topics",
-    label: "Topics",
-    icon: <Tags />,
-    title: "Topic communities land here",
-    description:
-      "Clustered themes across the vault, with per-topic drill-down. Built in Wave 2.",
-  },
-  {
-    value: "review",
-    label: "Review",
-    icon: <ClipboardCheck />,
-    title: "The review queue lands here",
-    description:
-      "Disputed and candidate facts awaiting a human decision — ratify, dispute, or archive. Built in Wave 2.",
-  },
-]
-
 function KnowledgePage() {
+  const { tab } = Route.useSearch()
+  const navigate = Route.useNavigate()
+
   return (
     <div className="space-y-4 p-6">
       <PageHeader
         title="Knowledge"
         description="The verified vault: facts, articles, topics, and the review queue."
       />
-      <PlaceholderTabs tabs={TABS} />
+      <Tabs
+        value={tab ?? "facts"}
+        onValueChange={(value) => {
+          if (TAB_VALUES.includes(value as KnowledgeTab)) {
+            void navigate({ search: { tab: value as KnowledgeTab } })
+          }
+        }}
+      >
+        <div className="overflow-x-auto">
+          <TabsList>
+            <TabsTrigger value="facts">Facts</TabsTrigger>
+            <TabsTrigger value="articles">Articles</TabsTrigger>
+            <TabsTrigger value="topics">Topics</TabsTrigger>
+            <TabsTrigger value="review">Review</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="facts" className="pt-4">
+          <FactsTab />
+        </TabsContent>
+        <TabsContent value="articles" className="pt-4">
+          <ArticlesTab />
+        </TabsContent>
+        <TabsContent value="topics" className="pt-4">
+          <TopicsTab />
+        </TabsContent>
+        <TabsContent value="review" className="pt-4">
+          <ReviewTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
