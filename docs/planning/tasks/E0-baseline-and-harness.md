@@ -27,7 +27,7 @@ That plan's Tasks 1–2 are landed; these tasks complete it.
 
 #### T0.01 — Append-only run ledger (`benchlib/ledger.py`)
 
-`Model: Sonnet 5` · `Depends: —` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: —` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
 
 **What.** A JSONL run ledger: `record(run)` appends, `read_runs()` replays. One line per
 eval run, carrying run id, UTC timestamp, corpus id, fingerprint, git sha, metric
@@ -44,7 +44,7 @@ diffable against the run that preceded it.
 
 #### T0.02 — Corpus loader (`benchlib/corpus.py`)
 
-`Model: Haiku 4.5` · `Depends: —` · `Doc: 17 §3` · `Tag: target-new` · `Gate: G-A`
+`Model: Haiku 4.5` · `Size: S` · `Depends: —` · `Doc: 17 §3` · `Tag: target-new` · `Gate: G-A`
 
 **What.** `load_corpus(path) -> list[entry]`, parsing a corpus JSON into validated
 entries. Pure parsing — no DB, no pipeline knowledge.
@@ -59,7 +59,7 @@ entries. Pure parsing — no DB, no pipeline knowledge.
 
 #### T0.03 — Offline ingest driver (`benchlib/ingest.py`)
 
-`Model: Sonnet 5` · `Depends: T0.01, T0.02` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.01, T0.02` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Compose bench DB + caching LLM + the **real** `ProcessingPipeline`: construct
 `ProcessingPipeline(caching_llm, bench_session_factory)` and call `process_batch`. The
@@ -77,7 +77,7 @@ harness must measure the shipping pipeline, never a reimplementation of it.
 
 #### T0.04 — `run_smoke.py` and the affordability gate
 
-`Model: Sonnet 5` · `Depends: T0.03` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.03` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The human/CI entry point: reset the bench DB, ingest the smoke corpus twice,
 and assert the second run makes **zero** live LLM calls. Freeze the ingestion-granularity
@@ -95,7 +95,7 @@ decision in `benchlib/FROZEN.md`.
 
 #### T0.05 — Record the as-is extraction F1 baseline
 
-`Model: Fable 5` · `Depends: T0.04` · `Doc: 17 §3, 20 §4` · `Tag: exists-today` · `Gate: G-A`
+`Model: Fable 5` · `Size: M` · `Depends: T0.04` · `Doc: 17 §3, 20 §4` · `Tag: exists-today` · `Gate: G-A`
 
 **What.** G-A requires reproducing "the recorded as-is baseline" — which only exists once
 somebody records it. Run the F1 bench against today's shipping extraction on both
@@ -128,7 +128,7 @@ corpus. Independent of Lane C entirely.
 
 #### T0.06 — Retrieval gold set + query-type slices
 
-`Model: Fable 5` · `Depends: T0.02` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Fable 5` · `Size: M` · `Depends: T0.02` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Build the gold query→relevant-memory pairs, **sliced by query type**. The
 slicing is the point: a flattering aggregate that hides a collapsed paraphrase slice is
@@ -149,7 +149,7 @@ and fact slices weakest — start there.
 
 #### T0.07 — Sliced accuracy scorer (MRR / hit@K)
 
-`Model: Sonnet 5` · `Depends: T0.06` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.06` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Score retrieval per slice and in aggregate. Report per-slice always; the
 aggregate never replaces the slices.
@@ -165,7 +165,7 @@ aggregate never replaces the slices.
 
 #### T0.08 — Latency and token-cost twin
 
-`Model: Sonnet 5` · `Depends: T0.07` · `Doc: 17 §2, §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.07` · `Doc: 17 §2, §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Instrument p95 latency and token cost on every eval run. **Accuracy never
 ships without its twin** — this is a doctrine, not a report field, so the runner must be
@@ -181,7 +181,7 @@ unable to emit an accuracy number without one.
 
 #### T0.09 — Full-context baseline comparator
 
-`Model: Opus 5` · `Depends: T0.03, T0.08` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Size: M` · `Depends: T0.03, T0.08` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The comparison that makes retrieval numbers mean anything: the same gold
 queries answered by stuffing full context, so every retrieval claim reads "as good as
@@ -198,7 +198,7 @@ full context at a fraction of the cost" — or admits it is not.
 
 #### T0.10 — Retrieval eval runner + dated report
 
-`Model: Sonnet 5` · `Depends: T0.09` · `Doc: 17 §4, §9` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.09` · `Doc: 17 §4, §9` · `Tag: target-new` · `Gate: G-A`
 
 **What.** One command that runs the eval, writes a dated report file, and appends to the
 ledger. Reports are dated files on disk, not a service.
@@ -223,7 +223,7 @@ the one before it.
 
 #### T0.11 — Target schema snapshot + baseline design note
 
-`Model: Opus 5` · `Depends: —` · `Doc: 19 §2–§3, 04` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Size: L` · `Depends: —` · `Doc: 19 §2–§3, 04` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Before writing DDL: reconcile doc 04's target data model against the six
 existing revisions and produce the explicit object inventory the baseline must land —
@@ -240,25 +240,56 @@ task that prevents the baseline from being an accident of migration history.
 **Verify.** Inventory reviewed at Fable tier against docs 04 and 19 — every object
 traced to an owning doc section, no unexplained entries.
 
-#### T0.12 — The single baseline Alembic revision
+#### T0.12a — Baseline part 1: core memory, graph, and taxonomy tables
 
-`Model: Opus 5` · `Depends: T0.11` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Size: M` · `Depends: T0.11` · `Doc: 19 §2, 04` · `Tag: target-new` · `Gate: G-A`
 
-**What.** Collapse the six revisions into one greenfield baseline written as plain SQL.
-Regenerable freely until the homelab-cutover freeze event (T0.15) — this is the one
-window where the schema can be rewritten rather than migrated.
+**What.** The first pass over the **one** baseline revision file. `memories`, `entities`,
+`entity_relations`, tags, `config`, `embedders`. Plain SQL.
+
+**Note the file, not the revision count.** T0.12a–c are three passes building up a
+**single** revision — the single-revision property is asserted in CI (T0.15) and is load
+bearing. They serialise: a, then b, then c, one owner (runbook §8).
 
 **Done when:**
-- [ ] One revision creates the entire target schema from empty
-- [ ] `alembic upgrade head` on an empty database boots clean
-- [ ] Plain SQL throughout — no ORM-only construct load-bearing
-- [ ] The full backend suite passes against a database built from the baseline alone
-- [ ] The old revisions are removed, not chained behind it
+- [ ] The named tables, their constraints and indexes exist from empty
+- [ ] `chk_superseded_has_pointer` present and enforced
+- [ ] Plain SQL — no ORM-only construct load-bearing
 
-**Verify.** `conftest.py` overwrites `DATABASE_URL` with `TEST_DATABASE_URL`, so the
-second command must set the latter or it silently tests `darkmem_test` instead:
+**Verify.** `cd backend && DATABASE_URL=$CHECK_URL python -m alembic upgrade head` on an
+empty scratch database.
+
+#### T0.12b — Baseline part 2: knowledge, code, jobs, and events tables
+
+`Model: Opus 5` · `Size: M` · `Depends: T0.12a` · `Doc: 19 §2, 04` · `Tag: target-new` · `Gate: G-A`
+
+**What.** Second pass over the same file: `knowledge_triples`, `fact_sources`, articles and
+citations, `projects`, `repositories` and the `code_*` tables, job state, and `events` with
+its partitioning.
+
+**Done when:**
+- [ ] All named tables exist with their constraints
+- [ ] `events` is `RANGE(created_at)` partitioned (the trigger is T1.06's)
+- [ ] Still one revision — no 0002 appears
+
+**Verify.** As T0.12a, plus `alembic history` shows exactly one revision.
+
+#### T0.12c — Baseline part 3: partition templates, indexes, full-suite green
+
+`Model: Opus 5` · `Size: M` · `Depends: T0.12b` · `Doc: 19 §2–§3, 04 §5.3` · `Tag: target-new` · `Gate: G-A`
+
+**What.** The four per-fingerprint embedding templates, the GIN index on
+`memories.technologies`, remaining indexes, and the proof that the whole thing carries the
+existing suite.
+
+**Done when:**
+- [ ] All four templates present (their inert labelling is T0.13's)
+- [ ] The GIN index on `technologies` exists — supersession and retrieval both read it
+- [ ] The **full backend suite passes** against a database built from the baseline alone
+- [ ] The six old revisions are removed, not chained behind it
+
+**Verify.** `conftest.py` overwrites `DATABASE_URL`, so the suite needs `TEST_DATABASE_URL`:
 ```bash
-PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_baseline_check;"
 cd backend
 export CHECK_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_baseline_check
 DATABASE_URL=$CHECK_URL python -m alembic upgrade head
@@ -267,7 +298,7 @@ TEST_DATABASE_URL=$CHECK_URL python -m pytest -q
 
 #### T0.13 — Dormant objects landed inert
 
-`Model: Sonnet 5` · `Depends: T0.12` · `Doc: 19 §3, 04 §5.3` · `Tag: target-new, inert` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.12c` · `Doc: 19 §3, 04 §5.3` · `Tag: target-new, inert` · `Gate: G-A`
 
 **What.** Land `repo_ids[]` on `entities`/`entity_relations`, the empty
 `documents`/`blocks` tables, and all four per-fingerprint partition templates (block,
@@ -284,7 +315,7 @@ relation, article, `triple_embeddings`) — reviewed, frozen, **with no writer**
 
 #### T0.14 — Boot-time partition reconciliation, idempotent
 
-`Model: Opus 5` · `Depends: T0.13` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Size: M` · `Depends: T0.13` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
 **What.** At every startup, loop the `embedders` registry and run the parameterised DDL
 that guarantees each fingerprint's four child tables exist. Register-before-insert, and
@@ -302,7 +333,7 @@ manual double-boot against a scratch database.
 
 #### T0.15 — Freeze event + regeneration protocol
 
-`Model: Haiku 4.5` · `Depends: T0.14` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
+`Model: Haiku 4.5` · `Size: S` · `Depends: T0.14` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Write down two rules, not one. First the rule that ends the regenerate-freely
 window: after the homelab cutover (T1.54) the baseline is frozen and every later change is
@@ -330,7 +361,7 @@ revision is added.
 
 #### T0.16 — Scripted merge-gate runner
 
-`Model: Sonnet 5` · `Depends: T0.10, T0.14` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.10, T0.14` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
 
 **What.** There is no hosted CI — the gate is a *discipline, scripted*. One command runs
 the whole floor so the posture is command-shaped and a future CI pipeline is a
@@ -348,7 +379,7 @@ script exits non-zero naming that gate.
 
 #### T0.17 — G-A evidence run and ledger entry
 
-`Model: Fable 5` · `Depends: T0.05, T0.16` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Fable 5` · `Size: M` · `Depends: T0.05, T0.16` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Actually clear G-A: run every gate probe, record the measured numbers, and
 write the verdict. Adversarial — the job is to find the reason the gate should *not*

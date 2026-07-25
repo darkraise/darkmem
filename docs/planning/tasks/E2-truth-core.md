@@ -22,7 +22,7 @@ never availability — candidates are served labelled, never withheld (invariant
 
 #### T2.01 — `knowledge_triples` rebuild: the bi-temporal belief axis
 
-`Model: Opus 5` · `Depends: T1.50, T1.06` · `Doc: 08 §3–§4` · `Tag: rebuild + target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T1.50, T1.06` · `Doc: 08 §3–§4` · `Tag: rebuild + target-new` · `Gate: G-C`
 
 **What.** Two orthogonal axes: belief (open → window-closed → expired) and verification
 (candidate → corroborated → confirmed, plus disputed). Conflating them is the modelling
@@ -37,7 +37,7 @@ error this rebuild exists to fix — a fact can be well-verified and no longer c
 
 #### T2.02 — `fact_sources` and origin-diversity counting
 
-`Model: Opus 5` · `Depends: T2.01, T1.11` · `Doc: 08 §4.1` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.01, T1.11` · `Doc: 08 §4.1` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Promotion counts `COUNT(DISTINCT origin_key)` over `fact_sources` — **never
 rows**. Row-counting manufactures agreement out of one chatty source; this is the single
@@ -52,7 +52,7 @@ most important arithmetic in the epic.
 
 #### T2.03 — The verification ladder
 
-`Model: Opus 5` · `Depends: T2.02` · `Doc: 08 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.02` · `Doc: 08 §4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Promotion from candidate → corroborated on distinct-origin diversity, with N
 and the diversity rule as `config` rows.
@@ -66,7 +66,7 @@ and the diversity rule as `config` rows.
 
 #### T2.04 — The contradiction veto is absolute
 
-`Model: Opus 5` · `Depends: T2.03` · `Doc: 08 §4.2` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.03` · `Doc: 08 §4.2` · `Tag: target-new` · `Gate: G-C`
 
 **What.** A single non-echo contradiction over an overlapping validity window vetoes to
 `disputed`. Absolute — not a weight, not a score, not tunable.
@@ -81,7 +81,7 @@ and the diversity rule as `config` rows.
 
 #### T2.05 — Human ratification is the only path to `confirmed`
 
-`Model: Opus 5` · `Depends: T2.03` · `Doc: 08 §4.4` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: S` · `Depends: T2.03` · `Doc: 08 §4.4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Only a human ratifying, writing a `human`-kind `fact_sources` row, reaches
 `confirmed`. No machine path exists.
@@ -95,7 +95,7 @@ and the diversity rule as `config` rows.
 
 #### T2.06 — Every ladder transition journaled
 
-`Model: Sonnet 5` · `Depends: T2.03, T1.07` · `Doc: 08 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.03, T1.07` · `Doc: 08 §4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** G-C is computed *from* the journal, so an unjournaled transition is an
 unmeasurable one.
@@ -112,7 +112,7 @@ unmeasurable one.
 
 #### T2.07 — `projects` table + lazy registration
 
-`Model: Sonnet 5` · `Depends: T1.12` · `Doc: 04 §7, 09 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T1.12` · `Doc: 04 §7, 09 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** `projects(name PK, display_name, properties, created_at)` anchors per-project
 `applies_when` defaults, review-queue scoping, and the one-live-article-per-subject rule.
@@ -132,7 +132,7 @@ fact-identity split.
 
 #### T2.08 — Job-family umbrella under JobRegistry
 
-`Model: Sonnet 5` · `Depends: T2.01` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.01` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Several cooperating Tier-C jobs under one schedule umbrella, each with its own
 cron, floor, ceiling, and per-job lock. Reconciliation stays off the hot path
@@ -147,7 +147,7 @@ cron, floor, ceiling, and per-job lock. Reconciliation stays off the hot path
 
 #### T2.09 — `verification_recompute`
 
-`Model: Sonnet 5` · `Depends: T2.08, T2.03` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.08, T2.03` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Recompute ladder state as sources accumulate or withdraw.
 
@@ -157,7 +157,7 @@ journals.
 
 #### T2.10 — `fact_lift`
 
-`Model: Opus 5` · `Depends: T2.08, T2.02` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.08, T2.02` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Lift corroborated L1 relations into L2 facts, writing the `fact_sources` rows
 that justify them.
@@ -168,7 +168,7 @@ rows; no fact is born above `corroborated` except via T2.28's parse-is-verificat
 
 #### T2.11 — `contradiction_scan`
 
-`Model: Opus 5` · `Depends: T2.04, T2.26` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.04, T2.26` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Generate contradiction candidates from **same-endpoint facts plus a
 `pg_trgm`-on-`fact` shortlist** (doc 08 §5.3 — the combined generator, not the trigram
@@ -183,7 +183,7 @@ a heuristic; misses are counted, not hidden.
 
 #### T2.12 — `memory_dream` — never hard-merges, never deletes
 
-`Model: Opus 5` · `Depends: T2.08` · `Doc: 08 §5.4` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.08` · `Doc: 08 §5.4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Subsumption routes through the `supersede()` primitive; near-duplicates get an
 associative edge plus a hygiene item; `refine` rewrites only derived fields, **never
@@ -198,7 +198,7 @@ associative edge plus a hygiene item; `refine` rewrites only derived fields, **n
 
 #### T2.13 — Dream digest + per-action and per-batch undo
 
-`Model: Opus 5` · `Depends: T2.12` · `Doc: 08 §7` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.12` · `Doc: 08 §7` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Group a cycle's actions into a digest and offer undo at both granularities.
 Tractable precisely because every inverse is a status, pointer, or timestamp restore.
@@ -212,7 +212,7 @@ Tractable precisely because every inverse is a status, pointer, or timestamp res
 
 #### T2.14 — Register `article_synthesis` inert
 
-`Model: Haiku 4.5` · `Depends: T2.08` · `Doc: 08 §5.6` · `Tag: target-new, inert` · `Gate: G-C`
+`Model: Haiku 4.5` · `Size: S` · `Depends: T2.08` · `Doc: 08 §5.6` · `Tag: target-new, inert` · `Gate: G-C`
 
 **What.** Registered under the umbrella now; productive runs are Phase 3 behind G-D.
 
@@ -226,7 +226,7 @@ productive run.
 
 #### T2.15 — Five associative types + normaliser
 
-`Model: Sonnet 5` · `Depends: T1.23` · `Doc: 06 §3.1, 08 §5.5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T1.23` · `Doc: 06 §3.1, 08 §5.5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** `CONTRADICTS`, `ELABORATES`, `DEPENDS_ON`, `FOLLOWS`, `RELATES_TO` through
 `normalize_memory_relation_type`. **`SUPERSEDES` is never written here** — it stays the
@@ -238,7 +238,7 @@ back within the closed set.
 
 #### T2.16 — Derivation from overlap, proximity, and contradiction
 
-`Model: Opus 5` · `Depends: T2.15, T2.12` · `Doc: 08 §5.5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.15, T2.12` · `Doc: 08 §5.5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** `memory_dream` derives the edges from entity overlap, embedding proximity, and
 contradiction checks.
@@ -249,7 +249,7 @@ contradiction checks.
 
 #### T2.17 — Strip-before-rewrite and endpoint self-healing
 
-`Model: Sonnet 5` · `Depends: T2.16` · `Doc: 08 §5.5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.16` · `Doc: 08 §5.5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Same idempotence discipline as the entity graph, and self-healing when either
 endpoint is deleted.
@@ -263,7 +263,7 @@ endpoint is deleted.
 
 #### T2.18 — `memory_communities` + members, Leiden per project
 
-`Model: Opus 5` · `Depends: T2.07` · `Doc: 06 §7` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.07` · `Doc: 06 §7` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Materialised Leiden communities over a project-scoped projection,
 delete-and-rewritten per project.
@@ -278,7 +278,7 @@ delete-and-rewritten per project.
 
 #### T2.19 — Labelling + `report_string` off the hot path
 
-`Model: Sonnet 5` · `Depends: T2.18` · `Doc: 06 §7` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.18` · `Doc: 06 §7` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Label from dominant entities; generate the LLM report as Tier-C work.
 
@@ -288,7 +288,7 @@ a missing report renders as pending, not as absent.
 
 #### T2.20 — Browsing, report injection, pin-suggestion diff
 
-`Model: Sonnet 5` · `Depends: T2.19` · `Doc: 09 §3` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.19` · `Doc: 09 §3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** The three read/derive operations doc 09 owns over doc 06's durable rows,
 including diffing across runs into pin suggestions a human accepts or dismisses.
@@ -299,7 +299,7 @@ community id; accept/dismiss persists.
 
 #### T2.21 — `memory_overview` map-reduce tool
 
-`Model: Opus 5` · `Depends: T2.19` · `Doc: 09 §3.3` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.19` · `Doc: 09 §3.3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Map over precomputed reports, one bounded `summarization` reduce. A separate
 MCP tool — **never** per-memory RRF.
@@ -314,7 +314,7 @@ call; both front doors expose it.
 
 #### T2.22 — Review queue (adjudicates truth)
 
-`Model: Sonnet 5` · `Depends: T2.04` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.04` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Disputed and under-sourced facts, ungrounded articles. A `status + partial
 index` surface — **never a gate on the read path**; disputed items still serve, labelled
@@ -326,7 +326,7 @@ retrievable and still labelled.
 
 #### T2.23 — Hygiene queue (curates housekeeping) + bulk actions
 
-`Model: Sonnet 5` · `Depends: T2.22` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.22` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** A distinct surface: duplicates, low-confidence, expiring-soon, superseded
 lineage, with bulk actions. Distinct from review because conflating adjudication with
@@ -338,7 +338,7 @@ bulk actions are undoable through the T2.13 primitive.
 
 #### T2.24 — Consequence ranking + dispute-staleness decay
 
-`Model: Opus 5` · `Depends: T2.22` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.22` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Ranked by retrieval frequency + subject salience, **never FIFO**. Stale disputes
 auto-expire off the *active* queue past `dispute_stale_days` but stay `disputed` and
@@ -357,7 +357,7 @@ served labelled — decay changes priority, never verification status.
 
 #### T2.25 — Labelled entailment gold set
 
-`Model: Fable 5` · `Depends: T2.03` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Size: L` · `Depends: T2.03` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
 
 **What.** Claim/fact entailment gold. This is what G-D measures against, so build it
 before the judge — otherwise the judge is tuned to its own test.
@@ -375,7 +375,7 @@ near-misses; labelling rationale recorded; gold is JSON on disk.
 
 #### T2.26 — `verification`-purpose judge + precision/recall bars
 
-`Model: Fable 5` · `Depends: T2.25` · `Doc: 17 §6, 11 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Size: L` · `Depends: T2.25` · `Doc: 17 §6, 11 §6` · `Tag: target-new` · `Gate: G-D`
 
 **What.** One judge, three consumers: the Phase-2 contradiction veto, Phase-3 synthesis,
 and the F8 horizon. Qualify it **before** any consumer's layer ships.
@@ -396,7 +396,7 @@ and the F8 horizon. Qualify it **before** any consumer's layer ships.
 
 #### T2.27 — `assert_from_repo` — imports-only, LLM-free
 
-`Model: Opus 5` · `Depends: T2.40, T0.13` · `Doc: 10 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.40, T0.13` · `Doc: 10 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** A narrow deterministic deriver minting Layer-1 assertions from a repo's import
 edges only, tagged into the inert `entities.repo_ids[]` / `entity_relations.repo_ids[]`
@@ -411,7 +411,7 @@ landed in T0.13 — **this is their first writer.**
 
 #### T2.28 — Lift to facts born `corroborated`
 
-`Model: Opus 5` · `Depends: T2.27, T2.10` · `Doc: 10 §6, 08 §4.1` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.27, T2.10` · `Doc: 10 §6, 08 §4.1` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Consolidation lifts a corroborated Layer-1 assertion to a fact born
 `corroborated` — the parse *is* the verification — with `origin_key = repo_id`. **One
@@ -434,7 +434,7 @@ deliverable, not a failure.
 
 #### T2.29 — `memory_access_stats` feeder
 
-`Model: Sonnet 5` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** The substrate `w_heat` and `w_recency` read. Landing the feeder is the
 deliverable; the arms stay at zero until T2.31 measures them.
@@ -444,7 +444,7 @@ deliverable; the arms stay at zero until T2.31 measures them.
 
 #### T2.30 — `w_importance` activation
 
-`Model: Fable 5` · `Depends: T1.31, T2.44` · `Doc: 07 §3` · `Tag: activation` · `Gate: standing`
+`Model: Fable 5` · `Size: M` · `Depends: T1.31, T2.44` · `Doc: 07 §3` · `Tag: activation` · `Gate: standing`
 
 **What.** The column is populated but unread today. Measure, then activate or leave at zero.
 **Activation bar:** a positive retrieval-eval delta with its twin.
@@ -455,7 +455,7 @@ its number are in the ledger — including a decision to leave it at zero.
 
 #### T2.31 — `w_heat` / `w_recency` activation
 
-`Model: Fable 5` · `Depends: T2.29, T2.44` · `Doc: 07 §3` · `Tag: target-new + activation` · `Gate: standing`
+`Model: Fable 5` · `Size: M` · `Depends: T2.29, T2.44` · `Doc: 07 §3` · `Tag: target-new + activation` · `Gate: standing`
 
 **What.** Same protocol, over the T2.29 feeder. **Activation bar:** retrieval-eval win
 with twin.
@@ -466,7 +466,7 @@ checked (a fresh wrong fact must not outrank an older verified one).
 
 #### T2.32 — PPR snapshot job + graph arms
 
-`Model: Opus 5` · `Depends: T2.18` · `Doc: 07 §3, 02 §11` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.18` · `Doc: 07 §3, 02 §11` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Graph arms (`w_ppr`, dual-level, community injection) need the snapshot job live
 first. The cached igraph snapshot is one of the in-process assumptions that binds
@@ -479,7 +479,7 @@ it is not a ranking signal (doc 17 §2).
 
 #### T2.33 — `triple_embeddings` writer, miss-rate gated
 
-`Model: Opus 5` · `Depends: T2.52, T0.13` · `Doc: 08 §5.3` · `Tag: target-new` · `Gate: standing`
+`Model: Opus 5` · `Size: M` · `Depends: T2.52, T0.13` · `Doc: 08 §5.3` · `Tag: target-new` · `Gate: standing`
 
 **What.** First writer to the template landed inert in T0.13 — and it ships **only** if
 T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar. Groups facts for
@@ -492,7 +492,7 @@ inert; `names_distinct` is carried into the grouping.
 
 #### T2.34 — `expires_at` self-expiring dated facts
 
-`Model: Sonnet 5` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
 
 **What.** Two different mechanisms that must not be conflated (doc 08 §2.3 vs §9).
 
@@ -515,7 +515,7 @@ would destroy the history the whole bi-temporal model exists to keep.
 
 #### T2.35 — `applies_when` magnitude tuning
 
-`Model: Sonnet 5` · `Depends: T1.34, T2.44` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: standing`
+`Model: Sonnet 5` · `Size: M` · `Depends: T1.34, T2.44` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: standing`
 
 **What.** Tune the `config` magnitude wired in T1.34. The boost-plus-label and
 conflict-count rules stay hard rules — only the magnitude is tuned.
@@ -530,7 +530,7 @@ unchanged at every magnitude tried.
 
 #### T2.36 — Facts tab — bi-temporal, multi-origin browsing
 
-`Model: Sonnet 5` · `Depends: T2.03` · `Doc: 13 §5.1, §5.3` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.03` · `Doc: 13 §5.1, §5.3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Verification badges rendered **verbatim** — the badge string is the claim, never
 softened or recomputed client-side. Both axes visible; disputed shows both sides.
@@ -541,7 +541,7 @@ the UI; disputed items render both sides, never one; virtualized and paged.
 
 #### T2.37 — Review / Hygiene triage shell
 
-`Model: Sonnet 5` · `Depends: T2.24` · `Doc: 13 §6.2` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.24` · `Doc: 13 §6.2` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Two distinct surfaces, consequence-ranked, with the queue's reasoning visible.
 
@@ -551,7 +551,7 @@ bulk actions confirm before applying and are undoable.
 
 #### T2.38 — Dream digest UI with undo
 
-`Model: Sonnet 5` · `Depends: T2.13` · `Doc: 13 §6.3` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.13` · `Doc: 13 §6.3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** A cycle's actions grouped, each with before/after and per-action or per-batch
 undo.
@@ -562,7 +562,7 @@ an undone action still appears, marked undone.
 
 #### T2.39 — Topics tab
 
-`Model: Sonnet 5` · `Depends: T2.20` · `Doc: 13 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.20` · `Doc: 13 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Browsing, report injection, pin-suggestion diff.
 
@@ -576,7 +576,7 @@ between runs; accept/dismiss round-trips.
 
 #### T2.40 — G-C evidence run
 
-`Model: Fable 5` · `Depends: T2.06, T2.09, T2.10, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Fable 5` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Promotion rate `(promoted / eligible)` sliced by source-kind diversity and by
 which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
@@ -591,7 +591,7 @@ lane (T2.27–T2.28) closed.
 
 #### T2.41 — G-D evidence run
 
-`Model: Fable 5` · `Depends: T2.26` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Size: M` · `Depends: T2.26` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-D`
 
 **What.** The judge's precision/recall on the labelled gold clears its bar — the single
 gate that opens Phase 3.
@@ -610,7 +610,7 @@ never built.
 
 #### T2.42 — Facts retrieval channel, born with pushdown
 
-`Model: Opus 5` · `Depends: T2.03, T1.29` · `Doc: 07 §2` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.03, T1.29c` · `Doc: 07 §2` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Doc 07 §2 makes the facts channel target-new and **born with SQL project/status
 pushdown** — it never has a pre-pushdown generation to regress from. Without it, E2's
@@ -625,7 +625,7 @@ whole truth core is unreachable by search.
 
 #### T2.43 — Four-layer composition, labelling, and grouping
 
-`Model: Opus 5` · `Depends: T2.42` · `Doc: 07 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.42` · `Doc: 07 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Doc 07 §5's composition rules across memory / facts / articles / code:
 verified-above-labelled-candidate ordering, disputed served with both sides, results
@@ -642,7 +642,7 @@ labelled candidates rather than nothing, and the sectioned-vs-fused output shape
 
 #### T2.44 — Arm-ablation interface for the retrieval eval
 
-`Model: Sonnet 5` · `Depends: T0.10, T1.31` · `Doc: 17 §4` · `Tag: target-new` · `Gate: standing`
+`Model: Sonnet 5` · `Size: S` · `Depends: T0.10, T1.31` · `Doc: 17 §4` · `Tag: target-new` · `Gate: standing`
 
 **What.** The plumbing behind `run_retrieval_eval.py --arm <name>`, which T2.30, T2.31,
 T2.35 and T2.50 all invoke and which T0.10 never scoped. Sonnet builds it; the Fable
@@ -658,7 +658,7 @@ activation tasks only design the bar and read the result (runbook §2).
 
 #### T2.45 — The Tier-C `supersede()` primitive + status bridge
 
-`Model: Opus 5` · `Depends: T2.01, T1.36` · `Doc: 08 §2.2, §3.4` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.01, T1.36` · `Doc: 08 §2.2, §3.4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** T2.12 calls `supersede()` but nothing builds it. Doc 08 §2.2 makes it a Tier-C
 primitive distinct from T1.36's write-time detector, and §3.4's status bridge decides what
@@ -674,7 +674,7 @@ guards, otherwise `deprecated`.
 
 #### T2.46 — Demotion hysteresis and the `under-sourced` label
 
-`Model: Opus 5` · `Depends: T2.09` · `Doc: 08 §4.3, §9` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.09` · `Doc: 08 §4.3, §9` · `Tag: target-new` · `Gate: G-C`
 
 **What.** A fact that loses a source does not drop rung immediately: it enters a labelled
 `under-sourced` state for `verification_demote_grace_cycles`, tracked by a
@@ -690,7 +690,7 @@ and every flap is a visible badge change.
 
 #### T2.47 — The enqueue-for-verification emit hook
 
-`Model: Opus 5` · `Depends: T1.21, T2.02` · `Doc: 05 §8.4, 08 §3.3` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T1.21, T2.02` · `Doc: 05 §8.4, 08 §3.3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** The emit side of the hook that tells verification a fact's evidence moved: the
 `sources_changed` `events` value landed taxonomy-first, emitted from Phase 5 and from the
@@ -707,7 +707,7 @@ withdrawal sweep, with the inline expire-on-last-source-withdrawal path — and 
 
 #### T2.48 — Citation re-verifier + code-fact lifecycle
 
-`Model: Opus 5` · `Depends: T2.28` · `Doc: 10 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.28` · `Doc: 10 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Doc 10 §6's second sanctioned crossing: a Tier-C re-verifier walks
 `fact_sources(kind='code')` rows whose `detail.symbol_key` falls in a run's changed or
@@ -724,7 +724,7 @@ was its sole source.
 
 #### T2.49 — `relation_embeddings` refresh job + writer
 
-`Model: Sonnet 5` · `Depends: T2.32, T0.13` · `Doc: 04 §5.3, 07 §4, 19 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.32, T0.13` · `Doc: 04 §5.3, 07 §4, 19 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** First writer to one of the two inert partition templates that had no named owner,
 and the JobRegistry refresh arm doc 19 §6 lists.
@@ -739,7 +739,7 @@ and the JobRegistry refresh arm doc 19 §6 lists.
 
 #### T2.50 — Graph-arm activation measurement
 
-`Model: Fable 5` · `Depends: T2.32, T2.44` · `Doc: 07 §3, 17 §2` · `Tag: activation` · `Gate: standing`
+`Model: Fable 5` · `Size: M` · `Depends: T2.32, T2.44` · `Doc: 07 §3, 17 §2` · `Tag: activation` · `Gate: standing`
 
 **What.** Split out of T2.32 so the model that builds the snapshot does not also judge its
 number (runbook §2). Measures `w_ppr`, dual-level, and community injection.
@@ -756,7 +756,7 @@ than ranking (doc 17 §2).
 
 #### T2.51 — Promotion-metrics runner
 
-`Model: Sonnet 5` · `Depends: T2.06` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.06` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C`
 
 **What.** The SQL-over-`events` runner T2.40 invokes: promotion rate sliced by source-kind
 diversity and by which N fired, plus the false-promotion audit. Built by Sonnet so the
@@ -771,7 +771,7 @@ Fable gate task only designs the bar and reads the number.
 
 #### T2.52 — Contradiction-shortlist miss-rate runner
 
-`Model: Sonnet 5` · `Depends: T2.11` · `Doc: 17 §5.2` · `Tag: target-new` · `Gate: standing`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.11` · `Doc: 17 §5.2` · `Tag: target-new` · `Gate: standing`
 
 **What.** Measures the recall of the **combined** candidate generator — same-endpoint
 facts plus the `pg_trgm` shortlist — against contradiction-pair gold. Its number is the
@@ -786,7 +786,7 @@ bar T2.33 must exceed before the `triple_embeddings` writer ships at all.
 
 #### T2.53 — Register `topic_detection` on the schedule
 
-`Model: Haiku 4.5` · `Depends: T2.18, T2.08` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Haiku 4.5` · `Size: S` · `Depends: T2.18, T2.08` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** The feature row says each dream-family job has its own cron, floor, and ceiling;
 `topic_detection` was built (T2.18) but never scheduled.

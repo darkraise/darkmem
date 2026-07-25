@@ -33,7 +33,7 @@ before writing any code:
    `done`, stop: you are about to build on an interface that does not exist yet. A
    `Trigger:` field (rather than `Depends:`) means the task waits on a real-world event,
    not on other work.
-6. **Claim the task** before starting — §5's claim protocol. One owner at a time.
+6. **Claim the task** before starting — §6's claim protocol. One owner at a time.
 7. **Read the existing code before changing it.** Most tasks are rebuilds of working
    subsystems. Match the surrounding idiom.
 
@@ -61,7 +61,29 @@ Three standing rules:
   defer the task; a cheap model on an invariant-bearing task produces work that is
   expensive to detect and expensive to unwind.
 
-## 3. Definition of done
+## 3. Task size, and what `L` obliges you to do
+
+Every task carries a **Size**. It is orthogonal to Model — a task can be small and still
+need Opus, because tier tracks *consequence* and size tracks *effort*. T2.05 (human-only
+`confirmed`) is exactly that: `Size: S`, `Model: Opus 5`.
+
+| Size | Effort | Shape |
+|---|---|---|
+| **S** | ≤ ~2 hours | One file or function, a doc, a config row, a job registration. |
+| **M** | ~2–8 hours, one focused session | A service method plus tests, a route, a UI surface, one pipeline phase. **This is the target size** — most tasks are here. |
+| **L** | More than a day | Several mechanisms under one name, or bounded by something outside your control (a gold set needs human labelling). |
+
+**An `L` task may not be executed directly.** Write a step-level plan first — the
+repo convention is `docs/superpowers/plans/<date>-<slug>.md` — get it reviewed at Fable
+tier, then execute the plan task-by-task. Starting to code an `L` task straight from its
+acceptance criteria is how a week disappears into a branch nobody can review.
+
+**If an `M` task turns out to be `L`, stop and say so.** That is a Tier-1 amendment: fix
+the size field, split the task or write the step-level plan, and log it. A task that
+silently runs long is the signal the plan was wrong, and it is worth more than the time it
+costs to record.
+
+## 4. Definition of done
 
 A task is `done` only when **all** of these hold. There is no partial credit and no
 "done pending review".
@@ -83,7 +105,7 @@ A task is `done` only when **all** of these hold. There is no partial credit and
 the task `blocked` or `in-progress`. A task marked `done` with a failing suite is the one
 defect this whole corpus is built to prevent (invariant 14).
 
-## 4. The amendment protocol
+## 5. The amendment protocol
 
 **Plans are living documents. An agent that discovers the plan is wrong is required to
 fix the plan, not to quietly work around it.** Reality found during execution outranks a
@@ -127,9 +149,9 @@ Every epic file ends with a table. One row per amendment:
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
-| 2026-07-26 | T1.12 | 2 | Split into T1.12 + T1.12b; added dependency on T1.07 | Buffer claim needed the `events` writer that T1.07 lands, which the original ordering missed |
+| 2026-07-26 | Tx.yy | 2 | Split into Tx.yy + Tx.yyb; added a dependency the original ordering missed | *(illustrative row — replace with a real amendment)* |
 
-## 5. Branch, commit, claim, and review
+## 6. Branch, commit, claim, and review
 
 - **Branch per epic, not per task**: `feat/e1-engine-core`. Tasks are commits on it.
   A task large enough to want its own branch is a task that should have been split.
@@ -153,7 +175,7 @@ Every epic file ends with a table. One row per amendment:
   output feeds a gate claim — reviewed at Fable tier, adversarially (try to refute the
   claim, not to confirm it).
 
-## 6. When to stop and ask
+## 7. When to stop and ask
 
 Stop, do not improvise, when:
 
@@ -166,7 +188,7 @@ Stop, do not improvise, when:
 - The same task fails verification three times for different reasons — the plan, not the
   attempt, is probably wrong.
 
-## 7. Environment facts an agent will need
+## 8. Environment facts an agent will need
 
 Verified working commands (see `CLAUDE.md` for the full set):
 
@@ -218,7 +240,7 @@ DATABASE_URL=... python scripts/extraction_bench/run_bench.py --gold gold_heldou
 python scripts/extraction_bench/run_bench.py --algo-only            # warm cache only
 ```
 
-## 8. Changing the schema before the freeze
+## 9. Changing the schema before the freeze
 
 Until the homelab cutover, the schema is **one baseline revision that is regenerated, not
 migrated** (doc 19 §2). That makes the baseline file a shared mutable artifact, so:

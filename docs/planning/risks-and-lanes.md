@@ -12,7 +12,7 @@ likely to go wrong**.
 Only four things in the whole plan strictly serialise. Everything else is a lane.
 
 ```
-T0.12 (baseline migration) ──> most of E1
+T0.12a→c (baseline migration) ──> most of E1
 G-A  (T0.17) ──> E1 starts
 G-B  (T1.50) ──> E2 starts
 G-C  (T2.40) ──> code deriver lane (T2.27–T2.28)
@@ -43,10 +43,10 @@ Lane A (LLM orchestrator + events, T1.01–T1.09)
    │  everything below journals to events or calls the orchestrator
    ├──> Lane B  capture + buffer      T1.10–T1.15
    ├──> Lane C  pipeline + graph      T1.16–T1.28
-   ├──> Lane D  retrieval             T1.29–T1.35
+   ├──> Lane D  retrieval             T1.29a–T1.35
    ├──> Lane E  lifecycle             T1.36–T1.37   (needs C: T1.21, T1.27)
    ├──> Lane F  code truth            T1.38–T1.41
-   └──> Lane G  contract + UI         T1.42–T1.49   (each UI task needs its signal)
+   └──> Lane G  contract + UI         T1.42a–T1.49   (each UI task needs its signal)
 ```
 
 **Do Lane A first, alone.** It is nine tasks and it unblocks everything; running it
@@ -58,8 +58,8 @@ not *file*-disjoint:
 
 | Collision | Files | Consequence |
 |---|---|---|
-| Lane C ↔ Lane D | `repositories/vector.py`, `repositories/graph.py` | T1.21/T1.26 and T1.29 rewrite the same repos. **Start D after T1.21 lands.** |
-| Lane B ↔ D ↔ G | `api/routes/memories.py`, `api/mcp/server.py` | The capture doors, the `memory_reason` fix, and T1.42's envelope all edit them |
+| Lane C ↔ Lane D | `repositories/vector.py`, `repositories/graph.py` | T1.21/T1.26 and T1.29a–c rewrite the same repos. **Start D after T1.21 lands.** |
+| Lane B ↔ D ↔ G | `api/routes/memories.py`, `api/mcp/server.py` | The capture doors, the `memory_reason` fix, and T1.42a–d all edit them |
 | Lane B ↔ Lane F | `app/main.py` | T1.13 and T1.40 both register jobs |
 | Any schema task | the single baseline revision | Regenerating it concurrently conflicts every time — runbook §8 serialises these through one owner per epic |
 
@@ -141,7 +141,7 @@ do. Lane assignment is the unit of parallelism, not the task.
 | Risk | Why it bites | Mitigation | Watch for |
 |---|---|---|---|
 | **`origin_key` gets it wrong in Phase 1** | Every corroboration count in E2 is `COUNT(DISTINCT origin_key)`. A too-generous resolution silently inflates every verification number downstream, and the error is invisible until facts are promoted that should not have been | T1.11 tests the merge-to-one rule explicitly; T2.02's test fails under row-counting | Any change to `origin_key` resolution after E2 starts — it is a Phase-1 decision with Phase-2 consequences |
-| **Pushdown declared done without the probe** | Isolation is the one property everyone assumes and nobody measures | T1.29 and T1.35 are separate tasks on purpose: building it and proving it are different work, and the probe is Fable-tier and adversarial | T1.29 marked `done` while T1.35 is still `todo` |
+| **Pushdown declared done without the probe** | Isolation is the one property everyone assumes and nobody measures | T1.29a–c and T1.35 are separate tasks on purpose: building it and proving it are different work, and the probe is Fable-tier and adversarial | T1.29c marked `done` while T1.35 is still `todo` |
 | **Plan rot** — the plan and the code diverge silently | 156 tasks written in advance will be wrong in places; an agent that works around a wrong task instead of fixing it makes the plan progressively fictional | The amendment protocol makes updating the plan part of the task, and Tier 1 needs no permission | An empty amendment log after a dozen completed tasks — that is not a good sign, it means fixes are going unrecorded |
 | **UI drifts ahead of its signal** | The frontend skeleton already renders demo versions of Phase-1, -2, and -3 surfaces. Shipping a surface over demo data reads as done | Every UI task's acceptance names the live backend signal it must bind to; principle 10 puts the surface in the same phase as its signal, not earlier | A UI task marked `done` whose backend task is still `todo` |
 | **Arms activated on a flattering aggregate** | An arm that helps overall while destroying the paraphrase slice looks like a win | Retrieval eval reports per-slice always; the aggregate never replaces slices; activation needs the latency/cost twin | An activation-log row with an aggregate delta and no slice breakdown |
@@ -159,11 +159,11 @@ already cost a debugging session — the rebuild must not reintroduce them.
 
 | Issue | The rule that prevents it | Bound to |
 |---|---|---|
-| Hybrid search returns string ids; the vector repo returns `UUID` — matches drop silently | Normalize at every boundary | T1.29, T0.07 |
+| Hybrid search returns string ids; the vector repo returns `UUID` — matches drop silently | Normalize at every boundary | T1.29a, T0.07 |
 | RRF and rerank scores computed then dropped at the API boundary | The trace must carry them all the way to the response | T1.33 |
 | Mutual supersession made two memories vanish from the default view | The strictly-older `(created_at, id)` tie-break | T1.36 |
 | TTL delete aborted the whole batch on the `superseded_by` constraint | Demote dependents before deleting | T1.37 |
 | asyncpg `IndeterminateDatatypeError` on variadic ANY / unnest / jsonb | `CAST` every bound param Postgres cannot infer; roll back before mutating ORM objects in an error handler | Any raw-SQL task |
 | Dedup merged distinct entities onto stale ghosts | `names_distinct` discriminator + the orphan sweep as backstop | T1.20, T1.28 |
-| Prompt changes failed to move nuanced entity typing | Fix in the curated maps and the cleanup passes, not the prompt | T1.24, T1.27 |
-| A LAN `421` "fixed" by disabling DNS-rebinding protection | Extend `MCP_ALLOWED_HOSTS`; never disable the check | T1.42, T3.13 |
+| Prompt changes failed to move nuanced entity typing | Fix in the curated maps and the cleanup passes, not the prompt | T1.24b, T1.27 |
+| A LAN `421` "fixed" by disabling DNS-rebinding protection | Extend `MCP_ALLOWED_HOSTS`; never disable the check | T1.42c, T3.13 |

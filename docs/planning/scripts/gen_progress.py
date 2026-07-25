@@ -11,8 +11,9 @@ EPICS = [
     ("EH1", "Documents / PKM", "tasks/EH1-documents-pkm.md", "G-F open"),
 ]
 
-HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2}) — (.+)$")
+HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2}[a-z]?) — (.+)$")
 META = re.compile(r"`Model: ([^`]+?)`")
+SIZE = re.compile(r"`Size: ([SML])`")
 
 out = []
 out.append("# Progress tracker\n")
@@ -70,20 +71,24 @@ for code, name, path, gate in EPICS:
             continue
         tid, title = m.group(1), m.group(2)
         model = ""
+        size = ""
         for j in range(i + 1, min(i + 5, len(lines))):
             mm = META.search(lines[j])
             if mm:
                 model = mm.group(1).replace(" 5", "").replace(" 4.5", "")
+                sm = SIZE.search(lines[j])
+                if sm:
+                    size = sm.group(1)
                 break
         title = title.replace("|", "\\|")
-        rows.append((tid, title, model))
+        rows.append((tid, title, model, size))
     totals += len(rows)
     rollup.append((code, name, len(rows), gate))
     t = ["## %s — %s (%d tasks)\n" % (code, name, len(rows))]
-    t.append("| Task | Title | Model | Owner | Status | Commit | Review | Note |")
-    t.append("|---|---|---|---|---|---|---|---|")
-    for tid, title, model in rows:
-        t.append("| %s | %s | %s | | todo | | | |" % (tid, title, model))
+    t.append("| Task | Title | Size | Model | Owner | Status | Commit | Review | Note |")
+    t.append("|---|---|---|---|---|---|---|---|---|")
+    for tid, title, model, size in rows:
+        t.append("| %s | %s | %s | %s | | todo | | | |" % (tid, title, size, model))
     tables.append("\n".join(t) + "\n")
 
 out.append("## Rollup\n")
