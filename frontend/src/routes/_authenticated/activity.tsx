@@ -1,99 +1,110 @@
 import { createFileRoute } from "@tanstack/react-router"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 import { PageHeader } from "darkraise-ui/layout"
-import {
-  CalendarDays,
-  Flag,
-  Moon,
-  Radar,
-  Rss,
-  Timer,
-  TriangleAlert,
-  Workflow,
-} from "lucide-react"
-import {
-  PlaceholderTabs,
-  type PlaceholderTab,
-} from "@/components/placeholder-tabs"
+import { DAY_DRILL_DEFAULT } from "@/demo/data/activity-curated"
+import { isValidDay } from "@/demo/activity"
+import { PipelineTab } from "@/features/activity/components/pipeline-tab"
+import { FeedTab } from "@/features/activity/components/feed-tab"
+import { TriageTab } from "@/features/activity/components/triage-tab"
+import { JobsTab } from "@/features/activity/components/jobs-tab"
+import { MonitorsTab } from "@/features/activity/components/monitors-tab"
+import { DreamTab } from "@/features/activity/components/dream-tab"
+import { DayTab } from "@/features/activity/components/day-tab"
+import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
+
+const TAB_VALUES = [
+  "pipeline",
+  "feed",
+  "triage",
+  "jobs",
+  "monitors",
+  "dream",
+  "day",
+  "checkpoints",
+] as const
+export type ActivityTab = (typeof TAB_VALUES)[number]
 
 export const Route = createFileRoute("/_authenticated/activity")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: TAB_VALUES.includes(search.tab as ActivityTab)
+      ? (search.tab as ActivityTab)
+      : undefined,
+    day: isValidDay(search.day) ? search.day : undefined,
+  }),
   component: ActivityPage,
 })
 
-const TABS: PlaceholderTab[] = [
-  {
-    value: "pipeline",
-    label: "Pipeline",
-    icon: <Workflow />,
-    title: "The pipeline stepper lands here",
-    description:
-      "Per-memory phase progress (embed, extract, dedup, write) with per-step failure states. Built in Wave 4.",
-  },
-  {
-    value: "feed",
-    label: "Feed",
-    icon: <Rss />,
-    title: "The live event feed lands here",
-    description:
-      "Everything the system did, as it happens — ingests, supersessions, job runs. Built in Wave 4.",
-  },
-  {
-    value: "triage",
-    label: "Triage",
-    icon: <TriangleAlert />,
-    title: "Failure triage lands here",
-    description:
-      "Pipeline failures grouped by step with retry controls. Built in Wave 4.",
-  },
-  {
-    value: "jobs",
-    label: "Jobs",
-    icon: <Timer />,
-    title: "The job registry lands here",
-    description:
-      "Cron-scheduled jobs with last-run status, manual triggers, and per-job config. Built in Wave 4.",
-  },
-  {
-    value: "monitors",
-    label: "Monitors",
-    icon: <Radar />,
-    title: "Staged monitors land here",
-    description:
-      "Watchpoints that promote observations into candidate facts. Built in Wave 4.",
-  },
-  {
-    value: "dream",
-    label: "Dream digest",
-    icon: <Moon />,
-    title: "The dream digest lands here",
-    description:
-      "What the overnight consolidation cycle merged, promoted, and archived. Built in Wave 4.",
-  },
-  {
-    value: "day",
-    label: "Day drill",
-    icon: <CalendarDays />,
-    title: "The day drill-down lands here",
-    description:
-      "Pick a day on the contribution calendar and replay what happened. Built in Wave 4.",
-  },
-  {
-    value: "checkpoints",
-    label: "Session checkpoints",
-    icon: <Flag />,
-    title: "Session checkpoints land here",
-    description:
-      "Agent session snapshots you can diff and restore context from. Built in Wave 4.",
-  },
-]
-
 function ActivityPage() {
+  const { tab, day } = Route.useSearch()
+  const navigate = Route.useNavigate()
+
   return (
     <div className="space-y-4 p-6">
       <PageHeader
         title="Activity"
         description="What the system is doing: pipeline runs, jobs, monitors, and digests."
       />
-      <PlaceholderTabs tabs={TABS} />
+      <Tabs
+        value={tab ?? "pipeline"}
+        onValueChange={(value) => {
+          if (TAB_VALUES.includes(value as ActivityTab)) {
+            void navigate({
+              search: (prev) => ({ ...prev, tab: value as ActivityTab }),
+            })
+          }
+        }}
+      >
+        <div className="overflow-x-auto">
+          <TabsList>
+            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+            <TabsTrigger value="feed">Feed</TabsTrigger>
+            <TabsTrigger value="triage">Triage</TabsTrigger>
+            <TabsTrigger value="jobs">Jobs</TabsTrigger>
+            <TabsTrigger value="monitors">Monitors</TabsTrigger>
+            <TabsTrigger value="dream">Dream digest</TabsTrigger>
+            <TabsTrigger value="day">Day drill</TabsTrigger>
+            <TabsTrigger value="checkpoints">Session checkpoints</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="pipeline" className="pt-4">
+          <PipelineTab />
+        </TabsContent>
+        <TabsContent value="feed" className="pt-4">
+          <FeedTab />
+        </TabsContent>
+        <TabsContent value="triage" className="pt-4">
+          <TriageTab />
+        </TabsContent>
+        <TabsContent value="jobs" className="pt-4">
+          <JobsTab />
+        </TabsContent>
+        <TabsContent value="monitors" className="pt-4">
+          <MonitorsTab
+            onOpenDigest={() =>
+              void navigate({ search: (prev) => ({ ...prev, tab: "dream" }) })
+            }
+          />
+        </TabsContent>
+        <TabsContent value="dream" className="pt-4">
+          <DreamTab />
+        </TabsContent>
+        <TabsContent value="day" className="pt-4">
+          <DayTab
+            day={day ?? DAY_DRILL_DEFAULT}
+            onDayChange={(next) =>
+              void navigate({ search: (prev) => ({ ...prev, day: next }) })
+            }
+          />
+        </TabsContent>
+        <TabsContent value="checkpoints" className="pt-4">
+          <CheckpointsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

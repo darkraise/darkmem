@@ -3,7 +3,7 @@ export type { Repo } from "@/hooks/api"
 export type { Job } from "@/hooks/api"
 export type { LlmProfile } from "@/hooks/api"
 
-import type { Memory, MemoryStatus, Repo, Job, LlmProfile } from "@/hooks/api"
+import type { Memory, MemoryStatus, Repo, LlmProfile } from "@/hooks/api"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
 
 export interface DashboardStats {
@@ -505,10 +505,278 @@ export interface ReindexOptions {
   generate_wiki: boolean
 }
 
+// ---------------------------------------------------------------------------
+// Activity (Wave 4) — pipeline stepper, feed, triage, jobs, staged monitors,
+// dream digest, day drill, session checkpoints
+// ---------------------------------------------------------------------------
+
+export type PipelineStepState =
+  | "ok"
+  | "pending"
+  | "error"
+  | "degraded"
+  | "skipped"
+
+export interface PipelineWriteSubsteps {
+  vector: "ok" | "error" | "skipped"
+  graph: "ok" | "error" | "skipped"
+}
+
+export type PipelineTerminal = "running" | "completed" | "partial" | "failed"
+
+/** derive_memory_failed_step's durable named-step vocabulary. Phases 3–4
+ *  (entity embed, dedup) degrade batch-wide instead of failing one memory,
+ *  so they never appear here. */
+export type PipelineFailedStep =
+  | "content_embedding"
+  | "extraction"
+  | "extraction_partial"
+  | "vector_write"
+  | "graph_write"
+
+export interface DemoPipelineRun {
+  id: string
+  content: string
+  time_label: string
+  /** The five phases in fixed order: content embed → extract & classify →
+   *  entity embed → dedup → write. */
+  steps: [
+    PipelineStepState,
+    PipelineStepState,
+    PipelineStepState,
+    PipelineStepState,
+    PipelineStepState,
+  ]
+  /** Phase 5's two savepoints — non-null once write was attempted. */
+  substeps: PipelineWriteSubsteps | null
+  terminal: PipelineTerminal
+  counts: { entities: number; relations: number } | null
+  note: string | null
+}
+
+export type FeedCategory =
+  | "capture"
+  | "pipeline"
+  | "verification"
+  | "consolidation"
+  | "code"
+
+export interface DemoFeedEvent {
+  id: string
+  /** Wire event name, e.g. "memory.created", "pipeline.completed". */
+  type: string
+  category: FeedCategory
+  text: string
+  time_label: string
+  layer?: KnowledgeLayer
+  transition?: { from: VerificationStatus; to: VerificationStatus }
+  badge?: VerificationStatus
+  /** The one event whose toast carries honesty content (fact.verified dispute). */
+  toast?: boolean
+}
+
+export interface DemoPipelineFailure {
+  id: string
+  target_kind: "memory" | "code_repo"
+  target_label: string
+  pipeline: "memory_ingest" | "code_index"
+  failed_step: string
+  /** The raw error_message, shown verbatim — never summarised to "failed". */
+  reason: string
+  attempts: number
+  first_failed: string
+  last_attempt: string
+  retry_queued: boolean
+}
+
+export interface DemoJobField {
+  key: string
+  type: "int"
+  label: string
+  value: number
+  min?: number
+  max?: number
+  help?: string
+}
+
+export interface DemoJob {
+  key: string
+  cron: string
+  cron_label: string
+  /** Floor: the loop never fires more often than this. Registration constant. */
+  min_interval_seconds: number
+  /** Ceiling: a run past this duration counts as overrun. Registration constant. */
+  max_run_seconds: number
+  running: boolean
+  lock_held_since: string | null
+  next_run_label: string
+  /** null = never ran (fresh install honesty — the list can never be empty). */
+  last_run_label: string | null
+  last_status: "ok" | "error" | null
+  last_summary: string | null
+  config_schema: DemoJobField[]
+}
+
+export type JobTriggerResult =
+  | { ok: true }
+  | { ok: false; status: 409; lock_held_since: string }
+
+export interface DemoBufferMonitor {
+  /** false — the memory_buffer backend does not exist yet (invariant 23). */
+  live: false
+  staged_phase: string
+  staged_reason: string
+  target: {
+    pending: number
+    claimed: number
+    done: number
+    error: number
+    poison: { headline: string; detail: string } | null
+    wait_process_note: string
+  }
+}
+
+export interface DemoDreamChainJob {
+  key: string
+  caption: string
+  state: "ok" | "active" | "pending"
+}
+
+export interface DemoDreamMonitor {
+  live: false
+  staged_phase: string
+  staged_reason: string
+  target: {
+    last_cycle_label: string
+    chain: DemoDreamChainJob[]
+    narrative: string
+    lock_note: string
+  }
+}
+
+export type DreamActionType =
+  | "supersede"
+  | "refine"
+  | "edge_derive"
+  | "promote_demote"
+  | "ratify"
+  | "invalidate"
+  | "resynthesize"
+
+export interface DreamTransition {
+  /** Rung side of the pair; null renders the plain pill instead. */
+  from: VerificationStatus | null
+  to: VerificationStatus | null
+  from_plain?: string
+  to_plain?: string
+  /** Visible label override for the `to` badge (e.g. "human-ratified"). */
+  to_label?: string
+}
+
+export interface DemoDreamAction {
+  id: string
+  type: DreamActionType
+  cycle: number
+  layer: KnowledgeLayer
+  title: string
+  meta: string
+  claim?: string
+  /** Amber per-row emphasis (demoted rung / touched a disputed object). */
+  caution_tag?: string
+  transition?: DreamTransition
+  /** Custom verb, e.g. "Undo — reopen window". Default "Undo". */
+  undo_label?: string
+  /** Present ⇒ undo renders disabled WITH this reason — never hidden. */
+  undo_blocked?: { reason: string }
+  undone: boolean
+  undone_note?: string
+}
+
+export interface DemoDreamGroup {
+  type: DreamActionType
+  label: string
+  count_label: string
+  more_note?: string
+  annotation?: string
+  /** Ratification is authenticated per-fact — never batched. */
+  batchable: boolean
+}
+
+export interface DemoDreamCycle {
+  id: number
+  window_label: string
+  trigger_label: string
+  undoable_until_label: string
+  retention_label: string
+  summary: {
+    superseded: number
+    refined: number
+    promoted_demoted: number
+    promoted_split: string
+    disputed: number
+    edges_derived: number
+  }
+  groups: DemoDreamGroup[]
+  disputed: {
+    claim: string
+    sides: [
+      { assertion: string; origins: string },
+      { assertion: string; origins: string },
+    ]
+    note: string
+  } | null
+}
+
+export interface DemoDayEvent {
+  time_label: string
+  /** Closed event_type vocabulary (created, extracted, verified, inject, …). */
+  type: string
+  link_label: string
+  note?: string
+  transition?: {
+    from: VerificationStatus
+    to: VerificationStatus
+    to_label?: string
+  }
+  badge?: VerificationStatus
+  inject_detail?: string[]
+}
+
+export interface DemoDayBucket {
+  /** UTC calendar date, YYYY-MM-DD — never the viewer's local day. */
+  date: string
+  events: DemoDayEvent[]
+}
+
+export interface DemoCheckpointEvent {
+  time_label: string
+  event: "checkpoint_saved" | "resumed"
+  detail: string
+  tokens_label: string
+}
+
+export interface DemoSessionRun {
+  id: string
+  title: string
+  origin_key: string
+  project: string
+  meta_label: string
+  /** null = the run has written no checkpoint yet (honest empty state). */
+  latest: {
+    saved_label: string
+    summary: string
+    next_steps: string[]
+    key_decisions: string[]
+    touched_files: string[]
+    resume_block: string
+  } | null
+  history: DemoCheckpointEvent[]
+}
+
 export interface DemoStoreState {
   memories: DemoMemory[]
   repos: Repo[]
-  jobs: Job[]
+  jobs: DemoJob[]
   llmProfiles: LlmProfile[]
   stats: DashboardStats
   events: ActivityEvent[]
@@ -524,6 +792,17 @@ export interface DemoStoreState {
   codeGraphs: DemoCodeGraph[]
   memoryGraph: DemoMemoryGraph
   chatThreads: DemoChatThread[]
+  pipelineRuns: DemoPipelineRun[]
+  feedEvents: DemoFeedEvent[]
+  pipelineFailures: DemoPipelineFailure[]
+  bufferMonitor: DemoBufferMonitor
+  dreamMonitor: DemoDreamMonitor
+  dreamCycle: DemoDreamCycle
+  dreamActions: DemoDreamAction[]
+  /** Earlier cycles, past their undo window — every entry undo-blocked. */
+  dreamPastActions: DemoDreamAction[]
+  dayBuckets: DemoDayBucket[]
+  sessionRuns: DemoSessionRun[]
   addMemory: (m: DemoMemory) => void
   updateMemory: (id: string, patch: Partial<DemoMemory>) => void
   deleteMemory: (id: string) => void
@@ -538,4 +817,15 @@ export interface DemoStoreState {
   /** Appends the user message plus a canned demo reply; returns the thread
    *  id (a fresh one when threadId is null). */
   sendChatMessage: (threadId: string | null, content: string) => string
+  /** Queues a retry — the row stays open until the pipeline resolves it. */
+  retryFailure: (id: string) => void
+  retryAllFailures: () => void
+  forgetFailure: (id: string) => void
+  /** Busy honesty: a trigger on a held lock returns 409 — never queued. */
+  triggerJob: (key: string) => JobTriggerResult
+  saveJobConfig: (key: string, values: Record<string, number>) => void
+  undoDreamAction: (id: string) => void
+  /** Undoes only the eligible (not blocked, not already undone) entries. */
+  undoDreamBatch: (type: DreamActionType) => void
+  resetActivity: () => void
 }

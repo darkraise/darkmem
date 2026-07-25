@@ -1,4 +1,130 @@
 [
-  { "key": "repo_sync", "cron": "0 */6 * * *", "last_run": "2026-05-25T12:00:00Z", "next_run": "2026-05-25T18:00:00Z", "last_status": "ok", "min_interval_seconds": 300 },
-  { "key": "enrichment_worker", "cron": "*/15 * * * *", "last_run": "2026-05-25T13:45:00Z", "next_run": "2026-05-25T14:00:00Z", "last_status": "ok", "min_interval_seconds": 60 }
+  {
+    "key": "repo_sync",
+    "cron": "*/5 * * * *",
+    "cron_label": "every 5 minutes",
+    "min_interval_seconds": 60,
+    "max_run_seconds": 300,
+    "running": false,
+    "lock_held_since": null,
+    "next_run_label": "next 14:20 UTC",
+    "last_run_label": "14:10 UTC",
+    "last_status": "ok",
+    "last_summary": "ok, 3 repos synced (1 changed)",
+    "config_schema": []
+  },
+  {
+    "key": "code_enrichment",
+    "cron": "*/10 * * * * *",
+    "cron_label": "every 10s, six-field seconds-first",
+    "min_interval_seconds": 1,
+    "max_run_seconds": 600,
+    "running": true,
+    "lock_held_since": "14:12:00 UTC",
+    "next_run_label": "lock held since 14:12:00 UTC",
+    "last_run_label": "14:07:00 UTC",
+    "last_status": "ok",
+    "last_summary": "ok, 25 symbols enriched",
+    "config_schema": [
+      {
+        "key": "batch_size",
+        "type": "int",
+        "label": "batch_size",
+        "value": 5,
+        "min": 1,
+        "max": 100,
+        "help": "Code symbols summarised per scheduled run."
+      }
+    ]
+  },
+  {
+    "key": "token_blocklist_cleanup",
+    "cron": "0 * * * *",
+    "cron_label": "hourly, on the hour",
+    "min_interval_seconds": 300,
+    "max_run_seconds": 120,
+    "running": false,
+    "lock_held_since": null,
+    "next_run_label": "next 15:00 UTC",
+    "last_run_label": "14:00 UTC",
+    "last_status": "ok",
+    "last_summary": "ok, 142 tokens purged",
+    "config_schema": []
+  },
+  {
+    "key": "pipeline_failure_cleanup",
+    "cron": "0 * * * *",
+    "cron_label": "hourly, on the hour",
+    "min_interval_seconds": 300,
+    "max_run_seconds": 120,
+    "running": false,
+    "lock_held_since": null,
+    "next_run_label": "next 15:00 UTC",
+    "last_run_label": "14:00 UTC",
+    "last_status": "ok",
+    "last_summary": "ok, 0 stale failures",
+    "config_schema": [
+      {
+        "key": "retention_days",
+        "type": "int",
+        "label": "retention_days",
+        "value": 30,
+        "min": 1,
+        "max": 365,
+        "help": "Resolved failure rows older than this are swept."
+      }
+    ]
+  },
+  {
+    "key": "graph_orphan_cleanup",
+    "cron": "0 * * * *",
+    "cron_label": "hourly, on the hour",
+    "min_interval_seconds": 300,
+    "max_run_seconds": 300,
+    "running": false,
+    "lock_held_since": null,
+    "next_run_label": "next 15:00 UTC",
+    "last_run_label": "14:00 UTC",
+    "last_status": "ok",
+    "last_summary": "ok, 6 orphan entities pruned",
+    "config_schema": []
+  },
+  {
+    "key": "tag_orphan_cleanup",
+    "cron": "0 * * * *",
+    "cron_label": "hourly, on the hour",
+    "min_interval_seconds": 300,
+    "max_run_seconds": 120,
+    "running": false,
+    "lock_held_since": null,
+    "next_run_label": "next 15:00 UTC",
+    "last_run_label": "14:00 UTC",
+    "last_status": "ok",
+    "last_summary": "ok, 2 orphan tags removed",
+    "config_schema": []
+  },
+  {
+    "key": "expired_memory_cleanup",
+    "cron": "0 * * * *",
+    "cron_label": "hourly, on the hour",
+    "min_interval_seconds": 300,
+    "max_run_seconds": 300,
+    "running": false,
+    "lock_held_since": null,
+    "next_run_label": "next 15:00 UTC (unaffected)",
+    "last_run_label": "14:00 UTC",
+    "last_status": "error",
+    "last_summary": "failed: chk_superseded_has_pointer violation, 1 dependent memory was not demoted before delete",
+    "config_schema": [
+      {
+        "key": "batch_limit",
+        "type": "int",
+        "label": "batch_limit",
+        "value": 200,
+        "min": 10,
+        "max": 1000,
+        "help": "Expired rows deleted per sweep (dependents demoted first)."
+      }
+    ]
+  }
 ]

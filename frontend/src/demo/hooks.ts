@@ -33,3 +33,16 @@ export const useDemoMemoryGraph = () => useDemoStore((s) => s.memoryGraph)
 export const useDemoChatThreads = () => useDemoStore((s) => s.chatThreads)
 export const useDemoChatThread = (id: string | null) =>
   useDemoStore((s) => s.chatThreads.find((t) => t.id === id))
+
+export const useDemoPipelineRuns = () => useDemoStore((s) => s.pipelineRuns)
+export const useDemoFeedEvents = () => useDemoStore((s) => s.feedEvents)
+export const useDemoPipelineFailures = () =>
+  useDemoStore((s) => s.pipelineFailures)
+export const useDemoBufferMonitor = () => useDemoStore((s) => s.bufferMonitor)
+export const useDemoDreamMonitor = () => useDemoStore((s) => s.dreamMonitor)
+export const useDemoDreamCycle = () => useDemoStore((s) => s.dreamCycle)
+export const useDemoDreamActions = () => useDemoStore((s) => s.dreamActions)
+export const useDemoDreamPastActions = () =>
+  useDemoStore((s) => s.dreamPastActions)
+export const useDemoDayBuckets = () => useDemoStore((s) => s.dayBuckets)
+export const useDemoSessionRuns = () => useDemoStore((s) => s.sessionRuns)

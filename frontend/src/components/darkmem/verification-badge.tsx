@@ -43,6 +43,9 @@ export interface VerificationBadgeProps {
   status: VerificationStatus
   /** The full honest claim, e.g. "asserted by 3 distinct origins…". */
   detail?: string
+  /** Visible-text override — e.g. "human-ratified" for the confirmed rung,
+   *  which is never labelled with the bare word "confirmed" in transitions. */
+  label?: string
   className?: string
 }
 
@@ -51,6 +54,7 @@ export interface VerificationBadgeProps {
 export function VerificationBadge({
   status,
   detail,
+  label,
   className,
 }: VerificationBadgeProps) {
   const { icon: Icon, className: statusClass } = STYLES[status]
@@ -62,7 +66,7 @@ export function VerificationBadge({
       className={cn("gap-1", statusClass, className)}
     >
       <Icon aria-hidden className="h-3 w-3" />
-      {status}
+      {label ?? status}
     </Badge>
   )
 }

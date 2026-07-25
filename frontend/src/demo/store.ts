@@ -20,6 +20,18 @@ import {
   DEMO_REPLY_CONTENT,
   DEMO_REPLY_CONTEXT,
 } from "./data/chat-curated"
+import {
+  CURATED_BUFFER_MONITOR,
+  CURATED_DAY_BUCKETS,
+  CURATED_DREAM_ACTIONS,
+  CURATED_DREAM_CYCLE,
+  CURATED_DREAM_MONITOR,
+  CURATED_DREAM_PAST_ACTIONS,
+  CURATED_FEED_EVENTS,
+  CURATED_PIPELINE_FAILURES,
+  CURATED_PIPELINE_RUNS,
+  CURATED_SESSION_RUNS,
+} from "./data/activity-curated"
 import { enrichBulkMemories, type RawBulkMemory } from "./memories"
 import { buildReindexPhases } from "./explore"
 import { liveArticles } from "./knowledge"
@@ -34,8 +46,8 @@ import type {
   DemoFact,
   DemoArticle,
   DemoChatThread,
+  DemoJob,
   Repo,
-  Job,
   LlmProfile,
 } from "./types"
 
@@ -114,11 +126,30 @@ const ratifyArticle = (article: DemoArticle, by: string, on: string): DemoArticl
 
 const RATIFY_DATE = "2026-07-25"
 
-export const useDemoStore = create<DemoStoreState>((set) => ({
+// Deep-copy the activity fixtures so store mutations (retry, trigger, undo)
+// never write back into the module-level curated constants.
+const initialActivity = () => ({
+  pipelineRuns: CURATED_PIPELINE_RUNS.map((r) => ({ ...r })),
+  feedEvents: CURATED_FEED_EVENTS.map((e) => ({ ...e })),
+  pipelineFailures: CURATED_PIPELINE_FAILURES.map((f) => ({ ...f })),
+  jobs: (jobsData as unknown as DemoJob[]).map((j) => ({
+    ...j,
+    config_schema: j.config_schema.map((f) => ({ ...f })),
+  })),
+  bufferMonitor: CURATED_BUFFER_MONITOR,
+  dreamMonitor: CURATED_DREAM_MONITOR,
+  dreamCycle: CURATED_DREAM_CYCLE,
+  dreamActions: CURATED_DREAM_ACTIONS.map((a) => ({ ...a })),
+  dreamPastActions: CURATED_DREAM_PAST_ACTIONS.map((a) => ({ ...a })),
+  dayBuckets: CURATED_DAY_BUCKETS,
+  sessionRuns: CURATED_SESSION_RUNS,
+})
+
+export const useDemoStore = create<DemoStoreState>((set, get) => ({
   memories: initialMemories,
   repos: reposData as unknown as Repo[],
-  jobs: jobsData as unknown as Job[],
   llmProfiles: llmProfilesData as unknown as LlmProfile[],
+  ...initialActivity(),
   stats: initialStats,
   events: buildActivityFeed(),
   contributions: buildContributions(),
@@ -268,4 +299,77 @@ export const useDemoStore = create<DemoStoreState>((set) => ({
     }))
     return updated.id
   },
+  retryFailure: (id) =>
+    set((s) => ({
+      pipelineFailures: s.pipelineFailures.map((f) =>
+        f.id === id ? { ...f, retry_queued: true } : f,
+      ),
+    })),
+  retryAllFailures: () =>
+    set((s) => ({
+      pipelineFailures: s.pipelineFailures.map((f) => ({
+        ...f,
+        retry_queued: true,
+      })),
+    })),
+  forgetFailure: (id) =>
+    set((s) => ({
+      pipelineFailures: s.pipelineFailures.filter((f) => f.id !== id),
+    })),
+  triggerJob: (key) => {
+    const job = get().jobs.find((j) => j.key === key)
+    if (!job) return { ok: false, status: 409, lock_held_since: "unknown" }
+    if (job.running) {
+      return {
+        ok: false,
+        status: 409,
+        lock_held_since: job.lock_held_since ?? "just now",
+      }
+    }
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.key === key
+          ? {
+              ...j,
+              last_run_label: "just now (manual)",
+              last_status: "ok" as const,
+              last_summary: "ok — manual trigger completed",
+            }
+          : j,
+      ),
+    }))
+    return { ok: true }
+  },
+  saveJobConfig: (key, values) =>
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.key === key
+          ? {
+              ...j,
+              config_schema: j.config_schema.map((f) =>
+                values[f.key] !== undefined
+                  ? { ...f, value: values[f.key] as number }
+                  : f,
+              ),
+            }
+          : j,
+      ),
+    })),
+  undoDreamAction: (id) =>
+    set((s) => ({
+      dreamActions: s.dreamActions.map((a) =>
+        a.id === id && !a.undo_blocked && !a.undone
+          ? { ...a, undone: true }
+          : a,
+      ),
+    })),
+  undoDreamBatch: (type) =>
+    set((s) => ({
+      dreamActions: s.dreamActions.map((a) =>
+        a.type === type && !a.undo_blocked && !a.undone
+          ? { ...a, undone: true }
+          : a,
+      ),
+    })),
+  resetActivity: () => set(() => initialActivity()),
 }))
