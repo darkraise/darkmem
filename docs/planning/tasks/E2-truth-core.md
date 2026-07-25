@@ -688,12 +688,13 @@ guards, otherwise `deprecated`.
 
 **Done when:**
 - [ ] The primitive is the single path by which consolidation supersedes anything
-- [ ] The status bridge's two guards are tested independently. **Doc 08 §3.4 contradicts
-      itself here and this must be resolved before implementation, not during it:** the
-      prose says a failed guard sends the memory to `deprecated`, while the section's own
-      diagram and rationale say a guard-2 failure is a **no-op** because the memory still
-      asserts live facts. Taking the prose retires memories that still hold live
-      knowledge. This is a **Tier-3 amendment** (runbook §5) — stop and escalate
+- [ ] The status bridge's two guards are tested independently, and **they fail
+      differently** (doc 08 §3.4, corrected 2026-07-25): guard 1 failing means the successor
+      is not well-defined, so the memory goes to `deprecated` with `superseded_by=NULL`;
+      guard 2 failing means the bridge does not apply at all, so the memory's status is
+      **unchanged**. A test asserts that a memory still asserting live facts is left alone —
+      deprecating it would drop live knowledge out of the active view, which is what guard 2
+      exists to prevent
 - [ ] `chk_superseded_has_pointer` holds through every transition
 
 **Verify.** `cd backend && python -m pytest tests/test_supersede_primitive.py -q`
