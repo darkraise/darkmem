@@ -2,7 +2,15 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { ArrowLeft, FileQuestion, Library } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { useDemoFact } from "@/demo/hooks"
@@ -21,7 +29,7 @@ export const Route = createFileRoute("/_authenticated/knowledge_/facts/$factId")
   component: FactDetailPage,
 })
 
-function Module({
+function SectionCard({
   title,
   hint,
   children,
@@ -31,11 +39,13 @@ function Module({
   children: React.ReactNode
 }) {
   return (
-    <section className="border-border space-y-2 border-t pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
-      {children}
-    </section>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        {hint && <CardDescription className="text-sm">{hint}</CardDescription>}
+      </CardHeader>
+      <CardContent className="space-y-2">{children}</CardContent>
+    </Card>
   )
 }
 
@@ -55,6 +65,21 @@ function LadderRow({ event }: { event: FactLadderEvent }) {
         )}
       </div>
     </div>
+  )
+}
+
+function MetaRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <>
+      <dt className="text-muted-foreground font-mono">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </>
   )
 }
 
@@ -96,149 +121,178 @@ function FactDetailPage() {
   const disputed = fact.verification_status === "disputed"
 
   return (
-    <div className="space-y-4">
-      <div className="border-border bg-card space-y-4 rounded-lg border p-5">
-        <Module title="Fact">
-          <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">
-            <span>
-              fact_id: <b className="text-foreground">{fact.id.slice(0, 8)}</b>
-            </span>
-            <span>
-              project: <b className="text-foreground">{fact.project}</b>
-            </span>
-            <span>
-              review_state:{" "}
-              <b className="text-foreground">{fact.review_state ?? "—"}</b>
-            </span>
-            <span>
-              as of: <b className="text-foreground">{fact.as_of}</b>
-            </span>
-          </div>
-          <FactTriple
-            subject={fact.subject_name}
-            rel={fact.rel_type}
-            object={fact.object_name}
-          />
-          <blockquote className="border-border bg-muted/25 rounded-r-md border-l-2 px-3.5 py-3 text-sm leading-relaxed">
-            {fact.fact_text}
-          </blockquote>
-          <div className="flex flex-wrap items-center gap-2">
-            <LayerChip layer={2} />
-            {/* verification_status verbatim — never softened, never
-                recomputed client-side (invariant 14). */}
-            <VerificationBadge status={fact.verification_status} detail={fact.claim} />
-            {fact.code_provenance && (
-              <Badge variant="outline" size="sm" className="rounded-sm font-mono">
-                code@{fact.code_provenance.commit_sha}
-              </Badge>
-            )}
-            {fact.under_sourced_note && <UnderSourcedBadge />}
-          </div>
-          <p className="font-mono text-sm">{fact.claim}</p>
-          {fact.under_sourced_note && (
-            <p className="text-muted-foreground text-sm">
-              {fact.under_sourced_note}
-            </p>
+    <div className="mx-auto max-w-6xl">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
+        {/* main column — the claim and its verification are the hero */}
+        <div className="min-w-0 space-y-4">
+          <Card elevation="low">
+            <CardHeader className="space-y-3 pb-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <LayerChip layer={2} />
+                {/* verification_status verbatim — never softened, never
+                    recomputed client-side (invariant 14). */}
+                <VerificationBadge
+                  status={fact.verification_status}
+                  detail={fact.claim}
+                />
+                {fact.code_provenance && (
+                  <Badge
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm font-mono"
+                  >
+                    code@{fact.code_provenance.commit_sha}
+                  </Badge>
+                )}
+                {fact.under_sourced_note && <UnderSourcedBadge />}
+                <span className="text-muted-foreground ml-auto font-mono text-sm">
+                  fact {fact.id.slice(0, 8)}
+                </span>
+              </div>
+              <FactTriple
+                subject={fact.subject_name}
+                rel={fact.rel_type}
+                object={fact.object_name}
+                className="text-base"
+              />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-base leading-relaxed">{fact.fact_text}</p>
+              <Separator />
+              <p className="font-mono text-sm">{fact.claim}</p>
+              {fact.under_sourced_note && (
+                <p className="text-muted-foreground text-sm">
+                  {fact.under_sourced_note}
+                </p>
+              )}
+              {fact.candidate_note && (
+                <p className="text-muted-foreground text-sm">
+                  {fact.candidate_note}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {fact.sources.length > 0 && (
+            <SectionCard
+              title="Sources — grouped by origin_key"
+              hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over these groups, never the raw row count."
+            >
+              <FactSourcesGroups sources={fact.sources} />
+            </SectionCard>
           )}
-          {fact.candidate_note && (
-            <p className="text-muted-foreground text-sm">{fact.candidate_note}</p>
+
+          {fact.dispute && (
+            <SectionCard
+              title={
+                disputed
+                  ? "Both sides — strictly equal weight, no winner"
+                  : "Dispute history — resolved by human ratification"
+              }
+              hint={
+                disputed
+                  ? "Both sides carry an overlapping validity window — that overlap is what makes this a genuine contradiction rather than a succession. Resolution happens only in the Review queue; this page never adjudicates."
+                  : "Both sides' origins remain on record — ratification resolved the rung, it did not erase the losing side's sources."
+              }
+            >
+              <p className="text-sm font-semibold">{fact.dispute.summary}</p>
+              <DisputePanel dispute={fact.dispute} />
+              {disputed && (
+                <p className="text-muted-foreground text-sm">
+                  Origin counts are shown on both sides without a comparative
+                  treatment — corroboration count does not adjudicate a dispute.{" "}
+                  <Link
+                    to="/knowledge"
+                    search={{ tab: "review" }}
+                    className="text-primary"
+                  >
+                    Adjudicate in Review →
+                  </Link>
+                </p>
+              )}
+            </SectionCard>
           )}
-          {fact.code_provenance && (
-            <dl className="grid grid-cols-[7rem_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground font-mono">commit_sha</dt>
-              <dd className="font-mono">{fact.code_provenance.commit_sha}</dd>
-              <dt className="text-muted-foreground font-mono">basis</dt>
-              <dd>{fact.code_provenance.basis}</dd>
-              <dt className="text-muted-foreground font-mono">file_path</dt>
-              <dd className="font-mono">{fact.code_provenance.file_path}</dd>
-              <dt className="text-muted-foreground font-mono">symbol_key</dt>
-              <dd className="font-mono">{fact.code_provenance.symbol_key}</dd>
-            </dl>
-          )}
-        </Module>
 
-        {fact.sources.length > 0 && (
-          <Module
-            title="Sources — grouped by origin_key"
-            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over these groups, never the raw row count."
+          <SectionCard
+            title="Verification ladder"
+            hint="every rung transition this fact has taken — the machine ceiling is corroborated; only a human ratify reaches confirmed."
           >
-            <FactSourcesGroups sources={fact.sources} />
-          </Module>
-        )}
-
-        {fact.dispute && (
-          <Module
-            title={
-              disputed
-                ? "Both sides — strictly equal weight, no winner"
-                : "Dispute history — resolved by human ratification"
-            }
-            hint={
-              disputed
-                ? "Both sides carry an overlapping validity window — that overlap is what makes this a genuine contradiction rather than a succession. Resolution happens only in the Review queue; this page never adjudicates."
-                : "Both sides' origins remain on record — ratification resolved the rung, it did not erase the losing side's sources."
-            }
-          >
-            <p className="text-sm font-semibold">{fact.dispute.summary}</p>
-            <DisputePanel dispute={fact.dispute} />
-            {disputed && (
-              <p className="text-muted-foreground text-sm">
-                Origin counts are shown on both sides without a comparative
-                treatment — corroboration count does not adjudicate a dispute.{" "}
-                <Link
-                  to="/knowledge"
-                  search={{ tab: "review" }}
-                  className="text-primary"
-                >
-                  Adjudicate in Review →
-                </Link>
-              </p>
-            )}
-          </Module>
-        )}
-
-        <Module
-          title="Verification ladder"
-          hint="every rung transition this fact has taken — the machine ceiling is corroborated; only a human ratify reaches confirmed."
-        >
-          <div>
-            {fact.ladder.map((event, i) => (
-              <LadderRow key={i} event={event} />
-            ))}
-          </div>
-        </Module>
-
-        {fact.windows.length > 0 && (
-          <Module
-            title="Belief window"
-            hint="valid_at / invalid_at / expired_at as a timeline — what did we believe as of X. Closed windows are retained as history, not live claims."
-          >
-            <div className="space-y-2.5">
-              {fact.windows.map((window, i) => (
-                <BeliefWindowRow key={i} window={window} />
+            <div>
+              {fact.ladder.map((event, i) => (
+                <LadderRow key={i} event={event} />
               ))}
             </div>
-          </Module>
-        )}
+          </SectionCard>
 
-        <Module title="applies_when">
-          <AppliesWhenChips items={fact.applies_when} />
-        </Module>
+          {fact.windows.length > 0 && (
+            <SectionCard
+              title="Belief window"
+              hint="valid_at / invalid_at / expired_at as a timeline — what did we believe as of X. Closed windows are retained as history, not live claims."
+            >
+              <div className="space-y-2.5">
+                {fact.windows.map((window, i) => (
+                  <BeliefWindowRow key={i} window={window} />
+                ))}
+              </div>
+            </SectionCard>
+          )}
+        </div>
 
-        {fact.ratified && (
-          <Module title="Ratification">
-            <p className="flex flex-wrap items-center gap-2 text-sm">
-              <VerificationBadge status="confirmed" />
-              <span>
-                ratified by{" "}
-                <b className="font-semibold">{fact.ratified.by}</b> on{" "}
-                {fact.ratified.on} — the ratification wrote a human-kind
-                fact_source, so a later re-extraction that withdraws every
-                memory source still leaves this one
-              </span>
-            </p>
-          </Module>
-        )}
+        {/* aside — record metadata, context, provenance, ratification */}
+        <div className="space-y-4">
+          <SectionCard title="Record">
+            <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+              <MetaRow label="fact_id">{fact.id.slice(0, 8)}</MetaRow>
+              <MetaRow label="project">{fact.project}</MetaRow>
+              <MetaRow label="review_state">{fact.review_state ?? "—"}</MetaRow>
+              <MetaRow label="as of">{fact.as_of}</MetaRow>
+            </dl>
+          </SectionCard>
+
+          <SectionCard title="applies_when">
+            <AppliesWhenChips items={fact.applies_when} />
+          </SectionCard>
+
+          {fact.code_provenance && (
+            <SectionCard title="Code provenance">
+              <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                <MetaRow label="commit_sha">
+                  <span className="font-mono">
+                    {fact.code_provenance.commit_sha}
+                  </span>
+                </MetaRow>
+                <MetaRow label="basis">{fact.code_provenance.basis}</MetaRow>
+                <MetaRow label="file_path">
+                  <span className="font-mono">
+                    {fact.code_provenance.file_path}
+                  </span>
+                </MetaRow>
+                <MetaRow label="symbol_key">
+                  <span className="font-mono">
+                    {fact.code_provenance.symbol_key}
+                  </span>
+                </MetaRow>
+              </dl>
+            </SectionCard>
+          )}
+
+          {fact.ratified && (
+            <SectionCard title="Ratification">
+              {/* div, not p — VerificationBadge renders block content and
+                  must never sit inside a paragraph. */}
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <VerificationBadge status="confirmed" />
+                <span>
+                  ratified by{" "}
+                  <b className="font-semibold">{fact.ratified.by}</b> on{" "}
+                  {fact.ratified.on} — the ratification wrote a human-kind
+                  fact_source, so a later re-extraction that withdraws every
+                  memory source still leaves this one
+                </span>
+              </div>
+            </SectionCard>
+          )}
+        </div>
       </div>
     </div>
   )

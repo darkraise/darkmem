@@ -265,9 +265,9 @@ export function CodeGraphTab({
   // Non-populated repo states — each failure cause looks different (honesty).
   if (repo.status === "indexing") {
     return (
-      <div className="border-border overflow-hidden rounded-lg border">
+      <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
-        <div className="space-y-3 p-8">
+        <div className="flex-1 space-y-3 p-8">
           <p className="text-sm font-semibold">
             Building the code graph for {repo.name}
           </p>
@@ -298,9 +298,9 @@ export function CodeGraphTab({
 
   if (repo.status === "error") {
     return (
-      <div className="border-border overflow-hidden rounded-lg border">
+      <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
-        <div className="p-8">
+        <div className="flex-1 p-8">
           <div className="border-destructive/50 bg-destructive/8 flex max-w-xl gap-2.5 rounded-md border p-3.5">
             <TriangleAlert
               aria-hidden
@@ -334,10 +334,10 @@ export function CodeGraphTab({
 
   if (!graph) {
     return (
-      <div className="border-border overflow-hidden rounded-lg border">
+      <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
         <EmptyState
-          className="py-12"
+          className="flex-1 py-12"
           icon={<FolderGit2 aria-hidden className="h-6 w-6" />}
           title="No graph yet"
           description={`${repo.name} is registered but has never been indexed — no symbols, no edges, no communities or processes to browse. Index it from Repositories to build the graph.`}
@@ -352,7 +352,7 @@ export function CodeGraphTab({
   }
 
   return (
-    <div className="border-border overflow-hidden rounded-lg border">
+    <div className="flex min-h-0 flex-1 flex-col">
       {toolbar}
 
       {/* controls row */}
@@ -519,14 +519,14 @@ export function CodeGraphTab({
         </span>
       </div>
 
-      {/* three-panel body */}
-      <div className="grid min-h-[300px] grid-cols-1 md:grid-cols-[11rem_minmax(0,1fr)_15rem]">
+      {/* three-panel body — fills the remaining height edge-to-edge */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[11rem_minmax(0,1fr)_15rem]">
         {/* symbol browser */}
-        <div className="border-border bg-card flex min-w-0 flex-col border-b md:border-r md:border-b-0">
+        <div className="border-border bg-card flex min-h-0 min-w-0 flex-col border-b md:border-r md:border-b-0">
           <span className="border-border text-muted-foreground border-b px-2.5 py-1.5 font-mono text-sm tracking-wide uppercase">
             Symbols
           </span>
-          <div className="flex flex-col gap-px overflow-y-auto p-1.5">
+          <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
             {filteredNodes.length === 0 ? (
               <p className="text-muted-foreground p-2 text-sm">
                 No symbol matches "{search}" — the graph itself is unchanged.
@@ -561,21 +561,23 @@ export function CodeGraphTab({
         </div>
 
         {/* canvas */}
-        <div className="flex min-w-0 flex-col">
-          <CodeCanvas
-            graph={graph}
-            layout={layout}
-            colorBy={colorBy}
-            selectedId={selectedId}
-            onSelect={selectNode}
-            visibleIds={visibleIds}
-            blastIds={blast ? new Set(blast.affected.map((a) => a.id)) : null}
-            highlightCommunity={activeCommunity}
-            processIds={processIds}
-            playing={playing}
-            zoom={zoom}
-            center={center}
-          />
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="min-h-64 min-w-0 flex-1">
+            <CodeCanvas
+              graph={graph}
+              layout={layout}
+              colorBy={colorBy}
+              selectedId={selectedId}
+              onSelect={selectNode}
+              visibleIds={visibleIds}
+              blastIds={blast ? new Set(blast.affected.map((a) => a.id)) : null}
+              highlightCommunity={activeCommunity}
+              processIds={processIds}
+              playing={playing}
+              zoom={zoom}
+              center={center}
+            />
+          </div>
           <div className="border-border bg-card text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-t px-2.5 py-1.5 text-sm">
             {colorBy === "community" ? (
               graph.communities.map((c) => (
@@ -624,7 +626,7 @@ export function CodeGraphTab({
         </div>
 
         {/* analysis panel */}
-        <div className="border-border bg-card flex min-w-0 flex-col border-t md:border-t-0 md:border-l">
+        <div className="border-border bg-card flex min-h-0 min-w-0 flex-col overflow-y-auto border-t md:border-t-0 md:border-l">
           <div className="border-border space-y-1.5 border-b p-2.5">
             <SectionTitle
               icon={<Crosshair aria-hidden className="h-3 w-3" />}

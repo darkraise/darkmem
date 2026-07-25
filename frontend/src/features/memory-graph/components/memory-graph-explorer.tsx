@@ -39,6 +39,11 @@ const TYPE_CHART: Record<MemoryEntityType, number> = {
 
 const chartVar = (n: number) => `var(--chart-${n})`
 
+/**
+ * Full-bleed explorer: a toolbar strip on top, the canvas filling the rest
+ * of the content area edge-to-edge (legend as a bottom overlay), and the
+ * inspector + community navigator as a full-height side column.
+ */
 export function MemoryGraphExplorer() {
   const graph = useDemoMemoryGraph()
   const projects = useMemo(() => distinctGraphProjects(graph), [graph])
@@ -119,15 +124,15 @@ export function MemoryGraphExplorer() {
     focusTopic !== null && topicId !== focusTopic
 
   return (
-    <div className="space-y-4">
-      {/* toolbar */}
-      <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* toolbar strip */}
+      <div className="border-border bg-card flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
         <Input
           prefix={<Search aria-hidden className="h-4 w-4" />}
           placeholder="Search entities & relations…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          groupClassName="min-w-56 flex-1"
+          groupClassName="w-64"
           aria-label="Search entities"
         />
         {query.trim() !== "" && (
@@ -173,32 +178,28 @@ export function MemoryGraphExplorer() {
             ))}
           </SelectContent>
         </Select>
+        <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
+          {scoped.entities.length} entities · {scoped.relations.length}{" "}
+          relations · {scoped.topics.length} topics
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
-        {/* canvas frame */}
-        <div className="border-border bg-card overflow-hidden rounded-md border">
-          <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-3 py-2">
-            <span className="text-sm font-semibold">
-              Entity graph — project: {project}
-            </span>
-            <span className="text-muted-foreground ml-auto font-mono text-sm">
-              {scoped.entities.length} entities · {scoped.relations.length}{" "}
-              relations · {scoped.topics.length} topics
-            </span>
-          </div>
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* canvas — edge-to-edge, legend overlaid at the bottom */}
+        <div className="relative min-h-72 min-w-0 flex-1">
           {scoped.entities.length === 0 ? (
-            <EmptyState
-              className="py-10"
-              icon={<Waypoints aria-hidden className="h-6 w-6" />}
-              title="No entity graph yet"
-              description={`Project ${project} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
-            />
+            <div className="flex h-full items-center justify-center p-6">
+              <EmptyState
+                icon={<Waypoints aria-hidden className="h-6 w-6" />}
+                title="No entity graph yet"
+                description={`Project ${project} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
+              />
+            </div>
           ) : (
             <>
               <svg
                 viewBox={`0 0 ${W} ${H}`}
-                className="block h-auto w-full"
+                className="h-full w-full"
                 role="img"
                 aria-label={`Entity graph for project ${project}: ${scoped.entities.length} entities in ${scoped.topics.length} topic clusters, ${layout} layout`}
                 onClick={() => setSelectedId(null)}
@@ -307,7 +308,7 @@ export function MemoryGraphExplorer() {
                   )
                 })}
               </svg>
-              <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 px-3 pt-1 pb-3 text-sm">
+              <div className="bg-background/75 text-muted-foreground absolute inset-x-0 bottom-0 flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 text-sm backdrop-blur-sm">
                 {(Object.keys(TYPE_CHART) as MemoryEntityType[]).map(
                   (type) => (
                     <span
@@ -335,9 +336,9 @@ export function MemoryGraphExplorer() {
           )}
         </div>
 
-        {/* inspector + community navigator */}
-        <div className="space-y-4">
-          <div className="border-border bg-card overflow-hidden rounded-md border">
+        {/* inspector + community navigator — full-height side column */}
+        <div className="border-border bg-card min-h-0 shrink-0 overflow-y-auto border-t lg:w-72 lg:border-t-0 lg:border-l">
+          <div className="border-border border-b">
             <div className="border-border bg-muted/30 flex items-center gap-2 border-b px-3 py-2">
               <Crosshair
                 aria-hidden
@@ -390,7 +391,7 @@ export function MemoryGraphExplorer() {
             )}
           </div>
 
-          <div className="border-border bg-card overflow-hidden rounded-md border">
+          <div>
             <div className="border-border bg-muted/30 flex items-center gap-2 border-b px-3 py-2">
               <Waypoints
                 aria-hidden

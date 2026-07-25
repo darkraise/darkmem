@@ -10,7 +10,15 @@ import {
 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
 import { useDemoMemories } from "@/demo/hooks"
 import { deriveTimeline, distinctProjects } from "@/demo/memories"
@@ -30,7 +38,7 @@ function formatDateTime(iso: string): string {
   })
 }
 
-function Module({
+function SectionCard({
   title,
   hint,
   children,
@@ -40,11 +48,13 @@ function Module({
   children: React.ReactNode
 }) {
   return (
-    <section className="border-border space-y-2 border-t pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
-      {children}
-    </section>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        {hint && <CardDescription className="text-sm">{hint}</CardDescription>}
+      </CardHeader>
+      <CardContent className="space-y-2">{children}</CardContent>
+    </Card>
   )
 }
 
@@ -175,6 +185,21 @@ function SupersessionLineage({
   )
 }
 
+function MetaRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <>
+      <dt className="text-muted-foreground font-mono">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </>
+  )
+}
+
 function MemoryDetailPage() {
   const { memoryId } = Route.useParams()
   const memories = useDemoMemories()
@@ -221,145 +246,167 @@ function MemoryDetailPage() {
   const timeline = deriveTimeline(memory)
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <LifecycleBadge status={memory.status} />
-        {memory.verification_status && (
-          <VerificationBadge
-            status={memory.verification_status}
-            detail={memory.verification_detail}
-          />
-        )}
-      </div>
+    <div className="mx-auto max-w-6xl">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
+        {/* main column — the memory content is the hero */}
+        <div className="min-w-0 space-y-4">
+          <Card elevation="low">
+            <CardHeader className="space-y-3 pb-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <LifecycleBadge status={memory.status} />
+                {memory.verification_status && (
+                  <VerificationBadge
+                    status={memory.verification_status}
+                    detail={memory.verification_detail}
+                  />
+                )}
+                <span className="text-muted-foreground ml-auto font-mono text-sm">
+                  memory {memory.id.slice(0, 8)}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-base leading-relaxed">{memory.content}</p>
+              <Separator />
+              <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">
+                <span>
+                  captured{" "}
+                  <b className="text-foreground font-medium">
+                    {formatDateTime(memory.created_at)}
+                  </b>
+                </span>
+                <span>
+                  via <b className="text-foreground font-medium">{memory.source}</b>
+                </span>
+                <span>
+                  project{" "}
+                  <b className="text-foreground font-medium">{memory.project}</b>
+                </span>
+                <span>
+                  confidence{" "}
+                  <b className="text-foreground font-medium">
+                    {memory.confidence.toFixed(2)}
+                  </b>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
 
-      <div className="border-border bg-card space-y-4 rounded-lg border p-5">
-        <Module title="Content">
-          <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">
-            <span>
-              id: <b className="text-foreground">{memory.id.slice(0, 8)}</b>
-            </span>
-            <span>
-              project: <b className="text-foreground">{memory.project}</b>
-            </span>
-            <span>
-              source: <b className="text-foreground">{memory.source}</b>
-            </span>
-            <span>
-              status: <b className="text-foreground">{memory.status}</b>
-            </span>
-            <span>
-              created:{" "}
-              <b className="text-foreground">
-                {formatDateTime(memory.created_at)}
-              </b>
-            </span>
-            <span>
-              confidence:{" "}
-              <b className="text-foreground">{memory.confidence.toFixed(2)}</b>
-            </span>
-            {memory.applies_when && (
-              <span>
-                applies_when:{" "}
-                <b className="text-foreground">{memory.applies_when}</b>
-              </span>
-            )}
-          </div>
-          <blockquote className="border-border bg-muted/25 rounded-r-md border-l-2 px-3.5 py-3 text-sm leading-relaxed">
-            {memory.content}
-          </blockquote>
-        </Module>
-
-        <Module title="Enrichment">
-          <dl className="grid grid-cols-[8rem_1fr] gap-x-4 gap-y-1.5 text-sm">
-            <dt className="text-muted-foreground font-mono">classified_type</dt>
-            <dd>{memory.llm_classified_type ?? "— pending"}</dd>
-            <dt className="text-muted-foreground font-mono">summary</dt>
-            <dd>{memory.llm_summary ?? "—"}</dd>
-            <dt className="text-muted-foreground font-mono">emotions</dt>
-            <dd>
-              {memory.llm_emotions?.length
-                ? memory.llm_emotions.join(", ")
-                : "—"}
-            </dd>
-            <dt className="text-muted-foreground font-mono">flags</dt>
-            <dd className="flex flex-wrap gap-1.5">
-              {memory.llm_flags?.length
-                ? memory.llm_flags.map((flag) => (
-                    <Badge
-                      key={flag}
-                      variant="outline"
-                      size="sm"
-                      className="border-warning/40 text-warning"
-                    >
-                      {flag}
-                    </Badge>
-                  ))
-                : "none"}
-            </dd>
-          </dl>
-        </Module>
-
-        <Module title="technologies">
-          {memory.technologies?.length ? (
-            <div className="flex flex-wrap gap-1.5">
-              {memory.technologies.map((tech) => (
-                <Badge
-                  key={tech}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-sm font-mono"
-                >
-                  {tech}
-                </Badge>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm italic">
-              none recorded
-            </p>
-          )}
-        </Module>
-
-        <Module title="Supersession lineage">
-          <SupersessionLineage memory={memory} successor={successor} />
-        </Module>
-
-        <Module title="Memory-relations">
-          {memory.relations?.length ? (
-            <div className="space-y-1.5">
-              {memory.relations.map((rel) => (
-                <div
-                  key={`${rel.rel_type}-${rel.memory_id}`}
-                  className="border-border flex flex-wrap items-center gap-2.5 rounded-md border p-2.5"
-                >
-                  <Badge
-                    variant="secondary"
-                    size="sm"
-                    className="shrink-0 font-mono tracking-wide uppercase"
+          <SectionCard title="Memory-relations">
+            {memory.relations?.length ? (
+              <div className="space-y-1.5">
+                {memory.relations.map((rel) => (
+                  <div
+                    key={`${rel.rel_type}-${rel.memory_id}`}
+                    className="border-border flex flex-wrap items-center gap-2.5 rounded-md border p-2.5"
                   >
-                    {rel.rel_type}
-                  </Badge>
-                  <MemoryLink memoryId={rel.memory_id} excerpt={rel.excerpt} />
-                </div>
+                    <Badge
+                      variant="secondary"
+                      size="sm"
+                      className="shrink-0 font-mono tracking-wide uppercase"
+                    >
+                      {rel.rel_type}
+                    </Badge>
+                    <MemoryLink memoryId={rel.memory_id} excerpt={rel.excerpt} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm italic">
+                no associative relations recorded yet
+              </p>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Per-memory timeline"
+            hint="events by object — timestamp, event-type chip, and (for transitions) the from→to rung pair."
+          >
+            <div>
+              {timeline.map((event, i) => (
+                <TimelineRow key={i} event={event} />
               ))}
             </div>
-          ) : (
-            <p className="text-muted-foreground text-sm italic">
-              no associative relations recorded yet
-            </p>
-          )}
-        </Module>
+          </SectionCard>
+        </div>
 
-        <Module
-          title="Per-memory timeline"
-          hint="events by object — timestamp, event-type chip, and (for transitions) the from→to rung pair."
-        >
-          <div>
-            {timeline.map((event, i) => (
-              <TimelineRow key={i} event={event} />
-            ))}
-          </div>
-        </Module>
+        {/* aside — the record's metadata and lineage, well out of the way */}
+        <div className="space-y-4">
+          <SectionCard title="Record">
+            <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+              <MetaRow label="id">{memory.id.slice(0, 8)}</MetaRow>
+              <MetaRow label="project">{memory.project}</MetaRow>
+              <MetaRow label="source">{memory.source}</MetaRow>
+              <MetaRow label="status">{memory.status}</MetaRow>
+              <MetaRow label="created">
+                {formatDateTime(memory.created_at)}
+              </MetaRow>
+              <MetaRow label="confidence">
+                {memory.confidence.toFixed(2)}
+              </MetaRow>
+              {memory.applies_when && (
+                <MetaRow label="applies_when">{memory.applies_when}</MetaRow>
+              )}
+            </dl>
+          </SectionCard>
+
+          <SectionCard title="Enrichment">
+            <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+              <MetaRow label="classified_type">
+                {memory.llm_classified_type ?? "— pending"}
+              </MetaRow>
+              <MetaRow label="summary">{memory.llm_summary ?? "—"}</MetaRow>
+              <MetaRow label="emotions">
+                {memory.llm_emotions?.length
+                  ? memory.llm_emotions.join(", ")
+                  : "—"}
+              </MetaRow>
+              <MetaRow label="flags">
+                {memory.llm_flags?.length ? (
+                  <span className="flex flex-wrap gap-1.5">
+                    {memory.llm_flags.map((flag) => (
+                      <Badge
+                        key={flag}
+                        variant="outline"
+                        size="sm"
+                        className="border-warning/40 text-warning"
+                      >
+                        {flag}
+                      </Badge>
+                    ))}
+                  </span>
+                ) : (
+                  "none"
+                )}
+              </MetaRow>
+            </dl>
+          </SectionCard>
+
+          <SectionCard title="technologies">
+            {memory.technologies?.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {memory.technologies.map((tech) => (
+                  <Badge
+                    key={tech}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm font-mono"
+                  >
+                    {tech}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm italic">
+                none recorded
+              </p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Supersession lineage">
+            <SupersessionLineage memory={memory} successor={successor} />
+          </SectionCard>
+        </div>
       </div>
 
       <MemoryEditorDialog

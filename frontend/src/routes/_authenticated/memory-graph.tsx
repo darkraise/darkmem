@@ -9,11 +9,11 @@ export const Route = createFileRoute("/_authenticated/memory-graph")({
 })
 
 function MemoryGraphPage() {
-  // Full-bleed: the graph canvas owns the content area edge-to-edge; the
-  // inner p-4 is a stopgap until the page content itself is reworked.
+  // Full-bleed: the graph explorer owns the content area edge-to-edge —
+  // toolbar on top, canvas filling the rest, inspector as a side column.
   useFullBleedContent()
   return (
-    <div className="space-y-4 p-4">
+    <div className="h-full min-h-0">
       <PageChrome
         icon={Waypoints}
         title="Memory Graph"

@@ -92,7 +92,7 @@ export function CodeCanvas({
   return (
     <svg
       viewBox={viewBox}
-      className="bg-background block h-auto w-full"
+      className="bg-background block h-full w-full"
       role="img"
       aria-label={`Demo code graph — ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${layout} layout`}
       onClick={() => onSelect(null)}

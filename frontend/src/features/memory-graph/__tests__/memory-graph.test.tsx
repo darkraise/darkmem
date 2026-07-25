@@ -6,7 +6,7 @@ describe("MemoryGraphExplorer", () => {
   it("renders the project-scoped entity graph with topics", () => {
     render(<MemoryGraphExplorer />)
     expect(
-      screen.getByText("Entity graph — project: darkmem"),
+      screen.getByRole("img", { name: /Entity graph for project darkmem/ }),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/12 entities · 14 relations · 3 topics/),

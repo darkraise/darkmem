@@ -32,16 +32,17 @@ export const Route = createFileRoute("/_authenticated/code")({
 function CodePage() {
   const { tab, repo } = Route.useSearch()
   const navigate = Route.useNavigate()
+  const isGraph = tab === "graph"
 
-  // Full-bleed on the graph tab only; the p-4 stopgap keeps the tab strip
-  // breathing until the graph canvas itself is reworked edge-to-edge.
-  useFullBleedContent(tab === "graph")
+  // Full-bleed on the graph tab only: the tab strip keeps its own inset
+  // while the graph body below runs edge-to-edge with no outer border.
+  useFullBleedContent(isGraph)
 
   const setRepo = (id: string) =>
     void navigate({ search: (prev) => ({ ...prev, repo: id }) })
 
   return (
-    <div className={cn("space-y-4", tab === "graph" && "p-4")}>
+    <div className={cn(isGraph ? "flex h-full min-h-0 flex-col" : "space-y-4")}>
       <PageChrome
         icon={Code2}
         title="Code"
@@ -56,8 +57,9 @@ function CodePage() {
             })
           }
         }}
+        className={cn(isGraph && "flex min-h-0 flex-1 flex-col")}
       >
-        <div className="overflow-x-auto">
+        <div className={cn("overflow-x-auto", isGraph && "shrink-0 px-4 pt-3")}>
           <TabsList>
             <TabsTrigger value="repositories">Repositories</TabsTrigger>
             <TabsTrigger value="graph">Code Graph</TabsTrigger>
@@ -71,7 +73,7 @@ function CodePage() {
             }
           />
         </TabsContent>
-        <TabsContent value="graph" className="pt-4">
+        <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col pt-3">
           <CodeGraphTab
             repoId={repo}
             onRepoChange={setRepo}

@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   Brain,
   ChevronDown,
+  History,
   Inbox,
+  Loader2,
   Plus,
   Search,
   SearchX,
@@ -34,6 +36,10 @@ import {
 } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
+import {
+  groupMemoriesByDay,
+  type MemoryTimelineGroup,
+} from "@/features/memories/timeline"
 
 export const Route = createFileRoute("/_authenticated/memories")({
   component: MemoriesPage,
@@ -44,19 +50,33 @@ const BROWSE_PAGE = 50
 const CONTEXT_OPTIONS = ["env=prod", "env=dev"]
 const CONTEXT_NONE = "__none__"
 
+const STATUS_DOT: Record<DemoMemory["status"], string> = {
+  active: "bg-success",
+  superseded: "bg-warning",
+  deprecated: "bg-muted-foreground",
+}
+
 function MemoryRow({
   memory,
   trace,
   expanded,
+  focused,
   onToggleTrace,
 }: {
   memory: DemoMemory
   trace?: MemoryTrace
   expanded?: boolean
+  focused?: boolean
   onToggleTrace?: () => void
 }) {
   return (
-    <div className="border-border rounded-md border p-2.5">
+    <div
+      id={`memory-row-${memory.id}`}
+      className={cn(
+        "border-border rounded-md border p-2.5 transition-shadow",
+        focused && "ring-primary/60 ring-1",
+      )}
+    >
       <div className="flex items-start gap-2.5">
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 pt-0.5">
           <LayerChip layer={memory.layer} />
@@ -128,6 +148,70 @@ function MemoryRow({
   )
 }
 
+/**
+ * Left-rail chronological navigation over the rows currently on the
+ * results surface — day buckets, most-recent first, each entry scrolls
+ * its row into view. Collapses away below xl; it is navigation, not data.
+ */
+function TimelineRail({
+  groups,
+  focusedId,
+  onSelect,
+}: {
+  groups: MemoryTimelineGroup[]
+  focusedId: string | null
+  onSelect: (id: string) => void
+}) {
+  return (
+    <nav aria-label="Memory timeline" className="space-y-4">
+      <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-sm tracking-wide uppercase">
+        <History aria-hidden className="h-3.5 w-3.5" />
+        Timeline
+      </span>
+      {groups.map((group) => (
+        <div key={group.key}>
+          <span className="text-foreground/80 block text-sm font-semibold">
+            {group.label}
+            <span className="text-muted-foreground ml-1.5 font-mono font-normal">
+              {group.entries.length}
+            </span>
+          </span>
+          <div className="border-border mt-1.5 ml-1 space-y-0.5 border-l pl-3">
+            {group.entries.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => onSelect(entry.id)}
+                className={cn(
+                  "relative block w-full rounded-sm px-1.5 py-1 text-left transition-colors",
+                  entry.id === focusedId
+                    ? "bg-primary/10"
+                    : "hover:bg-muted/50",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-2.5 -left-[17.5px] h-2 w-2 rounded-full border-2",
+                    "border-background",
+                    STATUS_DOT[entry.status],
+                  )}
+                />
+                <span className="text-muted-foreground block font-mono text-[10px]">
+                  {entry.time}
+                </span>
+                <span className="line-clamp-2 block text-sm leading-snug">
+                  {entry.excerpt}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  )
+}
+
 function MemoriesPage() {
   const memories = useDemoMemories()
 
@@ -136,7 +220,11 @@ function MemoriesPage() {
   const [context, setContext] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [focusedId, setFocusedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const focusTimer = useRef<number | undefined>(undefined)
 
   const projects = useMemo(() => distinctProjects(memories), [memories])
   const searching = query.trim().length > 0
@@ -156,15 +244,62 @@ function MemoriesPage() {
     return [...scoped].sort((a, b) => b.created_at.localeCompare(a.created_at))
   }, [memories, scope, searching])
 
+  const visibleRows = useMemo(
+    () =>
+      searching
+        ? outcome!.results.map((r) => r.memory)
+        : browseRows.slice(0, browseLimit),
+    [searching, outcome, browseRows, browseLimit],
+  )
+
+  const timelineGroups = useMemo(
+    () => groupMemoriesByDay(visibleRows),
+    [visibleRows],
+  )
+
+  const hasMore = !searching && browseRows.length > browseLimit
+
+  // Infinite scroll: the sentinel near the list tail appends the next
+  // browse page as it enters the viewport (with a short loading row).
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore) return
+    if (typeof IntersectionObserver === "undefined") return
+    let pending = false
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (pending || !entries.some((e) => e.isIntersecting)) return
+        pending = true
+        setLoadingMore(true)
+        window.setTimeout(() => {
+          setBrowseLimit((n) => n + BROWSE_PAGE)
+          setLoadingMore(false)
+        }, 250)
+      },
+      { rootMargin: "300px 0px" },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore])
+
+  useEffect(() => () => window.clearTimeout(focusTimer.current), [])
+
   const scopeLabel = scope === "all" ? "all projects" : scope
-  const shownCount = searching
-    ? outcome!.results.length
-    : Math.min(browseLimit, browseRows.length)
+  const shownCount = searching ? outcome!.results.length : visibleRows.length
   const matchCount = searching ? outcome!.totalMatches : browseRows.length
 
   const clearSearch = () => {
     setQuery("")
     setExpandedId(null)
+  }
+
+  const focusRow = (id: string) => {
+    document
+      .getElementById(`memory-row-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setFocusedId(id)
+    window.clearTimeout(focusTimer.current)
+    focusTimer.current = window.setTimeout(() => setFocusedId(null), 1800)
   }
 
   return (
@@ -247,104 +382,128 @@ function MemoriesPage() {
         </Select>
       </div>
 
-      <div className="border-border bg-card overflow-hidden rounded-lg border">
-        <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
-          <span className="text-sm font-semibold">
-            Results — project: {scopeLabel}
-          </span>
-          <span
-            className={cn(
-              "font-mono text-sm",
-              shownCount > 0 ? "text-success" : "text-muted-foreground",
-            )}
-          >
-            {shownCount > 0 ? "populated" : "empty"}
-          </span>
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            {shownCount} of {matchCount} shown
-          </span>
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[15rem_minmax(0,1fr)]">
+        {/* timeline rail — sticky within the content scroll area */}
+        <div className="sticky top-0 hidden max-h-[calc(100vh-8rem)] self-start overflow-y-auto pr-1 xl:block">
+          {visibleRows.length > 0 && (
+            <TimelineRail
+              groups={timelineGroups}
+              focusedId={focusedId}
+              onSelect={focusRow}
+            />
+          )}
         </div>
 
-        <div className="flex flex-col gap-2 p-4">
-          {/* Exclusion counts render even when the result list is empty —
-              a silent drop is the failure the design fears most. */}
-          {searching && <ExclusionStrip items={outcome!.exclusions} />}
+        <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
+          <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
+            <span className="text-sm font-semibold">
+              Results — project: {scopeLabel}
+            </span>
+            <span
+              className={cn(
+                "font-mono text-sm",
+                shownCount > 0 ? "text-success" : "text-muted-foreground",
+              )}
+            >
+              {shownCount > 0 ? "populated" : "empty"}
+            </span>
+            <span className="text-muted-foreground ml-auto font-mono text-sm">
+              {shownCount} of {matchCount} shown
+            </span>
+          </div>
 
-          {searching ? (
-            outcome!.results.length > 0 ? (
-              outcome!.results.map(({ memory, trace }) => (
-                <MemoryRow
-                  key={memory.id}
-                  memory={memory}
-                  trace={trace}
-                  expanded={expandedId === memory.id}
-                  onToggleTrace={() =>
-                    setExpandedId((prev) =>
-                      prev === memory.id ? null : memory.id,
-                    )
+          <div className="flex flex-col gap-2 p-4">
+            {/* Exclusion counts render even when the result list is empty —
+                a silent drop is the failure the design fears most. */}
+            {searching && <ExclusionStrip items={outcome!.exclusions} />}
+
+            {searching ? (
+              outcome!.results.length > 0 ? (
+                outcome!.results.map(({ memory, trace }) => (
+                  <MemoryRow
+                    key={memory.id}
+                    memory={memory}
+                    trace={trace}
+                    expanded={expandedId === memory.id}
+                    focused={focusedId === memory.id}
+                    onToggleTrace={() =>
+                      setExpandedId((prev) =>
+                        prev === memory.id ? null : memory.id,
+                      )
+                    }
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  icon={<SearchX aria-hidden className="h-6 w-6" />}
+                  title="No matches"
+                  description={`No memories match "${query.trim()}"${
+                    scope === "all" ? "" : ` in project ${scope}`
+                  } — clear the search or widen the scope.`}
+                  action={
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button variant="outline" onClick={clearSearch}>
+                        Clear search
+                      </Button>
+                      {scope !== "all" && (
+                        <Button variant="outline" onClick={() => setScope("all")}>
+                          Search all projects
+                        </Button>
+                      )}
+                    </div>
                   }
                 />
-              ))
+              )
+            ) : browseRows.length > 0 ? (
+              <>
+                {visibleRows.map((memory) => (
+                  <MemoryRow
+                    key={memory.id}
+                    memory={memory}
+                    focused={focusedId === memory.id}
+                  />
+                ))}
+                {loadingMore && (
+                  <div
+                    role="status"
+                    className="text-muted-foreground flex items-center justify-center gap-2 py-2.5 text-sm"
+                  >
+                    <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                    loading more…
+                  </div>
+                )}
+                {hasMore && <div ref={sentinelRef} aria-hidden className="h-px" />}
+                {!hasMore && (
+                  <p className="text-muted-foreground py-1 text-center font-mono text-sm">
+                    all {browseRows.length} shown
+                  </p>
+                )}
+              </>
+            ) : memories.length === 0 ? (
+              <EmptyState
+                icon={<Inbox aria-hidden className="h-6 w-6" />}
+                title="No memories captured yet"
+                description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
+                action={
+                  <Button onClick={() => setCreateOpen(true)}>
+                    <Plus className="mr-2 size-4" />
+                    Capture your first memory
+                  </Button>
+                }
+              />
             ) : (
               <EmptyState
                 icon={<SearchX aria-hidden className="h-6 w-6" />}
-                title="No matches"
-                description={`No memories match "${query.trim()}"${
-                  scope === "all" ? "" : ` in project ${scope}`
-                } — clear the search or widen the scope.`}
+                title={`No memories in project ${scope}`}
+                description="This project has no memories yet — other projects do."
                 action={
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <Button variant="outline" onClick={clearSearch}>
-                      Clear search
-                    </Button>
-                    {scope !== "all" && (
-                      <Button variant="outline" onClick={() => setScope("all")}>
-                        Search all projects
-                      </Button>
-                    )}
-                  </div>
+                  <Button variant="outline" onClick={() => setScope("all")}>
+                    Show all projects
+                  </Button>
                 }
               />
-            )
-          ) : browseRows.length > 0 ? (
-            <>
-              {browseRows.slice(0, browseLimit).map((memory) => (
-                <MemoryRow key={memory.id} memory={memory} />
-              ))}
-              {browseRows.length > browseLimit && (
-                <Button
-                  variant="outline"
-                  className="self-center"
-                  onClick={() => setBrowseLimit((n) => n + BROWSE_PAGE)}
-                >
-                  Load more
-                </Button>
-              )}
-            </>
-          ) : memories.length === 0 ? (
-            <EmptyState
-              icon={<Inbox aria-hidden className="h-6 w-6" />}
-              title="No memories captured yet"
-              description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
-              action={
-                <Button onClick={() => setCreateOpen(true)}>
-                  <Plus className="mr-2 size-4" />
-                  Capture your first memory
-                </Button>
-              }
-            />
-          ) : (
-            <EmptyState
-              icon={<SearchX aria-hidden className="h-6 w-6" />}
-              title={`No memories in project ${scope}`}
-              description="This project has no memories yet — other projects do."
-              action={
-                <Button variant="outline" onClick={() => setScope("all")}>
-                  Show all projects
-                </Button>
-              }
-            />
-          )}
+            )}
+          </div>
         </div>
       </div>
 
