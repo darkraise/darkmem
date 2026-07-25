@@ -11,6 +11,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip } from "@/components/darkmem"
 import {
   ModuleSurface,
   SurfaceStateChip,
@@ -34,6 +35,7 @@ function CardShell({
   title,
   tag,
   chip,
+  help,
   dormant,
   className,
   children,
@@ -42,6 +44,7 @@ function CardShell({
   title: string
   tag?: string
   chip?: React.ReactNode
+  help?: React.ReactNode
   dormant?: boolean
   className?: string
   children: React.ReactNode
@@ -64,6 +67,7 @@ function CardShell({
         >
           {title}
         </span>
+        {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
         {chip}
         {tag && (
           <span className="text-muted-foreground border-muted-foreground/60 ml-auto rounded-full border border-dashed px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
@@ -147,6 +151,14 @@ function AuthCard() {
           />
         </div>
       </div>
+      {/* The revocation consequence stays visible next to the trigger — a
+          destructive side effect is never demoted to a hover. */}
+      <p className="text-warning text-sm">
+        <b className="font-semibold">
+          Changing your password revokes every token minted before this moment
+        </b>{" "}
+        — the iat check treats them as dead on arrival.
+      </p>
       <ConfirmGate
         tone="danger"
         disabled={!filled}
@@ -177,21 +189,19 @@ function AuthCard() {
           Password changed (demo) — all pre-change tokens are now dead by iat.
         </p>
       )}
-      <p className="text-warning text-sm">
-        <b className="font-semibold">
-          Changing your password revokes every token minted before this moment
-        </b>{" "}
-        — the iat check treats them as dead on arrival.
-      </p>
       <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
-        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
-          login rate limiting — per-ip with lockout
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+            login rate limiting — per-ip with lockout
+          </span>
+          <HelpTip label="About login rate limiting">
+            {sec.rate_limit.ip_source}
+          </HelpTip>
+        </div>
         <Row k="attempt threshold">
           {sec.rate_limit.attempt_threshold} failed attempts
         </Row>
         <Row k="lockout window">{sec.rate_limit.lockout_window}</Row>
-        <Row k="ip source">{sec.rate_limit.ip_source}</Row>
         <Row k="journaled">{sec.rate_limit.journaled}</Row>
       </div>
     </CardShell>
@@ -201,26 +211,30 @@ function AuthCard() {
 function TokensCard() {
   const sec = useDemoSecurity()
   return (
-    <CardShell icon={Lock} title="Tokens">
+    <CardShell
+      icon={Lock}
+      title="Tokens"
+      help="Revocation must outlive the token, never the reverse — a blocklisted jti is checked on every authenticated request until its own exp passes."
+    >
       <Row k="blocklist">
         {sec.blocklisted} rows — swept by token_blocklist_cleanup, hourly, only
         after natural expiry
       </Row>
-      <p className="text-muted-foreground text-sm">
-        Revocation must outlive the token, never the reverse — a blocklisted jti
-        is checked on every authenticated request until its own exp passes.
-      </p>
       <PillFlow steps={["active", "blocklisted (rotation)", "swept"]} />
       <PillFlow
         steps={["active", "dead by iat (password change — ALL pre-change tokens)"]}
       />
       <PillFlow steps={["active", "expired (exp elapses)"]} />
       <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
-        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
-          cookie_secure — tri-state
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+            cookie_secure — tri-state
+          </span>
+          <HelpTip label="About cookie_secure">
+            {sec.cookie_secure.note}
+          </HelpTip>
+        </div>
         <Row k="value">{sec.cookie_secure.value}</Row>
-        <p className="text-muted-foreground text-sm">{sec.cookie_secure.note}</p>
       </div>
     </CardShell>
   )
@@ -233,6 +247,7 @@ function TofuCard() {
       icon={Flag}
       title="Setup — trust-on-first-use"
       chip={<SurfaceStateChip state="populated" label="claimed" />}
+      help="There is no SETUP_SECRET and none will be reintroduced — on a single-human LAN box the secret-distribution problem is strictly worse than the TOFU race it would close, and the race window is bounded by the LAN boundary plus the minutes between first boot and the wizard."
       className="sm:col-span-2"
     >
       <Row k="claimed">{sec.tofu.claimed_label}</Row>
@@ -244,12 +259,6 @@ function TofuCard() {
       <Row k="journaled">
         <code className="font-mono">{sec.tofu.journaled}</code>
       </Row>
-      <p className="text-muted-foreground text-sm">
-        There is no SETUP_SECRET and none will be reintroduced — on a
-        single-human LAN box the secret-distribution problem is strictly worse
-        than the TOFU race it would close, and the race window is bounded by
-        the LAN boundary plus the minutes between first boot and the wizard.
-      </p>
     </CardShell>
   )
 }
@@ -261,25 +270,20 @@ function LanTrustCard() {
       icon={Globe}
       title="LAN trust model"
       tag="v1 committed posture"
+      help="darkmem trusts its LAN, authenticates its human, and attributes — but does not authenticate — its agents. Three postures, one service layer underneath all of them."
       className="sm:col-span-2"
     >
-      <p className="text-muted-foreground text-sm">
-        darkmem trusts its LAN, authenticates its human, and attributes — but
-        does not authenticate — its agents. Three postures, one service layer
-        underneath all of them:
-      </p>
       <div className="border-border bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/mcp</span>
+          <HelpTip label="About the /mcp door">
+            Unauthenticated by design. A foreign Host header gets 421, fixed
+            by extending the allowlist — never by disabling the check.
+          </HelpTip>
           <span className="text-muted-foreground ml-auto font-mono text-[10px]">
             Host allowlist only, no credential
           </span>
         </div>
-        <p className="text-muted-foreground text-sm">
-          Unauthenticated by design. A foreign Host header gets{" "}
-          <b className="font-semibold">421</b>, fixed by extending the allowlist
-          — never by disabling the check.
-        </p>
         <div className="flex flex-wrap gap-1.5">
           {sec.mcp_hosts.map((h) => (
             <span
@@ -297,27 +301,27 @@ function LanTrustCard() {
       <div className="border-border bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/api/v1 + /ws</span>
+          <HelpTip label="About the /api/v1 and /ws door">
+            The one authenticated door on this box; /ws rejects a
+            missing/invalid/revoked token with close code 1008 before joining
+            the broadcast set.
+          </HelpTip>
           <span className="text-muted-foreground ml-auto font-mono text-[10px]">
             cookie JWT — the human door
           </span>
         </div>
-        <p className="text-muted-foreground text-sm">
-          The one authenticated door on this box; /ws rejects a
-          missing/invalid/revoked token with close code 1008 before joining the
-          broadcast set.
-        </p>
       </div>
       <div className="border-border bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/setup</span>
+          <HelpTip label="About the /setup door">
+            See the Setup card above — closes itself permanently the moment
+            the first wizard run completes.
+          </HelpTip>
           <span className="text-muted-foreground ml-auto font-mono text-[10px]">
             trust-on-first-use, open only until claimed
           </span>
         </div>
-        <p className="text-muted-foreground text-sm">
-          See the Setup card above — closes itself permanently the moment the
-          first wizard run completes.
-        </p>
       </div>
     </CardShell>
   )
@@ -333,16 +337,17 @@ function DormantApiKeyCard() {
       icon={KeyRound}
       title="Programmatic ApiKey bearer"
       tag="Phase-4 · designed, not wired"
+      help="This card previews the fixed design so no interim feature invents a second credential shape. It activates on the first genuine off-LAN need — an exposed deployment or the repo push-webhook receiver, whichever comes first. The Host allowlist stays on even after activation; a bearer key is defense in addition to it, never instead of it."
       dormant
       className="sm:col-span-2"
     >
+      {/* The dormant state stays visible in full — never tooltip-only. */}
       <p className="text-muted-foreground text-sm">
         The <code className="font-mono">api_keys</code> table exists in the
         schema but is dormant — every write on this box today still passes{" "}
-        <code className="font-mono">api_key_id=None</code>. This card previews
-        the fixed design so no interim feature invents a second credential
-        shape; it is <b className="font-semibold">not available in this
-        deployment</b> and every control below is disabled.
+        <code className="font-mono">api_key_id=None</code>. It is{" "}
+        <b className="font-semibold">not available in this deployment</b> and
+        every control below is disabled.
       </p>
       <div className="flex flex-wrap gap-2.5">
         <div className="flex min-w-40 flex-1 flex-col gap-1">
@@ -396,12 +401,6 @@ function DormantApiKeyCard() {
           </span>
         ))}
       </div>
-      <p className="text-muted-foreground text-sm">
-        Activates on the first genuine off-LAN need — an exposed deployment or
-        the repo push-webhook receiver, whichever comes first. The Host
-        allowlist above stays on even after activation; a bearer key is defense
-        in addition to it, never instead of it.
-      </p>
     </CardShell>
   )
 }
@@ -410,13 +409,20 @@ export function SecurityTab() {
   const sec = useDemoSecurity()
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        Auth (the admin password-change form and the session&apos;s cookie-JWT
-        state), tokens (rotation, blocklist, the mass-revocation-by-iat rule a
-        password change triggers), the trust-on-first-use claim, the LAN trust
-        model, and the dormant ApiKey bearer path — kept visibly Phase-4 so
-        nothing here overclaims a credential path that does not exist yet.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>
+          Auth, tokens, the trust-on-first-use claim, the LAN trust model, and
+          the dormant Phase-4 ApiKey path.
+        </span>
+        <HelpTip label="About the Security tab">
+          Auth (the admin password-change form and the session&apos;s
+          cookie-JWT state), tokens (rotation, blocklist, the
+          mass-revocation-by-iat rule a password change triggers), the
+          trust-on-first-use claim, the LAN trust model, and the dormant
+          ApiKey bearer path — kept visibly Phase-4 so nothing here overclaims
+          a credential path that does not exist yet.
+        </HelpTip>
+      </div>
       <ModuleSurface
         title="Security"
         state="populated"

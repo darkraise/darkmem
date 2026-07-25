@@ -12,26 +12,29 @@ import {
 import { Button } from "darkraise-ui/components/button"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip, LayerChip, VerificationBadge } from "@/components/darkmem"
 import {
   ModuleSurface,
   SurfaceStateChip,
 } from "@/features/activity/components/module-surface"
-import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { useDemoDistribution } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoDistClient } from "@/demo/types"
 
 function SectionHead({
   icon: Icon,
+  help,
   children,
 }: {
   icon: typeof Plug
+  help?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <h3 className="flex items-center gap-2 text-sm font-semibold">
       <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
       {children}
+      {help && <HelpTip label="About this section">{help}</HelpTip>}
     </h3>
   )
 }
@@ -87,11 +90,15 @@ function ClientRow({ client }: { client: DemoDistClient }) {
           </div>
         </div>
       ) : (
-        <div className="text-muted-foreground flex flex-col gap-2 text-sm">
-          <span>{client.connect_hint}</span>
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
           <Button size="sm" variant="outline" className="border-primary/60 text-primary w-fit font-mono">
             darkmem connect {client.id}
           </Button>
+          {client.connect_hint && (
+            <HelpTip label={`Why ${client.name} is not connected`}>
+              {client.connect_hint}
+            </HelpTip>
+          )}
         </div>
       )}
       {curbed && client.curbed_note && (
@@ -112,15 +119,22 @@ export function DistributionTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        Connect status per client, the per-target managed block written into
-        each tool&apos;s native context file, the inject content policy and
-        token budget, the curb control (the human sees and curbs push — never a
-        silent context swap), the durable inject log, and the render watermark.
-        The pull door (memory_search over /mcp) exists today;
-        DistributionService, auto-inject, and the managed-block writer are
-        target work — shown staged, not implied shipped.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>
+          Per-client connect status, the managed block, inject policy, the
+          curb control, and the inject log — push shown staged, not implied
+          shipped.
+        </span>
+        <HelpTip label="About the Distribution tab">
+          Connect status per client, the per-target managed block written into
+          each tool&apos;s native context file, the inject content policy and
+          token budget, the curb control (the human sees and curbs push —
+          never a silent context swap), the durable inject log, and the render
+          watermark. The pull door (memory_search over /mcp) exists today;
+          DistributionService, auto-inject, and the managed-block writer are
+          target work — shown staged, not implied shipped.
+        </HelpTip>
+      </div>
       <ModuleSurface
         title="Distribution"
         state="staged"
@@ -134,17 +148,15 @@ export function DistributionTab() {
         </div>
 
         <div className="flex flex-col gap-2 pt-2">
-          <SectionHead icon={FileText}>
+          <SectionHead
+            icon={FileText}
+            help="Only the bytes between the two markers change on refresh (strip-before-rewrite); the human's own content above the block is never touched."
+          >
             Per-target managed-block configuration — CLAUDE.md example
           </SectionHead>
           <pre className="border-border bg-muted/15 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-sm leading-relaxed">
             {d.block_preview}
           </pre>
-          <p className="text-muted-foreground text-sm">
-            Only the bytes between the two markers change on refresh
-            (strip-before-rewrite); the human&apos;s own content above the
-            block is never touched.
-          </p>
         </div>
 
         <div className="flex flex-col gap-2 pt-2">
@@ -169,14 +181,12 @@ export function DistributionTab() {
                 key={row.key}
                 className="border-border bg-card flex flex-col gap-1 rounded-md border px-3 py-2.5"
               >
-                <span className="font-mono text-sm font-semibold">
+                <span className="flex items-center gap-1.5 font-mono text-sm font-semibold">
                   {row.key}
+                  <HelpTip label={`About ${row.key}`}>{row.desc}</HelpTip>
                 </span>
                 <span className="text-primary font-mono text-sm">
                   {row.value}
-                </span>
-                <span className="text-muted-foreground text-sm">
-                  {row.desc}
                 </span>
               </div>
             ))}
@@ -184,7 +194,10 @@ export function DistributionTab() {
         </div>
 
         <div className="flex flex-col gap-2 pt-2">
-          <SectionHead icon={Clock}>
+          <SectionHead
+            icon={Clock}
+            help="inject_curbed is a taxonomy-first addition to the closed event_type vocabulary. Each row records that the server selected and returned N items for a target; it is not a receipt that the client's file was actually written — an honest limit of the pull-then-write model, stated rather than implied away."
+          >
             Inject log — which inject happened where
           </SectionHead>
           {d.log.map((row) => (
@@ -217,17 +230,13 @@ export function DistributionTab() {
               </span>
             </div>
           ))}
-          <p className="text-muted-foreground text-sm">
-            inject_curbed is a taxonomy-first addition to the closed event_type
-            vocabulary. Each row records that the server selected and returned N
-            items for a target; it is not a receipt that the client&apos;s file
-            was actually written — an honest limit of the pull-then-write
-            model, stated rather than implied away.
-          </p>
         </div>
 
         <div className="flex flex-col gap-2 pt-2">
-          <SectionHead icon={Tags}>
+          <SectionHead
+            icon={Tags}
+            help="Neither item is relabelled on the way into the tool: a corroborated fact keeps its full badge claim, and a superseded memory keeps its amber lifecycle label rather than being silently promoted to active or dropped."
+          >
             Labels survive injection — expanding the 14:12 UTC claude-code
             delivery
           </SectionHead>
@@ -249,16 +258,13 @@ export function DistributionTab() {
               </div>
             ))}
           </div>
-          <p className="text-muted-foreground text-sm">
-            Neither item is relabelled on the way into the tool: a corroborated
-            fact keeps its full badge claim, and a superseded memory keeps its
-            amber lifecycle label rather than being silently promoted to active
-            or dropped.
-          </p>
         </div>
 
         <div className="flex flex-col gap-2 pt-2">
-          <SectionHead icon={Bookmark}>
+          <SectionHead
+            icon={Bookmark}
+            help="One config row per target — no per-client heavy table, no queue, no broker. Used only for idempotent diffing on the next inject cycle; it is the server's best knowledge of the last delivered set, not a proof the file was rewritten."
+          >
             Render watermark — a config row, not a table
           </SectionHead>
           <dl className="border-border grid grid-cols-1 gap-x-3.5 gap-y-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm sm:grid-cols-[auto_1fr]">
@@ -269,12 +275,6 @@ export function DistributionTab() {
               </div>
             ))}
           </dl>
-          <p className="text-muted-foreground text-sm">
-            One config row per target — no per-client heavy table, no queue, no
-            broker. Used only for idempotent diffing on the next inject cycle;
-            it is the server&apos;s best knowledge of the last delivered set,
-            not a proof the file was rewritten.
-          </p>
         </div>
       </ModuleSurface>
     </div>

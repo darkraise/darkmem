@@ -24,6 +24,7 @@ import {
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip } from "@/components/darkmem"
 import {
   API_KINDS,
   embeddingKindWarning,
@@ -180,11 +181,14 @@ function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
         <span className="font-mono text-sm font-semibold">
           {purpose.purpose}
         </span>
+        <HelpTip label={`About the ${purpose.purpose} purpose`}>
+          {purpose.role}
+          {purpose.hint && ` — ${purpose.hint.text}`}
+        </HelpTip>
         <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
           {purpose.tier}
         </span>
       </div>
-      <p className="text-muted-foreground text-sm">{purpose.role}</p>
 
       {purpose.purpose === "classification" && <ClassifierKindRow />}
 
@@ -278,21 +282,11 @@ function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
         </Field>
       </div>
 
-      {warning ? (
-        <p className="text-warning text-sm">{warning}</p>
-      ) : (
-        purpose.hint && (
-          <p
-            className={cn(
-              "text-sm",
-              purpose.hint.tone === "caution"
-                ? "text-warning"
-                : "text-muted-foreground",
-            )}
-          >
-            {purpose.hint.text}
-          </p>
-        )
+      {/* Derived warnings stay visible — a 404-on-every-request footgun is
+          never demoted to a hover. */}
+      {warning && <p className="text-warning text-sm">{warning}</p>}
+      {!warning && purpose.hint?.tone === "caution" && (
+        <p className="text-warning text-sm">{purpose.hint.text}</p>
       )}
 
       {wide && <CodeBuckets />}
@@ -329,10 +323,10 @@ function ClassifierKindRow() {
         onChange={(v) => setClassifierKind(v as "llm" | "local")}
         label="classifier_kind"
       />
-      <span className="text-muted-foreground min-w-40 flex-1 text-sm">
+      <HelpTip label="About classifier_kind">
         re-homes the dropped ml_profile_ref indirection inline — a two-value
         field on this row, not a picker over a deleted table.
-      </span>
+      </HelpTip>
     </div>
   )
 }
@@ -342,26 +336,35 @@ function CodeBuckets() {
   const saveCodeBucket = useDemoStore((s) => s.saveCodeBucket)
   return (
     <div className="border-border flex flex-col gap-2 border-t border-dashed pt-2.5">
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
-        code-summarization buckets — each carries its own model + prompt, one
-        summarization connection
-      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+          code-summarization buckets
+        </span>
+        <HelpTip label="About code-summarization buckets">
+          each bucket carries its own model + prompt over the one
+          summarization connection.
+        </HelpTip>
+      </div>
       <div className="grid gap-2.5 sm:grid-cols-3">
         {buckets.map((bucket) => (
           <div
             key={bucket.key}
             className="border-border bg-background flex flex-col gap-1.5 rounded-md border px-2.5 py-2"
           >
-            <span className="font-mono text-sm font-semibold">
-              {bucket.key}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-sm font-semibold">
+                {bucket.key}
+              </span>
+              <HelpTip label={`About the ${bucket.key} bucket`}>
+                {bucket.note}
+              </HelpTip>
+            </div>
             <Input
               value={bucket.model}
               aria-label={`${bucket.key} bucket model`}
               onChange={(e) => saveCodeBucket(bucket.key, e.target.value)}
               className="font-mono"
             />
-            <span className="text-muted-foreground text-sm">{bucket.note}</span>
           </div>
         ))}
       </div>
@@ -431,6 +434,13 @@ function RemovedChrome() {
       <div className="text-muted-foreground flex items-center gap-2 font-mono text-[10px] tracking-wide uppercase">
         <Trash2 aria-hidden className="h-3.5 w-3.5" />
         removed with the flattening — not rendered, not disabled, deleted
+        <HelpTip label="Why the provider and profile tabs were removed">
+          darkmem is not an LLM proxy: each purpose is one row the operator
+          edits directly, with the columns provider_ref, profile_ref, and
+          ml_profile_ref dropped from every purpose row. A profile picker over
+          a schema with no profiles table would be scaffolding rendered as a
+          feature — the honest move is deletion, not a greyed-out control.
+        </HelpTip>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">
         {["llm-providers tab", "llm-profiles tab", "ml-profiles tab"].map(
@@ -443,17 +453,15 @@ function RemovedChrome() {
             </span>
           ),
         )}
+        {["provider_ref", "profile_ref", "ml_profile_ref"].map((col) => (
+          <span
+            key={col}
+            className="text-muted-foreground font-mono text-sm line-through opacity-75"
+          >
+            {col}
+          </span>
+        ))}
       </div>
-      <p className="text-muted-foreground font-mono text-sm">
-        columns dropped from every purpose row: <s>provider_ref</s> ·{" "}
-        <s>profile_ref</s> · <s>ml_profile_ref</s>
-      </p>
-      <p className="text-muted-foreground text-sm">
-        darkmem is not an LLM proxy: each purpose is one row the operator edits
-        directly. A profile picker over a schema with no profiles table would be
-        scaffolding rendered as a feature — the honest move is deletion, not a
-        greyed-out control.
-      </p>
     </div>
   )
 }
@@ -462,14 +470,19 @@ export function LLMTab() {
   const { purposes } = useDemoLLM()
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        Six inline purpose cards — each a self-contained connection binding, no
-        provider/profile indirection. Every vendor auth, reasoning-control, and
-        structured-output quirk that <code className="font-mono">api_kind</code>{" "}
-        selects is resolved by the backend orchestrator, never re-implemented
-        here. A save rebuilds the orchestrator and takes effect without a
-        redeploy — there are no LLM_* env vars.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>
+          Six inline purpose cards — each a self-contained connection binding.
+          A save live-reloads the orchestrator; no redeploy, no LLM_* env vars.
+        </span>
+        <HelpTip label="About the LLM tab">
+          Each purpose is one row with no provider/profile indirection. Every
+          vendor auth, reasoning-control, and structured-output quirk that
+          api_kind selects is resolved by the backend orchestrator, never
+          re-implemented here. A save rebuilds the orchestrator and takes
+          effect without a redeploy.
+        </HelpTip>
+      </div>
       <SaveConfirmation />
       <div className="grid gap-3.5 sm:grid-cols-2">
         {purposes.map((purpose) => (

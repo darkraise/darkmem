@@ -3,6 +3,7 @@ import { Timer } from "lucide-react"
 import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { activeArmCount, sourceLabel } from "@/demo/settings"
 import { useDemoFlags, useDemoJobs } from "@/demo/hooks"
@@ -55,7 +56,7 @@ function ArmInput({
   )
 }
 
-function ArmRow({ arm }: { arm: DemoRankArm }) {
+function ArmRow({ arm, help }: { arm: DemoRankArm; help?: string }) {
   const saveArm = useDemoStore((s) => s.saveArm)
   return (
     <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
@@ -67,9 +68,8 @@ function ArmRow({ arm }: { arm: DemoRankArm }) {
           {arm.alias}
         </span>
       )}
-      <span className="text-muted-foreground min-w-40 flex-1 text-sm">
-        {arm.desc}
-      </span>
+      <HelpTip label={`About ${arm.key}`}>{help ?? arm.desc}</HelpTip>
+      <span className="flex-1" />
       <SourceTag source={arm.source} />
       <ArmInput arm={arm} onCommit={(v) => saveArm(arm.key, v)} />
       <ArmPill value={arm.value} />
@@ -77,15 +77,24 @@ function ArmRow({ arm }: { arm: DemoRankArm }) {
   )
 }
 
-function GroupHead({ name, doc }: { name: string; doc: string }) {
+function GroupHead({
+  name,
+  doc,
+  help,
+}: {
+  name: string
+  doc: string
+  help?: string
+}) {
   return (
-    <div className="flex flex-wrap items-baseline gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
         {name}
       </span>
       <span className="text-muted-foreground/80 font-mono text-[10px]">
         {doc}
       </span>
+      {help && <HelpTip label={`About ${name}`}>{help}</HelpTip>}
     </div>
   )
 }
@@ -103,15 +112,20 @@ export function FlagsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        The tunables tab: the seven <code className="font-mono">w_*</code>{" "}
-        ranking-arm weights, the three graph-augmentation flags, the
-        corroboration promotion gate, and a job-cadence summary. Every value is
-        a config row read through the merge-over-coded-defaults; nothing here
-        is computed, only read and written. An arm at 0 renders as
-        built-but-unspent, never omitted, and raising it is a deliberate,
-        measured activation.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>
+          Ranking-arm weights, graph-augmentation flags, and the corroboration
+          promotion gate — config rows read through merge-over-coded-defaults.
+        </span>
+        <HelpTip label="About the Flags tab">
+          The tunables tab: the seven w_* ranking-arm weights, the three
+          graph-augmentation flags, the corroboration promotion gate, and a
+          job-cadence summary. Every value is a config row read through the
+          merge-over-coded-defaults; nothing here is computed, only read and
+          written. An arm at 0 renders as built-but-unspent, never omitted,
+          and raising it is a deliberate, measured activation.
+        </HelpTip>
+      </div>
       <ModuleSurface
         title="Flags"
         state="populated"
@@ -140,9 +154,8 @@ export function FlagsTab() {
                 <span className="font-mono text-sm font-semibold">
                   {flag.key}
                 </span>
-                <span className="text-muted-foreground min-w-40 flex-1 text-sm">
-                  {flag.desc}
-                </span>
+                <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
+                <span className="flex-1" />
                 <SourceTag source={flag.source} />
                 <Switch
                   checked={flag.enabled}
@@ -158,6 +171,7 @@ export function FlagsTab() {
                       {paired.key}
                     </b>
                   </span>
+                  <HelpTip label={`About ${paired.key}`}>{paired.desc}</HelpTip>
                   <ArmInput
                     arm={paired}
                     onCommit={(v) => saveArm(paired.key, v)}
@@ -181,15 +195,20 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="corroboration promotion gate" doc="doc 08 §4.1" />
+          <GroupHead
+            name="corroboration promotion gate"
+            doc="doc 08 §4.1"
+            help={`Diversity/time gate: ${corr.gate_note}`}
+          />
           <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
             <span className="font-mono text-sm font-semibold">
               corroboration_n_base
             </span>
-            <span className="text-muted-foreground min-w-40 flex-1 text-sm">
-              distinct origin_keys required to promote candidate → corroborated,
-              default case
-            </span>
+            <HelpTip label="About corroboration_n_base">
+              distinct origin_keys required to promote candidate →
+              corroborated, default case
+            </HelpTip>
+            <span className="flex-1" />
             <SourceTag source={corr.source} />
             <ArmInput
               arm={{
@@ -208,9 +227,11 @@ export function FlagsTab() {
             <span className="font-mono text-sm font-semibold">
               corroboration_n_diverse
             </span>
-            <span className="text-muted-foreground min-w-40 flex-1 text-sm">
-              lowered N when the diversity/time gate below is met
-            </span>
+            <HelpTip label="About corroboration_n_diverse">
+              lowered N when the diversity/time gate is met — see the group
+              help icon for the full gate rule. {corr.gate_note}
+            </HelpTip>
+            <span className="flex-1" />
             <SourceTag source={corr.source} />
             <ArmInput
               arm={{
@@ -224,10 +245,6 @@ export function FlagsTab() {
               onCommit={(v) => saveCorroboration(corr.n_base, v)}
               className="w-16"
             />
-          </div>
-          <div className="border-border bg-muted/15 text-muted-foreground rounded-md border border-dashed px-3 py-2.5 text-sm">
-            <b className="text-foreground font-semibold">Diversity/time gate:</b>{" "}
-            {corr.gate_note}
           </div>
         </div>
 
@@ -251,12 +268,9 @@ export function FlagsTab() {
             </div>
           ))}
           <p className="text-muted-foreground text-sm">
-            Cron only, read-mostly summary — each job&apos;s{" "}
-            <code className="font-mono">min_interval_seconds</code> floor,{" "}
-            <code className="font-mono">max_run_seconds</code> ceiling, enabled
-            switch, and <code className="font-mono">config_schema</code> fields
-            are edited in the dedicated Settings → Jobs tab, not duplicated
-            here.
+            Read-only summary — floors, ceilings, enabled switches, and{" "}
+            <code className="font-mono">config_schema</code> fields are edited
+            in the dedicated Settings → Jobs tab, not duplicated here.
           </p>
         </div>
       </ModuleSurface>

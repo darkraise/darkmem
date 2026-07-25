@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { Database, ExternalLink, RefreshCw, Trash2, Zap } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip } from "@/components/darkmem"
 import { useDemoMaintenance } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import { ConfirmGate } from "./confirm-gate"
@@ -36,13 +37,13 @@ function OpCard({
 function Op({
   name,
   meta,
-  desc,
+  help,
   children,
   last,
 }: {
   name: string
   meta: string
-  desc?: React.ReactNode
+  help?: React.ReactNode
   children?: React.ReactNode
   last?: boolean
 }) {
@@ -55,11 +56,11 @@ function Op({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-sm font-semibold">{name}</span>
+        {help && <HelpTip label={`About ${name}`}>{help}</HelpTip>}
         <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
           {meta}
         </span>
       </div>
-      {desc && <p className="text-muted-foreground text-sm">{desc}</p>}
       {children}
     </div>
   )
@@ -79,14 +80,19 @@ export function MaintenanceTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        Re-embed (backfilling rows missing a vector under the active embedder
-        fingerprint), cleanup ops (one-click triggers for the same JobRegistry
-        jobs the hourly schedule runs), and DB ops. Every trigger opens an
-        inline confirmation before it runs — re-embed&apos;s confirms cost and
-        duration (it only backfills, it deletes nothing); cleanup&apos;s and DB
-        ops&apos; confirm data loss.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>
+          Re-embed backfills, cleanup triggers, and DB ops — every trigger
+          confirms inline before it runs.
+        </span>
+        <HelpTip label="About the Maintenance tab">
+          Re-embed backfills rows missing a vector under the active embedder
+          fingerprint; cleanup ops are one-click triggers for the same
+          JobRegistry jobs the hourly schedule runs. Re-embed&apos;s
+          confirmation states cost and duration (it only backfills, it deletes
+          nothing); cleanup&apos;s and DB ops&apos; confirm data loss.
+        </HelpTip>
+      </div>
       {m.last_op_note && (
         <div className="border-success/50 bg-success/8 rounded-md border p-3 text-sm">
           <b className="font-semibold">Last operation:</b> {m.last_op_note}
@@ -101,7 +107,7 @@ export function MaintenanceTab() {
                 ? `${m.reembed.memories} missing a vector`
                 : "0 missing — nothing to backfill"
             }
-            desc="Backfills memories with no row under the active fingerprint. Runs in the background; POST returns 202 immediately."
+            help="Backfills memories with no row under the active fingerprint. Runs in the background; POST returns 202 immediately."
           >
             <ConfirmGate
               tone="primary"
@@ -154,7 +160,7 @@ export function MaintenanceTab() {
           <Op
             name="code_chunks"
             meta={`${m.reembed.code_chunks} missing`}
-            desc="Cross-fingerprint code-chunk backfill is not implemented server-side; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success."
+            help="Cross-fingerprint code-chunk backfill is not implemented server-side; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success."
             last
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -178,7 +184,7 @@ export function MaintenanceTab() {
                 ? `${m.cleanup.expired} past expires_at`
                 : "0 pending"
             }
-            desc={
+            help={
               m.cleanup.expired > 0
                 ? `Deletes memories past their TTL. ${m.cleanup.expired_dependents} have dependents pointing at them via superseded_by — those are demoted to deprecated first, per chk_superseded_has_pointer.`
                 : "Nothing past its TTL right now; the hourly schedule keeps running."
@@ -208,7 +214,7 @@ export function MaintenanceTab() {
           <Op
             name="graph_orphan_cleanup"
             meta="on schedule"
-            desc="Deletes entities no live memory asserts and no surviving relation references (FK-cascade-safe)."
+            help="Deletes entities no live memory asserts and no surviving relation references (FK-cascade-safe)."
           >
             <ConfirmGate
               tone="danger"
@@ -228,7 +234,11 @@ export function MaintenanceTab() {
               onConfirm={() => run("graph_orphan_cleanup")}
             />
           </Op>
-          <Op name="tag_orphan_cleanup" meta="on schedule">
+          <Op
+            name="tag_orphan_cleanup"
+            meta="on schedule"
+            help="Deletes tags no live memory carries any more."
+          >
             <ConfirmGate
               tone="danger"
               trigger={
@@ -250,7 +260,7 @@ export function MaintenanceTab() {
           <Op
             name="unresolved pipeline failures"
             meta={`${m.cleanup.failures_memory_ingest} memory_ingest · ${m.cleanup.failures_code_repo} code_repo`}
-            desc="The full retry worklist lives at Activity → Triage; this is a count and a shortcut, not a second copy of that list."
+            help="The full retry worklist lives at Activity → Triage; this is a count and a shortcut, not a second copy of that list."
             last
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -272,7 +282,7 @@ export function MaintenanceTab() {
                 ? `${m.dbops.retired_fingerprints.length} retired fingerprints`
                 : "none retired"
             }
-            desc={
+            help={
               m.dbops.retired_fingerprints.length > 0
                 ? `Drops entity_embedding_cache child tables for every fingerprint except the active one: ${m.dbops.retired_fingerprints.join(", ")}.`
                 : "No retired embedder caches to prune."
@@ -302,7 +312,7 @@ export function MaintenanceTab() {
           <Op
             name="VACUUM ANALYZE"
             meta={m.dbops.vacuum_target}
-            desc={m.dbops.vacuum_note}
+            help={m.dbops.vacuum_note}
           >
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" disabled>
@@ -314,7 +324,7 @@ export function MaintenanceTab() {
           <Op
             name="REINDEX"
             meta={m.dbops.reindex_target}
-            desc={m.dbops.reindex_note}
+            help={m.dbops.reindex_note}
             last
           >
             <div className="flex flex-wrap items-center gap-2">

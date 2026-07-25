@@ -4,6 +4,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { validateJobConfig } from "@/demo/activity"
 import { cronInfo } from "@/demo/settings"
@@ -11,15 +12,24 @@ import { useDemoJobs } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoJob } from "@/demo/types"
 
-function SectionHead({ label, role }: { label: string; role: string }) {
+function SectionHead({
+  label,
+  role,
+  help,
+}: {
+  label: string
+  role: string
+  help?: string
+}) {
   return (
-    <div className="flex flex-wrap items-baseline gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <span className="font-mono text-[10px] font-semibold tracking-wide uppercase">
         {label}
       </span>
       <span className="text-muted-foreground font-mono text-[10px]">
         {role}
       </span>
+      {help && <HelpTip label={`About ${label}`}>{help}</HelpTip>}
     </div>
   )
 }
@@ -79,7 +89,11 @@ function ScheduleSection({ job }: { job: DemoJob }) {
 function ConstantsSection({ job }: { job: DemoJob }) {
   return (
     <div className="border-border flex flex-col gap-2 rounded-md border border-dashed px-3 py-2.5">
-      <SectionHead label="registration constants" role="read-only" />
+      <SectionHead
+        label="registration constants"
+        role="read-only"
+        help="Fixed Job-dataclass attributes set once at registration in app/main.py — no write path for either. The loop never fires more often than the floor, no matter how aggressive the cron computes."
+      />
       <div className="flex flex-wrap gap-6">
         <div className="flex flex-col gap-0.5">
           <span className="text-muted-foreground font-mono text-[10px]">
@@ -98,11 +112,6 @@ function ConstantsSection({ job }: { job: DemoJob }) {
           </span>
         </div>
       </div>
-      <span className="text-muted-foreground text-sm">
-        Fixed Job-dataclass attributes set once at registration in app/main.py —
-        no write path for either. The loop never fires more often than the
-        floor, no matter how aggressive the cron computes.
-      </span>
     </div>
   )
 }
@@ -138,11 +147,14 @@ function ConfigSchemaSection({ job }: { job: DemoJob }) {
           const error = validation.ok ? undefined : validation.errors[field.key]
           return (
             <div key={field.key} className="flex min-w-52 flex-col gap-1">
-              <span className="font-mono text-sm font-semibold">
+              <span className="flex items-center gap-1.5 font-mono text-sm font-semibold">
                 {field.key}{" "}
                 <span className="text-muted-foreground font-normal lowercase">
                   {field.type}
                 </span>
+                {field.help && (
+                  <HelpTip label={`About ${field.key}`}>{field.help}</HelpTip>
+                )}
               </span>
               <Input
                 type="number"
@@ -154,12 +166,13 @@ function ConfigSchemaSection({ job }: { job: DemoJob }) {
                 }}
                 className={cn("w-28 font-mono", error && "border-destructive")}
               />
-              <span className="text-muted-foreground text-sm">
-                {field.help ? `${field.help} ` : ""}
-                {field.min !== undefined && `min ${field.min}`}
-                {field.min !== undefined && field.max !== undefined && " · "}
-                {field.max !== undefined && `max ${field.max}`}
-              </span>
+              {(field.min !== undefined || field.max !== undefined) && (
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  {field.min !== undefined && `min ${field.min}`}
+                  {field.min !== undefined && field.max !== undefined && " · "}
+                  {field.max !== undefined && `max ${field.max}`}
+                </span>
+              )}
               {error && <span className="text-destructive text-sm">{error}</span>}
             </div>
           )
@@ -200,9 +213,12 @@ function JobConfigCard({ job }: { job: DemoJob }) {
           aria-hidden
           className="text-muted-foreground h-4 w-4 shrink-0"
         />
-        <div className="flex flex-col">
-          <span className="font-mono text-sm font-semibold">{job.key}</span>
-          <span className="text-muted-foreground text-sm">{job.name}</span>
+        <div className="flex items-center gap-1.5">
+          <div className="flex flex-col">
+            <span className="font-mono text-sm font-semibold">{job.key}</span>
+            <span className="text-muted-foreground text-sm">{job.name}</span>
+          </div>
+          <HelpTip label={`About ${job.key}`}>{job.description}</HelpTip>
         </div>
         <span className="text-muted-foreground ml-auto font-mono text-[10px]">
           config row: job:{job.key}
@@ -218,9 +234,6 @@ function JobConfigCard({ job }: { job: DemoJob }) {
           </span>
         </div>
       </div>
-      <p className="text-muted-foreground max-w-prose text-sm">
-        {job.description}
-      </p>
       <ScheduleSection job={job} />
       <ConstantsSection job={job} />
       <ConfigSchemaSection job={job} />
@@ -233,15 +246,19 @@ export function JobsSettingsTab() {
   const disabled = jobs.filter((j) => !j.enabled).length
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        The JobRegistry configuration surface for the same seven registered jobs
-        the Activity job board monitors — read here for editing rather than
-        operating. Cron and the enabled switch save per job; the floor/ceiling
-        stay read-only registration constants. Both writes share the job&apos;s
-        asyncio.Lock with the scheduled loop, so a save can never race a
-        running tick. Run history, Trigger now, and the busy (409) outcome live
-        on Activity → Jobs, not here.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>
+          JobRegistry configuration for the seven registered jobs — editing
+          here, operating on Activity → Jobs.
+        </span>
+        <HelpTip label="About the Jobs tab">
+          Cron and the enabled switch save per job; the floor/ceiling stay
+          read-only registration constants. Both writes share the job&apos;s
+          asyncio.Lock with the scheduled loop, so a save can never race a
+          running tick. Run history, Trigger now, and the busy (409) outcome
+          live on Activity → Jobs, not here.
+        </HelpTip>
+      </div>
       <ModuleSurface
         title="Jobs configuration"
         state="populated"

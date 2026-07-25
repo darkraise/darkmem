@@ -220,6 +220,14 @@
     animation: none !important;
     will-change: auto; /* release the compositing layer when nothing animates */
   }
+  /* Knowledge-detail disclosure sections expand instantly. */
+  .dr-accordion-content[data-state="open"],
+  .dr-accordion-content[data-state="closed"] {
+    animation: none !important;
+  }
+  .dr-accordion-trigger > svg {
+    transition: none !important;
+  }
 }
 
 /* darkraise-ui 3.1.1 Sheet fix. SheetContent reuses DialogContent, so the

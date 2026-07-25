@@ -1,5 +1,7 @@
 export { DetailLevelToggle } from "./detail-level-toggle"
 export { ExclusionStrip } from "./exclusion-strip"
+export { HelpTip } from "./help-tip"
+export type { HelpTipProps } from "./help-tip"
 export type { ExclusionItem, ExclusionStripProps } from "./exclusion-strip"
 export { LayerChip } from "./layer-chip"
 export type { KnowledgeLayer, LayerChipProps } from "./layer-chip"
