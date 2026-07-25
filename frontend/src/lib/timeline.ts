@@ -1,4 +1,4 @@
-import { localDayKey } from "@/lib/format"
+import { localDayKey } from "./format"
 
 const DAY_MS = 86_400_000
 
@@ -38,20 +38,25 @@ function clamp01(f: number): number {
 }
 
 /**
- * Build the vertical time-scale model for the Memories scrubber: a linear
- * time axis from the newest row (top) to the oldest (bottom), month ticks,
- * and per-day density markers. Returns null when there is nothing to scale.
+ * Build the vertical time-scale model for a scrubber: a linear time axis
+ * from the newest row (top) to the oldest (bottom), month ticks, and
+ * per-day density markers. Returns null when there is nothing to scale.
+ *
+ * `getTimestamp` lets a surface key on its own time column — memories date
+ * from `created_at`, facts from `as_of`.
  */
-export function buildTimelineScale(
-  memories: { created_at: string }[],
+export function buildTimelineScale<T extends object>(
+  rows: T[],
+  getTimestamp: (row: T) => string = (row) =>
+    (row as { created_at: string }).created_at,
 ): TimelineScale | null {
-  if (memories.length === 0) return null
+  if (rows.length === 0) return null
 
   let newestMs = -Infinity
   let oldestMs = Infinity
   const counts = new Map<string, { ms: number; count: number }>()
-  for (const m of memories) {
-    const t = Date.parse(m.created_at)
+  for (const row of rows) {
+    const t = Date.parse(getTimestamp(row))
     if (Number.isNaN(t)) continue
     if (t > newestMs) newestMs = t
     if (t < oldestMs) oldestMs = t

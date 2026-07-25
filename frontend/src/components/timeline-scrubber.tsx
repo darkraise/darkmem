@@ -1,7 +1,7 @@
 import { useRef, useState } from "react"
 import { cn } from "darkraise-ui/lib"
 import { dayKeyToMs, formatDayKey, localDayKey } from "@/lib/format"
-import { fractionToDayKey, type TimelineScale } from "../timeline"
+import { fractionToDayKey, type TimelineScale } from "@/lib/timeline"
 
 const DAY_MS = 86_400_000
 

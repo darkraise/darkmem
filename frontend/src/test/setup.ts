@@ -62,6 +62,41 @@ beforeAll(() => {
   // callback (so the draw loop schedules exactly once and never spins).
   window.requestAnimationFrame = vi.fn(() => 1)
   window.cancelAnimationFrame = vi.fn()
+
+  // jsdom ships no ResizeObserver and lays nothing out, so every rect is
+  // 0×0. @tanstack/react-virtual refuses to compute a range for a
+  // zero-height scroll container, which would leave every virtualized list
+  // rendering nothing at all under test. Give elements a viewport-sized box.
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+
+  // react-virtual sizes its scroll container from offsetWidth/offsetHeight.
+  for (const [prop, value] of [
+    ["offsetWidth", 1024],
+    ["offsetHeight", 768],
+  ] as const) {
+    Object.defineProperty(HTMLElement.prototype, prop, {
+      configurable: true,
+      value,
+    })
+  }
+
+  Element.prototype.getBoundingClientRect = function (): DOMRect {
+    return {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1024,
+      bottom: 768,
+      width: 1024,
+      height: 768,
+      toJSON: () => ({}),
+    } as DOMRect
+  }
 })
 
 afterEach(() => {

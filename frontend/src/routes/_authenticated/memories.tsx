@@ -24,6 +24,7 @@ import {
 import { PageChrome } from "@/components/app-chrome"
 import { cn } from "darkraise-ui/lib"
 import { dayKeyToMs, localDayKey, relativeTime } from "@/lib/format"
+import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
 import { isValidDay } from "@/demo/activity"
 import { useDemoMemories } from "@/demo/hooks"
 import { distinctProjects, searchDemoMemories } from "@/demo/memories"
@@ -36,11 +37,8 @@ import {
 } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
-import { TimelineScrubber } from "@/features/memories/components/timeline-scrubber"
-import {
-  buildTimelineScale,
-  dateToFraction,
-} from "@/features/memories/timeline"
+import { TimelineScrubber } from "@/components/timeline-scrubber"
+import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 
 export const Route = createFileRoute("/_authenticated/memories")({
   // The click-to-date contract: /memories?date=YYYY-MM-DD positions the
@@ -52,9 +50,16 @@ export const Route = createFileRoute("/_authenticated/memories")({
 })
 
 const BROWSE_PAGE = 50
+const ROW_GAP = 8
+const ROW_ESTIMATE = 84
 
 const CONTEXT_OPTIONS = ["env=prod", "env=dev"]
 const CONTEXT_NONE = "__none__"
+
+interface MemoryListRow {
+  memory: DemoMemory
+  trace?: MemoryTrace
+}
 
 function MemoryRow({
   memory,
@@ -161,10 +166,10 @@ function MemoriesPage() {
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [scrubFraction, setScrubFraction] = useState(0)
-  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const focusTimer = useRef<number | undefined>(undefined)
   const pendingSeekId = useRef<string | null>(null)
   const handledDate = useRef<string | null>(null)
+  const loadingRef = useRef(false)
 
   const projects = useMemo(() => distinctProjects(memories), [memories])
   const searching = query.trim().length > 0
@@ -184,11 +189,11 @@ function MemoriesPage() {
     return [...scoped].sort((a, b) => b.created_at.localeCompare(a.created_at))
   }, [memories, scope, searching])
 
-  const visibleRows = useMemo(
+  const rows = useMemo<MemoryListRow[]>(
     () =>
       searching
-        ? outcome!.results.map((r) => r.memory)
-        : browseRows.slice(0, browseLimit),
+        ? outcome!.results
+        : browseRows.slice(0, browseLimit).map((memory) => ({ memory })),
     [searching, outcome, browseRows, browseLimit],
   )
 
@@ -200,34 +205,51 @@ function MemoriesPage() {
   )
 
   const hasMore = !searching && browseRows.length > browseLimit
+  // Browse mode appends one trailing status row (loading / all-shown).
+  const virtualCount = rows.length + (searching ? 0 : 1)
 
-  // Infinite scroll: the sentinel near the list tail appends the next
-  // browse page as it enters the viewport (with a short loading row).
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el || !hasMore) return
-    if (typeof IntersectionObserver === "undefined") return
-    let pending = false
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (pending || !entries.some((e) => e.isIntersecting)) return
-        pending = true
-        setLoadingMore(true)
-        window.setTimeout(() => {
-          setBrowseLimit((n) => n + BROWSE_PAGE)
-          setLoadingMore(false)
-        }, 250)
-      },
-      { rootMargin: "300px 0px" },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasMore])
+  const { listRef, virtualizer, scrollMargin } = useMainVirtualizer({
+    count: virtualCount,
+    estimateSize: () => ROW_ESTIMATE,
+    gap: ROW_GAP,
+    getItemKey: (index) => rows[index]?.memory.id ?? "list-footer",
+  })
+
+  const virtualItems = virtualizer.getVirtualItems()
+  const scrollOffset = virtualizer.scrollOffset ?? 0
+  const lastRenderedIndex = virtualItems[virtualItems.length - 1]?.index ?? -1
+  // The first row whose bottom edge is still below the scroll position —
+  // the overscan rows above it are rendered but not on screen.
+  const topIndex =
+    virtualItems.find((item) => item.end > scrollOffset)?.index ??
+    virtualItems[0]?.index ??
+    0
 
   useEffect(() => () => window.clearTimeout(focusTimer.current), [])
 
+  // Infinite scroll: reaching the last windowed row appends the next browse
+  // page, with a short loading row so the append is visible rather than
+  // silently doubling the scroll height. The in-flight guard is a ref, not
+  // `loadingMore` — as an effect dep it would re-run the effect the moment
+  // the flag is set and the cleanup would cancel the timer that sets it.
+  useEffect(() => {
+    if (!hasMore || loadingRef.current) return
+    if (lastRenderedIndex < rows.length - 1) return
+    loadingRef.current = true
+    setLoadingMore(true)
+    const timer = window.setTimeout(() => {
+      loadingRef.current = false
+      setBrowseLimit((n) => n + BROWSE_PAGE)
+      setLoadingMore(false)
+    }, 250)
+    return () => {
+      window.clearTimeout(timer)
+      loadingRef.current = false
+    }
+  }, [hasMore, lastRenderedIndex, rows.length])
+
   const scopeLabel = scope === "all" ? "all projects" : scope
-  const shownCount = searching ? outcome!.results.length : visibleRows.length
+  const shownCount = searching ? outcome!.results.length : rows.length
   const matchCount = searching ? outcome!.totalMatches : browseRows.length
 
   const clearSearch = () => {
@@ -236,12 +258,9 @@ function MemoriesPage() {
   }
 
   const scrollRowIntoView = (id: string) => {
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches
-    document
-      .getElementById(`memory-row-${id}`)
-      ?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" })
+    const index = rows.findIndex((row) => row.memory.id === id)
+    if (index === -1) return
+    virtualizer.scrollToIndex(index, { align: "start" })
     setFocusedId(id)
     window.clearTimeout(focusTimer.current)
     focusTimer.current = window.setTimeout(() => setFocusedId(null), 1800)
@@ -274,14 +293,14 @@ function MemoriesPage() {
   }
 
   // Completes a seek that had to grow browseLimit first: scroll once the
-  // target row has actually rendered.
+  // target row is inside the windowed range.
   useEffect(() => {
     const id = pendingSeekId.current
-    if (!id || !visibleRows.some((m) => m.id === id)) return
+    if (!id || !rows.some((row) => row.memory.id === id)) return
     pendingSeekId.current = null
     requestAnimationFrame(() => scrollRowIntoView(id))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleRows])
+  }, [rows])
 
   // The heatmap's click-to-date contract: ?date=YYYY-MM-DD lands the
   // timeline on that day, once per distinct value.
@@ -292,47 +311,14 @@ function MemoriesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateParam, scale])
 
-  // Scroll → indicator sync: binary-search the row at the top edge of the
-  // #main-content scroll area (rows share document order with visibleRows).
+  // Scroll → indicator sync: the topmost on-screen row dates the scrubber.
   useEffect(() => {
     if (searching || !scale) return
-    const container = document.getElementById("main-content")
-    if (!container) return
-    let raf = 0
-    const sync = () => {
-      raf = 0
-      if (visibleRows.length === 0) return
-      const topEdge = container.getBoundingClientRect().top + 120
-      let lo = 0
-      let hi = visibleRows.length - 1
-      let found = visibleRows.length - 1
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1
-        const row = visibleRows[mid]
-        const el = row ? document.getElementById(`memory-row-${row.id}`) : null
-        if (!el) break
-        if (el.getBoundingClientRect().bottom >= topEdge) {
-          found = mid
-          hi = mid - 1
-        } else {
-          lo = mid + 1
-        }
-      }
-      const current = visibleRows[found]
-      if (current) {
-        setScrubFraction(dateToFraction(scale, Date.parse(current.created_at)))
-      }
+    const row = rows[topIndex]
+    if (row) {
+      setScrubFraction(dateToFraction(scale, Date.parse(row.memory.created_at)))
     }
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(sync)
-    }
-    container.addEventListener("scroll", onScroll, { passive: true })
-    sync()
-    return () => {
-      container.removeEventListener("scroll", onScroll)
-      if (raf) cancelAnimationFrame(raf)
-    }
-  }, [searching, scale, visibleRows])
+  }, [searching, scale, rows, topIndex])
 
   return (
     <div className="space-y-4">
@@ -449,73 +435,85 @@ function MemoriesPage() {
             </span>
           </div>
 
-          <div className="flex flex-col gap-2 p-4">
+          <div className="p-4">
             {/* Exclusion counts render even when the result list is empty —
                 a silent drop is the failure the design fears most. */}
             {searching && <ExclusionStrip items={outcome!.exclusions} />}
 
-            {searching ? (
-              outcome!.results.length > 0 ? (
-                outcome!.results.map(({ memory, trace }) => (
-                  <MemoryRow
-                    key={memory.id}
-                    memory={memory}
-                    trace={trace}
-                    expanded={expandedId === memory.id}
-                    focused={focusedId === memory.id}
-                    onToggleTrace={() =>
-                      setExpandedId((prev) =>
-                        prev === memory.id ? null : memory.id,
-                      )
-                    }
-                  />
-                ))
-              ) : (
-                <EmptyState
-                  icon={<SearchX aria-hidden className="h-6 w-6" />}
-                  title="No matches"
-                  description={`No memories match "${query.trim()}"${
-                    scope === "all" ? "" : ` in project ${scope}`
-                  } — clear the search or widen the scope.`}
-                  action={
-                    <div className="flex flex-wrap justify-center gap-2">
-                      <Button variant="outline" onClick={clearSearch}>
-                        Clear search
-                      </Button>
-                      {scope !== "all" && (
-                        <Button variant="outline" onClick={() => setScope("all")}>
-                          Search all projects
-                        </Button>
+            {rows.length > 0 ? (
+              <div
+                ref={listRef}
+                className="relative w-full"
+                style={{ height: virtualizer.getTotalSize() }}
+              >
+                {virtualItems.map((item) => {
+                  const row = rows[item.index]
+                  return (
+                    <div
+                      key={item.key}
+                      data-index={item.index}
+                      ref={virtualizer.measureElement}
+                      className="absolute top-0 left-0 w-full"
+                      style={{
+                        transform: `translateY(${item.start - scrollMargin}px)`,
+                      }}
+                    >
+                      {row ? (
+                        <MemoryRow
+                          memory={row.memory}
+                          trace={row.trace}
+                          expanded={expandedId === row.memory.id}
+                          focused={focusedId === row.memory.id}
+                          onToggleTrace={
+                            row.trace
+                              ? () =>
+                                  setExpandedId((prev) =>
+                                    prev === row.memory.id
+                                      ? null
+                                      : row.memory.id,
+                                  )
+                              : undefined
+                          }
+                        />
+                      ) : loadingMore ? (
+                        <div
+                          role="status"
+                          className="text-muted-foreground flex items-center justify-center gap-2 py-2.5 text-sm"
+                        >
+                          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                          loading more…
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground py-1 text-center font-mono text-sm">
+                          {hasMore
+                            ? `${rows.length} of ${browseRows.length} loaded`
+                            : `all ${browseRows.length} shown`}
+                        </p>
                       )}
                     </div>
-                  }
-                />
-              )
-            ) : browseRows.length > 0 ? (
-              <>
-                {visibleRows.map((memory) => (
-                  <MemoryRow
-                    key={memory.id}
-                    memory={memory}
-                    focused={focusedId === memory.id}
-                  />
-                ))}
-                {loadingMore && (
-                  <div
-                    role="status"
-                    className="text-muted-foreground flex items-center justify-center gap-2 py-2.5 text-sm"
-                  >
-                    <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
-                    loading more…
+                  )
+                })}
+              </div>
+            ) : searching ? (
+              <EmptyState
+                icon={<SearchX aria-hidden className="h-6 w-6" />}
+                title="No matches"
+                description={`No memories match "${query.trim()}"${
+                  scope === "all" ? "" : ` in project ${scope}`
+                } — clear the search or widen the scope.`}
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button variant="outline" onClick={clearSearch}>
+                      Clear search
+                    </Button>
+                    {scope !== "all" && (
+                      <Button variant="outline" onClick={() => setScope("all")}>
+                        Search all projects
+                      </Button>
+                    )}
                   </div>
-                )}
-                {hasMore && <div ref={sentinelRef} aria-hidden className="h-px" />}
-                {!hasMore && (
-                  <p className="text-muted-foreground py-1 text-center font-mono text-sm">
-                    all {browseRows.length} shown
-                  </p>
-                )}
-              </>
+                }
+              />
             ) : memories.length === 0 ? (
               <EmptyState
                 icon={<Inbox aria-hidden className="h-6 w-6" />}

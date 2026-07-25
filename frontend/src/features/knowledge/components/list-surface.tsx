@@ -7,12 +7,16 @@ export function ListSurface({
   meta,
   children,
   className,
+  bodyClassName,
 }: {
   title: string
   populated: boolean
   meta?: string
   children: ReactNode
   className?: string
+  /** Overrides the stacked-rows body — virtualized lists position their
+   *  own rows and cannot sit in a flex column with a gap. */
+  bodyClassName?: string
 }) {
   return (
     <div
@@ -37,7 +41,9 @@ export function ListSurface({
           </span>
         )}
       </div>
-      <div className="flex flex-col gap-2.5 p-4">{children}</div>
+      <div className={cn("flex flex-col gap-2.5 p-4", bodyClassName)}>
+        {children}
+      </div>
     </div>
   )
 }
