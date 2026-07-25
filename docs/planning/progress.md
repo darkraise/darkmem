@@ -19,7 +19,7 @@ blocks the whole epic regardless of `Depends`. |
 | `blocked` | Started and stopped. The **Note** column must say what blocks it. |
 | `review` | Code complete, awaiting the Fable-tier review that Opus-tier and
 gate-feeding tasks require. The **Review** column carries the reviewer's verdict. |
-| `done` | Every definition-of-done item in runbook §3 holds, verification output
+| `done` | Every definition-of-done item in runbook §4 holds, verification output
 recorded, commit landed, and any required review passed. |
 
 **A task is never `done` with a failing check.** If the suite is red it is `blocked`
@@ -34,8 +34,7 @@ and the Note says so. That rule is the whole point of this file.
   loser has done no work yet.
 - **Review is tracked in the Review column**, not as separate rows. Every Opus-tier
   task and every task feeding a gate claim needs one before it can reach `done`.
-- Regenerate the derived columns and the rollup with `python scripts/gen_progress.py`,
-  and the dependency graphs with `python scripts/gen_task_graph.py`
+- Regenerate the derived columns and the rollup with `python scripts/gen_progress.py`
   after any task is added, split, or retitled.
 
 ## Rollup
@@ -44,12 +43,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 19 | 19 | 0 | 0 | 0 | 0 | G-A open |
 | E1 — Engine core | 75 | 75 | 0 | 0 | 0 | 0 | G-B open |
-| E2 — Truth core | 53 | 53 | 0 | 0 | 0 | 0 | G-C, G-D open |
+| E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **200** | **200** | **0** | **0** | **0** | **0** | |
+| **Total** | **204** | **204** | **0** | **0** | **0** | **0** | |
 
 ---
 
@@ -81,7 +80,7 @@ and the Note says so. That rule is the whole point of this file.
 
 | Task | Title | Size | Model | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|
-| T1.01 | Flatten `llm_purpose_configs` to inline rows | M | Opus | | todo | | | |
+| T1.01 | Flatten `llm_purpose_configs` to inline rows | L | Opus | | todo | | | |
 | T1.02 | One shared `httpx.AsyncClient` with atomic live reload | M | Sonnet | | todo | | | |
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | | todo | | | |
@@ -100,36 +99,36 @@ and the Note says so. That rule is the whole point of this file.
 | T1.17 | Phase 2: merged extract + classify in one call | L | Opus | | todo | | | |
 | T1.18 | `classifier_kind=local` narrowing path | S | Sonnet | | todo | | | |
 | T1.19 | Phase 3: entity embed with the two-level cache | M | Opus | | todo | | | |
-| T1.20 | Phase 4: type-constrained dedup + `names_distinct` | L | Opus | | todo | | | |
+| T1.20 | Phase 4: type-constrained dedup + `names_distinct` | M | Opus | | todo | | | |
 | T1.21 | Phase 5: the two-savepoint write | L | Opus | | todo | | | |
 | T1.22 | Mid-batch embedder rotation | M | Opus | | todo | | | |
-| T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Sonnet | | todo | | | |
+| T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | | todo | | | |
 | T1.24a | Pass registry, the ordering contract, and the per-pass harness | M | Opus | | todo | | | |
-| T1.24b | Stage 1: entity shaping | L | Opus | | todo | | | |
+| T1.24b | Stage 1: entity shaping | M | Opus | | todo | | | |
 | T1.24c | Stage 2: entity rescue | M | Opus | | todo | | | |
 | T1.24d | Stage 4: relation gating and direction | L | Opus | | todo | | | |
 | T1.24e | Stage 5: collapse, dedup, fan-out | L | Opus | | todo | | | |
 | T1.24f | Whole-chain F1 parity against the recorded baseline | M | Fable | | todo | | | |
-| T1.25 | `relation_rescue` layer | M | Sonnet | | todo | | | |
-| T1.26 | Strip-before-rewrite: idempotent re-extraction | L | Opus | | todo | | | |
+| T1.25 | `relation_rescue` layer | M | Opus | | todo | | | |
+| T1.26 | Strip-before-rewrite: idempotent re-extraction | M | Opus | | todo | | | |
 | T1.27 | `technologies` denorm recompute | M | Opus | | todo | | | |
 | T1.28 | `graph_orphan_cleanup` backstop | S | Sonnet | | todo | | | |
 | T1.29a | Pushdown on the semantic channel | M | Opus | | todo | | | |
 | T1.29b | Pushdown on the keyword and graph channels | M | Opus | | todo | | | |
 | T1.29c | Pushdown on `memory_reason` and code search | M | Opus | | todo | | | |
-| T1.30 | RRF fusion + the unified `rank_fusion_factor` | L | Opus | | todo | | | |
+| T1.30 | RRF fusion + the unified `rank_fusion_factor` | M | Opus | | todo | | | |
 | T1.31 | Ranking arms wired at zero | S | Sonnet | | todo | | | |
 | T1.32 | Reranker wired dormant | S | Sonnet | | todo | | | |
 | T1.33 | The retrieval trace | M | Sonnet | | todo | | | |
 | T1.34 | `applies_when` context-boost slot | M | Opus | | todo | | | |
 | T1.35 | The isolation probe (G-B's zero-count) | M | Fable | | todo | | | |
-| T1.36 | Supersession detector, rules 1–6 verbatim | L | Opus | | todo | | | |
+| T1.36 | Supersession detector, rules 1–6 verbatim | M | Opus | | todo | | | |
 | T1.37 | TTL sweep, demote before delete | M | Opus | | todo | | | |
 | T1.38 | T1 fail-stale | M | Sonnet | | todo | | | |
 | T1.39 | T2 index-debt drain | M | Opus | | todo | | | |
 | T1.40 | T3 `code_reconcile` job | M | Sonnet | | todo | | | |
 | T1.41 | T4 summary carry-over | S | Sonnet | | todo | | | |
-| T1.42a | Payload envelope + source and context resolution | M | Opus | | todo | | | |
+| T1.42a | Payload envelope + source and context resolution | L | Opus | | todo | | | |
 | T1.42b | REST surface conformance | M | Sonnet | | todo | | | |
 | T1.42c | MCP surface parity and transport hardening | M | Opus | | todo | | | |
 | T1.42d | Two-door parity audit | S | Opus | | todo | | | |
@@ -148,16 +147,16 @@ and the Note says so. That rule is the whole point of this file.
 | T1.55 | Settings → LLM: six inline purpose cards | M | Sonnet | | todo | | | |
 | T1.56 | Setup wizard finalize against the flattened config | M | Sonnet | | todo | | | |
 | T1.57 | Settings → Flags, bound to `config` | M | Sonnet | | todo | | | |
-| T1.58 | Retire demo mode as the default | M | Sonnet | | todo | | | |
-| T1.59 | Bind the Code section to live data | M | Sonnet | | todo | | | |
-| T1.60 | Bind Chat and the Memory Graph explorer | M | Sonnet | | todo | | | |
+| T1.58 | Retire demo mode as the default | L | Sonnet | | todo | | | |
+| T1.59 | Bind the Code section to live data | L | Sonnet | | todo | | | |
+| T1.60 | Bind Chat and the Memory Graph explorer | L | Sonnet | | todo | | | |
 | T1.61 | Activity: feed, day view, and the buffer monitor | M | Sonnet | | todo | | | |
 | T1.62 | App-as-edge deployment artifact | L | Opus | | todo | | | |
 | T1.63 | Bind Settings: Security, Maintenance, Jobs | M | Sonnet | | todo | | | |
-| T1.64 | API e2e suite + the honesty specs | M | Sonnet | | todo | | | |
+| T1.64 | API e2e suite + the honesty specs | L | Sonnet | | todo | | | |
 | T1.65 | `projectStore`, `contextStore`, and the project switcher | M | Sonnet | | todo | | | |
 
-## E2 — Truth core (53 tasks)
+## E2 — Truth core (57 tasks)
 
 | Task | Title | Size | Model | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|
@@ -167,7 +166,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.04 | The contradiction veto is absolute | M | Opus | | todo | | | |
 | T2.05 | Human ratification is the only path to `confirmed` | S | Opus | | todo | | | |
 | T2.06 | Every ladder transition journaled | M | Sonnet | | todo | | | |
-| T2.07 | `projects` table + lazy registration | S | Sonnet | | todo | | | |
+| T2.07 | `projects` table + lazy registration | M | Sonnet | | todo | | | |
 | T2.08 | Job-family umbrella under JobRegistry | M | Sonnet | | todo | | | |
 | T2.09 | `verification_recompute` | S | Sonnet | | todo | | | |
 | T2.10 | `fact_lift` | M | Opus | | todo | | | |
@@ -176,7 +175,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.13 | Dream digest + per-action and per-batch undo | L | Opus | | todo | | | |
 | T2.14 | Register `article_synthesis` inert | S | Haiku | | todo | | | |
 | T2.15 | Five associative types + normaliser | S | Sonnet | | todo | | | |
-| T2.16 | Derivation from overlap, proximity, and contradiction | M | Opus | | todo | | | |
+| T2.16 | Derivation from overlap, proximity, and contradiction | L | Opus | | todo | | | |
 | T2.17 | Strip-before-rewrite and endpoint self-healing | S | Sonnet | | todo | | | |
 | T2.18 | `memory_communities` + members, Leiden per project | L | Opus | | todo | | | |
 | T2.19 | Labelling + `report_string` off the hot path | M | Sonnet | | todo | | | |
@@ -185,17 +184,17 @@ and the Note says so. That rule is the whole point of this file.
 | T2.22 | Review queue (adjudicates truth) | M | Sonnet | | todo | | | |
 | T2.23 | Hygiene queue (curates housekeeping) + bulk actions | M | Sonnet | | todo | | | |
 | T2.24 | Consequence ranking + dispute-staleness decay | M | Opus | | todo | | | |
-| T2.25 | Labelled entailment gold set | L | Fable | | todo | | | |
+| T2.25 | Labelled entailment gold set | M | Fable | | todo | | | |
 | T2.26 | `verification`-purpose judge + precision/recall bars | L | Fable | | todo | | | |
 | T2.27 | `assert_from_repo` — imports-only, LLM-free | M | Opus | | todo | | | |
 | T2.28 | Lift to facts born `corroborated` | M | Opus | | todo | | | |
 | T2.29 | `memory_access_stats` feeder | M | Sonnet | | todo | | | |
 | T2.30 | `w_importance` activation | M | Fable | | todo | | | |
 | T2.31 | `w_heat` / `w_recency` activation | M | Fable | | todo | | | |
-| T2.32 | PPR snapshot job + graph arms | M | Opus | | todo | | | |
+| T2.32 | PPR snapshot job + graph arms | L | Opus | | todo | | | |
 | T2.33 | `triple_embeddings` writer, miss-rate gated | M | Opus | | todo | | | |
-| T2.34 | `expires_at` self-expiring dated facts | M | Sonnet | | todo | | | |
-| T2.35 | `applies_when` magnitude tuning | M | Sonnet | | todo | | | |
+| T2.34 | `expires_at` self-expiring dated facts | M | Opus | | todo | | | |
+| T2.35 | `applies_when` magnitude tuning | M | Fable | | todo | | | |
 | T2.36 | Facts tab — bi-temporal, multi-origin browsing | M | Sonnet | | todo | | | |
 | T2.37 | Review / Hygiene triage shell | M | Sonnet | | todo | | | |
 | T2.38 | Dream digest UI with undo | M | Sonnet | | todo | | | |
@@ -204,16 +203,20 @@ and the Note says so. That rule is the whole point of this file.
 | T2.41 | G-D evidence run | M | Fable | | todo | | | |
 | T2.42 | Facts retrieval channel, born with pushdown | M | Opus | | todo | | | |
 | T2.43 | Four-layer composition, labelling, and grouping | L | Opus | | todo | | | |
-| T2.44 | Arm-ablation interface for the retrieval eval | S | Sonnet | | todo | | | |
+| T2.44 | Arm-ablation interface for the retrieval eval | M | Sonnet | | todo | | | |
 | T2.45 | The Tier-C `supersede()` primitive + status bridge | L | Opus | | todo | | | |
 | T2.46 | Demotion hysteresis and the `under-sourced` label | M | Opus | | todo | | | |
 | T2.47 | The enqueue-for-verification emit hook | M | Opus | | todo | | | |
 | T2.48 | Citation re-verifier + code-fact lifecycle | M | Opus | | todo | | | |
-| T2.49 | `relation_embeddings` refresh job + writer | S | Sonnet | | todo | | | |
+| T2.49 | `relation_embeddings` refresh job + writer | M | Sonnet | | todo | | | |
 | T2.50 | Graph-arm activation measurement | M | Fable | | todo | | | |
 | T2.51 | Promotion-metrics runner | S | Sonnet | | todo | | | |
-| T2.52 | Contradiction-shortlist miss-rate runner | S | Sonnet | | todo | | | |
+| T2.52 | Contradiction-shortlist miss-rate runner | M | Sonnet | | todo | | | |
 | T2.53 | Register `topic_detection` on the schedule | S | Haiku | | todo | | | |
+| T2.54 | Label the entailment gold set | L | Fable | | todo | | | |
+| T2.55 | Grouping under the fact, and the no-triple-count rule | M | Opus | | todo | | | |
+| T2.56 | Cold-start behaviour and the output shapes | M | Sonnet | | todo | | | |
+| T2.57 | Contradiction-pair gold set | M | Fable | | todo | | | |
 
 ## E3 — Synthesis & reach (26 tasks)
 
@@ -233,7 +236,7 @@ and the Note says so. That rule is the whole point of this file.
 | T3.12 | Inject records journaled as events | M | Sonnet | | todo | | | |
 | T3.13 | `darkmem connect <tool>` | M | Sonnet | | todo | | | |
 | T3.14 | Minimal TypeScript + Python SDKs | M | Sonnet | | todo | | | |
-| T3.15 | Browser capture extension | M | Sonnet | | todo | | | |
+| T3.15 | Browser capture extension | L | Sonnet | | todo | | | |
 | T3.16 | `session_checkpoints` table + REST/MCP surface | M | Sonnet | | todo | | | |
 | T3.17 | Resume as a specialised inject | M | Opus | | todo | | | |
 | T3.18 | Checkpoints are operational, not vault knowledge | S | Sonnet | | todo | | | |

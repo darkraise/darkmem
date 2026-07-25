@@ -65,6 +65,8 @@ that happens once or serves everything.
 | B-F8 | B | e2e coverage is assigned to tasks whose done-when never names the spec, so they can complete honestly without it; nothing creates the API e2e suite or the honesty specs. | ADDED — T1.64; done-when items added |
 | B-F9 | B | Graph-arm activation measurement is folded into Opus-tier T2.32, so the model that builds the snapshot also judges its number. | ADDED — T2.50 |
 | B-F10 | B | Doc 13 §2's `projectStore` / `contextStore` and the project switcher — the UI face of the T1.29 isolation work — have no task. | ADDED — T1.65 |
+| C-4 | C | T0.09's `Verify` runs `run_retrieval_eval.py`, a script its own dependent task T0.10 creates — so T0.09 could never reach `done`. | FIXED — T0.09 verifies via a pytest file; T0.10 owns the runner |
+| C-5 | C | Five gate/measurement scripts referenced only in `Verify` lines, with the Fable gate tasks as their only plausible owners — violating the runbook's own split of measurement design from measurement plumbing. | ADDED — T2.44, T2.51, T2.52, T3.24, TH1.17 at Sonnet tier |
 | C-11 | C | T1.42's verify path `tests/test_mcp` does not exist (MCP tests are flat files); `Depends` omits the capture door it must expose; scope is several sessions. | FIXED |
 | C-12 | C | T0.12's verify sets `DATABASE_URL`, but `conftest.py:11` unconditionally overwrites it with `TEST_DATABASE_URL` — the pytest half silently tests a different database. | FIXED |
 | C-13 | C | Tier defects: T1.16, T1.19, T1.27 (pipeline phases / a cross-cutting invariant) and T2.05 (the human-only ceiling) are Sonnet where runbook §2 routes Opus. | FIXED |
@@ -91,8 +93,9 @@ that happens once or serves everything.
 
 ## Remediation outcome (same day)
 
-**156 tasks → 188.** Thirty-two added, none removed; every finding above is either fixed
-in place or recorded `OPEN` with its reason.
+**156 → 188 → 204 tasks.** Round 1 added 32; the round-2 review (below) added a further
+16 through splits and missed mechanisms. Every finding is either fixed in place or
+recorded `OPEN` with its reason.
 
 | Change | Detail |
 |---|---|
@@ -131,7 +134,59 @@ Recorded so the coverage is auditable rather than assumed:
   revisions, both gold files and the `--algo-only` flag real.
 - **No dependency cycles** across all 156 edges. The one forward edge (T2.27 → T2.40) is
   the gate that opens its own lane and is sound.
-- **Critical path to G-E is ~34 strictly serial tasks**, with the human-labelling
-  bottleneck (T2.25) sitting directly on it — consistent with the gate-starvation risk the
-  plan names. E1 Lane C being the epic's long pole checks out.
+- **Critical path** verified independently each round; see the round-2 section for its
+  current length and shape.
 - **Task arithmetic** and the tier distribution reproduce exactly from `progress.md`.
+
+---
+
+# Round 2 — 2026-07-25, after remediation
+
+The remediation above was itself reviewed, by three more Fable-tier reviewers with
+disjoint lenses: fidelity of the 48 tasks added or split (which had been written from
+round 1's *summary* of the design docs rather than the docs themselves), verification that
+each round-1 disposition was honest, and sizing plus dependency structure.
+
+**They found 35 further findings, including two blockers and one dishonest disposition.**
+
+## The dishonest disposition
+
+`B-F8` was recorded as "done-when items added", and `e2e-test-plan.md` asserted *"Each spec
+is named in its owning task's Done when, so the task cannot complete without it."* Neither
+was true. Git showed all eight owning tasks changed only by the inserted `Size:` field, and
+no spec name appeared in any epic file. **A safeguard was described in the present tense
+that did not exist** — the invariant-14 failure this corpus exists to prevent, written into
+the document about preventing it.
+
+This is why `scripts/check_plan.py` now exists. Every claim the corpus makes about itself
+that can be checked mechanically is checked, and the build fails otherwise. The honesty-spec
+claim is now assertion #4 in that linter; it passed only after all eight specs were really
+named in their owning tasks.
+
+## What round 2 changed
+
+| Area | Change |
+|---|---|
+| **Blockers** | T2.45 (`supersede()` primitive) and T3.23 (articles channel) were dead leaves nothing depended on. Wired to T2.12 and to T3.10/T3.22. |
+| **Gate edges** | Round 1 claimed the gate was added to "each epic's entry tasks"; it had been added to two. E1 had no path to G-A at all. Now every task in E1/E2/E3 transitively requires its entry gate, or carries an explicit `gate-exempt` marker — enforced by the linter. |
+| **A missing emitter** | `fact_lift` must emit `sources_changed` (doc 08 §5.2). Without it, the Phase-5 hook is a no-op on first ingest (doc 05 §8.4), so newly lifted facts would never be enqueued for promotion. Added to T2.10. |
+| **Three inventions removed** | T1.42c demanded a test that the DNS-rebinding check cannot be disabled, when `*` is a sanctioned opt-out; T1.52/T1.54 required an F1 number over an unlabelled corpus, which is not computable; T2.43 put code search inside the four-layer composition doc 07 §2 excludes it from. |
+| **A design-doc conflict surfaced** | Doc 08 §3.4's prose and its own diagram disagree on the status bridge's guard-2 behaviour. T2.45 now names the conflict and routes it as a **Tier-3 amendment** rather than silently picking the reading that retires memories still asserting live facts. |
+| **Critical path** | Three edges on it were intuition, not necessity — most clearly `T1.17 → T1.23`, which forced the pure-function taxonomy to wait for the pipeline rebuild that *consumes* it. Removing them, and making gate barriers real edges, took the path from 31 (Depends-only, barrier-blind) to **29 barrier-aware**. The post-processor chain is no longer on it. |
+| **Four new tasks** | T2.54 (label the gold set, split from the harvest so compute does not stall on human labelling), T2.55 (grouping / no-triple-count), T2.56 (cold start + output shapes), T2.57 (contradiction-pair gold, which T2.52 measured against and nobody built). |
+| **Sizing** | ~22 re-sized in both directions against the real backend. 27 S / 145 M / 32 L. |
+| **Regressions repaired** | The split commit had silently dropped a `T1.14` edge the remediation commit added one commit earlier; two tasks had been repointed from a whole contract to only its first part; runbook section references were stale after a renumbering, including one the tracker generator re-emitted. |
+
+## What is now machine-verified
+
+`python scripts/check_plan.py` asserts, and fails on: every task reference resolving; no
+dependency cycles; every task carrying its full field set; every epic task reaching its
+entry gate or declaring exemption; **every honesty spec being named in its owning task**;
+every inert object naming a real writer task; no infrastructure task left as a dead leaf
+without a `terminal-by-design` marker; every runbook section cross-reference resolving;
+no stale task counts; and this ledger reconciling with its own header.
+
+`gen_progress.py` and `gen_task_graph.py` derive the tracker and the graphs from the task
+files, so neither can drift. **`risks-and-lanes.md` Part 1 remains hand-written** and is
+therefore the corpus's last drift surface — round 2 found three stale claims there and
+nowhere else.

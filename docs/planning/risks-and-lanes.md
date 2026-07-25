@@ -61,7 +61,10 @@ not *file*-disjoint:
 | Lane C ↔ Lane D | `repositories/vector.py`, `repositories/graph.py` | T1.21/T1.26 and T1.29a–c rewrite the same repos. **Start D after T1.21 lands.** |
 | Lane B ↔ D ↔ G | `api/routes/memories.py`, `api/mcp/server.py` | The capture doors, the `memory_reason` fix, and T1.42a–d all edit them |
 | Lane B ↔ Lane F | `app/main.py` | T1.13 and T1.40 both register jobs |
-| Any schema task | the single baseline revision | Regenerating it concurrently conflicts every time — runbook §8 serialises these through one owner per epic |
+| Lane G ↔ Lane J (frontend) | `frontend/src/features/activity/` | T1.45 (stepper/triage/jobs) and T1.61 (feed/day/monitors) share `module-surface.tsx` |
+| Lane J internal | `frontend/src/features/settings/` | T1.55, T1.57, T1.63 are tab-disjoint but share `index.ts` / `schemas.ts` |
+| Every binding task ↔ T1.58 | `frontend/src/**` | T1.58 leaves the demo lint rule in **warn**; each binding task removes its own surface's imports; T1.64 flips it to error |
+| Any schema task | the single baseline revision | Regenerating it concurrently conflicts every time — runbook §9 serialises these through one owner per epic |
 
 Since tasks are commits on one epic branch and this repo has no remote, concurrent agents
 need **separate worktrees** (`git worktree add`) and a rebase cadence, not just separate
@@ -69,8 +72,8 @@ task rows. Lane E waits on C; Lane G's tasks each wait on their specific backend
 so G interleaves rather than running as a block. Lanes I and J (the cutover and the
 orphaned surfaces) run late: I is post-G-B by design, J after T1.58 flips demo mode off.
 
-**The critical path through E1** is Lane A → Lane C (13 tasks, all the pipeline surgery) →
-T1.50. Lane C is where the schedule lives; staffing it first is the highest-leverage
+**The critical path through E1** runs Lane A → Lane C (18 tasks after the post-processor split, all
+the pipeline surgery) → T1.50. Lane C is where the schedule lives; staffing it first is the highest-leverage
 scheduling decision in the epic.
 
 ### E2 — the ladder is the spine
@@ -85,6 +88,8 @@ Lane B  projects registry  T2.07     ── independent, tiny, do it any time
 Lane D  memory relations   T2.15–T2.17  ── needs Lane C's dream job
 Lane E  topics             T2.18–T2.21  ── independent of the ladder entirely
 Lane I  arm activations    T2.29–T2.35  ── independent; each is its own measurement
+Lane L  missed mechanisms  T2.42–T2.57  ── the retrieval channels, the doc-08 primitives,
+                                           the measurement runners and their gold sets
 Lane H  code deriver       T2.27–T2.28  ── BLOCKED until G-C clears
 ```
 
@@ -94,6 +99,11 @@ labelling bottleneck, not a compute one.
 
 **Lane E (topics) and Lane I (arms) are genuinely independent** and good candidates for a
 second agent running alongside the ladder work.
+
+**Lane L is not independent, despite looking like a grab-bag.** T2.45 blocks the dream job
+(T2.12) and T2.47 blocks the recompute (T2.09), so the primitives must land before Lane C's
+consumers. T2.42/T2.43 rewrite the retrieval composition, so Lane I's arm measurements must
+follow them or they measure a moving target.
 
 ### E3 — two phases inside the epic
 
@@ -135,7 +145,7 @@ grouped by lane. Shapes and colours carry three facts:
 
 - **`{{hexagon}}` = a gate task.** A barrier, not ordinary work — everything in the
   next epic waits on it regardless of what any `Depends` field says.
-- **Thick red border = on the critical path.** 31 tasks long, ending at T3.22.
+- **Thick red border = on the critical path.** 29 tasks long, ending at T3.22.
   Shortening the plan means shortening this chain and nothing else.
 - **Dashed border = `Size: L`.** More than a day; needs a reviewed step-level plan
   before any code (runbook §3).
@@ -150,7 +160,7 @@ Titles are truncated — the full task is in its epic file, the state is in
 flowchart LR
     E0["E0 · Phase 0<br/>baseline & harness<br/>19 tasks"]
     E1["E1 · Phase 1<br/>engine core<br/>75 tasks"]
-    E2["E2 · Phase 2<br/>truth core<br/>53 tasks"]
+    E2["E2 · Phase 2<br/>truth core<br/>57 tasks"]
     E3["E3 · Phase 3<br/>synthesis & reach<br/>26 tasks"]
     E4["E4 · Phase 4<br/>hardening<br/>10 tasks"]
     EH1["EH1 · H1<br/>documents / PKM<br/>17 tasks"]
@@ -231,6 +241,7 @@ flowchart LR
     T0_12c --> T0_13
     T0_13 --> T0_14
     T0_14 --> T0_15
+    T0_16 --> T0_15
     T0_10 --> T0_16
     T0_14 --> T0_16
     T0_05 --> T0_17
@@ -238,7 +249,7 @@ flowchart LR
     classDef crit stroke:#ef4444,stroke-width:3px
     classDef large stroke-dasharray:6 3
     classDef ext fill:#1f2937,stroke:#4b5563,color:#9ca3af,opacity:0.7
-    class T0_11,T0_12a,T0_12b,T0_12c crit
+    class T0_02,T0_06,T0_07,T0_08,T0_09,T0_10,T0_16,T0_17 crit
     class T0_11 large
 ```
 
@@ -351,19 +362,23 @@ flowchart LR
         T1_64["T1.64<br/>API e2e suite + honesty specs"]
         T1_65["T1.65<br/>projectStore, contextStore, p…"]
     end
+    T0_17["T0.17<br/><i>E0</i>"]
     T0_12c["T0.12c<br/><i>E0</i>"]
     T0_10["T0.10<br/><i>E0</i>"]
     T0_16["T0.16<br/><i>E0</i>"]
     T0_15["T0.15<br/><i>E0</i>"]
+    T0_17 --> T1_01
     T0_12c --> T1_01
     T1_01 --> T1_02
-    T1_02 --> T1_03
+    T1_01 --> T1_03
     T1_01 --> T1_04
     T1_01 --> T1_05
+    T0_17 --> T1_06
     T0_12c --> T1_06
     T1_06 --> T1_07
     T1_07 --> T1_08
     T1_08 --> T1_09
+    T0_17 --> T1_10
     T0_12c --> T1_10
     T1_10 --> T1_11
     T1_11 --> T1_12
@@ -378,7 +393,8 @@ flowchart LR
     T1_19 --> T1_20
     T1_20 --> T1_21
     T1_19 --> T1_22
-    T1_17 --> T1_23
+    T0_17 --> T1_23
+    T0_12c --> T1_23
     T1_23 --> T1_24a
     T1_24a --> T1_24b
     T1_24b --> T1_24c
@@ -386,6 +402,7 @@ flowchart LR
     T1_25 --> T1_24d
     T1_24d --> T1_24e
     T1_24e --> T1_24f
+    T1_17 --> T1_24f
     T1_24a --> T1_25
     T1_21 --> T1_26
     T1_26 --> T1_27
@@ -393,7 +410,7 @@ flowchart LR
     T1_16 --> T1_29a
     T1_29a --> T1_29b
     T1_29b --> T1_29c
-    T1_29c --> T1_30
+    T1_29b --> T1_30
     T1_30 --> T1_31
     T1_30 --> T1_32
     T1_30 --> T1_33
@@ -408,6 +425,7 @@ flowchart LR
     T1_39 --> T1_40
     T1_40 --> T1_41
     T1_12 --> T1_42a
+    T1_14 --> T1_42a
     T1_33 --> T1_42a
     T1_42a --> T1_42b
     T1_42a --> T1_42c
@@ -457,12 +475,12 @@ flowchart LR
     classDef crit stroke:#ef4444,stroke-width:3px
     classDef large stroke-dasharray:6 3
     classDef ext fill:#1f2937,stroke:#4b5563,color:#9ca3af,opacity:0.7
-    class T1_01,T1_02,T1_03,T1_16,T1_17,T1_23,T1_24a,T1_24b,T1_24c,T1_24d,T1_24e,T1_24f,T1_50 crit
-    class T1_17,T1_20,T1_21,T1_24b,T1_24d,T1_24e,T1_26,T1_30,T1_36,T1_51,T1_52,T1_62 large
-    class T0_12c,T0_10,T0_16,T0_15 ext
+    class T1_01,T1_03,T1_16,T1_29a,T1_29b,T1_30,T1_33,T1_44,T1_50 crit
+    class T1_01,T1_17,T1_21,T1_24d,T1_24e,T1_42a,T1_51,T1_52,T1_58,T1_59,T1_60,T1_62,T1_64 large
+    class T0_17,T0_12c,T0_10,T0_16,T0_15 ext
 ```
 
-### E2 — Phase 2 · truth core (53 tasks)
+### E2 — Phase 2 · truth core (57 tasks)
 
 ```mermaid
 flowchart LR
@@ -554,6 +572,10 @@ flowchart LR
         T2_51["T2.51<br/>Promotion-metrics runner"]
         T2_52["T2.52<br/>Contradiction-shortlist miss-…"]
         T2_53["T2.53<br/>Register topic_detection sche…"]
+        T2_54["T2.54<br/>Label entailment gold set"]
+        T2_55["T2.55<br/>Grouping under fact, no-tripl…"]
+        T2_56["T2.56<br/>Cold-start behaviour output s…"]
+        T2_57["T2.57<br/>Contradiction-pair gold set"]
     end
     T1_50["T1.50<br/><i>E1</i>"]
     T1_06["T1.06<br/><i>E1</i>"]
@@ -579,17 +601,21 @@ flowchart LR
     T2_03 --> T2_05
     T2_03 --> T2_06
     T1_07 --> T2_06
+    T1_50 --> T2_07
     T1_12 --> T2_07
     T2_01 --> T2_08
     T2_08 --> T2_09
     T2_03 --> T2_09
+    T2_47 --> T2_09
     T2_08 --> T2_10
     T2_02 --> T2_10
     T2_04 --> T2_11
     T2_26 --> T2_11
     T2_08 --> T2_12
+    T2_45 --> T2_12
     T2_12 --> T2_13
     T2_08 --> T2_14
+    T1_50 --> T2_15
     T1_23 --> T2_15
     T2_15 --> T2_16
     T2_12 --> T2_16
@@ -601,12 +627,13 @@ flowchart LR
     T2_04 --> T2_22
     T2_22 --> T2_23
     T2_22 --> T2_24
-    T2_03 --> T2_25
+    T2_01 --> T2_25
     T2_25 --> T2_26
     T2_40 --> T2_27
     T0_13 --> T2_27
     T2_27 --> T2_28
     T2_10 --> T2_28
+    T1_50 --> T2_29
     T1_30 --> T2_29
     T1_31 --> T2_30
     T2_44 --> T2_30
@@ -626,12 +653,14 @@ flowchart LR
     T2_06 --> T2_40
     T2_09 --> T2_40
     T2_10 --> T2_40
+    T2_11 --> T2_40
     T2_24 --> T2_40
     T2_51 --> T2_40
     T2_26 --> T2_41
     T2_03 --> T2_42
     T1_29c --> T2_42
     T2_42 --> T2_43
+    T1_50 --> T2_44
     T0_10 --> T2_44
     T1_31 --> T2_44
     T2_01 --> T2_45
@@ -645,14 +674,18 @@ flowchart LR
     T2_32 --> T2_50
     T2_44 --> T2_50
     T2_06 --> T2_51
-    T2_11 --> T2_52
+    T2_57 --> T2_52
     T2_18 --> T2_53
     T2_08 --> T2_53
+    T2_25 --> T2_54
+    T2_43 --> T2_55
+    T2_55 --> T2_56
+    T2_04 --> T2_57
     classDef crit stroke:#ef4444,stroke-width:3px
     classDef large stroke-dasharray:6 3
     classDef ext fill:#1f2937,stroke:#4b5563,color:#9ca3af,opacity:0.7
-    class T2_01,T2_02,T2_03,T2_25,T2_26,T2_41 crit
-    class T2_01,T2_03,T2_12,T2_13,T2_18,T2_25,T2_26,T2_43,T2_45 large
+    class T2_01,T2_25,T2_26,T2_41 crit
+    class T2_01,T2_03,T2_12,T2_13,T2_16,T2_18,T2_26,T2_32,T2_43,T2_45,T2_54 large
     class T1_50,T1_06,T1_11,T1_07,T1_12,T1_23,T0_13,T1_30,T1_31,T1_37,T1_34,T1_29c,T0_10,T1_36,T1_21 ext
 ```
 
@@ -718,7 +751,7 @@ flowchart LR
     T2_43["T2.43<br/><i>E2</i>"]
     T1_07["T1.07<br/><i>E1</i>"]
     T0_13["T0.13<br/><i>E0</i>"]
-    T1_42a["T1.42a<br/><i>E1</i>"]
+    T1_42d["T1.42d<br/><i>E1</i>"]
     T2_41 --> T3_01
     T3_01 --> T3_02
     T2_14 --> T3_02
@@ -734,6 +767,7 @@ flowchart LR
     T2_41 --> T3_09
     T3_09 --> T3_10
     T2_43 --> T3_10
+    T3_23 --> T3_10
     T3_09 --> T3_11
     T3_11 --> T3_12
     T1_07 --> T3_12
@@ -750,19 +784,22 @@ flowchart LR
     T3_05 --> T3_22
     T3_06 --> T3_22
     T3_08 --> T3_22
+    T3_23 --> T3_22
     T3_24 --> T3_22
     T3_02 --> T3_23
     T2_43 --> T3_23
     T0_13 --> T3_23
     T3_03 --> T3_24
-    T1_42a --> T3_25
+    T2_41 --> T3_25
+    T1_42d --> T3_25
+    T2_41 --> T3_26
     T1_12 --> T3_26
     classDef crit stroke:#ef4444,stroke-width:3px
     classDef large stroke-dasharray:6 3
     classDef ext fill:#1f2937,stroke:#4b5563,color:#9ca3af,opacity:0.7
     class T3_01,T3_02,T3_03,T3_04,T3_06,T3_07,T3_08,T3_22 crit
-    class T3_02,T3_03,T3_10 large
-    class T2_41,T2_14,T2_26,T1_12,T1_11,T2_43,T1_07,T0_13,T1_42a ext
+    class T3_02,T3_03,T3_10,T3_15 large
+    class T2_41,T2_14,T2_26,T1_12,T1_11,T2_43,T1_07,T0_13,T1_42d ext
 ```
 
 ### E4 — Phase 4 · hardening & scale (10 tasks)
@@ -907,11 +944,11 @@ flowchart LR
 |---|---|---|---|
 | **`origin_key` gets it wrong in Phase 1** | Every corroboration count in E2 is `COUNT(DISTINCT origin_key)`. A too-generous resolution silently inflates every verification number downstream, and the error is invisible until facts are promoted that should not have been | T1.11 tests the merge-to-one rule explicitly; T2.02's test fails under row-counting | Any change to `origin_key` resolution after E2 starts — it is a Phase-1 decision with Phase-2 consequences |
 | **Pushdown declared done without the probe** | Isolation is the one property everyone assumes and nobody measures | T1.29a–c and T1.35 are separate tasks on purpose: building it and proving it are different work, and the probe is Fable-tier and adversarial | T1.29c marked `done` while T1.35 is still `todo` |
-| **Plan rot** — the plan and the code diverge silently | 156 tasks written in advance will be wrong in places; an agent that works around a wrong task instead of fixing it makes the plan progressively fictional | The amendment protocol makes updating the plan part of the task, and Tier 1 needs no permission | An empty amendment log after a dozen completed tasks — that is not a good sign, it means fixes are going unrecorded |
+| **Plan rot** — the plan and the code diverge silently | 204 tasks written in advance will be wrong in places; an agent that works around a wrong task instead of fixing it makes the plan progressively fictional | The amendment protocol makes updating the plan part of the task, and Tier 1 needs no permission | An empty amendment log after a dozen completed tasks — that is not a good sign, it means fixes are going unrecorded |
 | **UI drifts ahead of its signal** | The frontend skeleton already renders demo versions of Phase-1, -2, and -3 surfaces. Shipping a surface over demo data reads as done | Every UI task's acceptance names the live backend signal it must bind to; principle 10 puts the surface in the same phase as its signal, not earlier | A UI task marked `done` whose backend task is still `todo` |
 | **Arms activated on a flattering aggregate** | An arm that helps overall while destroying the paraphrase slice looks like a win | Retrieval eval reports per-slice always; the aggregate never replaces slices; activation needs the latency/cost twin | An activation-log row with an aggregate delta and no slice breakdown |
 | **The inert set gets written to early** | T0.13 lands seven objects with no writer. A well-meaning task wiring one early breaks the scaffolding-not-substrate invariant and makes an unshipped thing look shipped | Each inert object names its first-writer task; a test asserts no writes | Any write before its named writer: `repo_ids[]` → T2.27, `documents`/`blocks` → TH1.02, `block_embeddings` → TH1.05, `triple_embeddings` → T2.33, `relation_embeddings` → T2.49, `article_embeddings` → T3.23, `events.api_key_id`/`actor` → T4.02 |
-| **Three-database confusion** | A harness pointed at `darkmem_test`, or a test at `darkmem`, corrupts data or produces meaningless numbers | The runbook §7 states the rule; benchlib overrides `DATABASE_URL` before the first `app.*` import | Any new script importing `app.*` before setting its database URL |
+| **Three-database confusion** | A harness pointed at `darkmem_test`, or a test at `darkmem`, corrupts data or produces meaningless numbers | The runbook §8 states the rule; benchlib overrides `DATABASE_URL` before the first `app.*` import | Any new script importing `app.*` before setting its database URL |
 | **Model tier chosen for cost, not fit** | A cheap model on an invariant-bearing task produces work that is expensive to detect and expensive to unwind | The runbook forbids downgrading a tier to save budget; cut scope instead | A Sonnet-tier commit touching pipeline phases, supersession, or fusion |
 | **The cutover destroys data** | T1.51–T1.54 move the real homelab database onto the rebuilt engine. This is the only unrecoverable step in the plan, and the first draft had no task for it at all | Cutover runs **after** G-B, never before; T1.53 rehearses the whole thing on a `pg_dump` copy and proves the restore path, which doubles as the rollback; a fresh dump is taken immediately before the real run | Any attempt to reorder the cutover ahead of G-B "to test with real data" — that inverts the safety property |
 | **A gate runner is written by the model that judges it** | Runbook §2 splits measurement design (Fable) from measurement plumbing (Sonnet/Opus) precisely so the number is not marked by its own author | The runners are separate Sonnet tasks: T2.44, T2.51, T2.52, T3.24, TH1.17 | A Fable gate task whose commit also creates its own runner script |

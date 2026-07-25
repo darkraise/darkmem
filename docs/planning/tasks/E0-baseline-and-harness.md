@@ -107,11 +107,14 @@ frozen reference point every later phase compares against.
 - [ ] All four dimensions recorded as precision/recall/F1, on both gold and held-out
 - [ ] The run's git sha, model, and fingerprint are recorded alongside the numbers
 - [ ] A stated **tolerance** for G-B parity is proposed with its reasoning (how much
-      drift is noise vs regression) — this is the number Phase 1 is judged against
+      drift is noise vs regression) — this is the number Phase 1 is judged against.
+      It must **anticipate T1.17's merged extract+classify prompt change**, which alters
+      the extraction prompt and therefore the measured numbers; a tolerance set as if the
+      prompt were frozen will read that planned change as a regression
 - [ ] Written to `gate-ledger.md` under G-A
 
 **Verify.** Both invocations, output pasted into the ledger entry verbatim (the bench
-reads LLM config from the database, so the URL is required — runbook §7):
+reads LLM config from the database, so the URL is required — runbook §8):
 ```bash
 cd backend
 export DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
@@ -278,18 +281,23 @@ its partitioning.
 
 `Model: Opus 5` · `Size: M` · `Depends: T0.12b` · `Doc: 19 §2–§3, 04 §5.3` · `Tag: target-new` · `Gate: G-A`
 
-**What.** The four per-fingerprint embedding templates, the GIN index on
-`memories.technologies`, remaining indexes, and the proof that the whole thing carries the
-existing suite.
+**What.** The GIN index on `memories.technologies`, the remaining indexes, and the proof
+that the whole thing carries the existing suite. The four per-fingerprint embedding
+templates land here as **registry entries** (`_TABLE_TEMPLATES` / `_AUX_INDEXES`)
+exercised by T0.14's boot-time reconciliation — doc 19 §2 expressly rejects expressing
+the child tables as static migration DDL, so nothing about them belongs in the Alembic
+file.
 
 **Done when:**
-- [ ] All four templates present (their inert labelling is T0.13's)
+- [ ] All four templates present **as registry entries**, not as migration DDL (their
+      inert labelling is T0.13's)
 - [ ] The GIN index on `technologies` exists — supersession and retrieval both read it
 - [ ] The **full backend suite passes** against a database built from the baseline alone
 - [ ] The six old revisions are removed, not chained behind it
 
 **Verify.** `conftest.py` overwrites `DATABASE_URL`, so the suite needs `TEST_DATABASE_URL`:
 ```bash
+PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_baseline_check;"
 cd backend
 export CHECK_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_baseline_check
 DATABASE_URL=$CHECK_URL python -m alembic upgrade head
@@ -333,7 +341,7 @@ manual double-boot against a scratch database.
 
 #### T0.15 — Freeze event + regeneration protocol
 
-`Model: Haiku 4.5` · `Size: S` · `Depends: T0.14` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
+`Model: Haiku 4.5` · `Size: S` · `Depends: T0.14, T0.16` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Write down two rules, not one. First the rule that ends the regenerate-freely
 window: after the homelab cutover (T1.54) the baseline is frozen and every later change is
@@ -392,6 +400,8 @@ clear, not to confirm it.
 - [ ] All three numbers, their artifacts, and the verdict written to `gate-ledger.md`
 - [ ] If any probe misses its bar, G-A stays open and the shortfall is recorded — the
       gate is never argued around
+- [ ] `CLAUDE.md` refreshed for anything Phase 0 changed (the collapsed migration chain,
+      the harness commands) — runbook §1 makes it every agent's bootstrap contract
 
 **Verify.** `./scripts/gate.sh --full` with output archived under `docs/eval/`.
 

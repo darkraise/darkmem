@@ -41,8 +41,8 @@ These are settled and should not be re-litigated when the lane opens:
 
 | Question | Verdict | Evidence |
 |---|---|---|
-| Can the harness port with exact parity? | **Yes** — 26/26 LLM-cache reuse via byte-identical sha256 keys; F1 scorer identical to 1e-12 | `spikes/dotnet-benchlib/` |
-| Can runtime partition DDL work from C#? | **Yes** — runtime child-table DDL, sanitised slug, no-CAST vector insert, `<=>` round-trip all proven live | `spikes/dotnet-data/` |
+| Can the harness port with exact parity? | **Yes** — 26/26 LLM-cache reuse via byte-identical sha256 keys; F1 scorer identical to 1e-12 | `docs/design/spikes/dotnet-benchlib/` |
+| Can runtime partition DDL work from C#? | **Yes** — runtime child-table DDL, sanitised slug, no-CAST vector insert, `<=>` round-trip all proven live | `docs/design/spikes/dotnet-data/` |
 | Does the asyncpg `CAST` workaround carry over? | **No, and it disappears** — Npgsql resolves types client-side, so that whole bug class vanishes | doc 03a §3 |
 | Can tree-sitter grammars ship? | **Yes** — stock binding plus a `zig cc` grammar pack (12 grammars, single DLL, all 5 RIDs). A packaging task, not a feasibility risk | doc 03a §5.1.1 |
 | Does Leiden match? | **Close, never identical** — −0.4% modularity, 98.4% partition agreement | doc 19 §7 |

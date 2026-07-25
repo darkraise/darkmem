@@ -25,7 +25,7 @@ Start here: most other lanes journal to `events` or call the orchestrator.
 
 #### T1.01 — Flatten `llm_purpose_configs` to inline rows
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.12c` · `Doc: 11 §2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: L` · `Depends: T0.17, T0.12c` · `Doc: 11 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Replace the `provider_ref` / `profile_ref` / `ml_profile_ref` indirection with
 six-to-eight inline purpose rows. The indirection bought rotation-in-one-place and cost
@@ -58,7 +58,7 @@ atomically under the single-worker assumption (invariant 13).
 
 #### T1.03 — `api_kind` as the sole vendor-quirk home
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.02` · `Doc: 11 §4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.01` · `Doc: 11 §4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Every vendor quirk — auth scheme, reasoning-disable knob, structured-output
 caveat — lives behind `api_kind` and nowhere else. The known ones are recorded and must
@@ -107,7 +107,7 @@ with no caller.
 
 #### T1.06 — `events` table, monthly partitioning, append-only trigger
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.12c` · `Doc: 04 §8.1` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 04 §8.1` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The journal that makes measurement a query instead of an instrument.
 `RANGE(created_at)` monthly partitions plus a forbid-trigger blocking UPDATE, DELETE and
@@ -168,7 +168,7 @@ readers; keep the auth-audit writes that doc 18 still owns.
 
 #### T1.10 — `memory_buffer` table + pre-minted UUIDv7 ids
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.12c` · `Doc: 05 §2` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 05 §2` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The durable landing zone for accepted-but-unprocessed captures. The id is
 minted at accept so the caller gets a real handle back from a 202.
@@ -349,7 +349,7 @@ keyed `(name_lower, fingerprint)`.
 
 #### T1.20 — Phase 4: type-constrained dedup + `names_distinct`
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.19` · `Doc: 06 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.19` · `Doc: 06 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** One ANN probe per unique `(name, entity_type)` at threshold 0.85. The
 `names_distinct` discriminator is what keeps "february outage" and "march outage" apart
@@ -396,7 +396,7 @@ and switches to the new fingerprint rather than writing into the old partition.
 
 #### T1.23 — Five closed vocabularies + normalisers + `LEGACY_*` maps
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.17` · `Doc: 06 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 06 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Entity, relationship, tech, and memory types. Pure normalisers; unknown entity
 types fall back to `concept`, unknown relations to `RELATED_TO`; `LEGACY_*` maps rewrite
@@ -440,7 +440,7 @@ fan-out can mint an event-typed edge the first pass never saw.
 
 #### T1.24b — Stage 1: entity shaping
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.24a` · `Doc: 06 §4 S1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4 S1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The non-mutating entity filters, in doc 06 §4's order: `_normalize_names`,
 `_filter_noise` / `_filter_literals`, `_snap_hardware_types` / `_apply_type_overrides`,
@@ -514,7 +514,7 @@ this is the wrong-direction-REPLACES fix); `_fan_out_coordinated`; then the seco
 
 #### T1.24f — Whole-chain F1 parity against the recorded baseline
 
-`Model: Fable 5` · `Size: M` · `Depends: T1.24e` · `Doc: 06 §4, 17 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Fable 5` · `Size: M` · `Depends: T1.24e, T1.17` · `Doc: 06 §4, 17 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The chain is only as good as its measured number. Run the full bench against
 T0.05's recorded baseline on both gold and held-out, and confirm the moat survived the
@@ -530,15 +530,18 @@ rebuild.
 
 #### T1.25 — `relation_rescue` layer
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4` · `Tag: exists-today` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4` · `Tag: exists-today` · `Gate: G-B`
 
-**What.** The only surviving ingestion-side behavioural flag. Pattern-based rescue for
-relations the LLM misses, including the generic REPLACES extractor (from X to Y, replaced
-X with Y, swapped X for Y, Y supersedes X) and the substring over-extraction guard.
+**What.** Doc 06 §4's **Stage 3** — the only surviving ingestion-side behavioural flag.
+Three passes: `_rescue_relations` (adjacency connectors under tight gap constraints),
+subject-tracking (via/with/using/to keyed on the clause subject), and
+`_rescue_relations_replaces` (Patterns A–D: from-X-to-Y, verb-X-prep-Y, Y-supersedes-X,
+out-of-A-into-B). The substring over-extraction guard belongs to `_rescue_known_entities`
+in Stage 2 — that is T1.24c's, not this task's.
 
 **Done when:**
 - [ ] Rescue-tagged wins the `_dedup_by_target_predicate` tie-break, then weight
-- [ ] Rescue hits inside a longer existing entity span are skipped
+- [ ] Every rescue-emitted triple carries `properties.rescue = True`
 - [ ] `REPLACES` / `IMPROVES_ON` / legacy `BUILDS_ON` collapse via `family_key`
 - [ ] Guarded by the F1 bench — reorder or remove only against a measured delta
 
@@ -546,7 +549,7 @@ X with Y, swapped X for Y, Y supersedes X) and the substring over-extraction gua
 
 #### T1.26 — Strip-before-rewrite: idempotent re-extraction
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.21` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.21` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Delete this `memory_id`'s prior graph contributions before writing the new set.
 `delete_by_memory_id` deletes a relation only when no live memory still asserts it, and
@@ -587,6 +590,9 @@ merges fresh entities onto stale ghosts.
 - [ ] Runs hourly under JobRegistry with its own lock and floor
 - [ ] Removes only entities with no live memory and no surviving relation
 - [ ] A dedup run after the sweep cannot match a pruned ghost
+
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
 
 **Verify.** `cd backend && python -m pytest tests/test_graph_orphan_cleanup.py -q`
 
@@ -643,7 +649,7 @@ prerequisite**, and no phase after 1 may describe isolation as holding without i
 
 #### T1.30 — RRF fusion + the unified `rank_fusion_factor`
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.29c` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Two classes of signal, kept separate (doc 07 §3). Every signal producing a
 **ranked list** joins one Reciprocal Rank Fusion at k=60 as a weighted input —
@@ -706,6 +712,8 @@ rerank scores stop being dropped at the API boundary.
 - [ ] Scores survive to the API response — the known drop-at-the-boundary defect is
       closed and has a regression test
 - [ ] Exclusion counts are in the envelope (a silent drop is the failure mode)
+- [ ] Ships the `honesty/no-silent-drop` e2e spec: a filtered channel reports its count
+      and no row disappears uncounted. The spec fails if the rule is removed
 
 **Verify.** `cd backend && python -m pytest tests/test_retrieval_trace.py -q`
 
@@ -748,7 +756,7 @@ cases most likely to leak, not the ones most likely to pass.
 
 #### T1.36 — Supersession detector, rules 1–6 verbatim
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.21, T1.27` · `Doc: 08 §2.1` · `Tag: exists-today` · `Gate: G-B`
+`Model: Opus 5` · `Size: M` · `Depends: T1.21, T1.27` · `Doc: 08 §2.1` · `Tag: exists-today` · `Gate: G-B`
 
 **What.** Fires synchronously in Phase 5 savepoint B on a REPLACES-family relation. All
 six rules carry verbatim: same project; candidate active; lowercased `technologies`
@@ -764,6 +772,8 @@ supersession that once made two memories vanish from the default view.
       elsewhere in the memory does not suppress a definitive replacement
 - [ ] `status` + `superseded_by` flip atomically under `chk_superseded_has_pointer`
 - [ ] REPLACES targets lowercased to match `technologies` — both sides change together
+- [ ] Ships the `honesty/superseded-pointer` e2e spec: `status='superseded'` without
+      `superseded_by` is impossible
 
 **Verify.** `cd backend && python -m pytest tests/test_supersession.py -q`
 
@@ -780,6 +790,8 @@ every dependent pointing at an expiring row via `superseded_by` to `deprecated` 
 - [ ] Demotion precedes deletion, proven by a test that fails if reordered
 - [ ] The interactive delete path runs the identical demotion
 - [ ] `expires_at` stays caller-set this phase (the self-expiring-fact half is T2.34)
+- [ ] Ships the `honesty/demote-before-delete` e2e spec: reordering the sweep's
+      demote/delete breaks the constraint
 
 **Verify.** `cd backend && python -m pytest tests/test_expiry_sweep.py -q`
 
@@ -854,7 +866,7 @@ doc 20 forbids.
 
 #### T1.42a — Payload envelope + source and context resolution
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.12, T1.33` · `Doc: 12 §2–§4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Size: L` · `Depends: T1.12, T1.14, T1.33` · `Doc: 12 §4–§5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The response envelope every surface returns, and the `source` resolution chain:
 explicit arg > the `X-Darkmem-Client` header > a User-Agent product map > `mcp`.
@@ -864,16 +876,22 @@ explicit arg > the `X-Darkmem-Client` header > a User-Agent product map > `mcp`.
 **This is the `source` chain, not `origin_key`'s** — those are different mechanisms with
 different fallbacks (T1.11 owns the other one).
 
+**It also lands the context chain** (doc 12 §5, contract 3): per-call `context` arg >
+`X-Darkmem-Context` header > project default > nothing, carrying the
+`provenance: human|llm_guessed` marker. T1.34 boosts against a declared context and
+T1.65 renders it, so without this wire format both are building on nothing.
+
 **Done when:**
 - [ ] One envelope shape across every surface, including error shapes
 - [ ] Source resolution order tested end to end on both doors
 - [ ] Batch resolution happens pre-validation, proven by a test that would fail post-hoc
+- [ ] The context chain and its `provenance` marker land with the same test rigour
 
 **Verify.** `cd backend && python -m pytest tests/test_envelope.py tests/test_client_identity.py -q`
 
 #### T1.42b — REST surface conformance
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.42a` · `Doc: 12 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Size: M` · `Depends: T1.42a` · `Doc: 12 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Every Phase-1 REST route against `api-rest-conventions.md`: 201 on create, 204 on
 delete, 202 for async-accepted, POST `.../search` for complex queries.
@@ -895,8 +913,11 @@ HTTP.
 
 **Done when:**
 - [ ] Tools call the same service layer as REST — no parallel implementation
-- [ ] A foreign Host gets 421; the fix is extending the allowlist, **never** disabling the
-      check, and a test asserts the check cannot be disabled by config alone
+- [ ] A foreign Host gets 421, and the **default** (empty allowlist) enforces the check.
+      `*` remains the documented explicit opt-out for a fully-trusted isolated network
+      (doc 12 §6) — the rule that a 421 is fixed by extending the allowlist rather than
+      by reaching for `*` is operator discipline, not something to make technically
+      impossible
 - [ ] `source_agent` defaults to the caller's raw User-Agent
 
 **Verify.** `cd backend && python -m pytest tests/test_mcp.py tests/test_mcp_batch.py tests/test_mcp_transport_security.py -q`
@@ -946,6 +967,8 @@ failure this design fears most.
 - [ ] Exclusion counts always render, including on zero results
 - [ ] The list virtualizes (the skeleton's `useMainVirtualizer` pattern) and pages
 - [ ] Honesty labels — layer, verification, superseded/stale — always render
+- [ ] Ships the `honesty/exclusions-on-empty` e2e spec: exclusion counts render even
+      when the result list is empty
 
 **Verify.** `cd frontend && npm test && npm run test:e2e -- memories`
 
@@ -1006,6 +1029,8 @@ never hides an honesty signal** (invariant 14).
       render in **both** modes — asserted by test
 - [ ] Preference persists in localStorage; it changes rendering only, never the request
 - [ ] Every later advanced surface honours the same flag
+- [ ] Ships the `honesty/labels-always-render` e2e spec: badges, layer labels and
+      superseded/stale labels render in **both** modes
 
 **Verify.** `cd frontend && npm test -- detail-level`
 
@@ -1061,12 +1086,17 @@ before.
 
 **What.** The one-time transform from today's schema to the baseline: the `llm_` renames,
 `origin_key` landing NULL on carried rows, lineage carried verbatim, and the carried set
-itself — memories, tags, conversations. Everything outside that set is rebuilt, not
-carried.
+itself — memories, tags, conversations.
+
+**Three buckets, not two.** Carried (the set above); rebuilt (the graph, via T1.52's
+re-extraction); and **dropped** — `pipeline_failures`, `token_blocklist` and job-state
+rows are operational residue with no post-cutover meaning (doc 19 §9.1), and are neither
+carried nor rebuilt.
 
 **Done when:**
-- [ ] The carried set is enumerated explicitly, and everything outside it is named as
-      rebuilt so nothing is carried by accident
+- [ ] All three buckets enumerated explicitly — carried, rebuilt, dropped — so nothing
+      is carried by accident and nothing is resurrected that should die with the old
+      schema
 - [ ] `origin_key` is NULL on carried rows and the corroboration arithmetic treats NULL as
       "no origin", never as a shared one (this is the T1.11 rule applied to history)
 - [ ] Supersession lineage (`status`, `superseded_by`) carries verbatim — a transform that
@@ -1086,8 +1116,12 @@ Tier-C work through the ordinary pipeline, then verify by counts — not by spot
 **Done when:**
 - [ ] Backfill runs off the hot path and is resumable after interruption
 - [ ] Failures land in `pipeline_failures` for triage rather than being skipped
-- [ ] Verification is by count: memories in = memories out, and the F1 gate run against
-      the carried corpus matches the T0.05 baseline within tolerance
+- [ ] Verification is by count: carried-row counts match the dump, and the
+      `pipeline_failures` residue is bounded and **triaged, not ignored**
+- [ ] The F1 evidence is an **extraction-bench run on the target configuration** against
+      the gold set, holding the T0.05 tolerance. There is no F1 number "against the
+      carried corpus" — the homelab data carries no gold annotations, so that figure is
+      not computable (doc 19 §4)
 - [ ] A partial backfill is visibly partial — never reported as complete
 
 **Verify.** `cd backend && python -m pytest tests/test_cutover_backfill.py -q`
@@ -1117,7 +1151,8 @@ tag that ends the regenerate-freely window.
 
 **Done when:**
 - [ ] A fresh `pg_dump` is taken immediately before, and its restore path verified
-- [ ] Verification counts and the F1 gate run green **on the real data** post-cutover
+- [ ] Post-cutover verification is green: carried-row counts match, `pipeline_failures`
+      is triaged, and the extraction bench on the target configuration holds tolerance
 - [ ] The freeze tag is applied and T0.15's CI assertion flips to enforcing additive
       revisions
 - [ ] `CLAUDE.md` and the schema inventory record the freeze date — the real one
@@ -1147,6 +1182,8 @@ violation, not merely dead UI.
 - [ ] Six purpose cards edit inline connection details; no `*_ref` indirection remains
 - [ ] Provider/profile/ml-profile UIs are deleted, not hidden
 - [ ] The cannot-embed hint derives from `api_kind` (see T1.03)
+- [ ] The three code-summarization sub-buckets (symbol / module / overview) render as
+      their own cards — doc 13 §7 places them on this tab and nothing else owns them
 
 **Verify.** `cd frontend && npm test -- settings-llm`
 
@@ -1182,22 +1219,29 @@ lands in the backend.
 
 #### T1.58 — Retire demo mode as the default
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.42a` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Size: L` · `Depends: T1.42a` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** `DEMO` currently defaults on (`VITE_DEMO !== "0"`). Flip it: real API and auth
-are the default, and `src/demo/` becomes test-fixture-only.
+are the default.
+
+**This task does not strip the imports.** 66 files import `src/demo/`, and the surfaces
+that bind to live data do so in T1.43–T1.49 and T1.59–T1.63 — stripping their fixtures
+here would leave them broken until their binding task lands. Each binding task removes
+its **own** surface's demo imports; this task lands the default flip, the real auth
+path, and the lint rule **in warn mode**. T1.64 flips that rule to error once the last
+binding task is done.
 
 **Done when:**
 - [ ] Real mode is the default; demo is explicitly opted into
-- [ ] No production route imports from `src/demo/` — asserted by a lint rule, not review
-      (the existing `no-restricted-imports` rule already encodes the intent)
+- [ ] The `no-restricted-imports` rule covering `src/demo/*` is active in **warn** mode
+      and its current violation count is recorded, so the sweep's progress is visible
 - [ ] The login/auth path works against the real backend end to end
 
 **Verify.** `cd frontend && npm run lint && npm run test:e2e -- auth`
 
 #### T1.59 — Bind the Code section to live data
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.42d, T1.58` · `Doc: 13 §4.2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Size: L` · `Depends: T1.42d, T1.58` · `Doc: 13 §4.2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Repositories (live indexing status, reindex dialog), Code Graph, and Wiki
 against the real backend. T1.46 binds only the two new signals; these are the surfaces
@@ -1212,7 +1256,7 @@ around them.
 
 #### T1.60 — Bind Chat and the Memory Graph explorer
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.44, T1.58` · `Doc: 13 §4.1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Size: L` · `Depends: T1.44, T1.58` · `Doc: 13 §4.1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Both are doc-13 committed surfaces with no task in the first draft. Chat renders
 retrieved context **with its labels and trace** — an unlabelled citation in a chat answer
@@ -1276,7 +1320,7 @@ clean `docker compose up -d` boot with `/health` 200.
 
 #### T1.64 — API e2e suite + the honesty specs
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.16, T1.42d` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Size: L` · `Depends: T0.16, T1.42d` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The e2e plan's ring 3 names an "API e2e suite" that does not exist. Build it,
 with a stated location and database posture, and land the eight honesty specs it owns.
@@ -1285,7 +1329,14 @@ discipline — decide whether to port or replace them, and say which.
 
 **Done when:**
 - [ ] The suite has one documented entry point and runs against `darkmem_test`
-- [ ] The eight honesty specs from the e2e plan exist and each fails if its rule is removed
+- [ ] The **five E1-satisfiable** honesty specs are wired into the suite:
+      `labels-always-render`, `exclusions-on-empty`, `no-silent-drop`,
+      `demote-before-delete`, `superseded-pointer`. The other three
+      (`veto-absolute`, `human-only-confirmed`, `withheld-not-grounded`) need the
+      contradiction veto, ratification and grounded answering, which do not exist until
+      E2/EH1 — their owning tasks ship them
+- [ ] The `no-restricted-imports` demo rule flips from warn to **error** (T1.58 left it
+      in warn while the binding sweep ran)
 - [ ] `scripts/gate.sh --full` invokes it
 - [ ] The disposition of `docs/e2e/scripts/` is recorded — ported, replaced, or retired
 

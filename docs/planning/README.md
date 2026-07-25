@@ -18,7 +18,7 @@ next, in what order, by which agent, and how anyone knows it is done*.
 | [`gate-ledger.md`](gate-ledger.md) | The measured evidence that cleared each gate G-A…G-G. | At a phase boundary. |
 | [`e2e-test-plan.md`](e2e-test-plan.md) | What gets end-to-end coverage, with what fixtures, at which merge gate. | When a task's acceptance names an e2e spec. |
 | [`risks-and-lanes.md`](risks-and-lanes.md) | What may run concurrently, what strictly serialises, and the failure modes to watch. | When scheduling more than one agent. |
-| [`plan-review.md`](plan-review.md) | The 2026-07-25 adversarial review: 49 findings and their dispositions. | When you suspect the plan is wrong — check whether a reviewer already found it. |
+| [`plan-review.md`](plan-review.md) | Two adversarial review rounds, 84 findings and their dispositions. | When you suspect the plan is wrong — check whether a reviewer already found it. |
 
 ## The task files
 
@@ -26,29 +26,41 @@ next, in what order, by which agent, and how anyone knows it is done*.
 |---|---|---|---|
 | E0 — Baseline & harness | [`tasks/E0-baseline-and-harness.md`](tasks/E0-baseline-and-harness.md) | 19 | G-A |
 | E1 — Engine core at target shape | [`tasks/E1-engine-core.md`](tasks/E1-engine-core.md) | 75 | G-B |
-| E2 — The truth core (L2) | [`tasks/E2-truth-core.md`](tasks/E2-truth-core.md) | 53 | G-C / G-D |
+| E2 — The truth core (L2) | [`tasks/E2-truth-core.md`](tasks/E2-truth-core.md) | 57 | G-C / G-D |
 | E3 — Synthesis & reach (L3) | [`tasks/E3-synthesis-and-reach.md`](tasks/E3-synthesis-and-reach.md) | 26 | G-E |
 | E4 — Hardening & scale | [`tasks/E4-hardening-and-scale.md`](tasks/E4-hardening-and-scale.md) | 10 | demand-gated |
 | EH1 — Documents / PKM (horizon) | [`tasks/EH1-documents-pkm.md`](tasks/EH1-documents-pkm.md) | 17 | G-F |
 | EH2 — .NET migration (horizon) | [`tasks/EH2-dotnet-migration.md`](tasks/EH2-dotnet-migration.md) | outline only | G-G |
 
-**200 tasks** across six executable epics. Each carries a model tier, a **size**, its
+**204 tasks** across six executable epics. Each carries a model tier, a **size**, its
 dependencies, its owning design doc, its honesty tag, and the gate it serves.
 
 Sizes are S (≤ ~2h), M (one focused session — the target), and L (more than a day).
-Distribution: 31 S / 141 M / 28 L. **An `L` task may not be executed directly** — it
+Distribution: 27 S / 145 M / 32 L. **An `L` task may not be executed directly** — it
 needs a reviewed step-level plan first (runbook §3).
 
 The corpus was adversarially reviewed on 2026-07-25 by three independent Fable-tier
-reviewers; 49 findings and their dispositions are in
-[`plan-review.md`](plan-review.md). That review added 32 tasks the first draft had
-missed — chiefly the homelab cutover, the deployment artifact, demo retirement, the
+reviewers, then a second round over the remediation itself; 84 findings and their dispositions are in
+[`plan-review.md`](plan-review.md). Two review rounds added 48 tasks the first draft had missed — chiefly the homelab cutover, the deployment artifact, demo retirement, the
 measurement runners, and the facts/articles retrieval channels.
 
 EH2 is deliberately **not** broken into tasks. It is appetite-gated behind G-G, which
 requires the Python target shipped first; task-level detail written now would be
 obsolete before anyone reads it. Its file records the entry conditions and the proven
 spikes so the lane can be planned properly when it opens.
+
+## Verifying the plan
+
+```bash
+cd docs/planning
+python scripts/check_plan.py      # every structural claim, asserted
+python scripts/gen_progress.py    # regenerate the tracker
+python scripts/gen_task_graph.py  # regenerate the dependency graphs
+```
+
+`check_plan.py` exists because a review found a claim recorded as done that was not true.
+Anything this corpus asserts about itself and can check, it checks — run it after any
+edit to a task file.
 
 ## Three rules that override anything written here
 

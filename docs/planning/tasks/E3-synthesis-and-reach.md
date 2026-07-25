@@ -100,7 +100,8 @@ supersedes the prior article.
 and the stale label.
 
 **Done when:** every sentence's citation is reachable in one click; the coverage number is
-shown, not hidden behind Advanced; stale articles are labelled, not withheld.
+shown in **both** Simple and Advanced (it is an honesty signal, not technical detail);
+stale articles are labelled, not withheld.
 **Verify.** `cd frontend && npm test -- articles && npm run test:e2e -- knowledge`
 
 ---
@@ -160,7 +161,7 @@ the client's filesystem** — that boundary is the whole trust posture of this f
 
 #### T3.10 — Truth-first content fill under a token budget
 
-`Model: Opus 5` · `Size: L` · `Depends: T3.09, T2.43` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Size: L` · `Depends: T3.09, T2.43, T3.23` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Fill order is L2 facts, then L3 articles, then L0 memory summaries, under a
 `config` token budget. Every item carries its layer, verification, and badge labels — an
@@ -212,6 +213,9 @@ the stateless `initialize → tools/list` handshake.
       around, never by disabling the protection
 - [ ] Re-running is idempotent and does not duplicate config entries
 
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
 **Verify.** `cd backend && python -m pytest tests/test_connect_cli.py -q`
 
 #### T3.14 — Minimal TypeScript + Python SDKs
@@ -225,11 +229,14 @@ ratification is a human single-door act.
 **Done when:** three verbs each in both languages, over the T3.25 scaffold; a ratify
 call is **not expressible** — asserted by a test that greps the generated surface, not
 by review.
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
 **Verify.** `cd sdks/ts && npm test` and `cd sdks/python && python -m pytest -q`
 
 #### T3.15 — Browser capture extension
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.26` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Size: L` · `Depends: T3.26` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Packages a **human-selected** AI-chat exchange and posts it through the ordinary
 capture front door. v1 is human-triggered only — never auto-scraped (that is T4.07,
@@ -262,6 +269,9 @@ MCP `checkpoint_save` / `checkpoint_latest`, holding a compact `summary` and str
 
 **Done when:** both doors expose it (invariant 17); latest-per-origin is one indexed
 query; payload size is bounded.
+*gate-exempt: the store half needs only `origin_key`, so doc 20 records it as
+Phase-1-capable and it may be pulled ahead of G-D.*
+
 **Verify.** `cd backend && python -m pytest tests/test_checkpoints.py -q`
 
 #### T3.17 — Resume as a specialised inject
@@ -285,6 +295,12 @@ claim about the world. Conflating the two would put unverified agent notes into 
 
 **Done when:** checkpoints cannot enter the fact ladder; no badge renders on them; they
 are excluded from retrieval's vault channels.
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
+*gate-exempt: the store half needs only `origin_key`, so doc 20 records it as
+Phase-1-capable and it may be pulled ahead of G-D.*
+
 **Verify.** `cd backend && python -m pytest tests/test_checkpoint_isolation.py -q`
 
 ---
@@ -298,7 +314,7 @@ are excluded from retrieval's vault channels.
 **What.** Per-target managed-block config, inject content policy, and the curb control.
 
 **Done when:** each target's block path and status shown; content policy editable; a
-single control stops all injection immediately.
+single control stops all injection immediately; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- distribution`
 
 #### T3.20 — Inject records in timeline and calendar
@@ -309,7 +325,7 @@ single control stops all injection immediately.
 a silent context swap.
 
 **Done when:** injections render in both surfaces with their item counts and budget;
-clicking one shows exactly what was pushed.
+clicking one shows exactly what was pushed; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- activity`
 
 #### T3.21 — Session checkpoints / resume view
@@ -319,7 +335,7 @@ clicking one shows exactly what was pushed.
 **What.** Per-run digest, next-steps, and copy-resume in the Activity shell.
 
 **Done when:** latest checkpoint per run is one click away; copy-resume yields the exact
-injected text; `checkpoint_saved` / `resumed` events visible.
+injected text; `checkpoint_saved` / `resumed` events visible; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- checkpoints`
 
 ---
@@ -328,7 +344,7 @@ injected text; `checkpoint_saved` / `resumed` events visible.
 
 #### T3.22 — G-E evidence run
 
-`Model: Fable 5` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Fable 5` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.23, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** L3 shipped **and** the per-article coverage distribution holding above the
 runtime threshold in production — a distribution, not a single flattering article.
@@ -348,12 +364,13 @@ to "nothing automated touches `darkmem`" — it is **read-only** and may never w
 `Model: Opus 5` · `Size: M` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Doc 07 §2 makes the articles channel target-new and semantic over
-`article_embeddings__<slug>` — the last of the four inert partition templates to get a
-writer, and the channel without which T3.10's truth-first inject fill has no L3 tier to
-read.
+`article_embeddings__<slug>` — the channel without which T3.10's truth-first inject fill
+has no L3 tier to read, and G-E's "L3 shipped" is unverifiable.
 
 **Done when:**
 - [ ] The template loses its inert label; the schema inventory names this as its writer
+      (it is the last of the four **mainline** templates — `block_embeddings` waits for
+      the EH1 horizon, and `triple_embeddings` may never ship at all)
 - [ ] Semantic channel with scope pushdown from the first commit
 - [ ] Composed under doc 07 §5's rules (T2.43), never fused ad hoc
 - [ ] A stale article is returned labelled stale, not withheld
@@ -369,14 +386,14 @@ claim-support coverage, not a mean — one well-covered article is not evidence.
 
 **Done when:**
 - [ ] Distribution reported with percentiles, not a summary statistic
-- [ ] The production read is **read-only** (the sanctioned exception in runbook §7)
+- [ ] The production read is **read-only** (the sanctioned exception in runbook §8)
 - [ ] Runs against a named snapshot so the number is reproducible
 
 **Verify.** `cd backend && python scripts/benchlib/run_coverage_distribution.py`
 
 #### T3.25 — SDK scaffold and generator
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.42a` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.41, T1.42d` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Split out of T3.14, which bundled codegen infrastructure for two languages into
 one task. This one names the generator and lands the layout: `sdks/ts/`, `sdks/python/`,
@@ -388,7 +405,7 @@ build; regeneration is idempotent.
 
 #### T3.26 — Browser-extension scaffold
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.41, T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Split out of T3.15. The extension shell under `extension/` with the plain-selection
 fallback and the per-install `origin_key`, before any site adapter exists.

@@ -76,6 +76,8 @@ and the diversity rule as `config` rows.
 - [ ] Echoes (the same origin restating itself) do not count as contradiction
 - [ ] Validity-window overlap is required — non-overlapping claims are not contradictions
 - [ ] No `config` knob can soften the veto
+- [ ] Ships the `honesty/veto-absolute` e2e spec: one contradiction beats any number of
+      corroborations
 
 **Verify.** `cd backend && python -m pytest tests/test_contradiction_veto.py -q`
 
@@ -90,6 +92,8 @@ and the diversity rule as `config` rows.
 - [ ] No code path sets `confirmed` without a `human` source row
 - [ ] Ratification is single-door by design (doc 18) and never an API-key scope
 - [ ] The ratifier and timestamp are recorded
+- [ ] Ships the `honesty/human-only-confirmed` e2e spec: no machine path reaches
+      `confirmed`
 
 **Verify.** `cd backend && python -m pytest tests/test_ratification.py -q`
 
@@ -112,12 +116,13 @@ unmeasurable one.
 
 #### T2.07 — `projects` table + lazy registration
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.12` · `Doc: 04 §7, 09 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T1.50, T1.12` · `Doc: 04 §7, 09 §5` · `Tag: target-new` · `Gate: G-C`
 
-**What.** `projects(name PK, display_name, properties, created_at)` anchors per-project
-`applies_when` defaults, review-queue scoping, and the one-live-article-per-subject rule.
-Capture registers lazily via `INSERT … ON CONFLICT DO NOTHING`, closing the typo'd-project
-fact-identity split.
+**What.** The table itself lands in the baseline (T0.12b); this task wires its use.
+Capture registers lazily via `INSERT … ON CONFLICT (name) DO NOTHING`, closing the
+typo'd-project fact-identity split, and existing project strings backfill. The registry
+anchors per-project `applies_when` defaults, review-queue scoping, and the
+one-live-article-per-subject rule.
 
 **Done when:**
 - [ ] Capture registers unseen projects without a round trip or a failure mode
@@ -147,7 +152,7 @@ cron, floor, ceiling, and per-job lock. Reconciliation stays off the hot path
 
 #### T2.09 — `verification_recompute`
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T2.08, T2.03` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T2.08, T2.03, T2.47` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Recompute ladder state as sources accumulate or withdraw.
 
@@ -163,7 +168,11 @@ journals.
 that justify them.
 
 **Done when:** lifting is idempotent on re-run; every lifted fact traces to its source
-rows; no fact is born above `corroborated` except via T2.28's parse-is-verification rule.
+rows; no fact is born above `corroborated` except via T2.28's parse-is-verification
+rule; and **`fact_lift` emits a `sources_changed` event per touched fact** (doc 08 §5.2)
+under T2.47's provenance no-op guard. This is the emitter that matters: doc 05 §8.4 makes
+the Phase-5 hook a no-op on first ingest, because a brand-new memory has no `fact_sources`
+rows yet — without this emit, newly lifted facts are never enqueued for promotion.
 **Verify.** `cd backend && python -m pytest tests/test_fact_lift.py -q`
 
 #### T2.11 — `contradiction_scan`
@@ -177,13 +186,14 @@ qualified: the Phase-2 veto is its first consumer, and T2.26's rule is that no
 consumer ships on an unqualified judge. The generator's measured miss rate (T2.52) is
 what gates T2.33.
 
-**Done when:** shortlist recall is measured and recorded; adjudication uses the judge, not
-a heuristic; misses are counted, not hidden.
+**Done when:** the combined generator emits candidates; adjudication uses the qualified
+judge, not a heuristic; misses are counted, not hidden. **Recall measurement is T2.52's**,
+not this task's — measuring it here would require a runner that depends on this task.
 **Verify.** `cd backend && python -m pytest tests/test_contradiction_scan.py -q`
 
 #### T2.12 — `memory_dream` — never hard-merges, never deletes
 
-`Model: Opus 5` · `Size: L` · `Depends: T2.08` · `Doc: 08 §5.4` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.08, T2.45` · `Doc: 08 §5.4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Subsumption routes through the `supersede()` primitive; near-duplicates get an
 associative edge plus a hygiene item; `refine` rewrites only derived fields, **never
@@ -226,7 +236,7 @@ productive run.
 
 #### T2.15 — Five associative types + normaliser
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.23` · `Doc: 06 §3.1, 08 §5.5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: S` · `Depends: T1.50, T1.23` · `Doc: 06 §3.1, 08 §5.5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** `CONTRADICTS`, `ELABORATES`, `DEPENDS_ON`, `FOLLOWS`, `RELATES_TO` through
 `normalize_memory_relation_type`. **`SUPERSEDES` is never written here** — it stays the
@@ -238,7 +248,7 @@ back within the closed set.
 
 #### T2.16 — Derivation from overlap, proximity, and contradiction
 
-`Model: Opus 5` · `Size: M` · `Depends: T2.15, T2.12` · `Doc: 08 §5.5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.15, T2.12` · `Doc: 08 §5.5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** `memory_dream` derives the edges from entity overlap, embedding proximity, and
 contradiction checks.
@@ -334,6 +344,9 @@ housekeeping is how truth work gets buried under chores.
 
 **Done when:** the two queues share no rows; bulk actions journal per-item, not per-batch;
 bulk actions are undoable through the T2.13 primitive.
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
 **Verify.** `cd backend && python -m pytest tests/test_hygiene_queue.py -q`
 
 #### T2.24 — Consequence ranking + dispute-staleness decay
@@ -357,7 +370,7 @@ served labelled — decay changes priority, never verification status.
 
 #### T2.25 — Labelled entailment gold set
 
-`Model: Fable 5` · `Size: L` · `Depends: T2.03` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Size: M` · `Depends: T2.01` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
 
 **What.** Claim/fact entailment gold. This is what G-D measures against, so build it
 before the judge — otherwise the judge is tuned to its own test.
@@ -434,7 +447,7 @@ deliverable, not a failure.
 
 #### T2.29 — `memory_access_stats` feeder
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T1.50, T1.30` · `Doc: 07 §3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** The substrate `w_heat` and `w_recency` read. Landing the feeder is the
 deliverable; the arms stay at zero until T2.31 measures them.
@@ -466,7 +479,7 @@ checked (a fresh wrong fact must not outrank an older verified one).
 
 #### T2.32 — PPR snapshot job + graph arms
 
-`Model: Opus 5` · `Size: M` · `Depends: T2.18` · `Doc: 07 §3, 02 §11` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Size: L` · `Depends: T2.18` · `Doc: 07 §3, 02 §11` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Graph arms (`w_ppr`, dual-level, community injection) need the snapshot job live
 first. The cached igraph snapshot is one of the in-process assumptions that binds
@@ -488,11 +501,14 @@ counting only; never merges rows, never rewrites `triple_key`.
 **Done when:** miss rate measured and compared to the bar before any code ships; if the
 bar is not exceeded, the task closes as "not needed, measured" and the template stays
 inert; `names_distinct` is carried into the grouping.
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
 **Verify.** `cd backend && python scripts/benchlib/run_contradiction_missrate.py`
 
 #### T2.34 — `expires_at` self-expiring dated facts
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
+`Model: Opus 5` · `Size: M` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
 
 **What.** Two different mechanisms that must not be conflated (doc 08 §2.3 vs §9).
 
@@ -515,7 +531,7 @@ would destroy the history the whole bi-temporal model exists to keep.
 
 #### T2.35 — `applies_when` magnitude tuning
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.34, T2.44` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: standing`
+`Model: Fable 5` · `Size: M` · `Depends: T1.34, T2.44` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: standing`
 
 **What.** Tune the `config` magnitude wired in T1.34. The boost-plus-label and
 conflict-count rules stay hard rules — only the magnitude is tuned.
@@ -536,7 +552,9 @@ unchanged at every magnitude tried.
 softened or recomputed client-side. Both axes visible; disputed shows both sides.
 
 **Done when:** badges verbatim from the backend; belief and verification axes distinct in
-the UI; disputed items render both sides, never one; virtualized and paged.
+the UI; disputed items render both sides, never one; virtualized and paged; and the
+**Simple/Advanced flag is honoured** — Simple hides the technical detail and still renders
+every honesty label (T1.48's rule, invariant 14).
 **Verify.** `cd frontend && npm test -- facts && npm run test:e2e -- knowledge`
 
 #### T2.37 — Review / Hygiene triage shell
@@ -546,7 +564,7 @@ the UI; disputed items render both sides, never one; virtualized and paged.
 **What.** Two distinct surfaces, consequence-ranked, with the queue's reasoning visible.
 
 **Done when:** the two queues are visibly distinct; ranking rationale shown per item;
-bulk actions confirm before applying and are undoable.
+bulk actions confirm before applying and are undoable; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- review`
 
 #### T2.38 — Dream digest UI with undo
@@ -557,7 +575,7 @@ bulk actions confirm before applying and are undoable.
 undo.
 
 **Done when:** every action shows what changed; undo is reachable at both granularities;
-an undone action still appears, marked undone.
+an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
 #### T2.39 — Topics tab
@@ -567,7 +585,7 @@ an undone action still appears, marked undone.
 **What.** Browsing, report injection, pin-suggestion diff.
 
 **Done when:** a pending report renders as pending; pin suggestions show what changed
-between runs; accept/dismiss round-trips.
+between runs; accept/dismiss round-trips; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- topics`
 
 ---
@@ -576,7 +594,7 @@ between runs; accept/dismiss round-trips.
 
 #### T2.40 — G-C evidence run
 
-`Model: Fable 5` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Fable 5` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Promotion rate `(promoted / eligible)` sliced by source-kind diversity and by
 which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
@@ -597,7 +615,8 @@ lane (T2.27–T2.28) closed.
 gate that opens Phase 3.
 
 **Done when:** precision and recall recorded per class; the bar was stated before the run;
-verdict in `gate-ledger.md`; E3 stays closed on a miss.
+verdict in `gate-ledger.md`; `CLAUDE.md` refreshed for the judge and its config rows;
+E3 stays closed on a miss.
 **Verify.** `cd backend && python scripts/benchlib/run_judge_qualification.py --gate`
 
 ---
@@ -627,22 +646,24 @@ whole truth core is unreachable by search.
 
 `Model: Opus 5` · `Size: L` · `Depends: T2.42` · `Doc: 07 §5` · `Tag: target-new` · `Gate: G-C`
 
-**What.** Doc 07 §5's composition rules across memory / facts / articles / code:
-verified-above-labelled-candidate ordering, disputed served with both sides, results
-grouped under their fact so evidence is **never triple-counted**, cold-start returning
-labelled candidates rather than nothing, and the sectioned-vs-fused output shapes.
+**What.** Doc 07 §5's composition rules over the four layers — L0 memory, L1 candidate
+graph (not directly served), L2 verified facts, L3 subject articles: the
+verified-above-labelled-candidate ordering, and disputed served with both sides.
+
+**Code search is not one of the layers.** It is a repository-gated, semantic-only sibling
+that **never fuses** with the memory/vault composition (doc 07 §2). Grouping and
+cold-start are T2.55; the output shapes are T2.56.
 
 **Done when:**
-- [ ] Ordering and grouping rules each have a test that fails if the rule is removed
-- [ ] Triple-counting is impossible: three memories supporting one fact render as one
-      grouped result, not three hits
-- [ ] Cold start returns labelled candidates — an empty vault is not an empty answer
+- [ ] The ordering rule has a test that fails if the rule is removed
+- [ ] Disputed facts are served with both sides, never one
+- [ ] A test asserts code search cannot enter the composition
 
 **Verify.** `cd backend && python -m pytest tests/test_layer_composition.py -q`
 
 #### T2.44 — Arm-ablation interface for the retrieval eval
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T0.10, T1.31` · `Doc: 17 §4` · `Tag: target-new` · `Gate: standing`
+`Model: Sonnet 5` · `Size: M` · `Depends: T1.50, T0.10, T1.31` · `Doc: 17 §4` · `Tag: target-new` · `Gate: standing`
 
 **What.** The plumbing behind `run_retrieval_eval.py --arm <name>`, which T2.30, T2.31,
 T2.35 and T2.50 all invoke and which T0.10 never scoped. Sonnet builds it; the Fable
@@ -667,7 +688,12 @@ guards, otherwise `deprecated`.
 
 **Done when:**
 - [ ] The primitive is the single path by which consolidation supersedes anything
-- [ ] The status bridge's two guards are tested independently; the default is `deprecated`
+- [ ] The status bridge's two guards are tested independently. **Doc 08 §3.4 contradicts
+      itself here and this must be resolved before implementation, not during it:** the
+      prose says a failed guard sends the memory to `deprecated`, while the section's own
+      diagram and rationale say a guard-2 failure is a **no-op** because the memory still
+      asserts live facts. Taking the prose retires memories that still hold live
+      knowledge. This is a **Tier-3 amendment** (runbook §5) — stop and escalate
 - [ ] `chk_superseded_has_pointer` holds through every transition
 
 **Verify.** `cd backend && python -m pytest tests/test_supersede_primitive.py -q`
@@ -697,6 +723,9 @@ and every flap is a visible badge change.
 withdrawal sweep, with the inline expire-on-last-source-withdrawal path — and a
 **provenance no-op guard** so a re-extraction that changes nothing emits nothing.
 
+**The third emitter is `fact_lift`'s (doc 08 §5.2) and it belongs to T2.10.** It is the
+one that fires on fresh data, since the Phase-5 hook is usually a no-op on first ingest.
+
 **Done when:**
 - [ ] `sources_changed` is in the closed events vocabulary before any emitter uses it
 - [ ] A no-op re-extraction emits no event, proven by test (otherwise every reprocess
@@ -724,7 +753,7 @@ was its sole source.
 
 #### T2.49 — `relation_embeddings` refresh job + writer
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T2.32, T0.13` · `Doc: 04 §5.3, 07 §4, 19 §6` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.32, T0.13` · `Doc: 04 §5.3, 07 §4, 19 §6` · `Tag: target-new` · `Gate: G-C`
 
 **What.** First writer to one of the two inert partition templates that had no named owner,
 and the JobRegistry refresh arm doc 19 §6 lists.
@@ -734,6 +763,9 @@ and the JobRegistry refresh arm doc 19 §6 lists.
       first writer
 - [ ] Refresh is Tier-C with its own cron, floor, and lock
 - [ ] No cross-fingerprint comparison (invariant 2)
+
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
 
 **Verify.** `cd backend && python -m pytest tests/test_relation_embeddings.py -q`
 
@@ -771,7 +803,7 @@ Fable gate task only designs the bar and reads the number.
 
 #### T2.52 — Contradiction-shortlist miss-rate runner
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T2.11` · `Doc: 17 §5.2` · `Tag: target-new` · `Gate: standing`
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.57` · `Doc: 17 §5.2` · `Tag: target-new` · `Gate: standing`
 
 **What.** Measures the recall of the **combined** candidate generator — same-endpoint
 facts plus the `pg_trgm` shortlist — against contradiction-pair gold. Its number is the
@@ -794,6 +826,68 @@ bar T2.33 must exceed before the `triple_embeddings` writer ships at all.
 **Done when:** registered under the umbrella with cron, floor, and per-job lock; a manual
 trigger while held returns 409.
 **Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py -q`
+
+#### T2.54 — Label the entailment gold set
+
+`Model: Fable 5` · `Size: L` · `Depends: T2.25` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+
+**What.** Split from T2.25 so the compute half cannot stall on the human half. T2.25
+harvests candidate claim/fact pairs; this task is the labelling itself, which is bounded by
+your afternoon rather than by a machine.
+
+**Done when:**
+- [ ] Grounded and ungrounded sentences both represented, including hard near-misses
+- [ ] Labelling rationale recorded, so a later contributor labels consistently
+- [ ] Inter-label consistency spot-checked on a resample
+- [ ] Gold committed as JSON on disk (invariant 1)
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
+
+#### T2.55 — Grouping under the fact, and the no-triple-count rule
+
+`Model: Opus 5` · `Size: M` · `Depends: T2.43` · `Doc: 07 §5` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Split from T2.43. Results group under the fact they support, so three memories
+backing one fact render as **one** grouped result rather than three hits. Without this the
+vault inflates its own apparent evidence — the reader sees three confirmations where the
+system has one.
+
+**Done when:**
+- [ ] Three memories supporting one fact render as one grouped result, proven by test
+- [ ] The group names its constituent evidence without counting it again
+- [ ] Grouping survives fusion — it is not a presentation-layer patch
+
+**Verify.** `cd backend && python -m pytest tests/test_result_grouping.py -q`
+
+#### T2.56 — Cold-start behaviour and the output shapes
+
+`Model: Sonnet 5` · `Size: M` · `Depends: T2.55` · `Doc: 07 §5` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Split from T2.43. Cold start returns **labelled candidates** rather than nothing —
+an empty vault is not an empty answer — plus doc 07 §5's sectioned and fused output shapes.
+
+**Done when:**
+- [ ] A query against an empty vault returns labelled candidates, not zero rows
+- [ ] Both output shapes implemented and selectable
+- [ ] The label on a cold-start result states plainly that it is unverified
+
+**Verify.** `cd backend && python -m pytest tests/test_cold_start.py -q`
+
+#### T2.57 — Contradiction-pair gold set
+
+`Model: Fable 5` · `Size: M` · `Depends: T2.04` · `Doc: 17 §5.2` · `Tag: target-new` · `Gate: standing`
+
+**What.** T2.52 measures the candidate generator's recall "against contradiction-pair gold"
+— which nothing built. This is that gold: labelled pairs that do and do not contradict, over
+overlapping and non-overlapping validity windows.
+
+**Done when:**
+- [ ] Pairs cover same-endpoint and lexically-similar-but-unrelated cases
+- [ ] Non-overlapping validity windows are represented as **non**-contradictions
+- [ ] Echoes (one origin restating itself) are labelled as not-contradiction
+- [ ] Gold is JSON on disk
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_contradiction_gold.py -q`
 
 ---
 

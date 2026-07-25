@@ -23,8 +23,10 @@ before writing any code:
 3. **Search darkmem itself.** `memory_search` for the subsystem you are about to touch —
    past root causes and decisions are stored there and are frequently the difference
    between a fix and a re-fix.
-4. **Check the epic's entry gate in [`gate-ledger.md`](gate-ledger.md).** Every epic
-   header names one. **If that gate is open, stop** — the tasks below it are not startable
+4. **Check the epic's entry gate in [`gate-ledger.md`](gate-ledger.md).** An epic header
+   names its *advance* gate — the one it must clear to finish. Its **entry** gate is the
+   advance gate of the epic before it (E1 enters on G-A, E2 on G-B, E3 on G-D), and the
+   task graph encodes it as a real dependency edge. **If that gate is open, stop** — the tasks below it are not startable
    yet, whatever their `Depends` field says. Gates are barriers, not checkpoints to work
    through: starting the truth core on an unproven retrieval layer means every fact count
    inherits that doubt. A task deliberately exempt from its epic's gate says so in its own
@@ -46,7 +48,7 @@ Every task carries a **Model** field. The tiers, and what earns them:
 | **Haiku 4.5** | Mechanical, fully specified, low-branching work. | Config rows and seed data; test fixtures against a stated shape; markup/CSS edits; mechanical renames; doc scaffolds; single-file additions with an explicit interface given. |
 | **Sonnet 5** | Standard feature work against an established pattern. | One service method plus its tests; a REST route matching `api-rest-conventions.md`; a UI surface built on an existing component; a migration whose shape the task states; a JobRegistry job with a stated cron and config schema. |
 | **Opus 5** | Cross-cutting or invariant-bearing work. | Pipeline phase surgery; retrieval fusion or SQL pushdown; the supersession and verification ladders; the baseline schema; anything touching more than three subsystems, or any task whose failure mode is a silent correctness drift rather than a crash. |
-| **Fable 5** | Hardest reasoning, and adversarial verification of the above. | Designing a gate's metric and bar; judge qualification; false-promotion audit methodology; contradiction-veto semantics; reviewing an Opus-tier task before its gate is claimed; any Tier-3 amendment (§4). |
+| **Fable 5** | Hardest reasoning, and adversarial verification of the above. | Designing a gate's metric and bar; judge qualification; false-promotion audit methodology; contradiction-veto semantics; reviewing an Opus-tier task before its gate is claimed; any Tier-3 amendment (§5). |
 
 Three standing rules:
 
@@ -179,7 +181,7 @@ Every epic file ends with a table. One row per amendment:
 
 Stop, do not improvise, when:
 
-- A Tier-3 amendment surfaced (§4).
+- A Tier-3 amendment surfaced (§5).
 - A gate number lands below its bar. That is the gate working. Report the number; never
   re-run until it passes, and never widen the bar to fit the result.
 - A task requires a credential, an external service, or a destructive operation on real

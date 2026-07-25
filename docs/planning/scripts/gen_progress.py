@@ -37,7 +37,7 @@ out.append(
     "| `blocked` | Started and stopped. The **Note** column must say what blocks it. |\n"
     "| `review` | Code complete, awaiting the Fable-tier review that Opus-tier and\n"
     "gate-feeding tasks require. The **Review** column carries the reviewer's verdict. |\n"
-    "| `done` | Every definition-of-done item in runbook §3 holds, verification output\n"
+    "| `done` | Every definition-of-done item in runbook §4 holds, verification output\n"
     "recorded, commit landed, and any required review passed. |\n"
 )
 out.append(

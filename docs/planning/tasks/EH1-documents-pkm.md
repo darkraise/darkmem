@@ -145,6 +145,8 @@ as grounded** (invariant 14).
 - [ ] Below threshold, the answer is labelled or withheld — proven by test
 - [ ] The judge is the same one T2.26 qualified — one judge, three consumers
 - [ ] Threshold is a `config` row
+- [ ] Ships the `honesty/withheld-not-grounded` e2e spec: a below-threshold answer is
+      never served as grounded
 
 **Verify.** `cd backend && python -m pytest tests/test_faithfulness_gate.py -q`
 
@@ -156,7 +158,8 @@ as grounded** (invariant 14).
 The metric defined in TH1.01 must clear its bar on a labelled gold set before H1 ships.
 
 **Done when:** measured on block-span entailment gold; the bar was set in TH1.01, before
-the build; verdict in `gate-ledger.md`; a miss leaves H1 unshipped.
+the build; verdict in `gate-ledger.md`; `CLAUDE.md` refreshed for the documents/blocks
+tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 **Verify.** `cd backend && python scripts/benchlib/run_faithfulness_gate.py`
 
 ---
