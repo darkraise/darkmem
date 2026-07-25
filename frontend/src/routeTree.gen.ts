@@ -24,6 +24,7 @@ import { Route as AuthenticatedCodeGraphRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/code'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
+import { Route as AuthenticatedMemoriesMemoryIdRouteImport } from './routes/_authenticated/memories_.$memoryId'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -100,6 +101,12 @@ const AuthenticatedActivityRoute = AuthenticatedActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedMemoriesMemoryIdRoute =
+  AuthenticatedMemoriesMemoryIdRouteImport.update({
+    id: '/memories_/$memoryId',
+    path: '/memories/$memoryId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
+  '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
@@ -130,6 +138,7 @@ export interface FileRoutesByTo {
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
+  '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -148,6 +157,7 @@ export interface FileRoutesById {
   '/_guest/login': typeof GuestLoginRoute
   '/_guest/setup': typeof GuestSetupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/memories_/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
     | '/unified-graph'
     | '/login'
     | '/setup'
+    | '/memories/$memoryId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
     | '/unified-graph'
     | '/login'
     | '/setup'
+    | '/memories/$memoryId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -197,6 +209,7 @@ export interface FileRouteTypes {
     | '/_guest/login'
     | '/_guest/setup'
     | '/_authenticated/'
+    | '/_authenticated/memories_/$memoryId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -311,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedActivityRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/memories_/$memoryId': {
+      id: '/_authenticated/memories_/$memoryId'
+      path: '/memories/$memoryId'
+      fullPath: '/memories/$memoryId'
+      preLoaderRoute: typeof AuthenticatedMemoriesMemoryIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -326,6 +346,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedMemoriesMemoryIdRoute: typeof AuthenticatedMemoriesMemoryIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -340,6 +361,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedMemoriesMemoryIdRoute: AuthenticatedMemoriesMemoryIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

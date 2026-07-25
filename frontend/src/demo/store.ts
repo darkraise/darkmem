@@ -3,14 +3,19 @@ import memoriesData from "./data/memories.json"
 import reposData from "./data/repos.json"
 import jobsData from "./data/jobs.json"
 import llmProfilesData from "./data/llm-profiles.json"
+import { CURATED_MEMORIES } from "./data/memories-curated"
+import { enrichBulkMemories, type RawBulkMemory } from "./memories"
 import {
   buildActivityFeed,
   buildContributions,
   buildDashboardStats,
 } from "./dashboard"
-import type { DemoStoreState, Memory, Repo, Job, LlmProfile } from "./types"
+import type { DemoStoreState, DemoMemory, Repo, Job, LlmProfile } from "./types"
 
-const initialMemories = memoriesData as unknown as Memory[]
+const initialMemories: DemoMemory[] = [
+  ...CURATED_MEMORIES,
+  ...enrichBulkMemories(memoriesData as RawBulkMemory[]),
+]
 
 export const useDemoStore = create<DemoStoreState>((set) => ({
   memories: initialMemories,
@@ -24,6 +29,10 @@ export const useDemoStore = create<DemoStoreState>((set) => ({
     set((s) => ({
       memories: [m, ...s.memories],
       stats: { ...s.stats, totalMemories: s.memories.length + 1 },
+    })),
+  updateMemory: (id, patch) =>
+    set((s) => ({
+      memories: s.memories.map((m) => (m.id === id ? { ...m, ...patch } : m)),
     })),
   deleteMemory: (id) =>
     set((s) => {
