@@ -601,6 +601,10 @@ export interface DemoJobField {
 
 export interface DemoJob {
   key: string
+  name: string
+  description: string
+  /** Disabling stops the scheduled loop from restarting; fields stay editable. */
+  enabled: boolean
   cron: string
   cron_label: string
   /** Floor: the loop never fires more often than this. Registration constant. */
@@ -773,6 +777,201 @@ export interface DemoSessionRun {
   history: DemoCheckpointEvent[]
 }
 
+// ---------------------------------------------------------------------------
+// Wave 5 — Settings (S25–S30) + Auth (S31/S32).
+// ---------------------------------------------------------------------------
+
+/** Coded default merged under DB overrides (get_feature_flags_dict). */
+export type FlagSource = "default" | "override"
+
+export interface DemoRankArm {
+  /** The w_* key, e.g. "w_conf". */
+  key: string
+  /** Legacy alias still carried on the row (e.g. confidence_rank_gamma). */
+  alias?: string
+  desc: string
+  value: number
+  coded_default: number
+  source: FlagSource
+  step?: number
+}
+
+export interface DemoGraphFlag {
+  key: string
+  desc: string
+  enabled: boolean
+  source: FlagSource
+  /** The paired RRF list weight; null = context augmentation, no weight. */
+  paired_arm: DemoRankArm | null
+  no_weight_note?: string
+}
+
+export interface DemoCorroborationGate {
+  n_base: number
+  n_diverse: number
+  source: FlagSource
+  gate_note: string
+}
+
+export interface DemoFlagsState {
+  /** rank_fusion_factor arms: w_conf, w_importance, w_heat, w_recency. */
+  fusion_arms: DemoRankArm[]
+  /** ppr_enabled, dual_level_enabled, community_injection_enabled. */
+  graph_flags: DemoGraphFlag[]
+  /** w_context_boost — post-fusion multiplier on a MATCH outcome only. */
+  context_boost: DemoRankArm
+  corroboration: DemoCorroborationGate
+  overrides_written: number
+}
+
+export type ApiKind =
+  | "openai"
+  | "ollama"
+  | "anthropic"
+  | "google"
+  | "deepseek"
+  | "zai"
+
+export type LLMPurposeName =
+  | "embedding"
+  | "extraction"
+  | "classification"
+  | "reasoning"
+  | "summarization"
+  | "reranker"
+
+export interface DemoLLMPurpose {
+  purpose: LLMPurposeName
+  tier: string
+  role: string
+  model: string
+  api_kind: ApiKind
+  base_url: string
+  /** "" = not set (ollama needs none); stored unmasked, displayed masked. */
+  api_key: string
+  /** params (jsonb) as JSON text. */
+  params: string
+  /** Only the embedding purpose carries dimensions. */
+  dimensions?: number
+  /** Absent on embedding — it has no reasoning mode to disable. */
+  reasoning?: boolean
+  hint?: { tone: "info" | "caution"; text: string }
+}
+
+export interface DemoCodeBucket {
+  key: "symbol" | "module" | "overview"
+  model: string
+  note: string
+}
+
+export interface DemoLLMSaveTrace {
+  purpose: LLMPurposeName
+  fields: string[]
+}
+
+export interface DemoLLMState {
+  purposes: DemoLLMPurpose[]
+  /** Code-summarization sub-buckets on the one summarization connection. */
+  buckets: DemoCodeBucket[]
+  /** Re-homes the dropped ml_profile_ref indirection inline. */
+  classifier_kind: "llm" | "local"
+  /** Live-reload confirmation after the last save; null until a save. */
+  last_save: DemoLLMSaveTrace | null
+}
+
+export interface DemoSecurityState {
+  blocklisted: number
+  lockouts_30d: number
+  session: { issued_label: string; jti: string }
+  rate_limit: {
+    attempt_threshold: number
+    lockout_window: string
+    ip_source: string
+    journaled: string
+  }
+  cookie_secure: { value: string; note: string }
+  tofu: { claimed_label: string; journaled: string }
+  /** MCP Host allowlist chips; wild = the explicit "*" opt-out. */
+  mcp_hosts: { host: string; wild?: boolean }[]
+  /** Dormant Phase-4 ApiKey card — designed, not wired (invariant 23). */
+  api_key_scopes: { label: string; never?: boolean }[]
+}
+
+export type MaintenanceOpKey =
+  | "reembed_memories"
+  | "reembed_entities"
+  | "expired_memory_cleanup"
+  | "graph_orphan_cleanup"
+  | "tag_orphan_cleanup"
+  | "prune_caches"
+
+export interface DemoMaintenanceState {
+  fingerprint: string
+  reembed: { memories: number; entities: number; code_chunks: number }
+  cleanup: {
+    expired: number
+    expired_dependents: number
+    failures_memory_ingest: number
+    failures_code_repo: number
+  }
+  dbops: {
+    retired_fingerprints: string[]
+    vacuum_target: string
+    vacuum_note: string
+    reindex_target: string
+    reindex_note: string
+  }
+  /** Outcome line of the last confirmed op this session; null = none yet. */
+  last_op_note: string | null
+}
+
+export type DistClientStatus = "connected" | "curbed" | "disconnected"
+
+export interface DemoDistClient {
+  id: string
+  name: string
+  status: DistClientStatus
+  handshake: string | null
+  context_file: string
+  mcp_config: string
+  /** "active · last inject 14:12 UTC · 8 items, 1,840/2,000 tokens". */
+  push_note: string | null
+  curbed_note: string | null
+  connect_hint?: string
+}
+
+export interface DemoInjectLogRow {
+  id: string
+  target: string
+  event_type: "inject" | "inject_curbed"
+  detail: string
+  time_label: string
+  meta: string
+}
+
+export interface DemoInjectItem {
+  layer: KnowledgeLayer
+  badge: VerificationStatus
+  /** "injected as: corroborated" — the label the tool receives. */
+  as_label: string
+  text: string
+}
+
+export interface DemoDistPolicyRow {
+  key: string
+  value: string
+  desc: string
+}
+
+export interface DemoDistributionState {
+  clients: DemoDistClient[]
+  policy: DemoDistPolicyRow[]
+  block_preview: string
+  log: DemoInjectLogRow[]
+  inject_items: DemoInjectItem[]
+  watermarks: { key: string; value: string }[]
+}
+
 export interface DemoStoreState {
   memories: DemoMemory[]
   repos: Repo[]
@@ -803,6 +1002,11 @@ export interface DemoStoreState {
   dreamPastActions: DemoDreamAction[]
   dayBuckets: DemoDayBucket[]
   sessionRuns: DemoSessionRun[]
+  flags: DemoFlagsState
+  llm: DemoLLMState
+  security: DemoSecurityState
+  maintenance: DemoMaintenanceState
+  distribution: DemoDistributionState
   addMemory: (m: DemoMemory) => void
   updateMemory: (id: string, patch: Partial<DemoMemory>) => void
   deleteMemory: (id: string) => void
@@ -828,4 +1032,24 @@ export interface DemoStoreState {
   /** Undoes only the eligible (not blocked, not already undone) entries. */
   undoDreamBatch: (type: DreamActionType) => void
   resetActivity: () => void
+  /** Writes a w_* arm value; the first write flips its source to override. */
+  saveArm: (key: string, value: number) => void
+  setGraphFlag: (key: string, enabled: boolean) => void
+  saveCorroboration: (nBase: number, nDiverse: number) => void
+  /** Saves a purpose row and records the live-reload confirmation trace. */
+  saveLLMPurpose: (
+    purpose: LLMPurposeName,
+    patch: Partial<Omit<DemoLLMPurpose, "purpose">>,
+  ) => void
+  saveCodeBucket: (key: DemoCodeBucket["key"], model: string) => void
+  setClassifierKind: (kind: "llm" | "local") => void
+  dismissLLMSave: () => void
+  setJobEnabled: (key: string, enabled: boolean) => void
+  saveJobCron: (key: string, cron: string) => void
+  /** Confirmed maintenance op — mutates counts and records the outcome. */
+  runMaintenanceOp: (op: MaintenanceOpKey) => void
+  /** Curbing stops push only; pull is unaffected. Appends an inject_curbed
+   *  (or resumed inject) log row and updates the client's watermark. */
+  setDistributionCurb: (clientId: string, curbed: boolean) => void
+  resetSettings: () => void
 }

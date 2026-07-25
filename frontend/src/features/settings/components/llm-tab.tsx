@@ -1,0 +1,482 @@
+import { useState } from "react"
+import {
+  ArrowDownUp,
+  Bot,
+  Braces,
+  Check,
+  FileText,
+  Filter,
+  Tag,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
+import { Input } from "darkraise-ui/components/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "darkraise-ui/components/toggle-group"
+import { cn } from "darkraise-ui/lib"
+import {
+  API_KINDS,
+  embeddingKindWarning,
+  validateParamsJson,
+} from "@/demo/settings"
+import { useDemoLLM } from "@/demo/hooks"
+import { useDemoStore } from "@/demo/store"
+import type { ApiKind, DemoLLMPurpose } from "@/demo/types"
+
+const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
+  embedding: Braces,
+  extraction: Filter,
+  classification: Tag,
+  summarization: FileText,
+  reranker: ArrowDownUp,
+  reasoning: Bot,
+}
+
+type Draft = {
+  model: string
+  api_kind: ApiKind
+  base_url: string
+  api_key: string
+  params: string
+  dimensions: string
+  reasoning: boolean
+}
+
+function toDraft(p: DemoLLMPurpose): Draft {
+  return {
+    model: p.model,
+    api_kind: p.api_kind,
+    base_url: p.base_url,
+    api_key: p.api_key,
+    params: p.params,
+    dimensions: p.dimensions !== undefined ? String(p.dimensions) : "",
+    reasoning: p.reasoning ?? false,
+  }
+}
+
+function dirtyFields(p: DemoLLMPurpose, d: Draft): string[] {
+  const base = toDraft(p)
+  return (Object.keys(base) as (keyof Draft)[]).filter(
+    (k) => base[k] !== d[k],
+  )
+}
+
+function Field({
+  label,
+  span2,
+  children,
+}: {
+  label: string
+  span2?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className={cn("flex flex-col gap-1", span2 && "col-span-2")}>
+      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        {label}
+      </span>
+      {children}
+    </div>
+  )
+}
+
+/** Two-position segmented toggle (reasoning off/on, classifier llm/local).
+ *  Guards the ToggleGroup "" deselect — a segmented pair always has a value. */
+function SegmentedPair({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: string
+  options: [string, string]
+  onChange: (value: string) => void
+  label: string
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(v) => {
+        if (v !== "") onChange(v)
+      }}
+      aria-label={label}
+      className="w-fit"
+    >
+      {options.map((opt) => (
+        <ToggleGroupItem key={opt} value={opt} className="font-mono text-sm">
+          {opt}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
+  const saveLLMPurpose = useDemoStore((s) => s.saveLLMPurpose)
+  const [draft, setDraft] = useState<Draft>(() => toDraft(purpose))
+  const dirty = dirtyFields(purpose, draft)
+  const paramsCheck = validateParamsJson(draft.params)
+  const isEmbedding = purpose.purpose === "embedding"
+  const warning = isEmbedding ? embeddingKindWarning(draft.api_kind) : null
+  const Icon = PURPOSE_ICONS[purpose.purpose]
+  const wide = purpose.purpose === "summarization"
+
+  const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
+
+  const save = () => {
+    if (!paramsCheck.ok) return
+    // Only the changed fields are written — the live-reload trace names
+    // exactly what the save touched.
+    const changed: Partial<Omit<DemoLLMPurpose, "purpose">> = {}
+    for (const key of dirty) {
+      switch (key) {
+        case "model":
+          changed.model = draft.model
+          break
+        case "api_kind":
+          changed.api_kind = draft.api_kind
+          break
+        case "base_url":
+          changed.base_url = draft.base_url
+          break
+        case "api_key":
+          changed.api_key = draft.api_key
+          break
+        case "params":
+          changed.params = draft.params
+          break
+        case "dimensions":
+          changed.dimensions = Number(draft.dimensions) || 0
+          break
+        case "reasoning":
+          changed.reasoning = draft.reasoning
+          break
+      }
+    }
+    saveLLMPurpose(purpose.purpose, changed)
+  }
+
+  return (
+    <div
+      className={cn(
+        "border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4",
+        wide && "sm:col-span-2",
+        dirty.length > 0 && "border-warning/50 bg-warning/4",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Icon aria-hidden className="text-primary h-4 w-4" />
+        <span className="font-mono text-sm font-semibold">
+          {purpose.purpose}
+        </span>
+        <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
+          {purpose.tier}
+        </span>
+      </div>
+      <p className="text-muted-foreground text-sm">{purpose.role}</p>
+
+      {purpose.purpose === "classification" && <ClassifierKindRow />}
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <Field label="model">
+          <Input
+            value={draft.model}
+            aria-label={`${purpose.purpose} model`}
+            onChange={(e) => patch({ model: e.target.value })}
+            className="font-mono"
+          />
+        </Field>
+        <Field label="api_kind">
+          <Select
+            value={draft.api_kind}
+            onValueChange={(v) => patch({ api_kind: v as ApiKind })}
+          >
+            <SelectTrigger
+              aria-label={`${purpose.purpose} api_kind`}
+              className="font-mono"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {API_KINDS.map((kind) => (
+                <SelectItem key={kind} value={kind} className="font-mono">
+                  {kind}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="base_url" span2>
+          <Input
+            value={draft.base_url}
+            aria-label={`${purpose.purpose} base_url`}
+            onChange={(e) => patch({ base_url: e.target.value })}
+            className="font-mono"
+          />
+        </Field>
+        <Field label="api_key">
+          <Input
+            type="password"
+            value={draft.api_key}
+            placeholder={
+              draft.api_kind === "ollama" ? "not required for ollama" : ""
+            }
+            aria-label={`${purpose.purpose} api_key`}
+            onChange={(e) => patch({ api_key: e.target.value })}
+            className="font-mono"
+          />
+        </Field>
+        {isEmbedding ? (
+          <Field label="dimensions">
+            <Input
+              type="number"
+              value={draft.dimensions}
+              aria-label="embedding dimensions"
+              onChange={(e) => patch({ dimensions: e.target.value })}
+              className="font-mono"
+            />
+          </Field>
+        ) : (
+          <div className="flex items-end gap-2 pb-0.5">
+            <span className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
+              reasoning
+            </span>
+            <SegmentedPair
+              value={draft.reasoning ? "on" : "off"}
+              options={["off", "on"]}
+              onChange={(v) => patch({ reasoning: v === "on" })}
+              label={`${purpose.purpose} reasoning`}
+            />
+          </div>
+        )}
+        <Field label="params (jsonb)" span2>
+          <Input
+            value={draft.params}
+            aria-label={`${purpose.purpose} params`}
+            onChange={(e) => patch({ params: e.target.value })}
+            className={cn(
+              "font-mono",
+              !paramsCheck.ok && "border-destructive",
+            )}
+          />
+          {!paramsCheck.ok && (
+            <span className="text-destructive text-sm">
+              {paramsCheck.error}
+            </span>
+          )}
+        </Field>
+      </div>
+
+      {warning ? (
+        <p className="text-warning text-sm">{warning}</p>
+      ) : (
+        purpose.hint && (
+          <p
+            className={cn(
+              "text-sm",
+              purpose.hint.tone === "caution"
+                ? "text-warning"
+                : "text-muted-foreground",
+            )}
+          >
+            {purpose.hint.text}
+          </p>
+        )
+      )}
+
+      {wide && <CodeBuckets />}
+
+      <div className="flex items-center gap-2.5 pt-1">
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-primary/60 text-primary"
+          disabled={dirty.length === 0 || !paramsCheck.ok}
+          onClick={save}
+        >
+          Save
+        </Button>
+        {dirty.length > 0 && (
+          <span className="text-muted-foreground ml-auto text-sm">
+            edited: {dirty.join(", ")} — unsaved
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ClassifierKindRow() {
+  const kind = useDemoLLM().classifier_kind
+  const setClassifierKind = useDemoStore((s) => s.setClassifierKind)
+  return (
+    <div className="border-primary/40 bg-primary/5 flex flex-wrap items-center gap-2.5 rounded-md border border-dashed px-2.5 py-2">
+      <span className="font-mono text-sm">classifier_kind</span>
+      <SegmentedPair
+        value={kind}
+        options={["llm", "local"]}
+        onChange={(v) => setClassifierKind(v as "llm" | "local")}
+        label="classifier_kind"
+      />
+      <span className="text-muted-foreground min-w-40 flex-1 text-sm">
+        re-homes the dropped ml_profile_ref indirection inline — a two-value
+        field on this row, not a picker over a deleted table.
+      </span>
+    </div>
+  )
+}
+
+function CodeBuckets() {
+  const buckets = useDemoLLM().buckets
+  const saveCodeBucket = useDemoStore((s) => s.saveCodeBucket)
+  return (
+    <div className="border-border flex flex-col gap-2 border-t border-dashed pt-2.5">
+      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        code-summarization buckets — each carries its own model + prompt, one
+        summarization connection
+      </span>
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        {buckets.map((bucket) => (
+          <div
+            key={bucket.key}
+            className="border-border bg-background flex flex-col gap-1.5 rounded-md border px-2.5 py-2"
+          >
+            <span className="font-mono text-sm font-semibold">
+              {bucket.key}
+            </span>
+            <Input
+              value={bucket.model}
+              aria-label={`${bucket.key} bucket model`}
+              onChange={(e) => saveCodeBucket(bucket.key, e.target.value)}
+              className="font-mono"
+            />
+            <span className="text-muted-foreground text-sm">{bucket.note}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SaveConfirmation() {
+  const lastSave = useDemoLLM().last_save
+  const dismiss = useDemoStore((s) => s.dismissLLMSave)
+  if (!lastSave) return null
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="border-success/50 bg-success/8 flex gap-2.5 rounded-md border p-3">
+        <Check aria-hidden className="text-success h-4.5 w-4.5 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-sm font-semibold">
+            Saved — {lastSave.purpose} purpose updated
+          </span>
+          <span className="text-muted-foreground text-sm">
+            The orchestrator was rebuilt from all six purpose rows and the live
+            reference was swapped in-process. This change is already serving
+            requests — no redeploy needed.
+          </span>
+        </div>
+        <Button size="sm" variant="ghost" onClick={dismiss}>
+          Dismiss
+        </Button>
+      </div>
+      <div className="border-border bg-muted/12 flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm">
+        <div className="flex gap-2.5">
+          <span className="text-muted-foreground w-32 shrink-0">saved</span>
+          <span>
+            purpose = {lastSave.purpose} · fields changed ={" "}
+            {lastSave.fields.join(", ")}
+          </span>
+        </div>
+        <div className="flex gap-2.5">
+          <span className="text-muted-foreground w-32 shrink-0">
+            orchestrator
+          </span>
+          <span>
+            new instance built from six purpose rows, reference swapped
+            atomically
+          </span>
+        </div>
+        <div className="flex gap-2.5">
+          <span className="text-muted-foreground w-32 shrink-0">
+            superseded client
+          </span>
+          <span>draining — closes once in-flight calls finish</span>
+        </div>
+        <div className="flex gap-2.5">
+          <span className="text-muted-foreground w-32 shrink-0">
+            redeploy needed
+          </span>
+          <span>no — config lives in DB rows, read at boot and on live reload</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RemovedChrome() {
+  return (
+    <div className="border-border bg-muted/12 flex flex-col gap-2 rounded-lg border border-dashed p-4">
+      <div className="text-muted-foreground flex items-center gap-2 font-mono text-[10px] tracking-wide uppercase">
+        <Trash2 aria-hidden className="h-3.5 w-3.5" />
+        removed with the flattening — not rendered, not disabled, deleted
+      </div>
+      <div className="flex flex-wrap items-center gap-2.5">
+        {["llm-providers tab", "llm-profiles tab", "ml-profiles tab"].map(
+          (label) => (
+            <span
+              key={label}
+              className="border-border text-muted-foreground rounded-full border border-dashed px-2.5 py-0.5 font-mono text-sm line-through opacity-75"
+            >
+              {label}
+            </span>
+          ),
+        )}
+      </div>
+      <p className="text-muted-foreground font-mono text-sm">
+        columns dropped from every purpose row: <s>provider_ref</s> ·{" "}
+        <s>profile_ref</s> · <s>ml_profile_ref</s>
+      </p>
+      <p className="text-muted-foreground text-sm">
+        darkmem is not an LLM proxy: each purpose is one row the operator edits
+        directly. A profile picker over a schema with no profiles table would be
+        scaffolding rendered as a feature — the honest move is deletion, not a
+        greyed-out control.
+      </p>
+    </div>
+  )
+}
+
+export function LLMTab() {
+  const { purposes } = useDemoLLM()
+  return (
+    <div className="space-y-4">
+      <p className="text-muted-foreground max-w-4xl text-sm">
+        Six inline purpose cards — each a self-contained connection binding, no
+        provider/profile indirection. Every vendor auth, reasoning-control, and
+        structured-output quirk that <code className="font-mono">api_kind</code>{" "}
+        selects is resolved by the backend orchestrator, never re-implemented
+        here. A save rebuilds the orchestrator and takes effect without a
+        redeploy — there are no LLM_* env vars.
+      </p>
+      <SaveConfirmation />
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        {purposes.map((purpose) => (
+          <PurposeCard key={purpose.purpose} purpose={purpose} />
+        ))}
+      </div>
+      <RemovedChrome />
+    </div>
+  )
+}

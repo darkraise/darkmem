@@ -1,6 +1,9 @@
 [
   {
     "key": "repo_sync",
+    "name": "Repository Sync",
+    "description": "Fetches every repo with auto-sync enabled and runs the code indexing pipeline. The per-repo Reindex button bypasses this loop and runs immediately.",
+    "enabled": true,
     "cron": "*/5 * * * *",
     "cron_label": "every 5 minutes",
     "min_interval_seconds": 60,
@@ -15,6 +18,9 @@
   },
   {
     "key": "code_enrichment",
+    "name": "Code Symbol Enrichment",
+    "description": "Runs one batch of LLM summarisation against pending code symbols (function / class / method docs).",
+    "enabled": true,
     "cron": "*/10 * * * * *",
     "cron_label": "every 10s, six-field seconds-first",
     "min_interval_seconds": 1,
@@ -39,6 +45,9 @@
   },
   {
     "key": "token_blocklist_cleanup",
+    "name": "Token Blocklist Cleanup",
+    "description": "Deletes expired entries from the auth token blocklist. Safe to leave on; disable only if you are debugging revocation.",
+    "enabled": true,
     "cron": "0 * * * *",
     "cron_label": "hourly, on the hour",
     "min_interval_seconds": 300,
@@ -53,6 +62,9 @@
   },
   {
     "key": "pipeline_failure_cleanup",
+    "name": "Pipeline Failure Cleanup",
+    "description": "Prunes orphaned pipeline-failure rows and resolved entries older than 30 days. Safe to leave on.",
+    "enabled": true,
     "cron": "0 * * * *",
     "cron_label": "hourly, on the hour",
     "min_interval_seconds": 300,
@@ -77,6 +89,9 @@
   },
   {
     "key": "graph_orphan_cleanup",
+    "name": "Graph Orphan Cleanup",
+    "description": "Prunes entity-graph ghosts — entities and relations that no live memory asserts any more (left by deleted memories). Keeps entity dedup from collapsing fresh entities onto stale ghosts. Safe to leave on.",
+    "enabled": true,
     "cron": "0 * * * *",
     "cron_label": "hourly, on the hour",
     "min_interval_seconds": 300,
@@ -91,6 +106,9 @@
   },
   {
     "key": "tag_orphan_cleanup",
+    "name": "Tag Orphan Cleanup",
+    "description": "Prunes tags no live memory carries any more (left behind when memories are deleted). Keeps the dashboard tag count and the tag filter from showing unused tags. Switched off here — its scheduled loop will not restart until re-enabled.",
+    "enabled": false,
     "cron": "0 * * * *",
     "cron_label": "hourly, on the hour",
     "min_interval_seconds": 300,
@@ -105,6 +123,9 @@
   },
   {
     "key": "expired_memory_cleanup",
+    "name": "Expired Memory Cleanup",
+    "description": "Deletes memories past their expires_at TTL. Dependents pointing at a doomed row via superseded_by are demoted to deprecated first, per chk_superseded_has_pointer.",
+    "enabled": true,
     "cron": "0 * * * *",
     "cron_label": "hourly, on the hour",
     "min_interval_seconds": 300,

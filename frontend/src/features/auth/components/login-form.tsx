@@ -10,12 +10,18 @@ import {
 } from "darkraise-ui/components/password-input"
 import { loginSchema } from "../schemas"
 import { useLogin } from "../hooks/useLogin"
+import { DEMO } from "@/demo/flag"
 
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const login = useLogin()
   const form = useForm({
     defaultValues: { password: "" },
     onSubmit: async ({ value }) => {
+      // Demo submit is a no-op: any password signs into the demo store.
+      if (DEMO) {
+        onSuccess()
+        return
+      }
       await login.mutateAsync(value)
       onSuccess()
     },

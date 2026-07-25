@@ -1,0 +1,282 @@
+import {
+  Bookmark,
+  CircleOff,
+  Clock,
+  FileText,
+  Gauge,
+  Plug,
+  ShieldCheck,
+  Tags,
+  Zap,
+} from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
+import { Switch } from "darkraise-ui/components/switch"
+import { cn } from "darkraise-ui/lib"
+import {
+  ModuleSurface,
+  SurfaceStateChip,
+} from "@/features/activity/components/module-surface"
+import { LayerChip, VerificationBadge } from "@/components/darkmem"
+import { useDemoDistribution } from "@/demo/hooks"
+import { useDemoStore } from "@/demo/store"
+import type { DemoDistClient } from "@/demo/types"
+
+function SectionHead({
+  icon: Icon,
+  children,
+}: {
+  icon: typeof Plug
+  children: React.ReactNode
+}) {
+  return (
+    <h3 className="flex items-center gap-2 text-sm font-semibold">
+      <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
+      {children}
+    </h3>
+  )
+}
+
+function ClientRow({ client }: { client: DemoDistClient }) {
+  const setCurb = useDemoStore((s) => s.setDistributionCurb)
+  const connected = client.status !== "disconnected"
+  const curbed = client.status === "curbed"
+
+  return (
+    <div
+      className={cn(
+        "border-border bg-card flex flex-col gap-2 rounded-md border px-3.5 py-3",
+        curbed && "border-warning/50 bg-warning/5",
+        !connected && "border-dashed",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2.5">
+        {connected ? (
+          <ShieldCheck aria-hidden className="text-muted-foreground h-4 w-4" />
+        ) : (
+          <CircleOff aria-hidden className="text-muted-foreground h-4 w-4" />
+        )}
+        <span className="text-sm font-semibold">{client.name}</span>
+        <SurfaceStateChip
+          state={connected ? "populated" : "empty"}
+          label={connected ? "connected" : "not connected"}
+        />
+        <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
+          {client.handshake ?? "no MCP config detected"}
+        </span>
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-sm">
+        <dt className="text-muted-foreground">context file</dt>
+        <dd className="break-words">{client.context_file}</dd>
+        <dt className="text-muted-foreground">mcp config</dt>
+        <dd className="break-words">{client.mcp_config}</dd>
+      </dl>
+      {connected ? (
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2.5 text-sm">
+          <span>
+            push: <b className="text-foreground font-semibold">{client.push_note}</b>
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-muted-foreground font-mono text-sm">
+              curb push
+            </span>
+            <Switch
+              checked={!curbed}
+              onCheckedChange={(on) => setCurb(client.id, !on)}
+              aria-label={`${client.name} push`}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="text-muted-foreground flex flex-col gap-2 text-sm">
+          <span>{client.connect_hint}</span>
+          <Button size="sm" variant="outline" className="border-primary/60 text-primary w-fit font-mono">
+            darkmem connect {client.id}
+          </Button>
+        </div>
+      )}
+      {curbed && client.curbed_note && (
+        <div className="border-warning/55 bg-warning/10 flex items-center gap-2 rounded-md border border-dashed px-2.5 py-1.5 text-sm">
+          <CircleOff aria-hidden className="text-warning h-3.5 w-3.5 shrink-0" />
+          {client.curbed_note}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function DistributionTab() {
+  const d = useDemoDistribution()
+  const connected = d.clients.filter((c) => c.status !== "disconnected").length
+  const curbed = d.clients.filter((c) => c.status === "curbed").length
+  const disconnected = d.clients.length - connected
+
+  return (
+    <div className="space-y-4">
+      <p className="text-muted-foreground max-w-4xl text-sm">
+        Connect status per client, the per-target managed block written into
+        each tool&apos;s native context file, the inject content policy and
+        token budget, the curb control (the human sees and curbs push — never a
+        silent context swap), the durable inject log, and the render watermark.
+        The pull door (memory_search over /mcp) exists today;
+        DistributionService, auto-inject, and the managed-block writer are
+        target work — shown staged, not implied shipped.
+      </p>
+      <ModuleSurface
+        title="Distribution"
+        state="staged"
+        meta={`${connected} connected · ${curbed} curbed · ${disconnected} not connected`}
+      >
+        <div className="flex flex-col gap-2">
+          <SectionHead icon={Plug}>Connect status per client</SectionHead>
+          {d.clients.map((client) => (
+            <ClientRow key={client.id} client={client} />
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          <SectionHead icon={FileText}>
+            Per-target managed-block configuration — CLAUDE.md example
+          </SectionHead>
+          <pre className="border-border bg-muted/15 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-sm leading-relaxed">
+            {d.block_preview}
+          </pre>
+          <p className="text-muted-foreground text-sm">
+            Only the bytes between the two markers change on refresh
+            (strip-before-rewrite); the human&apos;s own content above the
+            block is never touched.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          <SectionHead icon={Gauge}>
+            Inject content policy &amp; token budget
+          </SectionHead>
+          <div className="border-border flex flex-wrap items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm">
+            <LayerChip layer={2} />
+            <span className="text-muted-foreground">→</span>
+            <LayerChip layer={3} />
+            <span className="text-muted-foreground">→</span>
+            <LayerChip layer={0} />
+            <span className="text-muted-foreground">→</span>
+            <span className="text-muted-foreground">
+              fill truth-first until the budget is spent, then stop (top-K,
+              stated in the block header — not silent degradation)
+            </span>
+          </div>
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            {d.policy.map((row) => (
+              <div
+                key={row.key}
+                className="border-border bg-card flex flex-col gap-1 rounded-md border px-3 py-2.5"
+              >
+                <span className="font-mono text-sm font-semibold">
+                  {row.key}
+                </span>
+                <span className="text-primary font-mono text-sm">
+                  {row.value}
+                </span>
+                <span className="text-muted-foreground text-sm">
+                  {row.desc}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          <SectionHead icon={Clock}>
+            Inject log — which inject happened where
+          </SectionHead>
+          {d.log.map((row) => (
+            <div
+              key={row.id}
+              className={cn(
+                "border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2 text-sm",
+                row.event_type === "inject_curbed" &&
+                  "border-warning/50 bg-warning/5",
+              )}
+            >
+              {row.event_type === "inject_curbed" ? (
+                <CircleOff aria-hidden className="text-warning h-3.5 w-3.5" />
+              ) : (
+                <Zap aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
+              )}
+              <span className="font-mono font-semibold">{row.target}</span>
+              <span className="text-muted-foreground min-w-40 flex-1">
+                event_type{" "}
+                <b className="text-foreground font-semibold">
+                  {row.event_type}
+                </b>{" "}
+                · {row.detail}
+              </span>
+              <span className="text-muted-foreground font-mono text-sm">
+                {row.time_label}
+              </span>
+              <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
+                {row.meta}
+              </span>
+            </div>
+          ))}
+          <p className="text-muted-foreground text-sm">
+            inject_curbed is a taxonomy-first addition to the closed event_type
+            vocabulary. Each row records that the server selected and returned N
+            items for a target; it is not a receipt that the client&apos;s file
+            was actually written — an honest limit of the pull-then-write
+            model, stated rather than implied away.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          <SectionHead icon={Tags}>
+            Labels survive injection — expanding the 14:12 UTC claude-code
+            delivery
+          </SectionHead>
+          <div className="border-border bg-muted/10 flex flex-col gap-2 rounded-md border p-3">
+            {d.inject_items.map((item) => (
+              <div
+                key={item.text}
+                className="border-border bg-card flex flex-col gap-1.5 rounded-md border px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <LayerChip layer={item.layer} />
+                  <VerificationBadge status={item.badge} />
+                  <span className="text-muted-foreground ml-auto font-mono text-[10px] tracking-wide uppercase">
+                    injected as:{" "}
+                    <b className="text-foreground">{item.as_label}</b>
+                  </span>
+                </div>
+                <span className="text-sm">{item.text}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Neither item is relabelled on the way into the tool: a corroborated
+            fact keeps its full badge claim, and a superseded memory keeps its
+            amber lifecycle label rather than being silently promoted to active
+            or dropped.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          <SectionHead icon={Bookmark}>
+            Render watermark — a config row, not a table
+          </SectionHead>
+          <dl className="border-border grid grid-cols-1 gap-x-3.5 gap-y-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm sm:grid-cols-[auto_1fr]">
+            {d.watermarks.map((w) => (
+              <div key={w.key} className="contents">
+                <dt className="text-muted-foreground">{w.key}</dt>
+                <dd className="break-words">{w.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-muted-foreground text-sm">
+            One config row per target — no per-client heavy table, no queue, no
+            broker. Used only for idempotent diffing on the next inject cycle;
+            it is the server&apos;s best knowledge of the last delivered set,
+            not a proof the file was rewritten.
+          </p>
+        </div>
+      </ModuleSurface>
+    </div>
+  )
+}

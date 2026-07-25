@@ -32,6 +32,14 @@ import {
   CURATED_PIPELINE_RUNS,
   CURATED_SESSION_RUNS,
 } from "./data/activity-curated"
+import {
+  CURATED_CODE_BUCKETS,
+  CURATED_DISTRIBUTION,
+  CURATED_FLAGS,
+  CURATED_LLM_PURPOSES,
+  CURATED_MAINTENANCE,
+  CURATED_SECURITY,
+} from "./data/settings-curated"
 import { enrichBulkMemories, type RawBulkMemory } from "./memories"
 import { buildReindexPhases } from "./explore"
 import { liveArticles } from "./knowledge"
@@ -46,7 +54,10 @@ import type {
   DemoFact,
   DemoArticle,
   DemoChatThread,
+  DemoFlagsState,
   DemoJob,
+  DemoRankArm,
+  MaintenanceOpKey,
   Repo,
   LlmProfile,
 } from "./types"
@@ -145,11 +156,46 @@ const initialActivity = () => ({
   sessionRuns: CURATED_SESSION_RUNS,
 })
 
+// Deep-copy the Wave-5 settings fixtures so store mutations (arm writes,
+// curbs, maintenance ops) never write back into the curated constants.
+const initialSettings = () => ({
+  flags: structuredClone(CURATED_FLAGS),
+  llm: {
+    purposes: structuredClone(CURATED_LLM_PURPOSES),
+    buckets: structuredClone(CURATED_CODE_BUCKETS),
+    classifier_kind: "llm" as const,
+    last_save: null,
+  },
+  security: structuredClone(CURATED_SECURITY),
+  maintenance: structuredClone(CURATED_MAINTENANCE),
+  distribution: structuredClone(CURATED_DISTRIBUTION),
+})
+
+const countOverrides = (flags: DemoFlagsState): number => {
+  const armOverrides = [
+    ...flags.fusion_arms,
+    ...flags.graph_flags.flatMap((f) => (f.paired_arm ? [f.paired_arm] : [])),
+    flags.context_boost,
+  ].filter((a) => a.source === "override").length
+  const flagOverrides = flags.graph_flags.filter(
+    (f) => f.source === "override",
+  ).length
+  return (
+    armOverrides +
+    flagOverrides +
+    (flags.corroboration.source === "override" ? 1 : 0)
+  )
+}
+
+const writeArm = (arm: DemoRankArm, key: string, value: number): DemoRankArm =>
+  arm.key === key ? { ...arm, value, source: "override" } : arm
+
 export const useDemoStore = create<DemoStoreState>((set, get) => ({
   memories: initialMemories,
   repos: reposData as unknown as Repo[],
   llmProfiles: llmProfilesData as unknown as LlmProfile[],
   ...initialActivity(),
+  ...initialSettings(),
   stats: initialStats,
   events: buildActivityFeed(),
   contributions: buildContributions(),
@@ -372,4 +418,170 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
       ),
     })),
   resetActivity: () => set(() => initialActivity()),
+  saveArm: (key, value) =>
+    set((s) => {
+      const flags: DemoFlagsState = {
+        ...s.flags,
+        fusion_arms: s.flags.fusion_arms.map((a) => writeArm(a, key, value)),
+        graph_flags: s.flags.graph_flags.map((f) =>
+          f.paired_arm
+            ? { ...f, paired_arm: writeArm(f.paired_arm, key, value) }
+            : f,
+        ),
+        context_boost: writeArm(s.flags.context_boost, key, value),
+      }
+      return { flags: { ...flags, overrides_written: countOverrides(flags) } }
+    }),
+  setGraphFlag: (key, enabled) =>
+    set((s) => {
+      const flags: DemoFlagsState = {
+        ...s.flags,
+        graph_flags: s.flags.graph_flags.map((f) =>
+          f.key === key ? { ...f, enabled, source: "override" } : f,
+        ),
+      }
+      return { flags: { ...flags, overrides_written: countOverrides(flags) } }
+    }),
+  saveCorroboration: (nBase, nDiverse) =>
+    set((s) => {
+      const flags: DemoFlagsState = {
+        ...s.flags,
+        corroboration: {
+          ...s.flags.corroboration,
+          n_base: nBase,
+          n_diverse: nDiverse,
+          source: "override",
+        },
+      }
+      return { flags: { ...flags, overrides_written: countOverrides(flags) } }
+    }),
+  saveLLMPurpose: (purpose, patch) =>
+    set((s) => ({
+      llm: {
+        ...s.llm,
+        purposes: s.llm.purposes.map((p) =>
+          p.purpose === purpose ? { ...p, ...patch } : p,
+        ),
+        last_save: { purpose, fields: Object.keys(patch) },
+      },
+    })),
+  saveCodeBucket: (key, model) =>
+    set((s) => ({
+      llm: {
+        ...s.llm,
+        buckets: s.llm.buckets.map((b) =>
+          b.key === key ? { ...b, model } : b,
+        ),
+        last_save: { purpose: "summarization", fields: [`bucket:${key}`] },
+      },
+    })),
+  setClassifierKind: (kind) =>
+    set((s) => ({
+      llm: {
+        ...s.llm,
+        classifier_kind: kind,
+        last_save: { purpose: "classification", fields: ["classifier_kind"] },
+      },
+    })),
+  dismissLLMSave: () => set((s) => ({ llm: { ...s.llm, last_save: null } })),
+  setJobEnabled: (key, enabled) =>
+    set((s) => ({
+      jobs: s.jobs.map((j) => (j.key === key ? { ...j, enabled } : j)),
+    })),
+  saveJobCron: (key, cron) =>
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.key === key ? { ...j, cron, cron_label: "saved this session" } : j,
+      ),
+    })),
+  runMaintenanceOp: (op: MaintenanceOpKey) =>
+    set((s) => {
+      const m = s.maintenance
+      switch (op) {
+        case "reembed_memories":
+          return {
+            maintenance: {
+              ...m,
+              reembed: { ...m.reembed, memories: 0 },
+              last_op_note: `re-embed memories started — ${m.reembed.memories} embedding calls dispatched (POST returned 202)`,
+            },
+          }
+        case "reembed_entities":
+          return {
+            maintenance: {
+              ...m,
+              reembed: { ...m.reembed, entities: 0 },
+              last_op_note: `re-embed entities started — ${m.reembed.entities} embedding calls dispatched (POST returned 202)`,
+            },
+          }
+        case "expired_memory_cleanup":
+          return {
+            maintenance: {
+              ...m,
+              cleanup: { ...m.cleanup, expired: 0, expired_dependents: 0 },
+              last_op_note: `${m.cleanup.expired} expired memories deleted; ${m.cleanup.expired_dependents} dependents demoted to deprecated first (chk_superseded_has_pointer)`,
+            },
+          }
+        case "graph_orphan_cleanup":
+          return {
+            maintenance: {
+              ...m,
+              last_op_note:
+                "graph_orphan_cleanup ran now — the same job the hourly schedule already runs",
+            },
+          }
+        case "tag_orphan_cleanup":
+          return {
+            maintenance: {
+              ...m,
+              last_op_note:
+                "tag_orphan_cleanup ran now — the same job the hourly schedule already runs",
+            },
+          }
+        case "prune_caches":
+          return {
+            maintenance: {
+              ...m,
+              dbops: { ...m.dbops, retired_fingerprints: [] },
+              last_op_note: `${m.dbops.retired_fingerprints.length} retired cache tables dropped — each rebuilds lazily on next use of its embedder`,
+            },
+          }
+      }
+    }),
+  setDistributionCurb: (clientId, curbed) =>
+    set((s) => {
+      const d = s.distribution
+      const clients = d.clients.map((c) => {
+        if (c.id !== clientId) return c
+        return curbed
+          ? {
+              ...c,
+              status: "curbed" as const,
+              push_note: "curbed by operator, just now",
+              curbed_note:
+                "Pull (MCP tools) is unaffected — only push stopped. The managed block was rewritten to an empty marker pair, not removed; re-enabling resumes idempotently.",
+            }
+          : {
+              ...c,
+              status: "connected" as const,
+              push_note: "active — awaiting the next session-start inject",
+              curbed_note: null,
+            }
+      })
+      const log = curbed
+        ? [
+            {
+              id: `log-curb-${d.log.length + 1}`,
+              target: clientId,
+              event_type: "inject_curbed" as const,
+              detail: "push disabled by operator (this demo session)",
+              time_label: "just now",
+              meta: "block → empty markers",
+            },
+            ...d.log,
+          ]
+        : d.log
+      return { distribution: { ...d, clients, log } }
+    }),
+  resetSettings: () => set(() => initialSettings()),
 }))

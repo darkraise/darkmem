@@ -46,3 +46,9 @@ export const useDemoDreamPastActions = () =>
   useDemoStore((s) => s.dreamPastActions)
 export const useDemoDayBuckets = () => useDemoStore((s) => s.dayBuckets)
 export const useDemoSessionRuns = () => useDemoStore((s) => s.sessionRuns)
+
+export const useDemoFlags = () => useDemoStore((s) => s.flags)
+export const useDemoLLM = () => useDemoStore((s) => s.llm)
+export const useDemoSecurity = () => useDemoStore((s) => s.security)
+export const useDemoMaintenance = () => useDemoStore((s) => s.maintenance)
+export const useDemoDistribution = () => useDemoStore((s) => s.distribution)
