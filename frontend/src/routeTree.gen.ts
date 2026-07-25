@@ -17,9 +17,13 @@ import { Route as GuestLoginRouteImport } from './routes/_guest/login'
 import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authenticated/unified-graph'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/repos'
+import { Route as AuthenticatedMemoryGraphRouteImport } from './routes/_authenticated/memory-graph'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
+import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
 import { Route as AuthenticatedCodeGraphRouteImport } from './routes/_authenticated/code-graph'
+import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/code'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
+import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -60,9 +64,20 @@ const AuthenticatedReposRoute = AuthenticatedReposRouteImport.update({
   path: '/repos',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedMemoryGraphRoute =
+  AuthenticatedMemoryGraphRouteImport.update({
+    id: '/memory-graph',
+    path: '/memory-graph',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMemoriesRoute = AuthenticatedMemoriesRouteImport.update({
   id: '/memories',
   path: '/memories',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedCodeGraphRoute = AuthenticatedCodeGraphRouteImport.update({
@@ -70,17 +85,31 @@ const AuthenticatedCodeGraphRoute = AuthenticatedCodeGraphRouteImport.update({
   path: '/code-graph',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCodeRoute = AuthenticatedCodeRouteImport.update({
+  id: '/code',
+  path: '/code',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
   id: '/chat',
   path: '/chat',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedActivityRoute = AuthenticatedActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
+  '/code': typeof AuthenticatedCodeRoute
   '/code-graph': typeof AuthenticatedCodeGraphRoute
+  '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
+  '/memory-graph': typeof AuthenticatedMemoryGraphRoute
   '/repos': typeof AuthenticatedReposRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
@@ -89,9 +118,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
+  '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
+  '/code': typeof AuthenticatedCodeRoute
   '/code-graph': typeof AuthenticatedCodeGraphRoute
+  '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
+  '/memory-graph': typeof AuthenticatedMemoryGraphRoute
   '/repos': typeof AuthenticatedReposRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
@@ -102,9 +135,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_guest': typeof GuestRouteWithChildren
+  '/_authenticated/activity': typeof AuthenticatedActivityRoute
   '/_authenticated/chat': typeof AuthenticatedChatRoute
+  '/_authenticated/code': typeof AuthenticatedCodeRoute
   '/_authenticated/code-graph': typeof AuthenticatedCodeGraphRoute
+  '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
+  '/_authenticated/memory-graph': typeof AuthenticatedMemoryGraphRoute
   '/_authenticated/repos': typeof AuthenticatedReposRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/unified-graph': typeof AuthenticatedUnifiedGraphRoute
@@ -116,9 +153,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/activity'
     | '/chat'
+    | '/code'
     | '/code-graph'
+    | '/knowledge'
     | '/memories'
+    | '/memory-graph'
     | '/repos'
     | '/settings'
     | '/unified-graph'
@@ -127,9 +168,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/activity'
     | '/chat'
+    | '/code'
     | '/code-graph'
+    | '/knowledge'
     | '/memories'
+    | '/memory-graph'
     | '/repos'
     | '/settings'
     | '/unified-graph'
@@ -139,9 +184,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/_guest'
+    | '/_authenticated/activity'
     | '/_authenticated/chat'
+    | '/_authenticated/code'
     | '/_authenticated/code-graph'
+    | '/_authenticated/knowledge'
     | '/_authenticated/memories'
+    | '/_authenticated/memory-graph'
     | '/_authenticated/repos'
     | '/_authenticated/settings'
     | '/_authenticated/unified-graph'
@@ -213,11 +262,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReposRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/memory-graph': {
+      id: '/_authenticated/memory-graph'
+      path: '/memory-graph'
+      fullPath: '/memory-graph'
+      preLoaderRoute: typeof AuthenticatedMemoryGraphRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/memories': {
       id: '/_authenticated/memories'
       path: '/memories'
       fullPath: '/memories'
       preLoaderRoute: typeof AuthenticatedMemoriesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/knowledge': {
+      id: '/_authenticated/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/code-graph': {
@@ -227,6 +290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCodeGraphRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/code': {
+      id: '/_authenticated/code'
+      path: '/code'
+      fullPath: '/code'
+      preLoaderRoute: typeof AuthenticatedCodeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/chat': {
       id: '/_authenticated/chat'
       path: '/chat'
@@ -234,13 +304,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/activity': {
+      id: '/_authenticated/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof AuthenticatedActivityRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedActivityRoute: typeof AuthenticatedActivityRoute
   AuthenticatedChatRoute: typeof AuthenticatedChatRoute
+  AuthenticatedCodeRoute: typeof AuthenticatedCodeRoute
   AuthenticatedCodeGraphRoute: typeof AuthenticatedCodeGraphRoute
+  AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
+  AuthenticatedMemoryGraphRoute: typeof AuthenticatedMemoryGraphRoute
   AuthenticatedReposRoute: typeof AuthenticatedReposRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
@@ -248,9 +329,13 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedActivityRoute: AuthenticatedActivityRoute,
   AuthenticatedChatRoute: AuthenticatedChatRoute,
+  AuthenticatedCodeRoute: AuthenticatedCodeRoute,
   AuthenticatedCodeGraphRoute: AuthenticatedCodeGraphRoute,
+  AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
+  AuthenticatedMemoryGraphRoute: AuthenticatedMemoryGraphRoute,
   AuthenticatedReposRoute: AuthenticatedReposRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,

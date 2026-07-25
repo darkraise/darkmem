@@ -8,6 +8,7 @@ import {
 } from "darkraise-ui/theme"
 import { apiFetch } from "@/lib/api"
 import { themeConfig } from "@/theme.config"
+import { DEMO } from "@/demo/flag"
 
 interface ThemeSettingsResponse {
   settings: Partial<ThemeSettings> | null
@@ -50,7 +51,7 @@ function sanitize(stored: Partial<ThemeSettings>): ThemeSettings {
   }
 }
 
-export const themePersistence: ThemePersistenceAdapter = {
+export const apiThemePersistence: ThemePersistenceAdapter = {
   async load() {
     const { settings } = await apiFetch<ThemeSettingsResponse>("/config/theme")
     return settings ? sanitize(settings) : null
@@ -62,3 +63,17 @@ export const themePersistence: ThemePersistenceAdapter = {
     })
   },
 }
+
+// Demo mode has no backend; the provider's own localStorage channel already
+// persists theme state, so the DB adapter degrades to a no-op rather than
+// hammering the dead proxy.
+const demoPersistence: ThemePersistenceAdapter = {
+  async load() {
+    return null
+  },
+  async save() {},
+}
+
+export const themePersistence: ThemePersistenceAdapter = DEMO
+  ? demoPersistence
+  : apiThemePersistence

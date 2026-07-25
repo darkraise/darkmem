@@ -5,15 +5,17 @@ import {
   useRouter,
 } from "@tanstack/react-router"
 import {
-  Home,
+  Activity,
   Brain,
+  Code2,
+  LayoutDashboard,
+  Library,
   MessageSquare,
-  Share2,
-  Network,
-  FolderGit2,
   Settings,
+  Waypoints,
 } from "lucide-react"
 import {
+  useBrandStore,
   useLayoutStore,
   SidebarLayout,
   TopNavLayout,
@@ -23,35 +25,43 @@ import type { NavGroup } from "darkraise-ui/layout"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
+import { DEMO } from "@/demo/flag"
+import { DetailLevelToggle } from "@/components/darkmem"
 
 const nav: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { label: "Dashboard", href: "/", icon: Home },
+      { label: "Dashboard", href: "/", icon: LayoutDashboard },
       { label: "Memories", href: "/memories", icon: Brain },
+      { label: "Knowledge", href: "/knowledge", icon: Library },
       { label: "Chat", href: "/chat", icon: MessageSquare },
     ],
   },
   {
     label: "Explore",
     items: [
-      { label: "Memory Graph", href: "/unified-graph", icon: Share2 },
-      { label: "Repositories", href: "/repos", icon: FolderGit2 },
-      { label: "Code Graph", href: "/code-graph", icon: Network },
+      { label: "Code", href: "/code", icon: Code2 },
+      { label: "Memory Graph", href: "/memory-graph", icon: Waypoints },
     ],
   },
   {
-    label: "Admin",
-    items: [{ label: "Settings", href: "/settings", icon: Settings }],
+    label: "Operate",
+    items: [
+      { label: "Activity", href: "/activity", icon: Activity },
+      { label: "Settings", href: "/settings", icon: Settings },
+    ],
   },
 ]
+
+useBrandStore.setState({ appName: "darkmem" })
 
 const AUTH_VERIFY_TTL_MS = 60_000
 let _lastAuthVerifyAt = 0
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
+    if (DEMO) return
     if (!useAuthStore.getState().isAuthenticated) {
       throw redirect({ to: "/login" })
     }
@@ -68,16 +78,22 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
 })
 
-function AuthenticatedLayout() {
+function LiveUpdates() {
   useWebSocket()
+  return null
+}
+
+function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)
   const router = useRouter()
   const queryClient = useQueryClient()
 
   const handleLogout = async () => {
-    const { logout } = await import("@/lib/api")
-    await logout()
-    useAuthStore.getState().logout()
+    if (!DEMO) {
+      const { logout } = await import("@/lib/api")
+      await logout()
+      useAuthStore.getState().logout()
+    }
     queryClient.clear()
     router.navigate({ to: "/login" })
   }
@@ -92,9 +108,11 @@ function AuthenticatedLayout() {
   return (
     <Shell
       nav={nav}
-      user={{ name: "Admin", email: "" }}
+      headerSlot={<DetailLevelToggle />}
+      user={{ name: DEMO ? "Demo" : "Admin", email: "" }}
       onLogout={handleLogout}
     >
+      {!DEMO && <LiveUpdates />}
       <Outlet />
     </Shell>
   )

@@ -1,0 +1,68 @@
+import {
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  History,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react"
+import { Badge } from "darkraise-ui/components/badge"
+import { cn } from "darkraise-ui/lib"
+
+export type VerificationStatus =
+  | "candidate"
+  | "corroborated"
+  | "confirmed"
+  | "disputed"
+  | "superseded"
+
+const STYLES: Record<VerificationStatus, { icon: LucideIcon; className: string }> = {
+  candidate: {
+    icon: CircleDashed,
+    className: "border-dashed border-border bg-muted/50 text-muted-foreground",
+  },
+  corroborated: {
+    icon: Waypoints,
+    className: "border-primary/50 bg-primary/10 text-primary",
+  },
+  confirmed: {
+    icon: CircleCheck,
+    className: "border-success/50 bg-success/10 text-success",
+  },
+  disputed: {
+    icon: CircleAlert,
+    className: "border-warning/50 bg-warning/10 text-warning",
+  },
+  superseded: {
+    icon: History,
+    className: "border-warning/50 bg-warning/10 text-warning",
+  },
+}
+
+export interface VerificationBadgeProps {
+  status: VerificationStatus
+  /** The full honest claim, e.g. "asserted by 3 distinct origins…". */
+  detail?: string
+  className?: string
+}
+
+// Honesty label (invariant 14): callers must render this in every detail
+// mode — the Simple/Advanced toggle may collapse scores, never this badge.
+export function VerificationBadge({
+  status,
+  detail,
+  className,
+}: VerificationBadgeProps) {
+  const { icon: Icon, className: statusClass } = STYLES[status]
+  return (
+    <Badge
+      variant="outline"
+      size="sm"
+      title={detail}
+      className={cn("gap-1", statusClass, className)}
+    >
+      <Icon aria-hidden className="h-3 w-3" />
+      {status}
+    </Badge>
+  )
+}

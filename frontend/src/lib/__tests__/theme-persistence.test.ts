@@ -4,7 +4,9 @@ import type { ThemeSettings } from "darkraise-ui/theme"
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
-import { themePersistence } from "@/lib/theme-persistence"
+// The API adapter is tested directly: the default `themePersistence` export
+// resolves to the demo no-op whenever VITE_DEMO isn't "0" (as under vitest).
+import { apiThemePersistence as themePersistence } from "@/lib/theme-persistence"
 import { themeConfig } from "@/theme.config"
 
 const apiFetchMock = vi.mocked(apiFetch)
