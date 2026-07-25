@@ -1,5 +1,19 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  Link: ({
+    to,
+    children,
+    ...rest
+  }: { to: string; children: React.ReactNode } & Record<string, unknown>) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
+}))
+
 import { RepositoriesTab } from "../components/repositories-tab"
 import { CodeGraphTab } from "../components/code-graph-tab"
 import { WikiTab } from "../components/wiki-tab"
@@ -45,7 +59,7 @@ describe("RepositoriesTab", () => {
 })
 
 describe("CodeGraphTab", () => {
-  it("renders chrome, symbol browser, and analysis panels for a ready repo", () => {
+  it("renders chrome, the explorer/filters rail, and analysis panels for a ready repo", () => {
     render(
       <CodeGraphTab
         repoId="repo-backend"
@@ -56,8 +70,10 @@ describe("CodeGraphTab", () => {
     expect(
       screen.getByText("scope: repository, not project"),
     ).toBeInTheDocument()
-    expect(screen.getByText("Symbols")).toBeInTheDocument()
-    expect(screen.getAllByText("process_batch").length).toBeGreaterThan(0)
+    expect(screen.getByRole("tab", { name: "Explorer" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Filters" })).toBeInTheDocument()
+    // The explorer opens on the repo's tracked tree, not a flat symbol list.
+    expect(screen.getByText("services")).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "Run Blast Radius" }),
     ).toBeDisabled()

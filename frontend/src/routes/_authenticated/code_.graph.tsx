@@ -5,14 +5,20 @@ import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
 import { CodeGraphTab } from "@/features/code/components/code-graph-tab"
 
 export const Route = createFileRoute("/_authenticated/code_/graph")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  // `symbol` / `file` are the Code Wiki's deep links: a code reference in
+  // the generated prose lands on the node (or the file) it names.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { repo?: string; symbol?: string; file?: string } => ({
     repo: typeof search.repo === "string" ? search.repo : undefined,
+    symbol: typeof search.symbol === "string" ? search.symbol : undefined,
+    file: typeof search.file === "string" ? search.file : undefined,
   }),
   component: CodeGraphPage,
 })
 
 function CodeGraphPage() {
-  const { repo } = Route.useSearch()
+  const { repo, symbol, file } = Route.useSearch()
   const navigate = Route.useNavigate()
   useFullBleedContent()
 
@@ -25,6 +31,8 @@ function CodeGraphPage() {
       />
       <CodeGraphTab
         repoId={repo}
+        focusSymbolId={symbol}
+        focusFile={file}
         onRepoChange={(id) => void navigate({ search: { repo: id } })}
         onOpenRepositories={() => void navigate({ to: "/code/repositories" })}
       />

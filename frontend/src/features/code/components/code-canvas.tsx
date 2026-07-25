@@ -30,6 +30,8 @@ export interface CodeCanvasProps {
   onSelect: (id: string | null) => void
   /** Depth filter — ids to keep prominent; null = no filter. */
   visibleIds: Set<string> | null
+  /** Node kinds the Filters tab has switched off — removed, not dimmed. */
+  hiddenKinds?: ReadonlySet<CodeNodeKind>
   /** Blast-radius affected ids — dashed destructive rings. */
   blastIds: Set<string> | null
   highlightCommunity: string | null
@@ -47,6 +49,7 @@ export function CodeCanvas({
   selectedId,
   onSelect,
   visibleIds,
+  hiddenKinds,
   blastIds,
   highlightCommunity,
   processIds,
@@ -71,6 +74,8 @@ export function CodeCanvas({
     for (const c of graph.communities) map.set(c.id, c.chart)
     return map
   }, [graph])
+
+  const isKindHidden = (kind: CodeNodeKind) => hiddenKinds?.has(kind) ?? false
 
   const nodeColor = (community: string, kind: CodeNodeKind) =>
     colorBy === "community"
@@ -103,6 +108,7 @@ export function CodeCanvas({
         const a = graph.nodes.find((n) => n.id === edge.source)
         const b = graph.nodes.find((n) => n.id === edge.target)
         if (!from || !to || !a || !b) return null
+        if (isKindHidden(a.kind) || isKindHidden(b.kind)) return null
         const sameCommunity = a.community === b.community
         const hidden =
           (visibleIds &&
@@ -130,7 +136,7 @@ export function CodeCanvas({
       })}
       {graph.nodes.map((node) => {
         const pos = positions[node.id]
-        if (!pos) return null
+        if (!pos || isKindHidden(node.kind)) return null
         const isSelected = node.id === selectedId
         const isBlast = blastIds?.has(node.id) ?? false
         const inProcess = processIds?.has(node.id) ?? false

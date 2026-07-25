@@ -21,21 +21,18 @@ import {
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
-import { Kbd } from "darkraise-ui/components/kbd"
-import {
-  CommandDialog,
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandItem,
-} from "darkraise-ui/components/command"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 import {
   Select,
   SelectContent,
@@ -61,19 +58,18 @@ import {
 } from "@/demo/explore"
 import type { CodeNodeKind, DemoRepo } from "@/demo/types"
 import { CANVAS_H, CANVAS_W, chartVar, CodeCanvas } from "./code-canvas"
+import { CodeExplorer } from "./code-explorer"
+import { CodeFilters } from "./code-filters"
+import {
+  CodeInspector,
+  FloatingFilePanel,
+  type OpenCodeFile,
+} from "./code-inspector"
 import { RepoStatusChip } from "./repo-status-chip"
 
 const LAYOUTS: GraphLayoutMode[] = ["force", "tree", "circles"]
 const DEPTHS = ["all", "1", "2", "3"] as const
 type DepthValue = (typeof DEPTHS)[number]
-
-const KIND_CHART: Record<CodeNodeKind, number> = {
-  file: 1,
-  module: 1,
-  class: 2,
-  method: 3,
-  function: 3,
-}
 
 const STATUS_DOT: Record<DemoRepo["status"], string> = {
   ready: "bg-success",
@@ -100,10 +96,16 @@ function SectionTitle({
 
 export function CodeGraphTab({
   repoId,
+  focusSymbolId,
+  focusFile,
   onRepoChange,
   onOpenRepositories,
 }: {
   repoId: string | undefined
+  /** Graph node to select on arrival — a Code Wiki deep link. */
+  focusSymbolId?: string
+  /** File to open in the inspector on arrival — a Code Wiki deep link. */
+  focusFile?: string
   onRepoChange: (id: string) => void
   onOpenRepositories: () => void
 }) {
@@ -125,11 +127,16 @@ export function CodeGraphTab({
   const [activeCommunity, setActiveCommunity] = useState<string | null>(null)
   const [activeProcess, setActiveProcess] = useState<string | null>(null)
   const [mermaidProcess, setMermaidProcess] = useState<string | null>(null)
-  const [paletteOpen, setPaletteOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [copied, setCopied] = useState(false)
+  const [leftTab, setLeftTab] = useState("explorer")
+  const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<CodeNodeKind>>(
+    new Set(),
+  )
+  const [openFiles, setOpenFiles] = useState<OpenCodeFile[]>([])
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
 
-  // Selection, analysis, and camera are per-repo state.
+  // Selection, analysis, camera, and open source files are per-repo state.
   useEffect(() => {
     setSelectedId(null)
     setBlast(null)
@@ -138,18 +145,27 @@ export function CodeGraphTab({
     setZoom(1)
     setCenter(null)
     setDepth("all")
+    setOpenFiles([])
+    setHiddenKinds(new Set())
   }, [repo?.id])
 
+  // Arriving from a Code Wiki reference: select the named symbol (or open
+  // the named file) so the link lands on the thing the prose was about.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault()
-        setPaletteOpen((v) => !v)
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [])
+    if (!graph) return
+    const node = focusSymbolId
+      ? graph.nodes.find((n) => n.id === focusSymbolId)
+      : undefined
+    const path = node?.file ?? focusFile
+    if (!path) return
+    setSelectedId(node?.id ?? null)
+    setInspectorCollapsed(false)
+    setOpenFiles((prev) =>
+      prev.some((f) => f.path === path)
+        ? prev
+        : [...prev, { path, pinned: true, collapsed: false }],
+    )
+  }, [graph, focusSymbolId, focusFile])
 
   const positions = useMemo(
     () =>
@@ -175,12 +191,13 @@ export function CodeGraphTab({
     return process ? new Set(process.steps) : null
   }, [graph, activeProcess])
 
-  const filteredNodes = useMemo(() => {
-    if (!graph) return []
-    const q = search.trim().toLowerCase()
-    if (q === "") return graph.nodes
-    return graph.nodes.filter((n) => n.name.toLowerCase().includes(q))
-  }, [graph, search])
+  const kindCounts = useMemo(() => {
+    const counts = new Map<CodeNodeKind, number>()
+    for (const n of graph?.nodes ?? []) {
+      counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1)
+    }
+    return counts
+  }, [graph])
 
   const communityCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -193,10 +210,29 @@ export function CodeGraphTab({
   if (!repo) return null
   const selectedNode = graph?.nodes.find((n) => n.id === selectedId)
 
+  const openFile = (path: string) => {
+    setOpenFiles((prev) =>
+      prev.some((f) => f.path === path)
+        ? prev.map((f) => (f.path === path ? { ...f, collapsed: false } : f))
+        : [...prev, { path, pinned: true, collapsed: false }],
+    )
+    setInspectorCollapsed(false)
+  }
+
+  // Selecting a symbol — from the graph, the explorer, or the source itself
+  // — is also what opens its file in the inspector.
   const selectNode = (id: string | null) => {
     setSelectedId(id)
     setBlast(null)
+    if (!id) return
+    const node = graph?.nodes.find((n) => n.id === id)
+    if (node) openFile(node.file)
   }
+
+  const patchFile = (path: string, patch: Partial<OpenCodeFile>) =>
+    setOpenFiles((prev) =>
+      prev.map((f) => (f.path === path ? { ...f, ...patch } : f)),
+    )
 
   const focusSelected = () => {
     if (!selectedId) return
@@ -359,19 +395,12 @@ export function CodeGraphTab({
       <div className="border-border bg-card flex flex-wrap items-center gap-x-4 gap-y-2 border-b p-2.5">
         <Input
           prefix={<Search aria-hidden className="h-4 w-4" />}
-          placeholder="Search symbols…"
+          placeholder="Filter files & symbols…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          groupClassName="w-52"
-          aria-label="Search symbols"
+          groupClassName="w-56"
+          aria-label="Filter the explorer by file or symbol name"
         />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setPaletteOpen(true)}
-        >
-          Jump to node <Kbd size="sm">⌘K</Kbd>
-        </Button>
         <div className="flex flex-col gap-0.5">
           <span className="text-muted-foreground font-mono text-[10px] uppercase">
             layout
@@ -519,49 +548,80 @@ export function CodeGraphTab({
         </span>
       </div>
 
-      {/* three-panel body — fills the remaining height edge-to-edge */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[11rem_minmax(0,1fr)_15rem]">
-        {/* symbol browser */}
-        <div className="border-border bg-card flex min-h-0 min-w-0 flex-col border-b md:border-r md:border-b-0">
-          <span className="border-border text-muted-foreground border-b px-2.5 py-1.5 font-mono text-sm tracking-wide uppercase">
-            Symbols
-          </span>
-          <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
-            {filteredNodes.length === 0 ? (
-              <p className="text-muted-foreground p-2 text-sm">
-                No symbol matches "{search}" — the graph itself is unchanged.
-              </p>
-            ) : (
-              filteredNodes.map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  onClick={() => selectNode(node.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-sm",
-                    node.id === selectedId
-                      ? "bg-primary/12"
-                      : "hover:bg-muted/50",
-                  )}
-                >
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-[2px]"
-                    style={{ background: chartVar(KIND_CHART[node.kind]) }}
-                  />
-                  <span className="min-w-0 flex-1 truncate font-mono">
-                    {node.name}
-                  </span>
-                  <span className="text-muted-foreground shrink-0 font-mono text-[10px] uppercase">
-                    {node.kind}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
+      {/* body — explorer/filters rail, code inspector, canvas, analysis */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {/* explorer / filters */}
+        <Tabs
+          value={leftTab}
+          onValueChange={setLeftTab}
+          className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b md:w-56 md:shrink-0 md:border-r md:border-b-0"
+        >
+          <TabsList variant="underline" className="border-border shrink-0 border-b px-1">
+            <TabsTrigger value="explorer">Explorer</TabsTrigger>
+            <TabsTrigger value="filters">Filters</TabsTrigger>
+          </TabsList>
+          <TabsContent
+            value="explorer"
+            className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
+            <CodeExplorer
+              files={repo.files}
+              graph={graph}
+              query={search}
+              activePath={selectedNode?.file ?? null}
+              selectedNodeId={selectedId}
+              onOpenFile={openFile}
+              onSelectSymbol={selectNode}
+            />
+          </TabsContent>
+          <TabsContent
+            value="filters"
+            className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
+            <CodeFilters
+              counts={kindCounts}
+              hidden={hiddenKinds}
+              onToggle={(kind) =>
+                setHiddenKinds((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(kind)) next.delete(kind)
+                  else next.add(kind)
+                  return next
+                })
+              }
+              onReset={() => setHiddenKinds(new Set())}
+            />
+          </TabsContent>
+        </Tabs>
+
+        {/* code inspector — opened files stack top-to-bottom */}
+        {openFiles.length > 0 && (
+          <CodeInspector
+            files={openFiles}
+            graph={graph}
+            activeSymbolId={selectedId}
+            collapsed={inspectorCollapsed}
+            onToggleCollapsedPanel={() => setInspectorCollapsed((v) => !v)}
+            onTogglePinned={(path) =>
+              patchFile(path, {
+                pinned: !openFiles.find((f) => f.path === path)?.pinned,
+              })
+            }
+            onToggleCollapsed={(path) =>
+              patchFile(path, {
+                collapsed: !openFiles.find((f) => f.path === path)?.collapsed,
+              })
+            }
+            onClose={(path) =>
+              setOpenFiles((prev) => prev.filter((f) => f.path !== path))
+            }
+            onCloseAll={() => setOpenFiles([])}
+            onSelectSymbol={selectNode}
+          />
+        )}
 
         {/* canvas */}
-        <div className="flex min-h-0 min-w-0 flex-col">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="min-h-64 min-w-0 flex-1">
             <CodeCanvas
               graph={graph}
@@ -570,6 +630,7 @@ export function CodeGraphTab({
               selectedId={selectedId}
               onSelect={selectNode}
               visibleIds={visibleIds}
+              hiddenKinds={hiddenKinds}
               blastIds={blast ? new Set(blast.affected.map((a) => a.id)) : null}
               highlightCommunity={activeCommunity}
               processIds={processIds}
@@ -578,6 +639,25 @@ export function CodeGraphTab({
               center={center}
             />
           </div>
+          {openFiles
+            .filter((f) => !f.pinned)
+            .map((file, index) => (
+              <FloatingFilePanel
+                key={file.path}
+                file={file}
+                index={index}
+                graph={graph}
+                activeSymbolId={selectedId}
+                onTogglePinned={(path) => patchFile(path, { pinned: true })}
+                onToggleCollapsed={(path) =>
+                  patchFile(path, { collapsed: !file.collapsed })
+                }
+                onClose={(path) =>
+                  setOpenFiles((prev) => prev.filter((f) => f.path !== path))
+                }
+                onSelectSymbol={selectNode}
+              />
+            ))}
           <div className="border-border bg-card text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-t px-2.5 py-1.5 text-sm">
             {colorBy === "community" ? (
               graph.communities.map((c) => (
@@ -626,7 +706,7 @@ export function CodeGraphTab({
         </div>
 
         {/* analysis panel */}
-        <div className="border-border bg-card flex min-h-0 min-w-0 flex-col overflow-y-auto border-t md:border-t-0 md:border-l">
+        <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t md:w-60 md:shrink-0 md:border-t-0 md:border-l">
           <div className="border-border space-y-1.5 border-b p-2.5">
             <SectionTitle
               icon={<Crosshair aria-hidden className="h-3 w-3" />}
@@ -817,44 +897,6 @@ export function CodeGraphTab({
           </div>
         </div>
       </div>
-
-      {/* ⌘K node quick-jump */}
-      <CommandDialog
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        title="Jump to node"
-      >
-        <Command>
-          <CommandInput placeholder="Type a symbol name…" />
-          <CommandList>
-            <CommandEmpty>No matching node.</CommandEmpty>
-            {graph.nodes.map((node) => (
-              <CommandItem
-                key={node.id}
-                value={node.name}
-                onSelect={() => {
-                  selectNode(node.id)
-                  setPaletteOpen(false)
-                  const pos = positions[node.id]
-                  if (pos) {
-                    setCenter(pos)
-                    setZoom(1.6)
-                  }
-                }}
-              >
-                <span
-                  className="mr-1.5 h-2 w-2 shrink-0 rounded-[2px]"
-                  style={{ background: chartVar(KIND_CHART[node.kind]) }}
-                />
-                {node.name}
-                <span className="text-muted-foreground ml-auto font-mono text-[10px] uppercase">
-                  {node.kind}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </CommandDialog>
 
       {/* process detail + Mermaid export */}
       <Dialog

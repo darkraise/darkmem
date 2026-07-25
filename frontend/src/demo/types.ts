@@ -401,6 +401,10 @@ export interface DemoRepo {
   /** Registered-but-never-indexed note (auto-provision Tier C queue). */
   registered_note: string | null
   wiki: DemoWiki | null
+  /** Tracked source paths, POSIX-separated — the Explorer's tree. Empty
+   *  for a repo that has never been indexed: there is no file listing to
+   *  browse until a run has walked the tree. */
+  files: string[]
 }
 
 export type CodeNodeKind = "file" | "class" | "method" | "function" | "module"
