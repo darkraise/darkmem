@@ -20,13 +20,19 @@ import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedMemoryGraphRouteImport } from './routes/_authenticated/memory-graph'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
-import { Route as AuthenticatedCodeGraphRouteImport } from './routes/_authenticated/code-graph'
 import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/code'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
 import { Route as AuthenticatedMemoriesMemoryIdRouteImport } from './routes/_authenticated/memories_.$memoryId'
-import { Route as AuthenticatedKnowledgeFactsFactIdRouteImport } from './routes/_authenticated/knowledge_.facts.$factId'
-import { Route as AuthenticatedKnowledgeArticlesArticleIdRouteImport } from './routes/_authenticated/knowledge_.articles.$articleId'
+import { Route as AuthenticatedKnowledgeTopicsRouteImport } from './routes/_authenticated/knowledge_.topics'
+import { Route as AuthenticatedKnowledgeReviewRouteImport } from './routes/_authenticated/knowledge_.review'
+import { Route as AuthenticatedKnowledgeFactsRouteImport } from './routes/_authenticated/knowledge_.facts'
+import { Route as AuthenticatedKnowledgeArticlesRouteImport } from './routes/_authenticated/knowledge_.articles'
+import { Route as AuthenticatedCodeWikiRouteImport } from './routes/_authenticated/code_.wiki'
+import { Route as AuthenticatedCodeRepositoriesRouteImport } from './routes/_authenticated/code_.repositories'
+import { Route as AuthenticatedCodeGraphRouteImport } from './routes/_authenticated/code_.graph'
+import { Route as AuthenticatedKnowledgeFactsFactIdRouteImport } from './routes/_authenticated/knowledge_.facts_.$factId'
+import { Route as AuthenticatedKnowledgeArticlesArticleIdRouteImport } from './routes/_authenticated/knowledge_.articles_.$articleId'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -83,11 +89,6 @@ const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
   path: '/knowledge',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedCodeGraphRoute = AuthenticatedCodeGraphRouteImport.update({
-  id: '/code-graph',
-  path: '/code-graph',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedCodeRoute = AuthenticatedCodeRouteImport.update({
   id: '/code',
   path: '/code',
@@ -109,15 +110,55 @@ const AuthenticatedMemoriesMemoryIdRoute =
     path: '/memories/$memoryId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedKnowledgeTopicsRoute =
+  AuthenticatedKnowledgeTopicsRouteImport.update({
+    id: '/knowledge_/topics',
+    path: '/knowledge/topics',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedKnowledgeReviewRoute =
+  AuthenticatedKnowledgeReviewRouteImport.update({
+    id: '/knowledge_/review',
+    path: '/knowledge/review',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedKnowledgeFactsRoute =
+  AuthenticatedKnowledgeFactsRouteImport.update({
+    id: '/knowledge_/facts',
+    path: '/knowledge/facts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedKnowledgeArticlesRoute =
+  AuthenticatedKnowledgeArticlesRouteImport.update({
+    id: '/knowledge_/articles',
+    path: '/knowledge/articles',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCodeWikiRoute = AuthenticatedCodeWikiRouteImport.update({
+  id: '/code_/wiki',
+  path: '/code/wiki',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCodeRepositoriesRoute =
+  AuthenticatedCodeRepositoriesRouteImport.update({
+    id: '/code_/repositories',
+    path: '/code/repositories',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCodeGraphRoute = AuthenticatedCodeGraphRouteImport.update({
+  id: '/code_/graph',
+  path: '/code/graph',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedKnowledgeFactsFactIdRoute =
   AuthenticatedKnowledgeFactsFactIdRouteImport.update({
-    id: '/knowledge_/facts/$factId',
+    id: '/knowledge_/facts_/$factId',
     path: '/knowledge/facts/$factId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedKnowledgeArticlesArticleIdRoute =
   AuthenticatedKnowledgeArticlesArticleIdRouteImport.update({
-    id: '/knowledge_/articles/$articleId',
+    id: '/knowledge_/articles_/$articleId',
     path: '/knowledge/articles/$articleId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
@@ -127,7 +168,6 @@ export interface FileRoutesByFullPath {
   '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code': typeof AuthenticatedCodeRoute
-  '/code-graph': typeof AuthenticatedCodeGraphRoute
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
@@ -136,6 +176,13 @@ export interface FileRoutesByFullPath {
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
+  '/code/graph': typeof AuthenticatedCodeGraphRoute
+  '/code/repositories': typeof AuthenticatedCodeRepositoriesRoute
+  '/code/wiki': typeof AuthenticatedCodeWikiRoute
+  '/knowledge/articles': typeof AuthenticatedKnowledgeArticlesRoute
+  '/knowledge/facts': typeof AuthenticatedKnowledgeFactsRoute
+  '/knowledge/review': typeof AuthenticatedKnowledgeReviewRoute
+  '/knowledge/topics': typeof AuthenticatedKnowledgeTopicsRoute
   '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
   '/knowledge/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   '/knowledge/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
@@ -145,7 +192,6 @@ export interface FileRoutesByTo {
   '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code': typeof AuthenticatedCodeRoute
-  '/code-graph': typeof AuthenticatedCodeGraphRoute
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
@@ -154,6 +200,13 @@ export interface FileRoutesByTo {
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/login': typeof GuestLoginRoute
   '/setup': typeof GuestSetupRoute
+  '/code/graph': typeof AuthenticatedCodeGraphRoute
+  '/code/repositories': typeof AuthenticatedCodeRepositoriesRoute
+  '/code/wiki': typeof AuthenticatedCodeWikiRoute
+  '/knowledge/articles': typeof AuthenticatedKnowledgeArticlesRoute
+  '/knowledge/facts': typeof AuthenticatedKnowledgeFactsRoute
+  '/knowledge/review': typeof AuthenticatedKnowledgeReviewRoute
+  '/knowledge/topics': typeof AuthenticatedKnowledgeTopicsRoute
   '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
   '/knowledge/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   '/knowledge/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
@@ -165,7 +218,6 @@ export interface FileRoutesById {
   '/_authenticated/activity': typeof AuthenticatedActivityRoute
   '/_authenticated/chat': typeof AuthenticatedChatRoute
   '/_authenticated/code': typeof AuthenticatedCodeRoute
-  '/_authenticated/code-graph': typeof AuthenticatedCodeGraphRoute
   '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/memory-graph': typeof AuthenticatedMemoryGraphRoute
@@ -175,9 +227,16 @@ export interface FileRoutesById {
   '/_guest/login': typeof GuestLoginRoute
   '/_guest/setup': typeof GuestSetupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/code_/graph': typeof AuthenticatedCodeGraphRoute
+  '/_authenticated/code_/repositories': typeof AuthenticatedCodeRepositoriesRoute
+  '/_authenticated/code_/wiki': typeof AuthenticatedCodeWikiRoute
+  '/_authenticated/knowledge_/articles': typeof AuthenticatedKnowledgeArticlesRoute
+  '/_authenticated/knowledge_/facts': typeof AuthenticatedKnowledgeFactsRoute
+  '/_authenticated/knowledge_/review': typeof AuthenticatedKnowledgeReviewRoute
+  '/_authenticated/knowledge_/topics': typeof AuthenticatedKnowledgeTopicsRoute
   '/_authenticated/memories_/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
-  '/_authenticated/knowledge_/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
-  '/_authenticated/knowledge_/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
+  '/_authenticated/knowledge_/articles_/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
+  '/_authenticated/knowledge_/facts_/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -186,7 +245,6 @@ export interface FileRouteTypes {
     | '/activity'
     | '/chat'
     | '/code'
-    | '/code-graph'
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
@@ -195,6 +253,13 @@ export interface FileRouteTypes {
     | '/unified-graph'
     | '/login'
     | '/setup'
+    | '/code/graph'
+    | '/code/repositories'
+    | '/code/wiki'
+    | '/knowledge/articles'
+    | '/knowledge/facts'
+    | '/knowledge/review'
+    | '/knowledge/topics'
     | '/memories/$memoryId'
     | '/knowledge/articles/$articleId'
     | '/knowledge/facts/$factId'
@@ -204,7 +269,6 @@ export interface FileRouteTypes {
     | '/activity'
     | '/chat'
     | '/code'
-    | '/code-graph'
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
@@ -213,6 +277,13 @@ export interface FileRouteTypes {
     | '/unified-graph'
     | '/login'
     | '/setup'
+    | '/code/graph'
+    | '/code/repositories'
+    | '/code/wiki'
+    | '/knowledge/articles'
+    | '/knowledge/facts'
+    | '/knowledge/review'
+    | '/knowledge/topics'
     | '/memories/$memoryId'
     | '/knowledge/articles/$articleId'
     | '/knowledge/facts/$factId'
@@ -223,7 +294,6 @@ export interface FileRouteTypes {
     | '/_authenticated/activity'
     | '/_authenticated/chat'
     | '/_authenticated/code'
-    | '/_authenticated/code-graph'
     | '/_authenticated/knowledge'
     | '/_authenticated/memories'
     | '/_authenticated/memory-graph'
@@ -233,9 +303,16 @@ export interface FileRouteTypes {
     | '/_guest/login'
     | '/_guest/setup'
     | '/_authenticated/'
+    | '/_authenticated/code_/graph'
+    | '/_authenticated/code_/repositories'
+    | '/_authenticated/code_/wiki'
+    | '/_authenticated/knowledge_/articles'
+    | '/_authenticated/knowledge_/facts'
+    | '/_authenticated/knowledge_/review'
+    | '/_authenticated/knowledge_/topics'
     | '/_authenticated/memories_/$memoryId'
-    | '/_authenticated/knowledge_/articles/$articleId'
-    | '/_authenticated/knowledge_/facts/$factId'
+    | '/_authenticated/knowledge_/articles_/$articleId'
+    | '/_authenticated/knowledge_/facts_/$factId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -322,13 +399,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/code-graph': {
-      id: '/_authenticated/code-graph'
-      path: '/code-graph'
-      fullPath: '/code-graph'
-      preLoaderRoute: typeof AuthenticatedCodeGraphRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/code': {
       id: '/_authenticated/code'
       path: '/code'
@@ -357,15 +427,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMemoriesMemoryIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/knowledge_/facts/$factId': {
-      id: '/_authenticated/knowledge_/facts/$factId'
+    '/_authenticated/knowledge_/topics': {
+      id: '/_authenticated/knowledge_/topics'
+      path: '/knowledge/topics'
+      fullPath: '/knowledge/topics'
+      preLoaderRoute: typeof AuthenticatedKnowledgeTopicsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/knowledge_/review': {
+      id: '/_authenticated/knowledge_/review'
+      path: '/knowledge/review'
+      fullPath: '/knowledge/review'
+      preLoaderRoute: typeof AuthenticatedKnowledgeReviewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/knowledge_/facts': {
+      id: '/_authenticated/knowledge_/facts'
+      path: '/knowledge/facts'
+      fullPath: '/knowledge/facts'
+      preLoaderRoute: typeof AuthenticatedKnowledgeFactsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/knowledge_/articles': {
+      id: '/_authenticated/knowledge_/articles'
+      path: '/knowledge/articles'
+      fullPath: '/knowledge/articles'
+      preLoaderRoute: typeof AuthenticatedKnowledgeArticlesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/code_/wiki': {
+      id: '/_authenticated/code_/wiki'
+      path: '/code/wiki'
+      fullPath: '/code/wiki'
+      preLoaderRoute: typeof AuthenticatedCodeWikiRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/code_/repositories': {
+      id: '/_authenticated/code_/repositories'
+      path: '/code/repositories'
+      fullPath: '/code/repositories'
+      preLoaderRoute: typeof AuthenticatedCodeRepositoriesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/code_/graph': {
+      id: '/_authenticated/code_/graph'
+      path: '/code/graph'
+      fullPath: '/code/graph'
+      preLoaderRoute: typeof AuthenticatedCodeGraphRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/knowledge_/facts_/$factId': {
+      id: '/_authenticated/knowledge_/facts_/$factId'
       path: '/knowledge/facts/$factId'
       fullPath: '/knowledge/facts/$factId'
       preLoaderRoute: typeof AuthenticatedKnowledgeFactsFactIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/knowledge_/articles/$articleId': {
-      id: '/_authenticated/knowledge_/articles/$articleId'
+    '/_authenticated/knowledge_/articles_/$articleId': {
+      id: '/_authenticated/knowledge_/articles_/$articleId'
       path: '/knowledge/articles/$articleId'
       fullPath: '/knowledge/articles/$articleId'
       preLoaderRoute: typeof AuthenticatedKnowledgeArticlesArticleIdRouteImport
@@ -378,7 +497,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedActivityRoute: typeof AuthenticatedActivityRoute
   AuthenticatedChatRoute: typeof AuthenticatedChatRoute
   AuthenticatedCodeRoute: typeof AuthenticatedCodeRoute
-  AuthenticatedCodeGraphRoute: typeof AuthenticatedCodeGraphRoute
   AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedMemoryGraphRoute: typeof AuthenticatedMemoryGraphRoute
@@ -386,6 +504,13 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedCodeGraphRoute: typeof AuthenticatedCodeGraphRoute
+  AuthenticatedCodeRepositoriesRoute: typeof AuthenticatedCodeRepositoriesRoute
+  AuthenticatedCodeWikiRoute: typeof AuthenticatedCodeWikiRoute
+  AuthenticatedKnowledgeArticlesRoute: typeof AuthenticatedKnowledgeArticlesRoute
+  AuthenticatedKnowledgeFactsRoute: typeof AuthenticatedKnowledgeFactsRoute
+  AuthenticatedKnowledgeReviewRoute: typeof AuthenticatedKnowledgeReviewRoute
+  AuthenticatedKnowledgeTopicsRoute: typeof AuthenticatedKnowledgeTopicsRoute
   AuthenticatedMemoriesMemoryIdRoute: typeof AuthenticatedMemoriesMemoryIdRoute
   AuthenticatedKnowledgeArticlesArticleIdRoute: typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   AuthenticatedKnowledgeFactsFactIdRoute: typeof AuthenticatedKnowledgeFactsFactIdRoute
@@ -395,7 +520,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedActivityRoute: AuthenticatedActivityRoute,
   AuthenticatedChatRoute: AuthenticatedChatRoute,
   AuthenticatedCodeRoute: AuthenticatedCodeRoute,
-  AuthenticatedCodeGraphRoute: AuthenticatedCodeGraphRoute,
   AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedMemoryGraphRoute: AuthenticatedMemoryGraphRoute,
@@ -403,6 +527,13 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedCodeGraphRoute: AuthenticatedCodeGraphRoute,
+  AuthenticatedCodeRepositoriesRoute: AuthenticatedCodeRepositoriesRoute,
+  AuthenticatedCodeWikiRoute: AuthenticatedCodeWikiRoute,
+  AuthenticatedKnowledgeArticlesRoute: AuthenticatedKnowledgeArticlesRoute,
+  AuthenticatedKnowledgeFactsRoute: AuthenticatedKnowledgeFactsRoute,
+  AuthenticatedKnowledgeReviewRoute: AuthenticatedKnowledgeReviewRoute,
+  AuthenticatedKnowledgeTopicsRoute: AuthenticatedKnowledgeTopicsRoute,
   AuthenticatedMemoriesMemoryIdRoute: AuthenticatedMemoriesMemoryIdRoute,
   AuthenticatedKnowledgeArticlesArticleIdRoute:
     AuthenticatedKnowledgeArticlesArticleIdRoute,

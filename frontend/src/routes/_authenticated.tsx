@@ -8,13 +8,15 @@ import {
   Activity,
   BookOpen,
   Brain,
-  Code2,
+  ClipboardCheck,
+  FileText,
   FolderGit2,
   LayoutDashboard,
-  Library,
   MessageSquare,
   Network,
+  ScrollText,
   Settings,
+  Tags,
   Waypoints,
 } from "lucide-react"
 import {
@@ -38,37 +40,36 @@ import {
 
 const nav: NavGroup[] = [
   {
-    label: "Workspace",
+    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+  },
+  {
+    label: "Memories",
     items: [
-      { label: "Dashboard", href: "/", icon: LayoutDashboard },
       { label: "Memories", href: "/memories", icon: Brain },
-      { label: "Knowledge", href: "/knowledge", icon: Library },
-      { label: "Chat", href: "/chat", icon: MessageSquare },
+      { label: "Memory Graph", href: "/memory-graph", icon: Waypoints },
     ],
   },
   {
-    label: "Explore",
+    label: "Knowledge",
     items: [
-      {
-        label: "Code",
-        href: "/code",
-        icon: Code2,
-        children: [
-          {
-            label: "Repositories",
-            href: "/code?tab=repositories",
-            icon: FolderGit2,
-          },
-          { label: "Code Graph", href: "/code?tab=graph", icon: Network },
-          { label: "Code Wiki", href: "/code?tab=wiki", icon: BookOpen },
-        ],
-      },
-      { label: "Memory Graph", href: "/memory-graph", icon: Waypoints },
+      { label: "Facts", href: "/knowledge/facts", icon: ScrollText },
+      { label: "Articles", href: "/knowledge/articles", icon: FileText },
+      { label: "Topics", href: "/knowledge/topics", icon: Tags },
+      { label: "Review", href: "/knowledge/review", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "Code",
+    items: [
+      { label: "Repositories", href: "/code/repositories", icon: FolderGit2 },
+      { label: "Code Graph", href: "/code/graph", icon: Network },
+      { label: "Code Wiki", href: "/code/wiki", icon: BookOpen },
     ],
   },
   {
     label: "Operate",
     items: [
+      { label: "Chat", href: "/chat", icon: MessageSquare },
       { label: "Activity", href: "/activity", icon: Activity },
       { label: "Settings", href: "/settings", icon: Settings },
     ],

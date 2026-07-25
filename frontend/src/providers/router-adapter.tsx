@@ -57,9 +57,9 @@ export function splitNavHref(href: string): NavHrefTarget {
  * (`/memories/$id` no longer matched `/memories`). Instead: "/" matches
  * exactly (anything else would make it always active), every other path
  * matches itself or a strict path-segment prefix (so `/memories-old`
- * never matches `/memories`), and an href query string additionally
- * requires those params to equal the current (validated) search — which
- * lets the three `/code?tab=...` children highlight independently.
+ * never matches `/memories`, but `/knowledge/facts/$id` keeps the Facts
+ * item active), and an href query string additionally requires those
+ * params to equal the current (validated) search.
  */
 export function isNavHrefActive(
   href: string,

@@ -27,12 +27,15 @@ function flattenNav(nav: NavGroup[]): FlatNavEntry[] {
       return
     }
     out.push({
-      label: parentLabel ? `${parentLabel} · ${item.label}` : item.label,
+      label:
+        parentLabel && parentLabel !== item.label
+          ? `${parentLabel} · ${item.label}`
+          : item.label,
       href: item.href,
     })
   }
   for (const group of nav) {
-    for (const item of group.items) push(item)
+    for (const item of group.items) push(item, group.label)
   }
   return out
 }

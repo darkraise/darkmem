@@ -34,12 +34,24 @@ describe("isNavHrefActive", () => {
   it("keeps the parent item active on a detail view", () => {
     expect(isNavHrefActive("/memories", "/memories/abc-123", {})).toBe(true)
     expect(
-      isNavHrefActive("/knowledge", "/knowledge/articles/a1", {}),
+      isNavHrefActive("/knowledge/facts", "/knowledge/facts/f1", {}),
     ).toBe(true)
+    expect(
+      isNavHrefActive("/knowledge/articles", "/knowledge/articles/a1", {}),
+    ).toBe(true)
+  })
+
+  it("keeps sibling dedicated pages independent", () => {
+    expect(
+      isNavHrefActive("/knowledge/facts", "/knowledge/articles/a1", {}),
+    ).toBe(false)
+    expect(isNavHrefActive("/code/graph", "/code/repositories", {})).toBe(false)
+    expect(isNavHrefActive("/code/graph", "/code/graph", {})).toBe(true)
   })
 
   it("never matches a sibling path that shares a prefix", () => {
     expect(isNavHrefActive("/memories", "/memories-old", {})).toBe(false)
+    expect(isNavHrefActive("/code/graph", "/code-graph", {})).toBe(false)
   })
 
   it("requires href query params to equal the current search", () => {

@@ -25,7 +25,7 @@ import { FactSourcesGroups } from "@/features/knowledge/components/fact-sources"
 import { BeliefWindowRow } from "@/features/knowledge/components/belief-window"
 import { DisputePanel } from "@/features/knowledge/components/dispute-panel"
 
-export const Route = createFileRoute("/_authenticated/knowledge_/facts/$factId")({
+export const Route = createFileRoute("/_authenticated/knowledge_/facts_/$factId")({
   component: FactDetailPage,
 })
 
@@ -92,10 +92,7 @@ function FactDetailPage() {
     title: "Fact detail",
     description:
       "One L2 fact — its sources, ladder history, belief window, and context.",
-    breadcrumbs: [
-      { label: "Knowledge", href: "/knowledge" },
-      { label: "Facts", href: "/knowledge?tab=facts" },
-    ],
+    breadcrumbs: [{ label: "Facts", href: "/knowledge/facts" }],
   })
 
   if (!fact) {
@@ -107,7 +104,7 @@ function FactDetailPage() {
           description="This fact does not exist in the demo store."
           action={
             <Button variant="outline" asChild>
-              <Link to="/knowledge" search={{ tab: "facts" }}>
+              <Link to="/knowledge/facts">
                 <ArrowLeft className="mr-2 size-4" />
                 Back to Facts
               </Link>
@@ -201,11 +198,7 @@ function FactDetailPage() {
                 <p className="text-muted-foreground text-sm">
                   Origin counts are shown on both sides without a comparative
                   treatment — corroboration count does not adjudicate a dispute.{" "}
-                  <Link
-                    to="/knowledge"
-                    search={{ tab: "review" }}
-                    className="text-primary"
-                  >
+                  <Link to="/knowledge/review" className="text-primary">
                     Adjudicate in Review →
                   </Link>
                 </p>

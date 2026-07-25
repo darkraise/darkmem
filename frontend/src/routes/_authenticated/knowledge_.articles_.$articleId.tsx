@@ -28,7 +28,7 @@ import type { ArticleCitation, ArticleSection, DemoFact } from "@/demo/types"
 import { StaleBadge } from "@/features/knowledge/components/fact-parts"
 
 export const Route = createFileRoute(
-  "/_authenticated/knowledge_/articles/$articleId",
+  "/_authenticated/knowledge_/articles_/$articleId",
 )({
   component: ArticleDetailPage,
 })
@@ -146,10 +146,7 @@ function ArticleDetailPage() {
     title: "Article detail",
     description:
       "One L3 article — synthesised, grounded prose whose every claim links to the verified fact that entails it.",
-    breadcrumbs: [
-      { label: "Knowledge", href: "/knowledge" },
-      { label: "Articles", href: "/knowledge?tab=articles" },
-    ],
+    breadcrumbs: [{ label: "Articles", href: "/knowledge/articles" }],
   })
 
   if (!article) {
@@ -161,7 +158,7 @@ function ArticleDetailPage() {
           description="This article does not exist in the demo store."
           action={
             <Button variant="outline" asChild>
-              <Link to="/knowledge" search={{ tab: "articles" }}>
+              <Link to="/knowledge/articles">
                 <ArrowLeft className="mr-2 size-4" />
                 Back to Articles
               </Link>
@@ -234,11 +231,7 @@ function ArticleDetailPage() {
                   />
                   <span>
                     {article.ungrounded_note}{" "}
-                    <Link
-                      to="/knowledge"
-                      search={{ tab: "review" }}
-                      className="text-primary"
-                    >
+                    <Link to="/knowledge/review" className="text-primary">
                       Open the Review queue →
                     </Link>
                   </span>
