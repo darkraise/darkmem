@@ -1,6 +1,20 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { Brain } from "lucide-react"
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  Link: ({
+    to,
+    children,
+    ...rest
+  }: { to: string; children: React.ReactNode } & Record<string, unknown>) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
+}))
+
 import { AppPageHeader } from "../app-page-header"
 import { BackToTop } from "../back-to-top"
 import { PageChrome, usePageChrome } from "../page-chrome"
@@ -10,7 +24,7 @@ beforeEach(() => {
     icon: null,
     title: "",
     description: "",
-    breadcrumbs: [],
+    parent: null,
     actions: null,
   })
 })
@@ -42,18 +56,28 @@ describe("PageChrome / AppPageHeader", () => {
     ).toBeInTheDocument()
   })
 
-  it("renders a breadcrumb trail ending in the current page", () => {
+  it("renders a back link for a page that declares a parent", () => {
     render(
       <>
-        <PageChrome title="Memory detail" breadcrumbs={[{ label: "Memories" }]} />
+        <PageChrome
+          title="Memory detail"
+          parent={{ label: "Memories", href: "/memories" }}
+        />
         <AppPageHeader />
       </>,
     )
-    const nav = screen.getByRole("navigation", { name: "Breadcrumb" })
-    expect(nav).toHaveTextContent("Memories")
-    // "Memory detail" also renders as the h1; scope to the crumb trail.
-    const { getByText } = within(nav)
-    expect(getByText("Memory detail")).toHaveAttribute("aria-current", "page")
+    const back = screen.getByRole("link", { name: "Back to Memories" })
+    expect(back).toHaveAttribute("href", "/memories")
+  })
+
+  it("omits the back link on a page with no parent", () => {
+    render(
+      <>
+        <PageChrome title="Memories" />
+        <AppPageHeader />
+      </>,
+    )
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
   })
 
   it("clears the chrome when the page unmounts", () => {

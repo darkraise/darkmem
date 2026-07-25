@@ -6,7 +6,7 @@ export {
   useSetPageChrome,
 } from "./page-chrome"
 export type {
-  PageChromeBreadcrumb,
+  PageChromeParent,
   PageChromeProps,
   PageChromeState,
 } from "./page-chrome"

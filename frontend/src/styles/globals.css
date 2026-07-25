@@ -243,13 +243,13 @@
   translate: none;
 }
 
-/* App chrome (owner review Pass 1). The page identity (breadcrumb + icon +
+/* App chrome (owner review Pass 1). The page identity (back button + icon +
    title + description + actions) renders inside the layout header's
    `dr-layout-header-end` slot, which ships as a right-aligned ml-auto strip.
-   Let it fill the bar and let the header grow to fit the two-row block.
-   Scoped to sidebar/stacked; the top-nav header also carries the primary nav
-   and stays single-row (the chrome block hides its crumbs/description rows
-   there, below). Unlayered so these beat the @layer components defaults. */
+   Let it fill the bar instead. Scoped to sidebar/stacked; the top-nav header
+   also carries the primary nav, so the description and the back button's
+   label collapse there (below) to keep it single-row. Unlayered so these
+   beat the @layer components defaults. */
 .dr-sidebar-layout .dr-layout-header,
 .dr-stacked-layout .dr-layout-header {
   height: auto;
@@ -262,7 +262,7 @@
   min-width: 0;
   margin-left: 0;
 }
-.dr-top-nav-layout .dm-chrome-crumbs,
+.dr-top-nav-layout .dm-chrome-back-label,
 .dr-top-nav-layout .dm-chrome-desc {
   display: none;
 }
@@ -276,14 +276,26 @@
   display: none;
 }
 
-/* Sidebar search trigger: icon-only when the sidebar is collapsed. */
+/* Sidebar search trigger: icon-only when the sidebar is collapsed. The
+   explicit --density-cell box (not just `padding: 0`) is what keeps it the
+   same square as `.dr-sidebar-nav-link[data-collapsed]`; Button's own
+   `h-9` and this trigger's `w-full` would otherwise render it taller and
+   wider than every nav item below it. */
 .dr-sidebar-layout-aside[data-collapsed="true"] .dm-sidebar-search-label,
 .dr-sidebar-layout-aside[data-collapsed="true"] .dm-sidebar-search-kbd {
   display: none;
 }
 .dr-sidebar-layout-aside[data-collapsed="true"] .dr-search-command-trigger {
+  /* `display: flex` (not Button's inline-flex) is what lets the auto inline
+     margins centre it in the rail the way the nav items are centred. */
+  display: flex;
+  width: var(--density-cell);
+  min-width: var(--density-cell);
+  height: var(--density-cell);
+  min-height: var(--density-cell);
+  margin-inline: auto;
   justify-content: center;
-  padding-inline: 0;
+  padding: 0;
 }
 
 /* Tighter content margins: the shell shipped p-6 (24px) and most screens

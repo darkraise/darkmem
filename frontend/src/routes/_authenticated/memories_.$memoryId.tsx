@@ -214,7 +214,7 @@ function MemoryDetailPage() {
     icon: Brain,
     title: "Memory detail",
     description: "One memory, its enrichment, and its lineage.",
-    breadcrumbs: [{ label: "Memories", href: "/memories" }],
+    parent: { label: "Memories", href: "/memories" },
     actions: memory ? (
       <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
         <Pencil className="mr-2 size-4" />

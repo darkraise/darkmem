@@ -68,7 +68,7 @@ function FactDetailPage() {
     title: "Fact detail",
     description:
       "One L2 fact — its sources, ladder history, belief window, and context.",
-    breadcrumbs: [{ label: "Facts", href: "/knowledge/facts" }],
+    parent: { label: "Facts", href: "/knowledge/facts" },
   })
 
   if (!fact) {

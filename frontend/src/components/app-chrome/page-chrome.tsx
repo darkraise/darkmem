@@ -3,16 +3,17 @@ import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { create } from "zustand"
 
-export interface PageChromeBreadcrumb {
+/** The page one level up the navigation tree — renders as a back button. */
+export interface PageChromeParent {
   label: string
-  href?: string
+  href: string
 }
 
 export interface PageChromeState {
   icon: LucideIcon | null
   title: string
   description: string
-  breadcrumbs: PageChromeBreadcrumb[]
+  parent: PageChromeParent | null
   actions: ReactNode
 }
 
@@ -20,7 +21,7 @@ const EMPTY: PageChromeState = {
   icon: null,
   title: "",
   description: "",
-  breadcrumbs: [],
+  parent: null,
   actions: null,
 }
 
@@ -30,14 +31,14 @@ export interface PageChromeProps {
   icon?: LucideIcon
   title: string
   description?: string
-  breadcrumbs?: PageChromeBreadcrumb[]
+  parent?: PageChromeParent
   actions?: ReactNode
 }
 
 /**
- * Publish this page's identity (icon, title, breadcrumb trail, action
- * buttons) into the app header bar. The set-effect runs after every render
- * on purpose: `actions` is a ReactNode whose click handlers close over the
+ * Publish this page's identity (icon, title, parent page, action buttons)
+ * into the app header bar. The set-effect runs after every render on
+ * purpose: `actions` is a ReactNode whose click handlers close over the
  * page's latest state, so a deps-guarded effect would leave stale closures
  * in the header.
  */
@@ -45,7 +46,7 @@ export function useSetPageChrome({
   icon,
   title,
   description,
-  breadcrumbs,
+  parent,
   actions,
 }: PageChromeProps) {
   useEffect(() => {
@@ -53,7 +54,7 @@ export function useSetPageChrome({
       icon: icon ?? null,
       title,
       description: description ?? "",
-      breadcrumbs: breadcrumbs ?? [],
+      parent: parent ?? null,
       actions: actions ?? null,
     })
   })

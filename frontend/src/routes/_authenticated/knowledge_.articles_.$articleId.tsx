@@ -140,7 +140,7 @@ function ArticleDetailPage() {
     title: "Article detail",
     description:
       "One L3 article — synthesised, grounded prose whose every claim links to the verified fact that entails it.",
-    breadcrumbs: [{ label: "Articles", href: "/knowledge/articles" }],
+    parent: { label: "Articles", href: "/knowledge/articles" },
   })
 
   if (!article) {
