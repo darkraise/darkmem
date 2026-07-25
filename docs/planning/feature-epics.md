@@ -95,6 +95,7 @@ channel (doc 20 §4).
 | Flattened LLM orchestrator | • Six-to-eight inline `llm_purpose_configs` rows — the six live purposes plus `synthesis` and `verification` seeded inert behind their unshipped layers (doc 11 §2/§6) — replace the provider/profile/ml-profile indirection; `classifier_kind` (`llm`\|`local`) rides inline on the classification purpose (doc 11 §2).<br>• One shared `httpx.AsyncClient`, constructed at boot and live-reloaded atomically on an admin save under the single-worker assumption (doc 11 §3).<br>• `api_kind` is the sole vendor-quirk home — auth, reasoning-disable knobs, structured-output caveats — across `openai`/`ollama`/`anthropic`/`google`/`deepseek`/`zai` (doc 11 §4). | rebuild | 11 | F-none | G-B | — |
 | `events` substrate | • Every capture, extraction, supersession, and pipeline outcome writes an `events` row, replacing the coarse `audit_log`/`AuditLog` reads (doc 04 §8.1, doc 05 §2.3).<br>• Monthly `RANGE(created_at)` partitioning with a forbid-trigger blocking UPDATE/DELETE/TRUNCATE keeps the journal append-only.<br>• Feeds the target `GET /events`, `/events/calendar`, `/events/timeline` read surface (doc 12 §7). | target-new | 04 | F-none | G-B | — |
 | Contract + core UI surfaces | • REST/MCP payload envelope, source/context resolution, and the auth-and-trust posture ship as the callable contract over the Phase-1 retrieval/pipeline signals (doc 12 §2–§6).<br>• TanStack Router IA, the Query/Zustand state split, and the WebSocket-to-invalidation mapping ride the same phase as their backend signal — there is no separate UI phase (doc 13 §2–§4).<br>• The pipeline stepper, failure triage, and job board ship as the Activity shell's v1 modules (doc 13 §6.1). | rebuild | 12 | F-none | G-B | — |
+| Detail-level preference (Simple / Advanced view) | • Per-viewer display preference (`advanced` default, `simple` opt-in) persisted client-side in localStorage — changes only what the UI renders, never what the backend computes or returns (spec §Feature-1).<br>• `simple` hides technical/numeric detail — per-modality + fused `rrf_score` + rerank scores, the `rank_fusion_factor` arm breakdown, fingerprints, raw `config` keys, doc refs — collapsing the score breakdown to one plain "why it ranked" line.<br>• `simple` NEVER hides an honesty signal: verification badges, layer + superseded/stale labels, and the exclusion counts always render (invariant 14, doc 13 §5.4/§8). Ships with the first advanced surface (the why-retrieved trace); every later surface honours the same flag. | target-new | 13 | F9 | G-B | — |
 
 ### F9 — signal-ships-with-UI (this phase)
 
@@ -105,7 +106,9 @@ date-bucket substrate (doc 13 §4, doc 04 §8.1) — + the Memories search surfa
 why-retrieved trace (doc 13 §4/§5.4) + the Code section's fail-stale banner (T1) and
 index-debt indicator (T2), the two target-new signals the code-truth hardening produces
 (doc 13 §4.2) + the Memory-detail supersession-lineage surface (amber badge + successor
-link, doc 13 §4).
+link, doc 13 §4) + the global-chrome detail-level toggle (Simple / Advanced),
+whose Simple view hides technical detail while keeping every honesty label
+(spec §Feature-1).
 
 ---
 
@@ -166,6 +169,7 @@ metric (doc 20 §4).
 | Inject v1 — push managed block | • Client-side pull-then-write: the writer pulls the F3 fused, labelled selection and rewrites a marker-bounded managed block in the tool's native context file — the server never writes the client's filesystem (doc 15 §3.1–§3.2).<br>• Truth-first content fill (L2 facts, then L3 articles, then L0 memory summaries) under a `config` token budget; every item carries its layer/verification/badge labels (doc 15 §3.4).<br>• v1 transport is a managed file block per target tool (Claude Code `CLAUDE.md`, Cursor, Codex `AGENTS.md`, Cline); session-start refresh cadence, `watch` mode deferred to Phase 4 (doc 15 §3.3/§3.5). | target-new | 15 | F10 | G-D | — |
 | One-command onboarding + client SDKs | • `darkmem connect <tool>` writes the tool's MCP config from a maintained adapter registry and verifies via the stateless `initialize → tools/list` handshake; a foreign-Host `421` is reported as "extend the allowlist," never worked around (doc 15 §5).<br>• A minimal generated SDK (TypeScript + Python) exposes three verbs — `capture` / `search` / `declareContext` — over the doc 12 contract; ratify/review/vault-admin stay out (doc 15 §6). | target-new | 15 | F-none | G-D | — |
 | Browser capture — new ingestion front door | • A browser extension packages a human-selected AI-chat exchange and posts it through the ordinary REST/MCP capture front door into `memory_buffer` — no new pipeline (doc 15 §4).<br>• v1 is human-triggered only, never auto-scraped; a small maintained adapter set covers ChatGPT/Claude.ai/Gemini web with a plain-selection fallback, deduped by content fingerprint and a per-install `origin_key` (doc 15 §4). | target-new | 15 | F1 | G-D | — |
+| Session progress checkpoints + resume | • Server-side checkpoint store keyed on `origin_key` (the agent-run identity, doc 05 §2.1): a new `session_checkpoints` table, `POST`/`GET /checkpoints`, and MCP `checkpoint_save`/`checkpoint_latest`, holding a compact `summary` + structured `next_steps` (spec §Feature-2, extends doc 04/12).<br>• Resume is a specialised inject — at session start the latest checkpoint writes into the `CLAUDE.md` managed block under the token budget, so a fresh session loads a ~budgeted digest instead of reloading full context (doc 15 §3.2, invariant 17).<br>• Operational, not vault knowledge (no verification badge); surfaced in the Activity shell with copy-resume, `checkpoint_saved`/`resumed` journaled to `events` (doc 13 §6, doc 04 §8.1). Store + a manual `/resume` needs only `origin_key`, so that half is Phase-1-capable; the Claude Code plugin carrier is planned separately (spec §Feature-2). | target-new | 15 | F10 | G-D | — |
 
 ### F9 — signal-ships-with-UI (this phase)
 
@@ -173,7 +177,9 @@ The Articles tab of the Knowledge shell — grounded prose, inline claim citatio
 claim-support-coverage readout, and the stale label (doc 13 §5.2) + the distribution
 surfaces: the Settings → Distribution tab (per-target managed-block config, inject
 content policy, curb control) and inject records surfaced as journaled events in the
-timeline/calendar (doc 13 §6.5).
+timeline/calendar (doc 13 §6.5) + the Session-checkpoints / resume view in the
+Activity shell (per-run digest, next-steps, copy-resume; `checkpoint_saved`/`resumed`
+events, spec §Feature-2, doc 13 §6).
 
 ---
 
@@ -284,3 +290,5 @@ that epic's F9 callout above; there is no separate UI phase or UI epic.
 | `reranker_enabled` | — | exists-today, dormant — ships wired-dormant with the P1 retrieve rebuild (doc 07 §3) | — | — | — | — | measured win incl. p95 cost, any phase clears the bar first |
 | `applies_when` boost magnitude | — | wire (target-new) | tune | — | — | — | Magnitude is `config`; the boost-plus-label and conflict-count rules are hard rules, never tuned |
 | `triple_embeddings` writer | template lands inert (doc 04 §5.3) | — | writer activates, P2+ | — | — | — | Trigram miss-rate above its stated bar; counting only, `names_distinct` carried |
+| Detail-level preference (spec) | — | Simple / Advanced view ships with the why-retrieved trace; localStorage, honesty labels always shown (G-B) | honoured by vault surfaces | honoured by article/distribution surfaces | — | — | Per-viewer display preference — no measured bar |
+| Session checkpoints + resume (spec) | — | Store + manual `/resume` Phase-1-capable (`origin_key` only) | — | Checkpoint store + auto-inject resume at session start, G-D (doc 15) | — | — | Committed Phase 3; store half pullable to Phase 1 |
