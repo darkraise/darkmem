@@ -1,0 +1,303 @@
+<style>
+  /* S33 board-local styles — the Session-checkpoints / resume surface of the
+     Activity shell (spec 2026-07-25 §Feature-2 -> doc 13 §6 modules -> doc 14
+     rendering). Composes the SHARED chrome verbatim — .board, .annotation,
+     .annotation-conflict, .state-chip, .theme-row/.theme-light/.theme-dark —
+     and invents nothing that duplicates them. Everything new is namespaced
+     s33- so it can never collide once build.py concatenates the fragments.
+     Reads var(--token) / hsl(var(--token)) only; no hex, no redeclared token.
+
+     Deliberate honesty choice: a checkpoint is an OPERATIONAL session digest,
+     not verified knowledge, so it carries NO verification badge (the vault's
+     badge vocabulary would over-claim). It is labelled a "session digest ·
+     not verified knowledge" instead — invariant 23 read into a new surface. */
+
+  .s33-intro { display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
+  .s33-intro h2 { margin: 0; font-size: 21px; font-weight: 640; color: hsl(var(--foreground)); }
+  .s33-intro p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
+  .s33-panel { display: flex; flex-direction: column; gap: 14px; }
+  .s33-region-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+
+  /* run header */
+  .s33-run { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--card)); flex-wrap: wrap; }
+  .s33-run-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .s33-run-id > svg { width: 20px; height: 20px; flex: none; color: hsl(var(--primary)); }
+  .s33-run-id .title { font-size: 14px; font-weight: 620; color: hsl(var(--foreground)); }
+  .s33-run-id .sub { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s33-run-id .sub code { font-family: var(--font-mono); font-size: 11px; }
+  .s33-run-id .sub b { color: hsl(var(--foreground)); font-weight: 600; }
+  .s33-kind { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; border-radius: 999px; color: hsl(var(--muted-foreground)); border: 1px dashed hsl(var(--border)); background: hsl(var(--muted) / 0.4); white-space: nowrap; }
+  .s33-run-meta { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+  /* latest resumable digest card */
+  .s33-digest { border: 1px solid hsl(var(--primary) / 0.35); border-radius: var(--radius-sm); background: hsl(var(--primary) / 0.05); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .s33-digest-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s33-digest-head .when { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .s33-copy { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 10px; border: 1px solid hsl(var(--primary) / 0.5); border-radius: var(--radius-sm); color: hsl(var(--primary)); background: transparent; }
+  .s33-copy svg { width: 13px; height: 13px; flex: none; }
+  .s33-summary { font-size: 13px; line-height: 1.55; color: hsl(var(--foreground)); }
+
+  .s33-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  .s33-col { display: flex; flex-direction: column; gap: 6px; }
+  .s33-col-h { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: hsl(var(--muted-foreground)); }
+  .s33-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .s33-list li { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; color: hsl(var(--foreground)); }
+  .s33-list li svg { width: 13px; height: 13px; flex: none; margin-top: 2px; color: hsl(var(--primary)); }
+  .s33-list.mono li { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s33-list.mono li::before { content: "—"; color: hsl(var(--muted-foreground)); }
+
+  /* history timeline */
+  .s33-tl { display: flex; flex-direction: column; }
+  .s33-tl-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px dashed hsl(var(--border)); font-size: 12.5px; flex-wrap: wrap; }
+  .s33-tl-row:first-child { border-top: none; }
+  .s33-tl-row .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .s33-tl-row .dot.save { background: hsl(var(--primary)); }
+  .s33-tl-row .dot.resume { background: hsl(var(--info)); }
+  .s33-tl-row .t { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); width: 46px; }
+  .s33-tl-row .ev { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--foreground)); }
+  .s33-tl-row .d { color: hsl(var(--muted-foreground)); flex: 1 1 200px; }
+  .s33-tl-row .tok { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  /* the CLAUDE.md managed block that resume writes */
+  .s33-block { margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; color: hsl(var(--foreground)); background: hsl(var(--muted) / 0.4); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 12px 14px; overflow-x: auto; white-space: pre-wrap; }
+  .s33-block .cm { color: hsl(var(--muted-foreground)); }
+  .s33-block .mk { color: hsl(var(--primary)); }
+
+  /* empty */
+  .s33-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 26px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.15); }
+  .s33-empty > svg { width: 26px; height: 26px; color: hsl(var(--muted-foreground)); }
+  .s33-empty .headline { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); }
+  .s33-empty .sub { font-size: 12px; color: hsl(var(--muted-foreground)); max-width: 470px; }
+</style>
+
+<div class="s33-intro">
+  <h2>S33 — Activity &middot; Session checkpoints &amp; resume</h2>
+  <p>
+    The Activity-shell surface for the server-side checkpoint store (spec 2026-07-25 §Feature-2):
+    a run's progress is captured as a compact digest keyed on its <code>origin_key</code> (the
+    agent-run identity, doc 05 §2.1) into <code>session_checkpoints</code>, and <b>resume</b> is a
+    specialised inject &mdash; at session start the latest digest is written into the tool's
+    <code>CLAUDE.md</code> managed block under the inject token budget (doc 15 §3.2), so a fresh
+    session loads a small digest instead of reloading a full context window. Checkpoints are
+    <b>operational digests, not vault knowledge</b>: they carry no verification badge, and every
+    save/resume is journaled to <code>events</code> (doc 04 §8.1).
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<section class="board" id="S33-populated">
+  <h2>Checkpoints &mdash; a run's resumable progress (hero, both themes)</h2>
+  <div class="annotation">
+    One agent-run, its latest resumable digest, and its checkpoint/resume history. The digest is
+    authored by the client in-session (where the context already lives) and stored server-side; this
+    surface reads and renders it. The token estimate is the size of the resume block resume would
+    write &mdash; the whole point is that it is small.
+  </div>
+  <div class="board-body">
+    <div class="theme-row">
+      <div class="theme-light">
+        <div class="s33-panel">
+
+          <div class="s33-run">
+            <div class="s33-run-id">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v18l7-4 7 4V3z"/></svg>
+              <div>
+                <div class="title">Overnight: darkmem feature-epics review</div>
+                <div class="sub"><code>origin_key: cc-run-8f3a2c</code> &middot; project <b>darkmem-core-backend</b></div>
+              </div>
+              <span class="s33-kind">session digest &middot; not verified knowledge</span>
+            </div>
+            <div class="s33-run-meta">5 checkpoints &middot; last 03:12 &middot; ~1,850 tokens</div>
+          </div>
+
+          <div class="s33-digest">
+            <div class="s33-digest-head">
+              <span class="state-chip state-populated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                latest checkpoint
+              </span>
+              <span class="when">saved 03:12 &middot; ~1,850 tokens</span>
+              <span class="s33-copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy resume block</span>
+            </div>
+            <div class="s33-summary">
+              Applied the Fable review to <code>feature-epics.md</code>: 22 confirmed findings landed across two passes
+              (fact-layer retagged <code>rebuild + target-new</code>, T1&ndash;T4 retagged, a groundedness-judge row added
+              to close E2's G-D gate, pointer/wording nits fixed), committed as <code>5492b20</code>. Then added two new
+              features to the list behind a design spec: the detail-level toggle and this session-resume subsystem.
+            </div>
+            <div class="s33-cols">
+              <div class="s33-col">
+                <div class="s33-col-h">next steps</div>
+                <ul class="s33-list">
+                  <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>Update the mockups (S03 simple, C03 toggle, this screen) and rebuild index.html</li>
+                  <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>Initialise the plugin marketplace repo with the README + plan</li>
+                  <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>Commit the docs + mockups</li>
+                </ul>
+              </div>
+              <div class="s33-col">
+                <div class="s33-col-h">key decisions</div>
+                <ul class="s33-list mono">
+                  <li>toggle default = advanced</li>
+                  <li>checkpoints = server-side</li>
+                  <li>plugin = plan-only this pass</li>
+                </ul>
+              </div>
+              <div class="s33-col">
+                <div class="s33-col-h">touched files</div>
+                <ul class="s33-list mono">
+                  <li>docs/planning/feature-epics.md</li>
+                  <li>docs/superpowers/specs/2026-07-25-…md</li>
+                  <li>docs/design/mockups/fragments/*</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="s33-region-label">this run's checkpoint history</div>
+            <div class="s33-tl">
+              <div class="s33-tl-row"><span class="dot resume"></span><span class="t">08:41</span><span class="ev">resumed</span><span class="d">new session loaded the 03:12 digest into CLAUDE.md</span><span class="tok">~1,850</span></div>
+              <div class="s33-tl-row"><span class="dot save"></span><span class="t">03:12</span><span class="ev">checkpoint_saved</span><span class="d">features added behind the spec; ready to update mockups</span><span class="tok">~1,850</span></div>
+              <div class="s33-tl-row"><span class="dot save"></span><span class="t">01:48</span><span class="ev">checkpoint_saved</span><span class="d">Fable review applied + committed 5492b20</span><span class="tok">~1,610</span></div>
+              <div class="s33-tl-row"><span class="dot save"></span><span class="t">00:20</span><span class="ev">checkpoint_saved</span><span class="d">review workflow returned; verdict revise</span><span class="tok">~1,240</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div class="theme-dark">
+        <div class="s33-panel">
+
+          <div class="s33-run">
+            <div class="s33-run-id">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v18l7-4 7 4V3z"/></svg>
+              <div>
+                <div class="title">Overnight: darkmem feature-epics review</div>
+                <div class="sub"><code>origin_key: cc-run-8f3a2c</code> &middot; project <b>darkmem-core-backend</b></div>
+              </div>
+              <span class="s33-kind">session digest &middot; not verified knowledge</span>
+            </div>
+            <div class="s33-run-meta">5 checkpoints &middot; last 03:12 &middot; ~1,850 tokens</div>
+          </div>
+
+          <div class="s33-digest">
+            <div class="s33-digest-head">
+              <span class="state-chip state-populated">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                latest checkpoint
+              </span>
+              <span class="when">saved 03:12 &middot; ~1,850 tokens</span>
+              <span class="s33-copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy resume block</span>
+            </div>
+            <div class="s33-summary">
+              Applied the Fable review to <code>feature-epics.md</code>: 22 confirmed findings landed across two passes
+              (fact-layer retagged <code>rebuild + target-new</code>, T1&ndash;T4 retagged, a groundedness-judge row added
+              to close E2's G-D gate, pointer/wording nits fixed), committed as <code>5492b20</code>. Then added two new
+              features to the list behind a design spec: the detail-level toggle and this session-resume subsystem.
+            </div>
+            <div class="s33-cols">
+              <div class="s33-col">
+                <div class="s33-col-h">next steps</div>
+                <ul class="s33-list">
+                  <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>Update the mockups (S03 simple, C03 toggle, this screen) and rebuild index.html</li>
+                  <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>Initialise the plugin marketplace repo with the README + plan</li>
+                  <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>Commit the docs + mockups</li>
+                </ul>
+              </div>
+              <div class="s33-col">
+                <div class="s33-col-h">key decisions</div>
+                <ul class="s33-list mono">
+                  <li>toggle default = advanced</li>
+                  <li>checkpoints = server-side</li>
+                  <li>plugin = plan-only this pass</li>
+                </ul>
+              </div>
+              <div class="s33-col">
+                <div class="s33-col-h">touched files</div>
+                <ul class="s33-list mono">
+                  <li>docs/planning/feature-epics.md</li>
+                  <li>docs/superpowers/specs/2026-07-25-…md</li>
+                  <li>docs/design/mockups/fragments/*</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="s33-region-label">this run's checkpoint history</div>
+            <div class="s33-tl">
+              <div class="s33-tl-row"><span class="dot resume"></span><span class="t">08:41</span><span class="ev">resumed</span><span class="d">new session loaded the 03:12 digest into CLAUDE.md</span><span class="tok">~1,850</span></div>
+              <div class="s33-tl-row"><span class="dot save"></span><span class="t">03:12</span><span class="ev">checkpoint_saved</span><span class="d">features added behind the spec; ready to update mockups</span><span class="tok">~1,850</span></div>
+              <div class="s33-tl-row"><span class="dot save"></span><span class="t">01:48</span><span class="ev">checkpoint_saved</span><span class="d">Fable review applied + committed 5492b20</span><span class="tok">~1,610</span></div>
+              <div class="s33-tl-row"><span class="dot save"></span><span class="t">00:20</span><span class="ev">checkpoint_saved</span><span class="d">review workflow returned; verdict revise</span><span class="tok">~1,240</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="annotation annotation-conflict">
+    <b>A checkpoint is operational, not knowledge (invariant 23).</b> It renders a
+    <span class="s33-kind" style="vertical-align:middle;">session digest &middot; not verified knowledge</span>
+    label, never a verification badge &mdash; a checkpoint is a run's working state, not a corroborated fact, and
+    dressing it in the vault's badge vocabulary would over-claim. Checkpoints never enter the Facts / Articles vault,
+    and the resume inject that carries them is a delivery of stored state, not a second ranking path (invariant 17).
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S33-resume-block">
+  <h2>Resume &mdash; the digest written into CLAUDE.md at session start</h2>
+  <div class="annotation">
+    Shown in one theme. Resume is a specialised inject (doc 15 §3.2): the client fetches
+    <code>checkpoint_latest</code> for <code>(project, origin_key)</code> and rewrites a marker-bounded
+    managed block in <code>CLAUDE.md</code>, strip-before-rewrite so a re-resume never duplicates. The block
+    is small on purpose &mdash; this is the whole point of the feature: the new session reads ~1,850 tokens of
+    digest instead of reloading a full context window whose prompt cache has expired.
+  </div>
+  <div class="board-body">
+    <pre class="s33-block"><span class="cm">&lt;!-- darkmem:resume:begin &mdash; project darkmem-core-backend &middot; run cc-run-8f3a2c &middot; saved 03:12 &middot; ~1,850 tokens --&gt;</span>
+<span class="mk">## Resume &mdash; where you left off</span>
+Applied the Fable review to feature-epics.md (22 findings, committed 5492b20), then added
+two new features behind docs/superpowers/specs/2026-07-25-detail-level-and-session-resume-design.md:
+the Simple/Advanced detail toggle and this server-side session-resume subsystem.
+
+<span class="mk">### Next steps</span>
+1. Update the mockups (S03 simple state, C03 detail toggle, S33 checkpoints) and rebuild index.html
+2. Initialise D:\Repositories\Personal\claude-code-plugins with the README + plugin plan
+3. Commit the docs + mockups
+
+<span class="mk">### Decisions</span>
+- detail toggle default = advanced; simple hides numbers/jargon, never honesty labels
+- checkpoints = server-side (session_checkpoints table + endpoints + MCP), plugin planned separately
+
+<span class="cm">&lt;!-- darkmem:resume:end --&gt;</span></pre>
+  </div>
+  <div class="annotation">
+    <b>The block is the darkmem region and nothing else.</b> The writer may read the whole file but only
+    replaces the bytes between the two sentinel comments, so a human's own <code>CLAUDE.md</code> rules above
+    or below survive every refresh (the same strip-before-rewrite discipline that makes re-extraction idempotent).
+    Every write journals a <code>resumed</code> event, so the run timeline in the hero board above shows exactly
+    when a fresh session picked the digest up.
+  </div>
+</section>
+
+<!-- ============================================================= -->
+<section class="board" id="S33-empty">
+  <h2>Checkpoints &mdash; empty (no checkpoint for this run yet)</h2>
+  <div class="annotation">
+    Shown in one theme. The honest empty state distinguishes "this run has written no checkpoint yet" from any
+    error &mdash; it is a working state with a clear call to action, not an absence to hide (doc 13 §8).
+  </div>
+  <div class="board-body">
+    <div class="s33-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 3v18l7-4 7 4V3z" stroke-dasharray="3 3"/></svg>
+      <span class="headline">No checkpoints for this run yet</span>
+      <span class="sub">Run <code>/darkmem-checkpoint</code> (or let the session-end hook fire) to capture a
+        resumable digest. Once one exists, a fresh session resumes from it with <code>/darkmem-resume</code>
+        instead of reloading the whole context.</span>
+    </div>
+  </div>
+</section>

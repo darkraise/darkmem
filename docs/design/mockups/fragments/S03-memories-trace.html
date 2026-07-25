@@ -184,6 +184,27 @@
   }
   .s03-empty-body .headline { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); }
   .s03-empty-body .sub { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  /* ---- simple-view: the plain "why it ranked" line that replaces the
+     region-4 numeric breakdown when the viewer's detail-level preference is
+     `simple` (spec 2026-07-25 §Feature-1). Hides numbers/jargon, never a
+     honesty label — badges, layer chips, and the exclusion strip stay. ---- */
+  .s03-mode-chip {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px; color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border)); background: hsl(var(--muted));
+  }
+  .s03-mode-chip svg { width: 12px; height: 12px; flex: none; }
+  .s03-mode-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .s03-mode-row .hint { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+  .s03-why {
+    display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+    color: hsl(var(--muted-foreground)); padding: 7px 10px;
+    border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.35);
+  }
+  .s03-why svg { width: 14px; height: 14px; flex: none; color: hsl(var(--primary)); }
+  .s03-why b { color: hsl(var(--foreground)); font-weight: 600; }
 </style>
 
 <!-- ================================================================= -->
@@ -695,5 +716,162 @@
         <span class="sub">not "no matches": the semantic and keyword channels both found candidates; the context conflict removed all of them. Drop the context chip or switch to <code>env=dev</code> to see them.</span>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="board" id="S03-trace-simple">
+  <h2>S03 — Trace panel: Simple view (detail-level = simple)</h2>
+  <div class="annotation">
+    The same request as the hero above, rendered under the viewer's
+    <b>detail-level = simple</b> preference (spec 2026-07-25 §Feature-1) — a per-viewer,
+    localStorage display choice, <b>default is advanced</b>, flipped from the global-chrome
+    toggle (C03). Simple hides the <i>technical / numeric</i> detail a non-technical reader
+    reads as noise — the region-4 score bars, the <code>rank_fusion_factor</code> arm
+    breakdown, the <code>rrf_score</code> value, the envelope weights line, and the raw ids —
+    and replaces the breakdown with one plain &ldquo;why it ranked&rdquo; line. Shown in one
+    theme (theme parity is guaranteed by the shared toggle, per the fragment protocol).
+  </div>
+  <div class="board-body">
+    <div class="s03-panel">
+
+      <div class="s03-mode-row">
+        <span class="s03-mode-chip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 5v-2M12 21v-2M5 12H3M21 12h-2"/></svg>
+          simple view
+        </span>
+        <span class="hint">the numbers are one toggle away — switch to Advanced in the top bar to see every score, arm, and id</span>
+      </div>
+
+      <!-- region 1, plain -->
+      <div>
+        <div class="s03-region-label">what you searched</div>
+        <div class="s03-envelope">
+          <div class="query"><span class="q-label">query</span>&ldquo;does cookie_secure default to enabled in production?&rdquo;</div>
+        </div>
+      </div>
+
+      <!-- region 2 KEPT verbatim — exclusion counts are an honesty signal, never hidden -->
+      <div>
+        <div class="s03-region-label">what was left out (always shown)</div>
+        <div class="s03-exclusion-strip">
+          <div class="s03-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>3 facts excluded by context conflict</b> — your active context <code>env=prod</code> conflicts with a dev-only row</span>
+          </div>
+          <div class="s03-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>2 rows excluded</b> — outside the current project</span>
+          </div>
+          <div class="s03-exclusion-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>1 row excluded</b> — it was superseded, not current</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Facts -->
+      <div class="s03-section">
+        <h3>Facts <span class="count">1 result</span></h3>
+        <div class="s03-row">
+          <div class="s03-row-top">
+            <span class="layer-chip l2">L2 · fact</span>
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+            <span class="claim">cookie_secure defaults to Secure-only-in-production (tri-state; unset = secure when environment=production)</span>
+          </div>
+          <div class="s03-context-line">
+            <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>fits your context</span>
+          </div>
+          <div class="s03-why">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c.8.7 1 1.3 1 2h6c0-.7.2-1.3 1-2a6 6 0 0 0-4-10Z"/></svg>
+            <span><b>Why it ranked:</b> strong wording and keyword match, and it fits your current context.</span>
+          </div>
+
+          <div class="s03-group-relation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v6a4 4 0 0 0 4 4h8"/><path d="M14 10l4 4-4 4"/></svg>
+            supports the fact above
+          </div>
+          <div class="s03-row nested">
+            <div class="s03-row-top">
+              <span class="layer-chip l0">L0 · memory</span>
+              <span class="claim">&ldquo;COOKIE_SECURE=false unblocks plain-HTTP LAN logins for the LXC deploy&rdquo;</span>
+            </div>
+            <div class="s03-context-line">
+              <span class="s03-provenance-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="16.5" r=".6" fill="currentColor" stroke="none"/></svg>
+                context guessed by AI, not confirmed
+              </span>
+            </div>
+            <div class="s03-why">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c.8.7 1 1.3 1 2h6c0-.7.2-1.3 1-2a6 6 0 0 0-4-10Z"/></svg>
+              <span><b>Why:</b> it supports the fact above; moderate wording match.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Articles -->
+      <div class="s03-section">
+        <h3>Articles <span class="count">1 result</span></h3>
+        <div class="s03-row">
+          <div class="s03-row-top">
+            <span class="layer-chip l3">L3 · article</span>
+            <span class="badge corroborated">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3"/><path d="M9 15l-3 3 3 3"/></svg>
+              corroborated
+            </span>
+            <span class="claim">&ldquo;Cookie &amp; session security — target design&rdquo;</span>
+          </div>
+          <div class="s03-context-line">
+            <span class="s03-ctx-chip match"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>fits your context</span>
+          </div>
+          <div class="s03-why">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c.8.7 1 1.3 1 2h6c0-.7.2-1.3 1-2a6 6 0 0 0-4-10Z"/></svg>
+            <span><b>Why it ranked:</b> good wording and keyword match, and it fits your current context.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Memory -->
+      <div class="s03-section">
+        <h3>Memory <span class="count">1 result</span></h3>
+        <div class="s03-row">
+          <div class="s03-row-top">
+            <span class="layer-chip l0">L0 · memory</span>
+            <span class="claim">&ldquo;trust_proxy_headers defaults to True; cookie_secure is tri-state, explicit false allows plain-HTTP LAN login&rdquo;</span>
+          </div>
+          <div class="s03-context-line">
+            <span class="s03-ctx-chip neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>no context set</span>
+          </div>
+          <div class="s03-why">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c.8.7 1 1.3 1 2h6c0-.7.2-1.3 1-2a6 6 0 0 0-4-10Z"/></svg>
+            <span><b>Why it ranked:</b> moderate wording match.</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="annotation annotation-conflict">
+    <b>Simple hides jargon, never honesty (invariant 14, doc 13 §5.4/§8).</b> Everything the
+    design forbids hiding still renders here: the verification <b>badges</b> (verbatim
+    <code>corroborated</code>, never softened to &ldquo;true&rdquo;), the <b>layer chips</b>,
+    the <b>context-guessed-by-AI</b> provenance marker, and the whole <b>exclusion strip</b>
+    (&ldquo;3 facts excluded by context conflict&rdquo;) — surfaced, never buried. What went
+    away is only the numeric explanation: the semantic / keyword / ppr / dual_level / rerank
+    bars, the <code>rank_fusion_factor</code> arm breakdown, the <code>rrf_score</code> value,
+    the weights snapshot, and the raw ids.
+  </div>
+  <div class="annotation">
+    <b>A rephrase, not a drop.</b> The region-4 breakdown collapses to one plain
+    &ldquo;why it ranked&rdquo; line so the row still explains itself, and the boost multiplier
+    (<code>&times;1.18</code>) becomes the plain outcome chip &ldquo;fits your context.&rdquo;
+    The preference is per-viewer and client-side (localStorage) — it changes what this panel
+    <i>renders</i>, never what the backend computed; the same request under detail-level =
+    advanced is the hero board at the top of this screen.
   </div>
 </section>

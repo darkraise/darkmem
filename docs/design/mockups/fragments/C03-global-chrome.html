@@ -126,6 +126,21 @@
   .c03-refetch-list { display: flex; flex-direction: column; gap: 6px; }
   .c03-refetch-row { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-wrap: wrap; }
   .c03-refetch-row .key { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+  /* the detail-level toggle — a per-viewer display preference (localStorage),
+     sibling to the theme switch, not a scope control (spec 2026-07-25
+     §Feature-1). Namespaced c03- like the rest of this reference board. */
+  .c03-detail-toggle {
+    display: inline-flex; align-items: center; border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm); overflow: hidden;
+  }
+  .c03-detail-toggle .seg {
+    display: flex; align-items: center; gap: 5px; padding: 5px 9px; font-size: 12px;
+    color: hsl(var(--muted-foreground)); white-space: nowrap;
+  }
+  .c03-detail-toggle .seg svg { width: 12px; height: 12px; flex: none; }
+  .c03-detail-toggle .seg + .seg { border-left: 1px solid hsl(var(--border)); }
+  .c03-detail-toggle .seg.on { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); font-weight: 600; }
 </style>
 
 <section class="board" id="C03-global-chrome">
@@ -205,6 +220,10 @@
                 <span>context: env=dev</span>
                 <span class="clear">✕</span>
               </div>
+              <div class="c03-detail-toggle">
+                <span class="seg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>Simple</span>
+                <span class="seg on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Advanced</span>
+              </div>
               <div class="c03-palette-trigger">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
                 Search or jump to…
@@ -278,6 +297,10 @@
                 <span>context: env=dev</span>
                 <span class="clear">✕</span>
               </div>
+              <div class="c03-detail-toggle">
+                <span class="seg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>Simple</span>
+                <span class="seg on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Advanced</span>
+              </div>
               <div class="c03-palette-trigger">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
                 Search or jump to…
@@ -301,6 +324,20 @@
       doc 13 §3 names explicitly. Rendered separately, each stays honest about what it does: switching
       project changes what data set is visible; setting or clearing the context chip changes which
       facts in that data set apply.
+    </div>
+
+    <div class="annotation">
+      <b>The detail-level toggle (Simple / Advanced) is a third top-bar control — a per-viewer
+      display preference, not a scope control.</b> Like the theme switch, it is a client-side
+      choice persisted in <code>localStorage</code> (default <b>Advanced</b>), and it changes only
+      what surfaces <i>render</i>, never the <code>project</code> scope, the declared context, or
+      anything the backend computes. <b>Simple</b> hides technical / numeric detail (the
+      why-retrieved score bars, the <code>rank_fusion_factor</code> arm breakdown,
+      <code>rrf_score</code>, fingerprints, raw <code>config</code> keys) but never an honesty
+      label — verification badges, superseded / stale markers, and exclusion counts always render
+      (invariant 14, spec 2026-07-25 §Feature-1). It lives in the chrome, not the flattened
+      six-tab Settings surface (doc 13 §7), because it is the same category of per-viewer display
+      preference as theme.
     </div>
 
     <div class="annotation">

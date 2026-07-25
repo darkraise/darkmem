@@ -1,0 +1,907 @@
+<style>
+  /* ============================================================
+     darkmem Design System — a faithful reference for darkraise-ui@3.1.2
+     as darkmem configures it (accent indigo · surface slate · preset
+     default · mode dark), plus darkmem's own domain patterns.
+
+     Every color token below is the REAL value emitted by the package's
+     generateTokens() (verified by running it against the installed
+     darkraise-ui, not hand-derived). Consumption follows the package
+     convention exactly: semantic role tokens are bare "H S% L%" triplets
+     read as hsl(var(--role)); --chart-1..5 are pre-wrapped hsl(...).
+     Components are replicated to the shipped dr-* anatomy; darkmem
+     patterns are namespaced dm-*. The reference chrome is ds-*.
+
+     Fonts: darkraise-ui's own stacks (Inter / JetBrains Mono) with a
+     system fallback — the CSP blocks font CDNs and the package itself
+     falls back to system fonts when the faces aren't installed.
+     ============================================================ */
+
+  :root {
+    /* mode-independent (CSS-provided; radius=rounded, density=cozy, elevation=medium) */
+    --radius: 0.5rem;
+    --radius-lg: 0.5rem;
+    --radius-md: calc(0.5rem - 2px);
+    --radius-sm: calc(0.5rem - 4px);
+    --radius-button: 0.5rem;
+    --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-heading: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --density-cell: 2rem;
+    --density-button-px: 0.75rem;
+    --density-button-py: 0.5rem;
+    --density-input-px: 0.75rem;
+    --density-input-py: 0.5rem;
+    --density-container-p: 1rem;
+
+    /* dark · indigo — the darkmem default (no-JS fallback; JS re-applies on switch) */
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 239 84% 67%;
+    --focus-ring: 228 96% 89%;
+    --background: 229 84% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 52%;
+    --success-foreground: 0 0% 100%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 222 47% 11%;
+    --info: 213 94% 68%;
+    --info-foreground: 0 0% 100%;
+    --border: 215 25% 27%;
+    --input: 215 25% 27%;
+    --surface-base: 229 84% 5%;
+    --surface-raised: 222 47% 11%;
+    --surface-overlay: 217 33% 17%;
+    --surface-sunken: 229 84% 5%;
+    --surface-sidebar: 229 84% 5%;
+    --sidebar-foreground: 213 27% 84%;
+    --sidebar-foreground-muted: 215 16% 47%;
+    --sidebar-border: 0 0% 100% / 0.1;
+    --sidebar-hover-bg: 239 84% 67% / 0.15;
+    --surface-header: 222 47% 11%;
+    --border-subtle: 217 33% 17%;
+    --chart-1: hsl(234 89% 74%);
+    --chart-2: hsl(292 91% 73%);
+    --chart-3: hsl(0 91% 71%);
+    --chart-4: hsl(48 96% 53%);
+    --chart-5: hsl(158 64% 52%);
+    --shadow-dropdown: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+
+  * { box-sizing: border-box; }
+
+  body,
+  .ds-root {
+    margin: 0;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, .mono { font-family: var(--font-mono); }
+
+  /* ---------- reference chrome (ds-) ---------- */
+  .ds-topbar {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 24px;
+    background: hsl(var(--surface-header) / 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .ds-brand { display: flex; align-items: center; gap: 10px; font-weight: 680; font-size: 15px; }
+  .ds-brand svg { width: 20px; height: 20px; color: hsl(var(--primary)); }
+  .ds-brand .sub { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 400; }
+  .ds-topbar-spacer { flex: 1 1 24px; }
+
+  .ds-mode {
+    display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); overflow: hidden;
+  }
+  .ds-mode button {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; font-size: 12.5px;
+    background: transparent; color: hsl(var(--muted-foreground)); border: 0; cursor: pointer; font-family: var(--font-sans);
+  }
+  .ds-mode button svg { width: 13px; height: 13px; }
+  .ds-mode button[aria-pressed="true"] { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); font-weight: 600; }
+  .ds-mode button + button { border-left: 1px solid hsl(var(--border)); }
+
+  .ds-accents { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .ds-accents .lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin-right: 2px; }
+  .ds-swatch {
+    width: 20px; height: 20px; border-radius: 6px; border: 1px solid hsl(0 0% 100% / 0.14);
+    cursor: pointer; padding: 0; position: relative;
+  }
+  .ds-swatch[aria-pressed="true"] { outline: 2px solid hsl(var(--focus-ring)); outline-offset: 2px; }
+
+  .ds-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 0; max-width: 1280px; margin: 0 auto; }
+  @media (max-width: 900px) { .ds-layout { grid-template-columns: 1fr; } .ds-rail { display: none; } }
+
+  .ds-rail { position: sticky; top: 61px; align-self: start; height: calc(100vh - 61px); overflow-y: auto; padding: 20px 12px; border-right: 1px solid hsl(var(--border)); }
+  .ds-rail a { display: block; padding: 6px 10px; border-radius: var(--radius-sm); color: hsl(var(--sidebar-foreground)); text-decoration: none; font-size: 13px; }
+  .ds-rail a:hover { background: hsl(var(--sidebar-hover-bg)); color: hsl(var(--foreground)); }
+  .ds-rail .grp { font-family: var(--font-mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: hsl(var(--muted-foreground)); padding: 14px 10px 4px; }
+
+  .ds-main { padding: 28px 24px 96px; min-width: 0; }
+  .ds-hero { margin-bottom: 20px; }
+  .ds-hero h1 { font-family: var(--font-heading); font-size: 30px; line-height: 1.15; font-weight: 720; letter-spacing: -.02em; text-wrap: balance; margin: 0 0 8px; }
+  .ds-hero p { color: hsl(var(--muted-foreground)); font-size: 15px; max-width: 68ch; margin: 0; }
+
+  .ds-section { margin-top: 40px; scroll-margin-top: 76px; }
+  .ds-section > h2 { font-family: var(--font-heading); font-size: 21px; font-weight: 660; letter-spacing: -.01em; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; }
+  .ds-section > h2 .n { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+  .ds-section > .lede { color: hsl(var(--muted-foreground)); font-size: 13.5px; margin: 0 0 18px; max-width: 74ch; }
+
+  .ds-sub { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin: 22px 0 10px; }
+
+  /* a specimen surface — where components are shown */
+  .ds-specimen {
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg);
+    background: hsl(var(--surface-sunken) / 0.4);
+    padding: 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  }
+  .ds-specimen.col { flex-direction: column; align-items: stretch; }
+  .ds-note { font-size: 12.5px; color: hsl(var(--muted-foreground)); margin: 8px 0 0; max-width: 74ch; }
+  .ds-note code, .ds-inline-code { font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground)); background: hsl(var(--muted) / 0.6); padding: 1px 5px; border-radius: 4px; }
+
+  .ds-grid { display: grid; gap: 12px; }
+  .ds-grid.tokens { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .ds-grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .ds-grid.three { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+  /* token swatch card */
+  .ds-tok { border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); overflow: hidden; background: hsl(var(--card)); }
+  .ds-tok .chip { height: 52px; }
+  .ds-tok .meta { padding: 7px 10px; }
+  .ds-tok .meta .role { font-size: 12px; font-weight: 600; }
+  .ds-tok .meta .val { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  table.ds-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.ds-table th, table.ds-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid hsl(var(--border)); vertical-align: top; }
+  table.ds-table th { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: hsl(var(--muted-foreground)); font-weight: 500; }
+  table.ds-table td.mono, table.ds-table .mono { font-family: var(--font-mono); font-size: 12px; }
+  .ds-table-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); }
+
+  /* ============================================================
+     darkraise-ui component replicas (dr-*) — matched to the shipped
+     anatomy in dist/styles.css (@layer components).
+     ============================================================ */
+
+  .dr-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    border-radius: var(--radius-button); font-size: .875rem; line-height: 1.25rem; font-weight: 500;
+    font-family: var(--font-sans); cursor: pointer; border: 1px solid transparent;
+    min-height: var(--density-cell); padding: var(--density-button-py) var(--density-button-px);
+    white-space: nowrap; transition: background-color .15s, color .15s, border-color .15s;
+  }
+  .dr-btn svg { width: 1rem; height: 1rem; }
+  .dr-btn:focus-visible { outline: 2px solid hsl(var(--focus-ring)); outline-offset: 2px; }
+  .dr-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .dr-btn[data-variant="default"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .dr-btn[data-variant="default"]:hover:not(:disabled) { background: color-mix(in srgb, hsl(var(--primary)) 90%, black); }
+  .dr-btn[data-variant="secondary"] { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-color: hsl(var(--border)); }
+  .dr-btn[data-variant="secondary"]:hover:not(:disabled) { background: color-mix(in srgb, hsl(var(--secondary)) 85%, white); }
+  .dr-btn[data-variant="outline"] { background: transparent; color: hsl(var(--foreground)); border-color: hsl(var(--primary) / 0.6); }
+  .dr-btn[data-variant="outline"]:hover:not(:disabled) { background: hsl(var(--accent)); }
+  .dr-btn[data-variant="ghost"] { background: transparent; color: hsl(var(--muted-foreground)); border-color: transparent; }
+  .dr-btn[data-variant="ghost"]:hover:not(:disabled) { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+  .dr-btn[data-variant="destructive"] { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+  .dr-btn[data-variant="link"] { background: transparent; color: hsl(var(--primary)); border: 0; min-height: auto; padding: 0; }
+  .dr-btn[data-variant="link"]:hover { text-decoration: underline; }
+  .dr-btn[data-size="sm"] { min-height: 1.75rem; padding: .25rem .625rem; font-size: .8125rem; }
+  .dr-btn[data-size="lg"] { min-height: 2.5rem; padding: .625rem 1rem; }
+  .dr-btn[data-size="icon"] { width: var(--density-cell); aspect-ratio: 1; padding: 0; }
+
+  .dr-badge { display: inline-flex; align-items: center; gap: .3rem; border-radius: 9999px; border: 1px solid transparent; font-weight: 600; font-family: var(--font-sans); line-height: 1; }
+  .dr-badge svg { width: 12px; height: 12px; }
+  .dr-badge[data-size="sm"] { padding: .125rem .5rem; font-size: 10px; }
+  .dr-badge[data-size="md"], .dr-badge:not([data-size]) { padding: .15rem .625rem; font-size: .75rem; }
+  .dr-badge[data-size="lg"] { padding: .25rem .75rem; font-size: .875rem; }
+  .dr-badge[data-variant="default"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .dr-badge[data-variant="secondary"] { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+  .dr-badge[data-variant="destructive"] { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+  .dr-badge[data-variant="outline"] { color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+
+  .dr-card { background: hsl(var(--card)); color: hsl(var(--card-foreground)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); }
+  .dr-card-header { display: flex; flex-direction: column; gap: .375rem; padding: var(--density-container-p); }
+  .dr-card-title { font-family: var(--font-heading); font-size: 1.125rem; line-height: 1.5rem; font-weight: 640; letter-spacing: -.01em; margin: 0; }
+  .dr-card-description { color: hsl(var(--muted-foreground)); font-size: .8125rem; margin: 0; }
+  .dr-card-content { padding: var(--density-container-p); padding-top: 0; }
+  .dr-card-footer { display: flex; align-items: center; gap: .5rem; padding: var(--density-container-p); padding-top: 0; }
+
+  .dr-stat { display: flex; flex-direction: column; gap: .25rem; }
+  .dr-stat-label { color: hsl(var(--muted-foreground)); font-size: .75rem; font-weight: 500; }
+  .dr-stat-value { font-size: 1.5rem; line-height: 1.85rem; font-weight: 640; font-variant-numeric: tabular-nums; }
+  .dr-stat-change { display: inline-flex; align-items: center; gap: .25rem; font-size: .75rem; font-weight: 500; }
+  .dr-stat-change svg { width: 13px; height: 13px; }
+  .dr-stat-change[data-direction="up"] { color: hsl(var(--success)); }
+  .dr-stat-change[data-direction="down"] { color: hsl(var(--destructive)); }
+  .dr-stat-change[data-direction="flat"] { color: hsl(var(--muted-foreground)); }
+
+  .dr-input, .dr-textarea, .dr-select-trigger {
+    display: flex; align-items: center; width: 100%; border: 1px solid hsl(var(--input));
+    background: hsl(var(--card)); color: hsl(var(--card-foreground));
+    border-radius: var(--radius-md); padding: var(--density-input-py) var(--density-input-px);
+    font-size: .875rem; font-family: var(--font-sans);
+  }
+  .dr-textarea { min-height: 76px; align-items: flex-start; }
+  .dr-input::placeholder, .dr-textarea::placeholder { color: hsl(var(--muted-foreground)); }
+  .dr-input:focus-visible, .dr-textarea:focus-visible, .dr-select-trigger:focus-visible { outline: 2px solid hsl(var(--focus-ring)); outline-offset: 1px; }
+  .dr-select-trigger { justify-content: space-between; cursor: pointer; }
+  .dr-select-trigger svg { width: 15px; height: 15px; color: hsl(var(--muted-foreground)); }
+  .dr-select-trigger[data-placeholder] { color: hsl(var(--muted-foreground)); }
+  .dr-label { font-size: .8125rem; font-weight: 550; display: inline-block; margin-bottom: 6px; }
+
+  .dr-switch { position: relative; width: 36px; height: 20px; border-radius: 9999px; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); cursor: pointer; flex: none; padding: 0; transition: background .15s; }
+  .dr-switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: hsl(var(--muted-foreground)); transition: left .15s, background .15s; }
+  .dr-switch[aria-checked="true"] { background: hsl(var(--primary)); border-color: hsl(var(--primary)); }
+  .dr-switch[aria-checked="true"]::after { left: 17px; background: hsl(var(--primary-foreground)); }
+  .dr-switch:focus-visible { outline: 2px solid hsl(var(--focus-ring)); outline-offset: 2px; }
+
+  .dr-checkbox { width: 18px; height: 18px; border-radius: var(--radius-sm); border: 1px solid hsl(var(--border)); background: hsl(var(--card)); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; padding: 0; }
+  .dr-checkbox[aria-checked="true"] { background: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .dr-checkbox svg { width: 12px; height: 12px; opacity: 0; }
+  .dr-checkbox[aria-checked="true"] svg { opacity: 1; }
+  .dr-checkbox:focus-visible { outline: 2px solid hsl(var(--focus-ring)); outline-offset: 2px; }
+
+  .dr-radio { width: 18px; height: 18px; border-radius: 50%; border: 1px solid hsl(var(--border)); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .dr-radio[data-checked]::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--primary)); }
+  .dr-radio[data-checked] { border-color: hsl(var(--primary)); }
+
+  .dr-tabs-list { display: inline-flex; gap: 2px; padding: 4px; border-radius: var(--radius-md); background: hsl(var(--muted) / 0.6); }
+  .dr-tabs-list[data-variant="underline"] { background: transparent; padding: 0; gap: 18px; border-bottom: 1px solid hsl(var(--border)); border-radius: 0; }
+  .dr-tabs-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-sm); font-size: .8125rem; font-weight: 500; color: hsl(var(--muted-foreground)); background: transparent; border: 0; cursor: pointer; font-family: var(--font-sans); }
+  .dr-tabs-trigger[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .dr-tabs-list[data-variant="underline"] .dr-tabs-trigger { border-radius: 0; padding: 8px 2px; border-bottom: 2px solid transparent; }
+  .dr-tabs-list[data-variant="underline"] .dr-tabs-trigger[aria-selected="true"] { background: transparent; color: hsl(var(--primary)); border-bottom-color: hsl(var(--primary)); }
+
+  .dr-toggle-group { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); overflow: hidden; }
+  .dr-toggle { padding: 6px 11px; font-size: .8125rem; background: transparent; color: hsl(var(--muted-foreground)); border: 0; cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 6px; }
+  .dr-toggle svg { width: 14px; height: 14px; }
+  .dr-toggle + .dr-toggle { border-left: 1px solid hsl(var(--border)); }
+  .dr-toggle[aria-pressed="true"] { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); font-weight: 600; }
+
+  .dr-alert { display: flex; gap: 12px; padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+  .dr-alert svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+  .dr-alert .title { font-weight: 600; font-size: 13.5px; }
+  .dr-alert .desc { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .dr-alert[data-variant="info"] { border-color: hsl(var(--info) / 0.4); background: hsl(var(--info) / 0.08); }
+  .dr-alert[data-variant="info"] svg { color: hsl(var(--info)); }
+  .dr-alert[data-variant="success"] { border-color: hsl(var(--success) / 0.4); background: hsl(var(--success) / 0.08); }
+  .dr-alert[data-variant="success"] svg { color: hsl(var(--success)); }
+  .dr-alert[data-variant="warning"] { border-color: hsl(var(--warning) / 0.45); background: hsl(var(--warning) / 0.08); }
+  .dr-alert[data-variant="warning"] svg { color: hsl(var(--warning)); }
+  .dr-alert[data-variant="destructive"] { border-color: hsl(var(--destructive) / 0.45); background: hsl(var(--destructive) / 0.08); }
+  .dr-alert[data-variant="destructive"] svg { color: hsl(var(--destructive)); }
+
+  .dr-skeleton { border-radius: var(--radius-md); background: hsl(var(--muted)); animation: ds-pulse 1.6s ease-in-out infinite; }
+  @keyframes ds-pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+  .dr-spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid hsl(var(--muted)); border-top-color: hsl(var(--primary)); animation: ds-spin .7s linear infinite; }
+  @keyframes ds-spin { to { transform: rotate(360deg); } }
+  .dr-progress { height: 8px; border-radius: 9999px; background: hsl(var(--muted)); overflow: hidden; }
+  .dr-progress > span { display: block; height: 100%; background: hsl(var(--primary)); border-radius: 9999px; }
+  .dr-avatar { width: 40px; height: 40px; border-radius: 50%; background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none; }
+  .dr-separator { height: 1px; background: hsl(var(--border)); border: 0; }
+  .dr-kbd { font-family: var(--font-mono); font-size: 10.5px; padding: 1px 5px; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+  .dr-tooltip { display: inline-block; background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 5px 9px; font-size: 12px; box-shadow: var(--shadow-dropdown); }
+  .dr-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 30px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius-md); }
+  .dr-empty svg { width: 26px; height: 26px; color: hsl(var(--muted-foreground)); }
+  .dr-empty .h { font-weight: 600; font-size: 13.5px; }
+  .dr-empty .s { font-size: 12.5px; color: hsl(var(--muted-foreground)); max-width: 44ch; }
+
+  .dr-menu { min-width: 200px; background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); padding: 4px; box-shadow: var(--shadow-dropdown); }
+  .dr-menu-item { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; }
+  .dr-menu-item svg { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); }
+  .dr-menu-item:hover, .dr-menu-item[data-active] { background: hsl(var(--accent)); }
+  .dr-menu-item .hint { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .dr-menu-sep { height: 1px; background: hsl(var(--border)); margin: 4px 0; }
+
+  /* dialog (interactive) */
+  .dr-dialog-overlay { position: fixed; inset: 0; background: hsl(0 0% 0% / 0.55); z-index: 60; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .dr-dialog-overlay[data-open] { display: flex; }
+  .dr-dialog-content { width: 100%; max-width: 480px; background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.5); }
+  .dr-dialog-title { font-family: var(--font-heading); font-size: 1.125rem; font-weight: 640; margin: 0; }
+  .dr-dialog-desc { font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0; }
+  .dr-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+  .dr-table-scroll { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); }
+  table.dr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.dr-table thead th { text-align: left; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: hsl(var(--muted-foreground)); font-weight: 500; padding: 9px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / 0.35); }
+  table.dr-table td { padding: 9px 12px; border-bottom: 1px solid hsl(var(--border-subtle)); }
+  table.dr-table tbody tr:hover { background: hsl(var(--accent) / 0.5); }
+
+  /* ============================================================
+     darkmem domain patterns (dm-*)
+     ============================================================ */
+
+  /* verification ladder badges */
+  .dm-badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 9999px; border: 1px solid transparent; font-size: 11.5px; font-weight: 600; padding: 3px 9px; }
+  .dm-badge svg { width: 12px; height: 12px; }
+  .dm-badge.confirmed { color: hsl(var(--success)); border-color: hsl(var(--success) / 0.5); background: hsl(var(--success) / 0.12); }
+  .dm-badge.corroborated { color: hsl(var(--primary)); border-color: hsl(var(--primary) / 0.5); background: hsl(var(--primary) / 0.12); }
+  .dm-badge.candidate { color: hsl(var(--muted-foreground)); border: 1px dashed hsl(var(--border)); background: hsl(var(--muted) / 0.5); }
+  .dm-badge.disputed { color: hsl(var(--warning)); border-color: hsl(var(--warning) / 0.5); background: hsl(var(--warning) / 0.12); }
+  .dm-badge.superseded { color: hsl(var(--warning)); border-color: hsl(var(--warning) / 0.5); background: hsl(var(--warning) / 0.1); }
+
+  /* layer chips */
+  .dm-layer { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: var(--radius-sm); border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+  .dm-layer.l0 { color: hsl(var(--muted-foreground)); }
+  .dm-layer.l1 { color: hsl(var(--chart-3)); border-color: hsl(var(--chart-3) / 0.4); }
+  .dm-layer.l2 { color: hsl(var(--primary)); border-color: hsl(var(--primary) / 0.4); }
+  .dm-layer.l3 { color: hsl(var(--chart-2)); border-color: hsl(var(--chart-2) / 0.4); }
+
+  .dm-exclusion { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px dashed hsl(var(--warning) / 0.55); border-radius: var(--radius-sm); background: hsl(var(--warning) / 0.08); font-size: 12.5px; }
+  .dm-exclusion svg { width: 15px; height: 15px; color: hsl(var(--warning)); flex: none; }
+  .dm-exclusion .tag { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .dm-scorebar { display: grid; grid-template-columns: 90px 1fr 74px; align-items: center; gap: 8px; font-size: 12px; }
+  .dm-scorebar .name { font-family: var(--font-mono); }
+  .dm-scorebar .track { height: 8px; border-radius: 9999px; background: hsl(var(--muted)); overflow: hidden; }
+  .dm-scorebar .fill { display: block; height: 100%; border-radius: 9999px; }
+  .dm-scorebar .val { font-family: var(--font-mono); font-size: 11px; text-align: right; color: hsl(var(--muted-foreground)); }
+  .dm-scorebar.inactive .name, .dm-scorebar.inactive .val { opacity: .6; }
+  .dm-why { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: hsl(var(--muted-foreground)); padding: 7px 10px; border-radius: var(--radius-sm); background: hsl(var(--muted) / 0.4); }
+  .dm-why svg { width: 14px; height: 14px; color: hsl(var(--primary)); flex: none; }
+  .dm-why b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .dm-detail-toggle { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); overflow: hidden; }
+  .dm-detail-toggle button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; font-size: 12px; background: transparent; color: hsl(var(--muted-foreground)); border: 0; cursor: pointer; font-family: var(--font-sans); }
+  .dm-detail-toggle button svg { width: 13px; height: 13px; }
+  .dm-detail-toggle button + button { border-left: 1px solid hsl(var(--border)); }
+  .dm-detail-toggle button[aria-pressed="true"] { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); font-weight: 600; }
+
+  /* status-role mapping tiles (doc 14 §3.1) */
+  .dm-role { border: 1px solid hsl(var(--border)); border-radius: var(--radius-md); padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .dm-role .dot { width: 22px; height: 22px; border-radius: 6px; }
+  .dm-role .r { font-weight: 600; font-size: 13px; }
+  .dm-role .m { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  a.ds-anchor { color: hsl(var(--primary)); text-decoration: none; }
+  a.ds-anchor:hover { text-decoration: underline; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dr-skeleton, .dr-spinner { animation: none; }
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="ds-root">
+  <header class="ds-topbar">
+    <div class="ds-brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/><path d="M3 13l9 5 9-5"/></svg>
+      <div>darkmem Design System <span class="sub">darkraise-ui@3.1.2</span></div>
+    </div>
+    <span class="ds-topbar-spacer"></span>
+    <div class="ds-mode" role="group" aria-label="Theme mode">
+      <button id="mode-dark" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>Dark</button>
+      <button id="mode-light" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>Light</button>
+    </div>
+    <div class="ds-accents" id="accents" role="group" aria-label="Accent color"><span class="lbl">accent</span></div>
+  </header>
+
+  <div class="ds-layout">
+    <nav class="ds-rail" aria-label="Sections">
+      <div class="grp">Foundations</div>
+      <a href="#theme">Theme system</a>
+      <a href="#color">Color roles</a>
+      <a href="#type">Typography</a>
+      <a href="#space">Spacing &amp; shape</a>
+      <div class="grp">Components</div>
+      <a href="#buttons">Buttons</a>
+      <a href="#badges">Badges</a>
+      <a href="#cards">Cards &amp; stats</a>
+      <a href="#inputs">Inputs</a>
+      <a href="#nav">Tabs &amp; toggles</a>
+      <a href="#feedback">Feedback</a>
+      <a href="#overlays">Overlays</a>
+      <a href="#data">Data</a>
+      <div class="grp">darkmem patterns</div>
+      <a href="#verification">Verification ladder</a>
+      <a href="#layers">Layers &amp; honesty</a>
+      <a href="#detail">Detail toggle &amp; trace</a>
+      <a href="#roles">Status roles</a>
+    </nav>
+
+    <main class="ds-main">
+      <div class="ds-hero">
+        <h1>The system the interface is built from</h1>
+        <p>This is darkmem's real design language: <strong>darkraise-ui@3.1.2</strong> configured with
+        accent <strong>indigo</strong>, surface <strong>slate</strong>, preset <strong>default</strong>,
+        mode <strong>dark</strong>. Every token here is the exact value the package's
+        <code class="ds-inline-code">generateTokens()</code> emits — pulled from the installed package,
+        not hand-picked — and the components are drawn to the shipped <code class="ds-inline-code">dr-*</code>
+        anatomy. Switch the mode and accent above to see the same system re-theme live.</p>
+      </div>
+
+      <!-- ============ THEME SYSTEM ============ -->
+      <section class="ds-section" id="theme">
+        <h2>Theme system <span class="n">11 axes · 4 exposed, 5 locked</span></h2>
+        <p class="lede">darkraise-ui themes along eleven axes. darkmem pins all of them in
+        <code class="ds-inline-code">theme.config.ts</code> and exposes only four to the in-app switcher; the
+        rest are locked to keep the product visually coherent. Color tokens are computed from the accent and
+        surface scales at runtime; the other axes are pure CSS.</p>
+        <div class="ds-table-wrap">
+          <table class="ds-table">
+            <thead><tr><th>Axis</th><th>darkmem value</th><th>In switcher?</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">mode</td><td class="mono">dark</td><td>Yes</td><td>light / dark / system. No <code>.dark</code> class — dark is <code>data-mode="dark"</code> + runtime tokens.</td></tr>
+              <tr><td class="mono">accentColor</td><td class="mono">indigo</td><td>Yes</td><td>17 hues; drives <code>--primary</code>, <code>--ring</code>, <code>--chart-*</code>.</td></tr>
+              <tr><td class="mono">surfaceColor</td><td class="mono">slate</td><td>Yes</td><td>Neutral channel (background, card, border, muted).</td></tr>
+              <tr><td class="mono">backgroundStyle</td><td class="mono">solid</td><td>Yes</td><td>solid / gradient (with intensity + pattern sub-axes).</td></tr>
+              <tr><td class="mono">preset</td><td class="mono">default</td><td>Locked</td><td>default / glass / neon / terminal / scifi / playful.</td></tr>
+              <tr><td class="mono">density</td><td class="mono">cozy</td><td>Locked</td><td>Drives spacing tokens (<code>--density-*</code>).</td></tr>
+              <tr><td class="mono">elevation</td><td class="mono">medium</td><td>Locked</td><td>Card shadow ramp (dark-boosted).</td></tr>
+              <tr><td class="mono">radius</td><td class="mono">rounded</td><td>Locked</td><td>0.5rem base; buttons + inputs share it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="ds-note">Locked axes are also scrubbed from every persistence channel, so a value saved before an axis was hidden can never stick (<code>theme.config.ts</code> · <code>lib/theme-persistence.ts</code>).</p>
+      </section>
+
+      <!-- ============ COLOR ROLES ============ -->
+      <section class="ds-section" id="color">
+        <h2>Color roles <span class="n">semantic, not palette</span></h2>
+        <p class="lede">Tokens are semantic roles, consumed as <code class="ds-inline-code">hsl(var(--role))</code>.
+        Never reach for <code class="ds-inline-code">indigo-500</code> or a hex — derive from the role so the
+        accent and surface switchers keep working. The one exception: <code class="ds-inline-code">--chart-1..5</code>
+        ship pre-wrapped as <code class="ds-inline-code">hsl(...)</code>.</p>
+
+        <div class="ds-sub">Core surfaces &amp; text</div>
+        <div class="ds-grid tokens" id="tok-core"></div>
+
+        <div class="ds-sub">Accent &amp; focus</div>
+        <div class="ds-grid tokens" id="tok-accent"></div>
+
+        <div class="ds-sub">Semantic status</div>
+        <div class="ds-grid tokens" id="tok-status"></div>
+
+        <div class="ds-sub">Chart series (pre-wrapped)</div>
+        <div class="ds-grid tokens" id="tok-chart"></div>
+      </section>
+
+      <!-- ============ TYPOGRAPHY ============ -->
+      <section class="ds-section" id="type">
+        <h2>Typography</h2>
+        <p class="lede"><strong>Inter</strong> carries interface and headings; <strong>JetBrains Mono</strong>
+        carries data, ids, and labels. The body baseline is <code class="ds-inline-code">14px</code>
+        (<code class="ds-inline-code">text-sm</code>) — darkmem's convention. Faces fall back to the system
+        stack where they aren't installed, exactly as the package does.</p>
+        <div class="ds-specimen col">
+          <div style="font-family:var(--font-heading);font-size:30px;font-weight:720;letter-spacing:-.02em;">Display · 30 / 720 — a fact the vault confirmed</div>
+          <div style="font-family:var(--font-heading);font-size:21px;font-weight:660;">Section heading · 21 / 660</div>
+          <div style="font-size:18px;font-weight:640;">Card title · 18 / 640</div>
+          <div style="font-size:14px;">Body · 14 / 400 — the retrieval trace is the pipeline's own working, rendered field for field so a person can trust or challenge any result.</div>
+          <div style="font-size:12px;color:hsl(var(--muted-foreground));">Caption · 12 / muted-foreground — synthesised before the latest verified change</div>
+          <div class="mono" style="font-size:12px;color:hsl(var(--muted-foreground));letter-spacing:.04em;">MONO · 12 — origin_key: cc-run-8f3a2c · rrf_score 0.0412</div>
+        </div>
+      </section>
+
+      <!-- ============ SPACING & SHAPE ============ -->
+      <section class="ds-section" id="space">
+        <h2>Spacing &amp; shape <span class="n">density cozy · radius rounded</span></h2>
+        <p class="lede">Spacing is token-driven (<code class="ds-inline-code">--density-*</code>), so a control
+        sizes itself to the density axis rather than fixed padding. Radius is a single 0.5rem base shared by
+        buttons, inputs, and cards; elevation is a subtle dark-boosted ramp.</p>
+        <div class="ds-sub">Radius</div>
+        <div class="ds-specimen">
+          <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+            <div style="text-align:center"><div style="width:64px;height:44px;background:hsl(var(--secondary));border:1px solid hsl(var(--border));border-radius:var(--radius-sm)"></div><div class="mono" style="font-size:10.5px;color:hsl(var(--muted-foreground));margin-top:6px">sm</div></div>
+            <div style="text-align:center"><div style="width:64px;height:44px;background:hsl(var(--secondary));border:1px solid hsl(var(--border));border-radius:var(--radius-md)"></div><div class="mono" style="font-size:10.5px;color:hsl(var(--muted-foreground));margin-top:6px">md</div></div>
+            <div style="text-align:center"><div style="width:64px;height:44px;background:hsl(var(--secondary));border:1px solid hsl(var(--border));border-radius:var(--radius-lg)"></div><div class="mono" style="font-size:10.5px;color:hsl(var(--muted-foreground));margin-top:6px">lg / button</div></div>
+            <div style="text-align:center"><div style="width:64px;height:44px;background:hsl(var(--secondary));border:1px solid hsl(var(--border));border-radius:9999px"></div><div class="mono" style="font-size:10.5px;color:hsl(var(--muted-foreground));margin-top:6px">full</div></div>
+          </div>
+        </div>
+        <div class="ds-sub">Elevation ramp (cards default to no shadow; contrast carries the surface)</div>
+        <div class="ds-specimen">
+          <div class="dr-card" style="width:150px;padding:14px;font-size:12px">flat</div>
+          <div class="dr-card" style="width:150px;padding:14px;font-size:12px;box-shadow:0 1px 2px rgb(0 0 0/.3)">low</div>
+          <div class="dr-card" style="width:150px;padding:14px;font-size:12px;box-shadow:0 4px 10px -2px rgb(0 0 0/.45)">medium</div>
+          <div class="dr-card" style="width:150px;padding:14px;font-size:12px;box-shadow:0 12px 28px -8px rgb(0 0 0/.55)">high</div>
+        </div>
+      </section>
+
+      <!-- ============ BUTTONS ============ -->
+      <section class="ds-section" id="buttons">
+        <h2>Buttons</h2>
+        <p class="lede"><code class="ds-inline-code">.dr-btn</code> with <code class="ds-inline-code">data-variant</code>
+        and <code class="ds-inline-code">data-size</code>. Only <em>default</em> tracks the accent; the rest are
+        neutral so the accent stays a scarce signal.</p>
+        <div class="ds-sub">Variants</div>
+        <div class="ds-specimen">
+          <button class="dr-btn" data-variant="default">Save changes</button>
+          <button class="dr-btn" data-variant="secondary">Cancel</button>
+          <button class="dr-btn" data-variant="outline">Reindex…</button>
+          <button class="dr-btn" data-variant="ghost">Dismiss</button>
+          <button class="dr-btn" data-variant="destructive">Delete memory</button>
+          <button class="dr-btn" data-variant="link">View trace</button>
+          <button class="dr-btn" data-variant="default" disabled>Disabled</button>
+        </div>
+        <div class="ds-sub">Sizes</div>
+        <div class="ds-specimen">
+          <button class="dr-btn" data-variant="default" data-size="sm">Small</button>
+          <button class="dr-btn" data-variant="default">Default</button>
+          <button class="dr-btn" data-variant="default" data-size="lg">Large</button>
+          <button class="dr-btn" data-variant="outline" data-size="icon" aria-label="Add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+        </div>
+      </section>
+
+      <!-- ============ BADGES ============ -->
+      <section class="ds-section" id="badges">
+        <h2>Badges</h2>
+        <p class="lede">Theme-reactive variants track the accent; the 17 named accent literals
+        (<code class="ds-inline-code">variant="indigo"</code> …) are fixed Tailwind colors and do <em>not</em>
+        follow the accent axis — darkmem uses those only for fixed category color, never for status.</p>
+        <div class="ds-specimen">
+          <span class="dr-badge" data-variant="default">default</span>
+          <span class="dr-badge" data-variant="secondary">secondary</span>
+          <span class="dr-badge" data-variant="outline">outline</span>
+          <span class="dr-badge" data-variant="destructive">destructive</span>
+          <span class="dr-badge" data-variant="default" data-size="sm">sm</span>
+          <span class="dr-badge" data-variant="default" data-size="lg">lg</span>
+        </div>
+      </section>
+
+      <!-- ============ CARDS & STATS ============ -->
+      <section class="ds-section" id="cards">
+        <h2>Cards &amp; stats</h2>
+        <div class="ds-grid two">
+          <div class="dr-card">
+            <div class="dr-card-header">
+              <h3 class="dr-card-title">Retrieval eval</h3>
+              <p class="dr-card-description">Accuracy paired with its latency/cost twin.</p>
+            </div>
+            <div class="dr-card-content" style="display:flex;gap:28px;flex-wrap:wrap">
+              <div class="dr-stat"><span class="dr-stat-label">MRR</span><span class="dr-stat-value">0.884</span><span class="dr-stat-change" data-direction="up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>+0.021</span></div>
+              <div class="dr-stat"><span class="dr-stat-label">p95 latency</span><span class="dr-stat-value">142<span style="font-size:14px;color:hsl(var(--muted-foreground))">ms</span></span><span class="dr-stat-change" data-direction="flat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>flat</span></div>
+              <div class="dr-stat"><span class="dr-stat-label">tokens / query</span><span class="dr-stat-value">1.2k</span><span class="dr-stat-change" data-direction="down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7 17 17M9 17h8V9"/></svg>-18%</span></div>
+            </div>
+          </div>
+          <div class="dr-card">
+            <div class="dr-card-header">
+              <h3 class="dr-card-title">Card with footer</h3>
+              <p class="dr-card-description">Header / content / footer, border-defined (shadow token is <code class="ds-inline-code">none</code>).</p>
+            </div>
+            <div class="dr-card-content" style="font-size:13px;color:hsl(var(--muted-foreground))">Cards read against the background by contrast and a one-pixel border, not a drop shadow — the dark surface tiers do the lifting.</div>
+            <div class="dr-card-footer"><button class="dr-btn" data-variant="default" data-size="sm">Confirm</button><button class="dr-btn" data-variant="ghost" data-size="sm">Later</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ INPUTS ============ -->
+      <section class="ds-section" id="inputs">
+        <h2>Inputs</h2>
+        <div class="ds-grid two">
+          <div class="ds-specimen col">
+            <div><label class="dr-label">Project</label><div class="dr-select-trigger"><span>darkmem-core-backend</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></div></div>
+            <div><label class="dr-label">Search memories</label><input class="dr-input" placeholder="does cookie_secure default to enabled in production?"></div>
+            <div><label class="dr-label">Note</label><textarea class="dr-textarea" placeholder="Write a memory…"></textarea></div>
+          </div>
+          <div class="ds-specimen col">
+            <div style="display:flex;align-items:center;gap:10px"><span class="dr-switch" role="switch" aria-checked="true"></span><span style="font-size:13px">reranker_enabled</span></div>
+            <div style="display:flex;align-items:center;gap:10px"><span class="dr-switch" role="switch" aria-checked="false"></span><span style="font-size:13px">ppr_enabled</span></div>
+            <div class="dr-separator"></div>
+            <div style="display:flex;align-items:center;gap:10px"><span class="dr-checkbox" role="checkbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span style="font-size:13px">enrich symbols</span></div>
+            <div style="display:flex;align-items:center;gap:10px"><span class="dr-checkbox" role="checkbox" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span style="font-size:13px">generate wiki</span></div>
+            <div class="dr-separator"></div>
+            <div style="display:flex;gap:16px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="dr-radio" data-checked></span>Dark</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="dr-radio"></span>Light</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="dr-radio"></span>System</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ TABS & TOGGLES ============ -->
+      <section class="ds-section" id="nav">
+        <h2>Tabs &amp; toggles</h2>
+        <div class="ds-specimen col">
+          <div class="dr-tabs-list" role="tablist" data-demo="tabs">
+            <button class="dr-tabs-trigger" role="tab" aria-selected="true">Facts</button>
+            <button class="dr-tabs-trigger" role="tab" aria-selected="false">Articles</button>
+            <button class="dr-tabs-trigger" role="tab" aria-selected="false">Topics</button>
+            <button class="dr-tabs-trigger" role="tab" aria-selected="false">Review</button>
+          </div>
+          <div class="dr-tabs-list" data-variant="underline" role="tablist" data-demo="tabs">
+            <button class="dr-tabs-trigger" role="tab" aria-selected="true">Repositories</button>
+            <button class="dr-tabs-trigger" role="tab" aria-selected="false">Code Graph</button>
+            <button class="dr-tabs-trigger" role="tab" aria-selected="false">Wiki</button>
+          </div>
+          <div class="dr-toggle-group" data-demo="toggle">
+            <button class="dr-toggle" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>Force</button>
+            <button class="dr-toggle" aria-pressed="false">Tree</button>
+            <button class="dr-toggle" aria-pressed="false">Circles</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FEEDBACK ============ -->
+      <section class="ds-section" id="feedback">
+        <h2>Feedback</h2>
+        <div class="ds-sub">Alerts</div>
+        <div class="ds-grid two">
+          <div class="dr-alert" data-variant="info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><div><div class="title">Serving coded defaults</div><div class="desc">No config override written yet — a working state, not a broken one.</div></div></div>
+          <div class="dr-alert" data-variant="success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg><div><div class="title">Live-reloaded</div><div class="desc">The orchestrator was reconstructed on save; no redeploy needed.</div></div></div>
+          <div class="dr-alert" data-variant="warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg><div><div class="title">Last index failed — graph shown stale</div><div class="desc">The last-good graph is marked stale, never wiped (T1).</div></div></div>
+          <div class="dr-alert" data-variant="destructive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg><div><div class="title">Both search channels failed</div><div class="desc">An error state — never an empty list masquerading as no matches.</div></div></div>
+        </div>
+        <div class="ds-sub">Skeleton · spinner · progress · empty</div>
+        <div class="ds-specimen">
+          <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px"><div class="dr-skeleton" style="height:12px;width:70%"></div><div class="dr-skeleton" style="height:12px;width:90%"></div><div class="dr-skeleton" style="height:12px;width:50%"></div></div>
+          <div class="dr-spinner" role="status" aria-label="Loading"></div>
+          <div style="flex:1;min-width:160px"><div class="dr-progress"><span style="width:64%"></span></div></div>
+        </div>
+        <div class="ds-specimen" style="margin-top:12px">
+          <div class="dr-empty" style="flex:1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7" stroke-dasharray="3 3"/><path d="M21 21l-4.3-4.3"/></svg>
+            <div class="h">No memories match this query</div>
+            <div class="s">Not "no memories yet" — the search ran and found nothing. Try a broader query or clear the context chip.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ OVERLAYS ============ -->
+      <section class="ds-section" id="overlays">
+        <h2>Overlays</h2>
+        <div class="ds-specimen" style="align-items:flex-start">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="dr-btn" data-variant="outline" id="open-dialog">Open dialog</button>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:hsl(var(--muted-foreground))">tooltip →</span><span class="dr-tooltip">Ratify writes a human-kind source</span></div>
+          </div>
+          <div class="dr-menu" style="max-width:240px">
+            <div class="dr-menu-item" data-active><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5Z"/></svg>Jump to Memories<span class="hint">↵</span></div>
+            <div class="dr-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/></svg>Jump to Knowledge</div>
+            <div class="dr-menu-sep"></div>
+            <div class="dr-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Create memory…<span class="hint">C</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ DATA ============ -->
+      <section class="ds-section" id="data">
+        <h2>Data table</h2>
+        <div class="dr-table-scroll">
+          <table class="dr-table">
+            <thead><tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">repo_sync</td><td class="mono">*/5 * * * *</td><td>2m ago</td><td><span class="dr-badge" data-variant="outline">idle</span></td></tr>
+              <tr><td class="mono">memory_dream</td><td class="mono">0 3 * * *</td><td>03:12</td><td><span class="dm-badge corroborated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>ok</span></td></tr>
+              <tr><td class="mono">expired_memory_cleanup</td><td class="mono">0 * * * *</td><td>:00</td><td><span class="dr-badge" data-variant="outline">idle</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ VERIFICATION LADDER ============ -->
+      <section class="ds-section" id="verification">
+        <h2>Verification ladder <span class="n">darkmem pattern</span></h2>
+        <p class="lede">The vault's trust vocabulary, rendered verbatim and never softened to "true." The machine's
+        ceiling is <strong>corroborated</strong>; only a human ratifying reaches <strong>confirmed</strong>. These
+        badges are honesty signals — they always render, even in Simple detail mode.</p>
+        <div class="ds-specimen">
+          <span class="dm-badge candidate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>candidate</span>
+          <span class="dm-badge corroborated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3M9 15l-3 3 3 3"/></svg>corroborated</span>
+          <span class="dm-badge confirmed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>confirmed</span>
+          <span class="dm-badge disputed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 12h18"/></svg>disputed</span>
+          <span class="dm-badge superseded"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>superseded</span>
+        </div>
+        <p class="ds-note">The full badge string is the honest claim: <em>"asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20."</em></p>
+      </section>
+
+      <!-- ============ LAYERS & HONESTY ============ -->
+      <section class="ds-section" id="layers">
+        <h2>Layers &amp; honest exclusion</h2>
+        <p class="lede">Every result carries its layer, and a silent drop is the failure the design most fears —
+        so exclusion counts are surfaced as plain copy, never buried.</p>
+        <div class="ds-specimen">
+          <span class="dm-layer l0">L0 · memory</span>
+          <span class="dm-layer l1">L1 · graph</span>
+          <span class="dm-layer l2">L2 · fact</span>
+          <span class="dm-layer l3">L3 · article</span>
+        </div>
+        <div class="ds-specimen col" style="margin-top:12px;gap:8px">
+          <div class="dm-exclusion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><span><b>3 facts excluded by context conflict</b> — your context <code class="ds-inline-code">env=prod</code> conflicts with a dev-only row</span><span class="tag">by_context_conflict</span></div>
+          <div class="dm-exclusion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><span><b>1 row excluded</b> — superseded, not current</span><span class="tag">by_status</span></div>
+        </div>
+      </section>
+
+      <!-- ============ DETAIL TOGGLE & TRACE ============ -->
+      <section class="ds-section" id="detail">
+        <h2>Detail toggle &amp; the "why retrieved" trace</h2>
+        <p class="lede">The per-viewer Simple / Advanced preference. <strong>Advanced</strong> shows the full score
+        breakdown; <strong>Simple</strong> hides the numbers and jargon and collapses them to one plain line — but
+        it never hides an honesty label (the badge and layer stay in both). Flip it:</p>
+        <div class="ds-specimen col">
+          <div class="dm-detail-toggle" id="detail-toggle" role="group" aria-label="Detail level">
+            <button data-level="simple" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/></svg>Simple</button>
+            <button data-level="advanced" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Advanced</button>
+          </div>
+          <div class="dr-card" style="max-width:560px">
+            <div class="dr-card-content" style="padding-top:14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span class="dm-layer l2">L2 · fact</span>
+                <span class="dm-badge corroborated"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4v3a5 5 0 0 0 5 5h2a5 5 0 0 1 5 5v2"/><path d="M15 9l3-3-3-3M9 15l-3 3 3 3"/></svg>corroborated</span>
+                <span style="flex-basis:100%;font-size:13px">cookie_secure defaults to Secure-only-in-production (tri-state; unset = secure when environment=production)</span>
+              </div>
+              <div id="trace-advanced" style="display:flex;flex-direction:column;gap:5px">
+                <div class="dm-scorebar"><span class="name">semantic</span><span class="track"><span class="fill" style="width:82%;background:var(--chart-1)"></span></span><span class="val">0.82</span></div>
+                <div class="dm-scorebar"><span class="name">keyword</span><span class="track"><span class="fill" style="width:55%;background:var(--chart-2)"></span></span><span class="val">0.55</span></div>
+                <div class="dm-scorebar inactive"><span class="name">ppr</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val">off</span></div>
+                <div class="dm-scorebar"><span class="name">rerank</span><span class="track"><span class="fill" style="width:74%;background:var(--chart-5)"></span></span><span class="val">7.4</span></div>
+                <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;background:hsl(var(--primary)/.08);border:1px solid hsl(var(--primary)/.35);margin-top:2px"><span class="mono" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:hsl(var(--primary))">rrf_score</span><span class="mono" style="font-weight:640">0.0412</span><span style="font-size:11px;color:hsl(var(--muted-foreground))">the ordering signal</span></div>
+              </div>
+              <div id="trace-simple" style="display:none">
+                <div class="dm-why"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c.8.7 1 1.3 1 2h6c0-.7.2-1.3 1-2a6 6 0 0 0-4-10Z"/></svg><span><b>Why it ranked:</b> strong wording and keyword match, and it fits your current context.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ STATUS ROLES ============ -->
+      <section class="ds-section" id="roles">
+        <h2>Status color roles <span class="n">doc 14 §3.1</span></h2>
+        <p class="lede">Four semantic roles, each mapped onto a theme token so they re-theme with the accent — and
+        kept separate from decorative color. Caution rides <code class="ds-inline-code">--chart-4</code>, so it is
+        the accent-derived warning hue (yellow-ish for indigo), not a fixed amber.</p>
+        <div class="ds-grid three">
+          <div class="dm-role"><span class="dot" style="background:hsl(var(--muted-foreground))"></span><span class="r">neutral</span><span class="m">--muted / --muted-foreground</span></div>
+          <div class="dm-role"><span class="dot" style="background:hsl(var(--primary))"></span><span class="r">supported</span><span class="m">--primary</span></div>
+          <div class="dm-role"><span class="dot" style="background:var(--chart-4)"></span><span class="r">caution</span><span class="m">--chart-4</span></div>
+          <div class="dm-role"><span class="dot" style="background:hsl(var(--destructive))"></span><span class="r">conflict</span><span class="m">--destructive</span></div>
+        </div>
+      </section>
+
+      <div style="margin-top:48px;padding-top:16px;border-top:1px solid hsl(var(--border));font-size:12px;color:hsl(var(--muted-foreground))">
+        darkmem design system · tokens verified against darkraise-ui@3.1.2 <code class="ds-inline-code">generateTokens()</code>.
+        The complete, interactive UI is the frontend project itself (run it with <code class="ds-inline-code">npm run dev</code>).
+      </div>
+    </main>
+  </div>
+
+  <!-- dialog -->
+  <div class="dr-dialog-overlay" id="dialog">
+    <div class="dr-dialog-content" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+      <h3 class="dr-dialog-title" id="dlg-title">Ratify this fact to confirmed?</h3>
+      <p class="dr-dialog-desc">Ratifying writes a human-kind source and lifts the fact to <strong>confirmed</strong>
+      — the one rung the machine can't reach on its own. This is a human, authenticated action.</p>
+      <div class="dr-dialog-footer">
+        <button class="dr-btn" data-variant="ghost" data-close>Cancel</button>
+        <button class="dr-btn" data-variant="default" data-close>Ratify</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var TOKENS = {"order":["red","orange","amber","yellow","lime","green","emerald","teal","cyan","sky","blue","indigo","violet","purple","fuchsia","pink","rose"],"base":{"dark":{"--primary-foreground":"0 0% 100%","--surface-tint":"215 16% 47%","--background":"229 84% 5%","--foreground":"210 40% 98%","--card":"222 47% 11%","--card-foreground":"210 40% 98%","--popover":"222 47% 11%","--popover-foreground":"210 40% 98%","--secondary":"217 33% 17%","--secondary-foreground":"210 40% 98%","--muted":"217 33% 17%","--muted-foreground":"215 20% 65%","--accent":"217 33% 17%","--accent-foreground":"210 40% 98%","--destructive-foreground":"0 0% 100%","--success":"158 64% 52%","--success-foreground":"0 0% 100%","--warning":"43 96% 56%","--warning-foreground":"222 47% 11%","--info":"213 94% 68%","--info-foreground":"0 0% 100%","--border":"215 25% 27%","--input":"215 25% 27%","--surface-base":"229 84% 5%","--surface-raised":"222 47% 11%","--surface-overlay":"217 33% 17%","--surface-sunken":"229 84% 5%","--surface-sidebar":"229 84% 5%","--sidebar-foreground":"213 27% 84%","--sidebar-foreground-hover":"0 0% 100%","--sidebar-foreground-muted":"215 16% 47%","--sidebar-border":"0 0% 100% / 0.1","--surface-header":"222 47% 11%","--border-subtle":"217 33% 17%","--border-default":"215 25% 27%","--shadow-card":"none","--shadow-dropdown":"0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)","--bg-style":"solid","--noise-opacity":"0","--content-gradient-overlay":"none","--sf-hue":"transparent","--sf-hue-2":"transparent","--sf-hue-3":"transparent"},"light":{"--primary-foreground":"0 0% 100%","--surface-tint":"215 16% 47%","--background":"210 40% 98%","--foreground":"222 47% 11%","--card":"0 0% 100%","--card-foreground":"222 47% 11%","--popover":"0 0% 100%","--popover-foreground":"222 47% 11%","--secondary":"210 40% 96%","--secondary-foreground":"222 47% 11%","--muted":"210 40% 96%","--muted-foreground":"215 16% 47%","--accent":"210 40% 96%","--accent-foreground":"222 47% 11%","--destructive-foreground":"0 0% 100%","--success":"160 84% 39%","--success-foreground":"0 0% 100%","--warning":"38 92% 50%","--warning-foreground":"222 47% 11%","--info":"217 91% 60%","--info-foreground":"0 0% 100%","--border":"214 32% 91%","--input":"214 32% 91%","--surface-base":"210 40% 98%","--surface-raised":"0 0% 100%","--surface-overlay":"0 0% 100%","--surface-sunken":"210 40% 96%","--surface-sidebar":"210 40% 98%","--sidebar-foreground":"215 19% 35%","--sidebar-foreground-hover":"222 47% 11%","--sidebar-foreground-muted":"215 20% 65%","--sidebar-border":"214 32% 91%","--surface-header":"0 0% 100%","--border-subtle":"210 40% 96%","--border-default":"214 32% 91%","--shadow-card":"none","--shadow-dropdown":"0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)","--bg-style":"solid","--noise-opacity":"0","--content-gradient-overlay":"none","--sf-hue":"transparent","--sf-hue-2":"transparent","--sf-hue-3":"transparent"}},"accents":{"red":{"dark":{"--primary":"0 84% 60%","--ring":"0 84% 60%","--focus-ring":"0 96% 89%","--chart-1":"hsl(0 91% 71%)","--chart-2":"hsl(48 96% 53%)","--chart-3":"hsl(158 64% 52%)","--chart-4":"hsl(198 93% 60%)","--chart-5":"hsl(255 92% 76%)","--destructive":"21 90% 48%","--sidebar-hover-bg":"0 84% 60% / 0.15"},"light":{"--primary":"0 84% 60%","--ring":"0 84% 60%","--focus-ring":"0 94% 82%","--chart-1":"hsl(0 84% 60%)","--chart-2":"hsl(45 93% 47%)","--chart-3":"hsl(160 84% 39%)","--chart-4":"hsl(199 89% 48%)","--chart-5":"hsl(258 90% 66%)","--destructive":"25 95% 53%","--sidebar-hover-bg":"0 93% 94%"}},"orange":{"dark":{"--primary":"25 95% 53%","--ring":"25 95% 53%","--focus-ring":"32 98% 83%","--chart-1":"hsl(27 96% 61%)","--chart-2":"hsl(83 78% 55%)","--chart-3":"hsl(172 66% 50%)","--chart-4":"hsl(213 94% 68%)","--chart-5":"hsl(270 95% 75%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"25 95% 53% / 0.15"},"light":{"--primary":"25 95% 53%","--ring":"25 95% 53%","--focus-ring":"31 97% 72%","--chart-1":"hsl(25 95% 53%)","--chart-2":"hsl(84 81% 44%)","--chart-3":"hsl(173 80% 40%)","--chart-4":"hsl(217 91% 60%)","--chart-5":"hsl(271 91% 65%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"34 100% 92%"}},"amber":{"dark":{"--primary":"38 92% 50%","--ring":"38 92% 50%","--focus-ring":"48 97% 77%","--chart-1":"hsl(43 96% 56%)","--chart-2":"hsl(142 69% 58%)","--chart-3":"hsl(188 86% 53%)","--chart-4":"hsl(234 89% 74%)","--chart-5":"hsl(292 91% 73%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"38 92% 50% / 0.15"},"light":{"--primary":"38 92% 50%","--ring":"38 92% 50%","--focus-ring":"46 97% 65%","--chart-1":"hsl(38 92% 50%)","--chart-2":"hsl(142 71% 45%)","--chart-3":"hsl(189 94% 43%)","--chart-4":"hsl(239 84% 67%)","--chart-5":"hsl(292 84% 61%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"48 96% 89%"}},"yellow":{"dark":{"--primary":"45 93% 47%","--ring":"45 93% 47%","--focus-ring":"53 98% 77%","--chart-1":"hsl(48 96% 53%)","--chart-2":"hsl(158 64% 52%)","--chart-3":"hsl(198 93% 60%)","--chart-4":"hsl(255 92% 76%)","--chart-5":"hsl(329 86% 70%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"45 93% 47% / 0.15"},"light":{"--primary":"45 93% 47%","--ring":"45 93% 47%","--focus-ring":"50 98% 64%","--chart-1":"hsl(45 93% 47%)","--chart-2":"hsl(160 84% 39%)","--chart-3":"hsl(199 89% 48%)","--chart-4":"hsl(258 90% 66%)","--chart-5":"hsl(330 81% 60%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"55 97% 88%"}},"lime":{"dark":{"--primary":"84 81% 44%","--ring":"84 81% 44%","--focus-ring":"81 88% 80%","--chart-1":"hsl(83 78% 55%)","--chart-2":"hsl(172 66% 50%)","--chart-3":"hsl(213 94% 68%)","--chart-4":"hsl(270 95% 75%)","--chart-5":"hsl(351 95% 71%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"84 81% 44% / 0.15"},"light":{"--primary":"84 81% 44%","--ring":"84 81% 44%","--focus-ring":"82 85% 67%","--chart-1":"hsl(84 81% 44%)","--chart-2":"hsl(173 80% 40%)","--chart-3":"hsl(217 91% 60%)","--chart-4":"hsl(271 91% 65%)","--chart-5":"hsl(350 89% 60%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"80 89% 89%"}},"green":{"dark":{"--primary":"142 71% 45%","--ring":"142 71% 45%","--focus-ring":"141 79% 85%","--chart-1":"hsl(142 69% 58%)","--chart-2":"hsl(188 86% 53%)","--chart-3":"hsl(234 89% 74%)","--chart-4":"hsl(292 91% 73%)","--chart-5":"hsl(0 91% 71%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"142 71% 45% / 0.15"},"light":{"--primary":"142 71% 45%","--ring":"142 71% 45%","--focus-ring":"142 77% 73%","--chart-1":"hsl(142 71% 45%)","--chart-2":"hsl(189 94% 43%)","--chart-3":"hsl(239 84% 67%)","--chart-4":"hsl(292 84% 61%)","--chart-5":"hsl(0 84% 60%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"141 84% 93%"}},"emerald":{"dark":{"--primary":"160 84% 39%","--ring":"160 84% 39%","--focus-ring":"152 76% 80%","--chart-1":"hsl(158 64% 52%)","--chart-2":"hsl(198 93% 60%)","--chart-3":"hsl(255 92% 76%)","--chart-4":"hsl(329 86% 70%)","--chart-5":"hsl(27 96% 61%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"160 84% 39% / 0.15"},"light":{"--primary":"160 84% 39%","--ring":"160 84% 39%","--focus-ring":"156 72% 67%","--chart-1":"hsl(160 84% 39%)","--chart-2":"hsl(199 89% 48%)","--chart-3":"hsl(258 90% 66%)","--chart-4":"hsl(330 81% 60%)","--chart-5":"hsl(25 95% 53%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"149 80% 90%"}},"teal":{"dark":{"--primary":"173 80% 40%","--ring":"173 80% 40%","--focus-ring":"168 84% 78%","--chart-1":"hsl(172 66% 50%)","--chart-2":"hsl(213 94% 68%)","--chart-3":"hsl(270 95% 75%)","--chart-4":"hsl(351 95% 71%)","--chart-5":"hsl(43 96% 56%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"173 80% 40% / 0.15"},"light":{"--primary":"173 80% 40%","--ring":"173 80% 40%","--focus-ring":"171 77% 64%","--chart-1":"hsl(173 80% 40%)","--chart-2":"hsl(217 91% 60%)","--chart-3":"hsl(271 91% 65%)","--chart-4":"hsl(350 89% 60%)","--chart-5":"hsl(38 92% 50%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"167 85% 89%"}},"cyan":{"dark":{"--primary":"189 94% 43%","--ring":"189 94% 43%","--focus-ring":"186 94% 82%","--chart-1":"hsl(188 86% 53%)","--chart-2":"hsl(234 89% 74%)","--chart-3":"hsl(292 91% 73%)","--chart-4":"hsl(0 91% 71%)","--chart-5":"hsl(48 96% 53%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"189 94% 43% / 0.15"},"light":{"--primary":"189 94% 43%","--ring":"189 94% 43%","--focus-ring":"187 92% 69%","--chart-1":"hsl(189 94% 43%)","--chart-2":"hsl(239 84% 67%)","--chart-3":"hsl(292 84% 61%)","--chart-4":"hsl(0 84% 60%)","--chart-5":"hsl(45 93% 47%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"185 96% 90%"}},"sky":{"dark":{"--primary":"199 89% 48%","--ring":"199 89% 48%","--focus-ring":"201 94% 86%","--chart-1":"hsl(198 93% 60%)","--chart-2":"hsl(255 92% 76%)","--chart-3":"hsl(329 86% 70%)","--chart-4":"hsl(27 96% 61%)","--chart-5":"hsl(83 78% 55%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"199 89% 48% / 0.15"},"light":{"--primary":"199 89% 48%","--ring":"199 89% 48%","--focus-ring":"199 95% 74%","--chart-1":"hsl(199 89% 48%)","--chart-2":"hsl(258 90% 66%)","--chart-3":"hsl(330 81% 60%)","--chart-4":"hsl(25 95% 53%)","--chart-5":"hsl(84 81% 44%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"204 94% 94%"}},"blue":{"dark":{"--primary":"217 91% 60%","--ring":"217 91% 60%","--focus-ring":"213 97% 87%","--chart-1":"hsl(213 94% 68%)","--chart-2":"hsl(270 95% 75%)","--chart-3":"hsl(351 95% 71%)","--chart-4":"hsl(43 96% 56%)","--chart-5":"hsl(142 69% 58%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"217 91% 60% / 0.15"},"light":{"--primary":"217 91% 60%","--ring":"217 91% 60%","--focus-ring":"212 96% 78%","--chart-1":"hsl(217 91% 60%)","--chart-2":"hsl(271 91% 65%)","--chart-3":"hsl(350 89% 60%)","--chart-4":"hsl(38 92% 50%)","--chart-5":"hsl(142 71% 45%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"214 95% 93%"}},"indigo":{"dark":{"--primary":"239 84% 67%","--ring":"239 84% 67%","--focus-ring":"228 96% 89%","--chart-1":"hsl(234 89% 74%)","--chart-2":"hsl(292 91% 73%)","--chart-3":"hsl(0 91% 71%)","--chart-4":"hsl(48 96% 53%)","--chart-5":"hsl(158 64% 52%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"239 84% 67% / 0.15"},"light":{"--primary":"239 84% 67%","--ring":"239 84% 67%","--focus-ring":"230 94% 82%","--chart-1":"hsl(239 84% 67%)","--chart-2":"hsl(292 84% 61%)","--chart-3":"hsl(0 84% 60%)","--chart-4":"hsl(45 93% 47%)","--chart-5":"hsl(160 84% 39%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"226 100% 94%"}},"violet":{"dark":{"--primary":"258 90% 66%","--ring":"258 90% 66%","--focus-ring":"251 95% 92%","--chart-1":"hsl(255 92% 76%)","--chart-2":"hsl(329 86% 70%)","--chart-3":"hsl(27 96% 61%)","--chart-4":"hsl(83 78% 55%)","--chart-5":"hsl(172 66% 50%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"258 90% 66% / 0.15"},"light":{"--primary":"258 90% 66%","--ring":"258 90% 66%","--focus-ring":"252 95% 85%","--chart-1":"hsl(258 90% 66%)","--chart-2":"hsl(330 81% 60%)","--chart-3":"hsl(25 95% 53%)","--chart-4":"hsl(84 81% 44%)","--chart-5":"hsl(173 80% 40%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"251 91% 95%"}},"purple":{"dark":{"--primary":"271 91% 65%","--ring":"271 91% 65%","--focus-ring":"269 100% 92%","--chart-1":"hsl(270 95% 75%)","--chart-2":"hsl(351 95% 71%)","--chart-3":"hsl(43 96% 56%)","--chart-4":"hsl(142 69% 58%)","--chart-5":"hsl(188 86% 53%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"271 91% 65% / 0.15"},"light":{"--primary":"271 91% 65%","--ring":"271 91% 65%","--focus-ring":"269 97% 85%","--chart-1":"hsl(271 91% 65%)","--chart-2":"hsl(350 89% 60%)","--chart-3":"hsl(38 92% 50%)","--chart-4":"hsl(142 71% 45%)","--chart-5":"hsl(189 94% 43%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"269 100% 95%"}},"fuchsia":{"dark":{"--primary":"292 84% 61%","--ring":"292 84% 61%","--focus-ring":"288 96% 91%","--chart-1":"hsl(292 91% 73%)","--chart-2":"hsl(0 91% 71%)","--chart-3":"hsl(48 96% 53%)","--chart-4":"hsl(158 64% 52%)","--chart-5":"hsl(198 93% 60%)","--destructive":"0 72% 51%","--sidebar-hover-bg":"292 84% 61% / 0.15"},"light":{"--primary":"292 84% 61%","--ring":"292 84% 61%","--focus-ring":"291 93% 83%","--chart-1":"hsl(292 84% 61%)","--chart-2":"hsl(0 84% 60%)","--chart-3":"hsl(45 93% 47%)","--chart-4":"hsl(160 84% 39%)","--chart-5":"hsl(199 89% 48%)","--destructive":"0 84% 60%","--sidebar-hover-bg":"287 100% 95%"}},"pink":{"dark":{"--primary":"330 81% 60%","--ring":"330 81% 60%","--focus-ring":"326 85% 90%","--chart-1":"hsl(329 86% 70%)","--chart-2":"hsl(27 96% 61%)","--chart-3":"hsl(83 78% 55%)","--chart-4":"hsl(172 66% 50%)","--chart-5":"hsl(213 94% 68%)","--destructive":"21 90% 48%","--sidebar-hover-bg":"330 81% 60% / 0.15"},"light":{"--primary":"330 81% 60%","--ring":"330 81% 60%","--focus-ring":"327 87% 82%","--chart-1":"hsl(330 81% 60%)","--chart-2":"hsl(25 95% 53%)","--chart-3":"hsl(84 81% 44%)","--chart-4":"hsl(173 80% 40%)","--chart-5":"hsl(217 91% 60%)","--destructive":"25 95% 53%","--sidebar-hover-bg":"326 78% 95%"}},"rose":{"dark":{"--primary":"350 89% 60%","--ring":"350 89% 60%","--focus-ring":"353 96% 90%","--chart-1":"hsl(351 95% 71%)","--chart-2":"hsl(43 96% 56%)","--chart-3":"hsl(142 69% 58%)","--chart-4":"hsl(188 86% 53%)","--chart-5":"hsl(234 89% 74%)","--destructive":"21 90% 48%","--sidebar-hover-bg":"350 89% 60% / 0.15"},"light":{"--primary":"350 89% 60%","--ring":"350 89% 60%","--focus-ring":"353 95% 82%","--chart-1":"hsl(350 89% 60%)","--chart-2":"hsl(38 92% 50%)","--chart-3":"hsl(142 71% 45%)","--chart-4":"hsl(189 94% 43%)","--chart-5":"hsl(239 84% 67%)","--destructive":"25 95% 53%","--sidebar-hover-bg":"356 100% 95%"}}}};
+    var STATIC = {
+      "--primary-foreground": "0 0% 100%", "--destructive-foreground": "0 0% 100%"
+    };
+    var state = { mode: (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark"), accent: "indigo" };
+
+    function applyTheme() {
+      var root = document.documentElement.style;
+      var base = TOKENS.base[state.mode];
+      for (var k in base) root.setProperty(k, base[k]);
+      var acc = TOKENS.accents[state.accent][state.mode];
+      for (var j in acc) root.setProperty(j, acc[j]);
+      document.documentElement.setAttribute("data-mode", state.mode);
+      // reflect controls
+      var md = document.getElementById("mode-dark"), ml = document.getElementById("mode-light");
+      if (md && ml) { md.setAttribute("aria-pressed", state.mode === "dark"); ml.setAttribute("aria-pressed", state.mode === "light"); }
+      var sw = document.querySelectorAll("#accents .ds-swatch");
+      sw.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.accent === state.accent); });
+    }
+
+    // build accent swatches
+    var accWrap = document.getElementById("accents");
+    TOKENS.order.forEach(function (name) {
+      var b = document.createElement("button");
+      b.className = "ds-swatch"; b.dataset.accent = name; b.title = name; b.setAttribute("aria-label", "accent " + name); b.setAttribute("aria-pressed", "false");
+      var p = TOKENS.accents[name][state.mode]["--primary"];
+      b.style.background = "hsl(" + p + ")";
+      b.addEventListener("click", function () { state.accent = name; applyTheme(); renderTokens(); });
+      accWrap.appendChild(b);
+    });
+    document.getElementById("mode-dark").addEventListener("click", function () { state.mode = "dark"; applyTheme(); renderTokens(); refreshSwatches(); });
+    document.getElementById("mode-light").addEventListener("click", function () { state.mode = "light"; applyTheme(); renderTokens(); refreshSwatches(); });
+    function refreshSwatches() {
+      document.querySelectorAll("#accents .ds-swatch").forEach(function (b) {
+        b.style.background = "hsl(" + TOKENS.accents[b.dataset.accent][state.mode]["--primary"] + ")";
+      });
+    }
+    // sync with the artifact viewer's own light/dark toggle
+    new MutationObserver(function () {
+      var t = document.documentElement.getAttribute("data-theme");
+      if (t === "light" && state.mode !== "light") { state.mode = "light"; applyTheme(); renderTokens(); refreshSwatches(); }
+      if (t === "dark" && state.mode !== "dark") { state.mode = "dark"; applyTheme(); renderTokens(); refreshSwatches(); }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    // token gallery
+    var GROUPS = {
+      "tok-core": [["--background","background"],["--foreground","foreground"],["--card","card"],["--card-foreground","card-foreground"],["--popover","popover"],["--secondary","secondary"],["--muted","muted"],["--muted-foreground","muted-foreground"],["--accent","accent"],["--border","border"],["--input","input"]],
+      "tok-accent": [["--primary","primary"],["--primary-foreground","primary-foreground"],["--ring","ring"],["--focus-ring","focus-ring"],["--surface-sidebar","surface-sidebar"],["--sidebar-foreground","sidebar-foreground"]],
+      "tok-status": [["--success","success"],["--warning","warning"],["--info","info"],["--destructive","destructive"]],
+      "tok-chart": [["--chart-1","chart-1"],["--chart-2","chart-2"],["--chart-3","chart-3"],["--chart-4","chart-4"],["--chart-5","chart-5"]]
+    };
+    function tokenValue(varName) {
+      var base = TOKENS.base[state.mode], acc = TOKENS.accents[state.accent][state.mode];
+      if (varName in acc) return acc[varName];
+      if (varName in base) return base[varName];
+      if (varName in STATIC) return STATIC[varName];
+      return "";
+    }
+    function swatchColor(varName, raw) {
+      if (varName.indexOf("--chart-") === 0) return raw; // pre-wrapped hsl(...)
+      return "hsl(" + raw + ")";
+    }
+    function renderTokens() {
+      Object.keys(GROUPS).forEach(function (gid) {
+        var host = document.getElementById(gid); if (!host) return;
+        host.innerHTML = "";
+        GROUPS[gid].forEach(function (pair) {
+          var raw = tokenValue(pair[0]);
+          var el = document.createElement("div"); el.className = "ds-tok";
+          var chip = document.createElement("div"); chip.className = "chip"; chip.style.background = swatchColor(pair[0], raw);
+          var meta = document.createElement("div"); meta.className = "meta";
+          meta.innerHTML = '<div class="role">' + pair[1] + '</div><div class="val">' + raw + '</div>';
+          el.appendChild(chip); el.appendChild(meta); host.appendChild(el);
+        });
+      });
+    }
+
+    // interactive demos
+    document.querySelectorAll('[data-demo="tabs"] .dr-tabs-trigger').forEach(function (t) {
+      t.addEventListener("click", function () {
+        t.parentElement.querySelectorAll(".dr-tabs-trigger").forEach(function (x) { x.setAttribute("aria-selected", "false"); });
+        t.setAttribute("aria-selected", "true");
+      });
+    });
+    document.querySelectorAll('[data-demo="toggle"] .dr-toggle').forEach(function (t) {
+      t.addEventListener("click", function () {
+        t.parentElement.querySelectorAll(".dr-toggle").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+        t.setAttribute("aria-pressed", "true");
+      });
+    });
+    document.querySelectorAll('.dr-switch').forEach(function (s) {
+      s.addEventListener("click", function () { s.setAttribute("aria-checked", s.getAttribute("aria-checked") === "true" ? "false" : "true"); });
+    });
+    document.querySelectorAll('.dr-checkbox').forEach(function (c) {
+      c.addEventListener("click", function () { c.setAttribute("aria-checked", c.getAttribute("aria-checked") === "true" ? "false" : "true"); });
+    });
+    // detail toggle
+    document.querySelectorAll('#detail-toggle button').forEach(function (b) {
+      b.addEventListener("click", function () {
+        document.querySelectorAll('#detail-toggle button').forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", "true");
+        var simple = b.dataset.level === "simple";
+        document.getElementById("trace-advanced").style.display = simple ? "none" : "flex";
+        document.getElementById("trace-simple").style.display = simple ? "block" : "none";
+      });
+    });
+    // dialog
+    var dlg = document.getElementById("dialog");
+    document.getElementById("open-dialog").addEventListener("click", function () { dlg.setAttribute("data-open", ""); });
+    dlg.addEventListener("click", function (e) { if (e.target === dlg || e.target.hasAttribute("data-close")) dlg.removeAttribute("data-open"); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") dlg.removeAttribute("data-open"); });
+
+    applyTheme();
+    renderTokens();
+  })();
+</script>
