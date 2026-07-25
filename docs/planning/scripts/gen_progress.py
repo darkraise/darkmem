@@ -46,7 +46,7 @@ out.append(
 )
 out.append("## Claiming and concurrency\n")
 out.append(
-    "- **This file is canonical on `main`**, not on an epic branch — otherwise it forks per\n"
+    "- **This file is canonical on `master`**, not on an epic branch — otherwise it forks per\n"
     "  branch and no copy is true. Update it with a single commit touching only your row.\n"
     "- **Claiming is one commit** setting Owner and moving the row to `wip`. If two agents\n"
     "  race, the later commit loses and that agent picks another task — cheap, because the\n"

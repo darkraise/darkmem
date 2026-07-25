@@ -157,7 +157,7 @@ Every epic file ends with a table. One row per amendment:
 
 - **Branch per epic, not per task**: `feat/e1-engine-core`. Tasks are commits on it.
   A task large enough to want its own branch is a task that should have been split.
-- **`progress.md` is canonical on `main`, not on the epic branch.** Otherwise the "live
+- **`progress.md` is canonical on `master`, not on the epic branch.** Otherwise the "live
   status" file forks per branch and no copy is true. Update it with a single commit
   touching only your own row, cherry-picked or committed directly to `main`. This repo has
   no remote, so concurrent agents share state through the working tree.

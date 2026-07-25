@@ -27,7 +27,7 @@ and the Note says so. That rule is the whole point of this file.
 
 ## Claiming and concurrency
 
-- **This file is canonical on `main`**, not on an epic branch — otherwise it forks per
+- **This file is canonical on `master`**, not on an epic branch — otherwise it forks per
   branch and no copy is true. Update it with a single commit touching only your row.
 - **Claiming is one commit** setting Owner and moving the row to `wip`. If two agents
   race, the later commit loses and that agent picks another task — cheap, because the
