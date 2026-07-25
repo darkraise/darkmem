@@ -336,6 +336,175 @@ export interface HygieneQueueState {
 
 export type HygieneCategory = keyof HygieneQueueState
 
+// ---------------------------------------------------------------------------
+// Explore (Wave 3) — code repos/graph/wiki, memory graph, chat
+// ---------------------------------------------------------------------------
+
+export type DemoRepoStatus =
+  | "ready"
+  | "indexing"
+  | "stale"
+  | "error"
+  | "registered"
+
+export type IndexPhaseState = "done" | "current" | "pending" | "skipped"
+
+export interface DemoIndexPhase {
+  n: number
+  label: string
+  state: IndexPhaseState
+}
+
+export interface DemoWikiSection {
+  id: string
+  label: string
+  paragraphs: string[]
+  bullets?: { code: string; text: string }[]
+}
+
+export interface DemoWiki {
+  generated_at: string
+  /** The commit the prose describes — may lag the repo HEAD. */
+  head: string
+  symbol_enrichment: "complete" | "draining"
+  module_summaries: "complete" | "draining"
+  sections: DemoWikiSection[]
+}
+
+export interface DemoRepo {
+  id: string
+  name: string
+  branch: string
+  head: string | null
+  status: DemoRepoStatus
+  last_indexed_at: string | null
+  auto_sync: boolean
+  /** T2 index-debt: dependent-file re-trace overflow queued past the cap,
+   *  persisted and drained via continuation batches — never dropped. */
+  debt: { queued_files: number; note: string } | null
+  auto_provisioned: { on: string; from_memory: string } | null
+  /** T1 fail-stale: the last-good graph stays served, marked stale. */
+  stale: { last_good_head: string; last_good_at: string; cause: string } | null
+  error: { headline: string; detail: string; message: string } | null
+  /** Live phase ticker, present while status === "indexing". */
+  phases: DemoIndexPhase[] | null
+  /** Registered-but-never-indexed note (auto-provision Tier C queue). */
+  registered_note: string | null
+  wiki: DemoWiki | null
+}
+
+export type CodeNodeKind = "file" | "class" | "method" | "function" | "module"
+
+export interface DemoCodeNode {
+  id: string
+  name: string
+  kind: CodeNodeKind
+  file: string
+  community: string
+}
+
+export interface DemoCodeEdge {
+  /** Caller/container side — blast radius walks these in reverse. */
+  source: string
+  target: string
+  type: string
+}
+
+export interface DemoCodeCommunity {
+  id: string
+  label: string
+  /** Index into the --chart-N ramp. */
+  chart: 1 | 2 | 3 | 4 | 5
+}
+
+export interface DemoCodeProcess {
+  id: string
+  label: string
+  /** Ordered node ids. */
+  steps: string[]
+}
+
+export interface DemoCodeGraph {
+  repo_id: string
+  nodes: DemoCodeNode[]
+  edges: DemoCodeEdge[]
+  communities: DemoCodeCommunity[]
+  processes: DemoCodeProcess[]
+}
+
+export type MemoryEntityType = "tool" | "database" | "concept" | "algorithm"
+
+export interface DemoMemoryEntity {
+  id: string
+  name: string
+  entity_type: MemoryEntityType
+  topic: string
+  project: string
+}
+
+export interface DemoMemoryRelation {
+  source: string
+  target: string
+  rel_type: string
+}
+
+export interface DemoMemoryTopic {
+  id: string
+  label: string
+  detected: string
+  /** Non-caution chart members only — never --chart-4 (the caution slot). */
+  chart: 1 | 2 | 3 | 5
+  project: string
+}
+
+export interface DemoMemoryGraph {
+  entities: DemoMemoryEntity[]
+  relations: DemoMemoryRelation[]
+  topics: DemoMemoryTopic[]
+}
+
+export interface ChatContextRow {
+  id: string
+  layer: KnowledgeLayer
+  /** null = the row carries no rung badge (L0 lifecycle, not the ladder). */
+  verification: VerificationStatus | null
+  claim: string
+  /** The verbatim honest badge line (or the badge:null explanation). */
+  badge_line: string
+  channel?: string
+  trace?: MemoryTrace
+}
+
+export interface DemoTurnContext {
+  rows: ChatContextRow[]
+  exclusions: MemoryExclusion[]
+  /** Caution-banner copy when one retrieval channel failed this turn. */
+  degraded: string | null
+  /** e.g. "3 sources used this turn — see context panel". */
+  sources_line: string
+}
+
+export interface DemoChatMessage {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  bullets?: string[]
+  context?: DemoTurnContext
+}
+
+export interface DemoChatThread {
+  id: string
+  title: string
+  updated_label: string
+  messages: DemoChatMessage[]
+}
+
+export interface ReindexOptions {
+  full: boolean
+  enrich_symbols: boolean
+  generate_wiki: boolean
+}
+
 export interface DemoStoreState {
   memories: DemoMemory[]
   repos: Repo[]
@@ -351,6 +520,10 @@ export interface DemoStoreState {
   reviewItems: DemoReviewItem[]
   hygiene: HygieneQueueState
   lastDetectionRun: string
+  codeRepos: DemoRepo[]
+  codeGraphs: DemoCodeGraph[]
+  memoryGraph: DemoMemoryGraph
+  chatThreads: DemoChatThread[]
   addMemory: (m: DemoMemory) => void
   updateMemory: (id: string, patch: Partial<DemoMemory>) => void
   deleteMemory: (id: string) => void
@@ -361,4 +534,8 @@ export interface DemoStoreState {
   decidePinSuggestion: (id: string, decision: "accepted" | "dismissed") => void
   resolveHygiene: (category: HygieneCategory, ids: string[]) => void
   resetKnowledge: () => void
+  triggerReindex: (repoId: string, opts: ReindexOptions) => void
+  /** Appends the user message plus a canned demo reply; returns the thread
+   *  id (a fresh one when threadId is null). */
+  sendChatMessage: (threadId: string | null, content: string) => string
 }

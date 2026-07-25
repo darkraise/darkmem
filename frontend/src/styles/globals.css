@@ -229,3 +229,29 @@ body.content-full-bleed .dr-top-nav-layout-content,
 body.content-full-bleed .dr-split-panel-layout-content {
   padding: 0;
 }
+
+/* Demo graph canvases (Wave 3): a gentle idle drift so play/pause has a
+   real effect on the representative SVG graphs. Nodes glide, never jump. */
+@keyframes dm-graph-drift {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: 2px -2px;
+  }
+  50% {
+    translate: -2px 2px;
+  }
+  75% {
+    translate: 1px 2px;
+  }
+}
+.dm-graph-drift {
+  animation: dm-graph-drift 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dm-graph-drift {
+    animation: none !important;
+  }
+}

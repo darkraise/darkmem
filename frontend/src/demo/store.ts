@@ -13,7 +13,15 @@ import {
   CURATED_REVIEW_ITEMS,
   LAST_DETECTION_RUN,
 } from "./data/knowledge-curated"
+import { CURATED_CODE_GRAPHS, CURATED_CODE_REPOS } from "./data/code-curated"
+import { CURATED_MEMORY_GRAPH } from "./data/memory-graph-curated"
+import {
+  CURATED_CHAT_THREADS,
+  DEMO_REPLY_CONTENT,
+  DEMO_REPLY_CONTEXT,
+} from "./data/chat-curated"
 import { enrichBulkMemories, type RawBulkMemory } from "./memories"
+import { buildReindexPhases } from "./explore"
 import { liveArticles } from "./knowledge"
 import {
   buildActivityFeed,
@@ -25,6 +33,7 @@ import type {
   DemoMemory,
   DemoFact,
   DemoArticle,
+  DemoChatThread,
   Repo,
   Job,
   LlmProfile,
@@ -115,6 +124,14 @@ export const useDemoStore = create<DemoStoreState>((set) => ({
   contributions: buildContributions(),
   ...initialKnowledge(),
   lastDetectionRun: LAST_DETECTION_RUN,
+  // Deep-copy so reindex mutations never write back into the fixtures.
+  codeRepos: CURATED_CODE_REPOS.map((r) => ({ ...r })),
+  codeGraphs: CURATED_CODE_GRAPHS,
+  memoryGraph: CURATED_MEMORY_GRAPH,
+  chatThreads: CURATED_CHAT_THREADS.map((t) => ({
+    ...t,
+    messages: [...t.messages],
+  })),
   addMemory: (m) =>
     set((s) => ({
       memories: [m, ...s.memories],
@@ -203,4 +220,52 @@ export const useDemoStore = create<DemoStoreState>((set) => ({
     }),
   resetKnowledge: () =>
     set(() => ({ ...initialKnowledge(), stats: initialStats })),
+  triggerReindex: (repoId, opts) =>
+    set((s) => ({
+      codeRepos: s.codeRepos.map((r) =>
+        r.id === repoId
+          ? {
+              ...r,
+              status: "indexing" as const,
+              phases: buildReindexPhases(opts),
+              stale: null,
+              error: null,
+              registered_note: null,
+            }
+          : r,
+      ),
+    })),
+  sendChatMessage: (threadId, content) => {
+    const state = useDemoStore.getState()
+    const existing = threadId
+      ? state.chatThreads.find((t) => t.id === threadId)
+      : undefined
+    const target: DemoChatThread = existing ?? {
+      id: `thread-new-${state.chatThreads.length + 1}`,
+      title: content.length > 42 ? `${content.slice(0, 42)}…` : content,
+      updated_label: "just now",
+      messages: [],
+    }
+    const n = target.messages.length
+    const updated: DemoChatThread = {
+      ...target,
+      updated_label: "just now",
+      messages: [
+        ...target.messages,
+        { id: `m${n + 1}`, role: "user", content },
+        {
+          id: `m${n + 2}`,
+          role: "assistant",
+          content: DEMO_REPLY_CONTENT,
+          context: DEMO_REPLY_CONTEXT,
+        },
+      ],
+    }
+    set((s) => ({
+      chatThreads: existing
+        ? s.chatThreads.map((t) => (t.id === updated.id ? updated : t))
+        : [updated, ...s.chatThreads],
+    }))
+    return updated.id
+  },
 }))

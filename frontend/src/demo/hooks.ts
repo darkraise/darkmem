@@ -23,3 +23,13 @@ export const useDemoReviewItems = () => useDemoStore((s) => s.reviewItems)
 export const useDemoHygiene = () => useDemoStore((s) => s.hygiene)
 export const useDemoLastDetectionRun = () =>
   useDemoStore((s) => s.lastDetectionRun)
+
+export const useDemoCodeRepos = () => useDemoStore((s) => s.codeRepos)
+export const useDemoCodeRepo = (id: string | undefined) =>
+  useDemoStore((s) => s.codeRepos.find((r) => r.id === id))
+export const useDemoCodeGraph = (repoId: string | undefined) =>
+  useDemoStore((s) => s.codeGraphs.find((g) => g.repo_id === repoId))
+export const useDemoMemoryGraph = () => useDemoStore((s) => s.memoryGraph)
+export const useDemoChatThreads = () => useDemoStore((s) => s.chatThreads)
+export const useDemoChatThread = (id: string | null) =>
+  useDemoStore((s) => s.chatThreads.find((t) => t.id === id))
