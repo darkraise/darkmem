@@ -40,7 +40,7 @@ from typing import Iterable, Mapping, Sequence
 
 from benchlib import bench_db, ledger  # noqa: F401  (DATABASE_URL override first)
 from benchlib.retrieval_scorer import ScoreReport, normalize_memory_id
-from benchlib.twin import EvalRun, LatencyRecorder, live_call_count, served_by
+from benchlib.twin import EvalRun, LatencyRecorder, live_call_count, served_by_label
 
 from app.services.extraction import _content_seed
 from app.services.llm import LLMOrchestrator, LLMTruncationError
@@ -396,7 +396,7 @@ async def run_full_context(
             # the signal that its output cap, not the harness, needs raising.
             parsed = ParsedRanking(truncated=True)
         call_elapsed = time.perf_counter() - call_started
-        label = served_by(before, live_call_count(llm))
+        label = served_by_label(before, live_call_count(llm))
 
         recorder.record("full_context_call", call_elapsed, label)
         audit.add(parsed)

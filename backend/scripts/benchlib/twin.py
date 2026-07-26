@@ -157,7 +157,7 @@ def live_call_count(llm):
     return getattr(llm, "live_calls", None)
 
 
-def served_by(before, after) -> str:
+def served_by_label(before, after) -> str:
     """A sample is cache-served only when a counter existed on both sides
     of the window and did not move. An orchestrator without the counter
     reports "live", the conservative label: attributing an unmeasurable
@@ -213,7 +213,7 @@ def instrument_retrieval(llm):
         t0 = time.perf_counter()
         result = await orig_rerank(self, *args, **kwargs)
         elapsed = time.perf_counter() - t0
-        recorder.record("reranker", elapsed, served_by(before, live_call_count(self.llm)))
+        recorder.record("reranker", elapsed, served_by_label(before, live_call_count(self.llm)))
         return result
 
     async def spy_pipeline_search(self, *args, **kwargs):
@@ -224,7 +224,7 @@ def instrument_retrieval(llm):
         t0 = time.perf_counter()
         result = await orig_pipeline_search(self, *args, **kwargs)
         elapsed = time.perf_counter() - t0
-        recorder.record("end_to_end", elapsed, served_by(before, live_call_count(llm)))
+        recorder.record("end_to_end", elapsed, served_by_label(before, live_call_count(llm)))
         return result
 
     async def spy_embed(text):
@@ -232,7 +232,7 @@ def instrument_retrieval(llm):
         t0 = time.perf_counter()
         result = await orig_embed(text)
         elapsed = time.perf_counter() - t0
-        recorder.record("embed_query", elapsed, served_by(before, live_call_count(llm)))
+        recorder.record("embed_query", elapsed, served_by_label(before, live_call_count(llm)))
         return result
 
     HybridSearchService._semantic_search = spy_semantic
