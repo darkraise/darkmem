@@ -32,7 +32,7 @@ next, in what order, by which agent, and how anyone knows it is done*.
 | EH1 — Documents / PKM (horizon) | [`tasks/EH1-documents-pkm.md`](tasks/EH1-documents-pkm.md) | 17 | G-F |
 | EH2 — .NET migration (horizon) | [`tasks/EH2-dotnet-migration.md`](tasks/EH2-dotnet-migration.md) | outline only | G-G |
 
-**204 tasks** across six executable epics. Each carries a model tier, a **size**, its
+**205 tasks** across six executable epics. Each carries a model tier, a **size**, its
 dependencies, its owning design doc, its honesty tag, and the gate it serves.
 
 Sizes are S (≤ ~2h), M (one focused session — the target), and L (more than a day).
