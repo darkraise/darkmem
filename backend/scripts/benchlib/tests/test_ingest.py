@@ -163,6 +163,68 @@ async def test_run_ingest_pins_gate_config_even_when_process_left_it_dirty(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_a_corpus_created_at_lands_on_the_memory_row(tmp_path):
+    """The corpus declares per-entry timestamps; supersession's window and
+    older-than rules read memories.created_at, so a discarded value turns a
+    date-rule corpus into a test of the id tie-break."""
+    from app.models.memory import Memory
+    from sqlalchemy import select as sa_select
+
+    llm = _StubLLM({}, cache_dir=str(tmp_path))
+    entries = [
+        {"content": "The weather was mild on the first day.",
+         "created_at": "2026-01-02T00:00:00+00:00"},
+        {"content": "The weather was mild on the second day.",
+         "created_at": "2026-03-01T12:30:00+00:00"},
+    ]
+
+    result = await ingest.run_ingest(llm, entries, ingest.GateConfig())
+
+    async with bench_db.session_factory() as session:
+        rows = {
+            str(m.id): m.created_at
+            for m in (await session.execute(sa_select(Memory))).scalars().all()
+        }
+
+    stored = [rows[o["memory_id"]] for o in result.outcomes]
+    assert [d.isoformat() for d in stored] == [
+        "2026-01-02T00:00:00+00:00", "2026-03-01T12:30:00+00:00",
+    ]
+    assert stored[0] < stored[1]
+
+
+@pytest.mark.asyncio
+async def test_an_entry_without_created_at_keeps_the_server_stamp(tmp_path):
+    from datetime import datetime, timezone
+    from app.models.memory import Memory
+    from sqlalchemy import select as sa_select
+
+    llm = _StubLLM({}, cache_dir=str(tmp_path))
+    before = datetime.now(timezone.utc)
+
+    result = await ingest.run_ingest(llm, _corpus(1), ingest.GateConfig())
+
+    async with bench_db.session_factory() as session:
+        row = (await session.execute(
+            sa_select(Memory).where(Memory.id == result.outcomes[0]["memory_id"])
+        )).scalar_one()
+
+    assert row.created_at >= before
+
+
+@pytest.mark.asyncio
+async def test_an_unparseable_created_at_fails_loud_naming_the_entry(tmp_path):
+    llm = _StubLLM({}, cache_dir=str(tmp_path))
+    entries = [
+        {"content": "The weather was mild."},
+        {"content": "The weather was cold.", "created_at": "yesterday"},
+    ]
+
+    with pytest.raises(ValueError, match="entry 1.*created_at"):
+        await ingest.run_ingest(llm, entries, ingest.GateConfig())
+
+
+@pytest.mark.asyncio
 async def test_run_never_mixes_fingerprints(tmp_path):
     """Phase 1 (content) and Phase 3 (entity) embeddings can legitimately
     land on different fingerprints if the embedder rotates mid-batch

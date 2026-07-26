@@ -9,6 +9,7 @@ benchlib.caching_llm.CachingLLMOrchestrator for the LLM.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -125,6 +126,22 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
     }
 
 
+def _parse_created_at(value, entry_idx: int) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError(
+            f"entry {entry_idx}: created_at must be an ISO-8601 string, got {value!r}"
+        )
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(
+            f"entry {entry_idx}: created_at {value!r} is not ISO-8601"
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 async def _create_memory_rows(session_factory, entries: list[dict]) -> list[dict]:
     """Pre-create a bare ``memories`` row per entry and return process_batch
     entries carrying the DB-assigned ``memory_id``.
@@ -142,11 +159,17 @@ async def _create_memory_rows(session_factory, entries: list[dict]) -> list[dict
 
     An entry that already carries a memory_id is passed through unchanged,
     for callers re-driving an already-created memory.
+
+    A corpus ``created_at`` is honoured by overwriting the server-stamped
+    default before the commit, so the row carries the date the corpus
+    declared. detect_supersessions orders candidates by ``created_at``
+    (pipeline.py:463-470) -- discarding it would silently reduce a corpus
+    written to exercise the date rules to a test of the id tie-break.
     """
     prepared: list[dict] = []
     async with session_factory() as session:
         repo = PostgresMemoryRepository(session)
-        for entry in entries:
+        for idx, entry in enumerate(entries):
             if "memory_id" in entry:
                 prepared.append(entry)
                 continue
@@ -164,6 +187,9 @@ async def _create_memory_rows(session_factory, entries: list[dict]) -> list[dict
                 memory_type=data.memory_type, importance=data.importance,
                 metadata=data.metadata, expires_at=data.expires_at, project=data.project,
             )
+            declared_created_at = entry.get("created_at")
+            if declared_created_at:
+                memory.created_at = _parse_created_at(declared_created_at, idx)
             if data.tags:
                 await repo.set_tags(memory.id, data.tags)
                 await session.refresh(memory, ["tags"])
