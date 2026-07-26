@@ -113,11 +113,17 @@ frozen reference point every later phase compares against.
       prompt were frozen will read that planned change as a regression
 - [ ] Written to `gate-ledger.md` under G-A
 
-**Verify.** Both invocations, output pasted into the ledger entry verbatim (the bench
-reads LLM config from the database, so the URL is required — runbook §8):
+**Verify.** Both invocations, output pasted into the ledger entry verbatim. The bench
+reads LLM config from the database, so the URL is required — and it must be
+`darkmem_bench`, never `darkmem` (write-forbidden) or `darkmem_test` (pytest-only,
+runbook §8). `run_bench.py`'s only database interaction is the read-only
+`get_llm_config`, and the bench database's `llm_*` rows are transient (every benchlib
+reset wipes them), so seed them first via `benchlib.run_smoke.seed_llm_purpose_configs`
+with the key read from the environment:
 ```bash
 cd backend
-export DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
+export DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench
+export DEEPSEEK_API_KEY=<real key — never committed>
 python scripts/extraction_bench/run_bench.py
 python scripts/extraction_bench/run_bench.py --gold gold_heldout.json
 ```
@@ -434,3 +440,4 @@ clear, not to confirm it.
 | 2026-07-26 | T0.12a, T0.12b | 2 | Declared both floor-exempt under runbook §4, and the a→c sequence one atomic merge unit to be run on a lane branch | Once the six revisions are gone at T0.12a, `alembic upgrade head` yields a deliberately partial schema until T0.12c completes it, so the repo-wide suite cannot pass. Runbook §4 admits no partial credit, so without a written exemption an honest agent stalls at T0.12a with a red floor it is not allowed to ignore and not able to fix |
 | 2026-07-26 | T0.12a | 1 | Corrected the one-owner cross-reference from runbook §8 to §9 | §8 is environment facts; the serialise-through-one-owner rule is §9 |
 | 2026-07-26 | (runbook §6) | 1 | `agent-runbook.md:172` said `progress.md` is "committed directly to `main`" | The same bullet's first sentence, and this repo's actual trunk, are `master`. There is no `main` branch; an agent following the second half of that sentence literally would create one |
+| 2026-07-26 | T0.05 | 1 | Verify block now points at `darkmem_bench` (LLM rows seeded via `benchlib.run_smoke.seed_llm_purpose_configs`, key from `DEEPSEEK_API_KEY`), not `darkmem` | The real `darkmem` database has no schema on this machine and is write-forbidden to agents, so the Verify command as written could not run and nobody may make it run. `run_bench.py` only reads `get_llm_config` from the database, and runbook §8 designates `darkmem_bench` for eval runs; its `llm_*` rows are wiped by every benchlib reset, so seeding is an explicit step of the run |
