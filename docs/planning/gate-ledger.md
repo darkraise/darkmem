@@ -97,8 +97,10 @@ constant (−2 from tp, +1 each from fn and fp), so the conversion is exactly:
 
     floor = 2·(tp − 3) / (2·tp + fp + fn)
 
-and each flip costs exactly 2 / (2·tp + fp + fn) in F1. Worked per cell (a
-future agent should recheck this arithmetic, not trust it):
+and each flip costs exactly 2 / (2·tp + fp + fn) in F1. A dimension passes at
+F1 ≥ its floor — landing exactly on the floor is a pass, since the floor *is*
+the granted 3-flip budget spent in full. Worked per cell (a future agent should
+recheck this arithmetic, not trust it):
 
 | Dimension | Gold floor = 2(tp−3)/(2tp+fp+fn) | Held-out floor |
 |---|---|---|
