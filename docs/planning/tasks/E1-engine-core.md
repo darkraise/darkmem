@@ -25,7 +25,7 @@ Start here: most other lanes journal to `events` or call the orchestrator.
 
 #### T1.01 — Flatten `llm_purpose_configs` to inline rows
 
-`Model: Opus 5` · `Size: L` · `Depends: T0.17, T0.12c` · `Doc: 11 §2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T0.17, T0.12c` · `Doc: 11 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Replace the `provider_ref` / `profile_ref` / `ml_profile_ref` indirection with
 six-to-eight inline purpose rows. The indirection bought rotation-in-one-place and cost
@@ -44,7 +44,7 @@ three levels of resolution on every call; the target keeps the config flat.
 
 #### T1.02 — One shared `httpx.AsyncClient` with atomic live reload
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.01` · `Doc: 11 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.01` · `Doc: 11 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Construct the client once at boot; an admin save swaps configuration
 atomically under the single-worker assumption (invariant 13).
@@ -58,7 +58,7 @@ atomically under the single-worker assumption (invariant 13).
 
 #### T1.03 — `api_kind` as the sole vendor-quirk home
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.01` · `Doc: 11 §4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.01` · `Doc: 11 §4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Every vendor quirk — auth scheme, reasoning-disable knob, structured-output
 caveat — lives behind `api_kind` and nowhere else. The known ones are recorded and must
@@ -79,7 +79,7 @@ DeepSeek needs `thinking:{type:disabled}`; Gemini's OpenAI shim honours only
 
 #### T1.04 — `classifier_kind` inline on the classification purpose
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.01` · `Doc: 11 §2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.01` · `Doc: 11 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** `classifier_kind` (`llm` | `local`) rides inline on the classification purpose
 and is the only switch selecting the classifier. Do not reintroduce a generic ML on/off
@@ -93,7 +93,7 @@ flag — that was deliberately removed in the 2026-05-01 consolidation.
 
 #### T1.05 — Seed `synthesis` and `verification` purposes inert
 
-`Model: Haiku 4.5` · `Size: S` · `Depends: T1.01` · `Doc: 11 §6` · `Tag: target-new, inert` · `Gate: G-B`
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: T1.01` · `Doc: 11 §6` · `Tag: target-new, inert` · `Gate: G-B`
 
 **What.** Both purposes seed now behind their unshipped layers (E2/E3), landed inert
 with no caller.
@@ -107,7 +107,7 @@ with no caller.
 
 #### T1.06 — `events` table, monthly partitioning, append-only trigger
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 04 §8.1` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 04 §8.1` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The journal that makes measurement a query instead of an instrument.
 `RANGE(created_at)` monthly partitions plus a forbid-trigger blocking UPDATE, DELETE and
@@ -122,7 +122,7 @@ TRUNCATE. Convention 8 depends on this being genuinely append-only.
 
 #### T1.07 — `events` writer and the journaling convention
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.06` · `Doc: 05 §2.3` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.06` · `Doc: 05 §2.3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** One helper every subsystem journals through, so payload shape stays uniform
 across capture, extraction, supersession, and pipeline outcomes.
@@ -137,7 +137,7 @@ across capture, extraction, supersession, and pipeline outcomes.
 
 #### T1.08 — `GET /events`, `/events/calendar`, `/events/timeline`
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.07` · `Doc: 12 §7` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.07` · `Doc: 12 §7` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The read surface the Dashboard calendar and per-object timeline consume.
 
@@ -151,7 +151,7 @@ across capture, extraction, supersession, and pipeline outcomes.
 
 #### T1.09 — Retire `audit_log` reads
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.08` · `Doc: 04 §8.1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.08` · `Doc: 04 §8.1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** `events` replaces the coarse `audit_log`/`AuditLog` read paths. Retire the
 readers; keep the auth-audit writes that doc 18 still owns.
@@ -168,7 +168,7 @@ readers; keep the auth-audit writes that doc 18 still owns.
 
 #### T1.10 — `memory_buffer` table + pre-minted UUIDv7 ids
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 05 §2` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 05 §2` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The durable landing zone for accepted-but-unprocessed captures. The id is
 minted at accept so the caller gets a real handle back from a 202.
@@ -185,7 +185,7 @@ minted at accept so the caller gets a real handle back from a 202.
 
 #### T1.11 — `origin_key` resolution — born at capture
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.10` · `Doc: 05 §2.1` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.10` · `Doc: 05 §2.1` · `Tag: target-new` · `Gate: G-B`
 
 **What.** `origin_key` is the capture-session / per-boot agent-run identity, and every
 later corroboration count in E2 is `COUNT(DISTINCT origin_key)` over it. Getting this
@@ -213,7 +213,7 @@ ONE origin** — undercount, never manufacture agreement.
 
 #### T1.12 — Tier-A synchronous accept + 202 ack
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.11` · `Doc: 05 §2` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.11` · `Doc: 05 §2` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Accept validates against `MemoryCreate`, writes the buffer row, journals, and
 returns a 202-style ack with the pre-minted id. No LLM call, no graph write, no waiting.
@@ -227,7 +227,7 @@ returns a 202-style ack with the pre-minted id. No LLM call, no graph write, no 
 
 #### T1.13 — `buffer_flush` job with `FOR UPDATE SKIP LOCKED`
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.12` · `Doc: 05 §3` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.12` · `Doc: 05 §3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** A JobRegistry job claims buffered rows with `FOR UPDATE SKIP LOCKED` and feeds
 them to `process_batch`. Claiming is the correctness-critical part: a row must never be
@@ -248,7 +248,7 @@ processed twice or stranded.
 
 #### T1.14 — `wait_process` interactive bypass
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.13` · `Doc: 05 §3` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.13` · `Doc: 05 §3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** An interactive caller that needs the result now bypasses the buffer and runs
 the pipeline inline.
@@ -266,7 +266,7 @@ the pipeline inline.
 
 #### T1.15 — Repo-hint auto-provision handoff + SSRF allowlist gate
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.12` · `Doc: 05 §2.4, 18` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.12` · `Doc: 05 §2.4, 18` · `Tag: target-new` · `Gate: G-B`
 
 **What.** A capture mentioning a repo queues F11 provisioning in Tier C. **Capture never
 clones.** The hint is validated against doc 18's SSRF allowlist before anything is queued.
@@ -286,7 +286,7 @@ clones.** The hint is validated against doc 18's SSRF allowlist before anything 
 
 #### T1.16 — Phase 1: content embed + register-before-insert
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.03` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.03` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** One chunked embed call for the batch, returning vectors + fingerprint. The
 fingerprint is registered exactly once before any partition write.
@@ -300,7 +300,7 @@ fingerprint is registered exactly once before any partition write.
 
 #### T1.17 — Phase 2: merged extract + classify in one call
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.16, T1.04` · `Doc: 05 §5–§6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.16, T1.04` · `Doc: 05 §5–§6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** One LLM touch per memory by default: the merged schema adds
 `summary`/`emotions`/`flags` to extraction, and extraction's `memory_type` doubles as the
@@ -322,7 +322,7 @@ under a different gate state is **not** bit-identical — record that caveat in 
 
 #### T1.18 — `classifier_kind=local` narrowing path
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.17` · `Doc: 05 §6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.17` · `Doc: 05 §6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** With a local classifier the extraction call narrows to extraction-only and
 classification runs in-process.
@@ -335,7 +335,7 @@ classification runs in-process.
 
 #### T1.19 — Phase 3: entity embed with the two-level cache
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.16` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.16` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Memory cache → DB cache → embed the misses, writing new vectors back to both,
 keyed `(name_lower, fingerprint)`.
@@ -349,7 +349,7 @@ keyed `(name_lower, fingerprint)`.
 
 #### T1.20 — Phase 4: type-constrained dedup + `names_distinct`
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.19` · `Doc: 06 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.19` · `Doc: 06 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** One ANN probe per unique `(name, entity_type)` at threshold 0.85. The
 `names_distinct` discriminator is what keeps "february outage" and "march outage" apart
@@ -367,7 +367,7 @@ rebuild intact.
 
 #### T1.21 — Phase 5: the two-savepoint write
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.20` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.20` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Savepoint A: vector upsert + memory-row enrichment. Savepoint B:
 entity/relationship graph + technologies + supersession. Split so a graph failure never
@@ -383,7 +383,7 @@ rolls back the vector write.
 
 #### T1.22 — Mid-batch embedder rotation
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.19` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.19` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** If the active embedder rotates between Phase 1 and Phase 3, Phase 3 registers
 and switches to the new fingerprint rather than writing into the old partition.
@@ -396,7 +396,7 @@ and switches to the new fingerprint rather than writing into the old partition.
 
 #### T1.23 — Five closed vocabularies + normalisers + `LEGACY_*` maps
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 06 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.17, T0.12c` · `Doc: 06 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Entity, relationship, tech, and memory types. Pure normalisers; unknown entity
 types fall back to `concept`, unknown relations to `RELATED_TO`; `LEGACY_*` maps rewrite
@@ -417,7 +417,7 @@ consolidation passes emit any edge (doc 06 §10).
 
 #### T1.24a — Pass registry, the ordering contract, and the per-pass harness
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.23` · `Doc: 06 §4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.23` · `Doc: 06 §4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The scaffold the ~40 passes hang off: an ordered registry where each pass is a
 pure `list[dict] -> list[dict]`, individually testable and individually reversible, with no
@@ -440,7 +440,7 @@ fan-out can mint an event-typed edge the first pass never saw.
 
 #### T1.24b — Stage 1: entity shaping
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4 S1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4 S1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The non-mutating entity filters, in doc 06 §4's order: `_normalize_names`,
 `_filter_noise` / `_filter_literals`, `_snap_hardware_types` / `_apply_type_overrides`,
@@ -461,7 +461,7 @@ type. Fix in the map, not the prompt.
 
 #### T1.24c — Stage 2: entity rescue
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.24b` · `Doc: 06 §4 S2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.24b` · `Doc: 06 §4 S2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Add back what the LLM dropped: `_rescue_known_entities` (curated short and
 hardware names, negation-aware, **span-guarded**), `_rescue_file_path_entities`,
@@ -478,7 +478,7 @@ hardware names, negation-aware, **span-guarded**), `_rescue_file_path_entities`,
 
 #### T1.24d — Stage 4: relation gating and direction
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.24c, T1.25` · `Doc: 06 §4 S4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.24c, T1.25` · `Doc: 06 §4 S4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Remap to valid names and strip edges to negated entities; the two REPLACES gates
 (`_gate_replaces_selection`, `_gate_replaces_requires_verb`) that reserve REPLACES for real
@@ -497,7 +497,7 @@ migrations; temporal handling (`_suppress_temporal_edges`, `_downgrade_future_to
 
 #### T1.24e — Stage 5: collapse, dedup, fan-out
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.24d` · `Doc: 06 §4 S5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.24d` · `Doc: 06 §4 S5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Drop redundant `USES` when a REPLACES or DEPLOYED_ON exists;
 `_dedup_by_target_predicate` with its tie-break (**rescue-tagged beats LLM, then weight** —
@@ -514,7 +514,7 @@ this is the wrong-direction-REPLACES fix); `_fan_out_coordinated`; then the seco
 
 #### T1.24f — Whole-chain F1 parity against the recorded baseline
 
-`Model: Fable 5` · `Size: M` · `Depends: T1.24e, T1.17` · `Doc: 06 §4, 17 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T1.24e, T1.17` · `Doc: 06 §4, 17 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The chain is only as good as its measured number. Run the full bench against
 T0.05's recorded baseline on both gold and held-out, and confirm the moat survived the
@@ -530,7 +530,7 @@ rebuild.
 
 #### T1.25 — `relation_rescue` layer
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4` · `Tag: exists-today` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.24a` · `Doc: 06 §4` · `Tag: exists-today` · `Gate: G-B`
 
 **What.** Doc 06 §4's **Stage 3** — the only surviving ingestion-side behavioural flag.
 Three passes: `_rescue_relations` (adjacency connectors under tight gap constraints),
@@ -549,7 +549,7 @@ in Stage 2 — that is T1.24c's, not this task's.
 
 #### T1.26 — Strip-before-rewrite: idempotent re-extraction
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.21` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.21` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Delete this `memory_id`'s prior graph contributions before writing the new set.
 `delete_by_memory_id` deletes a relation only when no live memory still asserts it, and
@@ -566,7 +566,7 @@ the FK cascades, so deleting a referenced entity destroys another memory's edge.
 
 #### T1.27 — `technologies` denorm recompute
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.26` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.26` · `Doc: 06 §6` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Recompute `memories.technologies` from entities whose type is in `TECH_TYPES`,
 lowercase, GIN-indexed. Supersession and the retrieval filter both read this column
@@ -581,7 +581,7 @@ instead of joining — keep all three properties (lowercase, denormalised, index
 
 #### T1.28 — `graph_orphan_cleanup` backstop
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.26` · `Doc: 06 §6` · `Tag: exists-today` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.26` · `Doc: 06 §6` · `Tag: exists-today` · `Gate: G-B`
 
 **What.** The hourly unscoped sweep (`prune_orphan_entities`) so Phase-4 dedup never
 merges fresh entities onto stale ghosts.
@@ -602,7 +602,7 @@ leaf surface, not infrastructure another task consumes.*
 
 #### T1.29a — Pushdown on the semantic channel
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.16` · `Doc: 07 §7, 04 §10` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.16` · `Doc: 07 §7, 04 §10` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Project, status, and archived predicates into the SQL for the semantic channel.
 
@@ -621,7 +621,7 @@ an index plan on this channel is chasing something the index cannot give.
 
 #### T1.29b — Pushdown on the keyword and graph channels
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.29a` · `Doc: 07 §7` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29a` · `Doc: 07 §7` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The same predicates on `ts_rank` keyword search and the graph traversal. Unlike
 the semantic channel, these **can** show an index-scan plan, and should.
@@ -634,7 +634,7 @@ the semantic channel, these **can** show an index-scan plan, and should.
 
 #### T1.29c — Pushdown on `memory_reason` and code search
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §7` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §7` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The two channels with the recorded leak. `memory_reason` is named in doc 07 §7 as
 the specific cross-project and superseded escape; closing it is the **G-B blocking
@@ -649,7 +649,7 @@ prerequisite**, and no phase after 1 may describe isolation as holding without i
 
 #### T1.30 — RRF fusion + the unified `rank_fusion_factor`
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Two classes of signal, kept separate (doc 07 §3). Every signal producing a
 **ranked list** joins one Reciprocal Rank Fusion at k=60 as a weighted input —
@@ -670,7 +670,7 @@ never the ordering signal.
 
 #### T1.31 — Ranking arms wired at zero
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: target-new, inert` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: target-new, inert` · `Gate: G-B`
 
 **What.** `w_importance`, `w_heat`, `w_recency` land as formula slots at weight 0. Landing
 them wired-at-zero is the Phase-1 deliverable; activation is Phase 2 behind a measured
@@ -686,7 +686,7 @@ retrieval-eval win with its twin.
 
 #### T1.32 — Reranker wired dormant
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: exists-today` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.30` · `Doc: 07 §3` · `Tag: exists-today` · `Gate: G-B`
 
 **What.** `reranker_enabled` ships wired and off. When on, LLM-scores the top 40
 RRF-ranked rows 0–10 and appends the unscored tail in original order.
@@ -700,7 +700,7 @@ RRF-ranked rows 0–10 and appends the unscored tail in original order.
 
 #### T1.33 — The retrieval trace
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.30` · `Doc: 07 §8` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.30` · `Doc: 07 §8` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Envelope + per-row trace attached on request. Transient — **no table in v1**.
 This is the signal the why-retrieved UI (T1.44) renders, and it is where the RRF and
@@ -719,7 +719,7 @@ rerank scores stop being dropped at the API boundary.
 
 #### T1.34 — `applies_when` context-boost slot
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.30` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.30` · `Doc: 07, 09 §5` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Wire the slot this phase; magnitude is a `config` row tuned in Phase 2. The
 **boost-plus-label rule and the conflict-count rule are hard rules, never tuned** — a
@@ -735,7 +735,7 @@ boosted row is always labelled, and conflicts are always counted.
 
 #### T1.35 — The isolation probe (G-B's zero-count)
 
-`Model: Fable 5` · `Size: M` · `Depends: T1.29c, T0.10` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T1.29c, T0.10` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The probe that clears G-B: count unlabelled cross-project and superseded rows
 returned on **every** channel. The bar is zero. Design it adversarially — construct the
@@ -756,7 +756,7 @@ cases most likely to leak, not the ones most likely to pass.
 
 #### T1.36 — Supersession detector, rules 1–6 verbatim
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.21, T1.27` · `Doc: 08 §2.1` · `Tag: exists-today` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.21, T1.27` · `Doc: 08 §2.1` · `Tag: exists-today` · `Gate: G-B`
 
 **What.** Fires synchronously in Phase 5 savepoint B on a REPLACES-family relation. All
 six rules carry verbatim: same project; candidate active; lowercased `technologies`
@@ -779,7 +779,7 @@ supersession that once made two memories vanish from the default view.
 
 #### T1.37 — TTL sweep, demote before delete
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.36` · `Doc: 08 §2.3` · `Tag: exists-today` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.36` · `Doc: 08 §2.3` · `Tag: exists-today` · `Gate: G-B`
 
 **What.** `expired_memory_cleanup` deletes rows past `expires_at`, **first** demoting
 every dependent pointing at an expiring row via `superseded_by` to `deprecated` with
@@ -801,7 +801,7 @@ every dependent pointing at an expiring row via `superseded_by` to `deprecated` 
 
 #### T1.38 — T1 fail-stale
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.07` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.07` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** A pipeline exception keeps the last-good graph, labelled `stale` — never wipes.
 A diff failure falls back to a full index, not a bare wipe.
@@ -815,7 +815,7 @@ A diff failure falls back to a full index, not a bare wipe.
 
 #### T1.39 — T2 index-debt drain
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.38` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.38` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Dependent-caller re-trace overflow past the retrace cap persists to
 `repositories.index_debt` and drains in continuation batches. **Never dropped** — silent
@@ -830,7 +830,7 @@ truncation here is a graph that is quietly wrong.
 
 #### T1.40 — T3 `code_reconcile` job
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.39` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.39` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Periodically hash each tracked repo's working tree and feed mismatches through
 the incremental path.
@@ -844,7 +844,7 @@ the incremental path.
 
 #### T1.41 — T4 summary carry-over
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T1.40` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.40` · `Doc: 10 §3` · `Tag: target-new` · `Gate: G-B`
 
 **What.** A symbol whose body is unchanged keeps its LLM summary and enriched status
 across a file re-index — never re-billed.
@@ -866,7 +866,7 @@ doc 20 forbids.
 
 #### T1.42a — Payload envelope + source and context resolution
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.12, T1.14, T1.33` · `Doc: 12 §4–§5` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.12, T1.14, T1.33` · `Doc: 12 §4–§5` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The response envelope every surface returns, and the `source` resolution chain:
 explicit arg > the `X-Darkmem-Client` header > a User-Agent product map > `mcp`.
@@ -891,7 +891,7 @@ T1.65 renders it, so without this wire format both are building on nothing.
 
 #### T1.42b — REST surface conformance
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.42a` · `Doc: 12 §2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.42a` · `Doc: 12 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Every Phase-1 REST route against `api-rest-conventions.md`: 201 on create, 204 on
 delete, 202 for async-accepted, POST `.../search` for complex queries.
@@ -904,7 +904,7 @@ delete, 202 for async-accepted, POST `.../search` for complex queries.
 
 #### T1.42c — MCP surface parity and transport hardening
 
-`Model: Opus 5` · `Size: M` · `Depends: T1.42a` · `Doc: 12 §6, 18` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.42a` · `Doc: 12 §6, 18` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The MCP tool family over the same service layer, with the transport defences
 intact: DNS-rebinding protection via the Host allowlist, `MCP_ALLOWED_HOSTS` for LAN
@@ -924,7 +924,7 @@ HTTP.
 
 #### T1.42d — Two-door parity audit
 
-`Model: Opus 5` · `Size: S` · `Depends: T1.42b, T1.42c` · `Doc: 12, invariant 17` · `Tag: rebuild` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.42b, T1.42c` · `Doc: 12, invariant 17` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The audit that makes invariant 17 true rather than aspirational: enumerate every
 Phase-1 surface and show it exists on **both** doors, or is single-door **with a stated
@@ -942,7 +942,7 @@ forbids.
 
 #### T1.43 — Dashboard + contribution calendar
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.08` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.08` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** E1's core UI surface. The calendar reads the `events` date-bucket substrate —
 its click-to-date contract lands on `/memories?date=YYYY-MM-DD`.
@@ -956,7 +956,7 @@ its click-to-date contract lands on `/memories?date=YYYY-MM-DD`.
 
 #### T1.44 — Memories search + the why-retrieved trace
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.33, T1.43` · `Doc: 13 §4, §5.4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.33, T1.43` · `Doc: 13 §4, §5.4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The search surface with the per-row trace expanded on demand, plus the
 exclusion strip that renders even when the result list is empty — a silent drop is the
@@ -974,7 +974,7 @@ failure this design fears most.
 
 #### T1.45 — Pipeline stepper, failure triage, job board
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.21, T1.13` · `Doc: 13 §6.1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.21, T1.13` · `Doc: 13 §6.1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The Activity shell v1 modules over the five-phase signal, `pipeline_failures`,
 and JobRegistry.
@@ -989,7 +989,7 @@ and JobRegistry.
 
 #### T1.46 — Code fail-stale banner + index-debt indicator
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.39` · `Doc: 13 §4.2` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.39` · `Doc: 13 §4.2` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The two signals the code-truth hardening produces, surfaced. Both already exist
 in the frontend skeleton's demo data — this task binds them to the real backend.
@@ -1003,7 +1003,7 @@ in the frontend skeleton's demo data — this task binds them to the real backen
 
 #### T1.47 — Memory-detail supersession lineage
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.36` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.36` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Amber badge plus successor link. Superseded rows show by default with the badge
 — hiding them is what once made two memories silently vanish.
@@ -1017,7 +1017,7 @@ in the frontend skeleton's demo data — this task binds them to the real backen
 
 #### T1.48 — Detail-level preference honoured across advanced surfaces
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.44` · `Doc: 13 §5.4, §8` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.44` · `Doc: 13 §5.4, §8` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Simple/Advanced ships with the first advanced surface. `simple` hides technical
 detail — per-modality and fused scores, the arm breakdown, fingerprints, raw `config`
@@ -1036,7 +1036,7 @@ never hides an honesty signal** (invariant 14).
 
 #### T1.49 — WebSocket → query-invalidation mapping
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.45` · `Doc: 13 §2–§3` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.45` · `Doc: 13 §2–§3` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Map each broadcast event to the queries it invalidates, so the UI refreshes on
 real state rather than on a poll.
@@ -1054,7 +1054,7 @@ real state rather than on a poll.
 
 #### T1.50 — G-B evidence run and ledger entry
 
-`Model: Fable 5` · `Size: M` · `Depends: T0.16, T1.24f, T1.35, T1.44` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T0.16, T1.24f, T1.35, T1.44` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Clear G-B, adversarially. Three numbers, all of which must hold.
 
@@ -1082,7 +1082,7 @@ before.
 
 #### T1.51 — Cutover transform + carried-set column map
 
-`Model: Opus 5` · `Size: L` · `Depends: T0.12c, T1.01, T1.23` · `Doc: 19 §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T0.12c, T1.01, T1.23` · `Doc: 19 §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The one-time transform from today's schema to the baseline: the `llm_` renames,
 `origin_key` landing NULL on carried rows, lineage carried verbatim, and the carried set
@@ -1108,7 +1108,7 @@ carried nor rebuilt.
 
 #### T1.52 — Tier-C re-extraction backfill + verification counts
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.51, T1.13, T1.26` · `Doc: 19 §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.51, T1.13, T1.26` · `Doc: 19 §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Carried memories have no graph under the rebuilt extractor. Re-extract them as
 Tier-C work through the ordinary pipeline, then verify by counts — not by spot-checking.
@@ -1128,7 +1128,7 @@ Tier-C work through the ordinary pipeline, then verify by counts — not by spot
 
 #### T1.53 — Cutover rehearsal on a dump copy + restore drill
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.52` · `Doc: 19 §4, §9` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.52` · `Doc: 19 §4, §9` · `Tag: target-new` · `Gate: G-B`
 
 **What.** Rehearse the whole cutover against a `pg_dump` copy of the real database. Doc 19
 notes this doubles as the first restore drill — which is also the rollback story if the
@@ -1144,7 +1144,7 @@ frozen baseline turns out wrong.
 
 #### T1.54 — Execute the cutover, verify, apply the freeze tag
 
-`Model: Fable 5` · `Size: M` · `Depends: T1.53, T1.50, T0.15` · `Doc: 19 §2, §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T1.53, T1.50, T0.15` · `Doc: 19 §2, §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The real thing, once and only once, after G-B has cleared. Then apply the freeze
 tag that ends the regenerate-freely window.
@@ -1171,7 +1171,7 @@ this lane, E1 ships a backend nobody can configure behind a UI that renders fixt
 
 #### T1.55 — Settings → LLM: six inline purpose cards
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.01, T1.04` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.01, T1.04` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Rebuild the tab against the flattened config: six inline purpose cards plus the
 `classifier_kind` toggle. **Delete the provider and profile pickers** — doc 13 §7 names
@@ -1189,7 +1189,7 @@ violation, not merely dead UI.
 
 #### T1.56 — Setup wizard finalize against the flattened config
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.01` · `Doc: 11 §9.4` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.01` · `Doc: 11 §9.4` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The wizard writes seed-plus-overlay into the flattened `llm_purpose_configs`.
 This is also the supported path for an existing install, since T1.01 makes wizard re-run
@@ -1204,7 +1204,7 @@ the default rather than a config transform.
 
 #### T1.57 — Settings → Flags, bound to `config`
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.31` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.31` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The arms rendered honestly. Every `w_*` at zero shows as **inactive** with its
 activation bar named — that labelling is the UI half of the arms-at-zero honesty T1.31
@@ -1219,7 +1219,7 @@ lands in the backend.
 
 #### T1.58 — Retire demo mode as the default
 
-`Model: Sonnet 5` · `Size: L` · `Depends: T1.42a` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: L` · `Depends: T1.42a` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** `DEMO` currently defaults on (`VITE_DEMO !== "0"`). Flip it: real API and auth
 are the default.
@@ -1241,7 +1241,7 @@ binding task is done.
 
 #### T1.59 — Bind the Code section to live data
 
-`Model: Sonnet 5` · `Size: L` · `Depends: T1.42d, T1.58` · `Doc: 13 §4.2` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: L` · `Depends: T1.42d, T1.58` · `Doc: 13 §4.2` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Repositories (live indexing status, reindex dialog), Code Graph, and Wiki
 against the real backend. T1.46 binds only the two new signals; these are the surfaces
@@ -1256,7 +1256,7 @@ around them.
 
 #### T1.60 — Bind Chat and the Memory Graph explorer
 
-`Model: Sonnet 5` · `Size: L` · `Depends: T1.44, T1.58` · `Doc: 13 §4.1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: L` · `Depends: T1.44, T1.58` · `Doc: 13 §4.1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** Both are doc-13 committed surfaces with no task in the first draft. Chat renders
 retrieved context **with its labels and trace** — an unlabelled citation in a chat answer
@@ -1271,7 +1271,7 @@ is the silent-authority failure invariant 14 forbids.
 
 #### T1.61 — Activity: feed, day view, and the buffer monitor
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.08, T1.10` · `Doc: 13 §6.1` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.08, T1.10` · `Doc: 13 §6.1` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The Activity shell's remaining modules over `events` and `memory_buffer`. The
 buffer monitor is doc 13 §6.1's named surface for poison rows — the visible half of
@@ -1286,7 +1286,7 @@ T1.13's `buffer_max_attempts` bounding.
 
 #### T1.62 — App-as-edge deployment artifact
 
-`Model: Opus 5` · `Size: L` · `Depends: T1.42d, T1.58` · `Doc: 19 §5, 18 §4` · `Tag: target-new` · `Gate: G-B`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.42d, T1.58` · `Doc: 19 §5, 18 §4` · `Tag: target-new` · `Gate: G-B`
 
 **What.** One image containing FastAPI **and** the built SPA, with the app as the network
 edge. nginx goes away, `trust_proxy_headers` flips **off**, and the login rate limiter
@@ -1306,7 +1306,7 @@ clean `docker compose up -d` boot with `/health` 200.
 
 #### T1.63 — Bind Settings: Security, Maintenance, Jobs
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.58` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.58` · `Doc: 13 §7` · `Tag: rebuild` · `Gate: G-B`
 
 **What.** The remaining Settings tabs against real endpoints, including the job board's
 409-on-held-lock behaviour.
@@ -1320,7 +1320,7 @@ clean `docker compose up -d` boot with `/health` 200.
 
 #### T1.64 — API e2e suite + the honesty specs
 
-`Model: Sonnet 5` · `Size: L` · `Depends: T0.16, T1.42d` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: L` · `Depends: T0.16, T1.42d` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The e2e plan's ring 3 names an "API e2e suite" that does not exist. Build it,
 with a stated location and database posture, and land the eight honesty specs it owns.
@@ -1344,7 +1344,7 @@ discipline — decide whether to port or replace them, and say which.
 
 #### T1.65 — `projectStore`, `contextStore`, and the project switcher
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.29c, T1.34` · `Doc: 13 §2` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.29c, T1.34` · `Doc: 13 §2` · `Tag: target-new` · `Gate: G-B`
 
 **What.** The UI face of the isolation work: a global project scope feeding every query
 key, and the session `applies_when` declaration that T1.34 boosts and T3.14's

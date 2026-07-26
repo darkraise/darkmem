@@ -15,6 +15,7 @@ EPICS = [
 HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2}[a-z]?) — (.+)$")
 META = re.compile(r"`Model: ([^`]+?)`")
 SIZE = re.compile(r"`Size: ([SML])`")
+EFFORT = re.compile(r"`Effort: ([a-z]+)`")
 ROW = re.compile(r"^\| (T(?:H1|[0-4])\.\d{2}[a-z]?) \|")
 CELL = re.compile(r"(?<!\\)\|")
 
@@ -33,8 +34,12 @@ if os.path.exists("progress.md"):
         if not ROW.match(line):
             continue
         cells = [c.strip() for c in CELL.split(line)]
+        # The Effort column was inserted after Model, widening the row by one.
+        # Read the state block from the end rather than a fixed offset so a
+        # pre-Effort progress.md still round-trips its claims on the first
+        # regeneration after the change.
         if len(cells) >= 11:
-            prior[cells[1]] = tuple(cells[5:10])
+            prior[cells[1]] = tuple(cells[-6:-1])
 
 
 def render(cells):
@@ -47,7 +52,7 @@ out = []
 out.append("# Progress tracker\n")
 out.append(
     "**Regenerated from the epic files** by\n"
-    "`scripts/gen_progress.py` — task ids, titles, and model tiers are derived, never\n"
+    "`scripts/gen_progress.py` — task ids, titles, model tiers, and effort are derived, never\n"
     "hand-copied, so the two cannot drift. Only the state columns (Owner, Status, Commit,\n"
     "Review, Note) are edited by hand.\n"
 )
@@ -102,6 +107,7 @@ for code, name, path, gate in EPICS:
         tid, title = m.group(1), m.group(2)
         model = ""
         size = ""
+        effort = ""
         for j in range(i + 1, min(i + 5, len(lines))):
             mm = META.search(lines[j])
             if mm:
@@ -109,21 +115,24 @@ for code, name, path, gate in EPICS:
                 sm = SIZE.search(lines[j])
                 if sm:
                     size = sm.group(1)
+                em = EFFORT.search(lines[j])
+                if em:
+                    effort = em.group(1)
                 break
         title = title.replace("|", "\\|")
-        rows.append((tid, title, model, size))
+        rows.append((tid, title, model, size, effort))
     totals += len(rows)
     counts = dict.fromkeys(STATUSES, 0)
     t = ["## %s — %s (%d tasks)\n" % (code, name, len(rows))]
-    t.append("| Task | Title | Size | Model | Owner | Status | Commit | Review | Note |")
-    t.append("|---|---|---|---|---|---|---|---|---|")
-    for tid, title, model, size in rows:
+    t.append("| Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |")
+    t.append("|---|---|---|---|---|---|---|---|---|---|")
+    for tid, title, model, size, effort in rows:
         state = prior.pop(tid, FRESH)
         if state[1] not in counts:
             bad.append("%s has status %r, which is not in the vocabulary" % (tid, state[1]))
             continue
         counts[state[1]] += 1
-        t.append(render([tid, title, size, model] + list(state)))
+        t.append(render([tid, title, size, model, effort] + list(state)))
     rollup.append((code, name, len(rows), counts, gate))
     tables.append("\n".join(t) + "\n")
 

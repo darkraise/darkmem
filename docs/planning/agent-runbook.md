@@ -63,6 +63,41 @@ Three standing rules:
   defer the task; a cheap model on an invariant-bearing task produces work that is
   expensive to detect and expensive to unwind.
 
+### 2.1 Effort
+
+Every task also carries an **Effort** field — `low` · `medium` · `high` · `xhigh` · `max`.
+It is the **reasoning-effort setting the sub-agent is spawned with**: the `effort`
+parameter on the dispatch, alongside `model`. **Pass it explicitly on every dispatch.** An
+omitted `effort` inherits the controller session's, which is how a task silently runs
+shallower or more expensively than intended. A controller that passes `model` and forgets
+`effort` has routed half the task.
+
+**Effort is independent of Model.** Every model runs at all five levels; the tier does not
+imply the level and must never be used to derive it. They answer different questions:
+Model asks *what does it cost the project if this is wrong*, Effort asks *how much
+thinking does one turn of this work need*. A Haiku task can warrant deep reasoning and an
+Opus task can be a mechanical edit to a dangerous file.
+
+**The default is `high`.** Where nobody has determined a task-specific level, `high` is
+what the field carries and what the dispatch passes. That is deliberate: an under-thought
+turn on this corpus produces work whose failure mode is silent, and the cost of finding
+that later dominates the cost of the extra reasoning.
+
+**Review and adversarial verification run at `xhigh`.** That covers the per-task reviewer,
+the scoped re-reviewer, the whole-branch review, and any task whose own text makes it
+adversarial — the six gate evidence runs carry `xhigh` for exactly that reason, since each
+is chartered to find the reason its gate should *not* clear.
+
+**A level other than the default must be argued in the task's own text**, not inferred.
+If a task genuinely needs `low`, `medium` or `max`, say why there, so the next reader can
+check the reasoning instead of guessing at a convention. Escalate on discovery and log it,
+exactly as with the tier: an effort field that turned out wrong is the same planning signal
+a wrong tier is.
+
+**Do not raise effort to compensate for a thin brief.** If a sub-agent needs more thinking
+because it was told too little, the fix is the brief. Effort buys depth on a
+well-specified problem; it does not buy context.
+
 ## 3. Task size, and what `L` obliges you to do
 
 Every task carries a **Size**. It is orthogonal to both Model and Effort — a task can be

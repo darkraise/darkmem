@@ -27,7 +27,7 @@ That plan's Tasks 1–2 are landed; these tasks complete it.
 
 #### T0.01 — Append-only run ledger (`benchlib/ledger.py`)
 
-`Model: Sonnet 5` · `Size: M` · `Depends: —` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
 
 **What.** A JSONL run ledger: `record(run)` appends, `read_runs()` replays. One line per
 eval run, carrying run id, UTC timestamp, corpus id, fingerprint, git sha, metric
@@ -44,7 +44,7 @@ diffable against the run that preceded it.
 
 #### T0.02 — Corpus loader (`benchlib/corpus.py`)
 
-`Model: Haiku 4.5` · `Size: S` · `Depends: —` · `Doc: 17 §3` · `Tag: target-new` · `Gate: G-A`
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 17 §3` · `Tag: target-new` · `Gate: G-A`
 
 **What.** `load_corpus(path) -> list[entry]`, parsing a corpus JSON into validated
 entries. Pure parsing — no DB, no pipeline knowledge. This task also **creates**
@@ -67,7 +67,7 @@ are untabled *for gold input* and must be rejected, not rewritten.
 
 #### T0.03 — Offline ingest driver (`benchlib/ingest.py`)
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.01, T0.02` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.01, T0.02` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Compose bench DB + caching LLM + the **real** `ProcessingPipeline`: construct
 `ProcessingPipeline(caching_llm, bench_session_factory)` and call `process_batch`. The
@@ -94,7 +94,7 @@ calling it. That is caller responsibility, not forked phase logic.
 
 #### T0.04 — `run_smoke.py` and the affordability gate
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.03` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.03` · `Doc: 17 §7` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The human/CI entry point: reset the bench DB, ingest the smoke corpus twice,
 and assert the second run makes **zero** live LLM calls. Freeze the ingestion-granularity
@@ -120,7 +120,7 @@ idempotent.
 
 #### T0.05 — Record the as-is extraction F1 baseline
 
-`Model: Fable 5` · `Size: M` · `Depends: T0.04` · `Doc: 17 §3, 20 §4` · `Tag: exists-today` · `Gate: G-A`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T0.04` · `Doc: 17 §3, 20 §4` · `Tag: exists-today` · `Gate: G-A`
 
 **What.** G-A requires reproducing "the recorded as-is baseline" — which only exists once
 somebody records it. Run the F1 bench against today's shipping extraction on both
@@ -162,7 +162,7 @@ corpus. Independent of Lane C entirely.
 
 #### T0.06 — Retrieval gold set + query-type slices
 
-`Model: Fable 5` · `Size: M` · `Depends: T0.02` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T0.02` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Build the gold query→relevant-memory pairs, **sliced by query type**. The
 slicing is the point: a flattering aggregate that hides a collapsed paraphrase slice is
@@ -183,7 +183,7 @@ and fact slices weakest — start there.
 
 #### T0.06a — Re-adjudicate the saturated multi-hop pairs
 
-`Model: Fable 5` · `Size: M` · `Depends: T0.07` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T0.07` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** T0.07's measured baseline showed the hybrid-only retriever **saturates** the
 multi-hop slice: 13 of 14 pairs hit@10, MRR 0.946, and only `rg-0072` exhibits the failure
@@ -212,7 +212,7 @@ plus the re-measured per-slice table from T0.07's runner pasted into the complet
 
 #### T0.07 — Sliced accuracy scorer (MRR / hit@K)
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.06` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.06` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Score retrieval per slice and in aggregate. Report per-slice always; the
 aggregate never replaces the slices.
@@ -244,7 +244,7 @@ aggregate never replaces the slices.
 
 #### T0.08 — Latency and token-cost twin
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.07` · `Doc: 17 §2, §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.07` · `Doc: 17 §2, §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Instrument p95 latency and token cost on every eval run. **Accuracy never
 ships without its twin** — this is a doctrine, not a report field, so the runner must be
@@ -263,7 +263,7 @@ argument has no baseline twin to compare against at G-B.
 
 #### T0.09 — Full-context baseline comparator
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.03, T0.08` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.03, T0.08` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The comparison that makes retrieval numbers mean anything: the same gold
 queries answered by stuffing full context, so every retrieval claim reads "as good as
@@ -280,7 +280,7 @@ full context at a fraction of the cost" — or admits it is not.
 
 #### T0.10 — Retrieval eval runner + dated report
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.09` · `Doc: 17 §4, §9` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.09` · `Doc: 17 §4, §9` · `Tag: target-new` · `Gate: G-A`
 
 **What.** One command that runs the eval, writes a dated report file, and appends to the
 ledger. Reports are dated files on disk, not a service.
@@ -305,7 +305,7 @@ the one before it.
 
 #### T0.11 — Target schema snapshot + baseline design note
 
-`Model: Opus 5` · `Size: L` · `Depends: —` · `Doc: 19 §2–§3, 04` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: —` · `Doc: 19 §2–§3, 04` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Before writing DDL: reconcile doc 04's target data model against the six
 existing revisions and produce the explicit object inventory the baseline must land —
@@ -324,7 +324,7 @@ traced to an owning doc section, no unexplained entries.
 
 #### T0.12a — Baseline part 1: core memory, graph, and taxonomy tables
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.11` · `Doc: 19 §2, 04` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.11` · `Doc: 19 §2, 04` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The first pass over the **one** baseline revision file. `memories`, `entities`,
 `entity_relations`, tags, `config`, `embedders`. Plain SQL.
@@ -360,7 +360,7 @@ empty scratch database.
 
 #### T0.12b — Baseline part 2: knowledge, code, jobs, and events tables
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.12a` · `Doc: 19 §2, 04` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.12a` · `Doc: 19 §2, 04` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Second pass over the same file: `knowledge_triples`, `fact_sources`, articles and
 citations, `projects`, `repositories` and the `code_*` tables, job state, and `events` with
@@ -375,7 +375,7 @@ its partitioning.
 
 #### T0.12c — Baseline part 3: partition templates, indexes, full-suite green
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.12b` · `Doc: 19 §2–§3, 04 §5.3` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.12b` · `Doc: 19 §2–§3, 04 §5.3` · `Tag: target-new` · `Gate: G-A`
 
 **What.** The GIN index on `memories.technologies`, the remaining indexes, and the proof
 that the whole thing carries the existing suite. The four per-fingerprint embedding
@@ -404,7 +404,7 @@ TEST_DATABASE_URL=$CHECK_URL python -m pytest -q
 
 #### T0.13 — Dormant objects landed inert
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.12c` · `Doc: 19 §3, 04 §5.3` · `Tag: target-new, inert` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.12c` · `Doc: 19 §3, 04 §5.3` · `Tag: target-new, inert` · `Gate: G-A`
 
 **What.** Land `repo_ids[]` on `entities`/`entity_relations`, the empty
 `documents`/`blocks` tables, and all four per-fingerprint partition templates (block,
@@ -421,7 +421,7 @@ relation, article, `triple_embeddings`) — reviewed, frozen, **with no writer**
 
 #### T0.14 — Boot-time partition reconciliation, idempotent
 
-`Model: Opus 5` · `Size: M` · `Depends: T0.13` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.13` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
 **What.** At every startup, loop the `embedders` registry and run the parameterised DDL
 that guarantees each fingerprint's four child tables exist. Register-before-insert, and
@@ -439,7 +439,7 @@ manual double-boot against a scratch database.
 
 #### T0.15 — Freeze event + regeneration protocol
 
-`Model: Haiku 4.5` · `Size: S` · `Depends: T0.14, T0.16` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: T0.14, T0.16` · `Doc: 19 §2` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Write down two rules, not one. First the rule that ends the regenerate-freely
 window: after the homelab cutover (T1.54) the baseline is frozen and every later change is
@@ -467,7 +467,7 @@ revision is added.
 
 #### T0.16 — Scripted merge-gate runner
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T0.10, T0.14` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T0.10, T0.14` · `Doc: 17 §9` · `Tag: target-new` · `Gate: G-A`
 
 **What.** There is no hosted CI — the gate is a *discipline, scripted*. One command runs
 the whole floor so the posture is command-shaped and a future CI pipeline is a
@@ -485,7 +485,7 @@ script exits non-zero naming that gate.
 
 #### T0.17 — G-A evidence run and ledger entry
 
-`Model: Fable 5` · `Size: M` · `Depends: T0.05, T0.16, T0.06a` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T0.05, T0.16, T0.06a` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Actually clear G-A: run every gate probe, record the measured numbers, and
 write the verdict. Adversarial — the job is to find the reason the gate should *not*
@@ -521,3 +521,4 @@ clear, not to confirm it.
 | 2026-07-26 | T0.05, T0.08 | 2 | The G-A ledger entry now records that the T0.05 baseline ships without ledger rule 2's latency/token-cost twin, and T0.08's task text names the inherited gap | `run_bench.py` does not instrument the twin and modifying it was out of bounds for T0.05; the instrumentation is T0.08's deliverable. The cross-task consequence the plan missed: T1.17's cost-based justification for the merged one-call design has no baseline twin to compare against at G-B. An honestly recorded gap satisfies the ledger's spirit; a silent omission does not |
 | 2026-07-26 | T0.05, T1.50 | 2 | The G-A entry records that the baseline's cache carries no response metadata (parsed extraction JSON only), and the G-B ledger section now requires the G-B runner to capture served-model metadata for its live re-record | `deepseek-v4-flash` is a vendor alias whose backing weights can rotate silently; with no `model` string or system fingerprint recorded at baseline, "silent vendor update" would be an unrebuttable escape hatch for any G-B shortfall. The requirement makes the tolerance's same-model condition checkable from the G-B side, the only side that still can |
 | 2026-07-26 | T0.06a (new), T0.07 | 2 | Added T0.06a: the multi-hop slice must be re-adjudicated because the hybrid-only baseline already saturates it | T0.07's measured baseline put 13 of 14 multi-hop pairs at hit@10 (MRR 0.946), with only `rg-0072` failing as designed — and the cause is broader than the nine pairs T0.06's amendment named, since `rg-0067`/`rg-0068`/`rg-0071`/`rg-0075` also resolve the consequence memory semantically at ranks 2/3/2/6. A slice the baseline already wins cannot gate a graph-arm activation, so doc 00's multi-hop success criterion is unmeasurable until the pairs are replaced with bridges whose consequence memory is not semantically proximal to the query |
+| 2026-07-26 | all epics | 2 | Added an `Effort` field to every task's meta line, documented the rule in runbook §2.1, and made `check_plan.py` require and validate it | `Model` tracks consequence and `Size` tracks how long the work takes, but neither told a dispatcher what reasoning-effort level to spawn the sub-agent at, so effort was inherited from whatever the controller session happened to carry. Effort is **independent of the model tier** — every model runs at all five levels, so the tier must never be used to derive it. The default is `high`; review and adversarial verification run at `xhigh`, which is why the six gate evidence runs carry it; any other level has to be argued in the task's own text rather than inferred from a convention |
