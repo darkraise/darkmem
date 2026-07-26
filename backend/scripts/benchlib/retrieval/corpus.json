@@ -1,0 +1,653 @@
+{
+  "_notes": "Deterministic retrieval bench corpus (doc 17 par.4). Every entry carries a fixed memory_id (uuid5 of the key) and a declared created_at, so ids and dates are identical on every darkmem_bench reseed. Seed via benchlib.retrieval_gold.seed_memory_rows, then run_ingest. Authoring rules and slice design live in SLICES.md; temporal-group contents must stay calendar-date-free and update pairs must stay inside the 90-day supersession window.",
+  "memories": [
+    {
+      "key": "s01-grafana-port",
+      "memory_id": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+      "content": "Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-10-14T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s02-prometheus-scrape",
+      "memory_id": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+      "content": "Prometheus scrapes the node exporters every 15 seconds, double the default interval.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-10-21T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s03-staging-postgres",
+      "memory_id": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+      "content": "The staging Postgres runs version 15.6 on host stg-db-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-11-03T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s04-wiki-backup",
+      "memory_id": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+      "content": "Nightly restic backups of the wiki volume run at 02:30 and land on the NAS.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-11-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s05-ci-concurrency",
+      "memory_id": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+      "content": "The CI runners use Docker-in-Docker and are capped at four concurrent jobs.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-11-18T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s06-caddy-decision",
+      "memory_id": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+      "content": "We chose Caddy over nginx for the public reverse proxy because it renews certificates automatically.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2025-12-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s07-artifacts-bucket",
+      "memory_id": "0ba49298-7814-590d-bd48-917e6505b347",
+      "content": "Build artifacts are stored in the MinIO bucket named artifacts-prod.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-12-09T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s08-redis-eviction",
+      "memory_id": "84e01d06-a718-5192-9371-d907a92e5d3a",
+      "content": "Redis on cache-01 runs with maxmemory 2gb and the allkeys-lru eviction policy.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-01-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s09-wireguard-port",
+      "memory_id": "fa63d628-6fde-5901-9174-24e81062ed83",
+      "content": "The VPN is WireGuard on UDP port 51820, handing peers addresses in 10.8.0.0/24.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-01-13T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s10-loki-retention",
+      "memory_id": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+      "content": "Loki keeps logs for 30 days; the compactor deletes older chunks.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-01-27T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s11-mail-relay",
+      "memory_id": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+      "content": "The mail relay is Postfix on mail-01, accepting connections only from the internal subnet.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-02-03T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s12-k3s-version",
+      "memory_id": "bd184bd9-de3d-51dc-b19e-7919a7419bf9",
+      "content": "The Kubernetes workers run k3s v1.29.4 on three Odroid boards.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-02-17T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s13-dashboard-vite",
+      "memory_id": "f63bb43f-c662-5e8e-bc57-c082334f580d",
+      "content": "The status dashboard frontend is built with Vite and shipped as static files.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-03-03T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s14-terraform-state",
+      "memory_id": "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+      "content": "Terraform state lives in the MinIO bucket tf-state with locking enabled.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s15-ntfy-alerts",
+      "memory_id": "efda09df-0023-55a8-9ef2-badd96de55a1",
+      "content": "Alert notifications route through ntfy; critical pages also go out as SMS.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-24T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s16-unbound-dns",
+      "memory_id": "282f1d65-8748-5e91-8294-270567156806",
+      "content": "Internal DNS is Unbound at 192.168.20.53 with a wildcard zone for lab.internal.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-07T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s17-nightly-tests",
+      "memory_id": "60249037-7964-557d-a6d1-5ee795667aff",
+      "content": "The nightly integration suite starts at 03:15 and uploads a JUnit report to the artifacts bucket.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-14T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "s18-unleash-flags",
+      "memory_id": "38b71b50-3a9d-5631-9d13-6c090c22faee",
+      "content": "Feature flags are served by a self-hosted Unleash instance; its admin UI sits behind OIDC login.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-04-28T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d01-kibana-port",
+      "memory_id": "efefa9eb-814a-53e9-a820-ba77281806c3",
+      "content": "Kibana listened on port 5601 before the ELK stack was retired.",
+      "memory_type": "reference",
+      "source": "bench",
+      "created_at": "2025-10-28T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d02-prod-postgres",
+      "memory_id": "7c60d074-64b0-579b-8c04-517c3bd508f1",
+      "content": "The production Postgres runs version 16.2 on host prod-db-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-11-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d03-node-exporter-port",
+      "memory_id": "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+      "content": "Every host runs a node exporter listening on port 9100.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-11-20T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d04-photo-backup",
+      "memory_id": "48551b63-f37a-5037-919a-e1c077fbab1a",
+      "content": "Weekly full backups of the photo library run on Sundays at 04:00 to the offsite box.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-12-16T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d05-internal-nginx",
+      "memory_id": "b4b901ed-ccbc-56b5-9bf2-48e6a0ffee06",
+      "content": "Internal-only tools sit behind an nginx proxy that requires client certificates.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-01-20T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d06-queue-redis",
+      "memory_id": "b1bfebf5-1e0f-5f4e-88e1-57ddd64848cb",
+      "content": "Redis on queue-01 backs the job queue with AOF persistence enabled.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-02-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d07-grafana-folders",
+      "memory_id": "6d10a0dc-d884-5159-ab96-75909d411d54",
+      "content": "Grafana dashboards for the storage pool live in the infra folder.",
+      "memory_type": "reference",
+      "source": "bench",
+      "created_at": "2026-02-24T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "d08-guest-vlan",
+      "memory_id": "3ebf47f0-fa86-5116-aeee-5202ff815ad6",
+      "content": "The guest Wi-Fi VLAN is isolated and cannot reach the 10.8.0.0/24 VPN range.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-17T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m1a-billing-host",
+      "memory_id": "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
+      "content": "The billing-sync service is deployed on host apps-02.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-10-16T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m1b-ups-selftest",
+      "memory_id": "38d507a9-7fd0-54e2-9980-701e04df1cc3",
+      "content": "Host apps-02 is on the rack UPS that failed its most recent self-test.",
+      "memory_type": "problem",
+      "source": "bench",
+      "created_at": "2026-02-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m2a-resize-queue",
+      "memory_id": "3215cb23-5d4e-5b10-b4f1-b2ea4049d864",
+      "content": "The image-resize worker consumes jobs from the thumbs queue on queue-01.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2025-11-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m2b-queue-latency",
+      "memory_id": "cf006c00-0489-5b59-afbe-ea40bf01b398",
+      "content": "The thumbs queue on queue-01 develops latency spikes under memory pressure.",
+      "memory_type": "problem",
+      "source": "bench",
+      "created_at": "2026-01-29T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m3a-wiki-vm",
+      "memory_id": "a66e992b-7d1b-5432-9072-e552d17232af",
+      "content": "The team wiki runs on the shared virtual machine lab-vm-3.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-12-04T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m3b-vm-decom",
+      "memory_id": "80464c7d-605f-5c47-815f-9da3843f2aaa",
+      "content": "lab-vm-3 is scheduled for decommissioning once the new hypervisor arrives.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m4a-etl-dump",
+      "memory_id": "2c93598f-be9a-5eae-981a-8340dfbc35da",
+      "content": "The analytics ETL depends on the nightly dump of the orders database.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2025-12-11T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m4b-dump-skip",
+      "memory_id": "b58795ae-3e47-5b88-a760-768074eef323",
+      "content": "The nightly dump of the orders database is skipped whenever the replication-lag alarm is active.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-02-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m5a-storefront-bluegreen",
+      "memory_id": "5e176524-6d0f-5720-a3c6-1afe2cb6aeb9",
+      "content": "Storefront releases go through the blue-green switcher on the edge router.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-01-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m5b-bluegreen-websockets",
+      "memory_id": "4707347d-277f-566a-be59-c8a79505f259",
+      "content": "The blue-green switcher drops open websocket sessions whenever it flips.",
+      "memory_type": "problem",
+      "source": "bench",
+      "created_at": "2026-03-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m6a-bot-token",
+      "memory_id": "ca6d5ba3-12e7-5ca5-a1da-4bbe88043d5a",
+      "content": "The chat-ops bot authenticates to the API gateway with the svc-bot token.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-01-22T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m6b-token-expiry",
+      "memory_id": "26cea26c-3123-5d87-836f-6269ec38e626",
+      "content": "The svc-bot token expires every 90 days and is rotated by hand.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m7a-docs-search",
+      "memory_id": "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d",
+      "content": "Search on the docs site is served by the Typesense instance on search-01.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-02-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m7b-search-oom",
+      "memory_id": "db67c20c-65d2-5e24-912a-1fc029896924",
+      "content": "search-01 has no swap configured and kills its largest process under memory pressure.",
+      "memory_type": "problem",
+      "source": "bench",
+      "created_at": "2026-04-16T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m8a-license-mirror",
+      "memory_id": "5ab45131-c6ef-59dd-a26f-9c236f503eb8",
+      "content": "The license-report job pulls dependency data from the internal package mirror.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-02-19T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m8b-mirror-throttle",
+      "memory_id": "11abfa7f-8f0c-5cc4-a7a5-9445adb2de7d",
+      "content": "The internal package mirror throttles any client that exceeds 100 requests per minute.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-23T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m9a-portal-vault",
+      "memory_id": "e2d647bc-446c-53f2-8da6-489bda083db4",
+      "content": "Customer-portal session tokens are signed with a key kept in the vault namespace apps/portal.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-03-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "m9b-vault-seal",
+      "memory_id": "00c4e4d0-7539-590d-9c9b-af30d523ab5f",
+      "content": "The vault namespace apps/portal seals itself automatically when the audit-log volume fills up.",
+      "memory_type": "problem",
+      "source": "bench",
+      "created_at": "2026-05-07T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t1a-oncall-feb",
+      "memory_id": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+      "content": "Alice is the on-call engineer this month; escalations go to her first.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-02-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t1b-oncall-mar",
+      "memory_id": "9bd5bb38-3c7d-530b-b7b6-184a0862fadd",
+      "content": "Bob has taken over on-call this month; escalations go to him first.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t1c-oncall-apr",
+      "memory_id": "99f80c4e-5db9-5a84-96a0-383f9c86b569",
+      "content": "Dana is the on-call engineer this month; escalations go to her first.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-01T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t2a-pool-62",
+      "memory_id": "8a32fb9f-958a-5a2e-a3cc-fdf8885f6735",
+      "content": "The storage pool is at 62% capacity.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-11-15T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t2b-pool-71",
+      "memory_id": "7f095a78-eb34-5967-9fc0-e2d0b8401633",
+      "content": "The storage pool has climbed to 71% capacity.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-01-21T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t2c-pool-83",
+      "memory_id": "b940342b-3d54-5768-a67b-a98a8d5af24b",
+      "content": "The storage pool sits at 83% capacity after the video imports.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t3a-team-four",
+      "memory_id": "40de4731-6596-5255-becd-0c6056ae5dce",
+      "content": "The platform team currently has four engineers.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2025-12-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t3b-team-six",
+      "memory_id": "65bdfcb6-642e-5651-b836-58c9706a2781",
+      "content": "The platform team has grown to six engineers.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-19T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t4a-cert-jan",
+      "memory_id": "e96381b1-15c3-5794-aa24-a61898d5d973",
+      "content": "The wildcard certificate was renewed and is valid for the next 90 days.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-01-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t4b-cert-apr",
+      "memory_id": "0bf530e4-b080-5ba6-8eec-083e94146167",
+      "content": "The wildcard certificate has been renewed for another 90-day period.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t5a-sprint-payments",
+      "memory_id": "fda7e159-3fab-5a1f-9595-ac5d11f5725f",
+      "content": "This sprint's focus is the payments refactor.",
+      "memory_type": "milestone",
+      "source": "bench",
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t5b-sprint-observability",
+      "memory_id": "bc4de61a-cc77-5a75-910e-d8e601b8180b",
+      "content": "This sprint's focus is observability cleanup.",
+      "memory_type": "milestone",
+      "source": "bench",
+      "created_at": "2026-05-18T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t6a-q1-goal",
+      "memory_id": "4ad1fca7-faef-5189-a107-c09b9da88f7e",
+      "content": "This quarter's goal is cutting infrastructure spend by 15 percent.",
+      "memory_type": "milestone",
+      "source": "bench",
+      "created_at": "2026-01-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "t6b-q2-goal",
+      "memory_id": "d5a9162a-9ea5-5053-8594-1150c547e99e",
+      "content": "This quarter's goal is shipping the mobile beta.",
+      "memory_type": "milestone",
+      "source": "bench",
+      "created_at": "2026-04-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u1a-sessions-memcached",
+      "memory_id": "b94043b3-61ba-545f-926f-0cf70ae088eb",
+      "content": "Portal session storage uses Memcached on cache-02.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-03-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u1b-sessions-redis",
+      "memory_id": "a1b72e41-3103-5b35-b241-441913cbc6aa",
+      "content": "Portal session storage moved from Memcached to Redis on cache-02; Memcached is retired.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-04-20T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u2a-deploys-jenkins",
+      "memory_id": "21e2b38f-4dd7-569a-8736-6b2b4b5afac4",
+      "content": "Deploys are triggered by the Jenkins pipeline on ci-01.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-01-15T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u2b-deploys-gha",
+      "memory_id": "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+      "content": "The deploy pipeline moved from Jenkins to GitHub Actions; ci-01 is being wound down.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-03-28T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u3a-errors-sentry",
+      "memory_id": "3189280d-399f-5888-92b5-ac00d63b3d84",
+      "content": "Application errors are tracked in the self-hosted Sentry instance.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-04-01T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u3b-errors-glitchtip",
+      "memory_id": "1ffca2a1-ed6a-5195-99ba-92ced36116f0",
+      "content": "Error tracking moved from self-hosted Sentry to GlitchTip; the old instance is read-only.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-05-26T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u4a-docs-mkdocs",
+      "memory_id": "115c4f35-072d-5ef7-9f42-e3177a07fb3d",
+      "content": "The docs site is generated with MkDocs on every push to main.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-02-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u4b-docs-astro",
+      "memory_id": "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f",
+      "content": "The docs site now builds with Astro instead of MkDocs; the MkDocs config was deleted.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-04-15T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u5a-secrets-env",
+      "memory_id": "98321d34-65bb-5413-889e-948fbc40d980",
+      "content": "Containers read their secrets from per-host .env files.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-05-01T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u5b-secrets-vault",
+      "memory_id": "6a99747f-58b0-5faf-886a-3129e6455b84",
+      "content": "Container secrets now come from Vault; the per-host .env files were removed.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-06-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u6a-metrics-telegraf",
+      "memory_id": "aad9fa2a-1b75-5cd8-9c30-f7b3ca5c80fe",
+      "content": "Internal metrics are collected by Telegraf into InfluxDB.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-03-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u6b-metrics-vector-spec",
+      "memory_id": "5b815f89-99f7-5b1f-b0c1-0428f8371903",
+      "content": "We are considering moving metrics collection from Telegraf to Vector, pending a bake-off.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-05-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u7a-issues-gitea",
+      "memory_id": "db541e5c-93c5-552a-a13c-7f241dc2ff49",
+      "content": "The issue tracker is a self-hosted Gitea instance.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-04-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "u7b-issues-forgejo-spec",
+      "memory_id": "a724ff64-e0db-556f-a85f-923079b61c5b",
+      "content": "We might switch the issue tracker to Forgejo next quarter if the migration tooling matures.",
+      "memory_type": "decision",
+      "source": "bench",
+      "created_at": "2026-06-02T00:00:00+00:00",
+      "project": "default"
+    }
+  ]
+}
