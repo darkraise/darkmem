@@ -86,11 +86,20 @@ def require_deepseek_api_key(env: Mapping[str, str] | None = None) -> str:
 
 
 def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
-    """The embedding/extraction/classification connection rows this run
-    seeds, inline (no provider_id/profile_id) -- LLMPurposeConfigRow
+    """The embedding/extraction/classification/reasoning connection rows this
+    run seeds, inline (no provider_id/profile_id) -- LLMPurposeConfigRow
     supports a purpose running standalone this way (CLAUDE.md's LLM
     configuration section), so a bench seed doesn't need the setup wizard's
     provider/profile bookkeeping to reach a working purpose config.
+
+    ``reasoning`` is what the full-context baseline arm dispatches through
+    (``benchlib.full_context``). It gets its own row rather than borrowing
+    ``extraction``'s: ``benchlib.twin`` attributes token cost PER PURPOSE, so
+    filing full-context calls under the purpose the ingest arm also uses
+    would destroy the attribution the two-arm comparison exists to produce.
+    It is also the one purpose here that pins ``temperature: 0`` -- the
+    orchestrator reads temperature only from a purpose's ``params``, and a
+    ranking answer has to be reproducible across runs to be cacheable.
     """
     return [
         {
@@ -122,6 +131,16 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
             "dimensions": None,
             "api_key": deepseek_api_key,
             "params": {},
+        },
+        {
+            "purpose": "reasoning",
+            "api_kind": "deepseek",
+            "provider": "deepseek",
+            "base_url": DEEPSEEK_BASE_URL,
+            "model": DEEPSEEK_MODEL,
+            "dimensions": None,
+            "api_key": deepseek_api_key,
+            "params": {"temperature": 0},
         },
     ]
 

@@ -72,6 +72,35 @@ def test_purpose_config_specs_matches_the_pinned_live_stack():
         assert specs[purpose]["api_key"] == "sk-the-key"
 
 
+def test_purpose_config_specs_seeds_reasoning_as_a_purpose_of_its_own():
+    """The full-context baseline arm dispatches through ``reasoning``. It
+    must not borrow ``extraction``'s row: benchlib.twin attributes token cost
+    per purpose, so a shared purpose would file the full-context arm's cost
+    under the ingest arm's."""
+    specs = {s["purpose"]: s for s in run_smoke.purpose_config_specs("sk-the-key")}
+
+    assert specs["reasoning"]["api_kind"] == "deepseek"
+    assert specs["reasoning"]["base_url"] == "https://api.deepseek.com/v1"
+    assert specs["reasoning"]["model"] == "deepseek-v4-flash"
+    assert specs["reasoning"]["api_key"] == "sk-the-key"
+    assert specs["reasoning"]["params"] == {"temperature": 0}
+    assert specs["reasoning"]["purpose"] != specs["extraction"]["purpose"]
+
+
+@pytest.mark.asyncio
+async def test_seed_llm_purpose_configs_writes_a_usable_reasoning_config():
+    from app.services.config import get_llm_config
+
+    await run_smoke.seed_llm_purpose_configs(bench_db.session_factory, "sk-reasoning")
+
+    async with bench_db.session_factory() as session:
+        cfg = await get_llm_config(session)
+
+    assert cfg["reasoning"].api_kind == "deepseek"
+    assert cfg["reasoning"].api_key == "sk-reasoning"
+    assert cfg["reasoning"].params == {"temperature": 0}
+
+
 def test_purpose_config_specs_never_puts_the_key_on_the_embedding_purpose():
     specs = run_smoke.purpose_config_specs("sk-the-key")
     embedding = next(s for s in specs if s["purpose"] == "embedding")

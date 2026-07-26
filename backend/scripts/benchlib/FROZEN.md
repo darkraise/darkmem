@@ -161,16 +161,27 @@ extractor miss it structurally cannot avoid. (Latent today: every
 
 `reset_bench_db()` drops the whole `public` schema, which destroys every
 `llm_*` config row along with everything else. `run_smoke.py` therefore
-seeds three `llm_purpose_configs` rows itself, after every reset and before
+seeds four `llm_purpose_configs` rows itself, after every reset and before
 building the orchestrator's config, via
 `run_smoke.seed_llm_purpose_configs()`. These are the actual seeded values
 (GLOBAL.md, verified reachable by the controller on 2026-07-26):
 
-| purpose | api_kind | base_url | model | dimensions | api_key |
-|---|---|---|---|---|---|
-| `embedding` | `ollama` | `http://192.168.0.196:11434` | `qwen3-embedding:0.6b` | 1024 | none — Ollama is unauthenticated on this network |
-| `extraction` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time |
-| `classification` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time |
+| purpose | api_kind | base_url | model | dimensions | api_key | params |
+|---|---|---|---|---|---|---|
+| `embedding` | `ollama` | `http://192.168.0.196:11434` | `qwen3-embedding:0.6b` | 1024 | none — Ollama is unauthenticated on this network | `{}` |
+| `extraction` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time | `{}` |
+| `classification` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time | `{}` |
+| `reasoning` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time | `{"temperature": 0}` |
+
+`reasoning` is the full-context baseline arm's purpose
+(`benchlib/full_context.py`). It must stay a purpose of its own and must not
+be collapsed onto `extraction`: `benchlib/twin.py` attributes token cost per
+LLM purpose, so sharing a purpose between the ingest arm and the
+full-context arm destroys the per-arm cost attribution the two-arm
+comparison exists to produce. It is also the only seeded purpose that pins
+`temperature: 0` — the orchestrator reads temperature only from a purpose's
+`params`, and `params` is inside the cache-key identity, so changing it is a
+deliberate, visible cache invalidation for that purpose alone.
 
 The rows are written inline (`provider_id`/`profile_id` left `NULL`) rather
 than through the setup wizard's provider/profile bookkeeping —
