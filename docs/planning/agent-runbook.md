@@ -65,11 +65,12 @@ Three standing rules:
 
 ## 3. Task size, and what `L` obliges you to do
 
-Every task carries a **Size**. It is orthogonal to Model — a task can be small and still
-need Opus, because tier tracks *consequence* and size tracks *effort*. T2.05 (human-only
-`confirmed`) is exactly that: `Size: S`, `Model: Opus 5`.
+Every task carries a **Size**. It is orthogonal to both Model and Effort — a task can be
+small and still need Opus, because tier tracks *consequence*, Effort (§2.1) tracks
+*reasoning depth per turn*, and Size tracks only *how long the work takes*. T2.05
+(human-only `confirmed`) is exactly that: `Size: S`, `Model: Opus 5`.
 
-| Size | Effort | Shape |
+| Size | Time | Shape |
 |---|---|---|
 | **S** | ≤ ~2 hours | One file or function, a doc, a config row, a job registration. |
 | **M** | ~2–8 hours, one focused session | A service method plus tests, a route, a UI surface, one pipeline phase. **This is the target size** — most tasks are here. |
