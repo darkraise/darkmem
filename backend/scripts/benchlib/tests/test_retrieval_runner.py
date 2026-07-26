@@ -5,8 +5,6 @@ and does not). This proves ``run_retrieval`` actually composes with the
 real ``ProcessingPipeline`` end to end; the id-normalisation invariant
 itself is a scorer concern and is tested there, not here.
 """
-import inspect
-
 import pytest
 
 from benchlib import bench_db, ingest, retrieval_runner
@@ -58,15 +56,35 @@ async def _ingest_three(tmp_path) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_run_retrieval_uses_the_real_pipeline_class():
-    """No forked ranking logic: run_retrieval must drive
-    app.services.pipeline's real ProcessingPipeline.semantic_search, not a
-    reimplementation of it (the rule T0.03 was held to)."""
-    assert inspect.iscoroutinefunction(retrieval_runner.run_retrieval)
-    source = inspect.getsource(retrieval_runner)
+async def test_run_retrieval_actually_invokes_pipeline_semantic_search(monkeypatch, tmp_path):
+    """A behavioural guard, not a source-text one. The previous version of
+    this test asserted substrings of inspect.getsource(retrieval_runner) --
+    a forked SQL reimplementation that merely kept ProcessingPipeline named
+    in a docstring would still have passed it (found by adversarial review).
+    This one fails unless ProcessingPipeline.semantic_search is the actual
+    thing invoked, with the query and limit run_retrieval was given."""
     from app.services.pipeline import ProcessingPipeline
-    assert ProcessingPipeline.__name__ in source
-    assert "semantic_search" in source
+
+    llm, ids = await _ingest_three(tmp_path)
+    calls: list[tuple[str, int]] = []
+    original = ProcessingPipeline.semantic_search
+
+    async def spy(self, query, limit=20, semantic_weight=0.7):
+        calls.append((query, limit))
+        return await original(self, query, limit=limit, semantic_weight=semantic_weight)
+
+    monkeypatch.setattr(ProcessingPipeline, "semantic_search", spy)
+
+    gold_pairs = [
+        {"id": "t-1", "query": "alpha", "relevant_memory_ids": [ids[0]], "slice_tags": ["exact"]},
+    ]
+
+    ranked = await retrieval_runner.run_retrieval(
+        llm, bench_db.session_factory, gold_pairs, limit=3,
+    )
+
+    assert calls == [("alpha", 3)]
+    assert ranked["t-1"]  # the spy delegated to the real method, which returned real hits
 
 
 @pytest.mark.asyncio

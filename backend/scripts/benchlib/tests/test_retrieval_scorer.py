@@ -16,6 +16,11 @@ from benchlib.retrieval_scorer import (
 _UUID_A = "11111111-1111-4111-8111-111111111111"
 _UUID_B = "22222222-2222-4222-8222-222222222222"
 _UUID_C = "33333333-3333-4333-8333-333333333333"
+# Deliberately hex-with-letters (contrast the all-digit ids above): a
+# fixture whose .upper() is the identity would let a mixed-case test pass
+# even with normalisation removed, which is exactly what happened here
+# before adversarial review caught it.
+_UUID_HEX = "aabbccdd-eeff-4a1b-8c2d-a1b2c3d4e5f6"
 
 
 def _pair(pid, query, relevant, tag, **extra):
@@ -32,7 +37,7 @@ def test_a_uuid_ranked_id_matches_a_string_gold_id():
     pairs = [_pair("p1", "q", [_UUID_A], "exact")]
     ranked = {"p1": [uuid.UUID(_UUID_A)]}
 
-    report = score_retrieval(ranked, pairs, k=5)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5)
 
     assert report.pair_scores["p1"].hit is True
     assert report.pair_scores["p1"].reciprocal_rank == 1.0
@@ -44,7 +49,7 @@ def test_a_string_ranked_id_matches_a_uuid_gold_id():
     pairs = [_pair("p1", "q", [uuid.UUID(_UUID_A)], "exact")]
     ranked = {"p1": [_UUID_A]}
 
-    report = score_retrieval(ranked, pairs, k=5)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5)
 
     assert report.pair_scores["p1"].hit is True
     assert report.pair_scores["p1"].reciprocal_rank == 1.0
@@ -61,10 +66,13 @@ def test_removing_normalisation_would_score_a_real_hit_as_zero():
 
 
 def test_mixed_case_uuid_string_still_matches():
-    pairs = [_pair("p1", "q", [_UUID_A.upper()], "exact")]
-    ranked = {"p1": [_UUID_A]}
+    """Uses a hex-with-letters fixture deliberately: an all-digit UUID's
+    .upper() is the identity, so a test built on one would pass even with
+    normalize_memory_id's .lower() deleted (caught by adversarial review)."""
+    pairs = [_pair("p1", "q", [_UUID_HEX.upper()], "exact")]
+    ranked = {"p1": [_UUID_HEX]}
 
-    report = score_retrieval(ranked, pairs, k=5)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5)
 
     assert report.pair_scores["p1"].hit is True
 
@@ -75,7 +83,7 @@ def test_mrr_is_the_reciprocal_of_the_first_relevant_rank():
     pairs = [_pair("p1", "q", [_UUID_B], "exact")]
     ranked = {"p1": [_UUID_A, _UUID_B, _UUID_C]}
 
-    report = score_retrieval(ranked, pairs, k=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=10, k=10)
 
     assert report.pair_scores["p1"].reciprocal_rank == pytest.approx(0.5)
 
@@ -84,10 +92,35 @@ def test_mrr_is_zero_when_no_relevant_id_appears():
     pairs = [_pair("p1", "q", [_UUID_C], "exact")]
     ranked = {"p1": [_UUID_A, _UUID_B]}
 
-    report = score_retrieval(ranked, pairs, k=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=10, k=10)
 
     assert report.pair_scores["p1"].reciprocal_rank == 0.0
     assert report.pair_scores["p1"].hit is False
+
+
+def test_mrr_is_computed_within_k_not_the_whole_ranked_list():
+    """The bug adversarial review found: a relevant id beyond the k cutoff
+    must NOT be credited any reciprocal rank, even though it's present
+    somewhere further down a longer fetched list. Before the fix, MRR
+    iterated the whole ranked_ids list regardless of k, so a table headed
+    "k=10" was silently reporting MRR at whatever depth was fetched."""
+    pairs = [_pair("p1", "q", [_UUID_B], "exact")]
+    # B sits at rank 12 in a list fetched deeper than k.
+    ranked = {"p1": [_UUID_A] * 11 + [_UUID_B]}
+
+    report = score_retrieval(ranked, pairs, retrieval_limit=12, k=10)
+
+    assert report.pair_scores["p1"].reciprocal_rank == 0.0
+    assert report.pair_scores["p1"].hit is False
+
+
+def test_mrr_credits_a_relevant_id_at_exactly_rank_k():
+    pairs = [_pair("p1", "q", [_UUID_B], "exact")]
+    ranked = {"p1": [_UUID_A] * 9 + [_UUID_B]}  # B at rank 10
+
+    report = score_retrieval(ranked, pairs, retrieval_limit=10, k=10)
+
+    assert report.pair_scores["p1"].reciprocal_rank == pytest.approx(0.1)
 
 
 # --- hit@K is full-relevant-set coverage, not "any hit" -----------------
@@ -101,7 +134,7 @@ def test_hit_at_k_requires_every_relevant_id_for_a_multi_hop_pair():
     # consequence (B) never surfaces -- exactly the multi-hop failure mode.
     ranked = {"p1": [_UUID_A, _UUID_C]}
 
-    report = score_retrieval(ranked, pairs, k=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=10, k=10)
 
     score = report.pair_scores["p1"]
     assert score.n_relevant == 2
@@ -116,7 +149,7 @@ def test_hit_at_k_true_when_both_relevant_ids_are_within_k():
     pairs = [_pair("p1", "q", [_UUID_A, _UUID_B], "multi-hop")]
     ranked = {"p1": [_UUID_C, _UUID_A, _UUID_B]}
 
-    report = score_retrieval(ranked, pairs, k=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=10, k=10)
 
     assert report.pair_scores["p1"].hit is True
 
@@ -125,8 +158,46 @@ def test_hit_at_k_respects_the_k_cutoff():
     pairs = [_pair("p1", "q", [_UUID_B], "exact")]
     ranked = {"p1": [_UUID_A, _UUID_C, _UUID_B]}
 
-    assert score_retrieval(ranked, pairs, k=2).pair_scores["p1"].hit is False
-    assert score_retrieval(ranked, pairs, k=3).pair_scores["p1"].hit is True
+    assert score_retrieval(ranked, pairs, retrieval_limit=3, k=2).pair_scores["p1"].hit is False
+    assert score_retrieval(ranked, pairs, retrieval_limit=3, k=3).pair_scores["p1"].hit is True
+
+
+# --- retrieval_limit / k protocol is explicit, not implicit -------------
+
+def test_score_report_records_both_k_and_retrieval_limit():
+    pairs = [_pair("p1", "q", [_UUID_A], "exact")]
+    ranked = {"p1": [_UUID_A]}
+
+    report = score_retrieval(ranked, pairs, retrieval_limit=72, k=10)
+
+    assert report.k == 10
+    assert report.retrieval_limit == 72
+
+
+def test_k_greater_than_retrieval_limit_raises():
+    pairs = [_pair("p1", "q", [_UUID_A], "exact")]
+    ranked = {"p1": [_UUID_A]}
+
+    with pytest.raises(ValueError, match="exceeds retrieval_limit"):
+        score_retrieval(ranked, pairs, retrieval_limit=5, k=10)
+
+
+def test_a_ranked_list_longer_than_the_declared_limit_raises():
+    """A caller understating its own fetch depth is exactly the silent
+    limit/k mismatch this parameter exists to catch."""
+    pairs = [_pair("p1", "q", [_UUID_A], "exact")]
+    ranked = {"p1": [_UUID_A, _UUID_B, _UUID_C]}
+
+    with pytest.raises(ValueError, match="retrieval_limit=2"):
+        score_retrieval(ranked, pairs, retrieval_limit=2, k=2)
+
+
+def test_retrieval_limit_has_no_default_and_must_be_passed_by_keyword():
+    pairs = [_pair("p1", "q", [_UUID_A], "exact")]
+    ranked = {"p1": [_UUID_A]}
+
+    with pytest.raises(TypeError):
+        score_retrieval(ranked, pairs, 5)  # positional -- retrieval_limit is keyword-only
 
 
 # --- Retired pairs are excluded from scoring ----------------------------
@@ -138,7 +209,7 @@ def test_retired_pairs_are_excluded_even_with_no_ranked_results():
     ]
     ranked = {"p1": [_UUID_A]}  # p2 deliberately has no entry
 
-    report = score_retrieval(ranked, pairs, k=5)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5)
 
     assert set(report.pair_scores) == {"p1"}
     assert report.n_pairs == 1
@@ -148,7 +219,7 @@ def test_a_missing_live_pair_raises_instead_of_scoring_zero():
     pairs = [_pair("p1", "q1", [_UUID_A], "exact")]
 
     with pytest.raises(KeyError, match="p1"):
-        score_retrieval({}, pairs, k=5)
+        score_retrieval({}, pairs, retrieval_limit=5, k=5)
 
 
 # --- Under-powered slices are a distinct state, not a number -----------
@@ -157,7 +228,7 @@ def test_a_slice_below_min_pairs_reports_underpowered_not_a_number():
     pairs = [_pair(f"p{i}", f"q{i}", [_UUID_A], "temporal") for i in range(3)]
     ranked = {p["id"]: [_UUID_A] for p in pairs}
 
-    report = score_retrieval(ranked, pairs, k=5, min_pairs=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5, min_pairs=10)
 
     temporal = report.slices["temporal"]
     assert temporal.n_pairs == 3
@@ -170,7 +241,7 @@ def test_a_slice_at_or_above_min_pairs_is_powered_with_real_numbers():
     pairs = [_pair(f"p{i}", f"q{i}", [_UUID_A], "fact") for i in range(10)]
     ranked = {p["id"]: [_UUID_A] for p in pairs}
 
-    report = score_retrieval(ranked, pairs, k=5, min_pairs=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5, min_pairs=10)
 
     fact = report.slices["fact"]
     assert fact.powered is True
@@ -182,7 +253,7 @@ def test_a_slice_absent_from_the_input_still_reports_as_zero_pair_underpowered()
     pairs = [_pair("p1", "q1", [_UUID_A], "exact")]
     ranked = {"p1": [_UUID_A]}
 
-    report = score_retrieval(ranked, pairs, k=5)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5)
 
     assert report.slices["multi-hop"].n_pairs == 0
     assert report.slices["multi-hop"].powered is False
@@ -192,7 +263,7 @@ def test_the_aggregate_itself_can_be_underpowered():
     pairs = [_pair("p1", "q1", [_UUID_A], "exact")]
     ranked = {"p1": [_UUID_A]}
 
-    report = score_retrieval(ranked, pairs, k=5, min_pairs=10)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5, min_pairs=10)
 
     assert report.aggregate_powered is False
     assert report.aggregate_mrr is None
@@ -218,7 +289,9 @@ def test_aggregate_is_pooled_not_a_mean_of_slice_means():
     ranked = {p["id"]: [_UUID_A] for p in exact_pairs}
     ranked.update({p["id"]: [_UUID_C] for p in fact_pairs})
 
-    report = score_retrieval(ranked, exact_pairs + fact_pairs, k=5, min_pairs=1)
+    report = score_retrieval(
+        ranked, exact_pairs + fact_pairs, retrieval_limit=5, k=5, min_pairs=1,
+    )
 
     assert report.aggregate_mrr == pytest.approx(0.8)
     assert report.aggregate_hit_at_k == pytest.approx(0.8)
@@ -231,7 +304,7 @@ def test_score_retrieval_accepts_a_subset_of_gold_for_ad_hoc_populations():
     pairs = [_pair(f"p{i}", f"q{i}", [_UUID_A], "multi-hop") for i in range(5)]
     ranked = {p["id"]: [_UUID_A] for p in pairs}
 
-    report = score_retrieval(ranked, pairs, k=5, min_pairs=1)
+    report = score_retrieval(ranked, pairs, retrieval_limit=5, k=5, min_pairs=1)
 
     assert report.n_pairs == 5
     assert report.slices["multi-hop"].n_pairs == 5

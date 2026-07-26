@@ -63,6 +63,7 @@ class SliceScore:
 @dataclass(frozen=True)
 class ScoreReport:
     k: int
+    retrieval_limit: int
     min_pairs: int
     n_pairs: int
     slices: dict[str, SliceScore]
@@ -73,7 +74,14 @@ class ScoreReport:
 
 
 def _score_one_pair(pair: Mapping, ranked_ids: Sequence, k: int) -> PairScore:
-    ranked_norm = [normalize_memory_id(rid) for rid in ranked_ids]
+    # MRR and hit@K are both computed from the SAME top-k prefix. Scoring
+    # MRR over the whole (possibly much longer) ranked list while hit@K
+    # truncates at k makes a table headed "k=10" secretly report MRR@limit
+    # -- a real bug found by adversarial review: rg-0016's gold sat at rank
+    # 12 in a limit=72 retrieval run and was credited 1/12 by a
+    # full-list reciprocal rank while correctly missing hit@10, so the two
+    # metrics disagreed about what "k=10" meant.
+    ranked_norm = [normalize_memory_id(rid) for rid in ranked_ids][:k]
     relevant_norm = {normalize_memory_id(rid) for rid in pair["relevant_memory_ids"]}
 
     reciprocal_rank = 0.0
@@ -88,8 +96,7 @@ def _score_one_pair(pair: Mapping, ranked_ids: Sequence, k: int) -> PairScore:
     # "hit@K over the full relevant set fails"). For every other slice
     # (exactly one relevant id) this collapses to ordinary hit@K, so one
     # definition covers all seven slices without a special case.
-    top_k = set(ranked_norm[:k])
-    n_found = len(relevant_norm & top_k)
+    n_found = len(relevant_norm & set(ranked_norm))
     hit = n_found == len(relevant_norm)
 
     return PairScore(
@@ -116,6 +123,8 @@ def _aggregate(
 def score_retrieval(
     ranked_ids_by_pair: Mapping[str, Sequence],
     gold_pairs: Iterable[Mapping],
+    *,
+    retrieval_limit: int,
     k: int = 10,
     min_pairs: int = DEFAULT_MIN_PAIRS,
 ) -> ScoreReport:
@@ -126,6 +135,24 @@ def score_retrieval(
     at scoring time, rather than by the caller: "excluded from scoring" is
     a scoring-time rule (brief §3), and doing it in one place means every
     caller gets it for free instead of re-implementing the filter.
+
+    ``retrieval_limit`` is the fetch depth the run behind
+    ``ranked_ids_by_pair`` was actually run at (e.g. the ``limit`` passed to
+    ``retrieval_runner.run_retrieval``) -- it is keyword-only and has no
+    default, forcing every caller to state it rather than let two runs at
+    different fetch depths be compared under the same ``k`` without the
+    mismatch being visible anywhere (a real bug found by adversarial
+    review: MRR used to be computed over the whole ranked list rather than
+    the top-``k`` prefix, so a table headed "k=10" silently reported MRR at
+    whatever depth the retriever happened to fetch). Two invariants follow
+    directly: ``k`` can never exceed ``retrieval_limit`` here (scoring
+    deeper than what was fetched cannot measure anything beyond the
+    fetched prefix), and no individual ranked list may be longer than the
+    declared ``retrieval_limit`` (a caller that mislabels its own fetch
+    depth is exactly the silent mismatch this parameter exists to catch).
+    Both are recorded on the returned ``ScoreReport`` so a downstream
+    comparison of two reports can check they used the same protocol before
+    trusting a delta between them.
 
     Every live (non-retired) pair must have a matching entry in
     ``ranked_ids_by_pair``, or this raises ``KeyError`` naming the missing
@@ -145,12 +172,31 @@ def score_retrieval(
     accidentally average or plot an under-powered estimate as if it were
     measured (brief §5).
     """
+    if k > retrieval_limit:
+        raise ValueError(
+            f"k={k} exceeds retrieval_limit={retrieval_limit}: a run fetched "
+            "only retrieval_limit results per query, so scoring at a deeper "
+            "k cannot measure anything beyond what was actually returned"
+        )
+
     live_pairs = [p for p in gold_pairs if not p.get("retired")]
     missing = [p["id"] for p in live_pairs if p["id"] not in ranked_ids_by_pair]
     if missing:
         raise KeyError(
             f"no ranked results for {len(missing)} live pair(s): {missing[:5]}"
             + (" ..." if len(missing) > 5 else "")
+        )
+
+    oversized = [
+        p["id"] for p in live_pairs
+        if len(ranked_ids_by_pair[p["id"]]) > retrieval_limit
+    ]
+    if oversized:
+        raise ValueError(
+            f"retrieval_limit={retrieval_limit} but {len(oversized)} pair(s) carry "
+            f"more ranked ids than that: {oversized[:5]}"
+            + (" ..." if len(oversized) > 5 else "")
+            + " -- retrieval_limit must be the true fetch depth, not an understatement of it"
         )
 
     pair_scores = {
@@ -180,6 +226,7 @@ def score_retrieval(
 
     return ScoreReport(
         k=k,
+        retrieval_limit=retrieval_limit,
         min_pairs=min_pairs,
         n_pairs=len(pair_scores),
         slices=slices,
