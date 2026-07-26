@@ -100,6 +100,14 @@ calling it. That is caller responsibility, not forked phase logic.
 and assert the second run makes **zero** live LLM calls. Freeze the ingestion-granularity
 decision in `benchlib/FROZEN.md`.
 
+**A zero live-call count is not on its own evidence of anything.** The gate must also
+assert, per pass, that the pipeline did its work — outcome count equals corpus length, and
+no outcome carries `error` in `embed` / `extract` / `vector` / `graph` or a non-null
+`error`. Without that, a run in which every write silently failed reports `live LLM calls:
+0` and exits 0. Do **not** assert `pass 1 live_calls > 0`: the cache is content-keyed, not
+pass-keyed, so on a warm re-run pass 1 legitimately reads 0 and the gate would stop being
+idempotent.
+
 **Done when:**
 - [ ] Second run issues zero live `embed` and zero live `chat_completion` calls
 - [ ] The affordability assertion fails loudly if the pipeline reaches the model by any
@@ -453,3 +461,4 @@ clear, not to confirm it.
 | 2026-07-26 | (runbook §6) | 1 | `agent-runbook.md:172` said `progress.md` is "committed directly to `main`" | The same bullet's first sentence, and this repo's actual trunk, are `master`. There is no `main` branch; an agent following the second half of that sentence literally would create one |
 | 2026-07-26 | T0.02 | 1 | Stated that T0.02 creates `benchlib/smoke/corpus.json`, and that closed-taxonomy validation must check raw membership rather than route through the normalisers | The first acceptance checkbox says the loader loads `smoke/corpus.json`, but no landed task created that file — a missing step. And `normalize_entity_type` / `normalize_relation_type` (`app/taxonomy.py:124`, `:154`) never raise; they fall back to `concept` / `RELATED_TO`, so a validator built on them silently rewrites bad gold instead of rejecting it, defeating invariant 5 |
 | 2026-07-26 | T0.03 | 1 | Recorded that the LLM cache must wrap `embed_batch` (not `embed`), and that the driver must pre-create the `memories` row before calling `process_batch` | `process_batch` reaches embeddings only via `embed_batch_chunked` → `embed_batch` (`app/services/llm.py:224`), never `embed`, so `caching_llm.py` as landed left every embedding uncached and T0.04's zero-live-call gate was unpassable. And `_write_memory` (`pipeline.py:373-390`) only SELECTs and updates an existing row — there is no insert path — so a bare `memory_id` raises a FK violation from the vector upsert |
+| 2026-07-26 | T0.04 | 1 | The affordability gate must also assert per-pass pipeline outcomes, not only the live-call count; and `bench_db` must forget embedder registrations across a reset | A stale process-wide `embedder_registry` singleton survived the bench-DB reset and silently broke pass 2's vector and entity writes while the live-call counter stayed correctly at 0 — the gate printed `live LLM calls: 0` and exited 0 over a pipeline doing no durable work. Verified by corrupting one cached chat response: before the fix the gate passed, after it the gate exits 1 naming the failing memory and step. Asserting `pass 1 live_calls > 0` was considered and rejected — the cache is content-keyed, so a warm re-run makes pass 1 legitimately free and the gate would fail on its second consecutive invocation |
