@@ -2,6 +2,8 @@ import pytest
 
 from benchlib.caching_llm import CachingLLMOrchestrator
 
+pytestmark = pytest.mark.usefixtures("_bench_db")
+
 
 class _Recorder(CachingLLMOrchestrator):
     """Stub the parent LLM calls so the test needs no live model."""

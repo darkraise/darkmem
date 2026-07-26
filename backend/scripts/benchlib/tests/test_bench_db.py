@@ -3,6 +3,8 @@ from sqlalchemy import text
 
 from benchlib import bench_db
 
+pytestmark = pytest.mark.usefixtures("_bench_db")
+
 
 @pytest.mark.asyncio
 async def test_reset_creates_empty_memories_table():
