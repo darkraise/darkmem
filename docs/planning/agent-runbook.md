@@ -169,7 +169,7 @@ Every epic file ends with a table. One row per amendment:
   branch off it (below).
 - **`progress.md` is canonical on `master`, not on the epic branch.** Otherwise the "live
   status" file forks per branch and no copy is true. Update it with a single commit
-  touching only your own row, cherry-picked or committed directly to `main`. This repo has
+  touching only your own row, cherry-picked or committed directly to `master`. This repo has
   no remote, so concurrent agents share state through the working tree.
 - **Claim protocol.** Claiming is one commit that sets your task's `Owner` and moves it to
   `wip`. If two agents race, the later commit loses and that agent picks another task —
