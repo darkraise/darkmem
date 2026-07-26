@@ -39,7 +39,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, is_dataclass
 
 from benchlib import ledger
-from benchlib.caching_llm import CachingLLMOrchestrator, _key, _purpose_identity
+from benchlib.caching_llm import CachingLLMOrchestrator, chat_content
 
 from app.services.hybrid_search import HybridSearchService
 from app.services.pipeline import ProcessingPipeline
@@ -86,15 +86,20 @@ def _percentile_stats(samples: list[float], min_samples: int) -> PercentileStats
 
 # ── channel latency recording ───────────────────────────────────────────
 
-# Only these two channels are backed by CachingLLMOrchestrator's disk
-# cache, so only these two have a genuine "cache-served" population to
-# separate from "live" (ruling 2). semantic_search / keyword_search /
-# end_to_end always do real Postgres I/O on every call -- there is no
-# cache-served state for them to be confused with, so their `cache`
-# bucket is always empty by construction, not by omission.
-CACHEABLE_CHANNELS = ("embed_query", "reranker")
+# Channels whose samples may be served without any live model round trip,
+# and which therefore carry a genuine two-population split (ruling 2).
+# embed_query and reranker sit on CachingLLMOrchestrator's disk cache
+# directly; end_to_end is a COMPOSITE whose window contains both of them,
+# so a fully-cached query's end-to-end wall clock is disk-read time, not
+# model time. Labelling every end_to_end sample "live" would blend two
+# different systems' latencies into one p95 on a partly-warm run -- the
+# exact merge ruling 2 forbids, one composite level up.
+SPLIT_CHANNELS = ("embed_query", "reranker", "end_to_end")
+# Pure Postgres round trips on every single call. No cache-served state
+# exists for these to be confused with, so their `cache` bucket is empty
+# by construction, not by omission.
 DB_CHANNELS = ("semantic_search", "keyword_search")
-CHANNELS = (*CACHEABLE_CHANNELS, *DB_CHANNELS, "end_to_end")
+CHANNELS = (*SPLIT_CHANNELS, *DB_CHANNELS)
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,20 @@ class LatencyRecorder:
             )
             for channel in channels
         }
+
+
+def _live_call_count(llm):
+    """``None`` for an orchestrator with no call counter -- an unknown
+    that must not be read as "no live call happened"."""
+    return getattr(llm, "live_calls", None)
+
+
+def _served_by(before, after) -> str:
+    """A sample is cache-served only when a counter existed on both sides
+    of the window and did not move. An orchestrator without the counter
+    reports "live", the conservative label: attributing an unmeasurable
+    call to the cache population is what would understate a real p95."""
+    return "cache" if (before is not None and after == before) else "live"
 
 
 @contextmanager
@@ -179,29 +198,30 @@ def instrument_retrieval(llm):
         # there is no single-call granularity finer than "did any live
         # round trip happen at all" (mirrors embed_batch's own "any miss
         # increments live_calls by exactly 1" population semantics).
-        before = getattr(self.llm, "live_calls", None)
+        before = _live_call_count(self.llm)
         t0 = time.perf_counter()
         result = await orig_rerank(self, *args, **kwargs)
         elapsed = time.perf_counter() - t0
-        after = getattr(self.llm, "live_calls", None)
-        served_by = "cache" if (before is not None and after == before) else "live"
-        recorder.record("reranker", elapsed, served_by)
+        recorder.record("reranker", elapsed, _served_by(before, _live_call_count(self.llm)))
         return result
 
     async def spy_pipeline_search(self, *args, **kwargs):
+        # The composite window: whether THIS query paid for a live model
+        # call anywhere inside it (its query embed, any reranker call) is
+        # what decides which system's latency the sample describes.
+        before = _live_call_count(llm)
         t0 = time.perf_counter()
         result = await orig_pipeline_search(self, *args, **kwargs)
-        recorder.record("end_to_end", time.perf_counter() - t0, "live")
+        elapsed = time.perf_counter() - t0
+        recorder.record("end_to_end", elapsed, _served_by(before, _live_call_count(llm)))
         return result
 
     async def spy_embed(text):
-        before = getattr(llm, "live_calls", None)
+        before = _live_call_count(llm)
         t0 = time.perf_counter()
         result = await orig_embed(text)
         elapsed = time.perf_counter() - t0
-        after = getattr(llm, "live_calls", None)
-        served_by = "cache" if (before is not None and after == before) else "live"
-        recorder.record("embed_query", elapsed, served_by)
+        recorder.record("embed_query", elapsed, _served_by(before, _live_call_count(llm)))
         return result
 
     HybridSearchService._semantic_search = spy_semantic
@@ -243,6 +263,15 @@ class PurposeUsage:
     live_prompt_tokens: int = 0
     live_completion_tokens: int = 0
     live_cached_prompt_tokens: int = 0
+    # Live calls the vendor reported no usage envelope for -- the Ollama
+    # chat path only calls _log_usage when prompt_eval_count/eval_count
+    # are present (app/services/llm.py), so a purpose pointed at Ollama
+    # produces genuinely unmeasured calls. Without this marker
+    # `live_calls=94, live_prompt_tokens=0` is indistinguishable from 94
+    # calls that really summed to zero, which is ruling 3's "unknown
+    # coerced into a zero-looking total" one bucket over. Symmetric with
+    # cache_unknown_calls below.
+    live_unknown_calls: int = 0
     # Replayed from a cache entry that itself carries a persisted usage
     # envelope (written by this class or a later one) -- a genuine,
     # known cost paid on some earlier run, not billed again just now.
@@ -265,10 +294,12 @@ class TokenLedger:
     def record_live(self, purpose: str, usage: dict | None) -> None:
         bucket = self._by_purpose[purpose]
         bucket.live_calls += 1
-        if usage:
-            bucket.live_prompt_tokens += usage.get("prompt_tokens", 0) or 0
-            bucket.live_completion_tokens += usage.get("completion_tokens", 0) or 0
-            bucket.live_cached_prompt_tokens += _cached_prompt_tokens(usage)
+        if not usage:
+            bucket.live_unknown_calls += 1
+            return
+        bucket.live_prompt_tokens += usage.get("prompt_tokens", 0) or 0
+        bucket.live_completion_tokens += usage.get("completion_tokens", 0) or 0
+        bucket.live_cached_prompt_tokens += _cached_prompt_tokens(usage)
 
     def record_cache_known(self, purpose: str, usage: dict) -> None:
         bucket = self._by_purpose[purpose]
@@ -314,9 +345,7 @@ class TwinningOrchestrator(CachingLLMOrchestrator):
         self._last_usage = usage
 
     async def chat_completion(self, purpose, messages, **kwargs):
-        key = _key("chat", [
-            purpose, _purpose_identity(self.config, purpose), messages, sorted(kwargs.items()),
-        ])
+        key = self._chat_key(purpose, messages, kwargs)
         hit = self._read(key)
         if hit is not None:
             return self._replay_chat_hit(purpose, hit)
@@ -330,15 +359,12 @@ class TwinningOrchestrator(CachingLLMOrchestrator):
         return content
 
     def _replay_chat_hit(self, purpose: str, hit) -> str:
-        if isinstance(hit, str):
-            self.tokens.record_cache_unknown(purpose)
-            return hit
-        usage = hit.get("usage")
+        usage = hit.get("usage") if isinstance(hit, dict) else None
         if usage:
             self.tokens.record_cache_known(purpose, usage)
         else:
             self.tokens.record_cache_unknown(purpose)
-        return hit["content"]
+        return chat_content(hit)
 
 
 # ── the twin, and the structural no-twin-no-accuracy guard ─────────────
@@ -350,6 +376,21 @@ class Twin:
     tokens_by_purpose: dict[str, dict]
     percentile_method: str = PERCENTILE_METHOD
     min_samples_for_percentile: int = MIN_SAMPLES_FOR_PERCENTILE
+
+    def __post_init__(self):
+        # Presence of TYPE is not presence of MEASUREMENT: a Twin with no
+        # channels at all satisfies EvalRun's isinstance guard while
+        # carrying nothing, which is the twin-less emission ruling 5
+        # forbids wearing the right class. Enforced here rather than in
+        # EvalRun so a vacuous Twin cannot be constructed at all. A
+        # channel with zero samples is fine and expected (a disabled
+        # reranker) -- what is refused is having no channels.
+        if not self.channels:
+            raise ValueError(
+                "Twin carries no channels: an empty twin is not a "
+                "measurement. Build it with Twin.capture(recorder, tokens), "
+                "which always emits every declared channel."
+            )
 
     @classmethod
     def capture(
