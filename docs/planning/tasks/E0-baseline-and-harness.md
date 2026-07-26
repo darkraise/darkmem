@@ -163,7 +163,7 @@ corpus. Independent of Lane C entirely.
 **State of the retrieval corpus after T0.06a (2026-07-27).** The corpus is **94 memories**,
 not the 72 T0.06/T0.07 measured against, so a full-corpus run uses `retrieval_limit=94` —
 any task still passing 72 is silently truncating the rank space it claims to measure. Gold
-is **version 4**, 118 pairs authored / 116 live (retired pairs stay in the file by the
+is **version 4**, 118 pairs authored, 16 retired, **102 live** (retired pairs stay in the file by the
 retire-and-replace discipline). The hybrid-only baseline at `k=10` is: exact 1.000/1.000,
 fact 1.000/1.000, typo 1.000/1.000, multi-hop 1.000/**0.000**, knowledge-update
 0.810/0.929, paraphrase 0.585/0.944, temporal 0.653/1.000. Multi-hop's hit@10 of 0.000 is
