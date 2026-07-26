@@ -35,7 +35,8 @@ and the Note says so. That rule is the whole point of this file.
 - **Review is tracked in the Review column**, not as separate rows. Every Opus-tier
   task and every task feeding a gate claim needs one before it can reach `done`.
 - Regenerate the derived columns and the rollup with `python scripts/gen_progress.py`
-  after any task is added, split, or retitled.
+  after any task is added, split, or retitled. It carries the five state columns
+  through unchanged, so regenerating mid-execution is safe and never resets a claim.
 
 ## Rollup
 

@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import sys
 
 EPICS = [
     ("E0", "Baseline & harness", "tasks/E0-baseline-and-harness.md", "G-A open"),
@@ -14,6 +15,33 @@ EPICS = [
 HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2}[a-z]?) — (.+)$")
 META = re.compile(r"`Model: ([^`]+?)`")
 SIZE = re.compile(r"`Size: ([SML])`")
+ROW = re.compile(r"^\| (T(?:H1|[0-4])\.\d{2}[a-z]?) \|")
+CELL = re.compile(r"(?<!\\)\|")
+
+STATUSES = ["todo", "wip", "blocked", "review", "done"]
+FRESH = ("", "todo", "", "", "")
+
+# ------------------------------------------------ carry hand-edited state forward
+# Regenerating rebuilds the derived columns from the epic files. The five state
+# columns belong to whoever is executing and must survive that: runbook §5 tells
+# every agent to regenerate after logging an amendment, so a generator that reset
+# them would wipe every claim, status, commit sha and review verdict in the
+# tracker the first time an amendment landed after work began.
+prior = {}
+if os.path.exists("progress.md"):
+    for line in io.open("progress.md", encoding="utf-8").read().split("\n"):
+        if not ROW.match(line):
+            continue
+        cells = [c.strip() for c in CELL.split(line)]
+        if len(cells) >= 11:
+            prior[cells[1]] = tuple(cells[5:10])
+
+
+def render(cells):
+    # An empty cell renders as "| " so a fully-fresh table is byte-identical to
+    # what this script produced before state was carried.
+    return "".join("| " + (c + " " if c else "") for c in cells) + "|"
+
 
 out = []
 out.append("# Progress tracker\n")
@@ -54,12 +82,14 @@ out.append(
     "- **Review is tracked in the Review column**, not as separate rows. Every Opus-tier\n"
     "  task and every task feeding a gate claim needs one before it can reach `done`.\n"
     "- Regenerate the derived columns and the rollup with `python scripts/gen_progress.py`\n"
-    "  after any task is added, split, or retitled.\n"
+    "  after any task is added, split, or retitled. It carries the five state columns\n"
+    "  through unchanged, so regenerating mid-execution is safe and never resets a claim.\n"
 )
 
 tables = []
 totals = 0
 rollup = []
+bad = []
 
 for code, name, path, gate in EPICS:
     body = io.open(path, encoding="utf-8").read()
@@ -83,25 +113,49 @@ for code, name, path, gate in EPICS:
         title = title.replace("|", "\\|")
         rows.append((tid, title, model, size))
     totals += len(rows)
-    rollup.append((code, name, len(rows), gate))
+    counts = dict.fromkeys(STATUSES, 0)
     t = ["## %s — %s (%d tasks)\n" % (code, name, len(rows))]
     t.append("| Task | Title | Size | Model | Owner | Status | Commit | Review | Note |")
     t.append("|---|---|---|---|---|---|---|---|---|")
     for tid, title, model, size in rows:
-        t.append("| %s | %s | %s | %s | | todo | | | |" % (tid, title, size, model))
+        state = prior.pop(tid, FRESH)
+        if state[1] not in counts:
+            bad.append("%s has status %r, which is not in the vocabulary" % (tid, state[1]))
+            continue
+        counts[state[1]] += 1
+        t.append(render([tid, title, size, model] + list(state)))
+    rollup.append((code, name, len(rows), counts, gate))
     tables.append("\n".join(t) + "\n")
+
+# State left over belongs to a task the epic files no longer define. Dropping it
+# silently is how a claim or a completed row disappears without anyone noticing.
+for tid, state in sorted(prior.items()):
+    if state != FRESH:
+        bad.append("%s carries state %r but no epic file defines it any more" % (tid, state))
+
+if bad:
+    for msg in bad:
+        print("FAIL", msg)
+    print("\nprogress.md NOT written — %d problem(s)" % len(bad))
+    sys.exit(1)
 
 out.append("## Rollup\n")
 r = ["| Epic | Tasks | todo | wip | blocked | review | done | Gate |", "|---|---|---|---|---|---|---|---|"]
-for code, name, n, gate in rollup:
-    r.append("| %s — %s | %d | %d | 0 | 0 | 0 | 0 | %s |" % (code, name, n, n, gate))
+tot = dict.fromkeys(STATUSES, 0)
+for code, name, n, counts, gate in rollup:
+    for s in STATUSES:
+        tot[s] += counts[s]
+    r.append("| %s — %s | %d | %s | %s |" % (
+        code, name, n, " | ".join(str(counts[s]) for s in STATUSES), gate))
 r.append("| EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |")
-r.append("| **Total** | **%d** | **%d** | **0** | **0** | **0** | **0** | |" % (totals, totals))
+r.append("| **Total** | **%d** | %s | |" % (
+    totals, " | ".join("**%d**" % tot[s] for s in STATUSES)))
 out.append("\n".join(r) + "\n")
 out.append("---\n")
 out.extend(tables)
 
 io.open("progress.md", "w", encoding="utf-8", newline="\n").write("\n".join(out))
 print("total tasks:", totals)
-for code, name, n, gate in rollup:
-    print("  %-4s %d" % (code, n))
+for code, name, n, counts, gate in rollup:
+    live = " ".join("%s=%d" % (s, counts[s]) for s in STATUSES if counts[s])
+    print("  %-4s %d   %s" % (code, n, live))
