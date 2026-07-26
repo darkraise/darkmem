@@ -786,3 +786,42 @@ def test_a_recorded_comparison_round_trips_through_the_ledger(tmp_path):
     runs = ledger.read_runs(path)
     assert len(runs) == 1
     assert runs[0] == json.loads(json.dumps(comparison.to_ledger_payload()))
+
+
+def test_record_comparison_with_no_metadata_is_unchanged_from_before(tmp_path):
+    """T0.10 fix round 1, F3 added an optional ``metadata`` kwarg. Omitting
+    it must keep emitting exactly ``to_ledger_payload()`` -- additive, not a
+    behaviour change for every existing caller."""
+    path = tmp_path / "comparison.jsonl"
+    comparison = _comparison()
+
+    full_context.record_comparison(comparison, path=path)
+
+    assert ledger.read_runs(path)[0] == json.loads(json.dumps(comparison.to_ledger_payload()))
+
+
+def test_record_comparison_accepts_optional_identification_metadata(tmp_path):
+    """F3: a ledger row can now carry run_id/timestamp/git_sha/fingerprint
+    alongside the comparison payload, so two rows are distinguishable and
+    orderable without the committed report as a side channel."""
+    path = tmp_path / "comparison.jsonl"
+    comparison = _comparison()
+
+    full_context.record_comparison(
+        comparison, path=path,
+        metadata={"run_id": "abc-123", "timestamp": "2026-01-02T00:00:00+00:00", "git_sha": "deadbeef"},
+    )
+
+    row = ledger.read_runs(path)[0]
+    assert row["run_id"] == "abc-123"
+    assert row["timestamp"] == "2026-01-02T00:00:00+00:00"
+    assert row["git_sha"] == "deadbeef"
+    assert row["comparison"] == json.loads(json.dumps(comparison.to_ledger_payload()))["comparison"]
+
+
+def test_record_comparison_refuses_metadata_that_collides_with_the_payloads_own_key(tmp_path):
+    comparison = _comparison()
+    path = tmp_path / "comparison.jsonl"
+    with pytest.raises(ValueError, match="comparison"):
+        full_context.record_comparison(comparison, path=path, metadata={"comparison": "not allowed"})
+    assert not path.exists()

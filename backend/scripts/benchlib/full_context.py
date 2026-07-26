@@ -706,18 +706,42 @@ class Comparison:
         }
 
 
-def record_comparison(comparison: Comparison, path=ledger.DEFAULT_PATH) -> None:
+def record_comparison(
+    comparison: Comparison, path=ledger.DEFAULT_PATH, *, metadata: Mapping | None = None,
+) -> None:
     """The sanctioned way to append a two-arm comparison to the ledger.
 
     Takes only a ``Comparison`` -- whose constructor already refused to exist
     without both arms' whole metric blocks -- so no call here can record a
     delta on its own.
+
+    ``metadata`` is optional, additive, top-level identification (T0.10 fix
+    round 1, F3: ``run_id`` / ``timestamp`` / ``git_sha`` / ``fingerprint`` --
+    the fields the T0.01-era ledger rows carried that a bare
+    ``to_ledger_payload()`` does not, without which two comparison rows are
+    mutually indistinguishable and cannot be tied to a tree state). This is
+    ledger PLUMBING, not a metric: nothing here computes, alters or derives
+    an accuracy, latency or cost figure, so it does not touch the metric
+    semantics ruling 8 puts out of bounds. A caller with a real accuracy
+    number in hand still cannot reach ``ledger.record`` except through this
+    function, which still refuses anything but a whole ``Comparison`` --
+    ruling 1's guarantee is unchanged, only the recorded row gained
+    identification fields around it.
     """
     if not isinstance(comparison, Comparison):
         raise TypeError(
             f"record_comparison takes a Comparison (both arms), got {comparison!r}"
         )
-    ledger.record(comparison.to_ledger_payload(), path=path)
+    payload = comparison.to_ledger_payload()
+    if metadata:
+        overlap = set(metadata) & set(payload)
+        if overlap:
+            raise ValueError(
+                f"metadata key(s) {sorted(overlap)} collide with the payload's "
+                "own top-level key(s) -- rename the metadata field(s)"
+            )
+        payload = {**metadata, **payload}
+    ledger.record(payload, path=path)
 
 
 # ── human-readable rendering ─────────────────────────────────────────────
