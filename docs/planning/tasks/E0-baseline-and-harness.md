@@ -73,6 +73,15 @@ are untabled *for gold input* and must be rejected, not rewritten.
 `ProcessingPipeline(caching_llm, bench_session_factory)` and call `process_batch`. The
 harness must measure the shipping pipeline, never a reimplementation of it.
 
+Two facts the original wording missed. First, **the cache must wrap `embed_batch`, not
+`embed`** — `process_batch` reaches embeddings only through `embed_batch_chunked` →
+`embed_batch` (`app/services/llm.py:224`, called at `pipeline.py:561` and `:686`), so
+`caching_llm.py`'s original `embed`/`chat_completion` overrides left every embedding
+uncached. Extending `caching_llm.py` is part of this task. Second, **`process_batch` only
+enriches an existing `memories` row; it never inserts one** (`pipeline.py:373-390`), so
+the driver must pre-create each row through the real `PostgresMemoryRepository` before
+calling it. That is caller responsibility, not forked phase logic.
+
 **Done when:**
 - [ ] Runs a corpus end to end against `darkmem_bench` and returns per-memory outcomes
 - [ ] Uses the real pipeline class — no forked phase logic in the harness
@@ -443,3 +452,4 @@ clear, not to confirm it.
 | 2026-07-26 | T0.12a | 1 | Corrected the one-owner cross-reference from runbook §8 to §9 | §8 is environment facts; the serialise-through-one-owner rule is §9 |
 | 2026-07-26 | (runbook §6) | 1 | `agent-runbook.md:172` said `progress.md` is "committed directly to `main`" | The same bullet's first sentence, and this repo's actual trunk, are `master`. There is no `main` branch; an agent following the second half of that sentence literally would create one |
 | 2026-07-26 | T0.02 | 1 | Stated that T0.02 creates `benchlib/smoke/corpus.json`, and that closed-taxonomy validation must check raw membership rather than route through the normalisers | The first acceptance checkbox says the loader loads `smoke/corpus.json`, but no landed task created that file — a missing step. And `normalize_entity_type` / `normalize_relation_type` (`app/taxonomy.py:124`, `:154`) never raise; they fall back to `concept` / `RELATED_TO`, so a validator built on them silently rewrites bad gold instead of rejecting it, defeating invariant 5 |
+| 2026-07-26 | T0.03 | 1 | Recorded that the LLM cache must wrap `embed_batch` (not `embed`), and that the driver must pre-create the `memories` row before calling `process_batch` | `process_batch` reaches embeddings only via `embed_batch_chunked` → `embed_batch` (`app/services/llm.py:224`), never `embed`, so `caching_llm.py` as landed left every embedding uncached and T0.04's zero-live-call gate was unpassable. And `_write_memory` (`pipeline.py:373-390`) only SELECTs and updates an existing row — there is no insert path — so a bare `memory_id` raises a FK violation from the vector upsert |
