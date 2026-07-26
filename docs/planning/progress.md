@@ -65,7 +65,7 @@ and the Note says so. That rule is the whole point of this file.
 | T0.06 | Retrieval gold set + query-type slices | M | Fable | high | claude/e0-lane-b | done | 61c0046 | fable adversarial: addressed after 1 fix round | 102 pairs / 7 slices over a 72-memory fixed-id corpus, + SLICES.md. Anchor flags make retire-and-replace a test failure. Verify 28 passed; benchlib 132; floor 614 passed, 1 skipped |
 | T0.06a | Re-adjudicate the saturated multi-hop pairs | M | Fable | high | claude/e0-lane-b | done | 96c2ed0 | fable adversarial: spec FAIL, 2 Important; addressed after 1 fix round | Multi-hop desaturated: hit@10 0.929 -> 0.000, every live pair now a designed miss. Corpus 72 -> 94 (retrieval_limit=94), gold v4, 116 live pairs. Bridges now verified present in the extracted graph, not just the text. Verify 43 passed; benchlib 175; floor 614 passed, 1 skipped |
 | T0.07 | Sliced accuracy scorer (MRR / hit@K) | M | Sonnet | high | claude/e0-lane-b | done | 54a43d9 | fable adversarial: addressed after 1 fix round | Sliced MRR/hit@K + real-retriever driver. Baseline pooled MRR 0.857 / hit@10 0.971 over 102 pairs. Verify 24 passed; benchlib 160; floor 614 passed, 1 skipped |
-| T0.08 | Latency and token-cost twin | M | Sonnet | high | | todo | | | |
+| T0.08 | Latency and token-cost twin | M | Sonnet | high | claude/e0-lane-b | wip | | | |
 | T0.09 | Full-context baseline comparator | M | Opus | high | | todo | | | |
 | T0.10 | Retrieval eval runner + dated report | M | Sonnet | high | | todo | | | |
 | T0.11 | Target schema snapshot + baseline design note | L | Opus | high | | todo | | | |
