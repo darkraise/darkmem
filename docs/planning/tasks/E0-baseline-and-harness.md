@@ -47,7 +47,15 @@ diffable against the run that preceded it.
 `Model: Haiku 4.5` · `Size: S` · `Depends: —` · `Doc: 17 §3` · `Tag: target-new` · `Gate: G-A`
 
 **What.** `load_corpus(path) -> list[entry]`, parsing a corpus JSON into validated
-entries. Pure parsing — no DB, no pipeline knowledge.
+entries. Pure parsing — no DB, no pipeline knowledge. This task also **creates**
+`benchlib/smoke/corpus.json` (the frozen 3-memory smoke corpus), which the first
+acceptance checkbox presumes exists and which T0.04 consumes.
+
+Validation must check **raw membership** against `ENTITY_TYPES` / `RELATIONSHIP_TYPES`.
+`normalize_entity_type` and `normalize_relation_type` never raise — they silently rewrite
+an unknown value to `concept` / `RELATED_TO` — so a loader that "validates" through them
+validates nothing. Legacy aliases (`LEGACY_*_TYPE_MAP` keys, e.g. `framework`, `RUNS_ON`)
+are untabled *for gold input* and must be rejected, not rewritten.
 
 **Done when:**
 - [ ] Loads `smoke/corpus.json` and the extraction bench's `gold.json` shape
@@ -434,3 +442,4 @@ clear, not to confirm it.
 | 2026-07-26 | T0.12a, T0.12b | 2 | Declared both floor-exempt under runbook §4, and the a→c sequence one atomic merge unit to be run on a lane branch | Once the six revisions are gone at T0.12a, `alembic upgrade head` yields a deliberately partial schema until T0.12c completes it, so the repo-wide suite cannot pass. Runbook §4 admits no partial credit, so without a written exemption an honest agent stalls at T0.12a with a red floor it is not allowed to ignore and not able to fix |
 | 2026-07-26 | T0.12a | 1 | Corrected the one-owner cross-reference from runbook §8 to §9 | §8 is environment facts; the serialise-through-one-owner rule is §9 |
 | 2026-07-26 | (runbook §6) | 1 | `agent-runbook.md:172` said `progress.md` is "committed directly to `main`" | The same bullet's first sentence, and this repo's actual trunk, are `master`. There is no `main` branch; an agent following the second half of that sentence literally would create one |
+| 2026-07-26 | T0.02 | 1 | Stated that T0.02 creates `benchlib/smoke/corpus.json`, and that closed-taxonomy validation must check raw membership rather than route through the normalisers | The first acceptance checkbox says the loader loads `smoke/corpus.json`, but no landed task created that file — a missing step. And `normalize_entity_type` / `normalize_relation_type` (`app/taxonomy.py:124`, `:154`) never raise; they fall back to `concept` / `RELATED_TO`, so a validator built on them silently rewrites bad gold instead of rejecting it, defeating invariant 5 |
