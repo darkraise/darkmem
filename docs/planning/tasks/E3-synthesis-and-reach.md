@@ -22,7 +22,7 @@ creep). Do not start Lane B before Lane A ships.
 
 #### T3.01 — Subject eligibility gate + priority scoring
 
-`Model: Opus 5` · `Size: M` · `Depends: T2.41` · `Doc: 09 §4.1–§4.2` · `Tag: target-new` · `Gate: G-D (entry)`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.41` · `Doc: 09 §4.1–§4.2` · `Tag: target-new` · `Gate: G-D (entry)`
 
 **What.** A subject must clear a **hard verified-fact eligibility gate** before it is a
 synthesis candidate; eligible subjects are then ordered by a weighted priority score under
@@ -38,7 +38,7 @@ is never synthesised because it happened to rank high.
 
 #### T3.02 — `article_synthesis` productive runs
 
-`Model: Opus 5` · `Size: L` · `Depends: T3.01, T2.14` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
 
 **What.** Activates the job registered inert in T2.14. Synthesises **only** from
 non-disputed corroborated/confirmed facts — a disputed fact never reaches a draft.
@@ -52,7 +52,7 @@ non-disputed corroborated/confirmed facts — a disputed fact never reaches a dr
 
 #### T3.03 — Claim-level entailment pass + coverage routing
 
-`Model: Opus 5` · `Size: L` · `Depends: T3.02, T2.26` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.02, T2.26` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Every sentence must cite a fact, verified by the `verification` judge. **Coverage
 below threshold routes to review — it never ships as corroborated.** This is where the
@@ -68,7 +68,7 @@ under-claiming rule meets generated prose.
 
 #### T3.04 — `article_citations` — the one hard FK
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T3.03` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T3.03` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
 
 **What.** The single hard FK to `knowledge_triples`, safe only because facts are
 invalidate-not-delete.
@@ -79,7 +79,7 @@ intact and the article marked stale; a hard fact delete is impossible.
 
 #### T3.05 — Staleness gate + debounced re-synthesis
 
-`Model: Opus 5` · `Size: M` · `Depends: T3.04` · `Doc: 09 §4.4` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.04` · `Doc: 09 §4.4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Staleness is a hash of the **verified** fact set only — a churning candidate
 does not trigger re-synthesis. Re-synthesis is debounced, strip-before-rewrite, and
@@ -94,7 +94,7 @@ supersedes the prior article.
 
 #### T3.06 — Articles tab
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.04` · `Doc: 13 §5.2` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.04` · `Doc: 13 §5.2` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Grounded prose with inline claim citations, the claim-support-coverage readout,
 and the stale label.
@@ -112,7 +112,7 @@ stale articles are labelled, not withheld.
 
 #### T3.07 — Research-agent loop through the ordinary capture door
 
-`Model: Opus 5` · `Size: M` · `Depends: T3.06, T1.12` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.06, T1.12` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** A thin orchestration over already-shipped capture, consolidation, and synthesis.
 Evidence is filed through the **ordinary capture front door** — no privileged path, no
@@ -127,7 +127,7 @@ second pipeline. That is the entire reason F7 is cheap here.
 
 #### T3.08 — Distinct-origin stamping for researched sources
 
-`Model: Opus 5` · `Size: M` · `Depends: T3.07, T1.11` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.07, T1.11` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Each genuinely independent source gets a distinct `origin_key`. **The same
 source fetched twice, or an unknown identity, merges to ONE origin** — corroboration is
@@ -146,7 +146,7 @@ never manufactured by a crawler visiting the same page twice.
 
 #### T3.09 — Managed-block writer, client-side pull-then-write
 
-`Model: Opus 5` · `Size: M` · `Depends: T2.41` · `Doc: 15 §3.1–§3.2` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.41` · `Doc: 15 §3.1–§3.2` · `Tag: target-new` · `Gate: G-E`
 
 **What.** The client pulls the F3 fused, labelled selection and rewrites a
 marker-bounded managed block in the tool's native context file. **The server never writes
@@ -161,7 +161,7 @@ the client's filesystem** — that boundary is the whole trust posture of this f
 
 #### T3.10 — Truth-first content fill under a token budget
 
-`Model: Opus 5` · `Size: L` · `Depends: T3.09, T2.43, T3.23` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.09, T2.43, T3.23` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Fill order is L2 facts, then L3 articles, then L0 memory summaries, under a
 `config` token budget. Every item carries its layer, verification, and badge labels — an
@@ -176,7 +176,7 @@ injected claim without its label is the silent-authority failure invariant 14 fo
 
 #### T3.11 — Per-tool adapters (Claude Code, Cursor, Codex, Cline)
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.09` · `Doc: 15 §3.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.09` · `Doc: 15 §3.3` · `Tag: target-new` · `Gate: G-E`
 
 **What.** A managed file block per target tool: `CLAUDE.md`, Cursor's rules, `AGENTS.md`,
 Cline. Session-start refresh cadence; `watch` mode is deferred to Phase 4 (T4.06).
@@ -187,7 +187,7 @@ tool is refused with a message, not a best guess; refresh happens at session sta
 
 #### T3.12 — Inject records journaled as events
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.11, T1.07` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.11, T1.07` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Every injection journals what was pushed, to which target, under which budget —
 the human can always see what the agent was told.
@@ -202,7 +202,7 @@ records surface in the timeline and calendar.
 
 #### T3.13 — `darkmem connect <tool>`
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.11` · `Doc: 15 §5` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.11` · `Doc: 15 §5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Writes the tool's MCP config from a maintained adapter registry and verifies via
 the stateless `initialize → tools/list` handshake.
@@ -220,7 +220,7 @@ leaf surface, not infrastructure another task consumes.*
 
 #### T3.14 — Minimal TypeScript + Python SDKs
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.25` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.25` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Three verbs only — `capture`, `search`, `declareContext` — over the doc 12
 contract. **Ratify, review, and vault-admin stay out**: the SDK is for agents, and
@@ -236,7 +236,7 @@ leaf surface, not infrastructure another task consumes.*
 
 #### T3.15 — Browser capture extension
 
-`Model: Sonnet 5` · `Size: L` · `Depends: T3.26` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: L` · `Depends: T3.26` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Packages a **human-selected** AI-chat exchange and posts it through the ordinary
 capture front door. v1 is human-triggered only — never auto-scraped (that is T4.07,
@@ -261,7 +261,7 @@ Phase 3.
 
 #### T3.16 — `session_checkpoints` table + REST/MCP surface
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T1.11` · `Doc: spec §Feature-2, 04, 12` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T1.11` · `Doc: spec §Feature-2, 04, 12` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Keyed on `origin_key` (the agent-run identity). `POST`/`GET /checkpoints` plus
 MCP `checkpoint_save` / `checkpoint_latest`, holding a compact `summary` and structured
@@ -276,7 +276,7 @@ Phase-1-capable and it may be pulled ahead of G-D.*
 
 #### T3.17 — Resume as a specialised inject
 
-`Model: Opus 5` · `Size: M` · `Depends: T3.16, T3.10` · `Doc: 15 §3.2` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.16, T3.10` · `Doc: 15 §3.2` · `Tag: target-new` · `Gate: G-E`
 
 **What.** At session start the latest checkpoint writes into the managed block under the
 token budget, so a fresh session loads a budgeted digest instead of reloading full
@@ -288,7 +288,7 @@ checkpoint degrades to the ordinary inject; `checkpoint_saved` / `resumed` journ
 
 #### T3.18 — Checkpoints are operational, not vault knowledge
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T3.16` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T3.16` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** A checkpoint carries **no verification badge** — it is operational state, not a
 claim about the world. Conflating the two would put unverified agent notes into the vault.
@@ -309,7 +309,7 @@ Phase-1-capable and it may be pulled ahead of G-D.*
 
 #### T3.19 — Settings → Distribution tab
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.11` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.11` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Per-target managed-block config, inject content policy, and the curb control.
 
@@ -319,7 +319,7 @@ single control stops all injection immediately; Simple/Advanced honoured.
 
 #### T3.20 — Inject records in timeline and calendar
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.12` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.12` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Injections appear as journaled events — the human can see and curb push, never
 a silent context swap.
@@ -330,7 +330,7 @@ clicking one shows exactly what was pushed; Simple/Advanced honoured.
 
 #### T3.21 — Session checkpoints / resume view
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T3.17` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.17` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Per-run digest, next-steps, and copy-resume in the Activity shell.
 
@@ -344,7 +344,7 @@ injected text; `checkpoint_saved` / `resumed` events visible; Simple/Advanced ho
 
 #### T3.22 — G-E evidence run
 
-`Model: Fable 5` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.23, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Fable 5` · `Effort: max` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.23, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** L3 shipped **and** the per-article coverage distribution holding above the
 runtime threshold in production — a distribution, not a single flattering article.
@@ -361,7 +361,7 @@ to "nothing automated touches `darkmem`" — it is **read-only** and may never w
 
 #### T3.23 — Articles retrieval channel + `article_embeddings` writer
 
-`Model: Opus 5` · `Size: M` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Doc 07 §2 makes the articles channel target-new and semantic over
 `article_embeddings__<slug>` — the channel without which T3.10's truth-first inject fill
@@ -379,7 +379,7 @@ has no L3 tier to read, and G-E's "L3 shipped" is unverifiable.
 
 #### T3.24 — Coverage-distribution runner
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T3.03` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T3.03` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** The plumbing behind T3.22's verify. Reports the **distribution** of per-article
 claim-support coverage, not a mean — one well-covered article is not evidence.
@@ -393,7 +393,7 @@ claim-support coverage, not a mean — one well-covered article is not evidence.
 
 #### T3.25 — SDK scaffold and generator
 
-`Model: Sonnet 5` · `Size: M` · `Depends: T2.41, T1.42d` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T2.41, T1.42d` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Split out of T3.14, which bundled codegen infrastructure for two languages into
 one task. This one names the generator and lands the layout: `sdks/ts/`, `sdks/python/`,
@@ -405,7 +405,7 @@ build; regeneration is idempotent.
 
 #### T3.26 — Browser-extension scaffold
 
-`Model: Sonnet 5` · `Size: S` · `Depends: T2.41, T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T2.41, T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
 
 **What.** Split out of T3.15. The extension shell under `extension/` with the plain-selection
 fallback and the per-install `origin_key`, before any site adapter exists.

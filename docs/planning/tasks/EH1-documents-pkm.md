@@ -33,7 +33,7 @@ and escalate (doc 16 §1, doc 01 §3.4).
 
 #### TH1.01 — Faithfulness metric definition (before any build)
 
-`Model: Fable 5` · `Size: M` · `Trigger: G-F appetite stated` · `Depends: —` · `Doc: 16 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Trigger: G-F appetite stated` · `Depends: —` · `Doc: 16 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Define span-support coverage — entailed claims / total claims — **before build
 starts**. Doc 20 §4 makes this ordering explicit, and it is the one sequencing rule in
@@ -45,7 +45,7 @@ the bar lives as a `config` row; nothing in Lane A has been built yet.
 
 #### TH1.02 — `documents` / `blocks` first writer
 
-`Model: Opus 5` · `Size: M` · `Depends: TH1.01, T0.13` · `Doc: 16 §2–§3` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.01, T0.13` · `Doc: 16 §2–§3` · `Tag: horizon` · `Gate: G-F`
 
 **What.** First writer to the tables landed inert in T0.13. Document identity is the
 partial `UNIQUE (project, uri)` with `content_hash` as the re-ingest change gate — an
@@ -57,7 +57,7 @@ partial unique constraint holds; the tables lose their inert label.
 
 #### TH1.03 — Parser stack (PDF, markdown, notes)
 
-`Model: Sonnet 5` · `Size: M` · `Depends: TH1.02` · `Doc: 16 §3` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: TH1.02` · `Doc: 16 §3` · `Tag: horizon` · `Gate: G-F`
 
 **What.** The ADR is decided, not open: `pdfplumber` for PDF, `markdown-it-py`/`mistune`
 for markdown, native segmentation for notes. **`PyMuPDF` is rejected (AGPL)** and
@@ -70,7 +70,7 @@ never fatal to a batch; no AGPL or heavy-ML dependency is added.
 
 #### TH1.04 — Block tree + strip-before-rewrite by `document_id`
 
-`Model: Opus 5` · `Size: L` · `Depends: TH1.03` · `Doc: 16 §2–§3` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: TH1.03` · `Doc: 16 §2–§3` · `Tag: horizon` · `Gate: G-F`
 
 **What.** A Tier-B pipeline variant — **not** the five-phase memory pipeline. Same
 idempotence discipline: strip this `document_id`'s prior blocks before writing the new set.
@@ -81,7 +81,7 @@ char spans; this path never enters `process_batch`.
 
 #### TH1.05 — `block_embeddings__<slug>` writer
 
-`Model: Sonnet 5` · `Size: M` · `Depends: TH1.04, T0.13` · `Doc: 16 §3` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: TH1.04, T0.13` · `Doc: 16 §3` · `Tag: horizon` · `Gate: G-F`
 
 **What.** First writer to the block partition template landed inert in T0.13.
 
@@ -95,7 +95,7 @@ char spans; this path never enters `process_batch`.
 
 #### TH1.06 — Semantic-only block channel
 
-`Model: Opus 5` · `Size: M` · `Depends: TH1.05` · `Doc: 16 §4, 07 §2` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.05` · `Doc: 16 §4, 07 §2` · `Tag: horizon` · `Gate: G-F`
 
 **What.** A separate channel over `block_embeddings__<slug>` — **never fused** into the
 four-layer memory/vault composition. The document-RAG twin of code search, which is
@@ -107,7 +107,7 @@ include it, proven by test; scope predicates are pushed into SQL exactly as T1.2
 
 #### TH1.07 — Trace addendum: `block` id-kind, `document` layer
 
-`Model: Sonnet 5` · `Size: M` · `Depends: TH1.06, T1.33` · `Doc: 16 §4` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: TH1.06, T1.33` · `Doc: 16 §4` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Additive to the core trace schema — **never assumed by a consumer until H1
 ships**. A core consumer that breaks on an unknown id-kind is a core defect to fix, not a
@@ -123,7 +123,7 @@ kind renders in the UI trace without a special case.
 
 #### TH1.08 — Grounded Q&A flow
 
-`Model: Opus 5` · `Size: L` · `Depends: TH1.06` · `Doc: 16 §4` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: TH1.06` · `Doc: 16 §4` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Interactive `reasoning`-purpose flow: retrieve blocks, generate a per-sentence
 cited answer.
@@ -134,7 +134,7 @@ generation are separately observable; the flow is Tier-A interactive and bounded
 
 #### TH1.09 — Span-support faithfulness check before serving
 
-`Model: Opus 5` · `Size: L` · `Depends: TH1.08, TH1.01, T2.26` · `Doc: 16 §4` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: TH1.08, TH1.01, T2.26` · `Doc: 16 §4` · `Tag: horizon` · `Gate: G-F`
 
 **What.** A `verification`-purpose check on span-support coverage runs **before serving**.
 A below-threshold answer is labelled could-not-fully-ground or withheld — **never served
@@ -152,7 +152,7 @@ as grounded** (invariant 14).
 
 #### TH1.10 — Faithfulness ship gate (G-F evidence)
 
-`Model: Fable 5` · `Size: M` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Fable 5` · `Effort: max` · `Size: M` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Double duty: TH1.09 is the per-answer runtime gate; this is the **ship** gate.
 The metric defined in TH1.01 must clear its bar on a labelled gold set before H1 ships.
@@ -168,7 +168,7 @@ tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 
 #### TH1.11 — On-demand Tier-C lift
 
-`Model: Opus 5` · `Size: M` · `Depends: TH1.04` · `Doc: 16 §5` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.04` · `Doc: 16 §5` · `Tag: horizon` · `Gate: G-F`
 
 **What.** **On-demand only — never automatic on ingest.** Mints proposition memory rows
 carrying `(document_id, block_id, char_span)` provenance, which then flow through the
@@ -180,7 +180,7 @@ derived row; lifted rows are ordinary memories from the pipeline's perspective.
 
 #### TH1.12 — Block-sourced facts, one document = one origin
 
-`Model: Opus 5` · `Size: M` · `Depends: TH1.11, T2.02` · `Doc: 16 §5, 08 §4.1` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.11, T2.02` · `Doc: 16 §5, 08 §4.1` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Corroborated relations lift to an L2 fact via
 `fact_sources(kind='block', origin_key=document_id)`. **One document is one origin
@@ -193,7 +193,7 @@ kind is added to the closed set; withdrawal of a document demotes its derived fa
 
 #### TH1.13 — Idempotent lifting, keyed on `document_id`
 
-`Model: Sonnet 5` · `Size: S` · `Depends: TH1.12` · `Doc: 16 §5` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: TH1.12` · `Doc: 16 §5` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Strip-before-rewrite on re-ingest, self-healing through the ordinary
 source-withdrawal sweep.
@@ -208,7 +208,7 @@ through the existing sweep, not a bespoke one.
 
 #### TH1.14 — Single-document summary (unbadged)
 
-`Model: Sonnet 5` · `Size: S` · `Depends: TH1.04` · `Doc: 16 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: TH1.04` · `Doc: 16 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Reuses doc 11's `summarization` purpose as an **unbadged report, never a
 verified claim**. A summary is not a fact.
@@ -219,7 +219,7 @@ fact ladder; regeneration is explicit, not automatic.
 
 #### TH1.15 — Emergent cross-document connections
 
-`Model: Sonnet 5` · `Size: M` · `Depends: TH1.12` · `Doc: 16 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: TH1.12` · `Doc: 16 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** Connections are **emergent from the shared graph after lifting** — entity
 overlap, topic communities (doc 06), associative relations (doc 08). **No new analysis
@@ -232,7 +232,7 @@ new job family; multi-document synthesis write-ups are explicitly out of scope.
 
 #### TH1.16 — Documents UI, horizon-labelled
 
-`Model: Sonnet 5` · `Size: M` · `Depends: TH1.09, TH1.14` · `Doc: 16 §6, 13` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: TH1.09, TH1.14` · `Doc: 16 §6, 13` · `Tag: horizon` · `Gate: G-F`
 
 **What.** The lane's one UI surface: grounded Q&A over blocks, single-document summary,
 emergent connections. Doc 13's inventory defines no documents screen today — this lands
@@ -245,7 +245,7 @@ plainly; summaries render visibly unbadged; the surface is labelled as horizon i
 
 #### TH1.17 — Faithfulness-gate runner
 
-`Model: Sonnet 5` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F`
 
 **What.** The plumbing behind TH1.10's verify, built by Sonnet so the Fable gate task only
 designs the bar and reads the number (runbook §2).
