@@ -26,7 +26,7 @@ than disabling the check (invariants 20, 21).
 
 #### T4.01 — Bearer credential shape + closed scope set
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Trigger: first exposed deployment` · `Depends: T1.62` · `Doc: 18 §5` · `Tag: activation` · `Gate: demand-gated`
+`Model: Opus 5` · `Size: M` · `Trigger: first exposed deployment` · `Depends: T1.62` · `Doc: 18 §5` · `Tag: activation` · `Gate: demand-gated`
 
 **What.** The `api_keys` table exists today and is unwired — every write passes
 `api_key_id=None`. Wire it to `dmk_<key_id>_<secret>` with a closed scope set:
@@ -47,7 +47,7 @@ non-LAN credential. An event trigger, not a scored metric.
 
 #### T4.02 — Stamp `events.api_key_id` / `events.actor`
 
-`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T4.01, T1.06` · `Doc: 18 §5` · `Tag: activation` · `Gate: demand-gated`
+`Model: Sonnet 5` · `Size: S` · `Depends: T4.01, T1.06` · `Doc: 18 §5` · `Tag: activation` · `Gate: demand-gated`
 
 **What.** First writer to the columns landed inert in T1.06. Every keyed call stamps its
 key and actor.
@@ -58,7 +58,7 @@ key rather than being dropped; the columns lose their inert label.
 
 #### T4.03 — Exposed-deployment posture
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T4.01` · `Doc: 18 §4, §9` · `Tag: activation` · `Gate: demand-gated`
+`Model: Opus 5` · `Size: M` · `Depends: T4.01` · `Doc: 18 §4, §9` · `Tag: activation` · `Gate: demand-gated`
 
 **What.** Under exposure an operator TLS proxy sits in front, so the IP-source strategy
 flips **back** to the header path and `cookie_secure` is enforced.
@@ -81,7 +81,7 @@ not restore nginx as the default.
 
 #### T4.04 — `ApiKey` use surfaced in the per-object timeline
 
-`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T4.02` · `Doc: 13 §6.4` · `Tag: activation` · `Gate: demand-gated`
+`Model: Sonnet 5` · `Size: S` · `Depends: T4.02` · `Doc: 13 §6.4` · `Tag: activation` · `Gate: demand-gated`
 
 **What.** Keyed calls become visible in the timeline — who did what, with which key.
 
@@ -98,7 +98,7 @@ authenticated receiver.
 
 #### T4.05 — Push webhook receiver
 
-`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T4.01, T1.40` · `Doc: 10 §5, 15 §9` · `Tag: target-new` · `Gate: demand-gated`
+`Model: Sonnet 5` · `Size: M` · `Depends: T4.01, T1.40` · `Doc: 10 §5, 15 §9` · `Tag: target-new` · `Gate: demand-gated`
 
 **What.** Replaces periodic change-gated `repo_sync` polling **for the pushed repo only**,
 reusing the identical change-gated `CodePipeline.run`. **Never a second indexing path.**
@@ -117,7 +117,7 @@ reusing the identical change-gated `CodePipeline.run`. **Never a second indexing
 
 #### T4.06 — Inject `watch` mode
 
-`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.11` · `Doc: 15 §3.5` · `Tag: target-new` · `Gate: demand-gated`
+`Model: Sonnet 5` · `Size: M` · `Depends: T3.11` · `Doc: 15 §3.5` · `Tag: target-new` · `Gate: demand-gated`
 
 **What.** Re-inject the managed block as the project, open file, or declared context
 shifts, instead of only at session start. Config-gated, deferred behind measured need.
@@ -128,7 +128,7 @@ curb control (T3.19) stops it immediately.
 
 #### T4.07 — Auto-scrape opt-in
 
-`Model: Sonnet 5` · `Effort: medium` · `Size: M` · `Depends: T3.15` · `Doc: 15 §4` · `Tag: target-new` · `Gate: demand-gated`
+`Model: Sonnet 5` · `Size: M` · `Depends: T3.15` · `Doc: 15 §4` · `Tag: target-new` · `Gate: demand-gated`
 
 **What.** Widens v1's human-triggered-selection-only scope to automatic full-conversation
 capture — strictly opt-in.
@@ -139,7 +139,7 @@ install to one origin; a clear indicator shows when it is active.
 
 #### T4.08 — Watch + curb surfaces on the Distribution tab
 
-`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T4.06` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: demand-gated`
+`Model: Sonnet 5` · `Size: S` · `Depends: T4.06` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: demand-gated`
 
 **What.** The human can see and curb push — never a silent context swap.
 
@@ -153,7 +153,7 @@ immediately; recent injects listed inline.
 
 #### T4.09 — In-process assumption audit
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 02 §11` · `Tag: target-new` · `Gate: demand-gated`
+`Model: Opus 5` · `Size: M` · `Depends: —` · `Doc: 02 §11` · `Tag: target-new` · `Gate: demand-gated`
 
 **What.** Before any replica decision, enumerate every in-process assumption that a second
 worker breaks: the cached PPR/igraph snapshot (T2.32), the feature-flag TTL cache, the
@@ -165,7 +165,7 @@ a second worker causes; written up as a decision input, not a plan.
 
 #### T4.10 — Multi-replica decision record
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T4.09` · `Doc: 02 §11, 20 §9` · `Tag: target-new` · `Gate: demand-gated`
+`Model: Fable 5` · `Size: M` · `Depends: T4.09` · `Doc: 02 §11, 20 §9` · `Tag: target-new` · `Gate: demand-gated`
 
 **What.** Decide: sticky routing, a serialised snapshot table, or stay single-worker.
 **This stays a flagged decision, never a side effect of a deployment task** — a replica

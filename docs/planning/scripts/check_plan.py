@@ -16,10 +16,7 @@ import sys
 
 TID = r"T(?:H1|[0-4])\.\d{2}[a-z]?"
 HEAD = re.compile(r"^#### (%s) — (.+)$" % TID, re.M)
-FIELD = re.compile(
-    r"^`Model: ([^`]+)` · `Effort: ([a-z]+)` · `Size: ([SML])` · "
-    r"`(Depends|Trigger): ([^`]*)`.*$", re.M)
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
+FIELD = re.compile(r"^`Model: ([^`]+)` · `Size: ([SML])` · `(Depends|Trigger): ([^`]*)`.*$", re.M)
 
 EPIC_FILES = sorted(glob.glob("tasks/*.md"))
 FAILS = []
@@ -51,13 +48,10 @@ for f in EPIC_FILES:
         if not fm:
             fail("fields", "%s (%s) has no parseable meta line" % (tid, f))
             continue
-        if fm.group(2) not in EFFORTS:
-            fail("effort", "%s (%s) has effort %r, not one of %s"
-                 % (tid, f, fm.group(2), ", ".join(EFFORTS)))
-        deps = re.findall(TID, fm.group(5)) if fm.group(4) == "Depends" else []
+        deps = re.findall(TID, fm.group(4)) if fm.group(3) == "Depends" else []
         tasks[tid] = dict(
             file=f, title=title, block=block, model=fm.group(1),
-            effort=fm.group(2), size=fm.group(3), kind=fm.group(4), deps=deps,
+            size=fm.group(2), kind=fm.group(3), deps=deps,
         )
         order.append(tid)
 

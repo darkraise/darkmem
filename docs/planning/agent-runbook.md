@@ -63,46 +63,6 @@ Three standing rules:
   defer the task; a cheap model on an invariant-bearing task produces work that is
   expensive to detect and expensive to unwind.
 
-### 2.1 Effort
-
-Every task also carries an **Effort** field — `low` · `medium` · `high` · `xhigh` · `max`.
-It is the **reasoning-effort setting the sub-agent is spawned with**: the `effort`
-parameter on the dispatch, alongside `model`. Both fields exist for the same reason, and
-both are passed the same way — **explicitly, on every dispatch.** An omitted `effort`
-inherits the controller session's, which is how a `low` task silently costs `max` and a
-`max` task silently runs shallow. A controller that passes `model` and forgets `effort`
-has routed half the task.
-
-Model and Effort answer different questions. **Model tracks consequence** — what it costs
-the project if this task is wrong. **Effort tracks reasoning depth per turn** — how much
-thinking one turn of the work needs. They usually move together, which is why the tier
-default below is the starting point, but they are not the same axis: a mechanical edit to
-an invariant-bearing file is high consequence and low reasoning depth.
-
-**Tier default:** Haiku → `low`, Sonnet → `medium`, Opus → `high`, Fable → `xhigh`.
-
-**One step above the default** when either holds:
-
-- **The task's acceptance is a number others are judged against** — a bar, a tolerance, a
-  gate verdict. These are `max`, and the seven that carry it today are the six gate-owning
-  tasks plus T0.05, which sets the tolerance the whole of Phase 1 is measured against.
-- **The failure mode is silent.** A measurement primitive, an assertion other tasks will
-  trust, a durability guarantee. Not "it crashes if wrong" but "it returns a plausible
-  number that is wrong, or an assertion that cannot fail." This is earned, not theoretical:
-  in E0's Lane A the run ledger, the affordability gate and the retrieval scorer each
-  shipped a defect of exactly this shape — a ledger that crashed permanently on a killed
-  run's partial write, a gate that reported success over a pipeline doing no work, and an
-  MRR computed over the whole ranked list under a heading that said `k=10`. All three
-  passed their per-task review and were caught only adversarially.
-
-**Escalate on discovery, and log it**, exactly as with the tier. If a task turns out to
-need deeper reasoning than its field says, raise it and record the amendment — an effort
-field that was wrong is the same planning signal a wrong tier is.
-
-**Do not raise effort to compensate for a thin brief.** If a subagent needs more thinking
-because it was told too little, the fix is the brief. Effort buys depth on a
-well-specified problem; it does not buy context.
-
 ## 3. Task size, and what `L` obliges you to do
 
 Every task carries a **Size**. It is orthogonal to Model — a task can be small and still
