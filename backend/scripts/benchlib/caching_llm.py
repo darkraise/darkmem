@@ -1,8 +1,14 @@
-"""LLM orchestrator that memoises embed + chat_completion to disk.
+"""LLM orchestrator that memoises embed + embed_batch + chat_completion to
+disk.
 
 Keyed by a content hash so a second bench run replays every model call from
 disk (self.live_calls stays 0). The parent calls are indirected through
-_live_embed / _live_chat so tests can stub the model without a live backend.
+_live_embed / _live_embed_batch / _live_chat so tests can stub the model
+without a live backend.
+
+embed_batch is the seam ProcessingPipeline.process_batch actually uses (via
+embed_batch_chunked, Phase 1 content embedding and Phase 3 entity embedding);
+plain embed() is only exercised at query time (search), never by process_batch.
 """
 import hashlib
 import json
@@ -23,6 +29,11 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         self._cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
         self.live_calls = 0
+        # Every fingerprint embed_batch has resolved a vector under (cache hit
+        # or live), so a caller can detect an embedder rotation mid-run by
+        # checking this grows past one element. Callers that reuse one
+        # orchestrator across multiple runs should .clear() it first.
+        self.fingerprints_seen: set[str] = set()
 
     def _read(self, key: str):
         path = os.path.join(self._cache_dir, key + ".json")
@@ -39,6 +50,9 @@ class CachingLLMOrchestrator(LLMOrchestrator):
     async def _live_embed(self, text):
         return await super().embed(text)
 
+    async def _live_embed_batch(self, texts):
+        return await super().embed_batch(texts)
+
     async def _live_chat(self, purpose, messages, **kwargs):
         return await super().chat_completion(purpose, messages, **kwargs)
 
@@ -51,6 +65,62 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         vec, fp = await self._live_embed(text)
         self._write(key, [vec, fp])
         return vec, fp
+
+    async def embed_batch(self, texts: list[str]):
+        """Per-text cache, one live call per batch of misses.
+
+        ProcessingPipeline reaches embeddings only through embed_batch_chunked
+        -> embed_batch (never the single-item embed()), for both Phase 1
+        (content) and Phase 3 (entity names) -- see the module docstring.
+        Keying per text rather than per whole-batch payload means a corpus
+        that grows by one entry doesn't invalidate every previously-cached
+        text in the same batch, and it shares cache entries with embed().
+
+        live_calls counts live network round-trips, not texts: one increment
+        per invocation of _live_embed_batch that actually fires, mirroring
+        embed()/chat_completion()'s existing per-call granularity. A batch
+        with any miss increments by exactly 1 regardless of how many texts
+        missed, so the counter is exactly zero iff no live call fired during
+        the run, and never zero when one did.
+        """
+        if not texts:
+            return [], self.llm_fingerprint()
+
+        keys = [_key("embed", t) for t in texts]
+        resolved: list[list | None] = [None] * len(texts)
+        miss_positions = []
+        for i, key in enumerate(keys):
+            hit = self._read(key)
+            if hit is None:
+                miss_positions.append(i)
+            else:
+                resolved[i] = hit
+
+        if miss_positions:
+            self.live_calls += 1
+            miss_texts = [texts[i] for i in miss_positions]
+            vecs, fp = await self._live_embed_batch(miss_texts)
+            for local_i, global_i in enumerate(miss_positions):
+                entry = [vecs[local_i], fp]
+                self._write(keys[global_i], entry)
+                resolved[global_i] = entry
+
+        # A stale cache entry from a prior embedder (or a live fetch landing
+        # on a different fingerprint than what's cached) must not be silently
+        # relabeled under one fingerprint -- that would mislabel which
+        # partition the vector belongs to. embed_batch_chunked only compares
+        # fingerprints ACROSS its chunk calls; this batch's own hit+miss mix
+        # is invisible to that check, so it's re-checked here.
+        fingerprints = {entry[1] for entry in resolved}
+        if len(fingerprints) > 1:
+            raise RuntimeError(
+                f"embed_batch produced mixed fingerprints across cache + live "
+                f"results: {sorted(fingerprints)}"
+            )
+        fingerprint = next(iter(fingerprints))
+        self.fingerprints_seen.add(fingerprint)
+        vectors = [entry[0] for entry in resolved]
+        return vectors, fingerprint
 
     async def chat_completion(self, purpose, messages, **kwargs):
         key = _key("chat", [purpose, messages, sorted(kwargs.items())])
