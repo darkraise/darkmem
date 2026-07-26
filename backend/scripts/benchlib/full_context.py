@@ -21,7 +21,11 @@ silently repaired into a hit.
 latency/token twin -- as required fields. A delta is only ever a *derived*
 view (``Comparison.deltas()``); there is no constructor, no payload builder
 and no renderer in this module that can be handed a difference without both
-arms' full metric blocks behind it.
+arms' full metric blocks behind it. ``Comparison.caveats`` extends the same
+idea to what qualifies those numbers: every caveat is DERIVED from the two
+twins, so it travels inside the emitted payload rather than living in a
+report nobody machine-reads, and an empty list is a positive claim that the
+two arms are comparable as printed rather than the absence of prose.
 
 Composition, matching the split the rest of benchlib already uses:
 ``build_context`` / ``build_messages`` / ``parse_ranked_ids`` are pure and
@@ -432,6 +436,53 @@ ARM_FULL_CONTEXT = "full_context"
 # exactly what T0.07 gave ScoreReport the field for.
 PROTOCOL_FIELDS = ("k", "min_pairs", "n_pairs")
 
+# The channel both arms measure a whole query in, and therefore the only one
+# a cross-arm latency statement can be made about.
+END_TO_END_CHANNEL = "end_to_end"
+
+CAVEAT_CONTEXT_TRUNCATED = "context-truncated"
+CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE = "latency-not-like-for-like"
+CAVEAT_LATENCY_NO_LIVE_SAMPLES = "latency-no-live-samples"
+CAVEAT_COST_UNMEASURED = "cost-unmeasured"
+CAVEAT_COST_KIND_ASYMMETRY = "cost-kind-asymmetry"
+
+
+@dataclass(frozen=True)
+class Caveat:
+    """One machine-readable qualifier on the numbers a ``Comparison`` emits.
+
+    ``kind`` is a stable key so a gate reader can assert a specific caveat is
+    absent rather than substring-matching English that may be reworded.
+    """
+
+    kind: str
+    text: str
+
+    def as_dict(self) -> dict:
+        return {"kind": self.kind, "text": self.text}
+
+
+def _chat_calls_by_purpose(run: EvalRun) -> dict[str, int]:
+    """Total chat calls an arm billed per purpose, however they were served.
+
+    Live, replayed-with-usage and replayed-without-usage all count: the
+    question this answers is "how much work did this arm do", not "how much
+    was billed on the run that happened to produce these numbers".
+    """
+    return {
+        purpose: (
+            usage.get("live_calls", 0)
+            + usage.get("cache_known_calls", 0)
+            + usage.get("cache_unknown_calls", 0)
+        )
+        for purpose, usage in run.twin.tokens_by_purpose.items()
+    }
+
+
+def _embed_calls(run: EvalRun) -> int:
+    stats = run.twin.channels.get("embed_query")
+    return 0 if stats is None else stats.live.n + stats.cache.n
+
 
 @dataclass(frozen=True)
 class Comparison:
@@ -487,17 +538,128 @@ class Comparison:
                 "comparison is only defined over one shared pair set"
             )
 
-    @property
-    def caveats(self) -> list[str]:
+    def _arms(self) -> tuple[tuple[str, EvalRun], ...]:
+        return (
+            (ARM_RETRIEVAL, self.retrieval), (ARM_FULL_CONTEXT, self.full_context),
+        )
+
+    def _context_caveats(self) -> list[Caveat]:
         if self.context.complete:
             return []
-        return [
+        return [Caveat(
+            CAVEAT_CONTEXT_TRUNCATED,
             f"the full-context arm's prompt carried only "
             f"{len(self.context.included_ids)} of "
             f"{len(self.context.included_ids) + len(self.context.dropped_ids)} "
             "corpus entries under an explicit ContextPolicy bound, so every "
-            "full-context number below understates a true full-context arm"
-        ]
+            "full-context number below understates a true full-context arm",
+        )]
+
+    def _latency_caveats(self) -> list[Caveat]:
+        """Whether the two arms' end-to-end numbers describe the same system.
+
+        Derived, not asserted: the twins already carry which population each
+        arm's samples landed in, so the question "is a cross-arm latency ratio
+        meaningful here" is answerable from the object. Three distinguishable
+        states, three different statements -- a caveat surface that said the
+        same thing on every run would carry no information.
+        """
+        populations = {}
+        for name, run in self._arms():
+            stats = run.twin.channels.get(END_TO_END_CHANNEL)
+            populations[name] = (0, 0) if stats is None else (stats.live.n, stats.cache.n)
+
+        live_arms = sorted(n for n, (live, _) in populations.items() if live)
+        warm_arms = sorted(
+            n for n, (live, cache) in populations.items() if not live and cache
+        )
+        if live_arms and warm_arms:
+            return [Caveat(
+                CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE,
+                f"cross-arm latency is not like-for-like: every "
+                f"{END_TO_END_CHANNEL} sample in the {', '.join(warm_arms)} arm "
+                f"was cache-served (a disk read) while the "
+                f"{', '.join(live_arms)} arm paid a live model call, so any "
+                f"ratio between the two arms' p50/p95 overstates the "
+                f"{', '.join(warm_arms)} arm's advantage. Compare within a "
+                "population, never across one.",
+            )]
+        if warm_arms and not live_arms:
+            return [Caveat(
+                CAVEAT_LATENCY_NO_LIVE_SAMPLES,
+                f"no arm measured live latency: every {END_TO_END_CHANNEL} "
+                "sample in both arms was cache-served, so these p50/p95 "
+                "figures describe a warm replay of a recorded run, not a "
+                "system anybody runs.",
+            )]
+        return []
+
+    def _cost_caveats(self) -> list[Caveat]:
+        """What the two token blocks are, and are not, comparable as.
+
+        Both conditions are read off the twins. The unmeasured-cost one
+        disappears the moment those cache entries are re-paid under a usage
+        envelope; the kind-asymmetry one disappears the moment both arms bill
+        once per scored pair. Neither is a constant.
+        """
+        caveats: list[Caveat] = []
+        n_pairs = self.retrieval.score.n_pairs
+        calls = {name: _chat_calls_by_purpose(run) for name, run in self._arms()}
+
+        for name, run in self._arms():
+            unmeasured = {
+                purpose: usage["cache_unknown_calls"]
+                for purpose, usage in run.twin.tokens_by_purpose.items()
+                if usage.get("cache_unknown_calls")
+            }
+            if unmeasured:
+                detail = ", ".join(f"{n} {p}" for p, n in sorted(unmeasured.items()))
+                caveats.append(Caveat(
+                    CAVEAT_COST_UNMEASURED,
+                    f"the {name} arm's token cost is incomplete: {detail} call(s) "
+                    "replayed from cache entries carrying no usage envelope, so "
+                    "what they cost when they were paid is unrecorded. Read that "
+                    "as unknown, never as zero, and never as this arm being "
+                    "cheaper than the other.",
+                ))
+
+        per_query = sorted(n for n, by_purpose in calls.items() if sum(by_purpose.values()) == n_pairs)
+        other = sorted(
+            n for n, by_purpose in calls.items()
+            if by_purpose and sum(by_purpose.values()) not in (0, n_pairs)
+        )
+        if per_query and other:
+            other_calls = sum(calls[other[0]].values())
+            text = (
+                f"the two arms' token blocks are different KINDS of quantity and "
+                f"must not be subtracted or ratioed: the {', '.join(per_query)} "
+                f"arm billed exactly one call per scored pair ({n_pairs}), so its "
+                f"token cost recurs in full on every run of the query set, while "
+                f"the {', '.join(other)} arm's {other_calls} call(s) are not "
+                f"per-pair -- they are one-time indexing work, paid once per "
+                f"corpus and amortised over every future query."
+            )
+            embed_calls = _embed_calls(dict(self._arms())[other[0]])
+            if embed_calls:
+                text += (
+                    f" The {other[0]} arm's own per-query cost is {embed_calls} "
+                    "query-embedding call(s), which carry no token accounting and "
+                    "appear in no token block here at all."
+                )
+            caveats.append(Caveat(CAVEAT_COST_KIND_ASYMMETRY, text))
+        return caveats
+
+    @property
+    def caveats(self) -> list[Caveat]:
+        """Everything that qualifies the numbers this object emits.
+
+        Every entry is DERIVED from the two twins and the context block, so a
+        caveat travels with the payload instead of living in a report nobody
+        machine-reads. An empty list is therefore a real claim -- "these two
+        arms are directly comparable as printed" -- rather than the absence of
+        a prose paragraph somewhere else.
+        """
+        return self._context_caveats() + self._latency_caveats() + self._cost_caveats()
 
     def deltas(self) -> dict:
         """full_context minus retrieval, per slice and in aggregate.
@@ -539,7 +701,7 @@ class Comparison:
                 "deltas": self.deltas(),
                 "full_context_id_audit": self.id_audit.as_dict(),
                 "full_context_context": self.context.describe(),
-                "caveats": self.caveats,
+                "caveats": [caveat.as_dict() for caveat in self.caveats],
             }
         }
 
@@ -599,8 +761,11 @@ def render_comparison(comparison: Comparison) -> str:
         f"entries in prompt, {ctx['context_chars']} chars, "
         f"policy={ctx['policy']['kind']}"
     )
-    for caveat in comparison.caveats:
-        out.append(f"CAVEAT: {caveat}")
+    caveats = comparison.caveats
+    if not caveats:
+        out.append("caveats: none (the two arms are directly comparable as printed)")
+    for caveat in caveats:
+        out.append(f"CAVEAT [{caveat.kind}]: {caveat.text}")
 
     out.append("")
     out.append("--- accuracy per slice (retrieval | full-context | delta) ---")

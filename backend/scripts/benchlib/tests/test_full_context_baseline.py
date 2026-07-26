@@ -83,31 +83,63 @@ def _score(ranked, pairs, *, k=1, retrieval_limit=1, min_pairs=1) -> ScoreReport
     )
 
 
-def _twin(*, live=0.9, cache=0.001) -> twin.Twin:
+def _twin(*, live=1, cache=1, tokens=None, embed=0) -> twin.Twin:
+    """A twin with a controlled end_to_end population split and token block.
+
+    ``live``/``cache`` are SAMPLE COUNTS, so a test can put an arm into the
+    warm-replay or the live state the caveat derivations read.
+    """
     recorder = twin.LatencyRecorder()
-    recorder.record("end_to_end", live, "live")
-    recorder.record("end_to_end", cache, "cache")
-    return twin.Twin.capture(
+    for _ in range(live):
+        recorder.record("end_to_end", 0.9, "live")
+    for _ in range(cache):
+        recorder.record("end_to_end", 0.001, "cache")
+    for _ in range(embed):
+        recorder.record("embed_query", 0.0001, "cache")
+    captured = twin.Twin.capture(
         recorder, twin.TokenLedger(),
         min_samples=1, declared_channels=full_context.CHANNELS,
     )
+    if tokens is None:
+        return captured
+    return twin.Twin(
+        channels=captured.channels, tokens_by_purpose=tokens,
+        min_samples_for_percentile=1,
+    )
 
 
-def _eval_run(score) -> twin.EvalRun:
-    return twin.EvalRun(score=score, twin=_twin())
+def _usage(**overrides) -> dict:
+    base = {
+        "live_calls": 0, "live_prompt_tokens": 0, "live_completion_tokens": 0,
+        "live_cached_prompt_tokens": 0, "live_unknown_calls": 0,
+        "cache_known_calls": 0, "cache_known_prompt_tokens": 0,
+        "cache_known_completion_tokens": 0, "cache_known_cached_prompt_tokens": 0,
+        "cache_unknown_calls": 0,
+    }
+    return {**base, **overrides}
 
 
-def _comparison(corpus=None, pairs=None, context=None) -> full_context.Comparison:
+def _eval_run(score, **twin_kwargs) -> twin.EvalRun:
+    return twin.EvalRun(score=score, twin=_twin(**twin_kwargs))
+
+
+def _comparison(
+    corpus=None, pairs=None, context=None, retrieval_twin=None, full_context_twin=None,
+) -> full_context.Comparison:
     corpus = corpus or _corpus()
     pairs = pairs or _pairs(corpus)
     perfect = {p["id"]: p["relevant_memory_ids"] for p in pairs}
     empty = {p["id"]: [] for p in pairs}
     return full_context.Comparison(
-        retrieval=_eval_run(_score(perfect, pairs)),
-        full_context=_eval_run(_score(empty, pairs)),
+        retrieval=_eval_run(_score(perfect, pairs), **(retrieval_twin or {})),
+        full_context=_eval_run(_score(empty, pairs), **(full_context_twin or {})),
         id_audit=full_context.IdAudit(queries=len(pairs)),
         context=context or full_context.build_context(corpus),
     )
+
+
+def _kinds(comparison) -> set[str]:
+    return {caveat.kind for caveat in comparison.caveats}
 
 
 # ── prompt construction and the context-window policy (ruling 4) ─────────
@@ -179,15 +211,149 @@ def test_a_bounded_context_puts_a_caveat_on_every_number_it_affects():
     )
     comparison = _comparison(corpus=corpus, context=bounded)
 
-    assert comparison.caveats
+    assert full_context.CAVEAT_CONTEXT_TRUNCATED in _kinds(comparison)
     assert "CAVEAT" in full_context.render_comparison(comparison)
-    assert comparison.to_ledger_payload()["comparison"]["caveats"] == comparison.caveats
+    assert comparison.to_ledger_payload()["comparison"]["caveats"] == [
+        caveat.as_dict() for caveat in comparison.caveats
+    ]
 
 
 def test_an_unbounded_context_carries_no_caveat():
     comparison = _comparison()
+    assert full_context.CAVEAT_CONTEXT_TRUNCATED not in _kinds(comparison)
+
+
+# ── derived caveats: the qualifiers travel with the numbers ──────────────
+
+
+def test_two_directly_comparable_arms_carry_no_caveat_at_all():
+    """The anti-spurious proof. A caveat surface that fires on every run
+    carries no information, so the empty list has to be reachable: two arms
+    both measured live, both billing one call per pair, neither with
+    unrecorded cost, and an untruncated context qualify nothing."""
+    comparison = _comparison(
+        retrieval_twin={
+            "live": 4, "cache": 0,
+            "tokens": {"extraction": _usage(live_calls=4)},
+        },
+        full_context_twin={
+            "live": 4, "cache": 0,
+            "tokens": {"reasoning": _usage(live_calls=4)},
+        },
+    )
+
     assert comparison.caveats == []
-    assert "CAVEAT" not in full_context.render_comparison(comparison)
+    rendered = full_context.render_comparison(comparison)
+    assert "CAVEAT" not in rendered
+    assert "caveats: none" in rendered
+    assert comparison.to_ledger_payload()["comparison"]["caveats"] == []
+
+
+def test_a_warm_arm_against_a_live_arm_is_flagged_not_like_for_like():
+    comparison = _comparison(
+        retrieval_twin={"live": 0, "cache": 4},
+        full_context_twin={"live": 4, "cache": 0},
+    )
+
+    assert full_context.CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE in _kinds(comparison)
+    text = next(
+        c.text for c in comparison.caveats
+        if c.kind == full_context.CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE
+    )
+    assert full_context.ARM_RETRIEVAL in text
+    assert full_context.ARM_FULL_CONTEXT in text
+
+
+def test_two_arms_measured_the_same_way_are_not_flagged_not_like_for_like():
+    for population in ({"live": 4, "cache": 0}, {"live": 0, "cache": 4}):
+        comparison = _comparison(
+            retrieval_twin=population, full_context_twin=population,
+        )
+        assert full_context.CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE not in _kinds(comparison)
+
+
+def test_two_fully_warm_arms_are_flagged_as_measuring_no_live_latency():
+    comparison = _comparison(
+        retrieval_twin={"live": 0, "cache": 4},
+        full_context_twin={"live": 0, "cache": 4},
+    )
+
+    assert full_context.CAVEAT_LATENCY_NO_LIVE_SAMPLES in _kinds(comparison)
+
+
+def test_unrecorded_cost_is_flagged_and_named_by_arm_and_purpose():
+    comparison = _comparison(
+        retrieval_twin={"tokens": {"extraction": _usage(cache_unknown_calls=94)}},
+        full_context_twin={"tokens": {"reasoning": _usage(live_calls=4)}},
+    )
+
+    text = next(
+        c.text for c in comparison.caveats
+        if c.kind == full_context.CAVEAT_COST_UNMEASURED
+    )
+    assert "94 extraction" in text
+    assert full_context.ARM_RETRIEVAL in text
+
+
+def test_fully_measured_cost_is_not_flagged_as_unrecorded():
+    comparison = _comparison(
+        retrieval_twin={"tokens": {"extraction": _usage(cache_known_calls=94)}},
+        full_context_twin={"tokens": {"reasoning": _usage(live_calls=4)}},
+    )
+
+    assert full_context.CAVEAT_COST_UNMEASURED not in _kinds(comparison)
+
+
+def test_a_per_query_arm_against_an_indexing_arm_is_flagged_as_a_kind_mismatch():
+    """4 pairs: the full-context arm bills 4 calls (one per pair, recurring
+    every run) while the retrieval arm bills 94 (one-time indexing). Those
+    are different quantities and subtracting them is meaningless."""
+    comparison = _comparison(
+        retrieval_twin={
+            "tokens": {"extraction": _usage(live_calls=94)}, "embed": 4,
+        },
+        full_context_twin={"tokens": {"reasoning": _usage(live_calls=4)}},
+    )
+
+    text = next(
+        c.text for c in comparison.caveats
+        if c.kind == full_context.CAVEAT_COST_KIND_ASYMMETRY
+    )
+    assert "one-time indexing work" in text
+    assert "4 query-embedding call(s)" in text
+
+
+def test_two_per_query_arms_are_not_flagged_as_a_kind_mismatch():
+    comparison = _comparison(
+        retrieval_twin={"tokens": {"reranker": _usage(live_calls=4)}},
+        full_context_twin={"tokens": {"reasoning": _usage(live_calls=4)}},
+    )
+
+    assert full_context.CAVEAT_COST_KIND_ASYMMETRY not in _kinds(comparison)
+
+
+def test_every_derived_caveat_reaches_both_the_payload_and_the_render():
+    comparison = _comparison(
+        retrieval_twin={
+            "live": 0, "cache": 4,
+            "tokens": {"extraction": _usage(cache_unknown_calls=94)},
+        },
+        full_context_twin={
+            "live": 4, "cache": 0,
+            "tokens": {"reasoning": _usage(live_calls=4)},
+        },
+    )
+
+    assert _kinds(comparison) == {
+        full_context.CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE,
+        full_context.CAVEAT_COST_UNMEASURED,
+        full_context.CAVEAT_COST_KIND_ASYMMETRY,
+    }
+    payload = comparison.to_ledger_payload()["comparison"]["caveats"]
+    assert {entry["kind"] for entry in payload} == _kinds(comparison)
+    rendered = full_context.render_comparison(comparison)
+    for caveat in comparison.caveats:
+        assert f"CAVEAT [{caveat.kind}]" in rendered
 
 
 def test_context_policy_rejects_an_unknown_overflow_mode():
