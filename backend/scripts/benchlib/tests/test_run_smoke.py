@@ -84,7 +84,13 @@ def test_purpose_config_specs_seeds_reasoning_as_a_purpose_of_its_own():
     assert specs["reasoning"]["model"] == "deepseek-v4-flash"
     assert specs["reasoning"]["api_key"] == "sk-the-key"
     assert specs["reasoning"]["params"] == {"temperature": 0}
-    assert specs["reasoning"]["purpose"] != specs["extraction"]["purpose"]
+
+    # The no-borrowing rule as code rather than as a tautology: the arm's
+    # purpose must be seeded here AND must not be one the ingest path already
+    # spends under, or the twin's per-purpose attribution merges two arms.
+    from benchlib import full_context
+    assert full_context.FULL_CONTEXT_PURPOSE in specs
+    assert full_context.FULL_CONTEXT_PURPOSE not in ("extraction", "classification")
 
 
 @pytest.mark.asyncio
