@@ -208,6 +208,53 @@ def test_find_outcome_failures_does_not_look_at_live_calls_at_all():
     assert failures != []
 
 
+def test_find_work_shortfalls_is_empty_when_the_floor_is_met():
+    outcomes = [_ok_outcome("m-1", entities_count=3, relations_count=2),
+                _ok_outcome("m-2", entities_count=3, relations_count=1)]
+    expected = {"memories": 2, "entities": 6, "relations": 3}
+    assert run_smoke.find_work_shortfalls(outcomes, expected) == []
+
+
+def test_find_work_shortfalls_catches_a_clean_pass_that_did_less_work():
+    """The reviewed scenario: one cached chat entry replaced by VALID JSON
+    carrying empty entities/relationships. Every outcome is ok, live calls
+    are 0, and relations quietly drop 3 -> 2 against the healthy baseline."""
+    outcomes = [_ok_outcome("m-1", entities_count=3, relations_count=2),
+                _ok_outcome("m-2", entities_count=3, relations_count=0)]
+    expected = {"memories": 2, "entities": 6, "relations": 3}
+
+    assert run_smoke.find_outcome_failures(outcomes, expected_count=2) == []
+    failures = run_smoke.find_work_shortfalls(outcomes, expected)
+    assert failures == ["expected at least 3 relations, got 2"]
+
+
+def test_find_work_shortfalls_reports_every_count_that_fell_short():
+    outcomes = [_ok_outcome("m-1", entities_count=1, relations_count=0)]
+    failures = run_smoke.find_work_shortfalls(
+        outcomes, {"memories": 3, "entities": 6, "relations": 3},
+    )
+    assert len(failures) == 3
+
+
+def test_find_work_shortfalls_has_no_floor_for_a_corpus_that_declares_none():
+    """Gold corpora carry no expectations; absence must not synthesise a
+    floor of zero or crash the gate."""
+    outcomes = [_ok_outcome("m-1", entities_count=0, relations_count=0)]
+    assert run_smoke.find_work_shortfalls(outcomes, None) == []
+
+
+def test_the_gate_reads_its_floor_from_the_corpus_not_from_this_module():
+    """The numbers are declared data. A future corpus edit must move the
+    floor without touching run_smoke.py."""
+    from benchlib import corpus as corpus_module
+
+    declared = corpus_module.load_expectations(run_smoke.CORPUS_PATH)
+    assert declared == {"memories": 3, "entities": 6, "relations": 3}
+
+    source = (run_smoke.HERE / "run_smoke.py").read_text(encoding="utf-8")
+    assert "load_expectations" in source
+
+
 def test_summarize_pass_totals_entities_and_relations():
     outcomes = [_ok_outcome("m-1", entities_count=2, relations_count=1),
                 _ok_outcome("m-2", entities_count=3, relations_count=0)]
@@ -326,4 +373,44 @@ def test_main_reports_blocked_before_touching_the_db_when_key_is_unset(monkeypat
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     import asyncio
     with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY"):
+        asyncio.run(run_smoke.main())
+
+
+def test_main_refuses_a_corpus_that_yields_zero_entries(monkeypatch, tmp_path, capsys):
+    """A gate whose worst-case failure mode is a silent green is the one
+    shape this batch was told not to ship: with no entries, both passes
+    report zero memories as clean and pass-2 live calls are trivially 0.
+    Nothing here may reach the database."""
+    import asyncio
+
+    empty = tmp_path / "corpus.json"
+    empty.write_text('{"memories": []}', encoding="utf-8")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-not-used")
+    monkeypatch.setattr(run_smoke, "CORPUS_PATH", empty)
+
+    async def _must_not_run(*args, **kwargs):
+        raise AssertionError("the gate reset the bench DB for a corpus of nothing")
+
+    monkeypatch.setattr(run_smoke, "_reset_and_seed", _must_not_run)
+
+    assert asyncio.run(run_smoke.main()) == 1
+    assert "zero entries" in capsys.readouterr().err
+
+
+def test_main_refuses_a_corpus_whose_memories_key_was_renamed(monkeypatch, tmp_path):
+    """The same merge accident from the other side: the loader rejects the
+    file outright rather than handing the gate an empty list."""
+    import asyncio
+
+    typo = tmp_path / "corpus.json"
+    typo.write_text('{"memoires": [{"content": "x"}]}', encoding="utf-8")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-not-used")
+    monkeypatch.setattr(run_smoke, "CORPUS_PATH", typo)
+
+    async def _must_not_run(*args, **kwargs):
+        raise AssertionError("the gate reset the bench DB for an unreadable corpus")
+
+    monkeypatch.setattr(run_smoke, "_reset_and_seed", _must_not_run)
+
+    with pytest.raises(ValueError, match="no 'memories' key"):
         asyncio.run(run_smoke.main())

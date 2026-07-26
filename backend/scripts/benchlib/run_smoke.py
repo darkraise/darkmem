@@ -12,7 +12,10 @@ about whether the pipeline's own writes actually succeeded underneath it.
 Both passes are also checked with find_outcome_failures(), independent of
 the live-call count, so a pass that silently failed to write its memories
 (a broken embedder partition, a bad graph write, ...) fails the gate even
-when nothing was billed for it.
+when nothing was billed for it. Outcomes that are clean but thin fail too:
+find_work_shortfalls() holds each pass to the expected memory/entity/
+relation counts the corpus file declares, so a valid-but-degraded cached
+response cannot pass the gate by erroring nowhere.
 
 Run from backend/: python scripts/benchlib/run_smoke.py
 """
@@ -170,10 +173,43 @@ def find_outcome_failures(outcomes: list[dict], expected_count: int) -> list[str
     return failures
 
 
+def count_work(outcomes: list[dict]) -> dict:
+    return {
+        "memories": len(outcomes),
+        "entities": sum(o.get("entities_count", 0) for o in outcomes),
+        "relations": sum(o.get("relations_count", 0) for o in outcomes),
+    }
+
+
+def find_work_shortfalls(outcomes: list[dict], expected: dict | None) -> list[str]:
+    """Return one failure per count that fell below what the corpus declared.
+
+    All-ok outcomes only prove nothing errored. A cached chat entry replaced
+    by *valid* JSON carrying empty entities/relationships, a silently
+    regressed extraction, or a model swap replaying another model's answers
+    all produce a clean pass that did less work than the corpus says it
+    should. This is the floor that catches them; the counts live in the
+    corpus file (benchlib.corpus.load_expectations), because the corpus is
+    what declares what ingesting it produces.
+
+    A corpus that declares nothing (every gold file) has no floor to fail.
+    """
+    if not expected:
+        return []
+    actual = count_work(outcomes)
+    return [
+        f"expected at least {expected[key]} {key}, got {actual[key]}"
+        for key in sorted(expected)
+        if actual[key] < expected[key]
+    ]
+
+
 def summarize_pass(outcomes: list[dict]) -> str:
-    entities = sum(o.get("entities_count", 0) for o in outcomes)
-    relations = sum(o.get("relations_count", 0) for o in outcomes)
-    return f"{len(outcomes)} memories ingested, {entities} entities written, {relations} relations written"
+    work = count_work(outcomes)
+    return (
+        f"{work['memories']} memories ingested, {work['entities']} entities written, "
+        f"{work['relations']} relations written"
+    )
 
 
 def _print_pass_failures(label: str, failures: list[str]) -> None:
@@ -217,14 +253,26 @@ def build_run_record(result: IngestResult, pass1_live_calls: int, sha: str) -> d
 async def main() -> int:
     deepseek_api_key = require_deepseek_api_key()
 
+    # Load before the reset: a corpus that certifies nothing must fail
+    # before the run spends a DB reset and a live model call on it.
+    entries = corpus.load_corpus(CORPUS_PATH)
+    expected_work = corpus.load_expectations(CORPUS_PATH)
+    expected_count = len(entries)
+    if expected_count == 0:
+        print(
+            f"AFFORDABILITY GATE FAILED: {CORPUS_PATH} yielded zero entries, so "
+            "every count below is trivially satisfied and the gate would "
+            "certify nothing.",
+            file=sys.stderr,
+        )
+        return 1
+
     print("[1/5] resetting bench DB and seeding LLM purpose configs...")
     await _reset_and_seed(deepseek_api_key)
 
     async with bench_db.session_factory() as session:
         llm_config = await get_llm_config(session)
 
-    entries = corpus.load_corpus(CORPUS_PATH)
-    expected_count = len(entries)
     gate = GateConfig()
     # One orchestrator, reused sequentially across both passes: IngestResult
     # .live_calls is a delta since run_ingest's own call, computed off this
@@ -242,7 +290,10 @@ async def main() -> int:
     # rerun against an already-warm cache pass 1 legitimately makes zero
     # live calls too, and the outcomes check below is what actually
     # detects a broken pipeline, independent of what got billed.
-    pass1_failures = find_outcome_failures(first.outcomes, expected_count)
+    pass1_failures = (
+        find_outcome_failures(first.outcomes, expected_count)
+        + find_work_shortfalls(first.outcomes, expected_work)
+    )
     if pass1_failures:
         _print_pass_failures("pass 1", pass1_failures)
         return 1
@@ -254,7 +305,10 @@ async def main() -> int:
     second = await run_ingest(orchestrator, entries, gate)
     print(f"live LLM calls: {second.live_calls}")
     print(f"pass 2 work: {summarize_pass(second.outcomes)}")
-    pass2_failures = find_outcome_failures(second.outcomes, expected_count)
+    pass2_failures = (
+        find_outcome_failures(second.outcomes, expected_count)
+        + find_work_shortfalls(second.outcomes, expected_work)
+    )
     if pass2_failures:
         _print_pass_failures("pass 2", pass2_failures)
         return 1
