@@ -213,3 +213,31 @@ def test_no_entities_no_relations_valid(corpus_dir):
     entries = load_corpus(json_file)
     assert len(entries) == 1
     assert entries[0]["content"] == "Just content, no entities or relations"
+
+
+def test_load_real_smoke_corpus():
+    """Load the actual smoke corpus file."""
+    test_dir = Path(__file__).parent.parent
+    smoke_path = test_dir / "smoke" / "corpus.json"
+
+    entries = load_corpus(smoke_path)
+    assert len(entries) == 3
+    assert all("content" in e for e in entries)
+
+
+def test_load_real_gold_corpus():
+    """Load the actual gold corpus file."""
+    test_dir = Path(__file__).parent.parent
+    gold_path = test_dir.parent / "extraction_bench" / "gold.json"
+
+    entries = load_corpus(gold_path)
+    assert len(entries) == 26
+
+
+def test_load_real_gold_heldout_corpus():
+    """Load the actual gold heldout corpus file."""
+    test_dir = Path(__file__).parent.parent
+    gold_heldout_path = test_dir.parent / "extraction_bench" / "gold_heldout.json"
+
+    entries = load_corpus(gold_heldout_path)
+    assert len(entries) == 10

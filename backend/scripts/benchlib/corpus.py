@@ -4,12 +4,9 @@ Loads corpus JSON (both smoke and gold shapes) and validates entries.
 No database, no pipeline knowledge — just JSON parsing and taxonomy validation.
 """
 import json
-import logging
 from pathlib import Path
 
 from app.taxonomy import _ENTITY_TYPE_SET, _RELATIONSHIP_TYPE_SET
-
-logger = logging.getLogger(__name__)
 
 
 def load_corpus(path: str | Path) -> list[dict]:
@@ -35,13 +32,11 @@ def load_corpus(path: str | Path) -> list[dict]:
     entries = data.get("memories", [])
 
     for idx, entry in enumerate(entries):
-        # Check required content field
         if "content" not in entry:
             raise ValueError(
                 f"entry {idx} missing required field 'content'"
             )
 
-        # Validate gold labels if present
         _validate_gold_labels(entry, idx)
 
     return entries
@@ -57,7 +52,6 @@ def _validate_gold_labels(entry: dict, entry_idx: int) -> None:
     Raises:
         ValueError: If any entity or relation type is not in the closed taxonomy.
     """
-    # Validate entities if present
     entities = entry.get("entities")
     if entities:
         for entity in entities:
@@ -67,7 +61,6 @@ def _validate_gold_labels(entry: dict, entry_idx: int) -> None:
                     f"entry {entry_idx}: untabled entity type '{etype}'"
                 )
 
-    # Validate relations if present
     relations = entry.get("relations")
     if relations:
         for relation in relations:
