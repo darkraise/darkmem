@@ -252,12 +252,13 @@ def parse_ranked_ids(
     except (json.JSONDecodeError, TypeError):
         return ParsedRanking(unparseable=True)
 
-    if isinstance(payload, list):
-        raw = payload
-    elif isinstance(payload, dict) and isinstance(payload.get(RESPONSE_KEY), list):
-        raw = payload[RESPONSE_KEY]
-    else:
+    # Only the shape the prompt asks for. A bare top-level list is readable
+    # JSON, but accepting it would let a shape deviation pass uncounted --
+    # the arm not following its own contract is exactly the kind of thing
+    # this audit exists to measure, not to absorb.
+    if not isinstance(payload, dict) or not isinstance(payload.get(RESPONSE_KEY), list):
         return ParsedRanking(unparseable=True)
+    raw = payload[RESPONSE_KEY]
 
     kept: list[str] = []
     seen: set[str] = set()
@@ -290,7 +291,13 @@ class IdAudit:
     queries: int = 0
     responses_unparseable: int = 0
     responses_truncated: int = 0
+    # The model read the corpus and judged nothing relevant.
     responses_empty: int = 0
+    # The model named something, but not one id of it survived validation.
+    # A different failure from an empty answer and from an unreadable one:
+    # collapsing them would hide an arm that answers confidently in ids that
+    # do not exist behind a count that reads like honest abstention.
+    responses_all_dropped: int = 0
     ids_returned: int = 0
     ids_kept: int = 0
     ids_malformed: int = 0
@@ -302,8 +309,10 @@ class IdAudit:
         self.queries += 1
         self.responses_unparseable += int(parsed.unparseable)
         self.responses_truncated += int(parsed.truncated)
-        self.responses_empty += int(
-            not parsed.ranked_ids and not parsed.unparseable and not parsed.truncated
+        readable = not parsed.unparseable and not parsed.truncated
+        self.responses_empty += int(readable and parsed.returned == 0)
+        self.responses_all_dropped += int(
+            readable and parsed.returned > 0 and not parsed.ranked_ids
         )
         self.ids_returned += parsed.returned
         self.ids_kept += len(parsed.ranked_ids)

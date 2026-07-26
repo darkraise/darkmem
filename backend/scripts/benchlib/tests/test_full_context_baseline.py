@@ -269,6 +269,30 @@ def test_a_json_answer_of_the_wrong_shape_is_reported_not_guessed_at():
     assert parsed.ranked_ids == ()
 
 
+def test_a_bare_list_deviates_from_the_prompt_contract_and_is_counted():
+    """The prompt asks for {"memory_ids": [...]}. A bare list is readable
+    JSON, but accepting it would let a shape deviation pass uncounted."""
+    ids = [e["memory_id"] for e in _corpus(2)]
+    parsed = full_context.parse_ranked_ids(json.dumps(ids), ids, 10)
+
+    assert parsed.unparseable is True
+    assert parsed.ranked_ids == ()
+
+
+def test_saying_nothing_is_relevant_is_kept_apart_from_saying_only_junk():
+    ids = [e["memory_id"] for e in _corpus(2)]
+    said_nothing = full_context.IdAudit()
+    said_nothing.add(full_context.parse_ranked_ids(_answer(), ids, 10))
+    said_only_junk = full_context.IdAudit()
+    said_only_junk.add(
+        full_context.parse_ranked_ids(_answer(str(uuid.uuid4())), ids, 10)
+    )
+
+    assert (said_nothing.responses_empty, said_nothing.responses_all_dropped) == (1, 0)
+    assert (said_only_junk.responses_empty, said_only_junk.responses_all_dropped) == (0, 1)
+    assert said_only_junk.ids_hallucinated == 1
+
+
 def test_an_uppercase_id_still_matches_at_the_memory_id_boundary():
     """CLAUDE.md's first cross-cutting invariant: a same-value id in a
     different rendering must be normalised at one named boundary, not
