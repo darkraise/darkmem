@@ -1,6 +1,6 @@
 {
-  "_notes": "Retrieval gold pairs (query, relevant_memory_ids, slice_tags), doc 17 par.4/par.11. Append-only: add new pairs at the end with the next rg- id; retire a wrong pair in place with \"retired\": true and a reason in notes; never delete, rewrite, or reorder past entries. Slice decision procedures and negative examples live in SLICES.md; declared_slice_counts counts non-retired pairs and must be updated with every append.",
-  "version": 2,
+  "_notes": "Retrieval gold pairs (query, relevant_memory_ids, slice_tags), doc 17 par.4/par.11. Append-only: add new pairs at the end with the next rg- id; retire a wrong pair in place with \"retired\": true and a reason in notes; never delete, rewrite, or reorder past entries. Slice decision procedures and negative examples live in SLICES.md; declared_slice_counts counts non-retired pairs and must be updated with every append. Every live multi-hop pair records consequence_memory_id and its measured baseline_consequence_rank; the loader rejects a live multi-hop pair whose recorded rank is not worse than MULTI_HOP_BASELINE_K -- see SLICES.md for the measurement protocol.",
+  "version": 3,
   "corpus": "corpus.json",
   "declared_slice_counts": {
     "exact": 12,
@@ -704,7 +704,8 @@
         "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
         "38d507a9-7fd0-54e2-9980-701e04df1cc3"
       ],
-      "notes": "chain m1; bridge apps-02; consequence memory shares no query lemma"
+      "notes": "chain m1; bridge apps-02; consequence memory shares no query lemma; retired 2026-07-26: saturated -- hybrid-only baseline ranks the consequence memory at 3 (k=10), the semantic channel reaches B without the hop; replaced by rg-0104",
+      "retired": true
     },
     {
       "id": "rg-0064",
@@ -716,7 +717,8 @@
         "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
         "38d507a9-7fd0-54e2-9980-701e04df1cc3"
       ],
-      "notes": "chain m1, second phrasing"
+      "notes": "chain m1, second phrasing; retired 2026-07-26: saturated -- consequence memory at baseline rank 2 (k=10); replaced by rg-0105",
+      "retired": true
     },
     {
       "id": "rg-0065",
@@ -728,7 +730,8 @@
         "3215cb23-5d4e-5b10-b4f1-b2ea4049d864",
         "cf006c00-0489-5b59-afbe-ea40bf01b398"
       ],
-      "notes": "chain m2; bridge thumbs queue/queue-01"
+      "notes": "chain m2; bridge thumbs queue/queue-01; retired 2026-07-26: saturated -- consequence memory at baseline rank 2 (k=10); replaced by rg-0106",
+      "retired": true
     },
     {
       "id": "rg-0066",
@@ -740,7 +743,8 @@
         "3215cb23-5d4e-5b10-b4f1-b2ea4049d864",
         "cf006c00-0489-5b59-afbe-ea40bf01b398"
       ],
-      "notes": "chain m2, second phrasing; anchor is itself paraphrased"
+      "notes": "chain m2, second phrasing; anchor is itself paraphrased; retired 2026-07-26: saturated -- consequence memory at baseline rank 1 (k=10); replaced by rg-0107",
+      "retired": true
     },
     {
       "id": "rg-0067",
@@ -752,7 +756,8 @@
         "a66e992b-7d1b-5432-9072-e552d17232af",
         "80464c7d-605f-5c47-815f-9da3843f2aaa"
       ],
-      "notes": "chain m3; bridge lab-vm-3"
+      "notes": "chain m3; bridge lab-vm-3; retired 2026-07-26: saturated -- consequence memory at baseline rank 2 (k=10); replaced by rg-0108",
+      "retired": true
     },
     {
       "id": "rg-0068",
@@ -764,7 +769,8 @@
         "2c93598f-be9a-5eae-981a-8340dfbc35da",
         "b58795ae-3e47-5b88-a760-768074eef323"
       ],
-      "notes": "chain m4; bridge nightly orders dump"
+      "notes": "chain m4; bridge nightly orders dump; retired 2026-07-26: saturated -- consequence memory at baseline rank 3 (k=10); replaced by rg-0109",
+      "retired": true
     },
     {
       "id": "rg-0069",
@@ -776,7 +782,8 @@
         "5e176524-6d0f-5720-a3c6-1afe2cb6aeb9",
         "4707347d-277f-566a-be59-c8a79505f259"
       ],
-      "notes": "chain m5; bridge blue-green switcher"
+      "notes": "chain m5; bridge blue-green switcher; retired 2026-07-26: saturated -- consequence memory at baseline rank 8 (k=10); replaced by rg-0110",
+      "retired": true
     },
     {
       "id": "rg-0070",
@@ -788,7 +795,8 @@
         "5e176524-6d0f-5720-a3c6-1afe2cb6aeb9",
         "4707347d-277f-566a-be59-c8a79505f259"
       ],
-      "notes": "chain m5, second phrasing"
+      "notes": "chain m5, second phrasing; retired 2026-07-26: saturated -- consequence memory at baseline rank 8 (k=10); replaced by rg-0111",
+      "retired": true
     },
     {
       "id": "rg-0071",
@@ -800,7 +808,8 @@
         "ca6d5ba3-12e7-5ca5-a1da-4bbe88043d5a",
         "26cea26c-3123-5d87-836f-6269ec38e626"
       ],
-      "notes": "chain m6; bridge svc-bot token"
+      "notes": "chain m6; bridge svc-bot token; retired 2026-07-26: saturated -- consequence memory at baseline rank 2 (k=10); replaced by rg-0112",
+      "retired": true
     },
     {
       "id": "rg-0072",
@@ -812,7 +821,9 @@
         "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d",
         "db67c20c-65d2-5e24-912a-1fc029896924"
       ],
-      "notes": "chain m7; bridge search-01"
+      "consequence_memory_id": "db67c20c-65d2-5e24-912a-1fc029896924",
+      "baseline_consequence_rank": 17,
+      "notes": "chain m7; bridge search-01; consequence rank re-measured 2026-07-26 over the version-3 corpus (hybrid-only, limit=90): 17"
     },
     {
       "id": "rg-0073",
@@ -824,7 +835,8 @@
         "5ab45131-c6ef-59dd-a26f-9c236f503eb8",
         "11abfa7f-8f0c-5cc4-a7a5-9445adb2de7d"
       ],
-      "notes": "chain m8; bridge internal package mirror"
+      "notes": "chain m8; bridge internal package mirror; retired 2026-07-26: saturated -- consequence memory at baseline rank 9 (k=10); replaced by rg-0113",
+      "retired": true
     },
     {
       "id": "rg-0074",
@@ -836,7 +848,8 @@
         "5ab45131-c6ef-59dd-a26f-9c236f503eb8",
         "11abfa7f-8f0c-5cc4-a7a5-9445adb2de7d"
       ],
-      "notes": "chain m8, second phrasing"
+      "notes": "chain m8, second phrasing; retired 2026-07-26: saturated -- consequence memory at baseline rank 2 (k=10, the query names the rate limit outright); replaced by rg-0114",
+      "retired": true
     },
     {
       "id": "rg-0075",
@@ -848,7 +861,8 @@
         "e2d647bc-446c-53f2-8da6-489bda083db4",
         "00c4e4d0-7539-590d-9c9b-af30d523ab5f"
       ],
-      "notes": "chain m9; bridge vault namespace apps/portal"
+      "notes": "chain m9; bridge vault namespace apps/portal; retired 2026-07-26: saturated -- consequence memory at baseline rank 6 (k=10); replaced by rg-0115",
+      "retired": true
     },
     {
       "id": "rg-0076",
@@ -860,7 +874,8 @@
         "e2d647bc-446c-53f2-8da6-489bda083db4",
         "00c4e4d0-7539-590d-9c9b-af30d523ab5f"
       ],
-      "notes": "chain m9, second phrasing"
+      "notes": "chain m9, second phrasing; retired 2026-07-26: saturated -- consequence memory at baseline rank 4 (k=10); replaced by rg-0116",
+      "retired": true
     },
     {
       "id": "rg-0077",
@@ -1182,6 +1197,188 @@
       ],
       "notes": "replaces retired rg-0099: s02 adjudicated co-relevant (node-exporter scraping is internal-metrics collection); u6a still required and u6b still the recency trap",
       "anchor": "current"
+    },
+    {
+      "id": "rg-0104",
+      "query": "Why do customer invoices sometimes fail to generate?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "c3541d9c-9a8d-535c-acaa-fb4c79fb7c73",
+        "d00a000f-f2d8-551e-bbcd-4776d8ec62d5"
+      ],
+      "consequence_memory_id": "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
+      "baseline_consequence_rank": 11,
+      "notes": "chain n1; bridge hv-27; replaces rg-0063; baseline consequence rank 11 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0105",
+      "query": "What keeps intermittently breaking invoice generation?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "c3541d9c-9a8d-535c-acaa-fb4c79fb7c73",
+        "d00a000f-f2d8-551e-bbcd-4776d8ec62d5"
+      ],
+      "consequence_memory_id": "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
+      "baseline_consequence_rank": 13,
+      "notes": "chain n1, second phrasing; replaces rg-0064; baseline consequence rank 13 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0106",
+      "query": "Why does the shared team calendar occasionally stop refreshing?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "7c78577f-ff05-5d87-a2fa-0a360d56d4e4",
+        "93e6b3fc-c5f5-5553-b193-bfc70a4db731"
+      ],
+      "consequence_memory_id": "93e6b3fc-c5f5-5553-b193-bfc70a4db731",
+      "baseline_consequence_rank": 18,
+      "notes": "chain n2; bridge ops-oauth app registration; replaces rg-0065; baseline consequence rank 18 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0107",
+      "query": "Why do the badge readers sometimes reject valid staff cards?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "364b3d94-96cf-5163-af94-bb665dbe1486",
+        "4a286983-385c-5ceb-b9e9-b09d36bb9497"
+      ],
+      "consequence_memory_id": "4a286983-385c-5ceb-b9e9-b09d36bb9497",
+      "baseline_consequence_rank": 27,
+      "notes": "chain n3; bridge acs-01; replaces rg-0066; baseline consequence rank 27 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0108",
+      "query": "What makes the door-badge system turn employees away at random?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "364b3d94-96cf-5163-af94-bb665dbe1486",
+        "4a286983-385c-5ceb-b9e9-b09d36bb9497"
+      ],
+      "consequence_memory_id": "4a286983-385c-5ceb-b9e9-b09d36bb9497",
+      "baseline_consequence_rank": 25,
+      "notes": "chain n3, second phrasing; replaces rg-0067; baseline consequence rank 25 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0109",
+      "query": "Why does the payroll file sometimes never reach accounting?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "33062433-dd83-55ea-a6d9-4460dd337c12",
+        "bb411aa9-0f79-59b5-ba6b-d5805bc57792"
+      ],
+      "consequence_memory_id": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+      "baseline_consequence_rank": 20,
+      "notes": "chain n4; bridge sftp-02; replaces rg-0068; baseline consequence rank 20 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0110",
+      "query": "Why do the meeting-room screens keep showing yesterday's bookings?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "3d0bdc78-4e41-5455-9c60-cc397745ac3c",
+        "49993106-c205-5e46-be96-a110c3eb0028"
+      ],
+      "consequence_memory_id": "49993106-c205-5e46-be96-a110c3eb0028",
+      "baseline_consequence_rank": 15,
+      "notes": "chain n5; bridge fleet-cfg repository; replaces rg-0069; baseline consequence rank 15 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0111",
+      "query": "Why does the panel by the meeting-room door still show a stale schedule?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "3d0bdc78-4e41-5455-9c60-cc397745ac3c",
+        "49993106-c205-5e46-be96-a110c3eb0028"
+      ],
+      "consequence_memory_id": "49993106-c205-5e46-be96-a110c3eb0028",
+      "baseline_consequence_rank": 36,
+      "notes": "chain n5, second phrasing; replaces rg-0070; baseline consequence rank 36 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0112",
+      "query": "Why are there gaps in the rooftop weather readings?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+        "05b752a0-aa7a-5a74-a543-b74684e79fa2"
+      ],
+      "consequence_memory_id": "05b752a0-aa7a-5a74-a543-b74684e79fa2",
+      "baseline_consequence_rank": 24,
+      "notes": "chain n6; bridge iot-gw-1; replaces rg-0071; baseline consequence rank 24 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0113",
+      "query": "What keeps interrupting the weather station's reporting?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+        "05b752a0-aa7a-5a74-a543-b74684e79fa2"
+      ],
+      "consequence_memory_id": "05b752a0-aa7a-5a74-a543-b74684e79fa2",
+      "baseline_consequence_rank": 23,
+      "notes": "chain n6, second phrasing; replaces rg-0073; baseline consequence rank 23 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0114",
+      "query": "Why do scanned receipts take ages to show up in the expense tool?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "40ea85bd-9359-5256-b42f-625b725c29a1",
+        "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3"
+      ],
+      "consequence_memory_id": "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3",
+      "baseline_consequence_rank": 39,
+      "notes": "chain n7; bridge gpu-01; replaces rg-0074; baseline consequence rank 39 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0115",
+      "query": "Why do some internal podcast episodes refuse to play?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "8ece58ef-ebee-5453-a0c8-458bb2621455",
+        "31fda8ef-9eb9-507d-ac2b-915e4f0f8a98"
+      ],
+      "consequence_memory_id": "31fda8ef-9eb9-507d-ac2b-915e4f0f8a98",
+      "baseline_consequence_rank": 34,
+      "notes": "chain n8; bridge arc-store bucket; replaces rg-0075; baseline consequence rank 34 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+    },
+    {
+      "id": "rg-0116",
+      "query": "Why does the mobile app sometimes show untranslated text?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "d0479f79-36c5-5042-83b8-b8629e68a305",
+        "08d3feb3-dc46-59c1-b2ce-aa543a762f1b"
+      ],
+      "consequence_memory_id": "08d3feb3-dc46-59c1-b2ce-aa543a762f1b",
+      "baseline_consequence_rank": 11,
+      "notes": "chain n9; bridge edge-cdn-4; replaces rg-0076; baseline consequence rank 11 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
     }
   ]
 }

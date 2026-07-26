@@ -40,6 +40,14 @@ QUERY_TYPE_SLICES = frozenset({"exact", "paraphrase", "typo", "fact"})
 CAPABILITY_SLICES = frozenset({"multi-hop", "temporal", "knowledge-update"})
 SLICES = QUERY_TYPE_SLICES | CAPABILITY_SLICES
 
+# The multi-hop saturation bar (SLICES.md, multi-hop): a live pair must
+# record the consequence memory's measured hybrid-only baseline rank over
+# the full corpus, and that rank must be WORSE than this K -- the k=10
+# reporting cutoff the baseline is scored at. A pair whose consequence
+# memory already ranks at or inside K is reachable by the semantic channel
+# without the hop, so it can never demonstrate graph-arm headroom.
+MULTI_HOP_BASELINE_K = 10
+
 MEMORY_ID_NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL, "darkmem://benchlib/retrieval-gold/v1"
 )
@@ -142,8 +150,11 @@ def load_retrieval_gold(path: str | Path = GOLD_PATH) -> dict:
         ValueError: On any shape violation -- an untabled slice tag, a pair
             carrying other than exactly one tag, duplicate or out-of-order
             pair ids (the append-only discipline: new pairs go at the end,
-            old pairs are retired in place, never reordered), or declared
-            per-slice counts that disagree with the live pairs.
+            old pairs are retired in place, never reordered), declared
+            per-slice counts that disagree with the live pairs, or a live
+            multi-hop pair that fails the saturation bar (missing
+            ``consequence_memory_id`` / ``baseline_consequence_rank``, or a
+            recorded rank at or inside ``MULTI_HOP_BASELINE_K``).
     """
     path = Path(path)
     with open(path, encoding="utf-8") as fh:
@@ -204,6 +215,41 @@ def load_retrieval_gold(path: str | Path = GOLD_PATH) -> dict:
                 f"pair {pid}: a multi-hop pair answerable from one memory "
                 "tests nothing; it needs >= 2 relevant_memory_ids"
             )
+
+        if tag == "multi-hop" and not pair.get("retired"):
+            consequence = pair.get("consequence_memory_id")
+            if consequence is None or str(consequence) not in {
+                str(rid) for rid in relevant
+            }:
+                raise ValueError(
+                    f"pair {pid}: a live multi-hop pair must name its "
+                    "consequence memory via 'consequence_memory_id', one of "
+                    "its relevant_memory_ids (SLICES.md, multi-hop)"
+                )
+            if "baseline_consequence_rank" not in pair:
+                raise ValueError(
+                    f"pair {pid}: a live multi-hop pair must record "
+                    "'baseline_consequence_rank' -- the consequence memory's "
+                    "measured hybrid-only baseline rank over the full corpus, "
+                    "or null if it was not retrieved (SLICES.md, multi-hop)"
+                )
+            rank = pair["baseline_consequence_rank"]
+            if rank is not None and (
+                not isinstance(rank, int) or isinstance(rank, bool) or rank < 1
+            ):
+                raise ValueError(
+                    f"pair {pid}: baseline_consequence_rank must be a "
+                    f"positive integer or null, got {rank!r}"
+                )
+            if rank is not None and rank <= MULTI_HOP_BASELINE_K:
+                raise ValueError(
+                    f"pair {pid}: saturated -- baseline_consequence_rank "
+                    f"{rank} is not worse than MULTI_HOP_BASELINE_K="
+                    f"{MULTI_HOP_BASELINE_K}, so the hybrid-only baseline "
+                    "already reaches the consequence memory without the hop; "
+                    "re-adjudicate under retire-and-replace (SLICES.md, "
+                    "multi-hop)"
+                )
 
         anchor = pair.get("anchor")
         if anchor is not None and anchor not in ("current", "whole-group"):

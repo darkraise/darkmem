@@ -5,8 +5,8 @@ these decision procedures, not from memory of what the slice name suggests —
 two contributors drawing the boundary differently is how a slice silently
 becomes a mixture and the 2026-04 weak-slice finding stops meaning anything.
 
-Files: `corpus.json` (72 memories, fixed `memory_id` UUIDs + declared
-`created_at`), `gold.json` (102 pairs). Loader and seeding:
+Files: `corpus.json` (90 memories, fixed `memory_id` UUIDs + declared
+`created_at`), `gold.json` (116 pairs, 102 live). Loader and seeding:
 `benchlib/retrieval_gold.py`. Validation: `benchlib/tests/test_retrieval_gold.py`.
 
 ## File discipline (doc 17 §11)
@@ -30,6 +30,12 @@ Files: `corpus.json` (72 memories, fixed `memory_id` UUIDs + declared
   the signal to re-adjudicate the affected pairs under retire-and-replace.
   Any new pair whose gold means "the current truth" or "the whole story"
   must carry the matching anchor.
+- **Live multi-hop pairs are machine-guarded.** Each records
+  `consequence_memory_id` and its measured `baseline_consequence_rank`;
+  the loader rejects a live pair whose recorded rank is not worse than
+  `MULTI_HOP_BASELINE_K` (see the multi-hop section for the measurement
+  protocol). The 2026-07-26 retirements predate the fields and carry
+  neither.
 - **Fixed ids.** `memory_id` is uuid5 of the entry `key` under
   `retrieval_gold.MEMORY_ID_NAMESPACE` — mint new ids with
   `retrieval_gold.memory_id_for_key(key)`; the loader rejects an id that
@@ -64,6 +70,14 @@ Files: `corpus.json` (72 memories, fixed `memory_id` UUIDs + declared
   its own time. Corrections belong to the knowledge-update group.
 - Roles are per-query, not per-memory: a memory is a "distractor" only
   relative to a query, and any corpus memory may be a target.
+- **Growing the corpus re-opens the gold.** Every appended memory must be
+  adjudicated against every live pair's query — a new memory that
+  genuinely answers an existing query makes that pair's `relevant` set
+  incomplete and the pair scores a false miss forever. And because new
+  memories shift every ranked list, every live multi-hop pair's
+  `baseline_consequence_rank` must be re-measured over the grown corpus
+  and re-recorded (warm-cache re-measurement costs zero live calls for
+  unchanged content).
 
 ## Query-type slices
 
@@ -159,6 +173,36 @@ lemma with B — distinctive meaning a lemma occurring in fewer than three
 corpus memories, as in the paraphrase rule; check every content word of the
 query against B. Neither A nor B alone answers the query.
 
+**Mechanical isolation check (mandatory since gold v3).** Lexical
+isolation is not enough: the 2026-07-26 re-adjudication measured 13 of the
+original 14 pairs saturated — the query named B's consequence *domain*
+(power, latency, rate limits, websockets...) and the semantic channel
+reached B at ranks 1–9 with no hop at all. Every live multi-hop pair must
+therefore record in `gold.json`:
+
+- `consequence_memory_id` — which relevant memory is B, and
+- `baseline_consequence_rank` — B's measured rank for this pair's query
+  under the hybrid-only baseline (doc 17 §4 current configuration:
+  `GateConfig()` defaults — hybrid on, reranker off,
+  `confidence_rank_gamma` 0, `relation_rescue` on — via
+  `retrieval_runner.run_retrieval` at `limit` = the full corpus size),
+  or `null` if B was not retrieved at all.
+
+`load_retrieval_gold` **rejects** a live multi-hop pair whose recorded
+rank is missing or not worse than `MULTI_HOP_BASELINE_K` (10, the k the
+baseline is scored at). Authoring a multi-hop pair therefore requires
+running the baseline measurement — a domain-naming query measures ≤ 10
+and cannot enter the file; "the consequence memory is not semantically
+proximal to the query" is decided by the retriever, never by argument.
+Recorded ranks are as-of the corpus at adjudication time; any corpus
+growth requires re-measuring and re-recording them (see the corpus
+authoring rules). Bridge tokens must be semantically opaque — the
+saturated pairs that survived a first replacement round leaked through
+bridge names that encoded the anchor's domain (`acct-03` for invoices,
+`signage-config` for displays, `cast-media` for podcasts, `lang-cdn-1`
+for translations); host-number-style names (`acs-01`, `sftp-02`,
+`gpu-01`, `hv-27`) do not leak.
+
 **Negative example.** A chain where the consequence memory also names the
 anchor ("The svc-bot token used by the chat-ops bot expires every 90
 days") — B is reachable lexically from the query, the hop collapses to
@@ -166,18 +210,18 @@ single-hop, and the pair tests nothing the exact slice doesn't.
 
 **What it catches.** The retriever returns only the lexically anchored
 memory and never surfaces the bridge-linked consequence, so hit@K over the
-full relevant set fails. What is *established* is lexical isolation: B
-shares no distinctive query lemma (mechanically audited), so the keyword
-channel cannot reach it. Whether the **semantic** channel reaches B anyway
-is not established — several queries name B's consequence domain outright
-(rg-0063/0064, rg-0065/0066, rg-0069/0070, rg-0073/0074, rg-0076), and
-embedding-space proximity was not measured when the slice was authored.
-**T0.07 must measure hybrid-only headroom on this slice** (baseline hit@K
-over the full relevant sets, those pairs first) before it is trusted as an
-activation gate; if the baseline already saturates, re-adjudicate the
-saturated pairs under retire-and-replace. Graph-aware arms (PPR over shared
-entities, dual-level) are the designed path to B; no other slice requires
-composing two memories.
+full relevant set fails. Both isolation properties are now established
+per pair: lexical (B shares no distinctive query lemma) and semantic (the
+recorded `baseline_consequence_rank` proves the hybrid-only baseline does
+not reach B inside k). History: T0.07 measured the original slice
+saturated — 13 of 14 pairs solved by the semantic channel alone because
+the query named B's domain outright, exactly as this file's earlier
+caveat suspected — and the 2026-07-26 re-adjudication retired-and-replaced
+all 13 under the mechanical check above (gold v2 → v3); only rg-0072
+survived, and the re-measured slice sits at hit@10 = 0.0000 with every
+anchor still found at rank 1. Graph-aware arms (PPR over shared entities,
+dual-level) are the designed path to B; no other slice requires composing
+two memories.
 
 ### temporal (12 pairs)
 

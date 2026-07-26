@@ -58,7 +58,7 @@ WHOLE_GROUP_ANCHORED = {"rg-0100", "rg-0102"}
 
 
 def test_gold_loads_and_declares_version_and_counts(gold):
-    assert gold["version"] == 2
+    assert gold["version"] == 3
     assert gold["declared_slice_counts"] == DOCUMENTED_COUNTS
 
 
@@ -150,6 +150,119 @@ def test_multi_hop_pairs_need_at_least_two_memories(gold):
     for pair in gold["pairs"]:
         if pair["slice_tags"][0] == "multi-hop" and not pair.get("retired"):
             assert len(pair["relevant_memory_ids"]) >= 2
+
+
+def _live_multi_hop(gold):
+    return [p for p in gold["pairs"]
+            if p["slice_tags"][0] == "multi-hop" and not p.get("retired")]
+
+
+def test_live_multi_hop_pairs_record_an_unsaturated_consequence_rank(gold):
+    """The saturation bar (SLICES.md, multi-hop): every live pair names its
+    consequence memory and records a measured baseline rank strictly worse
+    than K, so a domain-naming query -- one the semantic channel solves
+    without the hop -- cannot re-enter the file."""
+    pairs = _live_multi_hop(gold)
+    assert pairs
+    for pair in pairs:
+        assert pair["consequence_memory_id"] in pair["relevant_memory_ids"]
+        rank = pair["baseline_consequence_rank"]
+        assert rank is None or rank > retrieval_gold.MULTI_HOP_BASELINE_K
+
+
+def _reload_with(tmp_path, gold, mutate):
+    doc = json.loads(json.dumps(gold))
+    mutate(doc)
+    path = tmp_path / "gold.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+def test_loader_rejects_a_saturated_multi_hop_pair(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        pair["baseline_consequence_rank"] = 3
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="saturated.*retire-and-replace"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_a_rank_exactly_at_k(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        pair["baseline_consequence_rank"] = retrieval_gold.MULTI_HOP_BASELINE_K
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="saturated"):
+        load_retrieval_gold(path)
+
+
+def test_loader_accepts_a_rank_just_past_k_and_a_null_rank(tmp_path, gold):
+    def mutate(doc):
+        pairs = [p for p in doc["pairs"]
+                 if p["slice_tags"][0] == "multi-hop" and not p.get("retired")]
+        pairs[0]["baseline_consequence_rank"] = retrieval_gold.MULTI_HOP_BASELINE_K + 1
+        pairs[1]["baseline_consequence_rank"] = None
+
+    path = _reload_with(tmp_path, gold, mutate)
+    load_retrieval_gold(path)
+
+
+def test_loader_rejects_a_multi_hop_pair_missing_the_recorded_rank(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        del pair["baseline_consequence_rank"]
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="baseline_consequence_rank"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_a_multi_hop_pair_missing_the_consequence_id(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        del pair["consequence_memory_id"]
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="consequence_memory_id"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_a_consequence_id_outside_the_relevant_set(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        pair["consequence_memory_id"] = "00000000-0000-4000-8000-000000000000"
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="consequence_memory_id"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_a_non_integer_rank(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        pair["baseline_consequence_rank"] = "12"
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="positive integer"):
+        load_retrieval_gold(path)
+
+
+def test_retired_multi_hop_pairs_are_exempt_from_the_saturation_bar(gold):
+    """The 13 pairs retired on 2026-07-26 predate the recorded-rank fields
+    and stay in the file untouched; only live pairs carry the bar."""
+    retired = [p for p in gold["pairs"]
+               if p["slice_tags"][0] == "multi-hop" and p.get("retired")]
+    assert len(retired) == 13
+    for pair in retired:
+        assert "baseline_consequence_rank" not in pair
 
 
 def test_anchor_flags_match_the_adjudicated_sets(gold):
@@ -281,7 +394,7 @@ def test_loader_rejects_out_of_order_pair_ids(tmp_path, gold):
 def test_loader_rejects_a_single_memory_multi_hop_pair(tmp_path, gold):
     broken = json.loads(json.dumps(gold))
     for pair in broken["pairs"]:
-        if pair["slice_tags"][0] == "multi-hop":
+        if pair["slice_tags"][0] == "multi-hop" and not pair.get("retired"):
             pair["relevant_memory_ids"] = pair["relevant_memory_ids"][:1]
             break
     path = tmp_path / "gold.json"
