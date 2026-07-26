@@ -138,11 +138,17 @@ frozen reference point every later phase compares against.
       prompt were frozen will read that planned change as a regression
 - [ ] Written to `gate-ledger.md` under G-A
 
-**Verify.** Both invocations, output pasted into the ledger entry verbatim (the bench
-reads LLM config from the database, so the URL is required — runbook §8):
+**Verify.** Both invocations, output pasted into the ledger entry verbatim. The bench
+reads LLM config from the database, so the URL is required — and it must be
+`darkmem_bench`, never `darkmem` (write-forbidden) or `darkmem_test` (pytest-only,
+runbook §8). `run_bench.py`'s only database interaction is the read-only
+`get_llm_config`, and the bench database's `llm_*` rows are transient (every benchlib
+reset wipes them), so seed them first via `benchlib.run_smoke.seed_llm_purpose_configs`
+with the key read from the environment:
 ```bash
 cd backend
-export DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
+export DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench
+export DEEPSEEK_API_KEY=<real key — never committed>
 python scripts/extraction_bench/run_bench.py
 python scripts/extraction_bench/run_bench.py --gold gold_heldout.json
 ```
@@ -197,7 +203,10 @@ aggregate never replaces the slices.
 
 **What.** Instrument p95 latency and token cost on every eval run. **Accuracy never
 ships without its twin** — this is a doctrine, not a report field, so the runner must be
-unable to emit an accuracy number without one.
+unable to emit an accuracy number without one. Note (Tier-2, 2026-07-26): the T0.05
+extraction baseline was recorded before this instrumentation existed, so it ships
+twin-less; the gap is recorded in its G-A ledger entry, and T1.17's merged-call cost
+argument has no baseline twin to compare against at G-B.
 
 **Done when:**
 - [ ] p95 latency captured per channel and end to end
@@ -463,3 +472,6 @@ clear, not to confirm it.
 | 2026-07-26 | T0.03 | 1 | Recorded that the LLM cache must wrap `embed_batch` (not `embed`), and that the driver must pre-create the `memories` row before calling `process_batch` | `process_batch` reaches embeddings only via `embed_batch_chunked` → `embed_batch` (`app/services/llm.py:224`), never `embed`, so `caching_llm.py` as landed left every embedding uncached and T0.04's zero-live-call gate was unpassable. And `_write_memory` (`pipeline.py:373-390`) only SELECTs and updates an existing row — there is no insert path — so a bare `memory_id` raises a FK violation from the vector upsert |
 | 2026-07-26 | T0.04 | 1 | The affordability gate must also assert per-pass pipeline outcomes, not only the live-call count; and `bench_db` must forget embedder registrations across a reset | A stale process-wide `embedder_registry` singleton survived the bench-DB reset and silently broke pass 2's vector and entity writes while the live-call counter stayed correctly at 0 — the gate printed `live LLM calls: 0` and exited 0 over a pipeline doing no durable work. Verified by corrupting one cached chat response: before the fix the gate passed, after it the gate exits 1 naming the failing memory and step. Asserting `pass 1 live_calls > 0` was considered and rejected — the cache is content-keyed, so a warm re-run makes pass 1 legitimately free and the gate would fail on its second consecutive invocation |
 | 2026-07-26 | T0.01-T0.04 | 1 | Recorded that a Sonnet-tier per-task review is not a substitute for runbook §6's Fable-tier adversarial review on a gate-feeding task | All four tasks carry `Gate: G-A`, so §6 requires an adversarial Fable-tier review. The Sonnet per-task reviews passed T0.01's ledger clean; the Fable adversarial pass then found a Critical in it (`read_runs` raised an uncaught `UnicodeDecodeError` on a truncated multibyte sequence, losing every prior good record and never healing) plus nine Important findings across all four modules. Both layers earned their place — the per-task review caught the T0.04 gate asserting only its live-call count — but the Fable pass is the one that must precede a gate claim |
+| 2026-07-26 | T0.05 | 1 | Verify block now points at `darkmem_bench` (LLM rows seeded via `benchlib.run_smoke.seed_llm_purpose_configs`, key from `DEEPSEEK_API_KEY`), not `darkmem` | The real `darkmem` database has no schema on this machine and is write-forbidden to agents, so the Verify command as written could not run and nobody may make it run. `run_bench.py` only reads `get_llm_config` from the database, and runbook §8 designates `darkmem_bench` for eval runs; its `llm_*` rows are wiped by every benchlib reset, so seeding is an explicit step of the run |
+| 2026-07-26 | T0.05, T0.08 | 2 | The G-A ledger entry now records that the T0.05 baseline ships without ledger rule 2's latency/token-cost twin, and T0.08's task text names the inherited gap | `run_bench.py` does not instrument the twin and modifying it was out of bounds for T0.05; the instrumentation is T0.08's deliverable. The cross-task consequence the plan missed: T1.17's cost-based justification for the merged one-call design has no baseline twin to compare against at G-B. An honestly recorded gap satisfies the ledger's spirit; a silent omission does not |
+| 2026-07-26 | T0.05, T1.50 | 2 | The G-A entry records that the baseline's cache carries no response metadata (parsed extraction JSON only), and the G-B ledger section now requires the G-B runner to capture served-model metadata for its live re-record | `deepseek-v4-flash` is a vendor alias whose backing weights can rotate silently; with no `model` string or system fingerprint recorded at baseline, "silent vendor update" would be an unrebuttable escape hatch for any G-B shortfall. The requirement makes the tolerance's same-model condition checkable from the G-B side, the only side that still can |
