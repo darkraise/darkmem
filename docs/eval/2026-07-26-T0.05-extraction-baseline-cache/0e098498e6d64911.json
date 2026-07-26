@@ -1,0 +1,1 @@
+{"entities": [{"name": "audit report", "type": "artifact", "properties": {}}, {"name": "Priya Nair", "type": "person", "properties": {}}, {"name": "SRE team", "type": "organization", "properties": {}}], "relationships": [{"source": "audit report", "target": "Priya Nair", "type": "AUTHORED_BY", "properties": {}, "weight": 1.0}], "memory_type": "reference", "importance": 0.5}

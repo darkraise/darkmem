@@ -1,0 +1,1 @@
+{"entities": [{"name": "darkmem", "type": "project", "properties": {}}, {"name": "Kafka", "type": "service", "properties": {}}], "relationships": [{"source": "darkmem", "target": "Kafka", "type": "MENTIONS", "properties": {}, "weight": 0.5}], "memory_type": "milestone", "importance": 0.5}

@@ -138,14 +138,37 @@ cerebras/gpt-oss-120b numbers (ent_nt 0.941 / rel_full 0.923 on gold, darkmem
 memory `3de71b1c`) are a different model's; this baseline is deepseek-v4-flash's,
 and G-B must be measured with the same model.
 
+**Recorded gap — rule 2's twin is absent (Tier-2, logged 2026-07-26).** The eight
+accuracy figures above come from 36 live calls with no p95 latency and no token
+cost. `run_bench.py` does not instrument either; that instrumentation is T0.08's
+deliverable and was out of bounds for T0.05, so the twin is missing rather than
+omitted silently. Consequence to carry forward: T1.17's cost-based justification
+for the merged one-call design has **no baseline twin here to compare against at
+G-B**. The probe row's "n/a (deterministic, zero model calls)" covers only the
+reproduction probe, not this live block.
+
+**Recorded gap — "same model" is asserted, not verifiable (Tier-2, logged
+2026-07-26).** The cache stores only the parsed extraction JSON — no response
+`model` string, no system fingerprint — and `deepseek-v4-flash` is a vendor alias
+whose backing weights can rotate silently. The noise component's vendor-update
+guard is therefore not falsifiable against this baseline; at G-B, "silent vendor
+update" must not be accepted as an explanation for a shortfall unless the G-B
+runner captured response metadata showing what was actually served (requirement
+recorded under G-B below).
+
 Run context: git sha `a63675c515c88ea7089bf911dc68389e9dcc86dd`, model
 `deepseek-v4-flash` (`api_kind=deepseek`, `https://api.deepseek.com/v1`, seeded
 into `darkmem_bench` by `benchlib.run_smoke.seed_llm_purpose_configs`, key from
 `DEEPSEEK_API_KEY`, empty params so vendor-default temperature, content-derived
-seed forwarded), fingerprint: extraction-prompt sha256[:16] = `775ca7c45ed9a06a`
-(the cache-key prompt component; the bench embeds nothing, so no embedder
-fingerprint applies), date 2026-07-26. Cache:
-`backend/scripts/extraction_bench/.cache/`, 36 entries, machine-local (gitignored).
+seed forwarded), fingerprint: extraction-prompt sha256[:16] = `775ca7c45ed9a06a` —
+sha256 over the prompt text alone, truncated to 16 hex, identifying the prompt
+revision (the per-entry cache key is `sha256(content + "\x00" + prompt)[:16]`; the
+prompt hash is not itself a key component). The bench embeds nothing, so no
+embedder fingerprint applies. Date 2026-07-26. Artifact: the 36 raw-output files
+archived at `docs/eval/2026-07-26-T0.05-extraction-baseline-cache/` (committed);
+working copy `backend/scripts/extraction_bench/.cache/` (machine-local,
+gitignored). To restore the working copy for the G-A reproduction probe, copy the
+archive's `*.json` back into the `.cache/` directory.
 
 Verbatim output — `run_bench.py` (gold.json), live, 2026-07-26:
 
@@ -218,6 +241,13 @@ Verbatim output — `run_bench.py --gold gold_heldout.json`, live, 2026-07-26:
 | Extraction F1 parity with the recorded baseline | Within the T0.05 tolerance | — | n/a | — | — |
 | Retrieval eval vs full-context baseline | Reported with twin; no silent regression | — | p95 —, tokens — | — | — |
 | Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | — | n/a | — | — |
+
+**Requirement recorded by T0.05:** the runner producing this gate's live F1
+re-record must capture and record response metadata (the served `model` string
+and any vendor system fingerprint) alongside its cache. The T0.05 baseline's
+cache carries none, so model identity is only checkable from the G-B side; a
+shortfall attributed to a vendor-side model update is admissible only with that
+metadata recorded (see the "same model" gap under G-A).
 
 **Isolation probe detail** (T1.35) — a single leaked row fails the gate:
 

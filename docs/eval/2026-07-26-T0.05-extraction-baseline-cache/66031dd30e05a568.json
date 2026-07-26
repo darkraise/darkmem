@@ -1,0 +1,1 @@
+{"entities": [{"name": "AdminUser", "type": "artifact", "properties": {}}, {"name": "BaseUser", "type": "artifact", "properties": {}}, {"name": "auth", "type": "artifact", "properties": {}}], "relationships": [{"source": "AdminUser", "target": "BaseUser", "type": "EXTENDS", "properties": {}, "weight": 0.9}], "memory_type": "fact", "importance": 0.5}

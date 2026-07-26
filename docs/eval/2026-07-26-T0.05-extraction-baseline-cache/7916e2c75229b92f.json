@@ -1,0 +1,1 @@
+{"entities": [{"name": "RFC 9114", "type": "paper", "properties": {}}, {"name": "Raft paper", "type": "paper", "properties": {}}], "relationships": [{"source": "RFC 9114", "target": "Raft paper", "type": "CITES", "properties": {}, "weight": 0.5}], "memory_type": "reference", "importance": 0.6}

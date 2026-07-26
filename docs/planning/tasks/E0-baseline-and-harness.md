@@ -178,7 +178,10 @@ aggregate never replaces the slices.
 
 **What.** Instrument p95 latency and token cost on every eval run. **Accuracy never
 ships without its twin** — this is a doctrine, not a report field, so the runner must be
-unable to emit an accuracy number without one.
+unable to emit an accuracy number without one. Note (Tier-2, 2026-07-26): the T0.05
+extraction baseline was recorded before this instrumentation existed, so it ships
+twin-less; the gap is recorded in its G-A ledger entry, and T1.17's merged-call cost
+argument has no baseline twin to compare against at G-B.
 
 **Done when:**
 - [ ] p95 latency captured per channel and end to end
@@ -441,3 +444,5 @@ clear, not to confirm it.
 | 2026-07-26 | T0.12a | 1 | Corrected the one-owner cross-reference from runbook §8 to §9 | §8 is environment facts; the serialise-through-one-owner rule is §9 |
 | 2026-07-26 | (runbook §6) | 1 | `agent-runbook.md:172` said `progress.md` is "committed directly to `main`" | The same bullet's first sentence, and this repo's actual trunk, are `master`. There is no `main` branch; an agent following the second half of that sentence literally would create one |
 | 2026-07-26 | T0.05 | 1 | Verify block now points at `darkmem_bench` (LLM rows seeded via `benchlib.run_smoke.seed_llm_purpose_configs`, key from `DEEPSEEK_API_KEY`), not `darkmem` | The real `darkmem` database has no schema on this machine and is write-forbidden to agents, so the Verify command as written could not run and nobody may make it run. `run_bench.py` only reads `get_llm_config` from the database, and runbook §8 designates `darkmem_bench` for eval runs; its `llm_*` rows are wiped by every benchlib reset, so seeding is an explicit step of the run |
+| 2026-07-26 | T0.05, T0.08 | 2 | The G-A ledger entry now records that the T0.05 baseline ships without ledger rule 2's latency/token-cost twin, and T0.08's task text names the inherited gap | `run_bench.py` does not instrument the twin and modifying it was out of bounds for T0.05; the instrumentation is T0.08's deliverable. The cross-task consequence the plan missed: T1.17's cost-based justification for the merged one-call design has no baseline twin to compare against at G-B. An honestly recorded gap satisfies the ledger's spirit; a silent omission does not |
+| 2026-07-26 | T0.05, T1.50 | 2 | The G-A entry records that the baseline's cache carries no response metadata (parsed extraction JSON only), and the G-B ledger section now requires the G-B runner to capture served-model metadata for its live re-record | `deepseek-v4-flash` is a vendor alias whose backing weights can rotate silently; with no `model` string or system fingerprint recorded at baseline, "silent vendor update" would be an unrebuttable escape hatch for any G-B shortfall. The requirement makes the tolerance's same-model condition checkable from the G-B side, the only side that still can |
