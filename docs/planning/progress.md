@@ -42,14 +42,14 @@ and the Note says so. That rule is the whole point of this file.
 
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 19 | 15 | 4 | 0 | 0 | 0 | G-A open |
+| E0 — Baseline & harness | 19 | 15 | 3 | 0 | 0 | 1 | G-A open |
 | E1 — Engine core | 75 | 75 | 0 | 0 | 0 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **204** | **200** | **4** | **0** | **0** | **0** | |
+| **Total** | **204** | **200** | **3** | **0** | **0** | **1** | |
 
 ---
 
@@ -57,7 +57,7 @@ and the Note says so. That rule is the whole point of this file.
 
 | Task | Title | Size | Model | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|
-| T0.01 | Append-only run ledger (`benchlib/ledger.py`) | M | Sonnet | claude/e0-lane-a | wip | | | |
+| T0.01 | Append-only run ledger (`benchlib/ledger.py`) | M | Sonnet | claude/e0-lane-a | done | 70b3ea1 | sonnet: spec compliant, approved | ledger.py + 7 tests; benchlib conftest fixture made opt-in. Verify 7 passed; floor 614 passed, 1 skipped |
 | T0.02 | Corpus loader (`benchlib/corpus.py`) | S | Haiku | claude/e0-lane-a | wip | | | |
 | T0.03 | Offline ingest driver (`benchlib/ingest.py`) | M | Sonnet | claude/e0-lane-a | wip | | | |
 | T0.04 | `run_smoke.py` and the affordability gate | M | Sonnet | claude/e0-lane-a | wip | | | |
