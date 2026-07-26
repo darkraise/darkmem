@@ -47,7 +47,15 @@ diffable against the run that preceded it.
 `Model: Haiku 4.5` · `Size: S` · `Depends: —` · `Doc: 17 §3` · `Tag: target-new` · `Gate: G-A`
 
 **What.** `load_corpus(path) -> list[entry]`, parsing a corpus JSON into validated
-entries. Pure parsing — no DB, no pipeline knowledge.
+entries. Pure parsing — no DB, no pipeline knowledge. This task also **creates**
+`benchlib/smoke/corpus.json` (the frozen 3-memory smoke corpus), which the first
+acceptance checkbox presumes exists and which T0.04 consumes.
+
+Validation must check **raw membership** against `ENTITY_TYPES` / `RELATIONSHIP_TYPES`.
+`normalize_entity_type` and `normalize_relation_type` never raise — they silently rewrite
+an unknown value to `concept` / `RELATED_TO` — so a loader that "validates" through them
+validates nothing. Legacy aliases (`LEGACY_*_TYPE_MAP` keys, e.g. `framework`, `RUNS_ON`)
+are untabled *for gold input* and must be rejected, not rewritten.
 
 **Done when:**
 - [ ] Loads `smoke/corpus.json` and the extraction bench's `gold.json` shape
@@ -64,6 +72,15 @@ entries. Pure parsing — no DB, no pipeline knowledge.
 **What.** Compose bench DB + caching LLM + the **real** `ProcessingPipeline`: construct
 `ProcessingPipeline(caching_llm, bench_session_factory)` and call `process_batch`. The
 harness must measure the shipping pipeline, never a reimplementation of it.
+
+Two facts the original wording missed. First, **the cache must wrap `embed_batch`, not
+`embed`** — `process_batch` reaches embeddings only through `embed_batch_chunked` →
+`embed_batch` (`app/services/llm.py:224`, called at `pipeline.py:561` and `:686`), so
+`caching_llm.py`'s original `embed`/`chat_completion` overrides left every embedding
+uncached. Extending `caching_llm.py` is part of this task. Second, **`process_batch` only
+enriches an existing `memories` row; it never inserts one** (`pipeline.py:373-390`), so
+the driver must pre-create each row through the real `PostgresMemoryRepository` before
+calling it. That is caller responsibility, not forked phase logic.
 
 **Done when:**
 - [ ] Runs a corpus end to end against `darkmem_bench` and returns per-memory outcomes
@@ -82,6 +99,14 @@ harness must measure the shipping pipeline, never a reimplementation of it.
 **What.** The human/CI entry point: reset the bench DB, ingest the smoke corpus twice,
 and assert the second run makes **zero** live LLM calls. Freeze the ingestion-granularity
 decision in `benchlib/FROZEN.md`.
+
+**A zero live-call count is not on its own evidence of anything.** The gate must also
+assert, per pass, that the pipeline did its work — outcome count equals corpus length, and
+no outcome carries `error` in `embed` / `extract` / `vector` / `graph` or a non-null
+`error`. Without that, a run in which every write silently failed reports `live LLM calls:
+0` and exits 0. Do **not** assert `pass 1 live_calls > 0`: the cache is content-keyed, not
+pass-keyed, so on a warm re-run pass 1 legitimately reads 0 and the gate would stop being
+idempotent.
 
 **Done when:**
 - [ ] Second run issues zero live `embed` and zero live `chat_completion` calls
@@ -443,6 +468,10 @@ clear, not to confirm it.
 | 2026-07-26 | T0.12a, T0.12b | 2 | Declared both floor-exempt under runbook §4, and the a→c sequence one atomic merge unit to be run on a lane branch | Once the six revisions are gone at T0.12a, `alembic upgrade head` yields a deliberately partial schema until T0.12c completes it, so the repo-wide suite cannot pass. Runbook §4 admits no partial credit, so without a written exemption an honest agent stalls at T0.12a with a red floor it is not allowed to ignore and not able to fix |
 | 2026-07-26 | T0.12a | 1 | Corrected the one-owner cross-reference from runbook §8 to §9 | §8 is environment facts; the serialise-through-one-owner rule is §9 |
 | 2026-07-26 | (runbook §6) | 1 | `agent-runbook.md:172` said `progress.md` is "committed directly to `main`" | The same bullet's first sentence, and this repo's actual trunk, are `master`. There is no `main` branch; an agent following the second half of that sentence literally would create one |
+| 2026-07-26 | T0.02 | 1 | Stated that T0.02 creates `benchlib/smoke/corpus.json`, and that closed-taxonomy validation must check raw membership rather than route through the normalisers | The first acceptance checkbox says the loader loads `smoke/corpus.json`, but no landed task created that file — a missing step. And `normalize_entity_type` / `normalize_relation_type` (`app/taxonomy.py:124`, `:154`) never raise; they fall back to `concept` / `RELATED_TO`, so a validator built on them silently rewrites bad gold instead of rejecting it, defeating invariant 5 |
+| 2026-07-26 | T0.03 | 1 | Recorded that the LLM cache must wrap `embed_batch` (not `embed`), and that the driver must pre-create the `memories` row before calling `process_batch` | `process_batch` reaches embeddings only via `embed_batch_chunked` → `embed_batch` (`app/services/llm.py:224`), never `embed`, so `caching_llm.py` as landed left every embedding uncached and T0.04's zero-live-call gate was unpassable. And `_write_memory` (`pipeline.py:373-390`) only SELECTs and updates an existing row — there is no insert path — so a bare `memory_id` raises a FK violation from the vector upsert |
+| 2026-07-26 | T0.04 | 1 | The affordability gate must also assert per-pass pipeline outcomes, not only the live-call count; and `bench_db` must forget embedder registrations across a reset | A stale process-wide `embedder_registry` singleton survived the bench-DB reset and silently broke pass 2's vector and entity writes while the live-call counter stayed correctly at 0 — the gate printed `live LLM calls: 0` and exited 0 over a pipeline doing no durable work. Verified by corrupting one cached chat response: before the fix the gate passed, after it the gate exits 1 naming the failing memory and step. Asserting `pass 1 live_calls > 0` was considered and rejected — the cache is content-keyed, so a warm re-run makes pass 1 legitimately free and the gate would fail on its second consecutive invocation |
+| 2026-07-26 | T0.01-T0.04 | 1 | Recorded that a Sonnet-tier per-task review is not a substitute for runbook §6's Fable-tier adversarial review on a gate-feeding task | All four tasks carry `Gate: G-A`, so §6 requires an adversarial Fable-tier review. The Sonnet per-task reviews passed T0.01's ledger clean; the Fable adversarial pass then found a Critical in it (`read_runs` raised an uncaught `UnicodeDecodeError` on a truncated multibyte sequence, losing every prior good record and never healing) plus nine Important findings across all four modules. Both layers earned their place — the per-task review caught the T0.04 gate asserting only its live-call count — but the Fable pass is the one that must precede a gate claim |
 | 2026-07-26 | T0.05 | 1 | Verify block now points at `darkmem_bench` (LLM rows seeded via `benchlib.run_smoke.seed_llm_purpose_configs`, key from `DEEPSEEK_API_KEY`), not `darkmem` | The real `darkmem` database has no schema on this machine and is write-forbidden to agents, so the Verify command as written could not run and nobody may make it run. `run_bench.py` only reads `get_llm_config` from the database, and runbook §8 designates `darkmem_bench` for eval runs; its `llm_*` rows are wiped by every benchlib reset, so seeding is an explicit step of the run |
 | 2026-07-26 | T0.05, T0.08 | 2 | The G-A ledger entry now records that the T0.05 baseline ships without ledger rule 2's latency/token-cost twin, and T0.08's task text names the inherited gap | `run_bench.py` does not instrument the twin and modifying it was out of bounds for T0.05; the instrumentation is T0.08's deliverable. The cross-task consequence the plan missed: T1.17's cost-based justification for the merged one-call design has no baseline twin to compare against at G-B. An honestly recorded gap satisfies the ledger's spirit; a silent omission does not |
 | 2026-07-26 | T0.05, T1.50 | 2 | The G-A entry records that the baseline's cache carries no response metadata (parsed extraction JSON only), and the G-B ledger section now requires the G-B runner to capture served-model metadata for its live re-record | `deepseek-v4-flash` is a vendor alias whose backing weights can rotate silently; with no `model` string or system fingerprint recorded at baseline, "silent vendor update" would be an unrebuttable escape hatch for any G-B shortfall. The requirement makes the tolerance's same-model condition checkable from the G-B side, the only side that still can |
