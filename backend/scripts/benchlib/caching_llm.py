@@ -39,6 +39,21 @@ def _purpose_identity(config, purpose: str):
     return {field: getattr(cfg, field, None) for field in _KEYED_CONFIG_FIELDS}
 
 
+def chat_content(entry):
+    """Read the response content out of either chat cache-entry shape.
+
+    A bare string is this module's original format; a
+    ``{"content": ..., "usage": ...}`` dict is the richer one
+    ``benchlib.twin.TwinningOrchestrator`` writes so a replayed call can
+    still report what it cost when it was paid. Both formats live in the
+    same cache directory, so BOTH classes must read both -- a subclass
+    that writes the richer shape into a cache this base class also reads
+    would otherwise hand a caller a dict where the whole call surface
+    promises a str.
+    """
+    return entry["content"] if isinstance(entry, dict) else entry
+
+
 class CachingLLMOrchestrator(LLMOrchestrator):
     def __init__(self, config, cache_dir: str):
         super().__init__(config)
@@ -53,6 +68,15 @@ class CachingLLMOrchestrator(LLMOrchestrator):
 
     def _embed_key(self, text: str) -> str:
         return _key("embed", [text, _purpose_identity(self.config, "embedding")])
+
+    def _chat_key(self, purpose, messages, kwargs) -> str:
+        """The single definition of the chat cache key. Subclasses that
+        override chat_completion resolve the key through here rather than
+        recomposing the payload list, so a change to what the key folds in
+        can never fork one class's entries away from another's."""
+        return _key("chat", [
+            purpose, _purpose_identity(self.config, purpose), messages, sorted(kwargs.items()),
+        ])
 
     def _read(self, key: str):
         path = os.path.join(self._cache_dir, key + ".json")
@@ -142,12 +166,10 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         return vectors, fingerprint
 
     async def chat_completion(self, purpose, messages, **kwargs):
-        key = _key("chat", [
-            purpose, _purpose_identity(self.config, purpose), messages, sorted(kwargs.items()),
-        ])
+        key = self._chat_key(purpose, messages, kwargs)
         hit = self._read(key)
         if hit is not None:
-            return hit
+            return chat_content(hit)
         self.live_calls += 1
         result = await self._live_chat(purpose, messages, **kwargs)
         self._write(key, result)
