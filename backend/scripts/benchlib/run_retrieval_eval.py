@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -137,24 +138,132 @@ def reproducible_metrics(comparison: full_context.Comparison) -> dict:
     }
 
 
+def _total_chat_calls(tokens_by_purpose: dict) -> int:
+    """Every chat call an arm billed, live or replayed, across every
+    purpose -- the same sum ``full_context._chat_calls_by_purpose`` computes
+    per purpose, collapsed to one arm-level total."""
+    return sum(
+        usage.get("live_calls", 0) + usage.get("cache_known_calls", 0)
+        + usage.get("cache_unknown_calls", 0)
+        for usage in tokens_by_purpose.values()
+    )
+
+
+def _any_cache_unknown(tokens_by_purpose: dict) -> bool:
+    return any(usage.get("cache_unknown_calls", 0) for usage in tokens_by_purpose.values())
+
+
+def _expected_caveat_kinds(
+    *,
+    retrieval_end_to_end_live: bool,
+    full_context_end_to_end_live: bool,
+    retrieval_cache_unknown: bool,
+    full_context_cache_unknown: bool,
+    retrieval_chat_calls: int,
+    full_context_chat_calls: int,
+) -> set[str]:
+    """The caveat kinds THIS run structurally guarantees (fix round 1, F1).
+
+    Deliberately NOT a re-run of ``Comparison``'s own per-purpose
+    ``sum(...) == n_pairs`` heuristic (``full_context.py``, out of bounds
+    per ruling 8) -- re-deriving the same computation would always agree
+    with itself and could never catch that heuristic's own blind spot. The
+    named trap is exactly that blind spot: the heuristic reads "did this
+    arm bill exactly n_pairs calls", which goes silently false the moment
+    the retrieval arm's ingest call count coincidentally equals the live
+    pair count (today 94 vs 102; eight gold retirements away). This
+    function instead asserts a fact this runner knows about its OWN
+    composition, independent of that coincidence: ``run_ingest`` bills
+    ONE-TIME indexing work and ``run_full_context`` bills exactly one call
+    per scored pair, so the two are ALWAYS a kind-mismatched pair whenever
+    both billed anything at all -- regardless of what the raw counts
+    happen to equal. See ``run_eval``'s caveat-kind guard for how a
+    mismatch between this and the real ``comparison.caveats`` is handled:
+    raised before the report or ledger is written, never rendered as
+    "nothing to qualify".
+
+    The latency portion IS an exact reproduction of
+    ``Comparison._latency_caveats``'s three-way branch, not a heuristic --
+    "did this arm's end_to_end channel see a live sample" is a fact this
+    runner already knows precisely (a live call within a query's window is
+    exactly what labels that query's sample "live"), so there is no
+    coincidence for it to be blind to.
+    """
+    expected: set[str] = set()
+
+    if retrieval_end_to_end_live and full_context_end_to_end_live:
+        pass
+    elif retrieval_end_to_end_live != full_context_end_to_end_live:
+        expected.add(full_context.CAVEAT_LATENCY_NOT_LIKE_FOR_LIKE)
+    else:
+        expected.add(full_context.CAVEAT_LATENCY_NO_LIVE_SAMPLES)
+
+    if retrieval_cache_unknown or full_context_cache_unknown:
+        expected.add(full_context.CAVEAT_COST_UNMEASURED)
+
+    if retrieval_chat_calls > 0 and full_context_chat_calls > 0:
+        expected.add(full_context.CAVEAT_COST_KIND_ASYMMETRY)
+
+    return expected
+
+
+def _assert_expected_caveats(comparison: full_context.Comparison, expected: set[str]) -> None:
+    actual = {c.kind for c in comparison.caveats}
+    missing = expected - actual
+    if missing:
+        raise RuntimeError(
+            f"expected caveat kind(s) {sorted(missing)} to fire on this run but "
+            f"Comparison.caveats produced only {sorted(actual)}. Ruling 2: a "
+            "caveat this run structurally warrants must never silently vanish "
+            "from the report -- refusing rather than writing a report or "
+            "ledger row that would read as \"nothing to qualify\". Investigate "
+            "before re-running: either the two arms' call counts have moved "
+            "into a state the caveat-derivation heuristic in full_context.py "
+            "is blind to (e.g. ingest calls now equal the live pair count), or "
+            "the derivation itself changed."
+        )
+
+
 def _designed_state_note(comparison: full_context.Comparison) -> str:
     """Two results that look like problems and are not (brief §3), stated
     from the numbers THIS run actually measured -- never a hardcoded figure,
-    since both are read off ``comparison`` at render time."""
+    since both are read off ``comparison`` at render time.
+
+    The multi-hop line is NOT an unconditional claim (fix round 1, F2): the
+    "designed state" is specifically hit@k == 0.000 (T0.06a's desaturation
+    guarantees every live pair's consequence memory ranks worse than k).
+    Any OTHER value falsifies that guarantee and must read as drift a
+    reader is told to investigate, never as "by design" -- a note that
+    stamped every possible value as designed would launder a future
+    regression into the one artifact chartered to catch it.
+    """
     rs = comparison.retrieval.score
     deltas = comparison.deltas()["aggregate"]
     lines: list[str] = []
 
     mh = rs.slices.get("multi-hop")
     if mh is not None and mh.hit_at_k is not None:
-        lines.append(
-            f"- **multi-hop hit@{rs.k} = {mh.hit_at_k:.4f} on the retrieval arm "
-            "is the DESIGNED state (T0.06a), not a defect.** Every live "
-            "multi-hop pair is built so its consequence memory ranks worse "
-            "than k in the hybrid-only baseline -- this is the headroom a "
-            "future graph-aware arm exists to close, not a bug for this "
-            "runner to flag."
-        )
+        if mh.hit_at_k == 0.0:
+            lines.append(
+                f"- **multi-hop hit@{rs.k} = {mh.hit_at_k:.4f} on the retrieval "
+                "arm is the DESIGNED state (T0.06a), not a defect.** Every live "
+                "multi-hop pair is built so its consequence memory ranks worse "
+                "than k in the hybrid-only baseline -- this is the headroom a "
+                "future graph-aware arm exists to close, not a bug for this "
+                "runner to flag."
+            )
+        else:
+            lines.append(
+                f"- **multi-hop hit@{rs.k} = {mh.hit_at_k:.4f} on the retrieval "
+                "arm is NOT the designed 0.0000 baseline -- this is DRIFT to "
+                "investigate, not a result to file as \"by design\".** T0.06a's "
+                "desaturation built every live multi-hop pair so its "
+                "consequence memory ranks worse than k in the hybrid-only "
+                "baseline; a nonzero hit@k here means either a pair "
+                "re-saturated (a corpus/gold change) or the retriever itself "
+                "changed, and either should be adjudicated before this run's "
+                "numbers are trusted."
+            )
 
     if deltas["mrr"] is not None and deltas["hit_at_k"] is not None and deltas["mrr"] > 0:
         lines.append(
@@ -182,6 +291,7 @@ def render_report(comparison: full_context.Comparison, meta: dict) -> str:
     lines: list[str] = []
     lines.append(f"# Retrieval eval — {meta['date']}")
     lines.append("")
+    lines.append(f"- run id: `{meta['run_id']}` (recorded {meta['timestamp']})")
     lines.append(f"- git sha: `{meta['git_sha']}`")
     lines.append(f"- embedder fingerprint: `{meta['fingerprint']}`")
     lines.append(f"- gate configuration: `{_fmt_gate_config(meta['gate_config'])}`")
@@ -340,8 +450,25 @@ async def run_eval(
         retrieval=retrieval_run, full_context=fc_run, id_audit=fc.audit, context=fc.context,
     )
 
+    # Ruling 2's guard (fix round 1, F1): assert the caveat kinds THIS run
+    # structurally warrants before either artifact is written, rather than
+    # rendering whatever Comparison.caveats happens to produce. Runs before
+    # any print, report write or ledger append -- a mismatch leaves no
+    # partial report and no ledger row.
+    expected_caveats = _expected_caveat_kinds(
+        retrieval_end_to_end_live=retrieval_only_live > 0,
+        full_context_end_to_end_live=fc_llm.live_calls > 0,
+        retrieval_cache_unknown=_any_cache_unknown(retrieval_llm.tokens.as_dict()),
+        full_context_cache_unknown=_any_cache_unknown(fc_llm.tokens.as_dict()),
+        retrieval_chat_calls=_total_chat_calls(retrieval_llm.tokens.as_dict()),
+        full_context_chat_calls=_total_chat_calls(fc_llm.tokens.as_dict()),
+    )
+    _assert_expected_caveats(comparison, expected_caveats)
+
     total_live_calls = ingest_result.live_calls + retrieval_only_live + fc_llm.live_calls
     meta = {
+        "run_id": str(uuid.uuid4()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "date": run_date.isoformat(),
         "git_sha": run_smoke.git_sha(),
         "fingerprint": ingest_result.fingerprint,
@@ -366,7 +493,13 @@ async def run_eval(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report_text, encoding="utf-8")
 
-    full_context.record_comparison(comparison, path=ledger_path)
+    full_context.record_comparison(
+        comparison, path=ledger_path,
+        metadata={
+            "run_id": meta["run_id"], "timestamp": meta["timestamp"],
+            "git_sha": meta["git_sha"], "fingerprint": meta["fingerprint"],
+        },
+    )
 
     return EvalRunResult(
         comparison=comparison, meta=meta, report_text=report_text,
