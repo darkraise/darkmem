@@ -195,6 +195,22 @@ aggregate never replaces the slices.
       matches (`CLAUDE.md` cross-cutting invariants)
 - [ ] A slice with too few pairs reports as under-powered rather than as a number
 
+**Amendment (Tier-2, 2026-07-26, from the T0.06 adversarial review):**
+- [ ] Before the multi-hop slice is trusted as an activation gate, measure the
+      hybrid-only baseline's headroom on it: report baseline hit@K over the full
+      relevant sets, checking rg-0063/0064, rg-0065/0066, rg-0069/0070,
+      rg-0073/0074, and rg-0076 first — those queries name the consequence
+      memory's domain, so the semantic channel may reach the second hop without a
+      hop. T0.06 established lexical isolation only, not embedding-space
+      isolation (`backend/scripts/benchlib/retrieval/SLICES.md`, multi-hop). If
+      the baseline saturates the slice, the saturated pairs must be
+      re-adjudicated (retire-and-replace) before any graph-arm verdict is read
+      off it.
+- Note for downstream supersession-aware evaluation (T0.10): supersession firing
+  at ingest is wall-clock-dependent and not corpus-guaranteed — control the
+  detector clock (`now=`) or re-date + re-adjudicate under retire-and-replace
+  (SLICES.md, corpus authoring rules).
+
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_retrieval_scorer.py -q`
 
 #### T0.08 — Latency and token-cost twin
