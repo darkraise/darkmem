@@ -785,6 +785,20 @@ than ranking (doc 17 §2).
 - [ ] Community injection scored on the reasoning gold set, never on MRR
 - [ ] Arms that do not clear stay at zero, and that outcome is recorded as a result
 
+**Amendment (Tier-2, 2026-07-27, from the T0.06a adversarial review):**
+- [ ] **State this arm's entity-linking semantics before reading any multi-hop verdict off
+      the slice.** The retrieval gold's multi-hop bridges are not uniform: 6 of 14 live pairs
+      bridge through one shared entity row (same `name` *and* `entity_type`), while 8 bridge
+      through same-name nodes of **different** `entity_type` — disjoint under the domain
+      model's `(name, entity_type)` identity, with no connecting relation, because Phase-4
+      dedup is deliberately type-constrained. So this slice's achievable ceiling is **6/14
+      under strict node-identity traversal and 14/14 if the arm links entities by name or
+      name-embedding**. Which one applies is a property of the arm, not of the gold, and it
+      is undecided: `backend/scripts/benchlib/retrieval/SLICES.md` records both ceilings and
+      the per-pair `bridge_status` deliberately rather than resolving it. Reading an
+      activation verdict off this slice without stating the semantics measures the gold's
+      undocumented shape instead of the arm.
+
 **Verify.** `cd backend && python scripts/benchlib/run_retrieval_eval.py --arm w_ppr,dual_level`
 
 #### T2.51 — Promotion-metrics runner
@@ -896,4 +910,4 @@ overlapping and non-overlapping validity windows.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
-| — | — | — | (none yet) | — |
+| 2026-07-27 | T2.50 | 2 | Added a precondition: the arm's entity-linking semantics must be stated before any multi-hop activation verdict is read off the retrieval slice | T0.06a's adversarial review measured the ingested graph pair by pair and found the multi-hop bridges are not uniform. Six of the fourteen live pairs bridge through one shared entity row; eight bridge through same-name nodes of *different* `entity_type`, which are disjoint under the domain model's `(name, entity_type)` identity because Phase-4 dedup is type-constrained. The slice's achievable ceiling is therefore 6/14 under strict node-identity traversal and 14/14 under name or name-embedding linking. That is a property of the arm, not of the gold, so the gold records both ceilings and defers rather than guessing; without the semantics stated, an activation number measures the gold's undocumented shape rather than the arm |
