@@ -36,6 +36,18 @@ count in E2 inherits that doubt.
 **Three agents can work E0 concurrently.** Lane C is the long pole and gates most of E1;
 start it first.
 
+Two collisions the lane table alone does not show:
+
+| Collision | Files | Consequence |
+|---|---|---|
+| Lane C ↔ everything | `backend/migrations/versions/` | T0.12a deletes the six brownfield revisions and leaves a deliberately partial baseline until T0.12c completes it. Both `backend/tests/conftest.py` and `backend/scripts/benchlib/bench_db.py` build their databases with `alembic upgrade head`, so that window is a **repo-wide red floor**. T0.12a–c are floor-exempt and atomic: run them on a lane branch and merge only when T0.12c is green (runbook §4, §6) |
+| Lane A ↔ Lane B | `backend/scripts/benchlib/tests/conftest.py` | The modules are disjoint (`ledger`/`corpus`/`ingest` vs `retrieval_*`/`twin`), but both lanes add tests under one `tests/` directory sharing a single `conftest.py`. Fixtures there are the flashpoint |
+
+Note also that the red-bordered critical path in the graphs below is an **unweighted hop
+count** — `gen_task_graph.py` maximises depth, not effort. It marks Lane B because Lane B's
+chain has more nodes; it cannot see that Lane C is entirely Opus-tier and fronted by the
+only `Size: L` task in E0. Do not schedule off the red borders alone.
+
 ### E1 — foundations first, then five parallel lanes
 
 ```

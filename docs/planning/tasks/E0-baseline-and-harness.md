@@ -252,12 +252,29 @@ traced to an owning doc section, no unexplained entries.
 
 **Note the file, not the revision count.** T0.12a–c are three passes building up a
 **single** revision — the single-revision property is asserted in CI (T0.15) and is load
-bearing. They serialise: a, then b, then c, one owner (runbook §8).
+bearing. They serialise: a, then b, then c, one owner (runbook §9).
+
+**The chain is never two-headed.** Deleting revisions `0001`–`0006` belongs to *this*
+task's commit, not T0.12c's. Doc 19 §2 collapses the brownfield chain into the baseline
+and holds `alembic history` at exactly one revision for the whole greenfield window, so
+there is no sanctioned moment at which the baseline and the old chain coexist. A baseline
+committed beside the six gives Alembic two heads, and `alembic upgrade head` — which both
+`backend/tests/conftest.py` and `backend/scripts/benchlib/bench_db.py` shell out to when
+they build their databases — fails outright on an ambiguous head.
+
+**T0.12a and T0.12b are floor-exempt (runbook §4).** From this commit until T0.12c the
+baseline is deliberately incomplete, so the backend suite cannot pass and its failure
+carries no information. The floor is asserted once, by T0.12c, against the finished
+baseline. That exemption makes the three passes **one atomic unit for merge purposes**:
+run them on a lane branch off the epic branch and merge only once T0.12c is green, so no
+other lane ever rebases onto a partial schema (runbook §6).
 
 **Done when:**
 - [ ] The named tables, their constraints and indexes exist from empty
 - [ ] `chk_superseded_has_pointer` present and enforced
 - [ ] Plain SQL — no ORM-only construct load-bearing
+- [ ] Revisions `0001`–`0006` are deleted in this same commit, and `alembic heads` reports
+      exactly one head
 
 **Verify.** `cd backend && DATABASE_URL=$CHECK_URL python -m alembic upgrade head` on an
 empty scratch database.
@@ -292,8 +309,10 @@ file.
 - [ ] All four templates present **as registry entries**, not as migration DDL (their
       inert labelling is T0.13's)
 - [ ] The GIN index on `technologies` exists — supersession and retrieval both read it
-- [ ] The **full backend suite passes** against a database built from the baseline alone
-- [ ] The six old revisions are removed, not chained behind it
+- [ ] The **full backend suite passes** against a database built from the baseline alone —
+      this is where the floor T0.12a–b were exempt from is actually asserted
+- [ ] `alembic heads` still reports exactly one head: the six brownfield revisions went in
+      T0.12a and nothing has re-chained behind the baseline since
 
 **Verify.** `conftest.py` overwrites `DATABASE_URL`, so the suite needs `TEST_DATABASE_URL`:
 ```bash
@@ -411,4 +430,6 @@ clear, not to confirm it.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
-| — | — | — | (none yet) | — |
+| 2026-07-26 | T0.12a, T0.12c | 2 | Moved deletion of revisions `0001`–`0006` from T0.12c's acceptance into T0.12a's; T0.12c now asserts the single head rather than creating it | As written, the baseline landed at T0.12a beside the six old revisions and they were only removed at T0.12c, leaving Alembic two-headed for two whole tasks. `alembic upgrade head` is how both `tests/conftest.py` and `benchlib/bench_db.py` build their databases, so every lane's test bootstrap would have failed on an ambiguous head. Doc 19 §2 forbids the coexistence anyway — one revision, always, until the freeze tag |
+| 2026-07-26 | T0.12a, T0.12b | 2 | Declared both floor-exempt under runbook §4, and the a→c sequence one atomic merge unit to be run on a lane branch | Once the six revisions are gone at T0.12a, `alembic upgrade head` yields a deliberately partial schema until T0.12c completes it, so the repo-wide suite cannot pass. Runbook §4 admits no partial credit, so without a written exemption an honest agent stalls at T0.12a with a red floor it is not allowed to ignore and not able to fix |
+| 2026-07-26 | T0.12a | 1 | Corrected the one-owner cross-reference from runbook §8 to §9 | §8 is environment facts; the serialise-through-one-owner rule is §9 |

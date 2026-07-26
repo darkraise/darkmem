@@ -103,6 +103,14 @@ A task is `done` only when **all** of these hold. There is no partial credit and
 - [ ] The work is committed in Conventional Commit form, one logical change per commit.
 - [ ] `progress.md` is updated: status, commit sha, and a one-line note.
 
+**The floor has exactly one sanctioned exception.** A task may be *floor-exempt* when it
+is a mid-sequence checkpoint in an atomic multi-pass change to a single artifact, where
+the intermediate state is deliberately incomplete and its failure therefore carries no
+information (T0.12a–b, three passes building one baseline file). The exemption must be
+written into the task's own text, and the pass that completes the sequence must assert the
+floor for all of them. An agent never claims this exemption at run time — an unexpected red
+floor is a finding, not a licence.
+
 **Honest reporting is part of done.** If a check fails, say so with the output and leave
 the task `blocked` or `in-progress`. A task marked `done` with a failing suite is the one
 defect this whole corpus is built to prevent (invariant 14).
@@ -156,7 +164,9 @@ Every epic file ends with a table. One row per amendment:
 ## 6. Branch, commit, claim, and review
 
 - **Branch per epic, not per task**: `feat/e1-engine-core`. Tasks are commits on it.
-  A task large enough to want its own branch is a task that should have been split.
+  A task large enough to want its own branch is a task that should have been split. A
+  single agent works directly on the epic branch; concurrent agents each add one lane
+  branch off it (below).
 - **`progress.md` is canonical on `master`, not on the epic branch.** Otherwise the "live
   status" file forks per branch and no copy is true. Update it with a single commit
   touching only your own row, cherry-picked or committed directly to `main`. This repo has
@@ -165,8 +175,14 @@ Every epic file ends with a table. One row per amendment:
   `wip`. If two agents race, the later commit loses and that agent picks another task —
   cheap, because the loser has done no work yet. Never start work on a row someone else
   owns.
-- **Concurrent agents need separate worktrees**, not separate branches in one checkout.
-  `git worktree add` per agent; see [`risks-and-lanes.md`](risks-and-lanes.md) for which
+- **Concurrent agents need separate worktrees, and therefore one lane branch each.** Git
+  refuses to check the same branch out twice — `fatal: '<branch>' is already used by
+  worktree at ...` — so "one epic branch, several worktrees" is not a reachable state.
+  Branch each concurrent lane off the epic branch (`feat/e0-lane-c` off
+  `feat/e0-baseline-and-harness`), one worktree each, merging back when that lane's last
+  task is green. A lane whose *intermediate* commits break the repo floor must run this
+  way rather than on the epic branch: the breakage stays on the lane branch and no sibling
+  lane ever rebases onto it. See [`risks-and-lanes.md`](risks-and-lanes.md) for which
   lanes actually touch disjoint files, because several do not.
 - **Conventional commits**, one logical change each:
   `<type>(<scope>): <subject>` — 50-char imperative subject, body explaining what and why
@@ -249,6 +265,13 @@ migrated** (doc 19 §2). That makes the baseline file a shared mutable artifact,
 
 - **A task that adds a table regenerates the baseline.** It does not append revision 0002.
   The single-revision property is asserted in CI (T0.15) and holds until the freeze tag.
+- **The chain is never two-headed, not even for one commit.** Regenerating means
+  *replacing* the revision file and deleting whatever chain preceded it in the same commit.
+  A new baseline committed beside the old one gives Alembic two heads, and every database
+  bootstrap in this repo — `backend/tests/conftest.py` and
+  `backend/scripts/benchlib/bench_db.py` — shells out to `alembic upgrade head`, which
+  fails on an ambiguous head. That failure is repo-wide, so it takes down every concurrent
+  lane, not just the one holding the schema.
 - **Schema changes serialise through one owner per epic.** Two agents regenerating the same
   baseline file concurrently will conflict every time. Before touching it, check
   `progress.md` for another `wip` task whose files include the baseline, and wait.
