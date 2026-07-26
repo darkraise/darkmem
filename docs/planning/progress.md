@@ -42,18 +42,18 @@ and the Note says so. That rule is the whole point of this file.
 
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 19 | 12 | 1 | 0 | 0 | 6 | G-A open |
+| E0 — Baseline & harness | 20 | 13 | 0 | 0 | 0 | 7 | G-A open |
 | E1 — Engine core | 75 | 75 | 0 | 0 | 0 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **204** | **197** | **1** | **0** | **0** | **6** | |
+| **Total** | **205** | **198** | **0** | **0** | **0** | **7** | |
 
 ---
 
-## E0 — Baseline & harness (19 tasks)
+## E0 — Baseline & harness (20 tasks)
 
 | Task | Title | Size | Model | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|
@@ -63,7 +63,8 @@ and the Note says so. That rule is the whole point of this file.
 | T0.04 | `run_smoke.py` and the affordability gate | M | Sonnet | claude/e0-lane-a | done | ea2428b | sonnet: approved after 1 fix round; fable adversarial review a63675c | run_smoke.py + FROZEN.md; gate asserts zero live calls AND clean per-pass outcomes. Verify exit 0, `live LLM calls: 0`, 3 memories/6 entities/3 relations per pass; floor 614 passed, 1 skipped |
 | T0.05 | Record the as-is extraction F1 baseline | M | Fable | claude/e0-lane-a | done | 684a35e | fable adversarial: addressed after 2 fix rounds | As-is F1 recorded on gold+held-out (4 dims) + G-B tolerance in gate-ledger.md. 36 live DeepSeek calls; cache archived under docs/eval/. Verify --algo-only reproduces byte-identical; floor 614 passed, 1 skipped |
 | T0.06 | Retrieval gold set + query-type slices | M | Fable | claude/e0-lane-b | done | 61c0046 | fable adversarial: addressed after 1 fix round | 102 pairs / 7 slices over a 72-memory fixed-id corpus, + SLICES.md. Anchor flags make retire-and-replace a test failure. Verify 28 passed; benchlib 132; floor 614 passed, 1 skipped |
-| T0.07 | Sliced accuracy scorer (MRR / hit@K) | M | Sonnet | claude/e0-lane-b | wip | | | |
+| T0.06a | Re-adjudicate the saturated multi-hop pairs | M | Fable | | todo | | | |
+| T0.07 | Sliced accuracy scorer (MRR / hit@K) | M | Sonnet | claude/e0-lane-b | done | 54a43d9 | fable adversarial: addressed after 1 fix round | Sliced MRR/hit@K + real-retriever driver. Baseline pooled MRR 0.857 / hit@10 0.971 over 102 pairs. Verify 24 passed; benchlib 160; floor 614 passed, 1 skipped |
 | T0.08 | Latency and token-cost twin | M | Sonnet | | todo | | | |
 | T0.09 | Full-context baseline comparator | M | Opus | | todo | | | |
 | T0.10 | Retrieval eval runner + dated report | M | Sonnet | | todo | | | |

@@ -170,7 +170,7 @@ Titles are truncated — the full task is in its epic file, the state is in
 
 ```mermaid
 flowchart LR
-    E0["E0 · Phase 0<br/>baseline & harness<br/>19 tasks"]
+    E0["E0 · Phase 0<br/>baseline & harness<br/>20 tasks"]
     E1["E1 · Phase 1<br/>engine core<br/>75 tasks"]
     E2["E2 · Phase 2<br/>truth core<br/>57 tasks"]
     E3["E3 · Phase 3<br/>synthesis & reach<br/>26 tasks"]
@@ -202,7 +202,7 @@ flowchart LR
 Solid edges are the committed path; dashed edges are appetite-gated. Every gate is a
 measured number in [`gate-ledger.md`](gate-ledger.md), never a judgement call.
 
-### E0 — Phase 0 · baseline & harness (19 tasks)
+### E0 — Phase 0 · baseline & harness (20 tasks)
 
 ```mermaid
 flowchart LR
@@ -217,6 +217,7 @@ flowchart LR
     subgraph LE0B["Lane B — retrieval eval"]
     direction TB
         T0_06["T0.06<br/>Retrieval gold set + query-ty…"]
+        T0_06a["T0.06a<br/>Re-adjudicate saturated multi…"]
         T0_07["T0.07<br/>Sliced accuracy scorer"]
         T0_08["T0.08<br/>Latency token-cost twin"]
         T0_09["T0.09<br/>Full-context baseline compara…"]
@@ -242,6 +243,7 @@ flowchart LR
     T0_03 --> T0_04
     T0_04 --> T0_05
     T0_02 --> T0_06
+    T0_07 --> T0_06a
     T0_06 --> T0_07
     T0_07 --> T0_08
     T0_03 --> T0_09
@@ -258,6 +260,7 @@ flowchart LR
     T0_14 --> T0_16
     T0_05 --> T0_17
     T0_16 --> T0_17
+    T0_06a --> T0_17
     classDef crit stroke:#ef4444,stroke-width:3px
     classDef large stroke-dasharray:6 3
     classDef ext fill:#1f2937,stroke:#4b5563,color:#9ca3af,opacity:0.7
@@ -956,7 +959,7 @@ flowchart LR
 |---|---|---|---|
 | **`origin_key` gets it wrong in Phase 1** | Every corroboration count in E2 is `COUNT(DISTINCT origin_key)`. A too-generous resolution silently inflates every verification number downstream, and the error is invisible until facts are promoted that should not have been | T1.11 tests the merge-to-one rule explicitly; T2.02's test fails under row-counting | Any change to `origin_key` resolution after E2 starts — it is a Phase-1 decision with Phase-2 consequences |
 | **Pushdown declared done without the probe** | Isolation is the one property everyone assumes and nobody measures | T1.29a–c and T1.35 are separate tasks on purpose: building it and proving it are different work, and the probe is Fable-tier and adversarial | T1.29c marked `done` while T1.35 is still `todo` |
-| **Plan rot** — the plan and the code diverge silently | 204 tasks written in advance will be wrong in places; an agent that works around a wrong task instead of fixing it makes the plan progressively fictional | The amendment protocol makes updating the plan part of the task, and Tier 1 needs no permission | An empty amendment log after a dozen completed tasks — that is not a good sign, it means fixes are going unrecorded |
+| **Plan rot** — the plan and the code diverge silently | 205 tasks written in advance will be wrong in places; an agent that works around a wrong task instead of fixing it makes the plan progressively fictional | The amendment protocol makes updating the plan part of the task, and Tier 1 needs no permission | An empty amendment log after a dozen completed tasks — that is not a good sign, it means fixes are going unrecorded |
 | **UI drifts ahead of its signal** | The frontend skeleton already renders demo versions of Phase-1, -2, and -3 surfaces. Shipping a surface over demo data reads as done | Every UI task's acceptance names the live backend signal it must bind to; principle 10 puts the surface in the same phase as its signal, not earlier | A UI task marked `done` whose backend task is still `todo` |
 | **Arms activated on a flattering aggregate** | An arm that helps overall while destroying the paraphrase slice looks like a win | Retrieval eval reports per-slice always; the aggregate never replaces slices; activation needs the latency/cost twin | An activation-log row with an aggregate delta and no slice breakdown |
 | **The inert set gets written to early** | T0.13 lands seven objects with no writer. A well-meaning task wiring one early breaks the scaffolding-not-substrate invariant and makes an unshipped thing look shipped | Each inert object names its first-writer task; a test asserts no writes | Any write before its named writer: `repo_ids[]` → T2.27, `documents`/`blocks` → TH1.02, `block_embeddings` → TH1.05, `triple_embeddings` → T2.33, `relation_embeddings` → T2.49, `article_embeddings` → T3.23, `events.api_key_id`/`actor` → T4.02 |

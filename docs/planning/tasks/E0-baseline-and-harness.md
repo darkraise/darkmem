@@ -181,6 +181,35 @@ and fact slices weakest — start there.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_retrieval_gold.py -q`
 
+#### T0.06a — Re-adjudicate the saturated multi-hop pairs
+
+`Model: Fable 5` · `Size: M` · `Depends: T0.07` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
+
+**What.** T0.07's measured baseline showed the hybrid-only retriever **saturates** the
+multi-hop slice: 13 of 14 pairs hit@10, MRR 0.946, and only `rg-0072` exhibits the failure
+the slice was designed to produce. The cause is the one T0.06's review predicted — the query
+names the consequence memory's domain, so the semantic channel reaches the second hop without
+traversing the bridge. It is broader than the nine pairs that amendment named:
+`rg-0067`, `rg-0068`, `rg-0071` and `rg-0075` also resolve semantically, at ranks 2, 3, 2 and 6.
+
+A slice a hybrid-only baseline already wins cannot gate a graph-arm activation. Doc 00's
+success criterion — retrieval "measurably beats a hybrid-only baseline on the multi-hop,
+temporal, and knowledge-update slices" — is unmeasurable on multi-hop until this is fixed.
+
+**Done when:**
+- [ ] Every saturated multi-hop pair is retired-and-replaced under the `SLICES.md` discipline
+      (retire in place, append the replacement, bump the gold version) — never rewritten
+- [ ] Replacement bridges are chosen so the consequence memory is **not** semantically
+      proximal to the query; the anchor entity must be the only route to it
+- [ ] The replacements are verified against the warm cache: baseline hybrid-only rank of the
+      consequence memory must be worse than K, measured, not argued
+- [ ] `SLICES.md`'s multi-hop authoring rule gains that mechanical isolation check, so a
+      future contributor cannot reintroduce a domain-naming query
+- [ ] Re-measured baseline recorded, showing the slice now has headroom
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_retrieval_gold.py -q`,
+plus the re-measured per-slice table from T0.07's runner pasted into the completion note.
+
 #### T0.07 — Sliced accuracy scorer (MRR / hit@K)
 
 `Model: Sonnet 5` · `Size: M` · `Depends: T0.06` · `Doc: 17 §4` · `Tag: target-new` · `Gate: G-A`
@@ -456,7 +485,7 @@ script exits non-zero naming that gate.
 
 #### T0.17 — G-A evidence run and ledger entry
 
-`Model: Fable 5` · `Size: M` · `Depends: T0.05, T0.16` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-A`
+`Model: Fable 5` · `Size: M` · `Depends: T0.05, T0.16, T0.06a` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-A`
 
 **What.** Actually clear G-A: run every gate probe, record the measured numbers, and
 write the verdict. Adversarial — the job is to find the reason the gate should *not*
@@ -491,3 +520,4 @@ clear, not to confirm it.
 | 2026-07-26 | T0.05 | 1 | Verify block now points at `darkmem_bench` (LLM rows seeded via `benchlib.run_smoke.seed_llm_purpose_configs`, key from `DEEPSEEK_API_KEY`), not `darkmem` | The real `darkmem` database has no schema on this machine and is write-forbidden to agents, so the Verify command as written could not run and nobody may make it run. `run_bench.py` only reads `get_llm_config` from the database, and runbook §8 designates `darkmem_bench` for eval runs; its `llm_*` rows are wiped by every benchlib reset, so seeding is an explicit step of the run |
 | 2026-07-26 | T0.05, T0.08 | 2 | The G-A ledger entry now records that the T0.05 baseline ships without ledger rule 2's latency/token-cost twin, and T0.08's task text names the inherited gap | `run_bench.py` does not instrument the twin and modifying it was out of bounds for T0.05; the instrumentation is T0.08's deliverable. The cross-task consequence the plan missed: T1.17's cost-based justification for the merged one-call design has no baseline twin to compare against at G-B. An honestly recorded gap satisfies the ledger's spirit; a silent omission does not |
 | 2026-07-26 | T0.05, T1.50 | 2 | The G-A entry records that the baseline's cache carries no response metadata (parsed extraction JSON only), and the G-B ledger section now requires the G-B runner to capture served-model metadata for its live re-record | `deepseek-v4-flash` is a vendor alias whose backing weights can rotate silently; with no `model` string or system fingerprint recorded at baseline, "silent vendor update" would be an unrebuttable escape hatch for any G-B shortfall. The requirement makes the tolerance's same-model condition checkable from the G-B side, the only side that still can |
+| 2026-07-26 | T0.06a (new), T0.07 | 2 | Added T0.06a: the multi-hop slice must be re-adjudicated because the hybrid-only baseline already saturates it | T0.07's measured baseline put 13 of 14 multi-hop pairs at hit@10 (MRR 0.946), with only `rg-0072` failing as designed — and the cause is broader than the nine pairs T0.06's amendment named, since `rg-0067`/`rg-0068`/`rg-0071`/`rg-0075` also resolve the consequence memory semantically at ranks 2/3/2/6. A slice the baseline already wins cannot gate a graph-arm activation, so doc 00's multi-hop success criterion is unmeasurable until the pairs are replaced with bridges whose consequence memory is not semantically proximal to the query |
