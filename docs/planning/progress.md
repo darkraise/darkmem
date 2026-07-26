@@ -57,10 +57,10 @@ and the Note says so. That rule is the whole point of this file.
 
 | Task | Title | Size | Model | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|
-| T0.01 | Append-only run ledger (`benchlib/ledger.py`) | M | Sonnet | claude/e0-lane-a | done | 70b3ea1 | sonnet: spec compliant, approved | ledger.py + 7 tests; benchlib conftest fixture made opt-in. Verify 7 passed; floor 614 passed, 1 skipped |
-| T0.02 | Corpus loader (`benchlib/corpus.py`) | S | Haiku | claude/e0-lane-a | done | ac05908 | sonnet: approved after 1 fix round | corpus.py + smoke/corpus.json + 11 tests; raw-membership taxonomy validation. Verify 11 passed; floor 614 passed, 1 skipped |
-| T0.03 | Offline ingest driver (`benchlib/ingest.py`) | M | Sonnet | claude/e0-lane-a | done | f6c658f | sonnet: spec compliant, approved | ingest.py over the real ProcessingPipeline; caching_llm extended to embed_batch. Verify 8 passed; floor 614 passed, 1 skipped |
-| T0.04 | `run_smoke.py` and the affordability gate | M | Sonnet | claude/e0-lane-a | done | ea2428b | sonnet: approved after 1 fix round | run_smoke.py + FROZEN.md; gate asserts zero live calls AND clean per-pass outcomes. Verify exit 0, `live LLM calls: 0`, 3 memories/6 entities/3 relations per pass; floor 614 passed, 1 skipped |
+| T0.01 | Append-only run ledger (`benchlib/ledger.py`) | M | Sonnet | claude/e0-lane-a | done | 70b3ea1 | sonnet: spec compliant, approved; fable adversarial review a63675c | ledger.py + 7 tests; benchlib conftest fixture made opt-in. Verify 7 passed; floor 614 passed, 1 skipped |
+| T0.02 | Corpus loader (`benchlib/corpus.py`) | S | Haiku | claude/e0-lane-a | done | ac05908 | sonnet: approved after 1 fix round; fable adversarial review a63675c | corpus.py + smoke/corpus.json + 11 tests; raw-membership taxonomy validation. Verify 11 passed; floor 614 passed, 1 skipped |
+| T0.03 | Offline ingest driver (`benchlib/ingest.py`) | M | Sonnet | claude/e0-lane-a | done | f6c658f | sonnet: spec compliant, approved; fable adversarial review a63675c | ingest.py over the real ProcessingPipeline; caching_llm extended to embed_batch. Verify 8 passed; floor 614 passed, 1 skipped |
+| T0.04 | `run_smoke.py` and the affordability gate | M | Sonnet | claude/e0-lane-a | done | ea2428b | sonnet: approved after 1 fix round; fable adversarial review a63675c | run_smoke.py + FROZEN.md; gate asserts zero live calls AND clean per-pass outcomes. Verify exit 0, `live LLM calls: 0`, 3 memories/6 entities/3 relations per pass; floor 614 passed, 1 skipped |
 | T0.05 | Record the as-is extraction F1 baseline | M | Fable | | todo | | | |
 | T0.06 | Retrieval gold set + query-type slices | M | Fable | | todo | | | |
 | T0.07 | Sliced accuracy scorer (MRR / hit@K) | M | Sonnet | | todo | | | |
