@@ -152,6 +152,119 @@ def test_build_run_record_carries_all_six_ledger_fields():
     assert record["timestamp"].endswith("+00:00")
 
 
+# ── find_outcome_failures / summarize_pass ─────────────────────────────
+
+
+def _ok_outcome(memory_id="m-1", **overrides):
+    outcome = {
+        "memory_id": memory_id,
+        "embed": "ok",
+        "extract": "ok",
+        "vector": "ok",
+        "graph": "ok",
+        "entities_count": 2,
+        "relations_count": 1,
+        "error": None,
+    }
+    outcome.update(overrides)
+    return outcome
+
+
+def test_find_outcome_failures_is_empty_for_a_healthy_pass():
+    outcomes = [_ok_outcome("m-1"), _ok_outcome("m-2"), _ok_outcome("m-3")]
+    assert run_smoke.find_outcome_failures(outcomes, expected_count=3) == []
+
+
+def test_find_outcome_failures_catches_a_short_outcome_count():
+    outcomes = [_ok_outcome("m-1")]
+    failures = run_smoke.find_outcome_failures(outcomes, expected_count=3)
+    assert any("expected 3" in f for f in failures)
+
+
+@pytest.mark.parametrize("step", ["embed", "extract", "vector", "graph"])
+def test_find_outcome_failures_catches_an_error_status_in_any_step(step):
+    outcomes = [_ok_outcome("m-1", **{step: "error"})]
+    failures = run_smoke.find_outcome_failures(outcomes, expected_count=1)
+    assert any("m-1" in f and step in f for f in failures)
+
+
+def test_find_outcome_failures_catches_a_non_null_error_even_with_ok_statuses():
+    """A "partial" extract with a degraded-but-non-null error still fails
+    the gate -- the review's exact wording is "no outcome has a non-null
+    error," independent of whether any status field literally reads
+    "error"."""
+    outcomes = [_ok_outcome("m-1", extract="partial", error="Extraction degraded: timeout")]
+    failures = run_smoke.find_outcome_failures(outcomes, expected_count=1)
+    assert any("m-1" in f and "Extraction degraded" in f for f in failures)
+
+
+def test_find_outcome_failures_does_not_look_at_live_calls_at_all():
+    """This is the exact review scenario: live_calls == 0 (a warm cache)
+    while the pipeline's own write failed underneath it. The check must
+    catch the broken outcome regardless -- it has no live_calls parameter
+    to consult in the first place."""
+    outcomes = [_ok_outcome("m-1", vector="error", error="Vector write failed: boom")]
+    failures = run_smoke.find_outcome_failures(outcomes, expected_count=1)
+    assert failures != []
+
+
+def test_summarize_pass_totals_entities_and_relations():
+    outcomes = [_ok_outcome("m-1", entities_count=2, relations_count=1),
+                _ok_outcome("m-2", entities_count=3, relations_count=0)]
+    summary = run_smoke.summarize_pass(outcomes)
+    assert "2 memories ingested" in summary
+    assert "5 entities" in summary
+    assert "1 relations" in summary
+
+
+# ── outcome-health gate: reproduces the reviewed bug directly ─────────
+
+
+@pytest.mark.asyncio
+async def test_gate_fails_when_a_write_errors_even_though_live_calls_is_zero(tmp_path):
+    """Direct reproduction of the review finding: the stale
+    embedder_registry cache this task's bench_db.py fix addresses left a
+    fingerprint marked "known" while its partition table was gone, so a
+    fully-cached pass (live_calls == 0) silently failed every vector
+    write. Simulate that exact state by hand (mark the fingerprint known,
+    then drop its table out from under it) and confirm
+    find_outcome_failures flags it even though the run made zero live
+    calls."""
+    from sqlalchemy import text as sa_text
+    from app.services.embedder_registry import child_table, embedder_registry
+
+    cache_dir = tmp_path / "cache"
+    entries = _corpus(1)
+    gate = GateConfig()
+
+    warm = _StubLLM({}, cache_dir=str(cache_dir))
+    healthy = await run_ingest(warm, entries, gate)
+    assert healthy.live_calls > 0
+    assert run_smoke.find_outcome_failures(healthy.outcomes, len(entries)) == []
+
+    fingerprint = healthy.fingerprint
+    table = child_table("memory_embeddings", fingerprint)
+    try:
+        async with bench_db.engine.begin() as conn:
+            await conn.execute(sa_text(f"DROP TABLE {table} CASCADE"))
+        # embedder_registry still believes `fingerprint` is known -- this
+        # is the exact stale state a second reset_bench_db() used to leave
+        # behind before the bench_db.py fix (that fix now forgets it on
+        # every reset; here we recreate the state directly, without a
+        # reset, to test find_outcome_failures in isolation).
+        assert embedder_registry.is_known(fingerprint)
+
+        cold = _StubLLM({}, cache_dir=str(cache_dir))
+        broken = await run_ingest(cold, entries, gate)
+
+        assert broken.live_calls == 0
+        failures = run_smoke.find_outcome_failures(broken.outcomes, len(entries))
+        assert failures, "expected the gate to flag the silently-failed vector write"
+        assert any("vector" in f for f in failures)
+    finally:
+        embedder_registry.forget(fingerprint)
+
+
 # ── falsifiability: the zero-call assertion must be able to fail ──────
 
 

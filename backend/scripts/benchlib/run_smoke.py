@@ -7,6 +7,13 @@ chat_completion call the pipeline makes the second time around. See
 FROZEN.md for the ingestion-granularity decision this script exercises and
 the bench-DB LLM seeding this module performs.
 
+A zero live-call count only proves the cache was used; it says nothing
+about whether the pipeline's own writes actually succeeded underneath it.
+Both passes are also checked with find_outcome_failures(), independent of
+the live-call count, so a pass that silently failed to write its memories
+(a broken embedder partition, a bad graph write, ...) fails the gate even
+when nothing was billed for it.
+
 Run from backend/: python scripts/benchlib/run_smoke.py
 """
 from __future__ import annotations
@@ -137,6 +144,53 @@ async def seed_llm_purpose_configs(session_factory, deepseek_api_key: str) -> No
         await session.commit()
 
 
+def find_outcome_failures(outcomes: list[dict], expected_count: int) -> list[str]:
+    """Return one human-readable failure description per problem found in
+    a pass's outcomes; empty means the pass genuinely did its work.
+
+    A live-call count of 0 only proves the disk cache was used for every
+    embed/chat call attempted -- it says nothing about whether the write
+    that call was feeding actually landed. The stale embedder_registry bug
+    this task's bench_db.py fix addresses left live_calls == 0 (correctly,
+    from a warm cache) while every memory's vector/graph write silently
+    failed underneath it; this check is independent of live_calls by
+    design so it catches that shape of failure regardless of what the
+    call counter says.
+    """
+    failures: list[str] = []
+    if len(outcomes) != expected_count:
+        failures.append(f"expected {expected_count} outcomes, got {len(outcomes)}")
+    for outcome in outcomes:
+        memory_id = outcome.get("memory_id", "<unknown>")
+        for step in ("embed", "extract", "vector", "graph"):
+            if outcome.get(step) == "error":
+                failures.append(f"memory {memory_id}: {step} == 'error'")
+        if outcome.get("error"):
+            failures.append(f"memory {memory_id}: error={outcome['error']!r}")
+    return failures
+
+
+def summarize_pass(outcomes: list[dict]) -> str:
+    entities = sum(o.get("entities_count", 0) for o in outcomes)
+    relations = sum(o.get("relations_count", 0) for o in outcomes)
+    return f"{len(outcomes)} memories ingested, {entities} entities written, {relations} relations written"
+
+
+def _print_pass_failures(label: str, failures: list[str]) -> None:
+    print(
+        f"AFFORDABILITY GATE FAILED: {label} did not do its work cleanly "
+        "(this is independent of the live-call count):",
+        file=sys.stderr,
+    )
+    for failure in failures:
+        print(f"  - {failure}", file=sys.stderr)
+
+
+async def _reset_and_seed(deepseek_api_key: str) -> None:
+    await bench_db.reset_bench_db()
+    await seed_llm_purpose_configs(bench_db.session_factory, deepseek_api_key)
+
+
 def git_sha() -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -164,13 +218,13 @@ async def main() -> int:
     deepseek_api_key = require_deepseek_api_key()
 
     print("[1/5] resetting bench DB and seeding LLM purpose configs...")
-    await bench_db.reset_bench_db()
-    await seed_llm_purpose_configs(bench_db.session_factory, deepseek_api_key)
+    await _reset_and_seed(deepseek_api_key)
 
     async with bench_db.session_factory() as session:
         llm_config = await get_llm_config(session)
 
     entries = corpus.load_corpus(CORPUS_PATH)
+    expected_count = len(entries)
     gate = GateConfig()
     # One orchestrator, reused sequentially across both passes: IngestResult
     # .live_calls is a delta since run_ingest's own call, computed off this
@@ -179,17 +233,31 @@ async def main() -> int:
     # concurrent run_ingest calls -- the before/after window would race.
     orchestrator = CachingLLMOrchestrator(llm_config, cache_dir=str(CACHE_DIR))
 
-    print(f"[2/5] pass 1 (live): ingesting {len(entries)} smoke entries...")
+    print(f"[2/5] pass 1 (live): ingesting {expected_count} smoke entries...")
     first = await run_ingest(orchestrator, entries, gate)
     print(f"pass 1 live LLM calls: {first.live_calls}")
+    print(f"pass 1 work: {summarize_pass(first.outcomes)}")
+    # first.live_calls is reported, deliberately never asserted -- see
+    # FROZEN.md ("why pass 1's live-call count isn't asserted"): on a
+    # rerun against an already-warm cache pass 1 legitimately makes zero
+    # live calls too, and the outcomes check below is what actually
+    # detects a broken pipeline, independent of what got billed.
+    pass1_failures = find_outcome_failures(first.outcomes, expected_count)
+    if pass1_failures:
+        _print_pass_failures("pass 1", pass1_failures)
+        return 1
 
     print("[3/5] resetting bench DB for pass 2 (clean database, warm cache)...")
-    await bench_db.reset_bench_db()
-    await seed_llm_purpose_configs(bench_db.session_factory, deepseek_api_key)
+    await _reset_and_seed(deepseek_api_key)
 
-    print(f"[4/5] pass 2 (should be fully cached): ingesting {len(entries)} smoke entries...")
+    print(f"[4/5] pass 2 (should be fully cached): ingesting {expected_count} smoke entries...")
     second = await run_ingest(orchestrator, entries, gate)
     print(f"live LLM calls: {second.live_calls}")
+    print(f"pass 2 work: {summarize_pass(second.outcomes)}")
+    pass2_failures = find_outcome_failures(second.outcomes, expected_count)
+    if pass2_failures:
+        _print_pass_failures("pass 2", pass2_failures)
+        return 1
 
     record = build_run_record(second, first.live_calls, git_sha())
     ledger.record(record)

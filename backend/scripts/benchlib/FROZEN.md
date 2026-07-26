@@ -84,3 +84,19 @@ to the ledger. `run_smoke.require_deepseek_api_key()` fails with an explicit
 `RuntimeError` naming the missing environment variable if `DEEPSEEK_API_KEY`
 is unset, rather than letting a call reach the vendor and come back a bare
 401.
+
+## Why pass 1's live-call count is reported but deliberately not asserted
+
+`run_smoke.py` prints `pass 1 live LLM calls: N` but never asserts `N > 0`.
+This is intentional, not an oversight: the disk cache is keyed on content,
+not on which pass wrote it, so a rerun of `run_smoke.py` against an
+already-warm `smoke/cache/` directory (the normal case after the first
+invocation on a given machine) legitimately makes zero live calls on pass 1
+too — asserting `first.live_calls > 0` would make the gate fail on its own
+second consecutive run, which is useless for CI. The actual health check —
+`find_outcome_failures`, asserted on both passes — does not depend on
+`live_calls` at all: it reads each outcome's `embed`/`extract`/`vector`/
+`graph` status and `error` field directly, so a broken pipeline is caught
+whether the cache was cold or warm. Do not add a `first.live_calls > 0`
+assertion back in; it does not detect anything `find_outcome_failures`
+doesn't already catch, and it breaks idempotent re-runs.
