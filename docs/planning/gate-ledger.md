@@ -65,11 +65,13 @@ would be simultaneously loose on gold entities and hollow on held-out relations.
 **Allowance: 3 flips per dimension**, decomposed as:
 
 - **1 flip — re-measurement noise (measurement-anchored).** A warm-cache
-  `--algo-only` re-run reproduced both outputs byte-identically (drift exactly 0),
-  and at a fixed prompt the content-derived seed makes DeepSeek output stable, so
-  same-config noise is ~0 *measured*. The 1 flip is a judgement guard for the one
-  uncontrolled source: a silent vendor-side model update between this baseline and
-  the G-B run.
+  `--algo-only` re-run reproduced both outputs byte-identically — measured drift of
+  the deterministic passes + scorer over the cached raw outputs is exactly 0, which
+  is the G-A reproduction path. Vendor-side stability at a fixed prompt rests on the
+  content-derived seed (documented, and verified reachable with `seed` by the
+  controller on 2026-07-26 — not re-paid here; a second live pass per gold file is
+  forbidden). The 1 flip is a judgement guard for the one uncontrolled source: a
+  silent vendor-side model update between this baseline and the G-B run.
 - **2 flips — T1.17's planned prompt change (judgement, stated as such).** Phase 1
   merges classification into the extraction call and strips the prompt to
   schema + content + seed + minimal rules (doc 05 §6; the stripping is tagged
