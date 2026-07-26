@@ -1,8 +1,11 @@
 """LLM orchestrator that memoises embed + embed_batch + chat_completion to
 disk.
 
-Keyed by a content hash so a second bench run replays every model call from
-disk (self.live_calls stays 0). The parent calls are indirected through
+Keyed by a hash of the call's content AND the resolved purpose config, so a
+second bench run replays every model call from disk (self.live_calls stays 0)
+while a swapped model, base_url, api_kind or output-shaping param misses
+instead of replaying the previous configuration's answers under a new label.
+The parent calls are indirected through
 _live_embed / _live_embed_batch / _live_chat so tests can stub the model
 without a live backend.
 
@@ -23,6 +26,19 @@ def _key(kind: str, payload) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+# The resolved purpose fields that change what the model returns. api_key is
+# deliberately absent: rotating a credential does not change an answer, and a
+# secret has no business in a cache key.
+_KEYED_CONFIG_FIELDS = ("model", "base_url", "api_kind", "dimensions", "reasoning", "params")
+
+
+def _purpose_identity(config, purpose: str):
+    cfg = config.get(purpose) if config else None
+    if cfg is None:
+        return None
+    return {field: getattr(cfg, field, None) for field in _KEYED_CONFIG_FIELDS}
+
+
 class CachingLLMOrchestrator(LLMOrchestrator):
     def __init__(self, config, cache_dir: str):
         super().__init__(config)
@@ -34,6 +50,9 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         # checking this grows past one element. Callers that reuse one
         # orchestrator across multiple runs should .clear() it first.
         self.fingerprints_seen: set[str] = set()
+
+    def _embed_key(self, text: str) -> str:
+        return _key("embed", [text, _purpose_identity(self.config, "embedding")])
 
     def _read(self, key: str):
         path = os.path.join(self._cache_dir, key + ".json")
@@ -57,7 +76,7 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         return await super().chat_completion(purpose, messages, **kwargs)
 
     async def embed(self, text: str):
-        key = _key("embed", text)
+        key = self._embed_key(text)
         hit = self._read(key)
         if hit is not None:
             return hit[0], hit[1]
@@ -86,7 +105,7 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         if not texts:
             return [], self.llm_fingerprint()
 
-        keys = [_key("embed", t) for t in texts]
+        keys = [self._embed_key(t) for t in texts]
         resolved: list[list | None] = [None] * len(texts)
         miss_positions = []
         for i, key in enumerate(keys):
@@ -123,7 +142,9 @@ class CachingLLMOrchestrator(LLMOrchestrator):
         return vectors, fingerprint
 
     async def chat_completion(self, purpose, messages, **kwargs):
-        key = _key("chat", [purpose, messages, sorted(kwargs.items())])
+        key = _key("chat", [
+            purpose, _purpose_identity(self.config, purpose), messages, sorted(kwargs.items()),
+        ])
         hit = self._read(key)
         if hit is not None:
             return hit

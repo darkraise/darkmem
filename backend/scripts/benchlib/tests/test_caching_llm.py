@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.config import LLMPurposeConfig
@@ -131,3 +133,144 @@ async def test_embed_batch_tracks_fingerprints_seen(tmp_path):
     assert llm.fingerprints_seen == set()
     await llm.embed_batch(["a"])
     assert llm.fingerprints_seen == {"stub-fp"}
+
+
+# ── the key must carry the resolved purpose config ────────────────────
+
+
+class _Labelled(CachingLLMOrchestrator):
+    """Answers with the model name it was configured with, so a replayed
+    answer from another configuration is visible in the value itself."""
+    async def _live_embed(self, text):
+        return ([len(self.config["embedding"].model)], "stub-fp")
+
+    async def _live_embed_batch(self, texts):
+        return ([[len(self.config["embedding"].model)] for _ in texts], "stub-fp")
+
+    async def _live_chat(self, purpose, messages, **kwargs):
+        return json.dumps({"answered_by": self.config[purpose].model})
+
+
+def _chat_config(model: str, **overrides):
+    return {"extraction": LLMPurposeConfig(model=model, **overrides)}
+
+
+@pytest.mark.asyncio
+async def test_a_model_swap_misses_the_cache_instead_of_replaying(tmp_path):
+    """The reviewed defect: warm the cache under one extraction model, swap
+    the seeded model to evaluate a new extractor, and the rerun replayed the
+    old model's outputs at live_calls == 0 -- a green, zero-cost run whose
+    ledger record implies metrics for a model that never ran."""
+    messages = [{"role": "user", "content": "extract this"}]
+
+    old = _Labelled(_chat_config("deepseek-v4-flash"), cache_dir=str(tmp_path))
+    assert json.loads(await old.chat_completion("extraction", messages))["answered_by"] == (
+        "deepseek-v4-flash"
+    )
+
+    new = _Labelled(_chat_config("deepseek-v5-thinking"), cache_dir=str(tmp_path))
+    answer = json.loads(await new.chat_completion("extraction", messages))
+
+    assert answer["answered_by"] == "deepseek-v5-thinking"
+    assert new.live_calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [
+    ("base_url", "https://api.example.com/v1"),
+    ("api_kind", "ollama"),
+    ("reasoning", True),
+    ("params", {"temperature": 0.9}),
+])
+async def test_every_output_shaping_purpose_field_invalidates_the_chat_cache(
+    tmp_path, field, value,
+):
+    messages = [{"role": "user", "content": "extract this"}]
+    base = _chat_config("deepseek-v4-flash")
+
+    first = _Labelled(base, cache_dir=str(tmp_path))
+    await first.chat_completion("extraction", messages)
+
+    second = _Labelled(
+        _chat_config("deepseek-v4-flash", **{field: value}), cache_dir=str(tmp_path),
+    )
+    await second.chat_completion("extraction", messages)
+
+    assert second.live_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_rotating_the_api_key_alone_still_hits_the_cache(tmp_path):
+    """A credential does not change an answer, so it must not invalidate --
+    and it must never be part of what the key is derived from."""
+    messages = [{"role": "user", "content": "extract this"}]
+
+    first = _Labelled(_chat_config("deepseek-v4-flash", api_key="sk-old"), cache_dir=str(tmp_path))
+    await first.chat_completion("extraction", messages)
+
+    second = _Labelled(_chat_config("deepseek-v4-flash", api_key="sk-new"), cache_dir=str(tmp_path))
+    await second.chat_completion("extraction", messages)
+
+    assert second.live_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_an_embedding_model_swap_misses_the_cache(tmp_path):
+    old_config = {"embedding": LLMPurposeConfig(model="qwen3-embedding:0.6b", dimensions=1)}
+    new_config = {"embedding": LLMPurposeConfig(model="nomic-embed-text", dimensions=1)}
+
+    old = _Labelled(old_config, cache_dir=str(tmp_path))
+    old_vecs, _ = await old.embed_batch(["some text"])
+
+    new = _Labelled(new_config, cache_dir=str(tmp_path))
+    new_vecs, _ = await new.embed_batch(["some text"])
+
+    assert new.live_calls == 1
+    assert new_vecs != old_vecs
+
+
+@pytest.mark.asyncio
+async def test_changing_the_embedding_dimensions_misses_the_cache(tmp_path):
+    """dimensions names the partition a cached vector belongs to
+    (llm_fingerprint() is model|dimensions), so a change must not replay
+    vectors labelled for the old partition."""
+    first = _Labelled(
+        {"embedding": LLMPurposeConfig(model="qwen3-embedding:0.6b", dimensions=1024)},
+        cache_dir=str(tmp_path),
+    )
+    await first.embed_batch(["some text"])
+
+    second = _Labelled(
+        {"embedding": LLMPurposeConfig(model="qwen3-embedding:0.6b", dimensions=768)},
+        cache_dir=str(tmp_path),
+    )
+    await second.embed_batch(["some text"])
+
+    assert second.live_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_an_unchanged_config_still_replays_from_disk(tmp_path):
+    """Falsifiability: the misses above must come from the config change,
+    not from a key that never hits."""
+    messages = [{"role": "user", "content": "extract this"}]
+    config = {
+        **_chat_config("deepseek-v4-flash"),
+        "embedding": LLMPurposeConfig(model="qwen3-embedding:0.6b", dimensions=1),
+    }
+
+    warm = _Labelled(config, cache_dir=str(tmp_path))
+    await warm.chat_completion("extraction", messages)
+    await warm.embed_batch(["some text"])
+
+    class _NoLiveCalls(_Labelled):
+        async def _live_chat(self, purpose, messages, **kwargs):
+            raise AssertionError("must not hit the model on an unchanged config")
+
+        async def _live_embed_batch(self, texts):
+            raise AssertionError("must not hit the model on an unchanged config")
+
+    cold = _NoLiveCalls(config, cache_dir=str(tmp_path))
+    await cold.chat_completion("extraction", messages)
+    await cold.embed_batch(["some text"])
+    assert cold.live_calls == 0
