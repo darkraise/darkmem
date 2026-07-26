@@ -50,14 +50,135 @@ Three probes, all of which must hold:
 
 | Dimension | Gold P / R / F1 | Held-out P / R / F1 |
 |---|---|---|
-| Entity, name only | — | — |
-| Entity, name + type | — | — |
-| Relation, pair only | — | — |
-| Relation, full triple | — | — |
+| Entity, name only | 0.985 / 0.928 / 0.955 | 1.000 / 0.867 / 0.929 |
+| Entity, name + type | 0.954 / 0.899 / 0.925 | 0.962 / 0.833 / 0.893 |
+| Relation, pair only | 0.943 / 0.846 / 0.892 | 0.846 / 0.550 / 0.667 |
+| Relation, full triple | 0.914 / 0.821 / 0.865 | 0.846 / 0.550 / 0.667 |
 
-**Stated G-B parity tolerance:** _(set in T0.05, before Phase 1 starts)_ — …
+**Stated G-B parity tolerance:** (set in T0.05, 2026-07-26, before Phase 1 starts) —
+one-sided (a rise never fails), per dimension (never aggregated, rule 4), on F1,
+measured with the same model and seeded stack as this baseline. The unit is the
+**item flip** — one gold item lost from a dimension's counts (worst case, a tp
+becoming an fn) — because F1-per-item spans ~5× across the eight cells (0.008 on
+gold entities to 0.042 on held-out relations), so a flat absolute-F1 tolerance
+would be simultaneously loose on gold entities and hollow on held-out relations.
+**Allowance: 3 flips per dimension**, decomposed as:
 
-Run context: git sha —, model —, fingerprint —, date —.
+- **1 flip — re-measurement noise (measurement-anchored).** A warm-cache
+  `--algo-only` re-run reproduced both outputs byte-identically (drift exactly 0),
+  and at a fixed prompt the content-derived seed makes DeepSeek output stable, so
+  same-config noise is ~0 *measured*. The 1 flip is a judgement guard for the one
+  uncontrolled source: a silent vendor-side model update between this baseline and
+  the G-B run.
+- **2 flips — T1.17's planned prompt change (judgement, stated as such).** Phase 1
+  merges classification into the extraction call and strips the prompt to
+  schema + content + seed + minimal rules (doc 05 §6; the stripping is tagged
+  rebuild). That invalidates the whole cache (the prompt is in the key) and
+  re-samples every raw output. The deterministic passes' contract (T1.24a–f) is to
+  recover *systematic* losses, so this budget deliberately does **not** subsidise a
+  degraded port — it covers only irreducible borderline re-rolls: items the raw
+  model may drop under an altered prompt that no post-processing pass can rescue (a
+  pass cannot invent an unmentioned entity). This run's diffs show that class is
+  real (type-flips on "phoenix v2" in e8/e15; "design doc" missed in both gold e17
+  and held-out h8). Its magnitude cannot be measured until the merged prompt
+  exists; 2 flips is the stated judgement.
+
+Floors (worst-case arithmetic: all 3 flips taken as lost gold items against the
+frozen tp/fp/fn above):
+
+| Dimension | Gold F1 floor | Held-out F1 floor |
+|---|---|---|
+| Entity, name only | 0.931 | 0.868 |
+| Entity, name + type | 0.901 | 0.830 |
+| Relation, pair only | 0.845 | 0.533* |
+| Relation, full triple | 0.817 | 0.533* |
+
+\* The held-out relation slice holds only 20 gold relations and its baseline misses
+are cascade-dominated (h3 alone is 6 of the 9 fns, all downstream of three missed
+root entities), so a bare floor there is nearly hollow. The starred cells therefore
+carry a second, countable condition: if a G-B run lands below the 0.667 baseline on
+either starred cell, its ledger entry must include the `--diffs` triage grouping
+newly missed relations (relative to this baseline's misses) by their missing
+subject entity — the run passes only if **at most one** distinct root entity
+accounts for all new relation misses *and* the 0.533 floor holds. Two or more
+distinct new roots fail the gate regardless of the floor: that is systematic
+relation loss, not one cascade.
+
+Scope: this tolerance judges G-B's live re-measurement under the Phase-1 prompt.
+G-A's reproduction probe is exact-match from the warm cache (`--algo-only`, zero
+model calls, tolerance 0). Not comparable across models: the 2026-07-22
+cerebras/gpt-oss-120b numbers (ent_nt 0.941 / rel_full 0.923 on gold, darkmem
+memory `3de71b1c`) are a different model's; this baseline is deepseek-v4-flash's,
+and G-B must be measured with the same model.
+
+Run context: git sha `a63675c515c88ea7089bf911dc68389e9dcc86dd`, model
+`deepseek-v4-flash` (`api_kind=deepseek`, `https://api.deepseek.com/v1`, seeded
+into `darkmem_bench` by `benchlib.run_smoke.seed_llm_purpose_configs`, key from
+`DEEPSEEK_API_KEY`, empty params so vendor-default temperature, content-derived
+seed forwarded), fingerprint: extraction-prompt sha256[:16] = `775ca7c45ed9a06a`
+(the cache-key prompt component; the bench embeds nothing, so no embedder
+fingerprint applies), date 2026-07-26. Cache:
+`backend/scripts/extraction_bench/.cache/`, 36 entries, machine-local (gitignored).
+
+Verbatim output — `run_bench.py` (gold.json), live, 2026-07-26:
+
+```
+================ PER-MEMORY (entity F1 / relation F1) ================
+  e1    ent=1.00  rel=1.00
+  e2    ent=1.00  rel=1.00
+  e3    ent=1.00  rel=1.00
+  e4    ent=1.00  rel=1.00
+  e5    ent=1.00  rel=1.00
+  e6    ent=1.00  rel=1.00
+  e7    ent=1.00  rel=1.00
+  e8    ent=0.50  rel=1.00  <--
+  e9    ent=1.00  rel=1.00
+  e10   ent=1.00  rel=1.00
+  e11   ent=1.00  rel=1.00
+  e12   ent=1.00  rel=1.00
+  e13   ent=0.67  rel=1.00  <--
+  e14   ent=0.86  rel=0.80
+  e15   ent=0.50  rel=1.00  <--
+  e16   ent=1.00  rel=1.00
+  e17   ent=0.80  rel=0.00  <--
+  e18   ent=0.80  rel=0.67  <--
+  e19   ent=1.00  rel=1.00
+  e20   ent=1.00  rel=1.00
+  e21   ent=0.86  rel=0.50  <--
+  e22   ent=1.00  rel=0.00  <--
+  e23   ent=1.00  rel=0.00  <--
+  e24   ent=0.80  rel=1.00
+  e25   ent=1.00  rel=1.00
+  e26   ent=1.00  rel=0.00  <--
+
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.954 R=0.899 F1=0.925   (tp=62 fp=3 fn=7)
+  Entity (name only)               P=0.985 R=0.928 F1=0.955   (tp=64 fp=1 fn=5)
+  Relation (s,TYPE,t)              P=0.914 R=0.821 F1=0.865   (tp=32 fp=3 fn=7)
+  Relation (s,t) type-agnostic     P=0.943 R=0.846 F1=0.892   (tp=33 fp=2 fn=6)
+```
+
+Verbatim output — `run_bench.py --gold gold_heldout.json`, live, 2026-07-26:
+
+```
+================ PER-MEMORY (entity F1 / relation F1) ================
+  h1    ent=1.00  rel=1.00
+  h2    ent=1.00  rel=1.00
+  h3    ent=0.57  rel=0.00  <--
+  h4    ent=1.00  rel=1.00
+  h5    ent=1.00  rel=1.00
+  h6    ent=1.00  rel=1.00
+  h7    ent=0.80  rel=0.80
+  h8    ent=0.80  rel=0.00  <--
+  h9    ent=1.00  rel=0.00  <--
+  h10   ent=1.00  rel=1.00
+
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.962 R=0.833 F1=0.893   (tp=25 fp=1 fn=5)
+  Entity (name only)               P=1.000 R=0.867 F1=0.929   (tp=26 fp=0 fn=4)
+  Relation (s,TYPE,t)              P=0.846 R=0.550 F1=0.667   (tp=11 fp=2 fn=9)
+  Relation (s,t) type-agnostic     P=0.846 R=0.550 F1=0.667   (tp=11 fp=2 fn=9)
+```
 
 ---
 
