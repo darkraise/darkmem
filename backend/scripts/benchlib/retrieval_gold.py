@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from benchlib.corpus import load_corpus
@@ -65,6 +65,8 @@ def load_retrieval_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
     entries = load_corpus(path)
     seen_ids: set[uuid.UUID] = set()
     seen_keys: set[str] = set()
+    group_dates: dict[str, set[str]] = {}
+    group_sizes: dict[str, int] = {}
     for idx, entry in enumerate(entries):
         raw_id = entry.get("memory_id")
         try:
@@ -104,6 +106,28 @@ def load_retrieval_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
                 f"{key!r} (expected {expected_id}); mint ids with "
                 "memory_id_for_key, never by hand"
             )
+
+        group = entry.get("group")
+        if group is not None:
+            if not isinstance(group, str) or not group:
+                raise ValueError(f"entry {idx}: 'group' must be a non-empty string")
+            if raw_created in group_dates.setdefault(group, set()):
+                raise ValueError(
+                    f"entry {idx}: group {group!r} has two members with "
+                    f"created_at {raw_created} -- 'newest' would be ill-defined"
+                )
+            group_dates[group].add(raw_created)
+            group_sizes[group] = group_sizes.get(group, 0) + 1
+        speculative = entry.get("speculative")
+        if speculative is not None and not isinstance(speculative, bool):
+            raise ValueError(f"entry {idx}: 'speculative' must be a boolean")
+
+    lone = sorted(g for g, n in group_sizes.items() if n < 2)
+    if lone:
+        raise ValueError(
+            f"group(s) {lone} have a single member; temporal and update groups "
+            "exist to hold siblings"
+        )
     return entries
 
 
@@ -181,6 +205,10 @@ def load_retrieval_gold(path: str | Path = GOLD_PATH) -> dict:
                 "tests nothing; it needs >= 2 relevant_memory_ids"
             )
 
+        anchor = pair.get("anchor")
+        if anchor is not None and anchor not in ("current", "whole-group"):
+            raise ValueError(f"pair {pid}: unknown anchor {anchor!r}")
+
         if not pair.get("retired"):
             computed[tag] += 1
 
@@ -202,20 +230,91 @@ def load_retrieval_gold(path: str | Path = GOLD_PATH) -> dict:
 
 
 def validate_gold_against_corpus(gold: dict, entries: list[dict]) -> None:
-    """Every ``relevant_memory_ids`` entry must resolve to a memory the
-    corpus actually declares -- gold pointing at ids the seeded bench DB will
-    never contain is gold nobody can score against.
+    """Cross-file validation of the gold pairs against the corpus.
+
+    Two duties. First, every ``relevant_memory_ids`` entry must resolve to a
+    memory the corpus actually declares -- gold pointing at ids the seeded
+    bench DB will never contain is gold nobody can score against. Second,
+    anchored pairs must still hold against the group state they were
+    adjudicated under: a pair whose gold is "the current truth" or "the whole
+    story" goes stale the moment a newer sibling is appended to its corpus
+    group, so appending a t2d snapshot or a definitive u6c replacement must
+    fail here -- forcing re-adjudication under retire-and-replace -- instead
+    of silently marking the wrong memory relevant.
+
+    Anchor semantics:
+    - ``current``: every relevant memory that belongs to a group must be the
+      newest non-speculative member of that group. Covers latest-anchored
+      temporal pairs, definitive-update present-state pairs, and speculative
+      traps in one rule (a speculative newest member does not displace the
+      older truth).
+    - ``whole-group``: the relevant set must equal one group's full
+      membership (change-status queries -- any group growth changes the
+      story and requires re-adjudication).
 
     Raises:
-        ValueError: Naming the first dangling id and its pair.
+        ValueError: Naming the offending pair and why.
     """
     declared_ids = {str(e["memory_id"]) for e in entries}
+    by_id = {str(e["memory_id"]): e for e in entries}
+    groups: dict[str, list[dict]] = {}
+    for entry in entries:
+        group = entry.get("group")
+        if group:
+            groups.setdefault(group, []).append(entry)
+
     for pair in gold["pairs"]:
         for rid in pair["relevant_memory_ids"]:
             if str(rid) not in declared_ids:
                 raise ValueError(
                     f"pair {pair['id']}: relevant memory {rid} is not declared "
                     "by the corpus"
+                )
+        if pair.get("retired"):
+            continue
+
+        anchor = pair.get("anchor")
+        if anchor == "current":
+            grouped = [
+                by_id[str(rid)]
+                for rid in pair["relevant_memory_ids"]
+                if by_id[str(rid)].get("group")
+            ]
+            if not grouped:
+                raise ValueError(
+                    f"pair {pair['id']}: anchor 'current' is inert without at "
+                    "least one relevant memory in a corpus group"
+                )
+            for entry in grouped:
+                members = groups[entry["group"]]
+                candidates = [m for m in members if not m.get("speculative")]
+                newest = max(
+                    candidates,
+                    key=lambda m: datetime.fromisoformat(m["created_at"]),
+                )
+                if entry["memory_id"] != newest["memory_id"]:
+                    raise ValueError(
+                        f"pair {pair['id']}: anchor 'current' but "
+                        f"{entry['key']} is no longer the newest "
+                        f"non-speculative member of group {entry['group']!r} "
+                        f"({newest['key']} is) -- re-adjudicate the pair under "
+                        "retire-and-replace"
+                    )
+        elif anchor == "whole-group":
+            relevant = {str(rid) for rid in pair["relevant_memory_ids"]}
+            member_groups = {by_id[rid].get("group") for rid in relevant}
+            if len(member_groups) != 1 or None in member_groups:
+                raise ValueError(
+                    f"pair {pair['id']}: anchor 'whole-group' needs every "
+                    "relevant memory in one corpus group"
+                )
+            group = next(iter(member_groups))
+            member_ids = {m["memory_id"] for m in groups[group]}
+            if relevant != member_ids:
+                raise ValueError(
+                    f"pair {pair['id']}: anchor 'whole-group' but the relevant "
+                    f"set no longer equals group {group!r}'s full membership "
+                    "-- re-adjudicate the pair under retire-and-replace"
                 )
 
 
@@ -234,10 +333,11 @@ async def seed_memory_rows(session_factory, entries: list[dict]) -> list[dict]:
     carries the declared date instead of the server stamp.
     """
     from app.models.memory import Memory
+    from benchlib.ingest import _parse_created_at
 
     prepared: list[dict] = []
     async with session_factory() as session:
-        for entry in entries:
+        for idx, entry in enumerate(entries):
             memory = Memory(
                 id=uuid.UUID(str(entry["memory_id"])),
                 content=entry["content"],
@@ -247,9 +347,7 @@ async def seed_memory_rows(session_factory, entries: list[dict]) -> list[dict]:
                 metadata_=entry.get("metadata", {}),
                 project=entry.get("project", "default"),
             )
-            created = datetime.fromisoformat(entry["created_at"])
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
+            created = _parse_created_at(entry["created_at"], idx)
             memory.created_at = created
             session.add(memory)
             prepared.append({

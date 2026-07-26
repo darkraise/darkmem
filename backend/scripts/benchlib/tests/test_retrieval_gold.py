@@ -49,8 +49,16 @@ def test_the_seven_slices_are_exactly_the_doc_17_ones():
     assert SLICES == QUERY_TYPE_SLICES | CAPABILITY_SLICES
 
 
+CURRENT_ANCHORED = {
+    "rg-0078", "rg-0080", "rg-0082", "rg-0083", "rg-0086", "rg-0088",
+    "rg-0089", "rg-0090", "rg-0091", "rg-0092", "rg-0093", "rg-0094",
+    "rg-0095", "rg-0096", "rg-0097", "rg-0098", "rg-0101", "rg-0103",
+}
+WHOLE_GROUP_ANCHORED = {"rg-0100", "rg-0102"}
+
+
 def test_gold_loads_and_declares_version_and_counts(gold):
-    assert gold["version"] == 1
+    assert gold["version"] == 2
     assert gold["declared_slice_counts"] == DOCUMENTED_COUNTS
 
 
@@ -129,16 +137,118 @@ def test_pair_ids_are_unique_and_appended_in_order(gold):
     assert ids == sorted(ids)
 
 
-def test_queries_are_nonempty_and_unique(gold):
-    queries = [p["query"] for p in gold["pairs"]]
-    assert all(q.strip() for q in queries)
-    assert len(set(queries)) == len(queries)
+def test_queries_are_nonempty_and_unique_among_live_pairs(gold):
+    # A retired pair keeps its content forever, and its replacement may
+    # legitimately reuse the query (rg-0099 -> rg-0103), so uniqueness is
+    # asserted over the live set only.
+    assert all(p["query"].strip() for p in gold["pairs"])
+    live = [p["query"] for p in gold["pairs"] if not p.get("retired")]
+    assert len(set(live)) == len(live)
 
 
 def test_multi_hop_pairs_need_at_least_two_memories(gold):
     for pair in gold["pairs"]:
         if pair["slice_tags"][0] == "multi-hop" and not pair.get("retired"):
             assert len(pair["relevant_memory_ids"]) >= 2
+
+
+def test_anchor_flags_match_the_adjudicated_sets(gold):
+    """Pins which pairs are group-anchored, so silently dropping a flag (and
+    with it the staleness guard) is as visible as dropping a pair."""
+    current = {p["id"] for p in gold["pairs"]
+               if p.get("anchor") == "current" and not p.get("retired")}
+    whole = {p["id"] for p in gold["pairs"]
+             if p.get("anchor") == "whole-group" and not p.get("retired")}
+    assert current == CURRENT_ANCHORED
+    assert whole == WHOLE_GROUP_ANCHORED
+
+
+def test_appending_a_newer_snapshot_fails_latest_anchored_pairs(gold, corpus):
+    """The trap Important-3 exists for: a contributor appends a t2d "pool at
+    91%" memory and every latest-anchored pair over t2 must fail validation
+    instead of silently marking the stale snapshot relevant."""
+    grown = json.loads(json.dumps(corpus))
+    grown.append({
+        "key": "t2d-pool-91",
+        "memory_id": retrieval_gold.memory_id_for_key("t2d-pool-91"),
+        "content": "The storage pool has reached 91% capacity.",
+        "memory_type": "fact",
+        "source": "bench",
+        "created_at": "2026-07-01T00:00:00+00:00",
+        "project": "default",
+        "group": "t2",
+    })
+    with pytest.raises(ValueError, match="rg-0080.*retire-and-replace"):
+        validate_gold_against_corpus(gold, grown)
+
+
+def test_appending_a_definitive_update_fails_present_state_pairs(gold, corpus):
+    """A definitive u6c replacement makes u6a stale truth: the speculative
+    trap's present-state pair must fail, not keep scoring u6a as gold."""
+    grown = json.loads(json.dumps(corpus))
+    grown.append({
+        "key": "u6c-metrics-vector",
+        "memory_id": retrieval_gold.memory_id_for_key("u6c-metrics-vector"),
+        "content": "Metrics collection moved from Telegraf to Vector; the bake-off is over.",
+        "memory_type": "decision",
+        "source": "bench",
+        "created_at": "2026-06-20T00:00:00+00:00",
+        "project": "default",
+        "group": "u6",
+    })
+    with pytest.raises(ValueError, match="rg-010[03].*retire-and-replace"):
+        validate_gold_against_corpus(gold, grown)
+
+
+def test_a_newer_speculative_sibling_does_not_stale_current_anchors(gold, corpus):
+    """The 'current' rule is newest NON-speculative: another rumour about a
+    switch does not displace the standing truth, so validation stays green
+    for 'current' pairs -- only the whole-group change-status pairs demand
+    re-adjudication when the group grows."""
+    grown = json.loads(json.dumps(corpus))
+    grown.append({
+        "key": "u7c-forgejo-still-maybe",
+        "memory_id": retrieval_gold.memory_id_for_key("u7c-forgejo-still-maybe"),
+        "content": "Still weighing the Forgejo switch; no decision yet.",
+        "memory_type": "decision",
+        "source": "bench",
+        "created_at": "2026-07-01T00:00:00+00:00",
+        "project": "default",
+        "group": "u7",
+        "speculative": True,
+    })
+    with pytest.raises(ValueError, match="rg-0102.*whole-group"):
+        validate_gold_against_corpus(gold, grown)
+
+
+def test_corpus_loader_rejects_a_group_with_duplicate_dates(tmp_path, corpus):
+    broken = json.loads(json.dumps(corpus))
+    t2 = [e for e in broken if e.get("group") == "t2"]
+    t2[1]["created_at"] = t2[0]["created_at"]
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps({"memories": broken}), encoding="utf-8")
+    with pytest.raises(ValueError, match="ill-defined"):
+        load_retrieval_corpus(path)
+
+
+def test_corpus_loader_rejects_a_single_member_group(tmp_path, corpus):
+    broken = json.loads(json.dumps(corpus))
+    for entry in broken:
+        if entry["key"] == "t2c-pool-83":
+            entry["group"] = "t9"
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps({"memories": broken}), encoding="utf-8")
+    with pytest.raises(ValueError, match="single member"):
+        load_retrieval_corpus(path)
+
+
+def test_gold_loader_rejects_an_unknown_anchor(tmp_path, gold):
+    broken = json.loads(json.dumps(gold))
+    broken["pairs"][0]["anchor"] = "newest"
+    path = tmp_path / "gold.json"
+    path.write_text(json.dumps(broken), encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown anchor"):
+        load_retrieval_gold(path)
 
 
 def test_loader_rejects_an_untabled_slice_tag(tmp_path, gold):

@@ -1,6 +1,6 @@
 {
   "_notes": "Retrieval gold pairs (query, relevant_memory_ids, slice_tags), doc 17 par.4/par.11. Append-only: add new pairs at the end with the next rg- id; retire a wrong pair in place with \"retired\": true and a reason in notes; never delete, rewrite, or reorder past entries. Slice decision procedures and negative examples live in SLICES.md; declared_slice_counts counts non-retired pairs and must be updated with every append.",
-  "version": 1,
+  "version": 2,
   "corpus": "corpus.json",
   "declared_slice_counts": {
     "exact": 12,
@@ -882,7 +882,8 @@
       "relevant_memory_ids": [
         "99f80c4e-5db9-5a84-96a0-383f9c86b569"
       ],
-      "notes": "t1 latest"
+      "notes": "t1 latest",
+      "anchor": "current"
     },
     {
       "id": "rg-0079",
@@ -904,7 +905,8 @@
       "relevant_memory_ids": [
         "b940342b-3d54-5768-a67b-a98a8d5af24b"
       ],
-      "notes": "t2 latest"
+      "notes": "t2 latest",
+      "anchor": "current"
     },
     {
       "id": "rg-0081",
@@ -926,7 +928,8 @@
       "relevant_memory_ids": [
         "65bdfcb6-642e-5651-b836-58c9706a2781"
       ],
-      "notes": "t3 latest"
+      "notes": "t3 latest",
+      "anchor": "current"
     },
     {
       "id": "rg-0083",
@@ -937,7 +940,8 @@
       "relevant_memory_ids": [
         "0bf530e4-b080-5ba6-8eec-083e94146167"
       ],
-      "notes": "t4 latest; sibling t4a"
+      "notes": "t4 latest; sibling t4a",
+      "anchor": "current"
     },
     {
       "id": "rg-0084",
@@ -970,7 +974,8 @@
       "relevant_memory_ids": [
         "bc4de61a-cc77-5a75-910e-d8e601b8180b"
       ],
-      "notes": "t5 latest"
+      "notes": "t5 latest",
+      "anchor": "current"
     },
     {
       "id": "rg-0087",
@@ -992,7 +997,8 @@
       "relevant_memory_ids": [
         "d5a9162a-9ea5-5053-8594-1150c547e99e"
       ],
-      "notes": "t6 latest"
+      "notes": "t6 latest",
+      "anchor": "current"
     },
     {
       "id": "rg-0089",
@@ -1003,7 +1009,8 @@
       "relevant_memory_ids": [
         "a1b72e41-3103-5b35-b241-441913cbc6aa"
       ],
-      "notes": "u1 definitive; stale trap u1a"
+      "notes": "u1 definitive; stale trap u1a",
+      "anchor": "current"
     },
     {
       "id": "rg-0090",
@@ -1014,7 +1021,8 @@
       "relevant_memory_ids": [
         "a1b72e41-3103-5b35-b241-441913cbc6aa"
       ],
-      "notes": "u1 definitive, second phrasing"
+      "notes": "u1 definitive, second phrasing",
+      "anchor": "current"
     },
     {
       "id": "rg-0091",
@@ -1025,7 +1033,8 @@
       "relevant_memory_ids": [
         "0219c208-1122-5c1e-8fbf-0996a051b4e7"
       ],
-      "notes": "u2 definitive; stale trap u2a"
+      "notes": "u2 definitive; stale trap u2a",
+      "anchor": "current"
     },
     {
       "id": "rg-0092",
@@ -1036,7 +1045,8 @@
       "relevant_memory_ids": [
         "0219c208-1122-5c1e-8fbf-0996a051b4e7"
       ],
-      "notes": "u2 definitive, second phrasing"
+      "notes": "u2 definitive, second phrasing",
+      "anchor": "current"
     },
     {
       "id": "rg-0093",
@@ -1047,7 +1057,8 @@
       "relevant_memory_ids": [
         "1ffca2a1-ed6a-5195-99ba-92ced36116f0"
       ],
-      "notes": "u3 definitive; stale trap u3a"
+      "notes": "u3 definitive; stale trap u3a",
+      "anchor": "current"
     },
     {
       "id": "rg-0094",
@@ -1058,7 +1069,8 @@
       "relevant_memory_ids": [
         "1ffca2a1-ed6a-5195-99ba-92ced36116f0"
       ],
-      "notes": "u3 definitive, second phrasing"
+      "notes": "u3 definitive, second phrasing",
+      "anchor": "current"
     },
     {
       "id": "rg-0095",
@@ -1069,7 +1081,8 @@
       "relevant_memory_ids": [
         "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f"
       ],
-      "notes": "u4 definitive; stale trap u4a"
+      "notes": "u4 definitive; stale trap u4a",
+      "anchor": "current"
     },
     {
       "id": "rg-0096",
@@ -1080,7 +1093,8 @@
       "relevant_memory_ids": [
         "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f"
       ],
-      "notes": "u4 definitive, second phrasing"
+      "notes": "u4 definitive, second phrasing",
+      "anchor": "current"
     },
     {
       "id": "rg-0097",
@@ -1091,7 +1105,8 @@
       "relevant_memory_ids": [
         "6a99747f-58b0-5faf-886a-3129e6455b84"
       ],
-      "notes": "u5 definitive; stale trap u5a"
+      "notes": "u5 definitive; stale trap u5a",
+      "anchor": "current"
     },
     {
       "id": "rg-0098",
@@ -1102,7 +1117,8 @@
       "relevant_memory_ids": [
         "6a99747f-58b0-5faf-886a-3129e6455b84"
       ],
-      "notes": "u5 definitive, second phrasing"
+      "notes": "u5 definitive, second phrasing",
+      "anchor": "current"
     },
     {
       "id": "rg-0099",
@@ -1113,7 +1129,8 @@
       "relevant_memory_ids": [
         "aad9fa2a-1b75-5cd8-9c30-f7b3ca5c80fe"
       ],
-      "notes": "u6 speculative: the newer memory only considers a move, so the OLD memory is still the truth"
+      "notes": "u6 speculative: the newer memory only considers a move, so the OLD memory is still the truth; retired 2026-07-26: review adjudicated s02 (Prometheus node-exporter scraping) co-relevant -- replaced by rg-0103",
+      "retired": true
     },
     {
       "id": "rg-0100",
@@ -1125,7 +1142,8 @@
         "aad9fa2a-1b75-5cd8-9c30-f7b3ca5c80fe",
         "5b815f89-99f7-5b1f-b0c1-0428f8371903"
       ],
-      "notes": "u6 change-status query: both members needed"
+      "notes": "u6 change-status query: both members needed",
+      "anchor": "whole-group"
     },
     {
       "id": "rg-0101",
@@ -1136,7 +1154,8 @@
       "relevant_memory_ids": [
         "db541e5c-93c5-552a-a13c-7f241dc2ff49"
       ],
-      "notes": "u7 speculative: newer memory is a might-switch, old memory remains correct"
+      "notes": "u7 speculative: newer memory is a might-switch, old memory remains correct",
+      "anchor": "current"
     },
     {
       "id": "rg-0102",
@@ -1148,7 +1167,21 @@
         "db541e5c-93c5-552a-a13c-7f241dc2ff49",
         "a724ff64-e0db-556f-a85f-923079b61c5b"
       ],
-      "notes": "u7 change-status query: both members needed"
+      "notes": "u7 change-status query: both members needed",
+      "anchor": "whole-group"
+    },
+    {
+      "id": "rg-0103",
+      "query": "What collects internal metrics today?",
+      "slice_tags": [
+        "knowledge-update"
+      ],
+      "relevant_memory_ids": [
+        "aad9fa2a-1b75-5cd8-9c30-f7b3ca5c80fe",
+        "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+      ],
+      "notes": "replaces retired rg-0099: s02 adjudicated co-relevant (node-exporter scraping is internal-metrics collection); u6a still required and u6b still the recency trap",
+      "anchor": "current"
     }
   ]
 }

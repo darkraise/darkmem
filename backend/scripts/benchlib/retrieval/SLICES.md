@@ -18,6 +18,18 @@ Files: `corpus.json` (72 memories, fixed `memory_id` UUIDs + declared
   pins the documented numbers, so both move together, visibly.
 - **One slice tag per pair** (v1 discipline). A query that seems to belong
   to two slices is a badly chosen query — sharpen it until it belongs to one.
+- **Group-anchored pairs are machine-guarded.** Temporal and update corpus
+  entries carry a `group`; speculative members carry `"speculative": true`.
+  A pair whose gold depends on group state declares an `anchor`:
+  `"current"` — every grouped relevant memory must be the newest
+  non-speculative member of its group — or `"whole-group"` — the relevant
+  set must equal the group's full membership. `validate_gold_against_corpus`
+  enforces both, so appending a newer sibling (a `t2d` snapshot, a
+  definitive `u6c` replacement) fails the suite instead of silently making a
+  latest-anchored or present-state pair point at stale gold. That failure is
+  the signal to re-adjudicate the affected pairs under retire-and-replace.
+  Any new pair whose gold means "the current truth" or "the whole story"
+  must carry the matching anchor.
 - **Fixed ids.** `memory_id` is uuid5 of the entry `key` under
   `retrieval_gold.MEMORY_ID_NAMESPACE` — mint new ids with
   `retrieval_gold.memory_id_for_key(key)`; the loader rejects an id that
@@ -32,9 +44,22 @@ Files: `corpus.json` (72 memories, fixed `memory_id` UUIDs + declared
 - **Temporal-group contents are calendar-date-free.** The temporal anchor
   must resolve through `created_at` alone; a month name in the content lets
   full-text search answer a time question lexically.
-- **Update pairs sit inside the 90-day supersession window** (newer member's
-  `created_at` within 90 days of the older's) so the pairs are eligible for
-  the real supersession path, whichever way ingest resolves them.
+- **Update pairs keep pair-internal spacing ≤ 90 days, but that does NOT
+  make them eligible for supersession at ingest.** The real detector
+  computes its window from wall-clock now, not from the pair's spacing
+  (`detect_supersessions`, `app/services/supersession.py`:
+  `cutoff = now - SUPERSESSION_WINDOW_DAYS`, and the pipeline call site
+  never passes `now=`), so whether a stale member falls inside the window
+  depends on the calendar day of the run — and as the corpus dates age, none
+  do. These pairs therefore test a retriever's handling of
+  **stale-but-present** candidates; whether ingest flipped the stale row to
+  `superseded` is wall-clock-dependent and is *not* a property this corpus
+  can guarantee. Anyone measuring a supersession-aware arm (T0.10's
+  comparisons) must either control the detector's clock — pass `now=` at
+  the call site under test — or re-date the update-pair members and
+  re-adjudicate every affected pair under retire-and-replace. Never re-date
+  on a rolling basis or silently: that trades a documentation error for a
+  determinism break.
 - **Temporal siblings are snapshots, never corrections** — each is true of
   its own time. Corrections belong to the knowledge-update group.
 - Roles are per-query, not per-memory: a memory is a "distractor" only
@@ -141,21 +166,33 @@ single-hop, and the pair tests nothing the exact slice doesn't.
 
 **What it catches.** The retriever returns only the lexically anchored
 memory and never surfaces the bridge-linked consequence, so hit@K over the
-full relevant set fails. Hybrid-only has no path to B (no shared query
-lemmas, and B embeds near the bridge's topic, not the query's); only
-graph-aware arms (PPR over shared entities, dual-level) can lift it. No
-other slice requires composing two memories.
+full relevant set fails. What is *established* is lexical isolation: B
+shares no distinctive query lemma (mechanically audited), so the keyword
+channel cannot reach it. Whether the **semantic** channel reaches B anyway
+is not established — several queries name B's consequence domain outright
+(rg-0063/0064, rg-0065/0066, rg-0069/0070, rg-0073/0074, rg-0076), and
+embedding-space proximity was not measured when the slice was authored.
+**T0.07 must measure hybrid-only headroom on this slice** (baseline hit@K
+over the full relevant sets, those pairs first) before it is trusted as an
+activation gate; if the baseline already saturates, re-adjudicate the
+saturated pairs under retire-and-replace. Graph-aware arms (PPR over shared
+entities, dual-level) are the designed path to B; no other slice requires
+composing two memories.
 
 ### temporal (12 pairs)
 
 **Decision procedure.** The corpus holds ≥ 2 memories about the same
 subject with different declared `created_at`, each a snapshot true of its
-own time. The query carries an explicit temporal qualifier — a named
-month/quarter/year, "current/latest/most recent/right now/today", or
+own time — a **snapshot group**, never an update pair (slice membership
+follows the target group's kind, not the qualifier wording; see
+knowledge-update). The query carries an explicit temporal qualifier — a
+named month/quarter/year, "current/latest/most recent/right now/today", or
 "before/after <corpus event>". Gold is exactly the sibling(s) whose
-`created_at` satisfies the qualifier. Sibling contents must not state the
-calendar date the qualifier names: the anchor must resolve through
-`created_at`, never through text match.
+`created_at` satisfies the qualifier; latest-anchored pairs carry
+`"anchor": "current"` so a newly appended sibling fails validation instead
+of silently staling them. Sibling contents must not state the calendar date
+the qualifier names: the anchor must resolve through `created_at`, never
+through text match.
 
 **Negative example.** "What did the February incident review cover?" over a
 memory whose content says "February" — the anchor resolves lexically, so
@@ -177,10 +214,18 @@ project: an older memory asserting a state, and a newer memory (within the
 90-day supersession window) that either **definitively** asserts its
 replacement/retirement or only **speculates** about one (a
 `SPECULATIVE_REPLACES_MARKERS` phrasing: "considering", "might switch",
-...). The query asks for the *present* state — present tense, optionally
-"now/today" — with no calendar anchor. Gold: definitive pair → the newer
-memory only; speculative pair → the older memory only; a query asking
-whether the announced change has happened → both members.
+...). Speculative members are marked `"speculative": true` in the corpus.
+The query asks for the *present* state — present tense, optionally
+"now/today" — with no calendar anchor. A present-anchor ("now", "today",
+"these days") does **not** move a pair to temporal: the disambiguator is
+the target group's kind — update pair → knowledge-update, snapshot group →
+temporal. Only a calendar or corpus-event anchor over an update pair moves
+the query to temporal. Gold: definitive pair → the newer memory only;
+speculative pair → the older memory only; a query asking whether the
+announced change has happened → both members. Present-state pairs carry
+`"anchor": "current"` and change-status pairs `"anchor": "whole-group"`
+(see File discipline), so appending a newer group member forces
+re-adjudication instead of silently staling the gold.
 
 **Negative example.** "What did we use for session storage before the Redis
 migration?" — anchored to a past event, so it belongs to temporal, not

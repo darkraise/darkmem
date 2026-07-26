@@ -404,7 +404,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-02-02T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t1"
     },
     {
       "key": "t1b-oncall-mar",
@@ -413,7 +414,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-03-02T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t1"
     },
     {
       "key": "t1c-oncall-apr",
@@ -422,7 +424,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-04-01T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t1"
     },
     {
       "key": "t2a-pool-62",
@@ -431,7 +434,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2025-11-15T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t2"
     },
     {
       "key": "t2b-pool-71",
@@ -440,7 +444,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-01-21T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t2"
     },
     {
       "key": "t2c-pool-83",
@@ -449,7 +454,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-04-10T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t2"
     },
     {
       "key": "t3a-team-four",
@@ -458,7 +464,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2025-12-05T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t3"
     },
     {
       "key": "t3b-team-six",
@@ -467,7 +474,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-03-19T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t3"
     },
     {
       "key": "t4a-cert-jan",
@@ -476,7 +484,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-01-08T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t4"
     },
     {
       "key": "t4b-cert-apr",
@@ -485,7 +494,8 @@
       "memory_type": "fact",
       "source": "bench",
       "created_at": "2026-04-06T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t4"
     },
     {
       "key": "t5a-sprint-payments",
@@ -494,7 +504,8 @@
       "memory_type": "milestone",
       "source": "bench",
       "created_at": "2026-05-04T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t5"
     },
     {
       "key": "t5b-sprint-observability",
@@ -503,7 +514,8 @@
       "memory_type": "milestone",
       "source": "bench",
       "created_at": "2026-05-18T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t5"
     },
     {
       "key": "t6a-q1-goal",
@@ -512,7 +524,8 @@
       "memory_type": "milestone",
       "source": "bench",
       "created_at": "2026-01-05T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t6"
     },
     {
       "key": "t6b-q2-goal",
@@ -521,7 +534,8 @@
       "memory_type": "milestone",
       "source": "bench",
       "created_at": "2026-04-06T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "t6"
     },
     {
       "key": "u1a-sessions-memcached",
@@ -530,7 +544,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-03-02T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u1"
     },
     {
       "key": "u1b-sessions-redis",
@@ -539,7 +554,8 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-04-20T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u1"
     },
     {
       "key": "u2a-deploys-jenkins",
@@ -548,7 +564,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-01-15T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u2"
     },
     {
       "key": "u2b-deploys-gha",
@@ -557,7 +574,8 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-03-28T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u2"
     },
     {
       "key": "u3a-errors-sentry",
@@ -566,7 +584,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-04-01T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u3"
     },
     {
       "key": "u3b-errors-glitchtip",
@@ -575,7 +594,8 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-05-26T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u3"
     },
     {
       "key": "u4a-docs-mkdocs",
@@ -584,7 +604,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-02-10T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u4"
     },
     {
       "key": "u4b-docs-astro",
@@ -593,7 +614,8 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-04-15T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u4"
     },
     {
       "key": "u5a-secrets-env",
@@ -602,7 +624,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-05-01T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u5"
     },
     {
       "key": "u5b-secrets-vault",
@@ -611,7 +634,8 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-06-10T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u5"
     },
     {
       "key": "u6a-metrics-telegraf",
@@ -620,7 +644,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-03-12T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u6"
     },
     {
       "key": "u6b-metrics-vector-spec",
@@ -629,7 +654,9 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-05-05T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u6",
+      "speculative": true
     },
     {
       "key": "u7a-issues-gitea",
@@ -638,7 +665,8 @@
       "memory_type": "architecture",
       "source": "bench",
       "created_at": "2026-04-08T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u7"
     },
     {
       "key": "u7b-issues-forgejo-spec",
@@ -647,7 +675,9 @@
       "memory_type": "decision",
       "source": "bench",
       "created_at": "2026-06-02T00:00:00+00:00",
-      "project": "default"
+      "project": "default",
+      "group": "u7",
+      "speculative": true
     }
   ]
 }
