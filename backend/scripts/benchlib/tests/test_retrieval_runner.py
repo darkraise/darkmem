@@ -1,0 +1,125 @@
+"""DB-backed tests for the real-retriever driver.
+
+Opts into ``_bench_db`` (contrast test_retrieval_scorer.py, which is pure
+and does not). This proves ``run_retrieval`` actually composes with the
+real ``ProcessingPipeline`` end to end; the id-normalisation invariant
+itself is a scorer concern and is tested there, not here.
+"""
+import inspect
+
+import pytest
+
+from benchlib import bench_db, ingest, retrieval_runner
+from benchlib.caching_llm import CachingLLMOrchestrator
+
+pytestmark = pytest.mark.usefixtures("_bench_db")
+
+_STUB_EXTRACTION = (
+    '{"entities": [], "relationships": [], "memory_type": "fact", '
+    '"importance": 0.5, "summary": "stub summary", "emotions": [], "flags": []}'
+)
+
+
+def _vec(text: str) -> list[float]:
+    """A tiny deterministic embedding: one axis per keyword, so ANN search
+    over these stub vectors actually discriminates the three memories
+    instead of returning an arbitrary tie order."""
+    lowered = text.lower()
+    return [
+        1.0 if "alpha" in lowered else 0.0,
+        1.0 if "beta" in lowered else 0.0,
+        1.0 if "gamma" in lowered else 0.0,
+    ]
+
+
+class _StubLLM(CachingLLMOrchestrator):
+    async def _live_embed(self, text):
+        return _vec(text), "stub-embed|3"
+
+    async def _live_embed_batch(self, texts):
+        return [_vec(t) for t in texts], "stub-embed|3"
+
+    async def _live_chat(self, purpose, messages, **kwargs):
+        return _STUB_EXTRACTION
+
+
+_ENTRIES = [
+    {"content": "The alpha service handles billing.", "memory_type": "fact"},
+    {"content": "The beta pipeline handles ingestion.", "memory_type": "fact"},
+    {"content": "The gamma worker handles cleanup.", "memory_type": "fact"},
+]
+
+
+async def _ingest_three(tmp_path) -> list[str]:
+    await bench_db.reset_bench_db()
+    llm = _StubLLM({}, cache_dir=str(tmp_path))
+    result = await ingest.run_ingest(llm, _ENTRIES, ingest.GateConfig())
+    return llm, [o["memory_id"] for o in result.outcomes]
+
+
+@pytest.mark.asyncio
+async def test_run_retrieval_uses_the_real_pipeline_class():
+    """No forked ranking logic: run_retrieval must drive
+    app.services.pipeline's real ProcessingPipeline.semantic_search, not a
+    reimplementation of it (the rule T0.03 was held to)."""
+    assert inspect.iscoroutinefunction(retrieval_runner.run_retrieval)
+    source = inspect.getsource(retrieval_runner)
+    from app.services.pipeline import ProcessingPipeline
+    assert ProcessingPipeline.__name__ in source
+    assert "semantic_search" in source
+
+
+@pytest.mark.asyncio
+async def test_run_retrieval_returns_one_ranked_list_per_live_pair(tmp_path):
+    llm, ids = await _ingest_three(tmp_path)
+    gold_pairs = [
+        {"id": "t-1", "query": "alpha", "relevant_memory_ids": [ids[0]], "slice_tags": ["exact"]},
+        {"id": "t-2", "query": "beta", "relevant_memory_ids": [ids[1]], "slice_tags": ["exact"],
+         "retired": True},
+        {"id": "t-3", "query": "gamma", "relevant_memory_ids": [ids[2]], "slice_tags": ["exact"]},
+    ]
+
+    ranked = await retrieval_runner.run_retrieval(
+        llm, bench_db.session_factory, gold_pairs, limit=2,
+    )
+
+    # The retired pair is skipped entirely -- never queried, never scored.
+    assert set(ranked) == {"t-1", "t-3"}
+    for hits in ranked.values():
+        assert len(hits) <= 2
+        assert all(str(h) in ids for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_run_retrieval_ranks_the_lexically_matching_memory_first(tmp_path):
+    llm, ids = await _ingest_three(tmp_path)
+    gold_pairs = [
+        {"id": "t-1", "query": "alpha", "relevant_memory_ids": [ids[0]], "slice_tags": ["exact"]},
+        {"id": "t-3", "query": "gamma", "relevant_memory_ids": [ids[2]], "slice_tags": ["exact"]},
+    ]
+
+    ranked = await retrieval_runner.run_retrieval(
+        llm, bench_db.session_factory, gold_pairs, limit=3,
+    )
+
+    assert str(ranked["t-1"][0]) == ids[0]
+    assert str(ranked["t-3"][0]) == ids[2]
+
+
+@pytest.mark.asyncio
+async def test_todays_default_gate_returns_string_ids(tmp_path):
+    """Pins today's observable fact (hybrid_search_enabled defaults True,
+    so ProcessingPipeline.semantic_search's hybrid path is what a bench run
+    exercises unless a future GateConfig learns to flip it): ids come back
+    as str, not UUID. The scorer must handle both regardless; this test
+    only documents which one the real path emits by default today."""
+    llm, ids = await _ingest_three(tmp_path)
+    gold_pairs = [
+        {"id": "t-1", "query": "alpha", "relevant_memory_ids": [ids[0]], "slice_tags": ["exact"]},
+    ]
+
+    ranked = await retrieval_runner.run_retrieval(
+        llm, bench_db.session_factory, gold_pairs, limit=1,
+    )
+
+    assert isinstance(ranked["t-1"][0], str)

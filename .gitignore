@@ -14,3 +14,4 @@ frontend/.tanstack/
 *.tsbuildinfo
 backend/scripts/benchlib/runs/
 backend/scripts/benchlib/smoke/cache/
+backend/scripts/benchlib/retrieval/cache/
