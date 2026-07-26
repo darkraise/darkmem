@@ -49,6 +49,34 @@ def _run_alembic_upgrade() -> None:
 
 
 async def reset_bench_db() -> None:
-    """Drop + recreate the public schema, then migrate to head."""
+    """Drop + recreate the public schema, then migrate to head.
+
+    Safe to call more than once in the same process -- run_smoke.py's
+    two-pass affordability gate resets between passes deliberately. Two
+    process-lifetime caches would otherwise go stale across that second
+    reset and neither announces itself as a caching problem when it does:
+
+    - asyncpg caches a prepared statement's plan against the object OIDs
+      it referenced at prepare time. DROP SCHEMA CASCADE recreates those
+      objects (and their implicit types) under new OIDs, so a pooled
+      connection reused after the reset can hit
+      ``cache lookup failed for type/relation <oid>`` on a query it had
+      already prepared before the drop. Disposing the pool forces fresh
+      connections with an empty statement cache.
+    - app.services.embedder_registry.embedder_registry is a process-wide
+      singleton that marks a fingerprint "known" and never re-checks the
+      DB, so its per-fingerprint partition tables silently stop being
+      recreated on a later reset unless forgotten explicitly (see
+      backend/tests/test_pipeline_process_batch.py's docstring for the
+      same gotcha in the main test suite).
+    """
     await _reset_schema()
+    await engine.dispose()
     _run_alembic_upgrade()
+    _forget_registered_embedders()
+
+
+def _forget_registered_embedders() -> None:
+    from app.services.embedder_registry import embedder_registry
+    for fingerprint in list(embedder_registry._known):
+        embedder_registry.forget(fingerprint)
