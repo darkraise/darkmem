@@ -163,6 +163,41 @@ async def test_run_ingest_pins_gate_config_even_when_process_left_it_dirty(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_pin_gate_config_overwrites_flags_gate_config_does_not_name(tmp_path):
+    """A leftover classification_areas is exactly the shape of leak the
+    pinning checkbox forbids: pipeline.py:605 builds the classification
+    prompt's allowed-type list from it, so it changes every classification
+    the run measures while the recorded gate_config looks clean."""
+    from app.config import FEATURE_FLAGS_DEFAULTS
+    from app.models.config import Config
+    from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict
+    from sqlalchemy import select as sa_select
+
+    async with bench_db.session_factory() as session:
+        row = (await session.execute(
+            sa_select(Config).where(Config.key == FEATURE_FLAGS_KEY)
+        )).scalar_one_or_none()
+        poisoned = dict(FEATURE_FLAGS_DEFAULTS)
+        poisoned["classification_areas"] = ["poisoned-area"]
+        poisoned["pipeline_concurrency"] = 99
+        if row is None:
+            session.add(Config(key=FEATURE_FLAGS_KEY, value=poisoned))
+        else:
+            row.value = poisoned
+        await session.commit()
+
+    await ingest.pin_gate_config(bench_db.session_factory, ingest.GateConfig())
+
+    async with bench_db.session_factory() as session:
+        flags = await get_feature_flags_dict(session)
+
+    assert flags["classification_areas"] == FEATURE_FLAGS_DEFAULTS["classification_areas"]
+    assert flags["pipeline_concurrency"] == FEATURE_FLAGS_DEFAULTS["pipeline_concurrency"]
+    assert flags["classification_mode"] == "simple"
+    assert flags["relation_rescue"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_corpus_created_at_lands_on_the_memory_row(tmp_path):
     """The corpus declares per-entry timestamps; supersession's window and
     older-than rules read memories.created_at, so a discarded value turns a

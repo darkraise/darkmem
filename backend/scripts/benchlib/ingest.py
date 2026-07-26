@@ -63,6 +63,15 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
     This SETS the values -- it does not read whatever the DB already holds
     and log that. A flag flip elsewhere (another process, a leftover value
     from a prior run) is overwritten here rather than silently inherited.
+
+    That promise covers the WHOLE feature-flags row, not just the two flags
+    GateConfig names: the row is rewritten as FEATURE_FLAGS_DEFAULTS plus
+    ``gate``'s overrides. ``process_batch`` reads flags GateConfig does not
+    model -- ``classification_areas`` (pipeline.py:605) builds the
+    classification prompt's allowed-type list, and the concurrency/batch
+    flags shape how calls are chunked -- so merging over an ambient row
+    would let a leftover value change what the run measures while the
+    recorded ``gate_config`` stayed identical to a clean run's.
     """
     async with session_factory() as session:
         ml_profile_id = None
@@ -80,15 +89,13 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
 
         result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
         flags_row = result.scalar_one_or_none()
-        merged_flags = dict(FEATURE_FLAGS_DEFAULTS)
+        pinned_flags = dict(FEATURE_FLAGS_DEFAULTS)
+        pinned_flags["classification_mode"] = gate.classification_mode
+        pinned_flags["relation_rescue"] = gate.relation_rescue
         if flags_row is not None:
-            merged_flags.update(flags_row.value)
-        merged_flags["classification_mode"] = gate.classification_mode
-        merged_flags["relation_rescue"] = gate.relation_rescue
-        if flags_row is not None:
-            flags_row.value = merged_flags
+            flags_row.value = pinned_flags
         else:
-            session.add(Config(key=FEATURE_FLAGS_KEY, value=merged_flags))
+            session.add(Config(key=FEATURE_FLAGS_KEY, value=pinned_flags))
 
         purpose_row = (await session.execute(
             select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "classification")
