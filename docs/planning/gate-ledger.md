@@ -55,16 +55,22 @@ Three probes, all of which must hold:
 | Relation, pair only | 0.943 / 0.846 / 0.892 | 0.846 / 0.550 / 0.667 |
 | Relation, full triple | 0.914 / 0.821 / 0.865 | 0.846 / 0.550 / 0.667 |
 
-**Stated G-B parity tolerance:** (set in T0.05, 2026-07-26, before Phase 1 starts) —
-one-sided (a rise never fails), per dimension (never aggregated, rule 4), on F1,
-measured with the same model and seeded stack as this baseline. The unit is the
-**item flip** — one gold item lost from a dimension's counts (worst case, a tp
-becoming an fn) — because F1-per-item spans ~5× across the eight cells (0.008 on
-gold entities to 0.042 on held-out relations), so a flat absolute-F1 tolerance
-would be simultaneously loose on gold entities and hollow on held-out relations.
+**Stated G-B parity tolerance:** (set in T0.05, 2026-07-26, before Phase 1 starts;
+floors recalibrated to substitution arithmetic the same day, after adversarial
+review, before any Phase-1 number exists) — one-sided (a rise never fails), per
+dimension (never aggregated, rule 4), on F1, measured with the same model and
+seeded stack as this baseline. The unit is the **item flip** — one gold item lost
+from a dimension's counts with a wrong item appearing in its place (a
+substitution: tp−1, fn+1, **fp+1**). Substitution is strictly the worst
+single-item move (a pure loss leaves fp unchanged and costs less, so it is
+covered a fortiori), and it is the dominant failure shape in this very baseline
+(e8/e15/e21/e22, h7/h8 are all substitutions or rewrites). The flip is the unit
+because F1-per-flip spans ~4× across the eight cells (0.015 on gold entities to
+0.061 on held-out relations), so a flat absolute-F1 tolerance would be
+simultaneously loose on gold entities and hollow on held-out relations.
 **Allowance: 3 flips per dimension**, decomposed as:
 
-- **1 flip — re-measurement noise (measurement-anchored).** A warm-cache
+- **1 flip — re-measurement noise.** A warm-cache
   `--algo-only` re-run reproduced both outputs byte-identically — measured drift of
   the deterministic passes + scorer over the cached raw outputs is exactly 0, which
   is the G-A reproduction path. Vendor-side stability at a fixed prompt rests on the
@@ -85,26 +91,45 @@ would be simultaneously loose on gold entities and hollow on held-out relations.
   and held-out h8). Its magnitude cannot be measured until the merged prompt
   exists; 2 flips is the stated judgement.
 
-Floors (worst-case arithmetic: all 3 flips taken as lost gold items against the
-frozen tp/fp/fn above):
+Floors — each of the 3 flips taken as a substitution against the frozen tp/fp/fn
+above. Substitution keeps the denominator of F1 = 2·tp / (2·tp + fp + fn)
+constant (−2 from tp, +1 each from fn and fp), so the conversion is exactly:
 
-| Dimension | Gold F1 floor | Held-out F1 floor |
+    floor = 2·(tp − 3) / (2·tp + fp + fn)
+
+and each flip costs exactly 2 / (2·tp + fp + fn) in F1. Worked per cell (a
+future agent should recheck this arithmetic, not trust it):
+
+| Dimension | Gold floor = 2(tp−3)/(2tp+fp+fn) | Held-out floor |
 |---|---|---|
-| Entity, name only | 0.931 | 0.868 |
-| Entity, name + type | 0.901 | 0.830 |
-| Relation, pair only | 0.845 | 0.533* |
-| Relation, full triple | 0.817 | 0.533* |
+| Entity, name only | 122/134 = **0.910** | 46/56 = **0.821** |
+| Entity, name + type | 118/134 = **0.881** | 44/56 = **0.786** |
+| Relation, pair only | 60/74 = **0.811** | 16/33 = **0.485**\* |
+| Relation, full triple | 58/74 = **0.784** | 16/33 = **0.485**\* |
 
-\* The held-out relation slice holds only 20 gold relations and its baseline misses
-are cascade-dominated (h3 alone is 6 of the 9 fns, all downstream of three missed
-root entities), so a bare floor there is nearly hollow. The starred cells therefore
-carry a second, countable condition: if a G-B run lands below the 0.667 baseline on
-either starred cell, its ledger entry must include the `--diffs` triage grouping
-newly missed relations (relative to this baseline's misses) by their missing
-subject entity — the run passes only if **at most one** distinct root entity
-accounts for all new relation misses *and* the 0.533 floor holds. Two or more
-distinct new roots fail the gate regardless of the floor: that is systematic
-relation loss, not one cascade.
+\* The held-out relation slice holds only 20 gold relations, and its baseline
+misses are cascade-dominated: h3 alone is 6 of the 9 fns, all downstream of three
+missed root entities, so one borderline *entity* re-roll lands on these cells
+multiplied by its fan-out. The starred cells therefore carry a **one-way cascade
+valve** — it can pass a run that breaches the floor; it never fails a run that
+holds it:
+
+- At or above the 0.485 floor: pass, no triage. This is exactly the 3-flip
+  budget, no stricter.
+- Below the floor: the G-B ledger entry must include the `--diffs` triage of
+  **new misses** (gold relations missed at G-B that are not among this baseline's
+  9 fns), grouped by **root**. A root is the missing or type-flipped entity
+  (subject or target) shared by new misses; a new miss whose endpoints are both
+  correctly extracted is its own root. The run passes only if exactly **one**
+  root accounts for every new miss — one borderline entity re-roll amplified by
+  fan-out is still one item in the budget's own unit. Two or more roots is
+  systematic relation loss and fails, whatever the F1.
+
+The valve is one-way and unbounded in amplitude on purpose: the load-bearing
+relation bar is the gold slice (39 gold relations, no valve), these cells are an
+overfit alarm whose signal is *independent* new misses rather than the amplitude
+of one cascade, and a cascade's root entity is still charged to the entity
+dimensions' own floors, which have no valve.
 
 Scope: this tolerance judges G-B's live re-measurement under the Phase-1 prompt.
 G-A's reproduction probe is exact-match from the warm cache (`--algo-only`, zero
