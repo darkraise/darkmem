@@ -118,20 +118,44 @@ holds it:
 
 - At or above the 0.485 floor: pass, no triage. This is exactly the 3-flip
   budget, no stricter.
-- Below the floor: the G-B ledger entry must include the `--diffs` triage of
-  **new misses** (gold relations missed at G-B that are not among this baseline's
-  9 fns), grouped by **root**. A root is the missing or type-flipped entity
-  (subject or target) shared by new misses; a new miss whose endpoints are both
-  correctly extracted is its own root. The run passes only if exactly **one**
-  root accounts for every new miss — one borderline entity re-roll amplified by
-  fan-out is still one item in the budget's own unit. Two or more roots is
-  systematic relation loss and fails, whatever the F1.
+- Below the floor: the G-B ledger entry must include the `--diffs` triage, and
+  the run passes only if **both** conditions hold:
+  1. **Recall side — exactly one root accounts for every new miss.** New misses
+     are gold relations missed at G-B that are not among this baseline's 9 fns,
+     grouped by **root**: a root is the missing or type-flipped entity (subject
+     or target) shared by new misses; a new miss whose endpoints are both
+     correctly extracted is its own root. One borderline entity re-roll
+     amplified by fan-out is still one item in the budget's own unit; two or
+     more roots is systematic relation loss and fails, whatever the F1. **Zero
+     new misses also fails** — the valve exists for recall cascades, and a
+     below-floor drop with no new miss is precision-driven by construction:
+     with the frozen counts, 22/(31+fp) < 16/33 requires fp ≥ 15, i.e. ≥ 13
+     new spurious, which condition 2 rejects anyway. Stating the verdict closes
+     both the vacuous reading ("every new miss" true over an empty set) and the
+     literal one.
+  2. **Precision side — at most 3 new spurious relations.** New spurious are
+     predicted-but-not-gold keys at G-B that are not among this baseline's 2
+     spurious (`ruff -USES-> mypy` in h9 and `rfc 9114 -CITES-> raft paper` in
+     h8; their pair projections likewise), counted from the same `--diffs`
+     `REL SPUR` lines the triage already prints. The bound is identity-aware —
+     a baseline spurious that disappears frees no slot — and 3 is the same
+     amplitude the unstarred budget grants (3 substitution flips add at most
+     fp+3): the valve widens the tolerance only on the recall side, never on
+     precision.
 
-The valve is one-way and unbounded in amplitude on purpose: the load-bearing
-relation bar is the gold slice (39 gold relations, no valve), these cells are an
-overfit alarm whose signal is *independent* new misses rather than the amplitude
-of one cascade, and a cascade's root entity is still charged to the entity
-dimensions' own floors, which have no valve.
+The valve is one-way and unbounded only in *recall* amplitude, on purpose: the
+load-bearing relation bar is the gold slice (39 gold relations, no valve), these
+cells are an overfit alarm whose signal is *independent* new misses rather than
+the size of one cascade, and a cascade's root entity is still charged to the
+entity dimensions' own floors, which have no valve. Boundary reconciliation: the
+valve engages only below the floor, so it can never fail a run the 3-flip budget
+passes; and a run it passes differs from a budget-pass only in the fan-out of
+one recall cascade — its precision allowance is the budget's own. Note also that
+the valve pardons *narrower* cascades than the one that motivated it: h3, the
+baseline's dominant cascade, has three roots (`cli`, `mobile app`, `web app`)
+and would fail the valve if it recurred as new misses. That is consistent — two
+or more roots is the systematic signal regardless of provenance — but it should
+not have to be rediscovered at G-B.
 
 Scope: this tolerance judges G-B's live re-measurement under the Phase-1 prompt.
 G-A's reproduction probe is exact-match from the warm cache (`--algo-only`, zero
