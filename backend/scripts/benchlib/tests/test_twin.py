@@ -69,6 +69,27 @@ def test_latency_recorder_reports_every_declared_channel_even_at_zero():
         assert stats[channel].live.powered is False
 
 
+def test_a_second_arm_declares_its_own_channels_instead_of_retrievals():
+    """A non-retrieval arm (the full-context baseline) reuses this recorder
+    but has no semantic_search to report; padding its twin with retrieval's
+    five channels would describe channels the arm cannot have."""
+    recorder = twin.LatencyRecorder()
+    recorder.record("full_context_call", 1.2, "live")
+    stats = recorder.stats(
+        min_samples=1, declared_channels=("full_context_call", "end_to_end"),
+    )
+
+    assert set(stats) == {"full_context_call", "end_to_end"}
+    assert stats["full_context_call"].live.n == 1
+    assert stats["end_to_end"].live.n == 0
+
+    captured = twin.Twin.capture(
+        recorder, twin.TokenLedger(), min_samples=1,
+        declared_channels=("full_context_call", "end_to_end"),
+    )
+    assert set(captured.channels) == {"full_context_call", "end_to_end"}
+
+
 # ── instrument_retrieval: real DB-backed composition proof ─────────────
 
 _STUB_EXTRACTION = (

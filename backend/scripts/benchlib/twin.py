@@ -25,7 +25,10 @@ Composition, matching the split the rest of benchlib already uses:
   and persists the usage envelope into the disk cache so a later warm
   replay can still report what the call cost when it was paid.
 - ``Twin.capture(recorder, tokens)`` bundles both into one JSON-native
-  structure.
+  structure. A non-retrieval arm measured against the same doctrine (the
+  full-context baseline in ``full_context.py``) reuses ``LatencyRecorder``,
+  ``TwinningOrchestrator`` and this constructor with its own
+  ``declared_channels``, rather than growing a parallel counter.
 - ``EvalRun`` pairs a ``retrieval_scorer.ScoreReport`` with a ``Twin`` and
   structurally refuses to exist without a real one — see its docstring.
   ``record_eval_run`` is the sanctioned way to append one to the ledger.
@@ -37,6 +40,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, is_dataclass
+from typing import Sequence
 
 from benchlib import ledger
 from benchlib.caching_llm import CachingLLMOrchestrator, chat_content
@@ -128,8 +132,15 @@ class LatencyRecorder:
 
     def stats(
         self, *, min_samples: int = MIN_SAMPLES_FOR_PERCENTILE,
+        declared_channels: Sequence[str] = CHANNELS,
     ) -> dict[str, ChannelStats]:
-        channels = set(self._live) | set(self._cache) | set(CHANNELS)
+        """``declared_channels`` are always reported, at zero samples if the
+        run never touched them -- an absent channel is stated, not omitted.
+        A second arm measuring a different set of channels (the full-context
+        baseline's ``full_context_call``) declares its own, so its twin does
+        not carry five retrieval channels the arm structurally cannot have.
+        """
+        channels = set(self._live) | set(self._cache) | set(declared_channels)
         return {
             channel: ChannelStats(
                 channel=channel,
@@ -140,13 +151,13 @@ class LatencyRecorder:
         }
 
 
-def _live_call_count(llm):
+def live_call_count(llm):
     """``None`` for an orchestrator with no call counter -- an unknown
     that must not be read as "no live call happened"."""
     return getattr(llm, "live_calls", None)
 
 
-def _served_by(before, after) -> str:
+def served_by(before, after) -> str:
     """A sample is cache-served only when a counter existed on both sides
     of the window and did not move. An orchestrator without the counter
     reports "live", the conservative label: attributing an unmeasurable
@@ -198,30 +209,30 @@ def instrument_retrieval(llm):
         # there is no single-call granularity finer than "did any live
         # round trip happen at all" (mirrors embed_batch's own "any miss
         # increments live_calls by exactly 1" population semantics).
-        before = _live_call_count(self.llm)
+        before = live_call_count(self.llm)
         t0 = time.perf_counter()
         result = await orig_rerank(self, *args, **kwargs)
         elapsed = time.perf_counter() - t0
-        recorder.record("reranker", elapsed, _served_by(before, _live_call_count(self.llm)))
+        recorder.record("reranker", elapsed, served_by(before, live_call_count(self.llm)))
         return result
 
     async def spy_pipeline_search(self, *args, **kwargs):
         # The composite window: whether THIS query paid for a live model
         # call anywhere inside it (its query embed, any reranker call) is
         # what decides which system's latency the sample describes.
-        before = _live_call_count(llm)
+        before = live_call_count(llm)
         t0 = time.perf_counter()
         result = await orig_pipeline_search(self, *args, **kwargs)
         elapsed = time.perf_counter() - t0
-        recorder.record("end_to_end", elapsed, _served_by(before, _live_call_count(llm)))
+        recorder.record("end_to_end", elapsed, served_by(before, live_call_count(llm)))
         return result
 
     async def spy_embed(text):
-        before = _live_call_count(llm)
+        before = live_call_count(llm)
         t0 = time.perf_counter()
         result = await orig_embed(text)
         elapsed = time.perf_counter() - t0
-        recorder.record("embed_query", elapsed, _served_by(before, _live_call_count(llm)))
+        recorder.record("embed_query", elapsed, served_by(before, live_call_count(llm)))
         return result
 
     HybridSearchService._semantic_search = spy_semantic
@@ -396,9 +407,12 @@ class Twin:
     def capture(
         cls, recorder: LatencyRecorder, tokens: TokenLedger,
         *, min_samples: int = MIN_SAMPLES_FOR_PERCENTILE,
+        declared_channels: Sequence[str] = CHANNELS,
     ) -> "Twin":
         return cls(
-            channels=recorder.stats(min_samples=min_samples),
+            channels=recorder.stats(
+                min_samples=min_samples, declared_channels=declared_channels,
+            ),
             tokens_by_purpose=tokens.as_dict(),
             min_samples_for_percentile=min_samples,
         )
