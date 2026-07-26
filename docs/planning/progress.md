@@ -42,14 +42,14 @@ and the Note says so. That rule is the whole point of this file.
 
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 19 | 15 | 0 | 0 | 0 | 4 | G-A open |
+| E0 — Baseline & harness | 19 | 14 | 1 | 0 | 0 | 4 | G-A open |
 | E1 — Engine core | 75 | 75 | 0 | 0 | 0 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **204** | **200** | **0** | **0** | **0** | **4** | |
+| **Total** | **204** | **199** | **1** | **0** | **0** | **4** | |
 
 ---
 
@@ -61,7 +61,7 @@ and the Note says so. That rule is the whole point of this file.
 | T0.02 | Corpus loader (`benchlib/corpus.py`) | S | Haiku | claude/e0-lane-a | done | ac05908 | sonnet: approved after 1 fix round; fable adversarial review a63675c | corpus.py + smoke/corpus.json + 11 tests; raw-membership taxonomy validation. Verify 11 passed; floor 614 passed, 1 skipped |
 | T0.03 | Offline ingest driver (`benchlib/ingest.py`) | M | Sonnet | claude/e0-lane-a | done | f6c658f | sonnet: spec compliant, approved; fable adversarial review a63675c | ingest.py over the real ProcessingPipeline; caching_llm extended to embed_batch. Verify 8 passed; floor 614 passed, 1 skipped |
 | T0.04 | `run_smoke.py` and the affordability gate | M | Sonnet | claude/e0-lane-a | done | ea2428b | sonnet: approved after 1 fix round; fable adversarial review a63675c | run_smoke.py + FROZEN.md; gate asserts zero live calls AND clean per-pass outcomes. Verify exit 0, `live LLM calls: 0`, 3 memories/6 entities/3 relations per pass; floor 614 passed, 1 skipped |
-| T0.05 | Record the as-is extraction F1 baseline | M | Fable | | todo | | | |
+| T0.05 | Record the as-is extraction F1 baseline | M | Fable | claude/e0-lane-a | wip | | | |
 | T0.06 | Retrieval gold set + query-type slices | M | Fable | | todo | | | |
 | T0.07 | Sliced accuracy scorer (MRR / hit@K) | M | Sonnet | | todo | | | |
 | T0.08 | Latency and token-cost twin | M | Sonnet | | todo | | | |
