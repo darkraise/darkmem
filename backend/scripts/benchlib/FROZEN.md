@@ -37,16 +37,34 @@ anything else.
 SHA-256 hash (truncated to 16 hex chars) of a JSON-serialized
 `[kind, payload]` pair (`_key()` in `caching_llm.py`):
 
-- `embed` / `embed_batch`: `payload` is the literal text (one cache entry
-  per unique text, shared between the two entry points).
-- `chat_completion`: `payload` is `[purpose, messages, sorted(kwargs.items())]`
-  — `messages` includes the system prompt, so a cached output is valid only
+- `embed` / `embed_batch`: `payload` is `[text, <embedding purpose identity>]`
+  (one cache entry per unique text per embedder, shared between the two
+  entry points).
+- `chat_completion`: `payload` is
+  `[purpose, <purpose identity>, messages, sorted(kwargs.items())]` —
+  `messages` includes the system prompt, so a cached output is valid only
   for the exact prompt it was produced under (doc 17 §7: "a cached output
   is valid only for the prompt it was keyed under"). Changing the
   extraction/classification prompt, the gate state that selects it
   (`classification_mode`, `ml_profile_ref` — see `ingest.GateConfig`), or
   any call kwarg (e.g. `seed`) invalidates the cache for that call
   automatically, by construction, with no separate invalidation step.
+
+**Purpose identity — the full invalidation contract.** The key folds in the
+resolved `LLMPurposeConfig` for the purpose being called
+(`_KEYED_CONFIG_FIELDS` in `caching_llm.py`): **`model`, `base_url`,
+`api_kind`, `dimensions`, `reasoning`, `params`**. Changing any of them is
+a cache miss. This is what makes benchlib safe for its actual purpose —
+comparing model configurations. Without it, swapping the seeded extraction
+model and re-running replays the *previous* model's answers at
+`live_calls == 0`, so the gate exits 0 and the ledger records metrics for a
+model that never ran.
+
+`api_key` is deliberately **excluded**: rotating a credential does not change
+an answer, and a secret has no business being hashed into a cache key. Adding
+a field to `_KEYED_CONFIG_FIELDS` invalidates every cache entry on every
+machine — that is correct when the field genuinely changes model output, and
+wrong otherwise.
 
 Cache entries are one JSON file per key under the orchestrator's `cache_dir`,
 written once and read on every subsequent call with the same key. Nothing in
@@ -55,6 +73,89 @@ cache lives at `backend/scripts/benchlib/smoke/cache/`, gitignored, so every
 environment (a fresh CI checkout, a fresh dev machine) pays the first pass's
 genuine model cost once and then reuses it locally, the same way
 `extraction_bench/.cache/` already works.
+
+## A corpus declares its own expected work
+
+**Frozen 2026-07-26.**
+
+A corpus file may carry an `expected` object next to `memories`, holding the
+counts ingesting it should produce: `{"memories": N, "entities": N,
+"relations": N}`. `smoke/corpus.json` declares `3 / 6 / 3`.
+`benchlib.corpus.load_expectations()` reads and validates it (unknown keys and
+non-negative-integer violations are load errors); a corpus that declares
+nothing returns `None`, which is the normal case for gold files.
+
+`run_smoke.find_work_shortfalls()` holds every pass to that floor. The counts
+live in the corpus because the corpus is the thing that declares what
+ingesting it produces — do not move them into `run_smoke.py`. It is a floor
+(`actual >= expected`), not an equality: a richer extraction is not a
+regression, a thinner one is.
+
+Without this floor the gate only catches work that *errors*. A cached chat
+entry replaced by *valid* JSON with empty `entities`/`relationships`, a
+silently regressed `clean_extraction`, or a model swap replaying another
+model's answers all produce all-ok outcomes, zero live calls, and exit 0.
+
+`run_smoke.main()` also refuses a corpus that yields zero entries, before it
+resets the bench DB. Zero entries satisfies every count trivially, so the
+gate would certify nothing and exit green.
+
+## Gate pinning rewrites the whole feature-flags row
+
+**Frozen 2026-07-26.**
+
+`ingest.pin_gate_config()` writes `FEATURE_FLAGS_DEFAULTS` plus `GateConfig`'s
+overrides — it does **not** merge over whatever the row already holds. A bench
+run therefore measures under a fully determined flag state, not a partly
+inherited one.
+
+This matters for flags `GateConfig` does not model. `process_batch` reads
+`classification_areas` (`pipeline.py:605`) to build the classification
+prompt's allowed-type list, so a leftover `classification_areas` from a prior
+experiment would change every `llm_classified_type` the run measures while the
+recorded `gate_config` stayed byte-identical to a clean run's. The
+concurrency and batch-size flags are pinned for the same reason. Adding a
+knob a bench run must vary means adding it to `GateConfig`, not leaving it
+ambient.
+
+## A corpus `created_at` is honoured, never discarded
+
+**Frozen 2026-07-26.**
+
+`MemoryCreate` carries no `created_at`, so the row is server-stamped `now()`.
+`ingest._create_memory_rows()` overwrites that stamp with the corpus value
+before the commit — that is, before `process_batch` runs — and raises a
+`ValueError` naming the entry index for a value it cannot parse. Nothing the
+corpus declares is silently dropped.
+
+`detect_supersessions` orders candidates by `created_at` (`pipeline.py:463-470`
+— the 90-day window rule and the older-than rule). Discarding the declared
+value would give every same-batch row one identical timestamp, quietly
+reducing a corpus written to exercise the date rules to a test of the id
+tie-break instead.
+
+## `refine_entity_type` is not mirrored in the loader
+
+**Frozen 2026-07-26.**
+
+`refine_entity_type` (`app/taxonomy.py:145-151`) runs after
+`normalize_entity_type` on the ingest path (`app/services/extraction_clean.py:346`)
+and rewrites **`project` → `tool` for any entity whose name ends in `-ui`,
+`-kit`, `-sdk`, `.js`, or `-js`**. So `{"name": "darkraise-ui", "type":
+"project"}` is stored as `tool`, not `project`.
+
+`benchlib.corpus` deliberately does **not** mirror this. It validates raw
+membership in the closed tables and nothing else, so that gold entry loads
+clean while the pipeline can never produce the type it declares.
+
+This asymmetry is left open on purpose: whether gold should be authored
+pre- or post-refinement is a scorer-design decision, and the scorer is what
+must settle it. **A type-sensitive entity scorer has to decide which side to
+normalise on** — apply `refine_entity_type` to gold before comparing, or
+compare against the pre-refinement type — and say so explicitly. Until then,
+a `project`-typed gold entity with one of those name suffixes will read as an
+extractor miss it structurally cannot avoid. (Latent today: every
+`project`-typed entity in both gold files is named "darkmem".)
 
 ## Bench-DB LLM seeding (`run_smoke.py`)
 
