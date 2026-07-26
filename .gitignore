@@ -7,6 +7,8 @@ dist/
 node_modules/
 .superpowers/
 .claude/**
+!.claude/agents/
+!.claude/agents/**
 backend/data/**
 frontend/test-results/
 frontend/playwright-report/
