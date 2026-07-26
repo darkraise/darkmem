@@ -840,6 +840,42 @@
       "source": "bench",
       "created_at": "2026-06-29T00:00:00+00:00",
       "project": "default"
+    },
+    {
+      "key": "n10a-timesheet-hookrunner",
+      "memory_id": "ba6c5c9f-a49c-5fa7-afea-7c982e0f8cca",
+      "content": "Timesheet reminders are sent out by the hook-runner service.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-07-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "n10b-hookrunner-spool",
+      "memory_id": "ceff1656-b957-5327-b577-6bddca185d7a",
+      "content": "The hook-runner service keeps its outbound spool on a volume that gets remounted read-only during backups.",
+      "memory_type": "problem",
+      "source": "bench",
+      "created_at": "2026-07-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "n11a-labels-lprelay",
+      "memory_id": "b03bbc85-9576-5260-88d7-961a7371867b",
+      "content": "The office label printers get their jobs from the lp-relay service.",
+      "memory_type": "architecture",
+      "source": "bench",
+      "created_at": "2026-07-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "n11b-lprelay-restarts",
+      "memory_id": "89333823-a2e6-506a-a0c4-06f8e4cc88a6",
+      "content": "The lp-relay service restarts every time the config management agent runs.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-07-10T00:00:00+00:00",
+      "project": "default"
     }
   ]
 }

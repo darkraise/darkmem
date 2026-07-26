@@ -5,8 +5,8 @@ these decision procedures, not from memory of what the slice name suggests —
 two contributors drawing the boundary differently is how a slice silently
 becomes a mixture and the 2026-04 weak-slice finding stops meaning anything.
 
-Files: `corpus.json` (90 memories, fixed `memory_id` UUIDs + declared
-`created_at`), `gold.json` (116 pairs, 102 live). Loader and seeding:
+Files: `corpus.json` (94 memories, fixed `memory_id` UUIDs + declared
+`created_at`), `gold.json` (118 pairs, 102 live). Loader and seeding:
 `benchlib/retrieval_gold.py`. Validation: `benchlib/tests/test_retrieval_gold.py`.
 
 ## File discipline (doc 17 §11)
@@ -35,7 +35,11 @@ Files: `corpus.json` (90 memories, fixed `memory_id` UUIDs + declared
   the loader rejects a live pair whose recorded rank is not worse than
   `MULTI_HOP_BASELINE_K` (see the multi-hop section for the measurement
   protocol). The 2026-07-26 retirements predate the fields and carry
-  neither.
+  neither. Since gold v4 each live pair also records `bridge_entity` and
+  `bridge_status` (graph-side verification, same section); `name-only`
+  status is lawful only for the closed pre-v4 exception list pinned in
+  the loader (`MULTI_HOP_NAME_ONLY_BRIDGES`) — a new pair must be
+  `shared-entity`.
 - **Fixed ids.** `memory_id` is uuid5 of the entry `key` under
   `retrieval_gold.MEMORY_ID_NAMESPACE` — mint new ids with
   `retrieval_gold.memory_id_for_key(key)`; the loader rejects an id that
@@ -203,6 +207,50 @@ bridge names that encoded the anchor's domain (`acct-03` for invoices,
 for translations); host-number-style names (`acs-01`, `sftp-02`,
 `gpu-01`, `hv-27`) do not leak.
 
+**Graph-side check (mandatory since gold v4).** The rank guard proves
+the baseline *cannot* reach B; it says nothing about whether a graph
+arm *can*. The 2026-07-27 review replayed the ingested graph and found
+two v3 pairs whose bridge existed only in the corpus text — the
+extractor produced **zero entities** for one memory of each chain, so
+no entity-graph arm could ever traverse to B: dead weight no arm can
+fix, silently capping the slice's achievable hit@10. Every live pair
+must therefore also record:
+
+- `bridge_entity` — the bridge's entity name as extraction stores it
+  (lowercased), and
+- `bridge_status` — `shared-entity` when one `(name, entity_type)` row
+  in the ingested `entities` table carries **both** memories in its
+  `memory_ids`, or `name-only` when the two memories hold same-named
+  nodes of *different* entity types (disjoint under the domain model's
+  `(name, entity_type)` identity; Phase-4 dedup is deliberately
+  type-constrained, so they never merge).
+
+Verify against the real graph, not the corpus text: ingest the corpus
+(cache replay), then check the `entities` rows' `memory_ids` for both
+memories. Extraction is deterministic here (content-seeded, cached), so
+the status is stable across reseeds. Phrasing note: the extractor keys
+on the bridge's noun phrase — using the **identical** phrase in both
+memories ("the fleet-cfg repository", "the hook-runner service") is
+what reliably yields one shared `(name, entity_type)` node; bare
+prepositional mentions ("through the ops-oauth app registration",
+"on the arc-store bucket") can extract as zero entities.
+
+**A new pair must be `shared-entity`** — the strictest plausible arm
+design must be able to win it. `name-only` is grandfathered for exactly
+the eight pre-v4 pairs pinned in `MULTI_HOP_NAME_ONLY_BRIDGES`
+(rg-0072 `search-01` artifact/service, rg-0104/0105 `hv-27`
+place/entity, rg-0107/0108 `acs-01` service/artifact, rg-0112/0113
+`iot-gw-1` service/artifact, rg-0114 `gpu-01` place/service) — the
+same property rg-0072, the slice's only originally-blessed pair,
+already had, i.e. the slice's pre-existing standard, recorded rather
+than re-authored. Whether a name-only bridge is traversable depends on
+whether the Phase-2 arm links entities by node identity or by name /
+name-embedding — **deliberately not decided here**; that decision
+belongs to the arm-activation task (Tier-2 amendment logged
+2026-07-27). Until it is made, the slice's ceiling reads off the
+recorded statuses: 6/14 under strict node identity, 14/14 under
+name-linking — visible, not implicit.
+
 **Negative example.** A chain where the consequence memory also names the
 anchor ("The svc-bot token used by the chat-ops bot expires every 90
 days") — B is reachable lexically from the query, the hop collapses to
@@ -218,10 +266,12 @@ saturated — 13 of 14 pairs solved by the semantic channel alone because
 the query named B's domain outright, exactly as this file's earlier
 caveat suspected — and the 2026-07-26 re-adjudication retired-and-replaced
 all 13 under the mechanical check above (gold v2 → v3); only rg-0072
-survived, and the re-measured slice sits at hit@10 = 0.0000 with every
-anchor still found at rank 1. Graph-aware arms (PPR over shared entities,
-dual-level) are the designed path to B; no other slice requires composing
-two memories.
+survived. The 2026-07-27 review round then retired two v3 replacements
+whose bridges never reached the extracted graph and added the
+graph-side check (v3 → v4). The re-measured slice sits at
+hit@10 = 0.0000 with every anchor still found at rank 1. Graph-aware
+arms (PPR over shared entities, dual-level) are the designed path to B;
+no other slice requires composing two memories.
 
 ### temporal (12 pairs)
 

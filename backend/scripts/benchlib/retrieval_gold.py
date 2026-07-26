@@ -48,6 +48,22 @@ SLICES = QUERY_TYPE_SLICES | CAPABILITY_SLICES
 # without the hop, so it can never demonstrate graph-arm headroom.
 MULTI_HOP_BASELINE_K = 10
 
+# The graph-side bar (SLICES.md, multi-hop): a live pair must also record
+# how its bridge exists in the EXTRACTED entity graph. "shared-entity"
+# means one (name, entity_type) row carries both memories -- traversable
+# under any arm design. "name-only" means the two memories hold same-named
+# nodes of different entity types, disjoint under the (name, entity_type)
+# identity the domain model and Phase-4 dedup use; whether an arm can
+# cross that gap is an undecided arm-design question, so name-only is a
+# CLOSED exception list of pre-v4 pairs -- every new pair must clear the
+# strictest bar (shared-entity), and extending this set is a deliberate,
+# visible loader edit, never a data-only change.
+MULTI_HOP_BRIDGE_STATUSES = frozenset({"shared-entity", "name-only"})
+MULTI_HOP_NAME_ONLY_BRIDGES = frozenset({
+    "rg-0072", "rg-0104", "rg-0105", "rg-0107", "rg-0108",
+    "rg-0112", "rg-0113", "rg-0114",
+})
+
 MEMORY_ID_NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL, "darkmem://benchlib/retrieval-gold/v1"
 )
@@ -154,7 +170,10 @@ def load_retrieval_gold(path: str | Path = GOLD_PATH) -> dict:
             per-slice counts that disagree with the live pairs, or a live
             multi-hop pair that fails the saturation bar (missing
             ``consequence_memory_id`` / ``baseline_consequence_rank``, or a
-            recorded rank at or inside ``MULTI_HOP_BASELINE_K``).
+            recorded rank at or inside ``MULTI_HOP_BASELINE_K``) or the
+            graph-side bar (missing ``bridge_entity``, an unknown
+            ``bridge_status``, or ``name-only`` on a pair outside the
+            closed ``MULTI_HOP_NAME_ONLY_BRIDGES`` exception list).
     """
     path = Path(path)
     with open(path, encoding="utf-8") as fh:
@@ -249,6 +268,31 @@ def load_retrieval_gold(path: str | Path = GOLD_PATH) -> dict:
                     "already reaches the consequence memory without the hop; "
                     "re-adjudicate under retire-and-replace (SLICES.md, "
                     "multi-hop)"
+                )
+
+            bridge = pair.get("bridge_entity")
+            if not isinstance(bridge, str) or not bridge:
+                raise ValueError(
+                    f"pair {pid}: a live multi-hop pair must record its "
+                    "'bridge_entity' -- the entity name verified present in "
+                    "the extracted graph of both memories (SLICES.md, "
+                    "multi-hop)"
+                )
+            status = pair.get("bridge_status")
+            if status not in MULTI_HOP_BRIDGE_STATUSES:
+                raise ValueError(
+                    f"pair {pid}: bridge_status must be one of "
+                    f"{sorted(MULTI_HOP_BRIDGE_STATUSES)}, got {status!r} -- "
+                    "a bridge that exists only in the corpus text is "
+                    "unreachable by every graph arm (SLICES.md, multi-hop)"
+                )
+            if status == "name-only" and pid not in MULTI_HOP_NAME_ONLY_BRIDGES:
+                raise ValueError(
+                    f"pair {pid}: name-only bridges are a closed pre-v4 "
+                    "exception list (MULTI_HOP_NAME_ONLY_BRIDGES); a new "
+                    "pair must bridge through one shared (name, entity_type) "
+                    "entity present in both memories' extraction output "
+                    "(SLICES.md, multi-hop)"
                 )
 
         anchor = pair.get("anchor")

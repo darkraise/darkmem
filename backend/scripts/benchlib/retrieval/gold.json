@@ -1,6 +1,6 @@
 {
-  "_notes": "Retrieval gold pairs (query, relevant_memory_ids, slice_tags), doc 17 par.4/par.11. Append-only: add new pairs at the end with the next rg- id; retire a wrong pair in place with \"retired\": true and a reason in notes; never delete, rewrite, or reorder past entries. Slice decision procedures and negative examples live in SLICES.md; declared_slice_counts counts non-retired pairs and must be updated with every append. Every live multi-hop pair records consequence_memory_id and its measured baseline_consequence_rank; the loader rejects a live multi-hop pair whose recorded rank is not worse than MULTI_HOP_BASELINE_K -- see SLICES.md for the measurement protocol.",
-  "version": 3,
+  "_notes": "Retrieval gold pairs (query, relevant_memory_ids, slice_tags), doc 17 par.4/par.11. Append-only: add new pairs at the end with the next rg- id; retire a wrong pair in place with \"retired\": true and a reason in notes; never delete, rewrite, or reorder past entries. Slice decision procedures and negative examples live in SLICES.md; declared_slice_counts counts non-retired pairs and must be updated with every append. Every live multi-hop pair records consequence_memory_id and its measured baseline_consequence_rank; the loader rejects a live multi-hop pair whose recorded rank is not worse than MULTI_HOP_BASELINE_K -- see SLICES.md for the measurement protocol. It also records bridge_entity and bridge_status (graph-side verification); name-only bridges are a closed exception list pinned in the loader, and every new pair must be shared-entity.",
+  "version": 4,
   "corpus": "corpus.json",
   "declared_slice_counts": {
     "exact": 12,
@@ -823,7 +823,9 @@
       ],
       "consequence_memory_id": "db67c20c-65d2-5e24-912a-1fc029896924",
       "baseline_consequence_rank": 17,
-      "notes": "chain m7; bridge search-01; consequence rank re-measured 2026-07-26 over the version-3 corpus (hybrid-only, limit=90): 17"
+      "bridge_entity": "search-01",
+      "bridge_status": "name-only",
+      "notes": "chain m7; bridge search-01; consequence rank re-measured 2026-07-26 over the version-3 corpus (hybrid-only, limit=90): 17; re-measured 2026-07-27 over the v4 corpus (limit=94): rank 17; bridge search-01 name-only (artifact in A / service in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0073",
@@ -1209,8 +1211,10 @@
         "d00a000f-f2d8-551e-bbcd-4776d8ec62d5"
       ],
       "consequence_memory_id": "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
-      "baseline_consequence_rank": 11,
-      "notes": "chain n1; bridge hv-27; replaces rg-0063; baseline consequence rank 11 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 12,
+      "bridge_entity": "hv-27",
+      "bridge_status": "name-only",
+      "notes": "chain n1; bridge hv-27; replaces rg-0063; baseline consequence rank 11 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 12; bridge hv-27 name-only (place in A / entity in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0105",
@@ -1223,8 +1227,10 @@
         "d00a000f-f2d8-551e-bbcd-4776d8ec62d5"
       ],
       "consequence_memory_id": "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
-      "baseline_consequence_rank": 13,
-      "notes": "chain n1, second phrasing; replaces rg-0064; baseline consequence rank 13 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 15,
+      "bridge_entity": "hv-27",
+      "bridge_status": "name-only",
+      "notes": "chain n1, second phrasing; replaces rg-0064; baseline consequence rank 13 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 15; bridge hv-27 name-only (place in A / entity in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0106",
@@ -1238,7 +1244,8 @@
       ],
       "consequence_memory_id": "93e6b3fc-c5f5-5553-b193-bfc70a4db731",
       "baseline_consequence_rank": 18,
-      "notes": "chain n2; bridge ops-oauth app registration; replaces rg-0065; baseline consequence rank 18 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "notes": "chain n2; bridge ops-oauth app registration; replaces rg-0065; baseline consequence rank 18 measured 2026-07-26 (hybrid-only, limit=90, k=10); retired 2026-07-27: bridge exists only in the corpus text -- n2a-calendar-oauth extracts zero entities, so no graph arm can ever reach the consequence memory; replaced by rg-0117",
+      "retired": true
     },
     {
       "id": "rg-0107",
@@ -1251,8 +1258,10 @@
         "4a286983-385c-5ceb-b9e9-b09d36bb9497"
       ],
       "consequence_memory_id": "4a286983-385c-5ceb-b9e9-b09d36bb9497",
-      "baseline_consequence_rank": 27,
-      "notes": "chain n3; bridge acs-01; replaces rg-0066; baseline consequence rank 27 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 29,
+      "bridge_entity": "acs-01",
+      "bridge_status": "name-only",
+      "notes": "chain n3; bridge acs-01; replaces rg-0066; baseline consequence rank 27 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 29; bridge acs-01 name-only (service in A / artifact in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0108",
@@ -1265,8 +1274,10 @@
         "4a286983-385c-5ceb-b9e9-b09d36bb9497"
       ],
       "consequence_memory_id": "4a286983-385c-5ceb-b9e9-b09d36bb9497",
-      "baseline_consequence_rank": 25,
-      "notes": "chain n3, second phrasing; replaces rg-0067; baseline consequence rank 25 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 27,
+      "bridge_entity": "acs-01",
+      "bridge_status": "name-only",
+      "notes": "chain n3, second phrasing; replaces rg-0067; baseline consequence rank 25 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 27; bridge acs-01 name-only (service in A / artifact in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0109",
@@ -1279,8 +1290,10 @@
         "bb411aa9-0f79-59b5-ba6b-d5805bc57792"
       ],
       "consequence_memory_id": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
-      "baseline_consequence_rank": 20,
-      "notes": "chain n4; bridge sftp-02; replaces rg-0068; baseline consequence rank 20 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 22,
+      "bridge_entity": "sftp-02",
+      "bridge_status": "shared-entity",
+      "notes": "chain n4; bridge sftp-02; replaces rg-0068; baseline consequence rank 20 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 22; bridge sftp-02 shared-entity (service)"
     },
     {
       "id": "rg-0110",
@@ -1293,8 +1306,10 @@
         "49993106-c205-5e46-be96-a110c3eb0028"
       ],
       "consequence_memory_id": "49993106-c205-5e46-be96-a110c3eb0028",
-      "baseline_consequence_rank": 15,
-      "notes": "chain n5; bridge fleet-cfg repository; replaces rg-0069; baseline consequence rank 15 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 16,
+      "bridge_entity": "fleet-cfg",
+      "bridge_status": "shared-entity",
+      "notes": "chain n5; bridge fleet-cfg repository; replaces rg-0069; baseline consequence rank 15 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 16; bridge fleet-cfg shared-entity (project)"
     },
     {
       "id": "rg-0111",
@@ -1307,8 +1322,10 @@
         "49993106-c205-5e46-be96-a110c3eb0028"
       ],
       "consequence_memory_id": "49993106-c205-5e46-be96-a110c3eb0028",
-      "baseline_consequence_rank": 36,
-      "notes": "chain n5, second phrasing; replaces rg-0070; baseline consequence rank 36 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 38,
+      "bridge_entity": "fleet-cfg",
+      "bridge_status": "shared-entity",
+      "notes": "chain n5, second phrasing; replaces rg-0070; baseline consequence rank 36 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 38; bridge fleet-cfg shared-entity (project)"
     },
     {
       "id": "rg-0112",
@@ -1321,8 +1338,10 @@
         "05b752a0-aa7a-5a74-a543-b74684e79fa2"
       ],
       "consequence_memory_id": "05b752a0-aa7a-5a74-a543-b74684e79fa2",
-      "baseline_consequence_rank": 24,
-      "notes": "chain n6; bridge iot-gw-1; replaces rg-0071; baseline consequence rank 24 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 25,
+      "bridge_entity": "iot-gw-1",
+      "bridge_status": "name-only",
+      "notes": "chain n6; bridge iot-gw-1; replaces rg-0071; baseline consequence rank 24 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 25; bridge iot-gw-1 name-only (service in A / artifact in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0113",
@@ -1335,8 +1354,10 @@
         "05b752a0-aa7a-5a74-a543-b74684e79fa2"
       ],
       "consequence_memory_id": "05b752a0-aa7a-5a74-a543-b74684e79fa2",
-      "baseline_consequence_rank": 23,
-      "notes": "chain n6, second phrasing; replaces rg-0073; baseline consequence rank 23 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 25,
+      "bridge_entity": "iot-gw-1",
+      "bridge_status": "name-only",
+      "notes": "chain n6, second phrasing; replaces rg-0073; baseline consequence rank 23 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 25; bridge iot-gw-1 name-only (service in A / artifact in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0114",
@@ -1349,8 +1370,10 @@
         "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3"
       ],
       "consequence_memory_id": "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3",
-      "baseline_consequence_rank": 39,
-      "notes": "chain n7; bridge gpu-01; replaces rg-0074; baseline consequence rank 39 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "baseline_consequence_rank": 42,
+      "bridge_entity": "gpu-01",
+      "bridge_status": "name-only",
+      "notes": "chain n7; bridge gpu-01; replaces rg-0074; baseline consequence rank 39 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 42; bridge gpu-01 name-only (place in A / service in B) -- traversability depends on the arm's entity-linking semantics, see SLICES.md"
     },
     {
       "id": "rg-0115",
@@ -1364,7 +1387,8 @@
       ],
       "consequence_memory_id": "31fda8ef-9eb9-507d-ac2b-915e4f0f8a98",
       "baseline_consequence_rank": 34,
-      "notes": "chain n8; bridge arc-store bucket; replaces rg-0075; baseline consequence rank 34 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "notes": "chain n8; bridge arc-store bucket; replaces rg-0075; baseline consequence rank 34 measured 2026-07-26 (hybrid-only, limit=90, k=10); retired 2026-07-27: bridge exists only in the corpus text -- n8b-arcstore-lifecycle extracts zero entities, so no graph arm can ever reach the consequence memory; replaced by rg-0118",
+      "retired": true
     },
     {
       "id": "rg-0116",
@@ -1378,7 +1402,41 @@
       ],
       "consequence_memory_id": "08d3feb3-dc46-59c1-b2ce-aa543a762f1b",
       "baseline_consequence_rank": 11,
-      "notes": "chain n9; bridge edge-cdn-4; replaces rg-0076; baseline consequence rank 11 measured 2026-07-26 (hybrid-only, limit=90, k=10)"
+      "bridge_entity": "edge-cdn-4",
+      "bridge_status": "shared-entity",
+      "notes": "chain n9; bridge edge-cdn-4; replaces rg-0076; baseline consequence rank 11 measured 2026-07-26 (hybrid-only, limit=90, k=10); re-measured 2026-07-27 over the v4 corpus (limit=94): rank 11; bridge edge-cdn-4 shared-entity (service)"
+    },
+    {
+      "id": "rg-0117",
+      "query": "Why do timesheet reminders sometimes not arrive?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "ba6c5c9f-a49c-5fa7-afea-7c982e0f8cca",
+        "ceff1656-b957-5327-b577-6bddca185d7a"
+      ],
+      "consequence_memory_id": "ceff1656-b957-5327-b577-6bddca185d7a",
+      "baseline_consequence_rank": 72,
+      "bridge_entity": "hook-runner",
+      "bridge_status": "shared-entity",
+      "notes": "chain n10; bridge hook-runner service; replaces rg-0106; baseline consequence rank 72 measured 2026-07-27 (hybrid-only, limit=94, k=10); bridge shared-entity (hook-runner, service) verified in the extraction of both memories"
+    },
+    {
+      "id": "rg-0118",
+      "query": "Why do some shipping labels never come out of the printer?",
+      "slice_tags": [
+        "multi-hop"
+      ],
+      "relevant_memory_ids": [
+        "b03bbc85-9576-5260-88d7-961a7371867b",
+        "89333823-a2e6-506a-a0c4-06f8e4cc88a6"
+      ],
+      "consequence_memory_id": "89333823-a2e6-506a-a0c4-06f8e4cc88a6",
+      "baseline_consequence_rank": 56,
+      "bridge_entity": "lp-relay",
+      "bridge_status": "shared-entity",
+      "notes": "chain n11; bridge lp-relay service; replaces rg-0115; baseline consequence rank 56 measured 2026-07-27 (hybrid-only, limit=94, k=10); bridge shared-entity (lp-relay, service) verified in the extraction of both memories"
     }
   ]
 }

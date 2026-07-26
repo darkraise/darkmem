@@ -58,7 +58,7 @@ WHOLE_GROUP_ANCHORED = {"rg-0100", "rg-0102"}
 
 
 def test_gold_loads_and_declares_version_and_counts(gold):
-    assert gold["version"] == 3
+    assert gold["version"] == 4
     assert gold["declared_slice_counts"] == DOCUMENTED_COUNTS
 
 
@@ -256,13 +256,93 @@ def test_loader_rejects_a_non_integer_rank(tmp_path, gold):
 
 
 def test_retired_multi_hop_pairs_are_exempt_from_the_saturation_bar(gold):
-    """The 13 pairs retired on 2026-07-26 predate the recorded-rank fields
-    and stay in the file untouched; only live pairs carry the bar."""
+    """Retired pairs keep whatever fields they were retired with and the
+    loader never enforces the bars on them: the 13 pairs retired on
+    2026-07-26 predate the recorded-rank fields entirely, and the two
+    retired on 2026-07-27 (text-only bridges) keep their v3 rank fields
+    but never gained the v4 bridge fields."""
     retired = [p for p in gold["pairs"]
                if p["slice_tags"][0] == "multi-hop" and p.get("retired")]
-    assert len(retired) == 13
-    for pair in retired:
+    assert len(retired) == 15
+    v3_round = [p for p in retired if p["id"] < "rg-0104"]
+    v4_round = [p for p in retired if p["id"] >= "rg-0104"]
+    assert len(v3_round) == 13
+    assert {p["id"] for p in v4_round} == {"rg-0106", "rg-0115"}
+    for pair in v3_round:
         assert "baseline_consequence_rank" not in pair
+    for pair in v4_round:
+        assert "bridge_status" not in pair
+
+
+def test_live_multi_hop_pairs_record_a_verified_bridge(gold):
+    """The graph-side bar (SLICES.md, multi-hop): every live pair names
+    the bridge entity verified in the extracted graph, name-only bridges
+    are exactly the pinned pre-v4 exception list, and everything else --
+    including every future pair -- is shared-entity."""
+    pairs = _live_multi_hop(gold)
+    assert pairs
+    by_status = {"shared-entity": set(), "name-only": set()}
+    for pair in pairs:
+        assert isinstance(pair["bridge_entity"], str) and pair["bridge_entity"]
+        assert pair["bridge_status"] in retrieval_gold.MULTI_HOP_BRIDGE_STATUSES
+        by_status[pair["bridge_status"]].add(pair["id"])
+    assert by_status["name-only"] == set(retrieval_gold.MULTI_HOP_NAME_ONLY_BRIDGES)
+    assert by_status["shared-entity"] == {
+        "rg-0109", "rg-0110", "rg-0111", "rg-0116", "rg-0117", "rg-0118",
+    }
+
+
+def test_loader_rejects_a_missing_bridge_entity(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        del pair["bridge_entity"]
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="bridge_entity"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_an_unknown_bridge_status(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        pair["bridge_status"] = "text-only"
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="bridge_status"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_a_missing_bridge_status(tmp_path, gold):
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"]
+                    if p["slice_tags"][0] == "multi-hop" and not p.get("retired"))
+        del pair["bridge_status"]
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="bridge_status"):
+        load_retrieval_gold(path)
+
+
+def test_loader_rejects_name_only_outside_the_exception_list(tmp_path, gold):
+    """The strictest-bar rule: a pair not in MULTI_HOP_NAME_ONLY_BRIDGES
+    claiming a name-only bridge is a new pair trying to enter below the
+    bar, and the loader refuses it."""
+    def mutate(doc):
+        pair = next(p for p in doc["pairs"] if p["id"] == "rg-0117")
+        pair["bridge_status"] = "name-only"
+
+    path = _reload_with(tmp_path, gold, mutate)
+    with pytest.raises(ValueError, match="closed pre-v4 exception list"):
+        load_retrieval_gold(path)
+
+
+def test_the_exception_list_is_exactly_the_pre_v4_pairs():
+    assert retrieval_gold.MULTI_HOP_NAME_ONLY_BRIDGES == frozenset({
+        "rg-0072", "rg-0104", "rg-0105", "rg-0107", "rg-0108",
+        "rg-0112", "rg-0113", "rg-0114",
+    })
 
 
 def test_anchor_flags_match_the_adjudicated_sets(gold):
