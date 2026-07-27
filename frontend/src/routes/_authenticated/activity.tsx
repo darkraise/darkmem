@@ -9,6 +9,8 @@ import { Activity } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { DAY_DRILL_DEFAULT } from "@/demo/data/activity-curated"
 import { isValidDay } from "@/demo/activity"
+import { DEMO } from "@/demo/flag"
+import { utcDayKey } from "@/features/dashboard/calendar"
 import { PipelineTab } from "@/features/activity/components/pipeline-tab"
 import { FeedTab } from "@/features/activity/components/feed-tab"
 import { TriageTab } from "@/features/activity/components/triage-tab"
@@ -39,6 +41,11 @@ export const Route = createFileRoute("/_authenticated/activity")({
   }),
   component: ActivityPage,
 })
+
+// The demo fixture pins a fixed date so its curated day-bucket resolves;
+// real mode has no such fixture, so it defaults to "today" in UTC — the
+// same day-bucket unit the day view itself never re-derives client-side.
+const dayDrillDefault = () => (DEMO ? DAY_DRILL_DEFAULT : utcDayKey(new Date()))
 
 function ActivityPage() {
   const { tab, day } = Route.useSearch()
@@ -97,7 +104,7 @@ function ActivityPage() {
         </TabsContent>
         <TabsContent value="day" className="pt-4">
           <DayTab
-            day={day ?? DAY_DRILL_DEFAULT}
+            day={day ?? dayDrillDefault()}
             onDayChange={(next) =>
               void navigate({ search: (prev) => ({ ...prev, day: next }) })
             }

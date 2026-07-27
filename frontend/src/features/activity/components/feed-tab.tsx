@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowRight, Bell, Inbox } from "lucide-react"
+import { ArrowRight, Bell, CircleAlert, Inbox } from "lucide-react"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import {
   ToggleGroup,
@@ -7,12 +7,13 @@ import {
 } from "darkraise-ui/components/toggle-group"
 import { cn } from "darkraise-ui/lib"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
-import { FEED_CATEGORIES, filterFeed } from "@/demo/activity"
-import { useDemoFeedEvents } from "@/demo/hooks"
-import type { DemoFeedEvent, FeedCategory } from "@/demo/types"
+import { FEED_CATEGORIES } from "@/demo/activity"
+import type { FeedCategory } from "@/demo/types"
+import { DEMO } from "@/demo/flag"
 import { ModuleSurface } from "./module-surface"
+import { useFeed, type FeedRowData } from "../use-feed"
 
-function FeedRow({ event }: { event: DemoFeedEvent }) {
+function FeedRow({ event }: { event: FeedRowData }) {
   return (
     <div
       className={cn(
@@ -40,35 +41,39 @@ function FeedRow({ event }: { event: DemoFeedEvent }) {
         </span>
       )}
       <span className="text-muted-foreground font-mono text-sm whitespace-nowrap">
-        {event.time_label}
+        {event.timeLabel}
       </span>
     </div>
   )
 }
 
 export function FeedTab() {
-  const events = useDemoFeedEvents()
+  const { events, isLoading, isError } = useFeed()
   const [category, setCategory] = useState<FeedCategory | "all">("all")
-  const filtered = filterFeed(events, category)
+  const filtered =
+    category === "all" ? events : events.filter((e) => e.category === category)
 
   return (
     <div className="space-y-4">
       <p className="text-muted-foreground max-w-4xl text-sm">
-        The transient live stream while this view stays open — captures,
-        pipeline outcomes, verification changes, consolidation, and repo syncs
-        as they happen. This list is convenience only, not the record of truth:
-        the per-object timeline and the calendar day drill-down reconstruct
-        history from the durable events substrate, not from what this socket
-        happened to deliver.
+        The recent slice of the durable <code className="font-mono">events</code>{" "}
+        substrate — captures, pipeline outcomes, verification changes,
+        consolidation, and repo syncs. This list refreshes on a short poll;
+        for the authoritative reconstruction of one object's history or a
+        calendar day, use the timeline or the day drill-down, both reading
+        the same substrate directly, never a client-side count of what this
+        page happened to fetch.
       </p>
       <ModuleSurface
         title="Activity — live feed"
-        state={filtered.length > 0 ? "populated" : "empty"}
+        state={
+          isLoading ? "empty" : filtered.length > 0 ? "populated" : "empty"
+        }
         meta="/activity"
         actions={
           <span className="text-success inline-flex items-center gap-1.5 font-mono text-sm">
             <span aria-hidden className="bg-success h-1.5 w-1.5 rounded-full" />
-            connected
+            {DEMO ? "connected" : "polling every 5s"}
           </span>
         }
       >
@@ -96,22 +101,25 @@ export function FeedTab() {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {filtered.length === 0 ? (
+        {isError ? (
+          <EmptyState
+            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            title="Couldn't load the feed"
+            description="The /events request failed — this is an error state, not an empty feed. Retry by reopening Activity."
+          />
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon={<Inbox aria-hidden className="h-6 w-6" />}
-            title={`No ${category === "all" ? "" : `${category} `}events since this view opened`}
-            description="The feed streams only while Activity stays open — matching events will appear here the moment they happen. For history before this view was opened, use the day drill-down, which reads the durable events substrate."
+            title={
+              category === "all"
+                ? "No recent events"
+                : `No recent ${category} events`
+            }
+            description={`The feed shows the ${events.length} most recent events substrate rows. For history further back, use the day drill-down, which reads the durable events substrate directly rather than this bounded page.`}
           />
         ) : (
           filtered.map((event) => <FeedRow key={event.id} event={event} />)
         )}
-        <p className="text-muted-foreground text-sm">
-          The row marked <span className="font-mono">toast shown</span> is the
-          one event whose toast carries honesty content — a fact.verified
-          dispute — and its toast body states the same two-sided claim the
-          Review queue renders, so a fast-moving alert can never contradict the
-          detail view.
-        </p>
       </ModuleSurface>
     </div>
   )

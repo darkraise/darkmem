@@ -205,19 +205,33 @@ export const CURATED_PIPELINE_FAILURES: DemoPipelineFailure[] = [
 export const CURATED_BUFFER_MONITOR: DemoBufferMonitor = {
   live: false,
   staged_phase:
-    "target-new, staged — ships once memory_buffer (doc 04 §8.6) is live",
+    "memory_buffer and buffer_flush are live (T1.10/T1.13); no REST route reads them yet",
   staged_reason:
-    "Once the durable Tier-B ingest buffer ships, this panel will show live pending / claimed / done / error counts for memory_buffer, with a poison row (attempts exceeded) surfacing here and in Failure triage rather than looping forever.",
+    "The durable Tier-B ingest buffer and its flush job are running, but nothing exposes memory_buffer rows over the API — this panel renders the target shape against curated data until that surface lands, so it never claims to be live traffic.",
   target: {
     pending: 18,
     claimed: 4,
     done: 214,
     error: 4,
-    poison: {
-      headline: "1 buffer row flagged poison — attempts exceeded",
-      detail:
-        'project: darkmem · attempts 5/5 · last_error: "extraction timeout after 30s"',
-    },
+    staleClaims: [
+      {
+        id: "buf-stale-1",
+        project: "darkmem",
+        attempts: 2,
+        maxAttempts: 5,
+        lastError: null,
+        claimedAt: "2026-07-27 08:41 UTC",
+      },
+    ],
+    poisonRows: [
+      {
+        id: "buf-poison-1",
+        project: "darkmem",
+        attempts: 5,
+        maxAttempts: 5,
+        lastError: "extraction timeout after 30s",
+      },
+    ],
     wait_process_note:
       "wait_process=true captures bypass the buffer entirely and run the five-phase pipeline synchronously — they never appear in these counts, only in the pipeline stepper.",
   },
