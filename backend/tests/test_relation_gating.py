@@ -37,14 +37,21 @@ from app.services.extraction_clean import (
     CleanState,
     _CAUSAL_BETWEEN_RE,
     _FUTURE_RE,
+    _HARDWARE_TOKENS,
+    _IMPROVES_PATTERNS,
     _REPLACE_EVIDENCE_RE,
+    _REPLACES_PATTERNS,
     _SELECTION_RE,
     _TEMPORAL_BETWEEN_RE,
     _downgrade_future_to_mentions,
     _drop_date_misuse,
+    _entity_matches,
     _gate_replaces_requires_verb,
     _gate_replaces_selection,
+    _snap_hardware_types,
     _suppress_temporal_edges,
+    _validate_directions,
+    _validate_hosting_direction,
     normalize_relation_type,
 )
 
@@ -506,4 +513,157 @@ def test_the_date_pass_does_not_mutate_its_input():
     rels = [{"source": "darkmem", "target": "2026-05-12", "type": "USES"}]
     before = copy.deepcopy(rels)
     _drop_date_misuse(rels)
+    assert rels == before
+
+
+# ── Direction validation (doc 06 §4 S4 box D4) ───────────────────────
+#
+# The Done-when has two halves and the second is the one that keeps a
+# future "improvement" from guessing: an unambiguously wrong direction
+# swaps, an ambiguous one is left exactly as extracted. A swap is a
+# deterministic consequence of an explicit source-text pattern, never an
+# inference. Both validators are invisible to the F1 bench.
+
+_REPLACES_DIRECTION_CASES: dict[str, str] = {
+    r"switched\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we switched from qdrant to pgvector",
+    r"migrated?\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we migrated from qdrant to pgvector",
+    r"replaced?\s+(.+?)\s+with\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we replaced qdrant with pgvector",
+    r"replacing\s+(.+?)\s+with\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we are replacing qdrant with pgvector",
+    r"chose\s+(.+?)\s+(?:instead\s+of|over)\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we chose pgvector over qdrant",
+    r"picked\s+(.+?)\s+(?:instead\s+of|over)\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we picked pgvector over qdrant",
+    r"went\s+with\s+(.+?)\s+(?:instead\s+of|over)\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we went with pgvector instead of qdrant",
+    r"decided\s+to\s+use\s+(.+?)\s+(?:instead\s+of|over)\s+(.+?)(?:\s+because\b|\s+since\b|\s+as\b|\s+for\b|[,;.]|$)": "we decided to use pgvector over qdrant",
+}
+
+_IMPROVES_DIRECTION_CASES: dict[str, str] = {
+    r"(.+?)\s+improves?\s+(?:on|upon|over)\s+(.+?)(?:\s+by\b|\s+because\b|[,;.]|$)": "pgvector improves on qdrant",
+    r"(.+?)\s+is\s+better\s+than\s+(.+?)(?:\s+because\b|\s+since\b|[,;.]|$)": "pgvector is better than qdrant",
+    r"(.+?)\s+builds?\s+on\s+(.+?)(?:\s+by\b|\s+because\b|[,;.]|$)": "pgvector builds on qdrant",
+}
+
+
+def _directional(source, target, rtype):
+    return [{"source": source, "target": target, "type": rtype, "weight": 0.9}]
+
+
+def test_every_direction_pattern_has_a_worked_example():
+    assert {p.pattern for p, _, _ in _REPLACES_PATTERNS} == set(_REPLACES_DIRECTION_CASES)
+    assert {p.pattern for p, _, _ in _IMPROVES_PATTERNS} == set(_IMPROVES_DIRECTION_CASES)
+
+
+@pytest.mark.parametrize("content", sorted(_REPLACES_DIRECTION_CASES.values()))
+def test_a_wrong_direction_replaces_is_swapped_onto_the_source_text(content):
+    out = _validate_directions(_directional("qdrant", "pgvector", "REPLACES"), content)
+    assert _triples(out) == {("pgvector", "REPLACES", "qdrant")}
+
+
+@pytest.mark.parametrize("content", sorted(_REPLACES_DIRECTION_CASES.values()))
+def test_a_right_direction_replaces_is_left_alone(content):
+    out = _validate_directions(_directional("pgvector", "qdrant", "REPLACES"), content)
+    assert _triples(out) == {("pgvector", "REPLACES", "qdrant")}
+
+
+@pytest.mark.parametrize("content", sorted(_IMPROVES_DIRECTION_CASES.values()))
+def test_a_wrong_direction_improves_on_is_swapped(content):
+    out = _validate_directions(_directional("qdrant", "pgvector", "IMPROVES_ON"), content)
+    assert _triples(out) == {("pgvector", "IMPROVES_ON", "qdrant")}
+
+
+@pytest.mark.parametrize("content", sorted(_IMPROVES_DIRECTION_CASES.values()))
+def test_a_right_direction_improves_on_is_left_alone(content):
+    out = _validate_directions(_directional("pgvector", "qdrant", "IMPROVES_ON"), content)
+    assert _triples(out) == {("pgvector", "IMPROVES_ON", "qdrant")}
+
+
+def test_no_swap_when_only_one_endpoint_matches_its_swapped_role():
+    content = "we switched from qdrant to pgvector"
+    out = _validate_directions(_directional("qdrant", "redis", "REPLACES"), content)
+    assert _triples(out) == {("qdrant", "REPLACES", "redis")}
+
+
+def test_no_swap_when_an_endpoint_matches_both_its_expected_and_wrong_role():
+    # Both sides of the migration share the 'pgvector' token, so the source
+    # endpoint is grounded in each. The wrong-direction test alone would fire;
+    # the ``and not src_matches_expected`` guard is what declines.
+    content = "we replaced pgvector legacy with pgvector hnsw"
+    out = _validate_directions(_directional("pgvector", "hnsw", "REPLACES"), content)
+    assert _triples(out) == {("pgvector", "REPLACES", "hnsw")}
+
+
+def test_no_swap_when_no_pattern_matches_the_content():
+    content = "darkmem indexes memories with pgvector"
+    out = _validate_directions(_directional("qdrant", "pgvector", "REPLACES"), content)
+    assert _triples(out) == {("qdrant", "REPLACES", "pgvector")}
+
+
+def test_endpoint_grounding_is_word_bounded_not_a_bare_substring():
+    # Recorded regression. With a bare substring test both endpoints look
+    # wrong-directioned -- 'postgres' inside 'postgresql' and 'vector'
+    # inside 'pgvector' -- and the pass inverts a claim neither side
+    # actually grounds. The \b anchors in _entity_matches decline instead.
+    assert not _entity_matches("postgres", "postgresql")
+    assert not _entity_matches("vector", "pgvector")
+    content = "we switched from postgresql to pgvector"
+    out = _validate_directions(_directional("postgres", "vector", "REPLACES"), content)
+    assert _triples(out) == {("postgres", "REPLACES", "vector")}
+
+
+@pytest.mark.parametrize("rtype", ["USES", "DEPLOYED_ON", "RELATED_TO", "MENTIONS"])
+def test_relation_types_outside_the_two_families_pass_through(rtype):
+    content = "we switched from qdrant to pgvector"
+    out = _validate_directions(_directional("qdrant", "pgvector", rtype), content)
+    assert _triples(out) == {("qdrant", rtype, "pgvector")}
+
+
+def test_the_direction_pass_does_not_mutate_its_input():
+    rels = _directional("qdrant", "pgvector", "REPLACES")
+    before = copy.deepcopy(rels)
+    _validate_directions(rels, "we switched from qdrant to pgvector")
+    assert rels == before
+
+
+def test_hardware_on_the_source_side_of_a_hosting_edge_swaps():
+    out = _validate_hosting_direction(_directional("gpu", "darkmem", "DEPLOYED_ON"))
+    assert _triples(out) == {("darkmem", "DEPLOYED_ON", "gpu")}
+
+
+def test_hardware_on_the_target_side_of_a_hosting_edge_is_already_canonical():
+    out = _validate_hosting_direction(_directional("darkmem", "gpu", "DEPLOYED_ON"))
+    assert _triples(out) == {("darkmem", "DEPLOYED_ON", "gpu")}
+
+
+def test_hardware_on_both_sides_is_ambiguous_and_does_not_swap():
+    out = _validate_hosting_direction(_directional("gpu", "cpu", "DEPLOYED_ON"))
+    assert _triples(out) == {("gpu", "DEPLOYED_ON", "cpu")}
+
+
+def test_neither_endpoint_hardware_does_not_swap():
+    out = _validate_hosting_direction(_directional("darkmem", "proxmox", "DEPLOYED_ON"))
+    assert _triples(out) == {("darkmem", "DEPLOYED_ON", "proxmox")}
+
+
+def test_only_deployed_on_is_a_hosting_candidate():
+    # RUNS_ON never reaches this pass: normalize_relation_type rewrites it
+    # to DEPLOYED_ON upstream. The coupling to LEGACY_RELATIONSHIP_TYPE_MAP
+    # is invisible in the pass itself, so pin both halves.
+    assert normalize_relation_type("RUNS_ON") == "DEPLOYED_ON"
+    out = _validate_hosting_direction(_directional("gpu", "darkmem", "RUNS_ON"))
+    assert _triples(out) == {("gpu", "RUNS_ON", "darkmem")}
+
+
+@pytest.mark.parametrize("token", sorted(_HARDWARE_TOKENS))
+def test_the_hardware_list_is_shared_with_the_type_snapper(token):
+    # Both passes read one _HARDWARE_TOKENS frozenset on purpose. Asserting
+    # the behaviour of each over the whole list fails if either grows a
+    # private copy.
+    (snapped,) = _snap_hardware_types([{"name": token.upper(), "type": "artifact"}])
+    assert snapped["type"] == "tool"
+    out = _validate_hosting_direction(_directional(token, "darkmem", "DEPLOYED_ON"))
+    assert _triples(out) == {("darkmem", "DEPLOYED_ON", token)}
+
+
+def test_the_hosting_pass_does_not_mutate_its_input():
+    rels = _directional("gpu", "darkmem", "DEPLOYED_ON")
+    before = copy.deepcopy(rels)
+    _validate_hosting_direction(rels)
     assert rels == before

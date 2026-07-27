@@ -1718,7 +1718,6 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
             out.append(r)
             continue
 
-        swapped = False
         for pattern, first_role, second_role in patterns:
             match = pattern.search(content)
             if not match:
@@ -1747,7 +1746,6 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
                 and not tgt_matches_expected
             ):
                 r["source"], r["target"] = tgt, src
-                swapped = True
                 break
 
         out.append(r)
