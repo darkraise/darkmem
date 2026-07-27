@@ -9,7 +9,11 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
 
-from app.api.mcp.client_identity import resolve_client_source, resolve_source_agent
+from app.api.mcp.client_identity import (
+    resolve_client_source,
+    resolve_origin_key,
+    resolve_source_agent,
+)
 from app.config import settings
 from app.database import async_session_factory
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
@@ -131,11 +135,16 @@ async def memory_add(
         project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
     """
     async with _memory_service_context() as service:
+        resolved_source = resolve_client_source(source, ctx)
+        resolved_project = project or "default"
         data = MemoryCreate(
             content=content, tags=tags or [],
-            source=resolve_client_source(source, ctx),
+            source=resolved_source,
             source_agent=resolve_source_agent(source_agent, ctx),
-            memory_type=memory_type, project=project,
+            origin_key=resolve_origin_key(
+                None, ctx, source=resolved_source, project=resolved_project,
+            ),
+            memory_type=memory_type, project=resolved_project,
         )
         memory = await service.create_memory(data, api_key_id=None)
         return json.dumps(_memory_to_dict(memory))
@@ -273,6 +282,17 @@ async def memory_batch_add(entries: list[dict], ctx: Context | None = None) -> s
             raw_agent = entry.get("source_agent")
             if raw_agent is None or isinstance(raw_agent, str):
                 entry["source_agent"] = resolve_source_agent(raw_agent, ctx)
+            # Resolved per entry, but from the SAME request context — so a
+            # batch of 100 from one undeclared agent is one origin, not 100
+            # (doc 05 §2.1; a batch is the easiest way to counterfeit
+            # independence if this were per-entry random).
+            raw_origin = entry.get("origin_key")
+            if raw_origin is None or isinstance(raw_origin, str):
+                entry["origin_key"] = resolve_origin_key(
+                    raw_origin, ctx,
+                    source=entry["source"],
+                    project=entry.get("project") or "default",
+                )
         resolved.append(entry)
 
     # Mirror the HTTP /memories/batch cap (MemoryBatchCreate: 1-100 entries)

@@ -13,6 +13,9 @@ class MemoryCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     source: str = "api"
     source_agent: str | None = None
+    # Declared capture-session identity. Resolved at the front door before
+    # this schema is built; see resolve_origin_key (doc 05 §2.1).
+    origin_key: str | None = None
     memory_type: str | None = None
     importance: float = 0.5
     metadata: dict = Field(default_factory=dict)

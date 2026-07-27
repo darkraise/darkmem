@@ -43,6 +43,9 @@ class Memory(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(100), nullable=False, default="api")
     source_agent: Mapped[str | None] = mapped_column(String(255))
+    # The corroboration-independence key, stamped at capture (doc 05 §2.1).
+    # Every downstream verification count is COUNT(DISTINCT origin_key).
+    origin_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     memory_type: Mapped[str | None] = mapped_column(String(50))
     importance: Mapped[float] = mapped_column(Float, default=0.5)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)

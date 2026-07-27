@@ -15,7 +15,7 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, content, source, source_agent, memory_type, importance, metadata, expires_at=None, project=None):
+    async def create(self, content, source, source_agent, memory_type, importance, metadata, expires_at=None, project=None, origin_key=None):
         kwargs = dict(
             content=content,
             source=source,
@@ -24,6 +24,7 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             importance=importance,
             metadata_=metadata,
             expires_at=expires_at,
+            origin_key=origin_key,
         )
         if project is not None:
             kwargs["project"] = project

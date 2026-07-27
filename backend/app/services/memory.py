@@ -32,7 +32,7 @@ class MemoryService:
             content=data.content, source=data.source, source_agent=data.source_agent,
             memory_type=data.memory_type, importance=data.importance,
             metadata=data.metadata, expires_at=data.expires_at,
-            project=data.project,
+            project=data.project, origin_key=data.origin_key,
         )
         if data.tags:
             await self.memory_repo.set_tags(memory.id, data.tags)
@@ -70,7 +70,7 @@ class MemoryService:
                 content=data.content, source=data.source, source_agent=data.source_agent,
                 memory_type=data.memory_type, importance=data.importance,
                 metadata=data.metadata, expires_at=data.expires_at,
-                project=data.project,
+                project=data.project, origin_key=data.origin_key,
             )
             if data.tags:
                 await self.memory_repo.set_tags(memory.id, data.tags)
