@@ -202,7 +202,7 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         front_doors=("GET /api/v1/reembed/obsolete/memories",),
         crosses=("content_preview",),
         scoping=Scoping.OPERATOR_WIDE,
-        labels=(),
+        labels=("project", "status"),
         decided_by="T1.29e",
         reason="Re-embedding is a fingerprint-partition backfill, not a retrieval. "
                "Every row of every project and every lifecycle state needs a "
@@ -278,13 +278,15 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         front_doors=("GET /api/v1/chat/conversations/{conversation_id}",),
         crosses=("content_preview",),
         scoping=Scoping.ESCALATED,
-        labels=(),
+        labels=("project", "status"),
         decided_by="T1.29e",
-        reason="Retrieval was scoped when the answer was produced, but each "
-               "assistant message persists a 150-char snippet of every cited "
-               "memory in chat_messages.context, and nothing prunes it when the "
-               "memory is deleted. The same retention property as the event "
-               "journal, in a second store — escalated with it.",
+        reason="Retrieval was wide on the project axis when the answer was "
+               "produced, so each persisted snippet names the project and "
+               "lifecycle state its memory carried at citation time. The open "
+               "question is retention, not scope: chat_messages.context keeps a "
+               "150-char snippet of every cited memory and nothing prunes it "
+               "when the memory is deleted. The same retention property as the "
+               "event journal, in a second store — escalated with it.",
     ),
 
     # -- memory identity without content -----------------------------------

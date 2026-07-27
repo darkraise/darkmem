@@ -7,6 +7,7 @@ from sqlalchemy import Text, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedder_registry import child_table
+from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
 _COMMUNITY_SAMPLE_CAP = 10_000
 
@@ -130,23 +131,30 @@ class PostgresVectorRepository:
         limit: int = 20,
         filters: MemoryFilter | None = None,
     ) -> list[dict]:
+        """One partition's ANN probe, every row labelled with the scope it came from.
+
+        The join to ``memories`` is unconditional even when nothing is being
+        scoped — the same shape :meth:`get_all_vectors` uses, and for the same
+        reason: the FK makes it lossless, and it is what puts ``project`` and
+        ``status`` on every row, so a row reaching a consumer nobody enumerated
+        still names where it came from.
+        """
         table = child_table("memory_embeddings", fingerprint)
         params: dict = {"vec": str(vector), "limit": limit}
-        join_sql = ""
         where_sql = ""
         if filters is not None:
             params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
             params.update(filters.params())
-            join_sql = "JOIN memories m ON m.id = e.memory_id"
             where_sql = f"WHERE {filters.where_sql('m')}"
 
         result = await self.session.execute(
             text(f"""
                 SELECT e.memory_id,
                        1 - (e.embedding <=> CAST(:vec AS vector)) AS score,
-                       e.payload
+                       e.payload,
+                       {SCOPE_LABEL_COLUMNS}
                 FROM {table} e
-                {join_sql}
+                {SCOPE_LABEL_JOIN}
                 {where_sql}
                 ORDER BY e.embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
@@ -154,7 +162,12 @@ class PostgresVectorRepository:
             params,
         )
         rows = [
-            {"memory_id": UUID(str(row.memory_id)), "score": float(row.score), "payload": row.payload}
+            {
+                "memory_id": UUID(str(row.memory_id)),
+                "score": float(row.score),
+                "payload": row.payload,
+                **scope_labels(row),
+            }
             for row in result
         ]
         return rows[:limit]
@@ -207,10 +220,9 @@ class PostgresVectorRepository:
                 SELECT e.memory_id,
                        e.embedding::text AS embedding_text,
                        e.payload,
-                       m.project,
-                       m.status::text AS status
+                       {SCOPE_LABEL_COLUMNS}
                 FROM {table} e
-                JOIN memories m ON m.id = e.memory_id
+                {SCOPE_LABEL_JOIN}
                 {where_sql}
                 LIMIT :limit
             """),
@@ -221,8 +233,7 @@ class PostgresVectorRepository:
                 "memory_id": UUID(str(row.memory_id)),
                 "vector": self._parse_vector(row.embedding_text),
                 "payload": row.payload,
-                "project": row.project,
-                "status": row.status,
+                **scope_labels(row),
             }
             for row in result
         ]

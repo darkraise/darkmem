@@ -12,6 +12,7 @@ from app.services.llm import LLMOrchestrator
 from app.services import prompt
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.repositories.graph import PostgresGraphRepository
+from app.utils.scope_labels import scope_labels
 
 MENTION_RE = re.compile(r"@([\w./-]+)")
 CLUSTER_RE = re.compile(r"@cluster:(\d+)")
@@ -166,6 +167,7 @@ class ChatService:
                         "source": m.get("payload", {}).get("source", ""),
                         "tags": m.get("payload", {}).get("tags", []),
                         "created_at": m.get("payload", {}).get("created_at", ""),
+                        **scope_labels(m),
                     }
                     for m in retrieval["raw_memories"]
                 ],
@@ -245,6 +247,10 @@ class ChatService:
         if not entities and self.graph_repo and raw_memories:
             entities = await self._entities_from_memories(raw_memories[:5])
 
+        # The project axis defaults to every project, so each retrieved row
+        # carries the project and lifecycle state it came from: this list is
+        # emitted verbatim as the ``sources`` event, and a reader cannot
+        # otherwise tell a foreign or retired row from a local live one.
         formatted_memories = []
         for i, m in enumerate(raw_memories, 1):
             payload = m.get("payload", {})
@@ -254,6 +260,7 @@ class ChatService:
                 "source": payload.get("source", ""),
                 "tags": payload.get("tags", []),
                 "score": round(m.get("score", 0), 3),
+                **scope_labels(m),
             })
 
         return {

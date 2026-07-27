@@ -26,6 +26,7 @@ from app.services.rank_fusion import RANK_ARMS, rank_fusion_breakdown
 from app.services.wait_process import drive as _drive_wait_process_flush
 from app.taxonomy import MEMORY_TYPES, normalize_memory_type
 from app.utils.ids import new_id
+from app.utils.scope_labels import scope_labels
 
 logger = logging.getLogger(__name__)
 
@@ -669,16 +670,25 @@ limit=params.limit, offset=params.offset,
         sources = []
         context_parts = []
 
+        # One citation shape for both passes and therefore for both doors: the
+        # REST route and the MCP tool serialise this dict unchanged, so a
+        # second hand-built row here is how the two would drift apart. The
+        # scope labels are unconditional because the project default is every
+        # project — a cited row has to name the project it came from.
+        def cite(memory: Memory, score: float) -> dict:
+            return {
+                "memory_id": str(memory.id),
+                "content": memory.content[:200],
+                "score": score,
+                "tags": [t.name for t in memory.tags],
+                **scope_labels(memory),
+            }
+
         # Prepend boosted rows at the top of the context so the LLM sees them
         # first. Score 1.0 marks them as authoritative for this query.
         for memory in boosted:
             context_parts.append(f"[{len(context_parts)+1}] {memory.content}")
-            sources.append({
-                "memory_id": str(memory.id),
-                "content": memory.content[:200],
-                "score": 1.0,
-                "tags": [t.name for t in memory.tags],
-            })
+            sources.append(cite(memory, 1.0))
 
         for mid in memory_ids:
             if mid in seen:
@@ -687,12 +697,7 @@ limit=params.limit, offset=params.offset,
             if memory:
                 seen.add(mid)
                 context_parts.append(f"[{len(context_parts)+1}] {memory.content}")
-                sources.append({
-                    "memory_id": str(memory.id),
-                    "content": memory.content[:200],
-                    "score": score_by_id[mid],
-                    "tags": [t.name for t in memory.tags],
-                })
+                sources.append(cite(memory, score_by_id[mid]))
 
         if not context_parts:
             return {"answer": "No relevant memories found.", "sources": []}
