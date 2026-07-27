@@ -395,7 +395,71 @@ the only one: no code reads a column by ordinal.
 
 ## 6. Per-fingerprint partition templates (registry entries, not DDL)
 
-_(pending: Task 5)_
+**A row here is not something the baseline creates — it is something the baseline must
+NOT create.** Doc 19 §2 expressly rejects static child-table DDL: "expressing the child
+tables as static migrations — the DDL is runtime-parameterised by fingerprint, which no
+static migration can express". T0.12c says the same in its own words: "The four
+per-fingerprint embedding templates land here as **registry entries** … nothing about
+them belongs in the Alembic file." So this section exists loudly enough that a T0.12c
+executor reading only §3 does not add eight `CREATE TABLE`s.
+
+The evidence is empirical, not asserted. **A freshly migrated database holds zero
+`*__<slug>` child tables** (Appendix A, assertion row 7), and no migration statement
+creates one (Appendix B check 5). Child tables are minted at `register` time and, in the
+target, reconciled at every boot (T0.14).
+
+`<N>` is the fingerprint's `dims`. **Every** child, existing or target-new, additionally
+carries an HNSW index on `embedding vector_cosine_ops WITH (m = 16, ef_construction =
+128)`, whose name is a blake2b digest (`ix_hnsw_<16hex>`) rather than a derived name,
+because `ix_<child>_hnsw` can exceed Postgres' 63-character `NAMEDATALEN` limit for the
+longest parent plus a 48-character slug — where the server *silently truncates* and two
+fingerprints could collide. The `Aux indexes` column below lists what each parent carries
+**in addition** to that HNSW index.
+
+| Parent | Child pattern | Key columns / PK | Aux indexes | Disposition | Doc § | Registry entry lands in | First writer |
+|---|---|---|---|---|---|---|---|
+| `memory_embeddings` | `memory_embeddings__<slug>` | `memory_id uuid → memories(id) CASCADE`, `fingerprint text → embedders(fingerprint)`, `embedding vector(N) NOT NULL`, `payload jsonb NOT NULL DEFAULT '{}'`, `created_at`; **PK `(memory_id, fingerprint)`** | `(memory_id)` | `carries-over` | 04 §5.2 | already registered — unchanged by the baseline; reconciled by **T0.14** | _(Task 6)_ |
+| `entity_embeddings` | `entity_embeddings__<slug>` | `entity_id uuid → entities(id) CASCADE`, `fingerprint`, `embedding vector(N) NOT NULL`, `created_at`; **PK `(entity_id, fingerprint)`** | `(entity_id)` | `carries-over` | 04 §5.2 | as above | _(Task 6)_ |
+| `code_chunk_embeddings` | `code_chunk_embeddings__<slug>` | `id uuid DEFAULT gen_random_uuid()`, `fingerprint`, `repo_id uuid → repositories(id) CASCADE`, `file_path varchar(1024) NOT NULL`, `language`, `symbol_name`, `chunk_content`, `line_start`, `line_end`, `embedding vector(N)`, `created_at`; **PK `(id, fingerprint)`** | `(repo_id)`, `(repo_id, file_path)` | `carries-over` | 04 §5.2 | as above | _(Task 6)_ |
+| `entity_embedding_cache` | `entity_embedding_cache__<slug>` | `name_lower varchar(255)`, `fingerprint`, `embedding vector(N)`, `created_at`, `last_used_at`, `hit_count int DEFAULT 1`; **PK `(name_lower, fingerprint)`** | `(last_used_at)` | `carries-over` | 04 §5.2 | as above | _(Task 6)_ |
+| `block_embeddings` | `block_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3; 19 §3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
+| `relation_embeddings` | `relation_embeddings__<slug>` | `relation_id uuid → entity_relations(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(relation_id, fingerprint)`** | HNSW only | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
+| `article_embeddings` | `article_embeddings__<slug>` | `article_id uuid → knowledge_articles(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(article_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
+| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new, inert` — **template only** | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
+
+**Three rules in that table are load-bearing and silent when broken.**
+
+`relation_embeddings` keys on the **real `entity_relations.id`** with `ON DELETE CASCADE`
+— no synthetic ids — so when re-extraction's strip-before-rewrite or the self-healing
+delete removes a relation, its vector dies with it instead of orphaning. And because
+`entity_relations` is **global**, this channel carries **no project predicate of its own**:
+a project-scoped retrieval that consults it must scope through the asserting memories'
+`memory_ids`, or label the results, or it re-opens exactly the cross-project leak the
+filter-pushdown work closes (doc 04 §5.3, §10, invariant 14).
+
+`triple_embeddings` references `knowledge_triples.id` with **no cascade**, because facts
+are **invalidate-not-delete**: a cascade would destroy the history the fact layer exists
+to keep. It is also the one row that is `template only` — the template ships now, the
+**writer is deferred** behind a measured `pg_trgm`-on-`fact` undercount, and when it ships
+it groups facts **for counting only, never merging rows or rewriting `triple_key`**,
+carrying the `names_distinct` guard.
+
+**Adding a template is near-free only because the creation sweep is retired.** The
+registry creates a fingerprint's children at *register* time, so every already-registered
+fingerprint would be missing a newly-added parent. That is why doc 04 §5.3 and doc 19 §2
+replace the one-time sweep with a **permanent boot-time reconciliation** (T0.14) that
+iterates the live `embedders` rows and runs each template's `CREATE TABLE IF NOT EXISTS`
+plus each aux index's `CREATE INDEX IF NOT EXISTS`, idempotently. This is also what makes
+a restored dump self-heal, and what makes the deferred .NET replay a loop over rows
+running parameterised plain SQL rather than a re-derivation.
+
+**One thing the baseline's `downgrade()` must get right that today's does not.** Migration
+`0001`'s `downgrade()` walks `pg_tables` and drops child tables matching four `LIKE`
+patterns — `memory_embeddings__%`, `entity_embeddings__%`, `code_chunk_embeddings__%`,
+`entity_embedding_cache__%`. Once the four target-new families exist, that sweep leaves
+`block_embeddings__*`, `relation_embeddings__*`, `article_embeddings__*` and
+`triple_embeddings__*` behind. It is moot for the six revisions (which the baseline
+deletes) but not for the baseline's own downgrade, which must cover all eight (F-17).
 
 ## 7. Inert objects and their first writers
 
@@ -457,6 +521,9 @@ tier and lifts the Tier-3 rows to the top under their own heading.
 | F-13 | doc 04 §6 vs doc 19 §3 vs `E0-baseline-and-harness.md` T0.13 | `repositories.index_debt` is described by doc 04 §6 as landing **inert** ("It lands as an inert column here"), but **doc 19 §3's disposition table carries no row for it** — and doc 19 §3 is the section T0.11 is chartered against for dispositions. T0.13's own object list ("`repo_ids[]` on `entities`/`entity_relations`, the empty `documents`/`blocks` tables, and all four per-fingerprint partition templates") does not name it either, so no task text lands it and no task text labels it inert. §5 dispositions it `target-new, inert` on doc 04 §6's authority and §7 names its first writer; the gap in doc 19 §3's table and in T0.13's list is for the controller to close. |
 | F-14 | doc 04 §10, internally | The `(project, status)` pushdown support has **three stated forms** — bare `(project, status)`, `(project, status, is_archived)`, or partial `WHERE status='active' AND is_archived=false` — and doc 04 §10 does not pick. §3.2 records a recommendation (the partial) with its reasoning and marks the alternatives. T0.12c must write exactly one. If its executor judges this a design decision rather than an inventory one, it is adjudicated here, not chosen silently. |
 | F-15 | doc 04 §8.1 vs doc 19 §9 stance 3 | **Whether the baseline creates `events`' first monthly child partition is unresolved by both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one; doc 19 §9 stance 3 puts the *pre-create* arm on `pipeline_failure_cleanup`'s schedule. Neither says whether the baseline lands month-0. A `RANGE`-partitioned parent with no matching child **rejects every insert**, so a baseline that omits it produces a database whose first `events` write fails — and the first write happens as soon as T1.07's journaling ships. For T0.12b to decide, with the obvious safe answer being that the baseline creates the current month's child and the cleanup arm creates the next. |
+
+| F-16 | `E0-baseline-and-harness.md` T0.12c vs T0.13 | T0.12c says the four target-new templates "land here as **registry entries** … (their inert labelling is T0.13's)"; T0.13's own **What** says it lands "all four per-fingerprint partition templates (block, relation, article, `triple_embeddings`)". Both cannot be the landing task. §6 follows T0.12c, whose statement is the more specific of the two (it names the mechanism, `_TABLE_TEMPLATES`/`_AUX_INDEXES`, and explicitly hands labelling to T0.13). T0.13's wording should be narrowed to labelling and the no-writer assertion. |
+| F-17 | Migration `0001` `downgrade()` vs doc 04 §5.3 | `0001`'s `downgrade()` drops runtime child tables by walking `pg_tables` for **four** `LIKE` patterns. The target has **eight** parents, so the same sweep would strand `block_embeddings__*`, `relation_embeddings__*`, `article_embeddings__*` and `triple_embeddings__*`. Moot for the six revisions the baseline deletes; **not** moot for the baseline's own `downgrade()`, which T0.12c writes. Recorded against T0.12c. |
 
 ### Amendments proposed to the task corpus
 

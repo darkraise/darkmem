@@ -394,21 +394,21 @@ Task: T0.11"
 | Parent | Child pattern | Key columns / PK | Aux indexes | Disposition | Doc § | Registry entry lands in | First writer |
 |---|---|---|---|---|---|---|---|
 
-- [ ] **Step 1: The four existing parents**
+- [x] **Step 1: The four existing parents**
 
 `memory_embeddings`, `entity_embeddings`, `code_chunk_embeddings`, `entity_embedding_cache` — doc 04 §5.2's table gives key columns, PK and FKs; the same section names the aux indexes (`memory_id`, `entity_id`, `(repo_id)` + `(repo_id, file_path)`, `last_used_at`) and the HNSW settings (`vector_cosine_ops WITH (m=16, ef_construction=128)`). Disposition `carries-over`. Cross-check the recorded shape against `_TABLE_TEMPLATES` / `_AUX_INDEXES` in `embedder_registry.py` and record any disagreement as a §10 finding — doc 04 wins, per the authority order.
 
-- [ ] **Step 2: The four target-new parents**
+- [x] **Step 2: The four target-new parents**
 
 `block_embeddings`, `relation_embeddings`, `article_embeddings`, `triple_embeddings` — doc 04 §5.3's table gives each one's key columns, PK, FK and cascade behaviour. Two rules from §5.3 are load-bearing and belong in the Note column, because getting them wrong is silent: `relation_embeddings` keys on the real `entity_relations.id` with `ON DELETE CASCADE` (no synthetic ids, so strip-before-rewrite kills the vector with the relation), and it carries **no project predicate of its own** because `entity_relations` is global. `triple_embeddings` references `knowledge_triples.id` with **no cascade** — facts are invalidate-not-delete.
 
 All four are `target-new, inert`. `triple_embeddings` additionally notes "template ships, writer deferred behind a measured `pg_trgm`-on-`fact` undercount" (doc 04 §5.3, doc 19 §3).
 
-- [ ] **Step 3: Name the three tasks each template passes through**
+- [x] **Step 3: Name the three tasks each template passes through**
 
 Registry entry lands in **T0.12c** ("All four templates present as registry entries"). Inert labelling is **T0.13** ("their inert labelling is T0.13's"). The reconciliation that creates the child tables at boot is **T0.14**. The `First writer` column is Task 6's territory and is filled there; leave it and let Task 6 fill it, so the two tasks do not both search the epic corpus for the same ids.
 
-- [ ] **Step 4: Verify — prove the templates are not migration DDL**
+- [x] **Step 4: Verify — prove the templates are not migration DDL**
 
 Two mechanical checks, both in Appendix B:
 
@@ -422,7 +422,7 @@ Plus Appendix A's assertion that a freshly migrated database holds **zero** `*__
 
 Then `git status --porcelain` shows only the inventory file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md
