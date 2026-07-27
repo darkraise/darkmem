@@ -10,12 +10,15 @@ from pydantic import Field
 from sqlalchemy import select, text
 
 from app.api.mcp.client_identity import (
+    FALLBACK_SOURCE,
     resolve_client_source,
+    resolve_entry_identity,
     resolve_origin_key,
     resolve_source_agent,
 )
 from app.config import settings
 from app.database import async_session_factory
+from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
 from app.utils.graph_keys import compose_key, decompose_key
@@ -103,6 +106,30 @@ def _validate_uuid(value: str) -> UUID:
 _MAX_LIMIT = 500
 
 
+def _ack_to_dict(ack) -> dict:
+    """The buffered accept, serialised from ``CaptureAck`` rather than by hand.
+
+    Hand-building it here is how the two doors' ack shapes drifted before:
+    a field added to the schema reached REST and stopped at the MCP door.
+    """
+    return json.loads(ack.model_dump_json())
+
+
+def _degraded(reason: str, **extra) -> dict:
+    """Doc 12 §3's recoverable-unavailability shape.
+
+    A caller error still **raises** — a bad UUID or a missing id is the
+    caller's mistake, not a degradation, and returning one as a typed result
+    would teach an agent to treat its own error as the server being down.
+    """
+    return {
+        "schema_version": ENVELOPE_SCHEMA_VERSION,
+        "status": "unavailable",
+        "reason": reason,
+        **extra,
+    }
+
+
 def _clamp_limit(limit: int, default: int) -> int:
     try:
         limit = int(limit)
@@ -151,7 +178,7 @@ async def memory_add(
         result = await service.create_memory(data, api_key_id=None, wait_process=wait_process)
         if result.memory is not None:
             return json.dumps(_memory_to_dict(result.memory))
-        return json.dumps({"id": str(result.ack.id), "status": result.ack.status})
+        return json.dumps(_ack_to_dict(result.ack))
 
 
 @mcp.tool(
@@ -273,34 +300,12 @@ async def memory_batch_add(
         entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source' (auto-detected when omitted), 'source_agent' (defaults to the caller's User-Agent), 'memory_type', 'project' (supersession scope).
         wait_process: If true, drive the whole batch's flush inline instead of only buffering it. Use when you need every memory queryable immediately.
     """
-    # Resolve on the raw dicts: MemoryCreate stamps its "api" default during
-    # validation, erasing the absent-vs-explicit distinction afterwards. The
-    # resolver additionally treats a literal "mcp" as unspecified (agents
-    # copying the old default must not mask detection). Non-dict entries and
-    # non-string source/source_agent values are left untouched so validation
-    # still rejects them.
-    resolved = []
-    for entry in entries:
-        if isinstance(entry, dict):
-            entry = dict(entry)
-            raw_source = entry.get("source")
-            if raw_source is None or isinstance(raw_source, str):
-                entry["source"] = resolve_client_source(raw_source, ctx)
-            raw_agent = entry.get("source_agent")
-            if raw_agent is None or isinstance(raw_agent, str):
-                entry["source_agent"] = resolve_source_agent(raw_agent, ctx)
-            # Resolved per entry, but from the SAME request context — so a
-            # batch of 100 from one undeclared agent is one origin, not 100
-            # (doc 05 §2.1; a batch is the easiest way to counterfeit
-            # independence if this were per-entry random).
-            raw_origin = entry.get("origin_key")
-            if raw_origin is None or isinstance(raw_origin, str):
-                entry["origin_key"] = resolve_origin_key(
-                    raw_origin, ctx,
-                    source=entry["source"],
-                    project=entry.get("project") or "default",
-                )
-        resolved.append(entry)
+    # Resolve on the raw dicts, through the same helper the REST batch door
+    # uses, so the two can never drift.
+    resolved = [
+        resolve_entry_identity(entry, ctx=ctx, fallback=FALLBACK_SOURCE)
+        for entry in entries
+    ]
 
     # Mirror the HTTP /memories/batch cap (MemoryBatchCreate: 1-100 entries)
     # so the MCP path cannot enqueue an unbounded batch.
@@ -316,7 +321,7 @@ async def memory_batch_add(
         )
         return json.dumps([
             _memory_to_dict(r.memory) if r.memory is not None
-            else {"id": str(r.ack.id), "status": r.ack.status}
+            else _ack_to_dict(r.ack)
             for r in results
         ])
 
@@ -443,11 +448,7 @@ async def code_search(
         # Return a typed, machine-readable result rather than raising a tool
         # error so the MCP client can degrade gracefully (e.g. fall back to a
         # text search) instead of treating an unconfigured embedder as a crash.
-        return json.dumps({
-            "status": "unavailable",
-            "reason": "embedder not configured",
-            "results": [],
-        })
+        return json.dumps(_degraded("embedder not configured", results=[]))
 
     from app.models.code import Repository
     from app.repositories.vector import PostgresVectorRepository

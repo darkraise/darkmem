@@ -8,7 +8,9 @@ ranking actually did, never a plausible-looking reconstruction of it.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+from app.schemas.envelope import ResponseEnvelope
 
 
 class ChannelStatus(BaseModel):
@@ -16,17 +18,25 @@ class ChannelStatus(BaseModel):
     failed: bool = False
 
 
-class RetrievalEnvelope(BaseModel):
+class RetrievalEnvelope(ResponseEnvelope):
     """Request-level facts: which channels ran, what weights were in effect,
     and every count of a row this request excluded — surfaced even when zero
     rows survive, because that is exactly the case a silent drop hides
-    (invariant 14)."""
+    (invariant 14).
+
+    The retrieval specialisation of the one ``ResponseEnvelope``, from which
+    it inherits ``schema_version``, ``excluded``, ``page`` and ``context``.
+    """
 
     query: str
     channels: dict[str, ChannelStatus] = Field(default_factory=dict)
     reranked: bool = False
     weights: dict[str, float] = Field(default_factory=dict)
-    excluded: dict[str, int] = Field(default_factory=dict)
+
+    @computed_field
+    @property
+    def partial(self) -> bool:
+        return any(channel.failed for channel in self.channels.values())
 
 
 class MemoryResultTrace(BaseModel):

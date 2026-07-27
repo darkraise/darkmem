@@ -12,7 +12,15 @@ logger = logging.getLogger(__name__)
 
 CLIENT_HEADER = "x-darkmem-client"
 ORIGIN_HEADER = "x-darkmem-origin"
+
+# The terminal fallback is **per door**, and so is the sentinel that reads an
+# explicit value equal to it as *unspecified*. One shared fallback would label
+# every unattributed HTTP capture as having come from MCP — a false attribution
+# on the very column the UI filters and colours by — while a REST door whose
+# "api" default was NOT a sentinel would let a caller copying the old default
+# mask detection, which is the hole the sentinel exists to close.
 FALLBACK_SOURCE = "mcp"
+REST_FALLBACK_SOURCE = "api"
 
 # The prefix that marks a merged, identity-unknown origin. Everything that
 # carries it is ONE origin per (source, project) by construction.
@@ -60,6 +68,26 @@ def _request_from_ctx(ctx):
         return None
 
 
+def _headers_from(ctx, headers):
+    """The headers this call should read: an explicit mapping, else the MCP
+    ``ctx``'s request. Lets one resolver serve both doors — the REST door has
+    no MCP ``Context`` and the MCP door has no ``Request`` in hand."""
+    if headers is not None:
+        return headers
+    request = _request_from_ctx(ctx)
+    return request.headers if request is not None else None
+
+
+def _header(headers, name: str) -> str:
+    if headers is None:
+        return ""
+    value = headers.get(name)
+    if value is None:
+        # Starlette's Headers is case-insensitive; a plain dict is not.
+        value = {str(k).lower(): v for k, v in headers.items()}.get(name)
+    return value or ""
+
+
 def _ua_product_source(user_agent: str) -> str | None:
     token = user_agent.split(None, 1)[0] if user_agent.strip() else ""
     product, sep, _version = token.partition("/")
@@ -71,11 +99,13 @@ def _ua_product_source(user_agent: str) -> str | None:
     return KNOWN_UA_SOURCES.get(slug, slug)
 
 
-def resolve_client_source(explicit_source, ctx) -> str:
-    """Resolve the source label: explicit arg > header > User-Agent > "mcp".
+def resolve_client_source(explicit_source, ctx=None, *, headers=None, fallback=FALLBACK_SOURCE) -> str:
+    """Resolve the source label: explicit arg > header > User-Agent > fallback.
 
-    The literal "mcp" counts as unspecified so agents copying the old default
-    cannot mask detection. Never raises: attribution must not fail a write.
+    An explicit value equal to ``fallback`` counts as unspecified so an agent
+    copying the door's own default cannot mask detection — the sentinel is
+    per-door because the fallback is (``mcp`` for MCP, ``api`` for REST).
+    Never raises: attribution must not fail a write.
     """
     try:
         if isinstance(explicit_source, str):
@@ -84,33 +114,68 @@ def resolve_client_source(explicit_source, ctx) -> str:
             # lowercase keeps UI color/filter lookups consistent with the
             # sanitized tier-2/3 output.
             explicit = explicit_source.strip().lower()
-            if explicit and explicit != FALLBACK_SOURCE:
+            if explicit and explicit != fallback:
                 return explicit[:_SOURCE_MAX_LEN]
-        request = _request_from_ctx(ctx)
-        if request is not None:
-            header_source = _sanitize(request.headers.get(CLIENT_HEADER, ""))
+        resolved_headers = _headers_from(ctx, headers)
+        if resolved_headers is not None:
+            header_source = _sanitize(_header(resolved_headers, CLIENT_HEADER))
             if header_source:
                 return header_source
-            ua_source = _ua_product_source(request.headers.get("user-agent", ""))
+            ua_source = _ua_product_source(_header(resolved_headers, "user-agent"))
             if ua_source:
                 return ua_source
     except Exception:
         logger.debug("client source resolution failed", exc_info=True)
-    return FALLBACK_SOURCE
+    return fallback
 
 
-def resolve_source_agent(explicit_agent, ctx) -> str | None:
+def resolve_source_agent(explicit_agent, ctx=None, *, headers=None) -> str | None:
     """Explicit value (truncated) or the raw User-Agent; None without either."""
     try:
         if isinstance(explicit_agent, str) and explicit_agent.strip():
             return explicit_agent.strip()[:_AGENT_MAX_LEN]
-        request = _request_from_ctx(ctx)
-        if request is None:
+        resolved_headers = _headers_from(ctx, headers)
+        if resolved_headers is None:
             return None
-        user_agent = request.headers.get("user-agent", "").strip()
-        return user_agent[:_AGENT_MAX_LEN] or None
+        return _header(resolved_headers, "user-agent").strip()[:_AGENT_MAX_LEN] or None
     except Exception:
         return None
+
+
+def resolve_entry_identity(entry, *, ctx=None, headers=None, fallback=FALLBACK_SOURCE):
+    """Resolve one batch entry's identity from the **raw dict** the caller sent.
+
+    Shared by both batch doors so they cannot drift. Resolving before
+    validation is the discipline that survives a default being reintroduced
+    on ``MemoryCreate``: the raw dict is what the caller actually sent, where
+    a validated model is what the schema decided it meant.
+
+    Every entry in a batch resolves from the SAME request context, so a batch
+    of 100 from one undeclared agent is one origin, not 100 — a batch is the
+    easiest way to counterfeit independence if this were per-entry (doc 05
+    §2.1). Non-dict entries and non-string ``source``/``source_agent`` values
+    pass through untouched so validation still rejects them.
+    """
+    if not isinstance(entry, dict):
+        return entry
+    entry = dict(entry)
+    raw_source = entry.get("source")
+    if raw_source is None or isinstance(raw_source, str):
+        entry["source"] = resolve_client_source(
+            raw_source, ctx, headers=headers, fallback=fallback,
+        )
+    raw_agent = entry.get("source_agent")
+    if raw_agent is None or isinstance(raw_agent, str):
+        entry["source_agent"] = resolve_source_agent(raw_agent, ctx, headers=headers)
+    raw_origin = entry.get("origin_key")
+    if raw_origin is None or isinstance(raw_origin, str):
+        entry["origin_key"] = resolve_origin_key(
+            raw_origin or _header(_headers_from(ctx, headers), ORIGIN_HEADER) or None,
+            ctx,
+            source=entry["source"],
+            project=entry.get("project") or "default",
+        )
+    return entry
 
 
 def resolve_origin_key(explicit_origin, ctx, *, source: str, project: str) -> str:
