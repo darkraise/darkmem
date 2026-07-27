@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 from app.api.auth import hash_password
 from app.models.code import Repository
 from app.models.config import Config
-from app.models.llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
+from app.models.llm_config import LLMPurposeConfigRow
 
 
 # ── status + require_uninitialized ────────────────────────────────────
@@ -261,16 +261,10 @@ async def test_setup_finalize_password_only(client, session):
 async def test_setup_finalize_with_llm(client, session):
     """The wizard now seeds the full default provider / profile menu and
     overlays the user's api_kind row's api_key + per-purpose model
-    selections on top. Asserts cover (a) every seeded vendor lands as a
-    row, (b) the chosen vendor has the api_key, others have NULL, (c)
-    seeded profiles appear, (d) ``default-<purpose>`` profiles linked to
-    the chosen vendor are created, (e) purpose configs point at the
-    chosen vendor with the user's models."""
-    from app.services.llm_seed import (
-        DEFAULT_PROVIDERS,
-        DEFAULT_PROFILES,
-    )
-
+    selections on top. Asserts cover (a) the six canonical purpose rows
+    land, and (b) the user's model, api_kind, api_key and base_url are
+    overlaid inline on each — there is no provider or profile row to
+    resolve through any more (doc 04 §7)."""
     payload = {
         "password": "test-pw-12345",
         "llm": {
@@ -290,49 +284,31 @@ async def test_setup_finalize_with_llm(client, session):
     assert response.status_code == 200, response.text
     assert response.json()["llm"]["ok"] is True
 
-    # (a) every seeded vendor row landed.
-    provider_rows = (await session.execute(select(LLMProvider))).scalars().all()
-    by_kind = {r.api_kind: r for r in provider_rows}
-    for ps in DEFAULT_PROVIDERS:
-        assert ps.api_kind in by_kind, f"missing seeded provider {ps.api_kind}"
+    # The provider/profile indirection is gone (doc 04 §7): finalize writes
+    # the connection details straight onto each purpose row, so the
+    # assertions are about inline fields rather than resolved FKs.
 
-    # (b) only the user's api_kind row carries the api_key.
-    assert by_kind["openai"].api_key == "sk-test"
-    for kind in ("anthropic", "deepseek", "google", "ollama", "zai"):
-        assert by_kind[kind].api_key is None
+    # (a) the six canonical purposes each landed a row.
+    rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
+    by_purpose = {r.purpose: r for r in rows}
+    for purpose in (
+        "embedding", "extraction", "classification",
+        "reasoning", "summarization", "reranker",
+    ):
+        assert purpose in by_purpose, f"missing purpose row {purpose}"
 
-    # (c) seeded profiles are present.
-    profile_names = set((await session.execute(
-        select(LLMProfile.name)
-    )).scalars().all())
-    for prof in DEFAULT_PROFILES:
-        assert prof.name in profile_names, f"missing seeded profile {prof.name}"
-
-    # (d) ``default-<purpose>`` profiles linked to the chosen vendor.
-    for purpose in ("embedding", "extraction", "classification", "reasoning"):
-        assert f"default-{purpose}" in profile_names
-    user_provider = by_kind["openai"]
-    user_default_profiles = (await session.execute(
-        select(LLMProfile).where(LLMProfile.name.like("default-%"))
-    )).scalars().all()
-    for p in user_default_profiles:
-        assert p.provider_id == user_provider.id
-
-    # (e) purpose-config rows reflect user choice.
+    # (b) the user's choices are overlaid inline, api_key included.
     for purpose, expected_model in [
         ("embedding", "text-embedding-3-small"),
         ("extraction", "gpt-4o-mini"),
         ("classification", "gpt-4o-mini"),
         ("reasoning", "gpt-4o"),
     ]:
-        row = (await session.execute(
-            select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == purpose)
-        )).scalar_one_or_none()
-        assert row is not None
-        assert row.provider_id == user_provider.id
+        row = by_purpose[purpose]
         assert row.model == expected_model
         assert row.api_kind == "openai"
-
+        assert row.api_key == "sk-test"
+        assert row.base_url
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_repos(client, session, tmp_path):

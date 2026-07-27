@@ -823,6 +823,11 @@ def _pass_two() -> None:
             dimensions      INTEGER,
             reasoning       BOOLEAN NOT NULL DEFAULT false,
             api_kind        VARCHAR(32) NOT NULL DEFAULT 'openai',
+            -- Kept, not dropped: doc 04 §7's inline field list omits `provider`
+            -- while A.2 shows it at HEAD, and the inventory records that as an
+            -- open question for T1.01 (F-10). Keeping it leaves the decision
+            -- where the finding put it instead of pre-empting it here.
+            provider        VARCHAR(64) NOT NULL DEFAULT 'ollama',
             base_url        VARCHAR(512) NOT NULL DEFAULT '',
             api_key         VARCHAR(1024),
             params          JSONB NOT NULL DEFAULT '{}'::jsonb,

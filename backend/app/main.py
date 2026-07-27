@@ -10,7 +10,7 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, config_llm_registry, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
+from app.api.routes import analytics, auth, chat, code, config, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.services.llm import LLMOrchestrator
@@ -153,24 +153,6 @@ async def lifespan(app: FastAPI):
                 )
                 await pipeline.run(repo_id)
                 await s.commit()
-
-    # ── Ensure ML profile seed (idempotent) ──
-    try:
-        from app.models.llm_config import MLProfile
-        from app.services.ml_seed import DEFAULT_ML_PROFILES
-        async with async_session_factory() as ml_seed_session:
-            existing = (await ml_seed_session.execute(select(MLProfile).limit(1))).scalars().first()
-            if existing is None:
-                for ms in DEFAULT_ML_PROFILES:
-                    ml_seed_session.add(MLProfile(
-                        name=ms.name,
-                        model_repo=ms.model_repo,
-                        ttl_seconds=ms.ttl_seconds,
-                    ))
-                await ml_seed_session.commit()
-                logger.info("Seeded %d default ML profiles", len(DEFAULT_ML_PROFILES))
-    except Exception:
-        logger.exception("Failed to seed default ML profiles; continuing")
 
     # ── Job registry: replaces the previous four bare asyncio loops ──
     from app.services.job_registry import FieldDescriptor, Job, JobRegistry
@@ -350,7 +332,6 @@ app.include_router(tags.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(config.router)
-app.include_router(config_llm_registry.router)
 app.include_router(pipeline_routes.router)
 app.include_router(vectors.router)
 app.include_router(chat.router)
