@@ -149,6 +149,12 @@ _NOISE_NAMES: frozenset[str] = frozenset({
     # "auth", "filesystem", "process_batch") and bare directory parts.
     "auth", "filesystem", "process_batch", "config",
     "request", "response", "session", "context", "scope",
+    # 'kafka source connector' loses its descriptor suffix and leaves the bare
+    # stem behind; the stem is a generic noun either way.
+    "source",
+    # Host stem left behind when the dotted-name collapse eats a bare
+    # hostname ('www.example.com' -> 'www').
+    "www",
 })
 
 _TRAILING_SUFFIXES = re.compile(
@@ -174,6 +180,13 @@ _FILENAME_PATTERN = re.compile(
 
 # URL paths starting with a slash.
 _URL_PATH_PATTERN = re.compile(r"^/[\w/\.\-_]*(?:\?[\w&=\.\-]*)?$")
+
+# Absolute URLs. Matched on the scheme prefix rather than the whole string so a
+# query string or fragment cannot smuggle one past. Without this the chain drops
+# them only by accident, when ``_filter_hallucinated_names`` happens to find a
+# dot-stripped token absent from the source; a dotless authority
+# (``http://localhost:8000/api``) survives that check and reaches the graph.
+_URL_ABSOLUTE_PATTERN = re.compile(r"^[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
 
 # Environment variable names: all-caps with at least one underscore and 4+ chars.
 _ENV_VAR_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*_[A-Z0-9_]+$")
@@ -288,6 +301,10 @@ _NEGATION_WINDOW = re.compile(
     # 'instead of' is a comparative/selection cue ("chose X instead of Y"), not a
     # use-negation; the selection gate keeps both endpoints as X IMPROVES_ON Y, so
     # dropping Y here would orphan that edge.
+    # 'never use X' needs its own alternative: the bare 'never' branch requires
+    # the marker to sit immediately before the mention, so the intervening verb
+    # hides it.
+    r"|never\s+(?:to\s+)?us(?:e|ed|ing)"
     r"|never"
     r"|avoid(?:s|ing|ed)?"
     r"|skip(?:ped|ping)?"
@@ -372,6 +389,8 @@ def _filter_noise(entities: list[dict]) -> list[dict]:
         if _FILENAME_PATTERN.match(name):
             continue
         if _URL_PATH_PATTERN.match(name_stripped):
+            continue
+        if _URL_ABSOLUTE_PATTERN.match(name_stripped):
             continue
         if _ENV_VAR_PATTERN.match(name_stripped):
             continue
@@ -1998,9 +2017,9 @@ STAGE_COLLAPSE_AND_FANOUT = "collapse_and_fanout"
 PASS_REGISTRY: tuple[Pass, ...] = (
     Pass("normalize_names", STAGE_ENTITY_SHAPING, _normalize_names, ("entities",), ("entities",)),
     Pass("filter_noise", STAGE_ENTITY_SHAPING, _filter_noise, ("entities",), ("entities",)),
+    Pass("filter_literals", STAGE_ENTITY_SHAPING, _filter_literals, ("entities", "content"), ("entities",)),
     Pass("snap_hardware_types", STAGE_ENTITY_SHAPING, _snap_hardware_types, ("entities",), ("entities",)),
     Pass("apply_type_overrides", STAGE_ENTITY_SHAPING, _apply_type_overrides, ("entities",), ("entities",)),
-    Pass("filter_literals", STAGE_ENTITY_SHAPING, _filter_literals, ("entities", "content"), ("entities",)),
     Pass("filter_hallucinated_names", STAGE_ENTITY_SHAPING, _filter_hallucinated_names, ("entities", "content"), ("entities",)),
     Pass("filter_negation_only", STAGE_ENTITY_SHAPING, _filter_negation_only, ("entities", "content"), ("entities", "negated_names")),
     Pass("dedup_entities", STAGE_ENTITY_SHAPING, _dedup_entities, ("entities",), ("entities",)),
@@ -2140,6 +2159,7 @@ __all__ = [
     "_DOTTED_METHOD",
     "_FILENAME_PATTERN",
     "_URL_PATH_PATTERN",
+    "_URL_ABSOLUTE_PATTERN",
     "_ENV_VAR_PATTERN",
     "_VALUE_PATTERN",
     "_HARDWARE_TOKENS",
