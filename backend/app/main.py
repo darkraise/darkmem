@@ -179,9 +179,17 @@ async def lifespan(app: FastAPI):
                 await s.commit()
 
     # ── Job registry: replaces the previous four bare asyncio loops ──
+    from app.services.buffer_flush import (
+        BUFFER_FLUSH_CONFIG_SCHEMA,
+        BUFFER_FLUSH_CRON,
+        BUFFER_FLUSH_JOB_KEY,
+        BUFFER_FLUSH_MAX_RUN_SECONDS,
+        BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
+    )
     from app.services.job_registry import FieldDescriptor, Job, JobRegistry
     from app.services.job_runners import (
         make_repo_sync_runner,
+        make_buffer_flush_runner,
         make_code_enrichment_runner,
         make_token_blocklist_cleanup_runner,
         make_pipeline_failure_cleanup_runner,
@@ -203,6 +211,20 @@ async def lifespan(app: FastAPI):
         min_interval_seconds=30,
         runner=make_repo_sync_runner(app, async_session_factory),
         max_run_seconds=1800,
+    ))
+    job_registry.register(Job(
+        key=BUFFER_FLUSH_JOB_KEY,
+        display_name="Buffer Flush",
+        description=(
+            "Claims accepted-but-unprocessed captures from the ingest buffer "
+            "and runs them through the five-phase pipeline. Disabling this "
+            "stops every 202-accepted capture from ever becoming a memory."
+        ),
+        default_cron=BUFFER_FLUSH_CRON,
+        min_interval_seconds=BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
+        runner=make_buffer_flush_runner(app, async_session_factory),
+        max_run_seconds=BUFFER_FLUSH_MAX_RUN_SECONDS,
+        config_schema=BUFFER_FLUSH_CONFIG_SCHEMA,
     ))
     job_registry.register(Job(
         key="code_enrichment",
