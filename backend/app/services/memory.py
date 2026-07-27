@@ -15,12 +15,14 @@ from app.repositories.relational import (
 )
 from app.repositories.vector import MemoryFilter
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
+from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
 from app.services import buffer_flush, memory_buffer, repo_provision
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
+from app.services.rank_fusion import RANK_ARMS, rank_fusion_breakdown
 from app.services.wait_process import drive as _drive_wait_process_flush
 from app.taxonomy import MEMORY_TYPES, normalize_memory_type
 from app.utils.ids import new_id
@@ -46,6 +48,18 @@ class CaptureResult:
 
     ack: CaptureAck
     memory: Memory | None = None
+
+
+@dataclass(frozen=True)
+class MemoryTraceRow:
+    """One paginated-search row plus its "why retrieved" explanation
+    (doc 07 §8, T1.33). Built only when the request carries
+    ``with_trace=True``."""
+
+    memory: Memory
+    scores: dict[str, float | None]
+    rank_fusion_factor: float
+    rank_fusion_breakdown: dict[str, float]
 
 
 class MemoryService:
@@ -347,23 +361,35 @@ class MemoryService:
         channel that feeds this now renders them into its own SQL, and
         re-applying them here would hide a channel that stopped doing so.
         """
-        if params.memory_type and memory.memory_type != params.memory_type:
-            return False
-        if params.memory_type_any and memory.memory_type not in params.memory_type_any:
-            return False
-        if params.source and memory.source != params.source:
-            return False
-        if params.source_any and memory.source not in params.source_any:
-            return False
+        return not self._schema_v2_exclusion_reasons(memory, params)
+
+    def _schema_v2_exclusion_reasons(self, memory: Memory, params: MemorySearchRequest) -> list[str]:
+        """Every schema-v2 predicate this row fails, by name.
+
+        A row can fail more than one independent predicate; reporting each
+        by name (rather than stopping at the first) is what lets the trace
+        envelope's ``excluded`` counts add up to a real reconciliation
+        instead of a silent drop with one plausible-looking reason attached
+        (T1.33, doc 07 §8).
+        """
+        reasons: list[str] = []
+        if (params.memory_type and memory.memory_type != params.memory_type) or (
+            params.memory_type_any and memory.memory_type not in params.memory_type_any
+        ):
+            reasons.append("memory_type")
+        if (params.source and memory.source != params.source) or (
+            params.source_any and memory.source not in params.source_any
+        ):
+            reasons.append("source")
         if params.technologies_any:
             tech = set(memory.technologies or [])
             if not (tech & set(params.technologies_any)):
-                return False
+                reasons.append("technologies")
         if params.tags_any:
             tag_names = [t.name for t in memory.tags]
             if not any(t in tag_names for t in params.tags_any):
-                return False
-        return True
+                reasons.append("tags")
+        return reasons
 
     async def search_memories(self, params: MemorySearchRequest) -> list[Memory]:
         # If we have a query and pipeline, try semantic search first
@@ -397,6 +423,9 @@ limit=params.limit,
         )
 
     async def search_memories_paginated(self, params: MemorySearchRequest) -> dict:
+        if params.with_trace:
+            return await self._search_memories_paginated_traced(params)
+
         if params.query and self.pipeline:
             semantic_results = await self.pipeline.semantic_search(
                 params.query, limit=params.limit + params.offset + 50,
@@ -423,6 +452,125 @@ limit=params.limit, offset=params.offset,
             source_any=params.source_any, memory_type_any=params.memory_type_any,
         )
         return {"items": items, "total": total, "limit": params.limit, "offset": params.offset}
+
+    async def _search_memories_paginated_traced(self, params: MemorySearchRequest) -> dict:
+        """The ``with_trace=True`` path (T1.33): a parallel method, not a
+        branch threaded through the ordinary one, so a caller that never
+        asks for a trace never enters this function and never pays for the
+        per-channel bookkeeping it does (Ruling 2 — structural, not
+        discarded work).
+
+        Builds the retrieval envelope (which channels ran, the weights in
+        effect, and every exclusion this request made) plus a per-row
+        ``MemoryTraceRow`` explaining each surviving result.
+        """
+        if not params.query or not self.pipeline:
+            items, total = await self.memory_repo.search_by_tags_paginated(
+                query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
+                memory_type=params.memory_type, source=params.source,
+                limit=params.limit, offset=params.offset,
+                project=params.project, status=list(params.status) if params.status else None,
+                technologies_any=params.technologies_any,
+                source_any=params.source_any, memory_type_any=params.memory_type_any,
+            )
+            envelope = RetrievalEnvelope(
+                query=params.query or "",
+                channels={
+                    "semantic": ChannelStatus(ran=False),
+                    "keyword": ChannelStatus(ran=False),
+                },
+                weights={"semantic_weight": params.semantic_weight},
+            )
+            trace_items = [
+                MemoryTraceRow(memory=m, scores={}, rank_fusion_factor=1.0, rank_fusion_breakdown={})
+                for m in items
+            ]
+            return {
+                "items": trace_items, "total": total,
+                "limit": params.limit, "offset": params.offset, "envelope": envelope,
+            }
+
+        from app.services.hybrid_search import HybridSearchService
+
+        flags = await get_feature_flags_dict(self.session)
+        fetch_n = params.limit + params.offset + 50
+        hybrid = HybridSearchService(self.pipeline.llm, self.session)
+        channel_trace = await hybrid.search_with_trace(
+            params.query, limit=fetch_n, semantic_weight=params.semantic_weight,
+            filters=self._semantic_filter(params),
+        )
+        fused = channel_trace.results
+
+        reranked = False
+        if flags.get("reranker_enabled") and fused:
+            from app.services.reranker import RerankerService
+            reranker = RerankerService(self.pipeline.llm)
+            fused = await reranker.rerank(params.query, fused, top_k=len(fused))
+            reranked = True
+
+        memory_ids = [row["memory_id"] for row in fused]
+        all_memories = await self.memory_repo.get_many(memory_ids)
+        by_id = {str(m.id): m for m in all_memories}
+
+        # Every fused row is accounted for exactly once: kept, or excluded
+        # under a named reason. `get_many` silently drops an id it cannot
+        # resolve (e.g. deleted between the fuse and this lookup); that is
+        # itself a reason to name, not a row to let vanish (Ruling 1).
+        excluded: dict[str, int] = {}
+        kept: list[tuple[dict, Memory]] = []
+        for row in fused:
+            mem = by_id.get(row["memory_id"])
+            if mem is None:
+                excluded["not_found"] = excluded.get("not_found", 0) + 1
+                continue
+            reasons = self._schema_v2_exclusion_reasons(mem, params)
+            if reasons:
+                for reason in reasons:
+                    excluded[reason] = excluded.get(reason, 0) + 1
+                continue
+            kept.append((row, mem))
+
+        total = len(kept)
+        page = kept[params.offset:params.offset + params.limit]
+
+        weights: dict[str, float] = {"semantic_weight": params.semantic_weight}
+        for arm in RANK_ARMS:
+            value = flags.get(arm.flag)
+            if value:
+                weights[arm.flag] = float(value)
+
+        items: list[MemoryTraceRow] = []
+        for row, mem in page:
+            breakdown = rank_fusion_breakdown({"confidence": mem.confidence}, flags)
+            factor = 1.0
+            for arm_value in breakdown.values():
+                factor *= arm_value
+            channel = channel_trace.channel_scores.get(row["memory_id"], {})
+            scores = {
+                "semantic": channel.get("semantic"),
+                "keyword": channel.get("keyword"),
+                "rrf_score": row.get("rrf_score"),
+                "rerank_score": row.get("rerank_score"),
+            }
+            items.append(MemoryTraceRow(
+                memory=mem, scores=scores,
+                rank_fusion_factor=factor, rank_fusion_breakdown=breakdown,
+            ))
+
+        envelope = RetrievalEnvelope(
+            query=params.query,
+            channels={
+                "semantic": ChannelStatus(ran=True, failed=channel_trace.semantic_failed),
+                "keyword": ChannelStatus(ran=True, failed=channel_trace.keyword_failed),
+            },
+            reranked=reranked,
+            weights=weights,
+            excluded=excluded,
+        )
+        return {
+            "items": items, "total": total,
+            "limit": params.limit, "offset": params.offset, "envelope": envelope,
+        }
 
     async def list_memories(self, offset: int = 0, limit: int = 50) -> tuple[list[Memory], int]:
         return await self.memory_repo.list_memories(offset=offset, limit=limit)

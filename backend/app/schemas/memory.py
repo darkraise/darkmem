@@ -9,6 +9,7 @@ from app.models.memory import (
     TAG_NAME_MAX_LENGTH,
     tag_category,
 )
+from app.schemas.retrieval_trace import MemoryResultTrace, RetrievalEnvelope
 
 
 MemoryStatus = Literal["active", "deprecated", "superseded"]
@@ -109,6 +110,10 @@ class MemoryResponse(BaseModel):
     superseded_by: uuid.UUID | None = None
     technologies: list[str] = Field(default_factory=list)
     confidence: float = 0.75
+    # Populated only when the request set `with_trace=True` — the "why
+    # retrieved" explanation for this row (doc 07 §8, T1.33). Absent
+    # (`None`) is the zero-cost default for every other read of a memory.
+    trace: MemoryResultTrace | None = None
 
 
 class PaginatedMemoryResponse(BaseModel):
@@ -116,6 +121,8 @@ class PaginatedMemoryResponse(BaseModel):
     total: int
     limit: int
     offset: int
+    # Populated only alongside `with_trace=True`; `None` otherwise (T1.33).
+    envelope: RetrievalEnvelope | None = None
 
 
 class MemorySearchRequest(BaseModel):
@@ -132,6 +139,10 @@ class MemorySearchRequest(BaseModel):
     technologies_any: list[str] | None = None
     source_any: list[str] | None = None
     memory_type_any: list[str] | None = None
+    # The request flag (T1.33): attaches the retrieval trace envelope and a
+    # per-row trace to the paginated search response. Structurally
+    # zero-cost when unset — the trace-assembly path is never entered.
+    with_trace: bool = False
 
 
 class MemoryBatchCreate(BaseModel):
