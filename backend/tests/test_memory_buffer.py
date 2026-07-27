@@ -220,6 +220,16 @@ async def test_absent_fields_do_not_become_null_entries(session):
     assert set(row.metadata_) == {"memory_id"}
 
 
+@pytest.mark.asyncio
+async def test_buffered_memory_id_reports_a_row_it_cannot_read(session):
+    """T1.13's claim loop reads rows it did not write; a row from some other
+    path should name itself rather than raising a bare TypeError."""
+    row = await enqueue(session, content="body", project="default")
+    row.metadata_ = None
+    with pytest.raises(ValueError, match="no pre-minted memory_id"):
+        buffered_memory_id(row)
+
+
 # ── Status vocabulary and the pending scan ──────────────────────────
 
 

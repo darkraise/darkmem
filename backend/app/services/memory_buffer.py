@@ -109,8 +109,19 @@ def buffered_memory_id(row: MemoryBuffer) -> uuid.UUID:
     """The pre-minted `memories` id this buffered capture will become.
 
     Distinct from `row.id`, which identifies the buffer entry itself.
+
+    Raises `ValueError` naming the row when the key is absent. The flush claim
+    loop reads rows it did not write, so a row inserted by some other path
+    deserves an error that says which row and what is missing rather than a bare
+    `TypeError: 'NoneType' object is not subscriptable`.
     """
-    return uuid.UUID(row.metadata_["memory_id"])
+    stored = (row.metadata_ or {}).get("memory_id")
+    if not stored:
+        raise ValueError(
+            f"buffer row {row.id} carries no pre-minted memory_id; "
+            "it was not written through enqueue()"
+        )
+    return uuid.UUID(stored)
 
 
 async def get(session: AsyncSession, buffer_id: uuid.UUID) -> MemoryBuffer | None:

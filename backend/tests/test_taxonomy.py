@@ -424,3 +424,61 @@ def test_extraction_prompt_is_unchanged_by_the_widening():
 
     fingerprint = hashlib.sha256(prompt.get("extraction").encode("utf-8")).hexdigest()[:16]
     assert fingerprint == "775ca7c45ed9a06a"
+
+
+# ── The update path normalises too (invariant 5) ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_update_memory_normalises_an_untabled_type(session):
+    """Create normalises via the pipeline; update has no pipeline pass when the
+    content is unchanged, so without an explicit normalise a caller-supplied
+    `memory_type` of "bogus" persists forever — invisible to every type filter
+    that reads the closed set. Both the REST route and MCP `memory_update` land
+    on this method."""
+    from sqlalchemy import text as _text
+
+    from app.models.memory import Memory
+    from app.schemas.memory import MemoryUpdate
+    from app.services.memory import MemoryService
+
+    memory = Memory(content="body", source="api", project="default", memory_type="fact")
+    session.add(memory)
+    await session.flush()
+
+    service = MemoryService(session)
+    await service.update_memory(memory.id, MemoryUpdate(memory_type="bogus"), api_key_id=None)
+    await session.flush()
+
+    stored = (
+        await session.execute(
+            _text("SELECT memory_type FROM memories WHERE id = CAST(:i AS uuid)"),
+            {"i": str(memory.id)},
+        )
+    ).scalar_one()
+    assert stored == "fact"  # unknown -> the safe default, not "bogus"
+
+
+@pytest.mark.asyncio
+async def test_update_memory_maps_a_legacy_alias(session):
+    from sqlalchemy import text as _text
+
+    from app.models.memory import Memory
+    from app.schemas.memory import MemoryUpdate
+    from app.services.memory import MemoryService
+
+    memory = Memory(content="body", source="api", project="default", memory_type="fact")
+    session.add(memory)
+    await session.flush()
+
+    service = MemoryService(session)
+    await service.update_memory(memory.id, MemoryUpdate(memory_type="debug"), api_key_id=None)
+    await session.flush()
+
+    stored = (
+        await session.execute(
+            _text("SELECT memory_type FROM memories WHERE id = CAST(:i AS uuid)"),
+            {"i": str(memory.id)},
+        )
+    ).scalar_one()
+    assert stored == "problem"

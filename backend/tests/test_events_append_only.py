@@ -229,22 +229,30 @@ async def test_a_regrown_partition_is_not_truncatable(session):
 
 
 @pytest.mark.asyncio
-async def test_partition_bounds_carry_an_explicit_utc_offset(session):
-    """`created_at` is timestamptz, so a bare date bound is resolved against the
-    session TimeZone at DDL time. Two months created under different sessions
-    then leave a gap, and an insert landing in it raises "no partition found" —
-    out through `record_event`, failing the request being journaled."""
-    rows = await session.execute(
-        text(
-            "SELECT pg_get_expr(c.relpartbound, c.oid) FROM pg_class c "
-            "JOIN pg_inherits i ON i.inhrelid = c.oid "
-            "JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = 'events'"
+async def test_partition_bounds_are_pinned_to_utc_not_the_creating_session(session):
+    """The bound must denote UTC midnight regardless of who created it.
+
+    This has to create the partition under a NON-UTC session to mean anything: a
+    bare date literal and a UTC-pinned one produce the identical instant when the
+    creating session is already UTC, so an assertion made only against the
+    baseline's own partitions cannot tell them apart.
+    """
+    await session.execute(text("SET LOCAL TIME ZONE 'Asia/Bangkok'"))
+    await session.execute(text("SELECT events_ensure_partition('2033-04-01')"))
+    await session.execute(text("SET LOCAL TIME ZONE 'UTC'"))
+
+    expr = (
+        await session.execute(
+            text(
+                "SELECT pg_get_expr(c.relpartbound, c.oid) FROM pg_class c "
+                "WHERE c.relname = 'events_203304'"
+            )
         )
-    )
-    bounds = [r[0] for r in rows]
-    assert bounds
-    for b in bounds:
-        assert "+00" in b, f"partition bound is not UTC-pinned: {b}"
+    ).scalar_one()
+    # Read back under UTC: pinned bounds render as midnight. An unpinned literal
+    # created under +07 is really the previous day at 17:00 UTC.
+    assert "2033-04-01 00:00:00+00" in expr, f"bound follows the creating session: {expr}"
+    assert "17:00:00" not in expr
 
 
 @pytest.mark.asyncio
