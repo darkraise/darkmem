@@ -109,7 +109,12 @@ class MemoryBuffer(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    # none_as_null: without it SQLAlchemy encodes a Python None as JSON `null`
+    # rather than SQL NULL, so `WHERE metadata IS NULL` triage silently
+    # matches nothing.
+    metadata_: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB(none_as_null=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

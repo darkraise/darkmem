@@ -17,6 +17,8 @@ explicitly:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -221,6 +223,90 @@ async def test_a_regrown_partition_is_not_truncatable(session):
     with pytest.raises(DBAPIError, match="append-only"):
         await session.execute(text(f"TRUNCATE {next_child}"))
     await session.rollback()
+
+
+# ── Partition bounds are UTC-pinned, not session-dependent ──────────
+
+
+@pytest.mark.asyncio
+async def test_partition_bounds_carry_an_explicit_utc_offset(session):
+    """`created_at` is timestamptz, so a bare date bound is resolved against the
+    session TimeZone at DDL time. Two months created under different sessions
+    then leave a gap, and an insert landing in it raises "no partition found" —
+    out through `record_event`, failing the request being journaled."""
+    rows = await session.execute(
+        text(
+            "SELECT pg_get_expr(c.relpartbound, c.oid) FROM pg_class c "
+            "JOIN pg_inherits i ON i.inhrelid = c.oid "
+            "JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = 'events'"
+        )
+    )
+    bounds = [r[0] for r in rows]
+    assert bounds
+    for b in bounds:
+        assert "+00" in b, f"partition bound is not UTC-pinned: {b}"
+
+
+@pytest.mark.asyncio
+async def test_partitions_are_contiguous_across_session_timezones(session):
+    """The regression itself: build three consecutive months under three
+    different session timezones and assert each one's upper bound is the next
+    one's lower bound. Under session-dependent literals this leaves holes."""
+    await session.execute(text("SET LOCAL TIME ZONE 'Asia/Bangkok'"))
+    await session.execute(text("SELECT events_ensure_partition('2031-01-01')"))
+    await session.execute(text("SET LOCAL TIME ZONE 'UTC'"))
+    await session.execute(text("SELECT events_ensure_partition('2031-02-01')"))
+    await session.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+    await session.execute(text("SELECT events_ensure_partition('2031-03-01')"))
+    await session.execute(text("SET LOCAL TIME ZONE 'UTC'"))
+
+    # The instant immediately before each boundary must have a home. Under
+    # session-dependent bounds these land in a 7-hour hole and raise.
+    for probe in (
+        datetime(2031, 1, 31, 18, 0, tzinfo=timezone.utc),
+        datetime(2031, 2, 28, 18, 0, tzinfo=timezone.utc),
+    ):
+        await session.execute(
+            text("INSERT INTO events (event_type, object_type, created_at) "
+                 "VALUES ('created', 'system', :ts)"),
+            {"ts": probe},
+        )
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_a_mid_month_argument_is_normalised_to_the_month(session):
+    """An unaligned child named for its month would block the correct one
+    forever, and nothing would report the collision until an insert failed."""
+    await session.execute(text("SELECT events_ensure_partition('2032-05-17')"))
+    await session.flush()
+    bound = (
+        await session.execute(
+            text(
+                "SELECT pg_get_expr(c.relpartbound, c.oid) FROM pg_class c "
+                "WHERE c.relname = 'events_203205'"
+            )
+        )
+    ).scalar_one()
+    assert "2032-05-01" in bound and "2032-06-01" in bound
+
+
+@pytest.mark.asyncio
+async def test_the_parent_carries_both_forbid_triggers(session):
+    """The parent's TRUNCATE guard is redundant with the per-child guards for
+    every reachable statement, so no behavioural test pins it. Assert it
+    directly, or defence-in-depth silently erodes to a single layer."""
+    names = [
+        r[0]
+        for r in await session.execute(
+            text(
+                "SELECT t.tgname FROM pg_trigger t "
+                "WHERE t.tgrelid = to_regclass('events') AND NOT t.tgisinternal "
+                "ORDER BY t.tgname"
+            )
+        )
+    ]
+    assert names == ["events_forbid_row", "events_forbid_truncate"]
 
 
 # ── api_key_id and actor land inert (their writer is T4.02) ─────────

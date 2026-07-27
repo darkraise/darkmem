@@ -311,12 +311,11 @@ export function LLMPurposeCard({
       params: prof.params || {},
       ...(linkedProvider
         ? {
-            provider: linkedProvider.provider,
             base_url: linkedProvider.base_url,
             api_kind: linkedProvider.api_kind as LlmPurposeConfig["api_kind"],
             api_key: linkedProvider.api_key ?? "",
           }
-        : { provider: "", base_url: "", api_key: "" }),
+        : { base_url: "", api_key: "" }),
     })
     setParamsText(
       Object.keys(prof.params || {}).length

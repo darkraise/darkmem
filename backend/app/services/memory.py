@@ -14,7 +14,7 @@ from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
-from app.taxonomy import MEMORY_TYPES
+from app.taxonomy import MEMORY_TYPES, normalize_memory_type
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,15 @@ class MemoryService:
 
     async def update_memory(self, memory_id: UUID, data: MemoryUpdate, api_key_id: UUID | None) -> Memory | None:
         update_fields = data.model_dump(exclude_unset=True, exclude={"tags"})
+        # Normalise before store (invariant 5). Create goes through the pipeline,
+        # which normalises; update does not, and an unchanged content triggers no
+        # reprocess — so without this a caller-supplied `memory_type` of "bogus"
+        # persists forever, unmatched by every type filter that reads the closed
+        # set. Both the REST route and MCP `memory_update` land here.
+        if update_fields.get("memory_type") is not None:
+            update_fields["memory_type"] = normalize_memory_type(
+                update_fields["memory_type"]
+            )
         memory = await self.memory_repo.update(memory_id, **update_fields)
         if not memory:
             return None

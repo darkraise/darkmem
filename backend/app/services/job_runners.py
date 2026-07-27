@@ -99,10 +99,17 @@ def make_pipeline_failure_cleanup_runner(session_factory: async_sessionmaker[Asy
         from app.services.events import reconcile_event_partitions
         from app.services.pipeline_failures import PipelineFailureService
         async with session_factory() as session:
+            # Partition maintenance runs FIRST and commits on its own. Sharing a
+            # session with the prunes would let a pruning failure roll back the
+            # partition that the next month's journaling depends on — and a
+            # missing partition stops journaling rather than degrading it.
+            children = await reconcile_event_partitions(session)
+            await session.commit()
+
+        async with session_factory() as session:
             svc = PipelineFailureService(session)
             orphaned = await svc.prune_orphans()
             resolved_pruned = await svc.prune_resolved_older_than(days=30)
-            children = await reconcile_event_partitions(session)
             await session.commit()
         logger.info(
             "Pipeline failure cleanup: orphaned=%s resolved_pruned=%s events_partitions=%s",

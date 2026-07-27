@@ -988,25 +988,46 @@ def _pass_two() -> None:
     # parent's trigger entirely and silently erases that month of the audit
     # trail. Hence a truncate trigger on the parent AND on every child.
     #
-    # Idempotent by construction: CREATE TABLE IF NOT EXISTS, and the trigger is
-    # created only when absent (rather than dropped and recreated, which would
-    # leave a window where the child is unguarded).
+    # Concurrency: two callers can reach a fresh month at once (boot racing the
+    # cleanup arm), and `CREATE TABLE IF NOT EXISTS ... PARTITION OF` is NOT
+    # atomic against that — the loser raises duplicate_table. Caught and treated
+    # as success, because the winner produced exactly the row this call wanted.
     op.execute(
         """
         CREATE FUNCTION events_ensure_partition(month_start date)
         RETURNS text AS $$
         DECLARE
-            child      text := 'events_' || to_char(month_start, 'YYYYMM');
-            guard      text := 'events_' || to_char(month_start, 'YYYYMM') || '_forbid_truncate';
-            next_start date := (month_start + interval '1 month')::date;
+            -- Normalise first: a mid-month argument would otherwise create a
+            -- child named for the month but bounded [the 15th, the 15th), which
+            -- then blocks the correctly-aligned partition forever.
+            m0         date := date_trunc('month', month_start)::date;
+            m1         date := (date_trunc('month', month_start) + interval '1 month')::date;
+            child      text := 'events_' || to_char(m0, 'YYYYMM');
+            guard      text := 'events_' || to_char(m0, 'YYYYMM') || '_forbid_truncate';
+            -- Pinned to UTC midnight by construction. Rendering these back out
+            -- with %L always carries an offset, so the literal denotes the same
+            -- instant whatever the session TimeZone happens to be.
+            lo         timestamptz := (m0::text || ' 00:00:00+00')::timestamptz;
+            hi         timestamptz := (m1::text || ' 00:00:00+00')::timestamptz;
         BEGIN
+            -- The bounds MUST carry an explicit UTC offset. `events.created_at`
+            -- is timestamptz, so a bare date literal is resolved against the
+            -- session TimeZone at DDL time: create one month under UTC and the
+            -- next under a +07 session and the pair silently leaves a 7-hour
+            -- hole, after which an insert in the gap raises "no partition of
+            -- relation events found for row" — which propagates out through
+            -- record_event and fails the request being journaled. pg_dump emits
+            -- partition bounds the same way, for the same reason.
             EXECUTE format(
                 'CREATE TABLE IF NOT EXISTS %I PARTITION OF events '
-                'FOR VALUES FROM (%L) TO (%L)', child, month_start, next_start);
+                'FOR VALUES FROM (%L) TO (%L)', child, lo, hi);
+            -- Match the trigger on the child's OID, not on a bare relname: a
+            -- same-named table in any other schema would otherwise satisfy this
+            -- check and the real child would silently ship unguarded.
             IF NOT EXISTS (
                 SELECT 1 FROM pg_trigger t
-                JOIN pg_class c ON c.oid = t.tgrelid
-                WHERE c.relname = child AND t.tgname = guard
+                WHERE t.tgrelid = to_regclass(child)
+                  AND t.tgname = guard
                   AND NOT t.tgisinternal
             ) THEN
                 EXECUTE format(
@@ -1015,6 +1036,9 @@ def _pass_two() -> None:
                     guard, child);
             END IF;
             RETURN child;
+        EXCEPTION
+            WHEN duplicate_table OR duplicate_object THEN
+                RETURN child;
         END $$ LANGUAGE plpgsql
         """
     )

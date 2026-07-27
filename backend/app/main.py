@@ -237,7 +237,11 @@ async def lifespan(app: FastAPI):
         display_name="Pipeline Failure Cleanup",
         description=(
             "Prunes orphaned pipeline-failure rows and resolved entries "
-            "older than 30 days. Safe to leave on."
+            "older than 30 days, AND keeps the events journal's monthly "
+            "partitions ahead of need. Leave this on: with it disabled, a "
+            "process running past the current partition horizon stops "
+            "journaling entirely, because a RANGE parent rejects any row with "
+            "no partition to land in."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,

@@ -306,8 +306,8 @@ export const CURATED_MEMORIES: DemoMemory[] = [
     id: ID_CHUNKING_IDEA,
     content:
       "Considering swapping the article synthesiser's chunking strategy to spans instead of blocks.",
-    memory_type: "context",
-    llm_classified_type: "context",
+    memory_type: "episodic",
+    llm_classified_type: "episodic",
     llm_summary: "A speculative note on chunking strategy, not a decision yet.",
     llm_emotions: ["curious"],
     llm_flags: ["speculative"],

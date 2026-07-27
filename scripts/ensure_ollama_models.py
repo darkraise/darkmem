@@ -63,6 +63,19 @@ def _installed_models(host: str) -> set[str]:
     return {entry["name"] for entry in data.get("models", [])}
 
 
+# An Ollama-served purpose is identified by BOTH signals, not one. `api_kind`
+# alone misses the common case: the setup wizard points Ollama at its
+# OpenAI-compatible endpoint and writes `api_kind='openai'`, so a purpose really
+# served by Ollama is not labelled `ollama` at all. The base URL's port is what
+# actually gives it away. (Before T1.01 this filtered on a `provider` column that
+# mirrored `api_kind`, so it carried the same blind spot.)
+_OLLAMA_PORT = ":11434"
+
+
+def _is_ollama(api_kind: str | None, base_url: str | None) -> bool:
+    return (api_kind or "") == "ollama" or _OLLAMA_PORT in (base_url or "")
+
+
 def _models_from_settings() -> list[tuple[str, str]]:
     """Read the env-driven defaults in ``backend/app/config.Settings``.
 
@@ -87,7 +100,7 @@ def _models_from_settings() -> list[tuple[str, str]]:
     for purpose, cfg in purposes.items():
         if cfg is None:
             continue
-        if cfg.provider != "ollama":
+        if not _is_ollama(getattr(cfg, "api_kind", None), cfg.base_url):
             continue
         if not cfg.model:
             continue
@@ -107,7 +120,7 @@ def _models_from_backend(api_url: str, token: str | None) -> list[tuple[str, str
     for purpose, cfg in data.items():
         if not isinstance(cfg, dict):
             continue
-        if cfg.get("provider") != "ollama":
+        if not _is_ollama(cfg.get("api_kind"), cfg.get("base_url")):
             continue
         tag = cfg.get("model")
         if tag:

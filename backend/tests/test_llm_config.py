@@ -30,7 +30,14 @@ class _QueryCounter:
 
     @property
     def selects(self) -> list[str]:
-        return [s for s in self.statements if s.lstrip().upper().startswith("SELECT")]
+        # `WITH` counts too: a reintroduced hierarchical resolution is most
+        # naturally written as a CTE, and matching only SELECT would let exactly
+        # the regression this test exists to catch walk straight past it.
+        return [
+            s
+            for s in self.statements
+            if s.lstrip().upper().startswith(("SELECT", "WITH"))
+        ]
 
 
 async def _count_resolution_queries(session):

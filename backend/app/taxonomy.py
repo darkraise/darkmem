@@ -297,7 +297,12 @@ LEGACY_MEMORY_RELATION_TYPE_MAP: dict[str, str] = {
     "CLARIFIES": "ELABORATES",
     "CONFLICTS_WITH": "CONTRADICTS",
     "DISAGREES_WITH": "CONTRADICTS",
-    "PRECEDES": "FOLLOWS",
+    # NOTE: no `PRECEDES` alias. "A PRECEDES B" asserts A is EARLIER; a pure
+    # type-string normaliser cannot swap endpoints, so rewriting the type
+    # alone would store "A FOLLOWS B" and silently invert the temporal
+    # order. Unknowns fall to RELATES_TO, which loses the direction claim
+    # instead of reversing it. A writer that needs PRECEDES must invert the
+    # endpoints itself, before normalising.
     "REQUIRES": "DEPENDS_ON",
     # `DERIVED_FROM` is cut for v1 — the reshape removed its only writer when
     # knowledge left the memory table. Reintroducing it as a first-class type

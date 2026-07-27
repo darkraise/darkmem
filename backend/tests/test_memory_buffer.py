@@ -20,10 +20,17 @@ from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory, MemoryBuffer
-from app.services.memory_buffer import REPLAYED_METADATA_FIELDS, enqueue, get, pending
+from app.services.memory_buffer import (
+    REPLAYED_METADATA_FIELDS,
+    buffered_memory_id,
+    enqueue,
+    get,
+    pending,
+)
 from app.utils.ids import new_id
 
 
@@ -49,9 +56,19 @@ def test_new_ids_are_unique():
 
 
 @pytest.mark.asyncio
-async def test_enqueue_mints_a_uuid7_id(session):
+async def test_enqueue_mints_uuid7_for_both_ids(session):
     row = await enqueue(session, content="hello", project="default")
     assert row.id.version == 7
+    assert buffered_memory_id(row).version == 7
+
+
+@pytest.mark.asyncio
+async def test_the_buffer_id_and_the_memory_id_are_distinct(session):
+    """Doc 05 §2.2 keeps them apart: the buffer row's id tracks the buffer entry,
+    the pre-minted memory id is the caller's durable reference. Collapsing them
+    would make the flush's upsert-on-a-known-id contract ambiguous."""
+    row = await enqueue(session, content="hello", project="default")
+    assert row.id != buffered_memory_id(row)
 
 
 @pytest.mark.asyncio
@@ -60,13 +77,14 @@ async def test_enqueue_honours_a_caller_minted_id(session):
     # first; the buffer must store that exact value, not one of its own.
     handle = new_id()
     row = await enqueue(session, content="hello", project="default", memory_id=handle)
-    assert row.id == handle
+    assert buffered_memory_id(row) == handle
+    assert row.id != handle  # the buffer's own handle is its own
 
 
 @pytest.mark.asyncio
 async def test_buffer_id_carries_through_to_the_memories_row(session):
     buffered = await enqueue(session, content="carry me", project="default")
-    handle = buffered.id
+    handle = buffered_memory_id(buffered)
 
     # What flush does with the id, isolated from the pipeline: the memories row
     # takes the buffered id rather than minting a fresh one.
@@ -99,21 +117,26 @@ async def test_buffer_row_survives_a_restart(session):
 
     handle = new_id()
     async with AsyncSession(test_engine) as writer:
-        await enqueue(
+        written = await enqueue(
             writer,
             content="survives",
             project="default",
             source="mcp",
             memory_id=handle,
         )
+        buffer_id = written.id
         await writer.commit()
 
     # A new session over a new connection — what a restarted process has.
     try:
         async with AsyncSession(test_engine) as reader:
-            row = await get(reader, handle)
+            row = await get(reader, buffer_id)
             assert row is not None
             assert row.content == "survives"
+            # The pre-minted memory id survived the restart too — it is the
+            # caller's durable reference, so losing it would strand the handle
+            # the 202 already returned.
+            assert buffered_memory_id(row) == handle
             assert row.source == "mcp"
             assert row.status == "pending"
             assert row.attempts == 0
@@ -121,7 +144,7 @@ async def test_buffer_row_survives_a_restart(session):
         async with AsyncSession(test_engine) as cleanup:
             await cleanup.execute(
                 text("DELETE FROM memory_buffer WHERE id = CAST(:id AS uuid)"),
-                {"id": str(handle)},
+                {"id": str(buffer_id)},
             )
             await cleanup.commit()
 
@@ -169,6 +192,7 @@ async def test_every_replayed_field_round_trips(session):
         importance=0.9,
         expires_at=expires,
         source_agent="claude-code/1.0",
+        metadata={"repo_hint": "github.com/x/y"},
     )
     for field in REPLAYED_METADATA_FIELDS:
         assert field in row.metadata_, f"{field} was dropped by the buffer"
@@ -177,6 +201,7 @@ async def test_every_replayed_field_round_trips(session):
     assert row.metadata_["importance"] == 0.9
     assert row.metadata_["expires_at"] == expires
     assert row.metadata_["source_agent"] == "claude-code/1.0"
+    assert row.metadata_["metadata"] == {"repo_hint": "github.com/x/y"}
 
 
 @pytest.mark.asyncio
@@ -190,7 +215,9 @@ async def test_an_unknown_capture_field_is_kept_not_dropped(session):
 @pytest.mark.asyncio
 async def test_absent_fields_do_not_become_null_entries(session):
     row = await enqueue(session, content="body", project="default")
-    assert row.metadata_ is None
+    # The memory id always rides metadata, so it is never wholly empty; what must
+    # not appear is a key for a field the caller did not supply.
+    assert set(row.metadata_) == {"memory_id"}
 
 
 # ── Status vocabulary and the pending scan ──────────────────────────
@@ -200,7 +227,7 @@ async def test_absent_fields_do_not_become_null_entries(session):
 async def test_status_is_check_constrained(session):
     row = await enqueue(session, content="body", project="default")
     await session.flush()
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         await session.execute(
             text("UPDATE memory_buffer SET status = 'elsewhere' WHERE id = CAST(:id AS uuid)"),
             {"id": str(row.id)},

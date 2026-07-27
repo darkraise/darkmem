@@ -8,10 +8,12 @@ and the `FOR UPDATE SKIP LOCKED` claim loop is T1.13's.
 
 Two properties this module exists to guarantee:
 
-**The id is minted at accept, not at flush.** A 202 that returned no handle, or
-a placeholder one, would make the caller poll for something it cannot name. So
-capture mints a UUIDv7 up front and the very same value becomes the `memories`
-row's id — never re-minted, never remapped.
+**The memory id is minted at accept, not at flush.** A 202 that returned no
+handle, or a placeholder one, would make the caller poll for something it cannot
+name. So capture mints a UUIDv7 up front and the very same value becomes the
+`memories` row's id — never re-minted, never remapped. It is carried in
+`metadata_` and read back with `buffered_memory_id`; the buffer row's own `id` is
+a separate tracking handle (doc 05 §2.2).
 
 **Nothing captured is dropped.** The buffer's columns are a subset of what a
 caller may send, so every remaining `MemoryCreate` field rides `metadata_` and
@@ -39,6 +41,11 @@ REPLAYED_METADATA_FIELDS: tuple[str, ...] = (
     "expires_at",
     "source_agent",
     "origin_key",
+    # The caller's own `metadata` dict (MemoryCreate.metadata). It nests under
+    # this key rather than merging, so a caller key can never collide with the
+    # buffer's own bookkeeping (`memory_id`, `origin_key`, ...) and silently
+    # win. doc 05 §3.1 lists it among the replayed fields.
+    "metadata",
 )
 
 
@@ -64,26 +71,46 @@ async def enqueue(
     memory_id: uuid.UUID | None = None,
     **extra: Any,
 ) -> MemoryBuffer:
-    """Write one buffered capture and return it, id already minted.
+    """Write one buffered capture and return it.
 
-    The caller may pass `memory_id` when it minted the handle itself (the 202
-    path does, so it can ack before this commits); otherwise one is minted here.
+    **Two ids, deliberately distinct** (doc 05 §2.2). The buffer row's own `id`
+    is the buffer tracking handle; the pre-minted **memory** id is the caller's
+    durable reference — the value the 202 returns and the id flush creates the
+    `memories` row with, which is what makes a re-claimed row an upsert on a
+    known id rather than a duplicate. The memory id rides `metadata_`, so pass
+    `memory_id` if you minted one; otherwise one is minted here and returned via
+    `buffered_memory_id(row)`.
+
     The row is added but **not committed** — the caller owns the transaction
-    boundary, because invariant 11 requires capture to commit before any flush
-    worker opens a session over the row.
+    boundary. Invariant 11 and doc 05 §2.2 require capture to **commit the buffer
+    row and then ack**, never the reverse: an ack before commit turns a crash in
+    that window into an acknowledged capture that no longer exists, which is the
+    one failure this whole tier exists to prevent.
     """
     row = MemoryBuffer(
-        id=memory_id or new_id(),
+        id=new_id(),
         content=content,
         project=project,
         source=source,
         token_size=token_size,
         status="pending",
-        metadata_=build_buffer_metadata(origin_key=origin_key, **extra) or None,
+        metadata_=build_buffer_metadata(
+            memory_id=str(memory_id or new_id()),
+            origin_key=origin_key,
+            **extra,
+        ),
     )
     session.add(row)
     await session.flush()
     return row
+
+
+def buffered_memory_id(row: MemoryBuffer) -> uuid.UUID:
+    """The pre-minted `memories` id this buffered capture will become.
+
+    Distinct from `row.id`, which identifies the buffer entry itself.
+    """
+    return uuid.UUID(row.metadata_["memory_id"])
 
 
 async def get(session: AsyncSession, buffer_id: uuid.UUID) -> MemoryBuffer | None:
@@ -94,11 +121,16 @@ async def get(session: AsyncSession, buffer_id: uuid.UUID) -> MemoryBuffer | Non
 
 async def pending(session: AsyncSession, limit: int = 100) -> list[MemoryBuffer]:
     """Oldest-first pending rows. Reads the partial `WHERE status='pending'`
-    index the claim loop is built around."""
+    index the claim loop is built around.
+
+    Ties break on `id`: rows enqueued in one transaction share a single
+    server-side `now()`, so `created_at` alone leaves within-batch order
+    unspecified — and the ids are UUIDv7, so id order IS mint order.
+    """
     rows = await session.execute(
         select(MemoryBuffer)
         .where(MemoryBuffer.status == "pending")
-        .order_by(MemoryBuffer.created_at)
+        .order_by(MemoryBuffer.created_at, MemoryBuffer.id)
         .limit(limit)
     )
     return list(rows.scalars())

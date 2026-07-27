@@ -333,14 +333,20 @@ def test_simple_classification_labels_match_memory_types():
 
 def test_mcp_tool_descriptions_name_every_memory_type():
     src = (REPO_ROOT / "backend/app/api/mcp/server.py").read_text(encoding="utf-8")
+    checked = 0
     for line in src.splitlines():
         stripped = line.strip()
         if not stripped.startswith("memory_type:"):
             continue
         if "One of" not in stripped and "Filter by type" not in stripped:
             continue
+        checked += 1
         for mtype in MEMORY_TYPES:
             assert mtype in stripped, f"{mtype} missing from MCP description: {stripped}"
+    # Without this the whole test passes vacuously the moment either docstring
+    # is reworded past the phrase filter — which is exactly when the vocabulary
+    # is most likely to have been edited.
+    assert checked == 2, f"expected 2 memory_type docstring lines, matched {checked}"
 
 
 def test_frontend_shares_one_vocabulary_source_that_matches_the_backend():
@@ -364,6 +370,31 @@ def test_no_frontend_component_keeps_its_own_memory_type_list():
         if len(hits) >= 3:
             offenders.append(path.relative_to(REPO_ROOT))
     assert not offenders, f"vocabulary re-declared outside lib/taxonomy.ts: {offenders}"
+
+
+def test_expanded_mode_can_still_reach_the_new_recall_kinds():
+    """Simple mode is pinned to MEMORY_TYPES above, but expanded mode draws from
+    the per-area label spaces — so a widening that misses the always-on `general`
+    area leaves the new kinds unreachable on that path, silently."""
+    from app.services.classification_areas import AREAS
+
+    general = set(AREAS["general"].llm_types)
+    assert {"episodic", "procedural"} <= general
+
+
+def test_graph_colour_map_covers_every_memory_type():
+    """A type missing from KNOWN_TYPE_INDICES falls through to the hash path, so
+    its colour moves whenever the cluster space shifts. The map's own comment
+    promises one index per value; nothing else enforces it."""
+    ts = (REPO_ROOT / "frontend/src/features/graph/lib/graph-colors.ts").read_text(
+        encoding="utf-8"
+    )
+    block = ts.split("const KNOWN_TYPE_INDICES: Record<string, number> = {", 1)[1]
+    block = block.split("}", 1)[0]
+    mapped = set(re.findall(r"^\s*([a-z_]+):", block, re.M))
+    assert set(MEMORY_TYPES) <= mapped, (
+        f"unmapped memory types: {sorted(set(MEMORY_TYPES) - mapped)}"
+    )
 
 
 # ── The extraction prompt is pinned, not swept ──────────────────────
