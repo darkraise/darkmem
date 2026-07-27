@@ -173,3 +173,66 @@ async def test_memory_batch_add_resolves_per_entry(mcp_http_client, session):
     explicit = await _get_memory(session, "batch explicit mcp")
     assert explicit.source == "codex"
     assert explicit.source_agent == "eval-r3"
+
+
+import json
+import uuid
+
+
+def _tool_payload(body: dict) -> dict:
+    return json.loads(body["result"]["content"][0]["text"])
+
+
+async def test_memory_get_reports_supersession(mcp_http_client, session):
+    """An MCP reader must be able to tell a superseded memory from a live one.
+
+    Doc 07 §7 requires a superseded row to be labelled and reachable through
+    its successor. The MCP row carried neither field, so an autonomous agent
+    read a retired memory as current with no badge and no human in the loop.
+    """
+    replacement = Memory(
+        id=uuid.uuid4(), content="mcp supersession replacement",
+        source="test", metadata_={}, project="lane-f",
+    )
+    session.add(replacement)
+    await session.flush()
+
+    retired = Memory(
+        id=uuid.uuid4(), content="mcp supersession probe", source="test",
+        metadata_={}, project="lane-f", status="superseded",
+        superseded_by=replacement.id, technologies=["postgres"],
+    )
+    session.add(retired)
+    await session.flush()
+
+    row = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(retired.id)})
+    )
+    assert row["status"] == "superseded"
+    assert row["superseded_by"] == str(replacement.id)
+    assert row["project"] == "lane-f"
+    assert row["technologies"] == ["postgres"]
+
+    live = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(replacement.id)})
+    )
+    assert live["status"] == "active"
+    assert live["superseded_by"] is None
+
+
+async def test_memory_search_rows_carry_the_lifecycle_label(mcp_http_client, session):
+    memory = Memory(
+        id=uuid.uuid4(), content="mcp search label probe", source="test",
+        metadata_={}, project="lane-f",
+    )
+    session.add(memory)
+    await session.flush()
+
+    rows = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_search", {"query": "label probe"})
+    )
+    assert rows, "search returned nothing to inspect"
+    for row in rows:
+        assert row["status"] in {"active", "superseded", "deprecated"}
+        assert "superseded_by" in row
+        assert "project" in row
