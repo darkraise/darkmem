@@ -9,6 +9,25 @@ export interface RepoStats {
   enrichment_completed: number
 }
 
+export interface IndexDebtRecord {
+  at: string
+  count: number
+  commit: string
+  vanished: number
+}
+
+// T1.39's debt contract: a bare `queued` count cannot distinguish a
+// draining queue from a stuck one — same integer at a single instant.
+// `last_drain`/`last_defer` carry the timestamp that makes the difference
+// readable across a refetch.
+export interface IndexDebtStatus {
+  queued: number
+  deferred_total: number
+  drained_total: number
+  last_defer: IndexDebtRecord | null
+  last_drain: IndexDebtRecord | null
+}
+
 export interface Repo {
   id: string
   name: string
@@ -23,6 +42,7 @@ export interface Repo {
   auto_sync: boolean
   file_count: number
   symbol_count: number
+  index_debt: IndexDebtStatus
   created_at: string
   updated_at: string
 }
