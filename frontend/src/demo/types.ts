@@ -622,11 +622,15 @@ export interface DemoJob {
   cron_label: string
   /** Floor: the loop never fires more often than this. Registration constant. */
   min_interval_seconds: number
-  /** Ceiling: a run past this duration counts as overrun. Registration constant. */
-  max_run_seconds: number
+  /** Ceiling: a run past this duration counts as overrun. Registration
+   *  constant. Null in real mode — JobItem does not expose it over the
+   *  wire, and this is never fabricated to fill the demo's read-only field. */
+  max_run_seconds: number | null
   running: boolean
   lock_held_since: string | null
-  next_run_label: string
+  /** Null in real mode: no cron-next calculator exists client-side and the
+   *  API does not return a computed next-fire time — never fabricated. */
+  next_run_label: string | null
   /** null = never ran (fresh install honesty — the list can never be empty). */
   last_run_label: string | null
   last_status: "ok" | "error" | null
@@ -636,7 +640,7 @@ export interface DemoJob {
 
 export type JobTriggerResult =
   | { ok: true }
-  | { ok: false; status: 409; lock_held_since: string }
+  | { ok: false; status: 409; lock_held_since: string | null }
 
 /** One `memory_buffer` row as the monitor renders it. `attempts` is a
  *  claim count, not a failure count — it increments when a row is claimed,
