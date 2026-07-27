@@ -87,7 +87,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | high | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | high | | todo | | | |
 | T1.05 | Seed `synthesis` and `verification` purposes inert | S | Haiku | high | | todo | | | |
-| T1.06 | `events` table, monthly partitioning, append-only trigger | M | Opus | high | | todo | | | |
+| T1.06 | `events` table, monthly partitioning, append-only trigger | M | Opus | high | claude/e1-engine-core | wip | | | |
 | T1.07 | `events` writer and the journaling convention | M | Sonnet | high | | todo | | | |
 | T1.08 | `GET /events`, `/events/calendar`, `/events/timeline` | M | Sonnet | high | | todo | | | |
 | T1.09 | Retire `audit_log` reads | S | Sonnet | high | | todo | | | |
