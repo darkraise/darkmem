@@ -615,3 +615,72 @@ entries. `benchlib` keys its cache on the whole `messages` list, so T1.50's retr
 baseline — roughly 94 cached extraction calls plus the ingested graph itself — dies with it.
 T1.17's task text does not warn about this, and T1.50's brief must budget for re-establishing
 that baseline after the prompt change rather than before.
+
+---
+
+## G-B — THE BASELINE NO LONGER REPRODUCES. Measured 2026-07-28, decision recorded.
+
+The gate ledger's own recorded gap — *"'same model' is asserted, not verifiable"* — has now
+been tested against a live model and **the baseline does not reproduce**. 159 live calls,
+evidence committed at `docs/eval/2026-07-28-laneD-live-model-drift/`.
+
+**32 of 36 raw outputs differ; 15 of 36 (42%) differ semantically after `clean_extraction`.**
+Two controls rule out the innocent explanations: the same content at the same seed run three
+times is byte-identical and differs from the cache *the same way each time*, and a
+`temperature=0` control still leaves 4 of 5 differing. This is vendor-side drift, not
+sampling noise and not a config mismatch. The cache was **not** re-recorded.
+
+### The three-arm decomposition — the part that matters
+
+| Arm | Algorithm | Raw source | gold | held-out |
+|---|---|---|---|---|
+| **A** — recorded T0.05 / G-A | 2026-07-26 | cache | 0.925 / 0.955 / 0.865 / 0.892 | 0.893 / 0.929 / 0.667 / 0.667 |
+| **B** — today's algo, cached raw | `dbde017` | cache | 0.940 / 0.970 / 0.895 / 0.921 | 0.949 / 0.983 / 0.872 / 0.872 |
+| **C** — today's algo, **live** raw | `dbde017` | live | 0.925 / 0.970 / 0.921 / 0.921 | 0.862 / 0.931 / 0.765 / 0.765 |
+
+**B − A is the deterministic passes' gain. C − B is the isolated model drift**, which is
+roughly neutral on gold and **materially negative on held-out across all four dimensions**
+(`−0.087 / −0.052 / −0.107 / −0.107`).
+
+**All eight cells still clear the G-B floors.** But two facts qualify that pass:
+
+1. Held-out entity name+type declines against A, `0.893 → 0.862`. At that cell's flip cost of
+   `2/56 = 0.0357`, **drift alone has consumed 0.87 of the tolerance's 1.0-flip "silent
+   vendor-side model update" allowance** — it lands just inside a budget written for exactly
+   this event, and it is 87% spent on the first measurement.
+2. **The deterministic passes are masking the drift.** On held-out relations the algorithm
+   gained `+0.205` while the model lost `−0.107`, netting `+0.098`. A parity check comparing
+   Phase-1 against A passes *partly because T1.24's algorithm gains are paying for model
+   regression*, and the comparison cannot show that.
+
+### Controller decision (the human delegated this; recorded rather than asked)
+
+**The bar is not moved and the baseline is not re-recorded.** Arm A stays the reference.
+Runbook §7 forbids widening a bar to fit a result, and re-baselining onto a model that has
+already drifted once would make "parity" a comparison against a moving target.
+
+**Instead, T1.50 must report the three-arm decomposition, not a single parity number.** The
+honest claim is: parity against A holds, *and here is how much of that is algorithm and how
+much is model*. A headline number that hides a −0.107 model regression under a +0.205
+algorithm gain is technically true and materially misleading, which is the failure this
+corpus exists to prevent.
+
+**The verifiability gap is now closable.** The run captured
+`system_fingerprint = fp_8b330d02d0_prod0820_fp8_kvcache_20260402`, stable across all 159
+calls. Every future live run must record it. That converts "same model is asserted" into
+"same model is checkable", which is what the recorded gap asked for — and it means the *next*
+drift will be detectable at the moment it happens rather than two days later by accident.
+
+**If drift widens before G-B, the subsidy is already spent** and the comparison against A will
+fail rather than merely mislead. That is the gate working; report it and leave G-B open.
+
+### Two other results from the same run
+
+- **The retrieval eval works and its twin exists.** MRR `0.8582` / hit@10 `0.8431` against
+  full-context `0.9069` / `0.9314`, reproducing G-A byte-identically despite 100 live ingest
+  calls — hybrid search never touches the entity graph, so extraction drift cannot reach it.
+  Token cost recorded (939,668 prompt / 12,125 completion), which **retires G-A's
+  `cost-unmeasured` caveat** with real numbers.
+- **The five-phase pipeline ran end to end against live models for the first time**: 94
+  memories, 131 entities, 63 relations, **0 pipeline failures**, exactly one fingerprint
+  (`qwen3-embedding:0.6b|1024`, no rotation), 0 non-lowercase entity names.
