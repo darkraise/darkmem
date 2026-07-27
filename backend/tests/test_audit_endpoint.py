@@ -56,4 +56,9 @@ async def test_audit_filters_by_action(client, session, auth_headers):
     )
     assert r.status_code == 200
     actions = [row["action"] for row in r.json()["items"]]
-    assert actions == ["auth_login_failed"]
+    # What the filter must guarantee is that no OTHER action comes back. An
+    # exact-length assertion would instead be asserting that no earlier test
+    # left an `auth_login_failed` row behind — and since `events` is append-only
+    # (T1.06), rows genuinely do accumulate for the life of the database.
+    assert set(actions) == {"auth_login_failed"}
+    assert actions

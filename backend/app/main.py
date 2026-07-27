@@ -13,6 +13,7 @@ from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.routes import analytics, auth, chat, code, config, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
+from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
 from app.services.pipeline import ProcessingPipeline
 
@@ -80,6 +81,17 @@ async def lifespan(app: FastAPI):
                 await embedder_registry.reconcile(session)
         except Exception:
             logger.exception("Boot-time partition reconciliation failed")
+
+        # The events journal keeps its monthly children ahead of need on the
+        # same boot pass. A missing child does not degrade journaling, it stops
+        # it: a RANGE parent rejects any insert with no matching partition.
+        try:
+            async with async_session_factory() as session:
+                children = await reconcile_event_partitions(session)
+                await session.commit()
+            logger.info("events partitions reconciled: %s", ", ".join(children))
+        except Exception:
+            logger.exception("Boot-time events partition reconciliation failed")
 
         llm_fp = llm.llm_fingerprint()
         try:

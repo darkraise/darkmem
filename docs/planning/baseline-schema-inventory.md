@@ -157,7 +157,7 @@ they are in §8, with their own vocabulary.
 | `conversations` | 04 §7 | — | `carries-over` | Chat surface; carried verbatim at cutover as user data (F-02). |
 | `messages` | 04 §7 | — | `carries-over` | Chat surface (F-02). |
 | `api_keys` | 04 §7, §9 | — | `carries-over` | Exists, unwired. Doc 19 §3 `(activation)`; schema unchanged in the baseline, first reader **T4.01** (F-02, F-04). |
-| `events` | 04 §8.1 | T0.12b | `target-new` | `RANGE(created_at)` monthly; forbid-trigger is T1.06's. |
+| `events` | 04 §8.1 | T0.12b | `target-new` | `RANGE(created_at)` monthly; forbid-triggers landed by T1.06 (three of them — see §4.3). |
 | `memory_relations` | 04 §8.2 | — | `target-new` | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
 | `knowledge_triples` | 04 §8.3 | T0.12b | `target-new` | Exists at HEAD but `target-new` by doc 04 §8.3 — "treated as target-new, NOT as an activation of the dormant demo scaffolding". |
 | `fact_sources` | 04 §8.3 | T0.12b | `target-new` | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
@@ -457,7 +457,11 @@ behaviour change, not a tidy-up.
 | `knowledge_triples` PK | PK | `knowledge_triples` | `id uuid PRIMARY KEY`, application-generated **UUIDv7** — the rebuild keeps a name, not an object (doc 04 §8.3) | `target-new` | 04 §8.3 | T0.12b |
 | `events` composite PK | PK | `events` | `(id, created_at)` — the partition key must sit in the PK; nothing joins events by id, so folding `created_at` in costs nothing | `target-new` | 04 §8.1 | T0.12b |
 | `events` monthly range partitioning | partitioning | `events` | `PARTITION BY RANGE(created_at)`, monthly, from day one — the **only** declaratively partitioned table in the schema | `target-new` | 04 §8.1, §2 | T0.12b |
-| `events` append-only forbid-trigger | trigger | `events` | `BEFORE UPDATE OR DELETE OR TRUNCATE` … `RAISE`; role-agnostic, so it survives dump/restore. A `REVOKE`-based owner/app split is the recorded multi-user upgrade path. | `target-new` | 04 §8.1, §11; 19 §2 | **T1.06** — T0.12b's own text: "`events` is `RANGE(created_at)` partitioned (the trigger is T1.06's)" |
+| `events_forbid_write` | function | — | `plpgsql`; `RAISE EXCEPTION` with `ERRCODE = restrict_violation`, naming `TG_OP`. Role-agnostic, so it survives dump/restore. A `REVOKE`-based owner/app split is the recorded multi-user upgrade path. | `target-new` | 04 §8.1, §11; 19 §2 | T1.06 |
+| `events_forbid_row` | trigger | `events` | `BEFORE UPDATE OR DELETE ON events FOR EACH ROW`. Row triggers on a partitioned parent **do** cascade to every child, present and future. | `target-new` | 04 §8.1, §11 | T1.06 |
+| `events_forbid_truncate` | trigger | `events` | `BEFORE TRUNCATE ON events FOR EACH STATEMENT`. A separate trigger because TRUNCATE fires only statement-level, so one `BEFORE UPDATE OR DELETE OR TRUNCATE` trigger — the form doc 04 §8.1 writes in prose — is not creatable. | `target-new` | 04 §8.1, §11 | T1.06 |
+| `events_<YYYYMM>_forbid_truncate` | trigger | each `events` child | `BEFORE TRUNCATE … FOR EACH STATEMENT` on **every** monthly child. Measured on PG 17: a statement-level TRUNCATE trigger on the parent does **not** cascade, so `TRUNCATE events_202607` bypasses the parent's guard and erases a month of the journal. Attached by `events_ensure_partition`, never by hand. | `target-new` | 04 §8.1, §11 | T1.06 |
+| `events_ensure_partition` | function | — | `plpgsql`; `CREATE TABLE IF NOT EXISTS <child> PARTITION OF events` plus the per-child TRUNCATE guard when absent, returning the child name. The **single** partition-creating path — the baseline, the boot reconciliation and the `pipeline_failure_cleanup` arm all call it, so the guard cannot be forgotten by one of them. | `target-new` | 04 §8.1 | T1.06 |
 | `verification_status` CHECK | CHECK | `knowledge_triples` | `CHECK (verification_status IN ('candidate','corroborated','disputed','confirmed'))` | `target-new` | 04 §8.3, §10 | T0.12b |
 | `fact_sources` dedupe key | UNIQUE | `fact_sources` | `UNIQUE (fact_id, source_kind, source_ref)` | `target-new` | 04 §8.3, §10 | T0.12b |
 | `fact_sources` parent FK | FK | `fact_sources` | `fact_id → knowledge_triples(id) ON DELETE CASCADE` | `target-new` | 04 §8.3 | T0.12b |

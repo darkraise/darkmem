@@ -936,7 +936,6 @@ def _pass_two() -> None:
     # key must sit in the PK, and nothing joins events by id, so folding
     # created_at into the composite PK costs nothing.
     #
-    # The append-only forbid-trigger is T1.06's, per T0.12b's own text.
     op.execute(
         """
         CREATE TABLE events (
@@ -955,26 +954,87 @@ def _pass_two() -> None:
         """
     )
 
+    # Append-only is enforced structurally, not by convention (doc 04 §8.1).
+    # Role-agnostic on purpose: a REVOKE-based owner/app split would not survive
+    # dump/restore and would complicate the one-image surface.
+    op.execute(
+        """
+        CREATE FUNCTION events_forbid_write() RETURNS trigger AS $$
+        BEGIN
+            RAISE EXCEPTION
+                'events is append-only: % is forbidden (doc 04 8.1)', TG_OP
+                USING ERRCODE = 'restrict_violation';
+        END $$ LANGUAGE plpgsql
+        """
+    )
+
+    # Two triggers, because one cannot cover all three verbs: TRUNCATE fires
+    # only statement-level, UPDATE/DELETE are guarded per row.
+    op.execute(
+        "CREATE TRIGGER events_forbid_row BEFORE UPDATE OR DELETE ON events "
+        "FOR EACH ROW EXECUTE FUNCTION events_forbid_write()"
+    )
+    op.execute(
+        "CREATE TRIGGER events_forbid_truncate BEFORE TRUNCATE ON events "
+        "FOR EACH STATEMENT EXECUTE FUNCTION events_forbid_write()"
+    )
+
+    # Every path that creates a monthly child goes through this function, so the
+    # per-child TRUNCATE guard can never be forgotten by one of them. Measured on
+    # PostgreSQL 17: a row-level trigger on a partitioned parent DOES cascade to
+    # children (present and future), but a statement-level BEFORE TRUNCATE
+    # trigger does NOT — `TRUNCATE events_202607` on a child bypasses the
+    # parent's trigger entirely and silently erases that month of the audit
+    # trail. Hence a truncate trigger on the parent AND on every child.
+    #
+    # Idempotent by construction: CREATE TABLE IF NOT EXISTS, and the trigger is
+    # created only when absent (rather than dropped and recreated, which would
+    # leave a window where the child is unguarded).
+    op.execute(
+        """
+        CREATE FUNCTION events_ensure_partition(month_start date)
+        RETURNS text AS $$
+        DECLARE
+            child      text := 'events_' || to_char(month_start, 'YYYYMM');
+            guard      text := 'events_' || to_char(month_start, 'YYYYMM') || '_forbid_truncate';
+            next_start date := (month_start + interval '1 month')::date;
+        BEGIN
+            EXECUTE format(
+                'CREATE TABLE IF NOT EXISTS %I PARTITION OF events '
+                'FOR VALUES FROM (%L) TO (%L)', child, month_start, next_start);
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                WHERE c.relname = child AND t.tgname = guard
+                  AND NOT t.tgisinternal
+            ) THEN
+                EXECUTE format(
+                    'CREATE TRIGGER %I BEFORE TRUNCATE ON %I '
+                    'FOR EACH STATEMENT EXECUTE FUNCTION events_forbid_write()',
+                    guard, child);
+            END IF;
+            RETURN child;
+        END $$ LANGUAGE plpgsql
+        """
+    )
+
     # A RANGE-partitioned parent with no matching child REJECTS every insert,
     # and neither doc 04 §8.1 nor doc 19 §9 says whether the baseline lands
     # month-0 (inventory F-15). It must: the first events write happens as soon
-    # as the journaling ships. Create the current and next month; the
-    # partition-maintenance arm on pipeline_failure_cleanup keeps going.
+    # as the journaling ships. Create the current and next month; the boot
+    # reconciliation and the partition-maintenance arm on
+    # pipeline_failure_cleanup keep it ahead of need from there.
     op.execute(
         """
-        DO $$
-        DECLARE
-            m0 date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
-            m1 date := (date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month')::date;
-            m2 date := (date_trunc('month', now() AT TIME ZONE 'UTC') + interval '2 month')::date;
-        BEGIN
-            EXECUTE format(
-                'CREATE TABLE IF NOT EXISTS events_%s PARTITION OF events '
-                'FOR VALUES FROM (%L) TO (%L)', to_char(m0, 'YYYYMM'), m0, m1);
-            EXECUTE format(
-                'CREATE TABLE IF NOT EXISTS events_%s PARTITION OF events '
-                'FOR VALUES FROM (%L) TO (%L)', to_char(m1, 'YYYYMM'), m1, m2);
-        END $$;
+        SELECT events_ensure_partition(
+            date_trunc('month', now() AT TIME ZONE 'UTC')::date);
+        """
+    )
+    op.execute(
+        """
+        SELECT events_ensure_partition(
+            (date_trunc('month', now() AT TIME ZONE 'UTC')
+             + interval '1 month')::date);
         """
     )
 

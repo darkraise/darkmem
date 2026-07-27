@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import hash_password
@@ -34,10 +33,6 @@ async def test_login_locks_out_after_repeated_failures(client, session, monkeypa
     assert r.status_code == 429
     assert r.headers.get("Retry-After")
 
-    # The committed failed-login audit rows live outside the fixture rollback;
-    # clean them up so they don't leak into other tests.
-    async with AsyncSession(test_engine) as vs:
-        await vs.execute(
-            text("DELETE FROM events WHERE event_type = 'auth_login_failed'")
-        )
-        await vs.commit()
+    # The committed failed-login audit rows outlive the fixture rollback and
+    # cannot be cleaned up: `events` is append-only (T1.06), so a DELETE here is
+    # refused by the forbid-trigger. Readers must tolerate them.

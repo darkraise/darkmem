@@ -87,17 +87,26 @@ def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[Asyn
 
 
 def make_pipeline_failure_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
-    """Prune orphaned pipeline-failure rows and old resolved entries."""
+    """Prune pipeline-failure rows, and keep the `events` partitions ahead.
+
+    The partition-maintenance arm rides here rather than as its own registered
+    job (doc 04 §8.1). Boot-time reconciliation alone is not enough: a process
+    that boots in January and runs into March outlives the children the baseline
+    created, and a RANGE parent rejects every insert that has no partition to
+    land in — so the journal would stop, taking the journaled write with it.
+    """
     async def run() -> None:
+        from app.services.events import reconcile_event_partitions
         from app.services.pipeline_failures import PipelineFailureService
         async with session_factory() as session:
             svc = PipelineFailureService(session)
             orphaned = await svc.prune_orphans()
             resolved_pruned = await svc.prune_resolved_older_than(days=30)
+            children = await reconcile_event_partitions(session)
             await session.commit()
         logger.info(
-            "Pipeline failure cleanup: orphaned=%s resolved_pruned=%s",
-            orphaned, resolved_pruned,
+            "Pipeline failure cleanup: orphaned=%s resolved_pruned=%s events_partitions=%s",
+            orphaned, resolved_pruned, ",".join(children),
         )
     return run
 
