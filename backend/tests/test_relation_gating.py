@@ -36,6 +36,7 @@ from app.services.extraction_clean import (
     STAGE_RELATION_SYNTHESIS,
     CleanState,
     _CAUSAL_BETWEEN_RE,
+    _EVENT_ALLOWED_RELS,
     _FUTURE_RE,
     _HARDWARE_TOKENS,
     _IMPROVES_PATTERNS,
@@ -47,6 +48,7 @@ from app.services.extraction_clean import (
     _drop_date_misuse,
     _drop_edges_to_negated,
     _entity_matches,
+    _filter_event_edges,
     _gate_replaces_requires_verb,
     _gate_replaces_selection,
     _remap_to_valid_entities,
@@ -848,3 +850,175 @@ def test_the_negation_pass_does_not_mutate_its_input():
     before = copy.deepcopy(rels)
     _drop_edges_to_negated(rels, {"ui/theme.css"})
     assert rels == before
+
+
+# ── Event legality at its Stage-4 position (doc 06 §4 S4 box D5) ─────
+#
+# tests/test_extraction_clean_guards.py already covers the pass at unit
+# level and tests/test_pass_registry.py owns the second, post-fan-out
+# occurrence and its StraddlesPivot constraint (T1.24e's). Neither is
+# repeated here.
+
+_EVENT_ENTITIES = [
+    {"name": "outage", "type": "event"},
+    {"name": "darkmem", "type": "project"},
+    {"name": "postgres", "type": "database"},
+]
+
+
+def test_the_event_allow_set_is_exactly_the_four_temporal_predicates():
+    assert _EVENT_ALLOWED_RELS == frozenset(
+        {"HAPPENED_ON", "CAUSES", "AUTHORED_BY", "MENTIONS"}
+    )
+
+
+@pytest.mark.parametrize("rtype", sorted(_EVENT_ALLOWED_RELS))
+@pytest.mark.parametrize("side", ["source", "target"])
+def test_every_allowed_type_survives_on_either_endpoint_side(rtype, side):
+    edge = (
+        {"source": "outage", "target": "darkmem", "type": rtype}
+        if side == "source"
+        else {"source": "darkmem", "target": "outage", "type": rtype}
+    )
+    assert _triples(_filter_event_edges([edge], _EVENT_ENTITIES)) == _triples([edge])
+
+
+@pytest.mark.parametrize("rtype", ["USES", "DEPLOYED_ON", "REPLACES", "DEPENDS_ON"])
+@pytest.mark.parametrize("side", ["source", "target"])
+def test_a_disallowed_type_is_filtered_on_either_endpoint_side(rtype, side):
+    edge = (
+        {"source": "outage", "target": "darkmem", "type": rtype}
+        if side == "source"
+        else {"source": "darkmem", "target": "outage", "type": rtype}
+    )
+    assert _filter_event_edges([edge], _EVENT_ENTITIES) == []
+
+
+def test_the_guard_is_keyed_on_the_entity_type_not_on_any_name():
+    # The same name typed as something other than 'event' is not policed.
+    not_an_event = [{**e, "type": "concept"} if e["name"] == "outage" else e
+                    for e in _EVENT_ENTITIES]
+    edge = [{"source": "outage", "target": "darkmem", "type": "USES"}]
+    assert _filter_event_edges(edge, _EVENT_ENTITIES) == []
+    assert _triples(_filter_event_edges(edge, not_an_event)) == _triples(edge)
+
+
+def test_edges_between_non_event_entities_are_untouched():
+    edge = [{"source": "darkmem", "target": "postgres", "type": "USES"}]
+    assert _triples(_filter_event_edges(edge, _EVENT_ENTITIES)) == _triples(edge)
+
+
+def test_the_event_guard_does_not_mutate_its_input():
+    rels = [{"source": "outage", "target": "darkmem", "type": "USES"}]
+    before = copy.deepcopy(rels)
+    _filter_event_edges(rels, _EVENT_ENTITIES)
+    assert rels == before
+
+
+# ── The stage's contract through the composed chain ──────────────────
+#
+# Passes that are individually correct can still compose wrongly. These
+# run through clean_extraction, which is what the task's Done-when
+# actually asks for. The negation half lives with box D1 above, next to
+# the reachability evidence that names the pass discharging it.
+
+
+def test_a_selection_memory_yields_improves_on_and_never_replaces():
+    out = clean_extraction(
+        {
+            "entities": [
+                {"name": "pgvector", "type": "tool"},
+                {"name": "qdrant", "type": "database"},
+            ],
+            "relationships": [
+                {"source": "pgvector", "target": "qdrant", "type": "REPLACES"},
+            ],
+        },
+        "we chose pgvector over qdrant for the vector index",
+    )
+    assert _triples(out["relationships"]) == {("pgvector", "IMPROVES_ON", "qdrant")}
+
+
+def test_a_planned_memory_yields_mentions_and_never_uses():
+    out = clean_extraction(
+        {
+            "entities": [
+                {"name": "darkmem", "type": "project"},
+                {"name": "redis", "type": "database"},
+            ],
+            "relationships": [
+                {"source": "darkmem", "target": "redis", "type": "USES"},
+            ],
+        },
+        "we plan to adopt redis for session state",
+    )
+    assert _triples(out["relationships"]) == {("darkmem", "MENTIONS", "redis")}
+
+
+def test_an_unambiguous_migration_is_oriented_end_to_end():
+    raw = {
+        "entities": [
+            {"name": "qdrant", "type": "database"},
+            {"name": "pgvector", "type": "tool"},
+        ],
+        "relationships": [
+            {"source": "qdrant", "target": "pgvector", "type": "REPLACES"},
+        ],
+    }
+    out = clean_extraction(raw, "we migrated from qdrant to pgvector")
+    assert _triples(out["relationships"]) == {("pgvector", "REPLACES", "qdrant")}
+
+
+def test_an_ambiguous_replacement_is_left_exactly_as_extracted():
+    raw = {
+        "entities": [
+            {"name": "qdrant", "type": "database"},
+            {"name": "pgvector", "type": "tool"},
+        ],
+        "relationships": [
+            {"source": "qdrant", "target": "pgvector", "type": "REPLACES"},
+        ],
+    }
+    content = (
+        "qdrant and pgvector are both vector stores; "
+        "we replaced one of them last year"
+    )
+    out = clean_extraction(raw, content, relation_rescue=False)
+    assert _triples(out["relationships"]) == {("qdrant", "REPLACES", "pgvector")}
+
+
+@pytest.mark.parametrize(
+    ("content", "raw"),
+    [
+        (
+            "we chose pgvector over qdrant for the vector index",
+            {
+                "entities": [
+                    {"name": "pgvector", "type": "tool"},
+                    {"name": "qdrant", "type": "database"},
+                ],
+                "relationships": [
+                    {"source": "pgvector", "target": "qdrant", "type": "FROBNICATES"},
+                ],
+            },
+        ),
+        (
+            "darkmem runs on proxmox and the outage happened on 2026-05-12",
+            {
+                "entities": [
+                    {"name": "darkmem", "type": "project"},
+                    {"name": "proxmox", "type": "tool"},
+                    {"name": "outage", "type": "event"},
+                ],
+                "relationships": [
+                    {"source": "darkmem", "target": "proxmox", "type": "RUNS_ON"},
+                ],
+            },
+        ),
+    ],
+)
+def test_every_relation_type_the_stage_emits_is_in_the_closed_taxonomy(content, raw):
+    out = clean_extraction(raw, content)
+    assert out["relationships"]
+    for r in out["relationships"]:
+        assert r["type"] in RELATIONSHIP_TYPES
