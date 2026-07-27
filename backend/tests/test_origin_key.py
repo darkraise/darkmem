@@ -131,10 +131,12 @@ async def test_origin_key_persists_to_the_memory_row(session):
     from app.services.memory import MemoryService
 
     service = MemoryService(session)
-    memory = await service.create_memory(
+    result = await service.create_memory(
         MemoryCreate(content="a claim", source="mcp", origin_key="mcp:boot-1"),
-        api_key_id=None,
+        api_key_id=None, wait_process=True,
     )
+    memory = result.memory
+    assert memory is not None
     stored = (
         await session.execute(
             text("SELECT origin_key FROM memories WHERE id = CAST(:i AS uuid)"),
@@ -159,7 +161,7 @@ async def test_two_unknown_identity_captures_do_not_count_as_two_origins(session
             MemoryCreate(
                 content=content, source="mcp", project="default", origin_key=fallback
             ),
-            api_key_id=None,
+            api_key_id=None, wait_process=True,
         )
 
     distinct = (

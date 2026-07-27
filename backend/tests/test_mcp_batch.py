@@ -25,10 +25,13 @@ async def test_memory_batch_add_preserves_project(session, monkeypatch):
     monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _fake_ctx())
     set_pipeline(None)  # skip pipeline processing (no embedder network calls)
 
-    raw = await memory_batch_add(entries=[
-        {"content": "alpha fact", "project": "proj-x"},
-        {"content": "beta fact", "project": "proj-x"},
-    ])
+    raw = await memory_batch_add(
+        entries=[
+            {"content": "alpha fact", "project": "proj-x"},
+            {"content": "beta fact", "project": "proj-x"},
+        ],
+        wait_process=True,
+    )
     assert len(json.loads(raw)) == 2
 
     rows = (

@@ -83,7 +83,7 @@ async def _get_memory(session, content: str) -> Memory:
 
 async def test_memory_add_source_from_header(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "header attribution probe"},
+                     {"content": "header attribution probe", "wait_process": True},
                      headers={"X-Darkmem-Client": "Codex!"})
     memory = await _get_memory(session, "header attribution probe")
     assert memory.source == "codex"
@@ -91,7 +91,7 @@ async def test_memory_add_source_from_header(mcp_http_client, session):
 
 async def test_memory_add_source_from_claude_code_user_agent(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "ua attribution probe"},
+                     {"content": "ua attribution probe", "wait_process": True},
                      headers={"User-Agent": "claude-code/2.1.172 (cli)"})
     memory = await _get_memory(session, "ua attribution probe")
     assert memory.source == "claude-code"
@@ -101,7 +101,7 @@ async def test_memory_add_source_from_claude_code_user_agent(mcp_http_client, se
 async def test_memory_add_generic_ua_falls_back_to_mcp(mcp_http_client, session):
     # httpx's default python-httpx/<ver> UA must stay on the denylist: every
     # in-process test and raw-httpx harness rides on that entry.
-    await _post_tool(mcp_http_client, "memory_add", {"content": "generic ua probe"})
+    await _post_tool(mcp_http_client, "memory_add", {"content": "generic ua probe", "wait_process": True})
     memory = await _get_memory(session, "generic ua probe")
     assert memory.source == "mcp"
     assert memory.source_agent.startswith("python-httpx/")
@@ -109,7 +109,7 @@ async def test_memory_add_generic_ua_falls_back_to_mcp(mcp_http_client, session)
 
 async def test_memory_add_no_ua_leaves_source_agent_null(mcp_http_client, session):
     del mcp_http_client.headers["user-agent"]
-    await _post_tool(mcp_http_client, "memory_add", {"content": "no ua probe"})
+    await _post_tool(mcp_http_client, "memory_add", {"content": "no ua probe", "wait_process": True})
     memory = await _get_memory(session, "no ua probe")
     assert memory.source == "mcp"
     assert memory.source_agent is None
@@ -117,7 +117,7 @@ async def test_memory_add_no_ua_leaves_source_agent_null(mcp_http_client, sessio
 
 async def test_memory_add_explicit_source_beats_header(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "explicit override probe", "source": "my-orchestrator"},
+                     {"content": "explicit override probe", "source": "my-orchestrator", "wait_process": True},
                      headers={"X-Darkmem-Client": "codex"})
     memory = await _get_memory(session, "explicit override probe")
     assert memory.source == "my-orchestrator"
@@ -129,7 +129,7 @@ async def test_memory_update_tags_only_preserves_content(mcp_http_client, sessio
     # exclude_unset guard and clobbering the NOT NULL content column (which also
     # aborted before tags were applied).
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "update tags-only probe", "tags": ["keep/a"]})
+                     {"content": "update tags-only probe", "tags": ["keep/a"], "wait_process": True})
     mem = await _get_memory(session, "update tags-only probe")
 
     await _post_tool(mcp_http_client, "memory_update",
@@ -144,7 +144,7 @@ async def test_memory_update_tags_only_preserves_content(mcp_http_client, sessio
 async def test_memory_update_type_only_preserves_content_and_tags(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
                      {"content": "update type-only probe", "tags": ["keep/c"],
-                      "memory_type": "fact"})
+                      "memory_type": "fact", "wait_process": True})
     mem = await _get_memory(session, "update type-only probe")
 
     await _post_tool(mcp_http_client, "memory_update",
@@ -158,11 +158,14 @@ async def test_memory_update_type_only_preserves_content_and_tags(mcp_http_clien
 
 
 async def test_memory_batch_add_resolves_per_entry(mcp_http_client, session):
-    await _post_tool(mcp_http_client, "memory_batch_add", {"entries": [
-        {"content": "batch omitted source"},
-        {"content": "batch explicit api", "source": "api"},
-        {"content": "batch explicit mcp", "source": "mcp", "source_agent": "eval-r3"},
-    ]}, headers={"X-Darkmem-Client": "codex"})
+    await _post_tool(mcp_http_client, "memory_batch_add", {
+        "wait_process": True,
+        "entries": [
+            {"content": "batch omitted source"},
+            {"content": "batch explicit api", "source": "api"},
+            {"content": "batch explicit mcp", "source": "mcp", "source_agent": "eval-r3"},
+        ],
+    }, headers={"X-Darkmem-Client": "codex"})
     omitted = await _get_memory(session, "batch omitted source")
     assert omitted.source == "codex"
     assert omitted.source_agent.startswith("python-httpx/")
