@@ -264,6 +264,647 @@ def upgrade() -> None:
         "CREATE INDEX ix_entity_relations_target ON entity_relations (target_entity_id)"
     )
 
+    _pass_two()
+
+
+def _pass_two() -> None:
+    """T0.12b — knowledge vault, memory satellites, code graph, ops, events."""
+
+    # ------------------------------------------------------------------
+    # projects — the minimal namespace registry (doc 04 §7)
+    # ------------------------------------------------------------------
+    # Lazy auto-registration (INSERT … ON CONFLICT DO NOTHING on capture) and
+    # NO FK enforcement yet — every scoped table keeps its bare project text
+    # column. It lands now because knowledge_triples.triple_key embeds project
+    # in FACT IDENTITY, so a typo'd project silently splits corroboration
+    # across two identities.
+    op.execute(
+        """
+        CREATE TABLE projects (
+            name         TEXT PRIMARY KEY,
+            display_name TEXT,
+            properties   JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+
+    # ------------------------------------------------------------------
+    # Memory satellites (doc 04 §3.3, §8.2, §8.4, §9)
+    # ------------------------------------------------------------------
+    op.execute(
+        """
+        CREATE TABLE memory_crossrefs (
+            memory_id         UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            related_memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            score             DOUBLE PRECISION NOT NULL,
+            CONSTRAINT memory_crossrefs_pkey PRIMARY KEY (memory_id, related_memory_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_memory_crossrefs_related ON memory_crossrefs (related_memory_id)"
+    )
+
+    # 1:1 ranking priors live here rather than on memories: memories is the
+    # widest hot row in the system, so a per-read bump would rewrite that whole
+    # tuple version — MVCC bloat on the most-read table — and would fire the
+    # updated_at bump, corrupting its "content changed" meaning (doc 04 §9).
+    op.execute(
+        """
+        CREATE TABLE memory_access_stats (
+            memory_id     UUID PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+            access_count  INTEGER NOT NULL DEFAULT 0,
+            last_accessed TIMESTAMPTZ
+        )
+        """
+    )
+
+    # Typed, directed memory-to-memory edges. Stores exactly the FIVE
+    # associative types — SUPERSEDES is a read-time projection over
+    # memories.superseded_by and is never stored, so the pointer stays the
+    # single source of truth (doc 04 §8.2). The endpoint FKs are COMPOSITE on
+    # (memory_id, project), which is what makes a cross-project edge
+    # unrepresentable rather than merely forbidden; they need the
+    # memories UNIQUE (id, project) support landed in pass one.
+    op.execute(
+        """
+        CREATE TABLE memory_relations (
+            id               UUID NOT NULL,
+            source_memory_id UUID NOT NULL,
+            target_memory_id UUID NOT NULL,
+            rel_type         TEXT NOT NULL,
+            project          TEXT NOT NULL,
+            properties       JSONB,
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT memory_relations_pkey PRIMARY KEY (id),
+            CONSTRAINT memory_relations_source_target_type_key
+                UNIQUE (source_memory_id, target_memory_id, rel_type),
+            CONSTRAINT fk_memory_relations_source
+                FOREIGN KEY (source_memory_id, project)
+                REFERENCES memories(id, project) ON DELETE CASCADE,
+            CONSTRAINT fk_memory_relations_target
+                FOREIGN KEY (target_memory_id, project)
+                REFERENCES memories(id, project) ON DELETE CASCADE
+        )
+        """
+    )
+    # "What points at this memory" filters on the target, which the UNIQUE's
+    # source prefix cannot serve — entity_relations' migration-0002 lesson,
+    # applied here from day one.
+    op.execute(
+        "CREATE INDEX ix_memory_relations_target ON memory_relations (target_memory_id)"
+    )
+
+    # Topics are Leiden communities over a project-scoped projection, never
+    # entities: an entities row would fall through the closed ENTITY_TYPES
+    # fallback to 'concept' and collide with UNIQUE(name, entity_type).
+    # Re-derivation is delete-and-rewrite per project, so community ids CHURN
+    # on every run — nothing durable may FK one (doc 04 §8.4).
+    op.execute(
+        """
+        CREATE TABLE memory_communities (
+            id            UUID NOT NULL,
+            project       TEXT NOT NULL,
+            label         TEXT,
+            report_string TEXT,
+            properties    JSONB,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT memory_communities_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TABLE memory_community_members (
+            community_id UUID NOT NULL REFERENCES memory_communities(id) ON DELETE CASCADE,
+            memory_id    UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            CONSTRAINT memory_community_members_pkey PRIMARY KEY (community_id, memory_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_memory_community_members_memory "
+        "ON memory_community_members (memory_id)"
+    )
+
+    # ------------------------------------------------------------------
+    # memory_buffer — the durable Tier-B ingest buffer (doc 04 §8.6)
+    # ------------------------------------------------------------------
+    # Claimed via SELECT … FOR UPDATE SKIP LOCKED, so fast capture-ack is
+    # decoupled from the five-phase pipeline with a durability an in-process
+    # queue cannot give — and no external broker (invariant 1).
+    op.execute(
+        """
+        CREATE TABLE memory_buffer (
+            id         UUID NOT NULL,
+            project    TEXT NOT NULL,
+            source     TEXT,
+            content    TEXT NOT NULL,
+            token_size INTEGER,
+            status     TEXT NOT NULL DEFAULT 'pending',
+            attempts   INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            metadata   JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            claimed_at TIMESTAMPTZ,
+            claimed_by TEXT,
+            CONSTRAINT memory_buffer_pkey PRIMARY KEY (id),
+            CONSTRAINT memory_buffer_status_check
+                CHECK (status IN ('pending', 'claimed', 'done', 'error'))
+        )
+        """
+    )
+    # The claim scan only ever reads pending rows, so the hot index stays small.
+    op.execute(
+        "CREATE INDEX ix_memory_buffer_pending ON memory_buffer (created_at) "
+        "WHERE status = 'pending'"
+    )
+
+    # ------------------------------------------------------------------
+    # knowledge_triples — the Layer-2 verified-fact store (doc 04 §8.3)
+    # ------------------------------------------------------------------
+    # A REBUILD that keeps a name, NOT an activation of the dormant demo
+    # scaffolding: every column and semantic is new. The endpoints carry NO
+    # hard FK — the graph side deletes entities aggressively while this
+    # table's contract is invalidate-not-delete, so expired triples must
+    # survive their endpoints. The denormalised lowercase names carry the
+    # durable identity instead.
+    op.execute(
+        """
+        CREATE TABLE knowledge_triples (
+            id                  UUID NOT NULL,
+            subject_id          UUID,
+            object_id           UUID,
+            subject_name        TEXT NOT NULL,
+            object_name         TEXT NOT NULL,
+            rel_type            TEXT NOT NULL,
+            valid_at            TIMESTAMPTZ,
+            invalid_at          TIMESTAMPTZ,
+            expired_at          TIMESTAMPTZ,
+            reference_time      TIMESTAMPTZ NOT NULL,
+            fact                TEXT NOT NULL,
+            project             TEXT NOT NULL DEFAULT 'default',
+            triple_key          TEXT NOT NULL,
+            verification_status TEXT NOT NULL DEFAULT 'candidate',
+            confidence          REAL,
+            applies_when        JSONB,
+            learned_in          TEXT[],
+            review_state        TEXT,
+            source_file         TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT knowledge_triples_pkey PRIMARY KEY (id),
+            CONSTRAINT knowledge_triples_verification_status_check
+                CHECK (verification_status IN
+                       ('candidate', 'corroborated', 'disputed', 'confirmed'))
+        )
+        """
+    )
+    # Non-unique on purpose: disjoint validity windows legitimately leave
+    # SEVERAL live rows on one subject/predicate/object.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_live "
+        "ON knowledge_triples (subject_name, rel_type, object_name) "
+        "WHERE expired_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_window ON knowledge_triples (valid_at, invalid_at)"
+    )
+    # At most one CURRENTLY-OPEN belief per fact. Window-closed rows
+    # (invalid_at set) leave the unique's scope but remain live history, which
+    # is exactly what the disjoint-window pass produces.
+    op.execute(
+        "CREATE UNIQUE INDEX ux_knowledge_triples_open ON knowledge_triples (triple_key) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_review ON knowledge_triples (review_state) "
+        "WHERE review_state = 'open'"
+    )
+
+    # Provenance leaves the fact row entirely: a uuid[] cannot carry per-source
+    # metadata, index per-kind reverse lookups, or compute
+    # COUNT(DISTINCT origin_key) — which is the corroboration signal, because
+    # echo is not evidence (doc 04 §8.3).
+    op.execute(
+        """
+        CREATE TABLE fact_sources (
+            id          UUID NOT NULL,
+            fact_id     UUID NOT NULL REFERENCES knowledge_triples(id) ON DELETE CASCADE,
+            source_kind TEXT,
+            source_ref  TEXT,
+            origin_key  TEXT,
+            detail      JSONB,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT fact_sources_pkey PRIMARY KEY (id),
+            CONSTRAINT fact_sources_fact_kind_ref_key UNIQUE (fact_id, source_kind, source_ref)
+        )
+        """
+    )
+    # The member-source reverse lookup — "which facts does memory X assert" —
+    # the role the removed source_memory_ids GIN played.
+    op.execute(
+        "CREATE INDEX ix_fact_sources_kind_ref ON fact_sources (source_kind, source_ref)"
+    )
+    op.execute("CREATE INDEX ix_fact_sources_fact ON fact_sources (fact_id)")
+
+    # ------------------------------------------------------------------
+    # knowledge_articles + article_citations — Layer 3 (doc 04 §8.8)
+    # ------------------------------------------------------------------
+    op.execute(
+        """
+        CREATE TABLE knowledge_articles (
+            id             UUID NOT NULL,
+            subject_key    TEXT NOT NULL,
+            project        TEXT NOT NULL,
+            title          TEXT,
+            content        TEXT NOT NULL,
+            status         TEXT NOT NULL DEFAULT 'candidate',
+            confidence     REAL,
+            applies_when   JSONB,
+            learned_in     TEXT[],
+            synthesized_at TIMESTAMPTZ,
+            fact_set_hash  TEXT,
+            review_state   TEXT,
+            superseded_by  UUID REFERENCES knowledge_articles(id),
+            created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT knowledge_articles_pkey PRIMARY KEY (id),
+            CONSTRAINT knowledge_articles_status_check
+                CHECK (status IN ('candidate', 'corroborated', 'disputed',
+                                  'confirmed', 'superseded'))
+        )
+        """
+    )
+    # Exactly one live article per subject.
+    op.execute(
+        "CREATE UNIQUE INDEX ux_knowledge_articles_live ON knowledge_articles (project, subject_key) "
+        "WHERE status <> 'superseded'"
+    )
+    op.execute(
+        "CREATE INDEX ix_knowledge_articles_review ON knowledge_articles (review_state) "
+        "WHERE review_state = 'open'"
+    )
+
+    # fact_id takes a HARD FK — the deliberate contrast with §8.3's soft
+    # endpoint refs. Facts are invalidate-not-delete (rows are never deleted),
+    # so the hard FK is safe, and it buys integrity at the one place a dangling
+    # citation would be a truth catastrophe: a dead citation under a
+    # corroborated badge.
+    op.execute(
+        """
+        CREATE TABLE article_citations (
+            id         UUID NOT NULL,
+            article_id UUID NOT NULL REFERENCES knowledge_articles(id) ON DELETE CASCADE,
+            fact_id    UUID NOT NULL REFERENCES knowledge_triples(id),
+            claim_span INT4RANGE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT article_citations_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_article_citations_article ON article_citations (article_id)")
+
+    # ------------------------------------------------------------------
+    # Code graph (doc 04 §6)
+    # ------------------------------------------------------------------
+    # Repo-scoped, owner-qualified, and it never joins the memory-side entity
+    # graph. index_debt lands inert — no doc 19 §3 row and no task list names
+    # it (inventory F-13), so it lands with the table that owns it.
+    op.execute(
+        """
+        CREATE TABLE repositories (
+            id                  UUID NOT NULL,
+            name                VARCHAR(255) NOT NULL,
+            url                 VARCHAR(1024),
+            local_path          VARCHAR(1024),
+            provider            VARCHAR(50) NOT NULL DEFAULT 'local',
+            default_branch      VARCHAR(100) NOT NULL DEFAULT 'main',
+            auth_token_ref      VARCHAR(255),
+            last_indexed_commit VARCHAR(64),
+            last_indexed_at     TIMESTAMPTZ,
+            index_debt          JSONB,
+            auto_sync           BOOLEAN NOT NULL,
+            status              VARCHAR(20) NOT NULL,
+            status_message      VARCHAR(500),
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT repositories_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    # Partial: the repo_sync filter only ever wants auto-sync repos.
+    op.execute(
+        "CREATE INDEX ix_repositories_auto_sync ON repositories (id) WHERE auto_sync = true"
+    )
+    op.execute(
+        "CREATE TRIGGER repositories_touch_updated_at BEFORE UPDATE "
+        "ON repositories FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+    )
+
+    op.execute(
+        """
+        CREATE TABLE code_files (
+            id              UUID NOT NULL,
+            repo_id         UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+            file_path       VARCHAR(1024) NOT NULL,
+            language        VARCHAR(50),
+            last_commit_sha VARCHAR(64),
+            content_hash    VARCHAR(64),
+            indexed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT code_files_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_code_files_repo_path ON code_files (repo_id, file_path)")
+
+    op.execute(
+        """
+        CREATE TABLE code_symbols (
+            id                  UUID NOT NULL,
+            file_id             UUID NOT NULL REFERENCES code_files(id) ON DELETE CASCADE,
+            name                VARCHAR(500) NOT NULL,
+            kind                VARCHAR(50) NOT NULL,
+            line_start          INTEGER NOT NULL,
+            line_end            INTEGER NOT NULL,
+            signature           TEXT,
+            docstring           TEXT,
+            visibility          VARCHAR(20),
+            parent_symbol_id    UUID REFERENCES code_symbols(id) ON DELETE SET NULL,
+            source_code         TEXT NOT NULL,
+            summary             TEXT,
+            enrichment_status   VARCHAR(20) NOT NULL DEFAULT 'pending',
+            enrichment_priority INTEGER NOT NULL DEFAULT 0,
+            enrichment_attempts INTEGER NOT NULL DEFAULT 0,
+            CONSTRAINT code_symbols_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_code_symbols_file_id ON code_symbols (file_id)")
+    # THE enrichment backlog. There is no queue table — enrichment_queue was
+    # dormant scaffolding with zero references and is dropped (inventory §8).
+    op.execute(
+        "CREATE INDEX ix_code_symbols_enrichment_pending "
+        "ON code_symbols (enrichment_attempts, enrichment_priority DESC) "
+        "WHERE enrichment_status = 'pending'"
+    )
+
+    # kind is polymorphic: communities and processes are node KINDS, not
+    # separate tables. Keys are owner-qualified (name::file_path::owner) so
+    # method-level nodes resolve without collision.
+    op.execute(
+        """
+        CREATE TABLE code_graph_nodes (
+            id         BIGSERIAL,
+            repo_id    UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+            kind       VARCHAR(20) NOT NULL,
+            key        VARCHAR(1024) NOT NULL,
+            label      VARCHAR(500),
+            properties JSONB DEFAULT '{}'::jsonb,
+            CONSTRAINT code_graph_nodes_pkey PRIMARY KEY (id),
+            CONSTRAINT code_graph_nodes_repo_id_kind_key_key UNIQUE (repo_id, kind, key)
+        )
+        """
+    )
+
+    op.execute(
+        """
+        CREATE TABLE code_edges (
+            id          BIGSERIAL,
+            repo_id     UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+            source_kind VARCHAR(20) NOT NULL,
+            source_key  VARCHAR(1024) NOT NULL,
+            target_kind VARCHAR(20) NOT NULL,
+            target_key  VARCHAR(1024) NOT NULL,
+            edge_type   VARCHAR(50) NOT NULL,
+            properties  JSONB DEFAULT '{}'::jsonb,
+            CONSTRAINT code_edges_pkey PRIMARY KEY (id),
+            CONSTRAINT code_edges_repo_id_source_kind_source_key_target_kind_targe_key
+                UNIQUE (repo_id, source_kind, source_key, target_kind, target_key, edge_type)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_code_edges_repo_type ON code_edges (repo_id, edge_type)")
+    op.execute("CREATE INDEX ix_code_edges_repo_source ON code_edges (repo_id, source_key)")
+    op.execute("CREATE INDEX ix_code_edges_repo_target ON code_edges (repo_id, target_key)")
+    op.execute(
+        "CREATE INDEX ix_code_edges_covering "
+        "ON code_edges (repo_id, edge_type, source_key, target_key)"
+    )
+
+    # A registry-level association only — two projects referencing the same
+    # remote own the SAME repo and its one code graph, not private copies. This
+    # bridges the two graphs without merging them (doc 04 §8.7).
+    op.execute(
+        """
+        CREATE TABLE project_repositories (
+            project    TEXT NOT NULL,
+            repo_id    UUID NOT NULL REFERENCES repositories(id),
+            added_from TEXT,
+            opt_out    BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT project_repositories_pkey PRIMARY KEY (project, repo_id)
+        )
+        """
+    )
+
+    # ------------------------------------------------------------------
+    # Operations, auth, chat, LLM config (doc 04 §7)
+    # ------------------------------------------------------------------
+    # The polymorphic retry tracker — the substrate under honest partial
+    # results. After Phase 5, derive_memory_failed_step records or resolves a
+    # row here PER MEMORY, never collapsed to a batch pass/fail.
+    op.execute(
+        """
+        CREATE TABLE pipeline_failures (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            entity_type     VARCHAR(50) NOT NULL,
+            entity_id       UUID NOT NULL,
+            pipeline_name   VARCHAR(50) NOT NULL,
+            failed_step     VARCHAR(100) NOT NULL,
+            error_message   TEXT,
+            attempts        INTEGER NOT NULL DEFAULT 1,
+            first_failed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            resolved_at     TIMESTAMPTZ,
+            metadata        JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+    # One OPEN failure per entity+pipeline.
+    op.execute(
+        "CREATE UNIQUE INDEX idx_pipeline_failures_unresolved "
+        "ON pipeline_failures (entity_type, entity_id, pipeline_name) "
+        "WHERE resolved_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_pipeline_failures_pipeline_name ON pipeline_failures (pipeline_name) "
+        "WHERE resolved_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_pipeline_failures_resolved_at ON pipeline_failures (resolved_at) "
+        "WHERE resolved_at IS NOT NULL"
+    )
+
+    # The live JWT revocation store, swept by token_blocklist_cleanup. Only the
+    # UNIQUE lands: the pre-baseline schema also carried a plain btree on jti,
+    # fully redundant under it, and doc 04 §7 specifies only jti UNIQUE
+    # (inventory F-12).
+    op.execute(
+        """
+        CREATE TABLE token_blocklist (
+            id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            jti        VARCHAR(64) NOT NULL UNIQUE,
+            expires_at TIMESTAMPTZ NOT NULL,
+            revoked_at TIMESTAMPTZ DEFAULT now()
+        )
+        """
+    )
+
+    # Exists, unwired — a named gap, not a shipped feature. The activation is
+    # a later phase's read path, so the schema carries over unchanged.
+    op.execute(
+        """
+        CREATE TABLE api_keys (
+            id           UUID NOT NULL,
+            name         VARCHAR(255) NOT NULL,
+            key_hash     VARCHAR(255) NOT NULL UNIQUE,
+            scopes       JSONB NOT NULL,
+            profile      VARCHAR(100),
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_used_at TIMESTAMPTZ,
+            expires_at   TIMESTAMPTZ,
+            CONSTRAINT api_keys_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+
+    op.execute(
+        """
+        CREATE TABLE conversations (
+            id          UUID NOT NULL,
+            title       TEXT,
+            is_archived BOOLEAN NOT NULL DEFAULT false,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT conversations_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE TRIGGER conversations_touch_updated_at BEFORE UPDATE "
+        "ON conversations FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+    )
+    op.execute(
+        """
+        CREATE TABLE messages (
+            id              UUID NOT NULL,
+            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            role            VARCHAR NOT NULL,
+            content         TEXT NOT NULL,
+            context         JSONB,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT messages_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+
+    # Six inline rows, PK (purpose). darkmem is not an LLM proxy, so the
+    # provider/profile/ml_profile indirection is gone: llm_providers,
+    # llm_profiles and ml_profiles never exist in the baseline, and their three
+    # FK columns go with them (inventory §8, F-08 — none was named *_ref).
+    # classifier_kind replaces the deleted ml_profiles reference.
+    # The six rows themselves are written by the setup wizard's finalize step
+    # from app/services/llm_seed.py, never by a migration.
+    op.execute(
+        """
+        CREATE TABLE llm_purpose_configs (
+            purpose         VARCHAR(64) PRIMARY KEY,
+            model           VARCHAR(255) NOT NULL,
+            dimensions      INTEGER,
+            reasoning       BOOLEAN NOT NULL DEFAULT false,
+            api_kind        VARCHAR(32) NOT NULL DEFAULT 'openai',
+            base_url        VARCHAR(512) NOT NULL DEFAULT '',
+            api_key         VARCHAR(1024),
+            params          JSONB NOT NULL DEFAULT '{}'::jsonb,
+            classifier_kind VARCHAR(16),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT llm_purpose_configs_classifier_kind_check
+                CHECK (classifier_kind IS NULL OR classifier_kind IN ('llm', 'local'))
+        )
+        """
+    )
+
+    # ------------------------------------------------------------------
+    # events — the durable, append-only operation stream (doc 04 §8.1)
+    # ------------------------------------------------------------------
+    # The ONE declaratively partitioned table in the schema. memories is
+    # deliberately not partitioned (a range key would have to enter every
+    # unique/PK constraint, breaking its superseded_by self-FK, memory_tags,
+    # memory_crossrefs, the embedding-child FKs and the composite (id, project)
+    # FK), and the per-fingerprint embedding children already ARE the embedding
+    # partitioning.
+    #
+    # bigint key: append-heavy and never referenced by a uuid FK. The partition
+    # key must sit in the PK, and nothing joins events by id, so folding
+    # created_at into the composite PK costs nothing.
+    #
+    # The append-only forbid-trigger is T1.06's, per T0.12b's own text.
+    op.execute(
+        """
+        CREATE TABLE events (
+            id         BIGINT GENERATED ALWAYS AS IDENTITY,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            event_type TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            object_id  UUID,
+            project    TEXT,
+            actor      TEXT,
+            api_key_id UUID,
+            source     TEXT,
+            payload    JSONB NOT NULL DEFAULT '{}'::jsonb,
+            CONSTRAINT events_pkey PRIMARY KEY (id, created_at)
+        ) PARTITION BY RANGE (created_at)
+        """
+    )
+
+    # A RANGE-partitioned parent with no matching child REJECTS every insert,
+    # and neither doc 04 §8.1 nor doc 19 §9 says whether the baseline lands
+    # month-0 (inventory F-15). It must: the first events write happens as soon
+    # as the journaling ships. Create the current and next month; the
+    # partition-maintenance arm on pipeline_failure_cleanup keeps going.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+            m0 date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
+            m1 date := (date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month')::date;
+            m2 date := (date_trunc('month', now() AT TIME ZONE 'UTC') + interval '2 month')::date;
+        BEGIN
+            EXECUTE format(
+                'CREATE TABLE IF NOT EXISTS events_%s PARTITION OF events '
+                'FOR VALUES FROM (%L) TO (%L)', to_char(m0, 'YYYYMM'), m0, m1);
+            EXECUTE format(
+                'CREATE TABLE IF NOT EXISTS events_%s PARTITION OF events '
+                'FOR VALUES FROM (%L) TO (%L)', to_char(m1, 'YYYYMM'), m1, m2);
+        END $$;
+        """
+    )
+
+    # Reconstructs one object's timeline. Accepted limitation: bigint-keyed
+    # code-graph objects carry their key in payload, so their timelines are
+    # payload-queried and cannot use this index — a deliberate trade.
+    op.execute(
+        "CREATE INDEX ix_events_object ON events (object_type, object_id, created_at)"
+    )
+    # The calendar date bucket MUST use AT TIME ZONE 'UTC': a bare
+    # created_at::date on a timestamptz is only STABLE (it reads the session
+    # TimeZone GUC) so it cannot be indexed, and the UTC form also fixes what
+    # "a day" means on the calendar.
+    op.execute(
+        "CREATE INDEX ix_events_day "
+        "ON events (project, ((created_at AT TIME ZONE 'UTC')::date))"
+    )
+
 
 def downgrade() -> None:
     # Drop every per-fingerprint child table the registry created. The set is
@@ -295,13 +936,42 @@ def downgrade() -> None:
         """
     )
 
-    op.execute("DROP TABLE IF EXISTS entity_relations CASCADE")
-    op.execute("DROP TABLE IF EXISTS entities CASCADE")
-    op.execute("DROP TABLE IF EXISTS memory_tags CASCADE")
-    op.execute("DROP TABLE IF EXISTS tags CASCADE")
-    op.execute("DROP TABLE IF EXISTS memories CASCADE")
-    op.execute("DROP TABLE IF EXISTS embedders CASCADE")
-    op.execute("DROP TABLE IF EXISTS config CASCADE")
+    for table in (
+        # pass two — dropped before the pass-one tables they reference
+        "events",
+        "llm_purpose_configs",
+        "messages",
+        "conversations",
+        "api_keys",
+        "token_blocklist",
+        "pipeline_failures",
+        "project_repositories",
+        "code_edges",
+        "code_graph_nodes",
+        "code_symbols",
+        "code_files",
+        "repositories",
+        "article_citations",
+        "knowledge_articles",
+        "fact_sources",
+        "knowledge_triples",
+        "memory_buffer",
+        "memory_community_members",
+        "memory_communities",
+        "memory_relations",
+        "memory_access_stats",
+        "memory_crossrefs",
+        "projects",
+        # pass one
+        "entity_relations",
+        "entities",
+        "memory_tags",
+        "tags",
+        "memories",
+        "embedders",
+        "config",
+    ):
+        op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
 
     op.execute("DROP FUNCTION IF EXISTS touch_updated_at()")
     op.execute("DROP FUNCTION IF EXISTS memories_fts_trigger()")
