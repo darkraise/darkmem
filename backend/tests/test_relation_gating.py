@@ -28,9 +28,11 @@ import copy
 import pytest
 
 from app.services.extraction_clean import (
+    ORDERING_CONSTRAINTS,
     PASS_REGISTRY,
     RELATIONSHIP_TYPES,
     REPLACES_FAMILY,
+    RunsBefore,
     STAGE_COLLAPSE_AND_FANOUT,
     STAGE_RELATION_GATING,
     STAGE_RELATION_SYNTHESIS,
@@ -59,8 +61,13 @@ from app.services.extraction_clean import (
     clean_extraction,
     normalize_relation_type,
     run_passes,
+    validate_registry,
 )
-from app.services.extraction_pass_harness import index_of, without
+from app.services.extraction_pass_harness import (
+    RegistryContractError,
+    index_of,
+    without,
+)
 
 STAGE4_PASS_NAMES = (
     "remap_to_valid_entities",
@@ -1022,3 +1029,135 @@ def test_every_relation_type_the_stage_emits_is_in_the_closed_taxonomy(content, 
     assert out["relationships"]
     for r in out["relationships"]:
         assert r["type"] in RELATIONSHIP_TYPES
+
+
+# ── Stage 4's internal orderings, declared as data ───────────────────
+#
+# T1.24a's premise: a load-bearing order is declared in
+# ORDERING_CONSTRAINTS and validated at import, not left to the sequence
+# happening to be right. Each constraint below is demonstrated with a
+# concrete input before it is declared -- an ordering that cannot be
+# broken into a wrong answer is a comment, not a contract.
+
+
+def _reorder(registry, first, second):
+    i, j = index_of(registry, first), index_of(registry, second)
+    out = list(registry)
+    out[i], out[j] = out[j], out[i]
+    return tuple(out)
+
+
+def _chain(registry, content, entities, relationships, relation_rescue=True):
+    state = _state(
+        content=content,
+        entities=entities,
+        relationships=relationships,
+        relation_rescue=relation_rescue,
+    )
+    return _triples(run_passes(registry, state).relationships)
+
+
+def test_the_remap_runs_before_the_negation_strip():
+    assert index_of(PASS_REGISTRY, "remap_to_valid_entities") < index_of(
+        PASS_REGISTRY, "drop_edges_to_negated"
+    )
+
+
+def test_stripping_negated_edges_before_the_remap_misses_a_shaped_name():
+    # The entity is shaped from 'ui/theme.css store' to 'ui/theme.css', which
+    # is the form negated_names carries. The edge endpoint keeps the raw form
+    # until the remap, so a pre-remap check compares the two vocabularies and
+    # finds nothing.
+    content = "The dashboard was rebuilt without ui/theme.css in the bundle."
+    entities = [
+        {"name": "ui/theme.css store", "type": "artifact"},
+        {"name": "dashboard", "type": "concept"},
+    ]
+    rels = [{"source": "dashboard", "target": "ui/theme.css store", "type": "USES"}]
+    assert _chain(PASS_REGISTRY, content, entities, rels) == set()
+    swapped = _reorder(PASS_REGISTRY, "remap_to_valid_entities", "drop_edges_to_negated")
+    assert _chain(swapped, content, entities, rels) == {
+        ("dashboard", "USES", "ui/theme.css")
+    }
+
+
+def test_swapping_the_remap_and_the_negation_strip_breaks_the_contract():
+    swapped = _reorder(PASS_REGISTRY, "remap_to_valid_entities", "drop_edges_to_negated")
+    with pytest.raises(RegistryContractError):
+        validate_registry(swapped, ORDERING_CONSTRAINTS)
+
+
+def test_the_remap_runs_before_the_first_name_keyed_gate():
+    assert index_of(PASS_REGISTRY, "remap_to_valid_entities") < index_of(
+        PASS_REGISTRY, "suppress_temporal_edges"
+    )
+
+
+def test_a_name_keyed_gate_before_the_remap_never_finds_its_endpoint():
+    content = "postgres was patched after redis was upgraded"
+    entities = [
+        {"name": "Postgres cluster", "type": "database"},
+        {"name": "redis", "type": "database"},
+    ]
+    rels = [{"source": "Postgres cluster", "target": "redis", "type": "RELATED_TO"}]
+    assert _chain(PASS_REGISTRY, content, entities, rels, relation_rescue=False) == set()
+    swapped = _reorder(
+        PASS_REGISTRY, "remap_to_valid_entities", "suppress_temporal_edges"
+    )
+    assert _chain(swapped, content, entities, rels, relation_rescue=False) == {
+        ("Postgres", "RELATED_TO", "redis")
+    }
+
+
+def test_swapping_the_remap_and_the_temporal_gate_breaks_the_contract():
+    swapped = _reorder(
+        PASS_REGISTRY, "remap_to_valid_entities", "suppress_temporal_edges"
+    )
+    with pytest.raises(RegistryContractError):
+        validate_registry(swapped, ORDERING_CONSTRAINTS)
+
+
+def test_the_selection_gate_runs_before_the_verb_gate():
+    assert index_of(PASS_REGISTRY, "gate_replaces_selection") < index_of(
+        PASS_REGISTRY, "gate_replaces_requires_verb"
+    )
+
+
+def test_the_verb_gate_first_collapses_a_selection_to_related_to():
+    # 'chose X over Y' carries no replacement verb, so the verb gate reads the
+    # REPLACES as unsupported and downgrades it to RELATED_TO. The selection
+    # gate then has no REPLACES left to reclassify, and a genuine improvement
+    # claim is lost to a generic edge.
+    content = "we chose pgvector over qdrant for the vector index"
+    entities = [
+        {"name": "pgvector", "type": "tool"},
+        {"name": "qdrant", "type": "database"},
+    ]
+    rels = [{"source": "pgvector", "target": "qdrant", "type": "REPLACES"}]
+    assert _chain(PASS_REGISTRY, content, entities, rels, relation_rescue=False) == {
+        ("pgvector", "IMPROVES_ON", "qdrant")
+    }
+    swapped = _reorder(
+        PASS_REGISTRY, "gate_replaces_selection", "gate_replaces_requires_verb"
+    )
+    assert _chain(swapped, content, entities, rels, relation_rescue=False) == {
+        ("pgvector", "RELATED_TO", "qdrant")
+    }
+
+
+def test_swapping_the_two_replaces_gates_breaks_the_contract():
+    swapped = _reorder(
+        PASS_REGISTRY, "gate_replaces_selection", "gate_replaces_requires_verb"
+    )
+    with pytest.raises(RegistryContractError):
+        validate_registry(swapped, ORDERING_CONSTRAINTS)
+
+
+def test_every_stage_four_constraint_carries_a_mechanism():
+    stage4 = set(STAGE4_PASS_NAMES)
+    mine = [
+        c for c in ORDERING_CONSTRAINTS
+        if isinstance(c, RunsBefore) and {c.earlier, c.later} <= stage4
+    ]
+    assert len(mine) == 3
+    assert all(c.why for c in mine)

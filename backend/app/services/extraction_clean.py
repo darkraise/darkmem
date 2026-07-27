@@ -2228,6 +2228,32 @@ ORDERING_CONSTRAINTS: tuple[OrderingConstraint, ...] = (
             "(target, predicate) that the dedup would collapse back to one edge"
         ),
     ),
+    RunsBefore(
+        "remap_to_valid_entities", "drop_edges_to_negated",
+        why=(
+            "``negated_names`` holds SHAPED names while an edge endpoint is "
+            "still the model's raw string until the remap rewrites it, so a "
+            "pre-remap negation check compares two vocabularies that only "
+            "coincide by luck and lets an edge to a denied entity through"
+        ),
+    ),
+    RunsBefore(
+        "remap_to_valid_entities", "suppress_temporal_edges",
+        why=(
+            "every gate from here on keys on endpoint NAMES against the "
+            "content; before the remap those names are the model's raw "
+            "strings, so the span search finds no mention and the gate "
+            "silently declines to fire"
+        ),
+    ),
+    RunsBefore(
+        "gate_replaces_selection", "gate_replaces_requires_verb",
+        why=(
+            "a selection ('chose X over Y') carries no replacement verb, so "
+            "the verb gate would collapse it to RELATED_TO before the "
+            "selection gate ever sees a REPLACES to reclassify as IMPROVES_ON"
+        ),
+    ),
     StraddlesPivot(
         "filter_event_edges", "fan_out_coordinated",
         why=(
