@@ -209,6 +209,17 @@ class EmbedderRegistry:
 
             slug = _partition_slug(info.fingerprint)
 
+            # Reject a fingerprint that folds to an empty (or all-separator)
+            # slug HERE, at registration, rather than letting the DDL run and
+            # create a ``memory_embeddings__`` table nothing can address. The
+            # embedders row above is rolled back with the failed transaction.
+            if not slug:
+                raise RuntimeError(
+                    f"Malformed embedder fingerprint {info.fingerprint!r}: it folds to an "
+                    f"empty partition slug, so its child tables would be unaddressable. "
+                    f"Give the model an alphanumeric id."
+                )
+
             # Refuse to share a child table with a different fingerprint that
             # folds to the same slug (e.g. 'm-a|512' vs 'm.a|512'): they'd write
             # incompatible vectors into one vector(N) column. Fail loud rather
@@ -229,27 +240,7 @@ class EmbedderRegistry:
                         f"than separator characters."
                     )
 
-            for parent, ddl_template in _TABLE_TEMPLATES.items():
-                child = f"{parent}__{slug}"
-                await session.execute(
-                    text(ddl_template.format(name=child, dims=info.dims))
-                )
-                # HNSW index: cosine ops match the application query plans.
-                # The index NAME is derived from a short hash of the child table
-                # so it can't blow past Postgres' 63-char NAMEDATALEN limit (the
-                # naive ``ix_{child}_hnsw`` would, for the longest parent + a
-                # 48-char slug, silently truncate and could collide across two
-                # partitions). The table name is unchanged.
-                hnsw_idx = _hnsw_index_name(child)
-                await session.execute(
-                    text(
-                        f"CREATE INDEX IF NOT EXISTS {hnsw_idx} "
-                        f"ON {child} USING hnsw (embedding vector_cosine_ops) "
-                        f"WITH (m = 16, ef_construction = 128)"
-                    )
-                )
-                for aux_template in _AUX_INDEXES.get(parent, []):
-                    await session.execute(text(aux_template.format(name=child)))
+            await _ensure_children(session, info.fingerprint, info.dims)
 
             await session.commit()
             self._known.add(info.fingerprint)
@@ -265,9 +256,67 @@ class EmbedderRegistry:
         ).scalars().all()
         self._known.update(rows)
 
+    async def reconcile(self, session: AsyncSession) -> dict[str, int]:
+        """Guarantee every live fingerprint has every template's child table.
+
+        The permanent boot-time reconciliation doc 19 §2 puts in place of the
+        old one-time creation sweep. ``register`` only ever creates children
+        for a fingerprint it is registering, so a fingerprint registered
+        BEFORE a new template was added would be missing that parent forever.
+        Looping the live rows at every startup dissolves that: adding a
+        template is a template edit, and an existing deployment gains the new
+        parent for its current fingerprint at next boot with no re-register
+        and no migration.
+
+        Idempotent by construction — every statement is ``IF NOT EXISTS`` — so
+        a second boot is a no-op, and a restored dump missing a child table
+        regrows exactly that one. It replays mechanically in the deferred .NET
+        port because it is a loop over rows running parameterised plain SQL.
+        """
+        rows = (await session.execute(
+            text("SELECT fingerprint, dims FROM embedders WHERE retired_at IS NULL")
+        )).all()
+        for fingerprint, dims in rows:
+            await _ensure_children(session, fingerprint, dims)
+        await session.commit()
+        result = {"fingerprints": len(rows), "parents": len(_TABLE_TEMPLATES)}
+        if rows:
+            logger.info(
+                "EmbedderRegistry: reconciled %d fingerprint(s) x %d parent(s)",
+                result["fingerprints"], result["parents"],
+            )
+        return result
+
 
 # Module-level singleton — shared across all sessions in the process.
 embedder_registry = EmbedderRegistry()
+
+
+async def _ensure_children(session: AsyncSession, fingerprint: str, dims: int) -> None:
+    """Run every template's idempotent DDL for one fingerprint.
+
+    The single place child-table DDL is emitted, shared by ``register`` and
+    ``reconcile`` so the two can never drift. Child tables are named ONLY
+    through ``child_table`` (invariant 2); no literal slug appears here.
+    """
+    for parent, ddl_template in _TABLE_TEMPLATES.items():
+        child = child_table(parent, fingerprint)
+        await session.execute(text(ddl_template.format(name=child, dims=dims)))
+        # HNSW index: cosine ops match the application query plans. The index
+        # NAME is a short hash of the child table so it cannot blow past
+        # Postgres' 63-char NAMEDATALEN limit — the naive ``ix_{child}_hnsw``
+        # would, for the longest parent plus a 48-char slug, silently truncate
+        # and could collide across two partitions. The table name is unchanged.
+        hnsw_idx = _hnsw_index_name(child)
+        await session.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {hnsw_idx} "
+                f"ON {child} USING hnsw (embedding vector_cosine_ops) "
+                f"WITH (m = 16, ef_construction = 128)"
+            )
+        )
+        for aux_template in _AUX_INDEXES.get(parent, []):
+            await session.execute(text(aux_template.format(name=child)))
 
 
 def _partition_slug(fingerprint: str) -> str:

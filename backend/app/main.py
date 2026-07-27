@@ -70,6 +70,17 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as session:
             await embedder_registry.warm_cache_from_db(session)
 
+        # Permanent boot-time partition reconciliation (doc 19 §2). Runs on
+        # EVERY startup, after the migration and before anything embeds, so a
+        # fingerprint registered before a template was added gains the new
+        # parent, and a restored dump missing a child table regrows it. Every
+        # statement is IF NOT EXISTS, so the second boot is a no-op.
+        try:
+            async with async_session_factory() as session:
+                await embedder_registry.reconcile(session)
+        except Exception:
+            logger.exception("Boot-time partition reconciliation failed")
+
         llm_fp = llm.llm_fingerprint()
         try:
             llm_model_id, llm_dims = parse_fingerprint(llm_fp)
