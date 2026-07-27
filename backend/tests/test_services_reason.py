@@ -11,7 +11,7 @@ class _StubPipeline:
     def __init__(self):
         self.llm = _StubLLM()
 
-    async def semantic_search(self, question, limit=10):
+    async def semantic_search(self, question, limit=10, semantic_weight=0.7, filters=None):
         # Simulate the bug: semantic search returns unrelated memories
         # (it never returns the decision memories naturally).
         return []

@@ -27,6 +27,10 @@ from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
+# `reason` has no lineage-labelling surface yet, so its default scope is the
+# live view only; a caller asking for superseded rows must say so explicitly.
+REASON_DEFAULT_STATUSES = ("active",)
+
 
 @dataclass(frozen=True)
 class CaptureResult:
@@ -396,9 +400,23 @@ limit=params.limit, offset=params.offset,
             return []
         return await self.pipeline.find_duplicates(memory_id, threshold)
 
-    async def reason(self, question: str, limit: int = 10) -> dict:
+    async def reason(
+        self,
+        question: str,
+        limit: int = 10,
+        project: str | None = None,
+        status: list[str] | None = None,
+    ) -> dict:
         if not self.pipeline:
             return {"answer": "Reasoning not available (no LLM pipeline configured)", "sources": []}
+
+        # Every pass below feeds the reasoning model directly, so each renders
+        # the scope into its own SQL. Nothing downstream re-filters: a row that
+        # comes back from a pass is a row the model reads.
+        statuses = tuple(status) if status else REASON_DEFAULT_STATUSES
+        scope = MemoryFilter(
+            project=project, statuses=statuses, include_archived=False,
+        )
 
         # Step 1a: Detect type/tag hints in the question so we can surface
         # memories whose content may not mention the literal category word
@@ -421,22 +439,30 @@ limit=params.limit, offset=params.offset,
         seen: set[UUID] = set()
         if type_hints or tag_hints:
             for mt in type_hints:
-                rows = await self.memory_repo.search_by_tags(memory_type=mt, limit=limit)
+                rows = await self.memory_repo.search_by_tags(
+                    memory_type=mt, limit=limit,
+                    project=project, status=list(statuses),
+                )
                 for m in rows:
-                    if m.id in seen or m.is_archived:
+                    if m.id in seen:
                         continue
                     seen.add(m.id)
                     boosted.append(m)
             if tag_hints:
-                rows = await self.memory_repo.search_by_tags(tags_any=tag_hints, limit=limit)
+                rows = await self.memory_repo.search_by_tags(
+                    tags_any=tag_hints, limit=limit,
+                    project=project, status=list(statuses),
+                )
                 for m in rows:
-                    if m.id in seen or m.is_archived:
+                    if m.id in seen:
                         continue
                     seen.add(m.id)
                     boosted.append(m)
 
         # Step 2: Semantic search for relevant memories
-        semantic_results = await self.pipeline.semantic_search(question, limit=limit)
+        semantic_results = await self.pipeline.semantic_search(
+            question, limit=limit, filters=scope,
+        )
         if not semantic_results and not boosted:
             return {"answer": "No relevant memories found to answer this question.", "sources": []}
 
@@ -473,7 +499,7 @@ limit=params.limit, offset=params.offset,
             if mid in seen:
                 continue
             memory = fetched_by_id.get(mid)
-            if memory and not memory.is_archived:
+            if memory:
                 seen.add(mid)
                 context_parts.append(f"[{len(context_parts)+1}] {memory.content}")
                 sources.append({

@@ -87,7 +87,7 @@ async def reason(
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    result = await service.reason(body.question, limit=body.limit)
+    result = await service.reason(body.question, limit=body.limit, project=body.project)
     return ReasonResponse(**result)
 
 
