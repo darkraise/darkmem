@@ -501,8 +501,9 @@ class PostgresGraphRepository:
         # self-heals dangling memory_ids — ids left pointing at memories that
         # were deleted without graph cleanup. Do this BEFORE deleting orphaned
         # entities so the entity guard below sees only relations that survive.
+        freed_endpoints: set[str] = set()
         if rel_ids:
-            await self.session.execute(
+            endpoint_rows = (await self.session.execute(
                 text("""
                     DELETE FROM entity_relations
                     WHERE id = ANY(CAST(:ids AS uuid[]))
@@ -514,9 +515,13 @@ class PostgresGraphRepository:
                           SELECT 1 FROM repositories rp
                           WHERE rp.id = ANY(entity_relations.repo_ids)
                       )
+                    RETURNING source_entity_id, target_entity_id
                 """),
                 {"ids": rel_ids},
-            )
+            )).all()
+            freed_endpoints = {
+                str(endpoint) for row in endpoint_rows for endpoint in row
+            }
 
         # Delete an entity no live memory asserts, but only when no surviving
         # relation still references it. The FK is ON DELETE CASCADE, so deleting
@@ -525,7 +530,14 @@ class PostgresGraphRepository:
         # re-extraction. The "no live memory" predicate also drops an entity
         # kept alive only by dangling memory_ids (ghost), which is what the
         # Phase-4 dedup would otherwise collapse fresh entities onto.
-        if ent_ids:
+        #
+        # The candidates are the entities this memory asserted PLUS the endpoints
+        # of the relations just deleted above. An endpoint this memory never
+        # asserted can be protected from the guard solely by that relation, so
+        # deleting it is what orphans the endpoint; considering only the asserted
+        # set leaves a ghost behind that the strip itself created.
+        candidate_ids = list(set(ent_ids) | freed_endpoints)
+        if candidate_ids:
             await self.session.execute(
                 text("""
                     DELETE FROM entities e
@@ -541,7 +553,7 @@ class PostgresGraphRepository:
                           WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
                       )
                 """),
-                {"ids": ent_ids},
+                {"ids": candidate_ids},
             )
 
     async def prune_orphan_entities(self) -> dict:
