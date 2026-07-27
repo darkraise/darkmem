@@ -135,10 +135,11 @@ flowchart TD
     end
 
     subgraph S2["Stage 2 — entity rescue (add what the LLM dropped)"]
-      B1["_rescue_known_entities — curated short/hardware names, negation-aware, span-guarded"]
-      B2["_rescue_file_path_entities — a/b/c.py tokens as artifact"]
-      B3["_rescue_happened_on — keep ISO dates alive for HAPPENED_ON"]
-      B1 --> B2 --> B3
+      B1["_rescue_relation_endpoints — endpoints the model asserted in relationships but omitted from entities"]
+      B2["_rescue_known_entities — curated short/hardware names, negation-aware, span-guarded"]
+      B3["_rescue_file_path_entities — a/b/c.py tokens as artifact"]
+      B4["_rescue_happened_on — keep ISO dates alive for HAPPENED_ON"]
+      B1 --> B2 --> B3 --> B4
     end
 
     subgraph S3["Stage 3 — relation synthesis (rescue, flag-gated)"]
