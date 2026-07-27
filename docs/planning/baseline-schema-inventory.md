@@ -418,6 +418,10 @@ behaviour change, not a tidy-up.
 | Object | Kind | On | Definition | Disposition | Doc § | Lands in |
 |---|---|---|---|---|---|---|
 | `UNIQUE (id, project)` support | UNIQUE | `memories` | Trivially satisfiable (`id` is already the PK). Exists **solely** so `memory_relations`' endpoint FKs can be declared composite `(memory_id, project)`, which makes a cross-project edge unrepresentable rather than merely forbidden. Omitting it makes `memory_relations` undeclarable — a hard prerequisite, not a nicety. | `target-new` | 04 §8.2, §10 | T0.12a |
+| `touch_updated_at` | function | — | `plpgsql`; sets `NEW.updated_at := now()` and returns `NEW` | `target-new` | **F-20 resolution** (§9.2); doc 19 §2 rule, doc 04 §3.1/§9 semantic | T0.12a |
+| `memories_touch_updated_at` | trigger | `memories` | `BEFORE UPDATE ON memories FOR EACH ROW EXECUTE FUNCTION touch_updated_at()` — replaces SQLAlchemy's client-side `onupdate`, which no raw-SQL writer honours | `target-new` | **F-20 resolution** (§9.2) | T0.12a |
+| `conversations_touch_updated_at` | trigger | `conversations` | As above on `conversations` | `target-new` | **F-20 resolution** (§9.2) | T0.12b (F-02) |
+| `repositories_touch_updated_at` | trigger | `repositories` | As above on `repositories` | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
 | `knowledge_triples` PK | PK | `knowledge_triples` | `id uuid PRIMARY KEY`, application-generated **UUIDv7** — the rebuild keeps a name, not an object (doc 04 §8.3) | `target-new` | 04 §8.3 | T0.12b |
 | `events` composite PK | PK | `events` | `(id, created_at)` — the partition key must sit in the PK; nothing joins events by id, so folding `created_at` in costs nothing | `target-new` | 04 §8.1 | T0.12b |
 | `events` monthly range partitioning | partitioning | `events` | `PARTITION BY RANGE(created_at)`, monthly, from day one — the **only** declaratively partitioned table in the schema | `target-new` | 04 §8.1, §2 | T0.12b |
@@ -461,6 +465,7 @@ disagreement rather than reconciling it silently here.
 | `memories.llm_emotions` → `emotions` | **RENAME** | `reshaped` | 04 §3.1 | |
 | `memories.llm_flags` → `flags` | **RENAME** | `reshaped` | 04 §3.1 | |
 | `memories.id` | v4 → **UUIDv7**, application-generated | `reshaped` | 04 §2, §3.1 | **No DDL change** — A.2 shows `uuid NOT NULL` with no server default today, and the target keeps exactly that. The change is in the generator, so a schema diff would show nothing; recorded here because the whole point of UUIDv7 (time-ordered B-tree insert locality) is lost silently if the generator is not changed with the baseline. `entities` and `entity_relations` deliberately keep server-side `gen_random_uuid()` (v4) — ANN-probed, not range-scanned, so insert locality buys nothing. |
+| `memories.updated_at` | auto-bump moves from ORM `onupdate` to a **SQL trigger** | `reshaped` | **F-20 resolution** (§9.2) | No column-type change — `timestamptz NOT NULL DEFAULT now()` either way. The change is that `touch_updated_at` now maintains it, so a raw-SQL `UPDATE` bumps it too. `conversations.updated_at` and `repositories.updated_at` take the same treatment. Keep the ORM's `onupdate=` or drop it — with the trigger authoritative it is redundant either way, and the model still mirrors the SQL. |
 | `memories.{id, content, source, importance, metadata, is_archived}` | server defaults | **see §9** | 04 §3.1 vs A.2 | A.2 shows all six `NOT NULL` with **no server default**. Doc 04 §3.1 prints `0.5`, `{}` and `false` for `importance`/`metadata`/`is_archived` as if they were DDL defaults, and prints `source`'s as "ORM `'api'`". A plain-SQL INSERT omitting any of them fails today. Adjudicated in §9, not here. |
 | `memories.importance` | **activation by read** — no schema change | `carries-over` | 04 §9; 19 §3 | Populated at ingest today, never read by ranking. The target reads it behind a `w_*` flag defaulting to 0. First reader **T2.30** (§7). |
 | `memories.expires_at` | **activation by population** — no schema change | `carries-over` | 04 §3.1, §8.3 | Swept by `expired_memory_cleanup` today; the target additionally populates it from a fact's own stated expiry (self-expiring dated facts). First writer **T2.34** (§7). |
@@ -697,9 +702,56 @@ The contradiction, with both sides quoted:
 in violation of a rule both doc 19 §2 and doc 20 §7 state as binding.** The .NET replay
 sharpens it: `onupdate` is SQLAlchemy-specific behaviour that a DbUp replay would have to
 re-derive from ORM metadata, which is precisely what doc 19 §2 says a replay must never do.
-Neither doc resolves it. Under runbook §5 this is **Tier 3 — a design doc is wrong or
-ambiguous — and Tier 3 means do not proceed to resolve it.** Both readings are stated; the
-inventory picks neither. See §10.
+Neither doc resolves it. Under runbook §5 this was **Tier 3 — a design doc is wrong or
+ambiguous — and Tier 3 means do not proceed to resolve it.** It was escalated with both
+readings stated and no pick.
+
+#### The measurement that informed the decision
+
+Before escalating, the two live code paths that write `memories.status` were tested against
+a scratch database built from the six revisions (dropped afterwards, no residue):
+
+| Update form | Used by | `updated_at` bumped? |
+|---|---|---|
+| SQLAlchemy Core `update(Memory)` | `services/supersession.py:128–132` (the supersession flip) | **Yes** |
+| Raw `text("UPDATE memories SET status='deprecated' …")` | `services/memory.py:148–154` and `services/job_runners.py:170` (demote-before-delete) | **No** |
+
+So **today's behaviour is already inconsistent**: the same logical operation — a status
+change on a memory — moves `updated_at` or does not, depending on which construct the
+author reached for. That is an artifact, not a design, and no doc describes it.
+
+#### Resolution — maintainer decision, 2026-07-27
+
+**Reading 1 is adopted: the baseline authors the bump as SQL.** One `plpgsql` function and
+a `BEFORE UPDATE` trigger on each table carrying `updated_at`:
+
+```sql
+CREATE FUNCTION touch_updated_at() RETURNS trigger AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER memories_touch_updated_at BEFORE UPDATE ON memories
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+-- likewise conversations, repositories
+```
+
+**Why.** It satisfies doc 19 §2's SQL-first rule rather than excusing an exception to it,
+and it makes doc 04 §9's reasoning — that `updated_at` means "content changed" and must not
+be corrupted — true on **every** write path instead of only the ORM ones. It also closes the
+measured hole above: after this, a status demotion bumps `updated_at` whichever path
+performs it. The behaviour change versus today is confined to the two raw-SQL
+demote-before-delete paths, which currently leave the column stale on a change they made.
+
+**The obligation this creates, stated so it is not lost.** Doc 04 §12 and doc 19 §2 each
+enumerate the triggers the baseline authors — the FTS trigger and the `events`
+forbid-trigger — and **neither lists a third**. Adopting Reading 1 means those two
+enumerations are now incomplete. **The controller must amend doc 04 §12 and doc 19 §2 to
+name `touch_updated_at` and its three triggers.** No step of T0.11 edits the design corpus;
+the decision is recorded here and the doc edit is surfaced in the completion report.
+
+The rows themselves are in §4.3.
 
 ### 9.3 Column defaults that live only in the ORM
 
@@ -758,20 +810,22 @@ being resolved here.
 
 | Tier | Count | Findings |
 |---|---|---|
-| **3 — escalated, blocks T0.12a** | 1 | F-20 |
+| **3 — escalated, answered 2026-07-27** | 1 | F-20 — resolved, no longer blocking |
 | **2 — changes a later task's work** | 7 findings + 1 amendment | F-02, F-08, F-09, F-13, F-14, F-15, F-17, and A-01 |
 | **1 — task-local, recorded** | 12 | F-01, F-03, F-04, F-05, F-06, F-07, F-10, F-11, F-12, F-16, F-18, F-19 |
 
 ### Tier 3 — not resolved here
 
 > **Runbook §5: "Do not proceed. Write up what you found, what the doc says, and why they
-> cannot both be true, and stop."** T0.11 completes — the inventory is written, and the
-> finding is part of its content — but Lane C's serialisation means **T0.12a should not
-> start until this is answered**.
+> cannot both be true, and stop."** The finding below was escalated on 2026-07-27 and
+> **answered the same day by the maintainer**; it is retained in full — the contradiction,
+> both readings, and the resolution — because a Tier-3 that is silently deleted once
+> answered leaves the next reader unable to tell a decision from an oversight. **T0.12a is
+> unblocked.**
 
 | # | Sources in conflict | What each says | Status |
 |---|---|---|---|
-| **F-20** | doc 04 §3.1 + §9 vs doc 19 §2 + doc 04 §12 | **`updated_at`'s auto-bump has no SQL home.** `backend/app/models/memory.py:48` declares `updated_at … server_default=func.now(), onupdate=func.now()`. SQLAlchemy's `onupdate` is **client-side** — it emits the value in the ORM's own UPDATE and does nothing to the database. Appendix A.2 shows the column with server default `now()`; Appendix A.5 shows the **only** user trigger in the whole schema is `memories_fts_update`. The bump exists solely in Python, and `conversations.updated_at` (`models/chat.py:19`) and `repositories.updated_at` (`models/code.py:28`) carry the identical construct.<br><br>**Reading 1 — the baseline gains a trigger.** Doc 04 §3.1 lists the column's default as `now() (onupdate)`, and **doc 04 §9 reasons *from* the bump as a semantic worth protecting**: it is the entire justification for `memory_access_stats` being a side table — "any ORM-path update would additionally fire `onupdate=now()`, silently corrupting `updated_at`'s 'content changed' meaning." A semantic a design doc reasons from should not live only in ORM metadata.<br><br>**Reading 2 — it stays ORM-only.** Doc 19 §2 enumerates the triggers the baseline authors — the FTS trigger and the `events` forbid-trigger — **with no third**, and doc 04 §12's own enumeration of what the baseline creates names no `updated_at` trigger either. Adding one means the baseline lands an object no doc lists.<br><br>**Why they cannot both be true:** doc 19 §2 and doc 20 §7 state as binding that "no ORM-only construct is load-bearing anywhere in the schema" and that a DbUp replay must never "re-derive behaviour from ORM metadata" — and `onupdate` is precisely SQLAlchemy-specific behaviour a replay would have to re-derive. So either a documented, reasoned-from semantic is load-bearing and ORM-only (violating a binding rule), or the baseline authors a trigger three docs decline to list. | **Not resolved.** Both readings stated; the inventory picks neither. A human adjudicates; the corpus doc wins until then. Worth a Fable-tier analysis before anyone answers. |
+| **F-20** | doc 04 §3.1 + §9 vs doc 19 §2 + doc 04 §12 | **`updated_at`'s auto-bump has no SQL home.** `backend/app/models/memory.py:48` declares `updated_at … server_default=func.now(), onupdate=func.now()`. SQLAlchemy's `onupdate` is **client-side** — it emits the value in the ORM's own UPDATE and does nothing to the database. Appendix A.2 shows the column with server default `now()`; Appendix A.5 shows the **only** user trigger in the whole schema is `memories_fts_update`. The bump exists solely in Python, and `conversations.updated_at` (`models/chat.py:19`) and `repositories.updated_at` (`models/code.py:28`) carry the identical construct.<br><br>**Reading 1 — the baseline gains a trigger.** Doc 04 §3.1 lists the column's default as `now() (onupdate)`, and **doc 04 §9 reasons *from* the bump as a semantic worth protecting**: it is the entire justification for `memory_access_stats` being a side table — "any ORM-path update would additionally fire `onupdate=now()`, silently corrupting `updated_at`'s 'content changed' meaning." A semantic a design doc reasons from should not live only in ORM metadata.<br><br>**Reading 2 — it stays ORM-only.** Doc 19 §2 enumerates the triggers the baseline authors — the FTS trigger and the `events` forbid-trigger — **with no third**, and doc 04 §12's own enumeration of what the baseline creates names no `updated_at` trigger either. Adding one means the baseline lands an object no doc lists.<br><br>**Why they cannot both be true:** doc 19 §2 and doc 20 §7 state as binding that "no ORM-only construct is load-bearing anywhere in the schema" and that a DbUp replay must never "re-derive behaviour from ORM metadata" — and `onupdate` is precisely SQLAlchemy-specific behaviour a replay would have to re-derive. So either a documented, reasoned-from semantic is load-bearing and ORM-only (violating a binding rule), or the baseline authors a trigger three docs decline to list. | **ADJUDICATED 2026-07-27 by the maintainer: Reading 1 — the baseline authors a SQL trigger.** See §9.2's resolution block for the decision, the measurement that informed it, and the doc amendment it obliges. |
 
 ### Tier 2 and Tier 1
 
