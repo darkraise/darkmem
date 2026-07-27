@@ -328,6 +328,8 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/code/symbols/{symbol_id}",
     "GET /api/v1/code/wiki/{repo_id}",
     "POST /api/v1/code/blast-radius",
+    "GET /api/v1/config/repo-allowlist",
+    "PUT /api/v1/config/repo-allowlist",
     "GET /api/v1/config/classification-areas",
     "GET /api/v1/config/feature-flags",
     "GET /api/v1/config/llm",
