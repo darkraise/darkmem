@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.memory import Memory, Tag, memory_tags
+from app.models.memory import Memory, Tag, memory_tags, tag_category
 from app.services.events import record_event
 
 from .base import AuditRepositoryBase, MemoryRepositoryBase, TagRepositoryBase
@@ -175,7 +175,7 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         # model), so this assignment writes only the ``memory_tags`` link rows and
         # never triggers a back-populate load of every memory carrying each tag.
         for name in tag_names:
-            category = name.split("/")[0] if "/" in name else None
+            category = tag_category(name)
             await self.session.execute(
                 insert(Tag)
                 .values(name=name, category=category)
@@ -192,8 +192,8 @@ class PostgresTagRepository(TagRepositoryBase):
         self.session = session
 
     async def get_or_create(self, name, category=None):
-        if category is None and "/" in name:
-            category = name.split("/")[0]
+        if category is None:
+            category = tag_category(name)
 
         await self.session.execute(
             insert(Tag)

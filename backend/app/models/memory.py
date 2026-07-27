@@ -140,3 +140,18 @@ class Tag(Base):
     category: Mapped[str | None] = mapped_column(String(50))
 
     memories: Mapped[list["Memory"]] = relationship(secondary=memory_tags, back_populates="tags", lazy="noload")
+
+
+TAG_NAME_MAX_LENGTH: int = Tag.__table__.c.name.type.length
+TAG_CATEGORY_MAX_LENGTH: int = Tag.__table__.c.category.type.length
+
+
+def tag_category(name: str) -> str | None:
+    """The `tags.category` a tag name implies, by the `category/value` convention.
+
+    One definition, beside the columns it has to fit: the capture door validates
+    a submitted tag against these lengths and the tag writers derive the column
+    from the same rule, so a second copy of either would let a tag pass
+    validation and then truncate on write.
+    """
+    return name.split("/")[0] if "/" in name else None

@@ -68,6 +68,8 @@ EVENT_TYPES: list[str] = [
     "setup_completed",
     "auth_lockout",
     "repo_hint_rejected",
+    "buffer_requeued",
+    "buffer_discarded",
 ]
 
 OBJECT_TYPES: list[str] = [
