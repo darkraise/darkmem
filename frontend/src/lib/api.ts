@@ -21,6 +21,20 @@ function handleUnauthorized() {
   }
 }
 
+// Carries the HTTP status alongside the message so a caller that needs to
+// tell a contractual status apart from a generic failure (e.g. the job
+// board's 409-on-held-lock, which must render as "busy", never as an error)
+// can do it without parsing the message string.
+export class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -37,14 +51,15 @@ export async function apiFetch<T>(
   })
   if (response.status === 401) {
     handleUnauthorized()
-    throw new Error("Unauthorized")
+    throw new ApiError("Unauthorized", 401)
   }
   if (!response.ok) {
     const error = await response
       .json()
       .catch(() => ({ detail: response.statusText }))
-    throw new Error(
+    throw new ApiError(
       (error as { detail?: string }).detail || `API error: ${response.status}`,
+      response.status,
     )
   }
   if (response.status === 204) return undefined as T
