@@ -87,15 +87,311 @@ empty behaves differently from one the migration populates.
 
 ## 3. Indexes
 
-_(pending: Task 4)_
+**Every index in Appendix A.3 appears below, including those on dropped tables.** The plan
+this task executes said rows belonging to a §8-dropped table are *removed*; its own
+verification then asserts that "carries-over index rows plus dropped-with-table index rows
+equals 63", which only holds if they are present. Keeping them is the stronger reading:
+the set difference against A.3 is then total, with no "except" clause a reviewer has to
+take on trust (F-11).
+
+**Dispositions here are per-object, not inherited from the table.** An index on a
+`reshaped` table that is itself unchanged is `carries-over` — `ix_memories_created_at` does
+not become `reshaped` because `memories` gained a column. Three values appear:
+`carries-over` (in A.3, target keeps it identically), `target-new` (not in A.3), and
+`dropped` (in A.3, does not survive — the table went in §8, or the columns it sits on
+cease to exist under a rebuild). `target-new, inert` marks a target-new index on an inert
+column.
+
+### 3.1 Indexes present at HEAD (Appendix A.3, all 63)
+
+| Index | On table | Definition | Disposition | Doc § | Lands in |
+|---|---|---|---|---|---|
+| `alembic_version_pkc` | `alembic_version` | `CREATE UNIQUE INDEX alembic_version_pkc ON public.alembic_version USING btree (version_num)` | `carries-over` | 19 §2 | n/a (Alembic) |
+| `api_keys_key_hash_key` | `api_keys` | `CREATE UNIQUE INDEX api_keys_key_hash_key ON public.api_keys USING btree (key_hash)` | `carries-over` | 04 §7 | — |
+| `api_keys_pkey` | `api_keys` | `CREATE UNIQUE INDEX api_keys_pkey ON public.api_keys USING btree (id)` | `carries-over` | 04 §7 | — |
+| `audit_log_pkey` | `audit_log` | `CREATE UNIQUE INDEX audit_log_pkey ON public.audit_log USING btree (id)` | `dropped` | 04 §7 | — |
+| `code_edges_pkey` | `code_edges` | `CREATE UNIQUE INDEX code_edges_pkey ON public.code_edges USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
+| `code_edges_repo_id_source_kind_source_key_target_kind_targe_key` | `code_edges` | `CREATE UNIQUE INDEX code_edges_repo_id_source_kind_source_key_target_kind_targe_key ON public.code_edges USING btree (repo_id, source_kind, source_key, target_kind, target_key, edge_type)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_edges_covering` | `code_edges` | `CREATE INDEX ix_code_edges_covering ON public.code_edges USING btree (repo_id, edge_type, source_key, target_key)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_edges_repo_source` | `code_edges` | `CREATE INDEX ix_code_edges_repo_source ON public.code_edges USING btree (repo_id, source_key)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_edges_repo_target` | `code_edges` | `CREATE INDEX ix_code_edges_repo_target ON public.code_edges USING btree (repo_id, target_key)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_edges_repo_type` | `code_edges` | `CREATE INDEX ix_code_edges_repo_type ON public.code_edges USING btree (repo_id, edge_type)` | `carries-over` | 04 §6 | T0.12b |
+| `code_files_pkey` | `code_files` | `CREATE UNIQUE INDEX code_files_pkey ON public.code_files USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_files_repo_path` | `code_files` | `CREATE INDEX ix_code_files_repo_path ON public.code_files USING btree (repo_id, file_path)` | `carries-over` | 04 §6 | T0.12b |
+| `code_graph_nodes_pkey` | `code_graph_nodes` | `CREATE UNIQUE INDEX code_graph_nodes_pkey ON public.code_graph_nodes USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
+| `code_graph_nodes_repo_id_kind_key_key` | `code_graph_nodes` | `CREATE UNIQUE INDEX code_graph_nodes_repo_id_kind_key_key ON public.code_graph_nodes USING btree (repo_id, kind, key)` | `carries-over` | 04 §6 | T0.12b |
+| `code_symbols_pkey` | `code_symbols` | `CREATE UNIQUE INDEX code_symbols_pkey ON public.code_symbols USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_symbols_enrichment_pending` | `code_symbols` | `CREATE INDEX ix_code_symbols_enrichment_pending ON public.code_symbols USING btree (enrichment_attempts, enrichment_priority DESC) WHERE ((enrichment_status)::text = 'pending'::text)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_code_symbols_file_id` | `code_symbols` | `CREATE INDEX ix_code_symbols_file_id ON public.code_symbols USING btree (file_id)` | `carries-over` | 04 §6 | T0.12b |
+| `config_pkey` | `config` | `CREATE UNIQUE INDEX config_pkey ON public.config USING btree (key)` | `carries-over` | 04 §7 | T0.12a |
+| `conversations_pkey` | `conversations` | `CREATE UNIQUE INDEX conversations_pkey ON public.conversations USING btree (id)` | `carries-over` | 04 §7 | — |
+| `embedders_pkey` | `embedders` | `CREATE UNIQUE INDEX embedders_pkey ON public.embedders USING btree (fingerprint)` | `carries-over` | 04 §5.1 | T0.12a |
+| `enrichment_queue_pkey` | `enrichment_queue` | `CREATE UNIQUE INDEX enrichment_queue_pkey ON public.enrichment_queue USING btree (id)` | `dropped` | 04 §6 | — |
+| `enrichment_queue_symbol_id_key` | `enrichment_queue` | `CREATE UNIQUE INDEX enrichment_queue_symbol_id_key ON public.enrichment_queue USING btree (symbol_id)` | `dropped` | 04 §6 | — |
+| `entities_name_entity_type_key` | `entities` | `CREATE UNIQUE INDEX entities_name_entity_type_key ON public.entities USING btree (name, entity_type)` | `carries-over` | 04 §4.1 | T0.12a |
+| `entities_pkey` | `entities` | `CREATE UNIQUE INDEX entities_pkey ON public.entities USING btree (id)` | `carries-over` | 04 §4.1 | T0.12a |
+| `ix_entities_memory_ids` | `entities` | `CREATE INDEX ix_entities_memory_ids ON public.entities USING gin (memory_ids)` | `carries-over` | 04 §4.1 | T0.12a |
+| `entity_relations_pkey` | `entity_relations` | `CREATE UNIQUE INDEX entity_relations_pkey ON public.entity_relations USING btree (id)` | `carries-over` | 04 §4.2 | T0.12a |
+| `entity_relations_source_entity_id_target_entity_id_rel_type_key` | `entity_relations` | `CREATE UNIQUE INDEX entity_relations_source_entity_id_target_entity_id_rel_type_key ON public.entity_relations USING btree (source_entity_id, target_entity_id, rel_type)` | `carries-over` | 04 §4.2 | T0.12a |
+| `ix_entity_relations_memory_ids` | `entity_relations` | `CREATE INDEX ix_entity_relations_memory_ids ON public.entity_relations USING gin (memory_ids)` | `carries-over` | 04 §4.2 | T0.12a |
+| `ix_entity_relations_target` | `entity_relations` | `CREATE INDEX ix_entity_relations_target ON public.entity_relations USING btree (target_entity_id)` | `carries-over` | 04 §4.2 | T0.12a |
+| `ix_knowledge_triples_object` | `knowledge_triples` | `CREATE INDEX ix_knowledge_triples_object ON public.knowledge_triples USING btree (object)` | `dropped` | 04 §8.3 | — |
+| `ix_knowledge_triples_predicate` | `knowledge_triples` | `CREATE INDEX ix_knowledge_triples_predicate ON public.knowledge_triples USING btree (predicate)` | `dropped` | 04 §8.3 | — |
+| `ix_knowledge_triples_subject` | `knowledge_triples` | `CREATE INDEX ix_knowledge_triples_subject ON public.knowledge_triples USING btree (subject)` | `dropped` | 04 §8.3 | — |
+| `ix_knowledge_triples_valid` | `knowledge_triples` | `CREATE INDEX ix_knowledge_triples_valid ON public.knowledge_triples USING btree (valid_from, valid_to)` | `dropped` | 04 §8.3 | — |
+| `knowledge_triples_pkey` | `knowledge_triples` | `CREATE UNIQUE INDEX knowledge_triples_pkey ON public.knowledge_triples USING btree (id)` | `dropped` | 04 §8.3 | — |
+| `llm_profiles_name_key` | `llm_profiles` | `CREATE UNIQUE INDEX llm_profiles_name_key ON public.llm_profiles USING btree (name)` | `dropped` | 04 §7 | — |
+| `llm_profiles_pkey` | `llm_profiles` | `CREATE UNIQUE INDEX llm_profiles_pkey ON public.llm_profiles USING btree (id)` | `dropped` | 04 §7 | — |
+| `llm_providers_name_key` | `llm_providers` | `CREATE UNIQUE INDEX llm_providers_name_key ON public.llm_providers USING btree (name)` | `dropped` | 04 §7 | — |
+| `llm_providers_pkey` | `llm_providers` | `CREATE UNIQUE INDEX llm_providers_pkey ON public.llm_providers USING btree (id)` | `dropped` | 04 §7 | — |
+| `llm_purpose_configs_pkey` | `llm_purpose_configs` | `CREATE UNIQUE INDEX llm_purpose_configs_pkey ON public.llm_purpose_configs USING btree (purpose)` | `carries-over` | 04 §7 | — |
+| `ix_memories_created_at` | `memories` | `CREATE INDEX ix_memories_created_at ON public.memories USING btree (created_at)` | `carries-over` | 04 §3.1 | T0.12a |
+| `ix_memories_fts` | `memories` | `CREATE INDEX ix_memories_fts ON public.memories USING gin (search_vector)` | `carries-over` | 04 §3.1 | T0.12a |
+| `ix_memories_is_archived` | `memories` | `CREATE INDEX ix_memories_is_archived ON public.memories USING btree (is_archived) WHERE (is_archived = false)` | `carries-over` | 04 §3.1 | T0.12a |
+| `ix_memories_project` | `memories` | `CREATE INDEX ix_memories_project ON public.memories USING btree (project)` | `carries-over` | 04 §3.1 | T0.12a |
+| `ix_memories_status` | `memories` | `CREATE INDEX ix_memories_status ON public.memories USING btree (status)` | `carries-over` | 04 §3.1 | T0.12a |
+| `ix_memories_technologies` | `memories` | `CREATE INDEX ix_memories_technologies ON public.memories USING gin (technologies)` | `carries-over` | 04 §3.1 | T0.12a |
+| `memories_pkey` | `memories` | `CREATE UNIQUE INDEX memories_pkey ON public.memories USING btree (id)` | `carries-over` | 04 §3.1 | T0.12a |
+| `ix_memory_crossrefs_related` | `memory_crossrefs` | `CREATE INDEX ix_memory_crossrefs_related ON public.memory_crossrefs USING btree (related_memory_id)` | `carries-over` | 04 §3.3 | — |
+| `memory_crossrefs_pkey` | `memory_crossrefs` | `CREATE UNIQUE INDEX memory_crossrefs_pkey ON public.memory_crossrefs USING btree (memory_id, related_memory_id)` | `carries-over` | 04 §3.3 | — |
+| `memory_tags_pkey` | `memory_tags` | `CREATE UNIQUE INDEX memory_tags_pkey ON public.memory_tags USING btree (memory_id, tag_id)` | `carries-over` | 04 §3.2 | T0.12a |
+| `messages_pkey` | `messages` | `CREATE UNIQUE INDEX messages_pkey ON public.messages USING btree (id)` | `carries-over` | 04 §7 | — |
+| `ml_profiles_name_key` | `ml_profiles` | `CREATE UNIQUE INDEX ml_profiles_name_key ON public.ml_profiles USING btree (name)` | `dropped` | 04 §7 | — |
+| `ml_profiles_pkey` | `ml_profiles` | `CREATE UNIQUE INDEX ml_profiles_pkey ON public.ml_profiles USING btree (id)` | `dropped` | 04 §7 | — |
+| `idx_pipeline_failures_pipeline_name` | `pipeline_failures` | `CREATE INDEX idx_pipeline_failures_pipeline_name ON public.pipeline_failures USING btree (pipeline_name) WHERE (resolved_at IS NULL)` | `carries-over` | 04 §7 | — |
+| `idx_pipeline_failures_resolved_at` | `pipeline_failures` | `CREATE INDEX idx_pipeline_failures_resolved_at ON public.pipeline_failures USING btree (resolved_at) WHERE (resolved_at IS NOT NULL)` | `carries-over` | 04 §7 | — |
+| `idx_pipeline_failures_unresolved` | `pipeline_failures` | `CREATE UNIQUE INDEX idx_pipeline_failures_unresolved ON public.pipeline_failures USING btree (entity_type, entity_id, pipeline_name) WHERE (resolved_at IS NULL)` | `carries-over` | 04 §7 | — |
+| `pipeline_failures_pkey` | `pipeline_failures` | `CREATE UNIQUE INDEX pipeline_failures_pkey ON public.pipeline_failures USING btree (id)` | `carries-over` | 04 §7 | — |
+| `ix_repositories_auto_sync` | `repositories` | `CREATE INDEX ix_repositories_auto_sync ON public.repositories USING btree (id) WHERE (auto_sync = true)` | `carries-over` | 04 §6 | T0.12b |
+| `repositories_pkey` | `repositories` | `CREATE UNIQUE INDEX repositories_pkey ON public.repositories USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
+| `tags_name_key` | `tags` | `CREATE UNIQUE INDEX tags_name_key ON public.tags USING btree (name)` | `carries-over` | 04 §3.2 | T0.12a |
+| `tags_pkey` | `tags` | `CREATE UNIQUE INDEX tags_pkey ON public.tags USING btree (id)` | `carries-over` | 04 §3.2 | T0.12a |
+| `ix_token_blocklist_jti` | `token_blocklist` | `CREATE INDEX ix_token_blocklist_jti ON public.token_blocklist USING btree (jti)` | `carries-over` | 04 §7 | — |
+| `token_blocklist_jti_key` | `token_blocklist` | `CREATE UNIQUE INDEX token_blocklist_jti_key ON public.token_blocklist USING btree (jti)` | `carries-over` | 04 §7 | — |
+| `token_blocklist_pkey` | `token_blocklist` | `CREATE UNIQUE INDEX token_blocklist_pkey ON public.token_blocklist USING btree (id)` | `carries-over` | 04 §7 | — |
+
+**Nine of the 63 sit on §8-dropped tables** (`audit_log` 1, `enrichment_queue` 1,
+`llm_providers` 3, `llm_profiles` 3, `ml_profiles` 1) and **five more belong to
+`knowledge_triples`' HEAD shape** — four indexes on `subject`, `predicate`, `object`,
+`valid_from`/`valid_to`, columns the §8.3 rebuild replaces entirely, plus its PK. The
+rebuilt table's `id uuid` PK is a **new object on a new shape** (UUIDv7, §4.3), not a
+survival of this one; labelling it `carries-over` inside a `target-new` table would be the
+exact "activation" reading doc 04 §8.3 forbids. Forty-nine carry over.
+
+Two rows deserve a reader's attention. `ix_repositories_auto_sync` is a **partial** index
+on `(id) WHERE auto_sync = true`, which is what makes the `repo_sync` filter cheap; the
+partiality, not the column, is the load-bearing part. And `token_blocklist` carries
+**both** `token_blocklist_jti_key` (UNIQUE) and `ix_token_blocklist_jti` (a plain btree)
+on the same column — the plain btree is redundant under the unique, and doc 04 §7
+specifies only `jti UNIQUE` (F-12).
+
+### 3.2 Target-new indexes
+
+| Index | On table | Definition | Disposition | Doc § | Lands in |
+|---|---|---|---|---|---|
+| composite `(project, status)` support | `memories` | `(project, status)`, **or** `(project, status, is_archived)`, **or** partial `WHERE status='active' AND is_archived=false` | `target-new` | 04 §10 | T0.12c |
+| `ix_entities_repo_ids` | `entities` | GIN on `(repo_ids)` | `target-new, inert` | 04 §4.1 | T0.13 |
+| `ix_entity_relations_repo_ids` | `entity_relations` | GIN on `(repo_ids)` | `target-new, inert` | 04 §4.2 | T0.13 |
+| object-timeline index | `events` | `(object_type, object_id, created_at)` | `target-new` | 04 §8.1, §10 | T0.12b |
+| calendar date-bucket index | `events` | `(project, ((created_at AT TIME ZONE 'UTC')::date))` — the `AT TIME ZONE 'UTC'` form is required; a bare `created_at::date` on a `timestamptz` is only STABLE and cannot be indexed | `target-new` | 04 §8.1, §10 | T0.12b |
+| live-fact lookup | `knowledge_triples` | partial **non-unique** `(subject_name, rel_type, object_name) WHERE expired_at IS NULL` — non-unique because disjoint validity windows legitimately leave several live rows on one S/P/O | `target-new` | 04 §8.3, §10 | T0.12b |
+| validity-window index | `knowledge_triples` | btree `(valid_at, invalid_at)` | `target-new` | 04 §8.3, §10 | T0.12b |
+| open-belief identity | `knowledge_triples` | **partial-unique** `triple_key WHERE expired_at IS NULL AND invalid_at IS NULL` — at most one currently-open belief per fact; window-closed rows leave the unique's scope but remain live history | `target-new` | 04 §8.3, §10 | T0.12b |
+| review queue | `knowledge_triples` | partial `(review_state) WHERE review_state='open'` | `target-new` | 04 §8.3, §10 | T0.12b |
+| member-source reverse lookup | `fact_sources` | btree `(source_kind, source_ref)` — the role the removed `source_memory_ids` GIN played | `target-new` | 04 §8.3, §10 | T0.12b |
+| fact fan-out | `fact_sources` | btree `(fact_id)` | `target-new` | 04 §8.3, §10 | T0.12b |
+| one live article per subject | `knowledge_articles` | **partial-unique** `(project, subject_key) WHERE status <> 'superseded'` | `target-new` | 04 §8.8, §10 | T0.12b |
+| review queue | `knowledge_articles` | partial `(review_state) WHERE review_state='open'` | `target-new` | 04 §8.8, §10 | T0.12b |
+| cite set | `article_citations` | btree `(article_id)` | `target-new` | 04 §8.8, §10 | T0.12b |
+| reverse traversal | `memory_relations` | btree `(target_memory_id)` — "what points at this memory" filters on the target, which the UNIQUE's source prefix cannot serve; this is `entity_relations`' migration-`0002` lesson applied from day one | `target-new` | 04 §8.2, §10 | — (F-02) |
+| claim scan | `memory_buffer` | partial `(created_at) WHERE status='pending'` — the `SKIP LOCKED` claim only ever reads pending rows | `target-new` | 04 §8.6, §10 | — (F-02) |
+| topic membership | `memory_community_members` | btree `(memory_id)` | `target-new` | 04 §8.4 | — (F-02) |
+| document identity | `documents` | partial **UNIQUE** `(project, uri) WHERE uri IS NOT NULL` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
+| block order | `blocks` | `(document_id, order_index)` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
+| block tree | `blocks` | `(parent_id)` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
+
+**The HNSW and aux indexes on the eight per-fingerprint parents are deliberately not
+here** — they are created at runtime by the registry, per fingerprint, and are inventoried
+in §6.
+
+**The `(project, status)` composite is the one index change the pushdown strictly
+requires, and doc 04 §10 does not pick among its three forms.** The recommendation this
+inventory records for T0.12c is the **partial** `WHERE status='active' AND
+is_archived=false`: the pushed-down predicate's overwhelmingly common shape is "live rows
+in this project", the partial index is the smallest of the three, and the two full
+composites remain available if a later measurement shows scans that need `status` values
+other than `'active'`. One honest caveat doc 04 §10 states and the recommendation does not
+change: **the semantic channel cannot use this index at all** — an HNSW scan applies the
+predicate as a post-scan filter over its candidate stream — so the composite serves the
+keyword and direct-scan sides, and the semantic side's win is correctness and reduced
+over-fetch, not an index-scan plan. If T0.12c's executor judges the pick to be a design
+decision rather than an inventory one, it is F-14 to adjudicate, not a silent choice.
 
 ## 4. Constraints, triggers, and types
 
-_(pending: Task 4)_
+Same rule as §3: **every constraint in Appendix A.4 appears below**, dispositioned rather
+than removed, plus the one trigger (A.5), the one non-extension function (A.6), and the
+one enum type (A.7). `Kind` is `PK` / `FK` / `UNIQUE` / `CHECK` / `trigger` / `function` /
+`enum` / `partitioning`.
+
+### 4.1 Constraints present at HEAD (Appendix A.4, all 59)
+
+| Object | Kind | On | Definition | Disposition | Doc § | Lands in |
+|---|---|---|---|---|---|---|
+| `alembic_version_pkc` | PK | `alembic_version` | `PRIMARY KEY (version_num)` | `carries-over` | 19 §2 | n/a (Alembic) |
+| `api_keys_key_hash_key` | UNIQUE | `api_keys` | `UNIQUE (key_hash)` | `carries-over` | 04 §7 | — |
+| `api_keys_pkey` | PK | `api_keys` | `PRIMARY KEY (id)` | `carries-over` | 04 §7 | — |
+| `audit_log_pkey` | PK | `audit_log` | `PRIMARY KEY (id)` | `dropped` | 04 §7 | — |
+| `code_edges_pkey` | PK | `code_edges` | `PRIMARY KEY (id)` | `carries-over` | 04 §6 | T0.12b |
+| `code_edges_repo_id_fkey` | FK | `code_edges` | `FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE` | `carries-over` | 04 §6 | T0.12b |
+| `code_edges_repo_id_source_kind_source_key_target_kind_targe_key` | UNIQUE | `code_edges` | `UNIQUE (repo_id, source_kind, source_key, target_kind, target_key, edge_type)` | `carries-over` | 04 §6 | T0.12b |
+| `code_files_pkey` | PK | `code_files` | `PRIMARY KEY (id)` | `carries-over` | 04 §6 | T0.12b |
+| `code_files_repo_id_fkey` | FK | `code_files` | `FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE` | `carries-over` | 04 §6 | T0.12b |
+| `code_graph_nodes_pkey` | PK | `code_graph_nodes` | `PRIMARY KEY (id)` | `carries-over` | 04 §6 | T0.12b |
+| `code_graph_nodes_repo_id_fkey` | FK | `code_graph_nodes` | `FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE` | `carries-over` | 04 §6 | T0.12b |
+| `code_graph_nodes_repo_id_kind_key_key` | UNIQUE | `code_graph_nodes` | `UNIQUE (repo_id, kind, key)` | `carries-over` | 04 §6 | T0.12b |
+| `code_symbols_file_id_fkey` | FK | `code_symbols` | `FOREIGN KEY (file_id) REFERENCES code_files(id) ON DELETE CASCADE` | `carries-over` | 04 §6 | T0.12b |
+| `code_symbols_parent_symbol_id_fkey` | FK | `code_symbols` | `FOREIGN KEY (parent_symbol_id) REFERENCES code_symbols(id) ON DELETE SET NULL` | `carries-over` | 04 §6 | T0.12b |
+| `code_symbols_pkey` | PK | `code_symbols` | `PRIMARY KEY (id)` | `carries-over` | 04 §6 | T0.12b |
+| `config_pkey` | PK | `config` | `PRIMARY KEY (key)` | `carries-over` | 04 §7 | T0.12a |
+| `conversations_pkey` | PK | `conversations` | `PRIMARY KEY (id)` | `carries-over` | 04 §7 | — |
+| `embedders_dims_check` | CHECK | `embedders` | `CHECK ((dims > 0))` | `carries-over` | 04 §5.1 | T0.12a |
+| `embedders_pkey` | PK | `embedders` | `PRIMARY KEY (fingerprint)` | `carries-over` | 04 §5.1 | T0.12a |
+| `embedders_source_check` | CHECK | `embedders` | `CHECK ((source = 'llm'::text))` | `carries-over` | 04 §5.1 | T0.12a |
+| `enrichment_queue_pkey` | PK | `enrichment_queue` | `PRIMARY KEY (id)` | `dropped` | 04 §6 | — |
+| `enrichment_queue_symbol_id_fkey` | FK | `enrichment_queue` | `FOREIGN KEY (symbol_id) REFERENCES code_symbols(id) ON DELETE CASCADE` | `dropped` | 04 §6 | — |
+| `enrichment_queue_symbol_id_key` | UNIQUE | `enrichment_queue` | `UNIQUE (symbol_id)` | `dropped` | 04 §6 | — |
+| `entities_name_entity_type_key` | UNIQUE | `entities` | `UNIQUE (name, entity_type)` | `carries-over` | 04 §4.1 | T0.12a |
+| `entities_pkey` | PK | `entities` | `PRIMARY KEY (id)` | `carries-over` | 04 §4.1 | T0.12a |
+| `entity_relations_pkey` | PK | `entity_relations` | `PRIMARY KEY (id)` | `carries-over` | 04 §4.2 | T0.12a |
+| `entity_relations_source_entity_id_fkey` | FK | `entity_relations` | `FOREIGN KEY (source_entity_id) REFERENCES entities(id) ON DELETE CASCADE` | `carries-over` | 04 §4.2 | T0.12a |
+| `entity_relations_source_entity_id_target_entity_id_rel_type_key` | UNIQUE | `entity_relations` | `UNIQUE (source_entity_id, target_entity_id, rel_type)` | `carries-over` | 04 §4.2 | T0.12a |
+| `entity_relations_target_entity_id_fkey` | FK | `entity_relations` | `FOREIGN KEY (target_entity_id) REFERENCES entities(id) ON DELETE CASCADE` | `carries-over` | 04 §4.2 | T0.12a |
+| `knowledge_triples_pkey` | PK | `knowledge_triples` | `PRIMARY KEY (id)` | `dropped` | 04 §8.3 | — |
+| `knowledge_triples_source_memory_id_fkey` | FK | `knowledge_triples` | `FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL` | `dropped` | 04 §8.3 | — |
+| `llm_profiles_name_key` | UNIQUE | `llm_profiles` | `UNIQUE (name)` | `dropped` | 04 §7 | — |
+| `llm_profiles_pkey` | PK | `llm_profiles` | `PRIMARY KEY (id)` | `dropped` | 04 §7 | — |
+| `llm_profiles_provider_id_fkey` | FK | `llm_profiles` | `FOREIGN KEY (provider_id) REFERENCES llm_providers(id) ON DELETE RESTRICT` | `dropped` | 04 §7 | — |
+| `llm_providers_name_key` | UNIQUE | `llm_providers` | `UNIQUE (name)` | `dropped` | 04 §7 | — |
+| `llm_providers_pkey` | PK | `llm_providers` | `PRIMARY KEY (id)` | `dropped` | 04 §7 | — |
+| `llm_purpose_configs_ml_profile_id_fkey` | FK | `llm_purpose_configs` | `FOREIGN KEY (ml_profile_id) REFERENCES ml_profiles(id) ON DELETE SET NULL` | `dropped` | 04 §7 | — |
+| `llm_purpose_configs_pkey` | PK | `llm_purpose_configs` | `PRIMARY KEY (purpose)` | `carries-over` | 04 §7 | — |
+| `llm_purpose_configs_profile_id_fkey` | FK | `llm_purpose_configs` | `FOREIGN KEY (profile_id) REFERENCES llm_profiles(id) ON DELETE SET NULL` | `dropped` | 04 §7 | — |
+| `llm_purpose_configs_provider_id_fkey` | FK | `llm_purpose_configs` | `FOREIGN KEY (provider_id) REFERENCES llm_providers(id) ON DELETE SET NULL` | `dropped` | 04 §7 | — |
+| `chk_superseded_has_pointer` | CHECK | `memories` | `CHECK (((status <> 'superseded'::memory_status) OR (superseded_by IS NOT NULL)))` | `carries-over` | 04 §3.1 | T0.12a |
+| `fk_memories_superseded_by` | FK | `memories` | `FOREIGN KEY (superseded_by) REFERENCES memories(id) ON DELETE SET NULL` | `carries-over` | 04 §3.1 | T0.12a |
+| `memories_pkey` | PK | `memories` | `PRIMARY KEY (id)` | `carries-over` | 04 §3.1 | T0.12a |
+| `memory_crossrefs_memory_id_fkey` | FK | `memory_crossrefs` | `FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE` | `carries-over` | 04 §3.3 | — |
+| `memory_crossrefs_pkey` | PK | `memory_crossrefs` | `PRIMARY KEY (memory_id, related_memory_id)` | `carries-over` | 04 §3.3 | — |
+| `memory_crossrefs_related_memory_id_fkey` | FK | `memory_crossrefs` | `FOREIGN KEY (related_memory_id) REFERENCES memories(id) ON DELETE CASCADE` | `carries-over` | 04 §3.3 | — |
+| `memory_tags_memory_id_fkey` | FK | `memory_tags` | `FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE` | `carries-over` | 04 §3.2 | T0.12a |
+| `memory_tags_pkey` | PK | `memory_tags` | `PRIMARY KEY (memory_id, tag_id)` | `carries-over` | 04 §3.2 | T0.12a |
+| `memory_tags_tag_id_fkey` | FK | `memory_tags` | `FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE` | `carries-over` | 04 §3.2 | T0.12a |
+| `messages_conversation_id_fkey` | FK | `messages` | `FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE` | `carries-over` | 04 §7 | — |
+| `messages_pkey` | PK | `messages` | `PRIMARY KEY (id)` | `carries-over` | 04 §7 | — |
+| `ml_profiles_name_key` | UNIQUE | `ml_profiles` | `UNIQUE (name)` | `dropped` | 04 §7 | — |
+| `ml_profiles_pkey` | PK | `ml_profiles` | `PRIMARY KEY (id)` | `dropped` | 04 §7 | — |
+| `pipeline_failures_pkey` | PK | `pipeline_failures` | `PRIMARY KEY (id)` | `carries-over` | 04 §7 | — |
+| `repositories_pkey` | PK | `repositories` | `PRIMARY KEY (id)` | `carries-over` | 04 §6 | T0.12b |
+| `tags_name_key` | UNIQUE | `tags` | `UNIQUE (name)` | `carries-over` | 04 §3.2 | T0.12a |
+| `tags_pkey` | PK | `tags` | `PRIMARY KEY (id)` | `carries-over` | 04 §3.2 | T0.12a |
+| `token_blocklist_jti_key` | UNIQUE | `token_blocklist` | `UNIQUE (jti)` | `carries-over` | 04 §7 | — |
+| `token_blocklist_pkey` | PK | `token_blocklist` | `PRIMARY KEY (id)` | `carries-over` | 04 §7 | — |
+
+**Eleven of the 59 sit on §8-dropped tables**, three are the `llm_purpose_configs`
+indirection FKs that go with their columns (§8), and two belong to `knowledge_triples`'
+HEAD shape: its PK (§3.1's note) and its FK `source_memory_id → memories ON DELETE SET
+NULL`, which goes with the rebuild — the target externalises provenance into
+`fact_sources` and holds endpoints as soft references with no FK at all (doc 04 §8.3).
+Forty-three carry over.
+
+`chk_superseded_has_pointer` is reproduced verbatim from A.4 above and is the constraint
+T0.12a's acceptance names explicitly. Its paired self-FK `fk_memories_superseded_by … ON
+DELETE SET NULL` is what makes the demote-before-delete order load-bearing: the FK nulls a
+dependent's pointer while it is still `superseded`, the CHECK fails, and the batch aborts.
+Both carry over unchanged.
+
+### 4.2 Triggers, functions, and types present at HEAD (A.5–A.7)
+
+| Object | Kind | On | Definition | Disposition | Doc § | Lands in |
+|---|---|---|---|---|---|---|
+| `memories_fts_update` | trigger | `memories` | `CREATE TRIGGER memories_fts_update BEFORE INSERT OR UPDATE OF content ON public.memories FOR EACH ROW EXECUTE FUNCTION memories_fts_trigger()` | `carries-over` | 04 §3.1; 19 §2 | T0.12a |
+| `memories_fts_trigger` | function | — | `plpgsql`; sets `NEW.search_vector := to_tsvector('english', COALESCE(NEW.content, ''))` | `carries-over` | 04 §3.1; 19 §2 | T0.12a |
+| `memory_status` | enum | — | `ENUM ('active','deprecated','superseded')` | `carries-over` | 04 §2, §11 | T0.12a |
+
+`memory_status` is the **one** native enum in the schema and doc 04 §2 fixes it as such:
+every other state column (`verification_status`, article `status`, `memory_buffer.status`,
+`review_state`) is CHECK-constrained `text`, and every "type" column
+(`entity_type`, `rel_type`, `memory_type`) is `varchar` normalised in application code
+against a closed set. A baseline that promoted any of them to an enum would be a
+behaviour change, not a tidy-up.
+
+### 4.3 Target-new constraints, triggers, and partitioning
+
+| Object | Kind | On | Definition | Disposition | Doc § | Lands in |
+|---|---|---|---|---|---|---|
+| `UNIQUE (id, project)` support | UNIQUE | `memories` | Trivially satisfiable (`id` is already the PK). Exists **solely** so `memory_relations`' endpoint FKs can be declared composite `(memory_id, project)`, which makes a cross-project edge unrepresentable rather than merely forbidden. Omitting it makes `memory_relations` undeclarable — a hard prerequisite, not a nicety. | `target-new` | 04 §8.2, §10 | T0.12a |
+| `knowledge_triples` PK | PK | `knowledge_triples` | `id uuid PRIMARY KEY`, application-generated **UUIDv7** — the rebuild keeps a name, not an object (doc 04 §8.3) | `target-new` | 04 §8.3 | T0.12b |
+| `events` composite PK | PK | `events` | `(id, created_at)` — the partition key must sit in the PK; nothing joins events by id, so folding `created_at` in costs nothing | `target-new` | 04 §8.1 | T0.12b |
+| `events` monthly range partitioning | partitioning | `events` | `PARTITION BY RANGE(created_at)`, monthly, from day one — the **only** declaratively partitioned table in the schema | `target-new` | 04 §8.1, §2 | T0.12b |
+| `events` append-only forbid-trigger | trigger | `events` | `BEFORE UPDATE OR DELETE OR TRUNCATE` … `RAISE`; role-agnostic, so it survives dump/restore. A `REVOKE`-based owner/app split is the recorded multi-user upgrade path. | `target-new` | 04 §8.1, §11; 19 §2 | **T1.06** — T0.12b's own text: "`events` is `RANGE(created_at)` partitioned (the trigger is T1.06's)" |
+| `verification_status` CHECK | CHECK | `knowledge_triples` | `CHECK (verification_status IN ('candidate','corroborated','disputed','confirmed'))` | `target-new` | 04 §8.3, §10 | T0.12b |
+| `fact_sources` dedupe key | UNIQUE | `fact_sources` | `UNIQUE (fact_id, source_kind, source_ref)` | `target-new` | 04 §8.3, §10 | T0.12b |
+| `fact_sources` parent FK | FK | `fact_sources` | `fact_id → knowledge_triples(id) ON DELETE CASCADE` | `target-new` | 04 §8.3 | T0.12b |
+| article `status` CHECK | CHECK | `knowledge_articles` | `CHECK (status IN ('candidate','corroborated','disputed','confirmed','superseded'))` | `target-new` | 04 §8.8 | T0.12b |
+| article lineage self-FK | FK | `knowledge_articles` | `superseded_by → knowledge_articles(id)` | `target-new` | 04 §8.8 | T0.12b |
+| citation parent FK | FK | `article_citations` | `article_id → knowledge_articles(id) ON DELETE CASCADE` | `target-new` | 04 §8.8 | T0.12b |
+| citation **hard** fact FK | FK | `article_citations` | `fact_id → knowledge_triples(id)` — **the one hard FK**, and the deliberate contrast with §8.3's soft endpoint refs: facts are invalidate-not-delete, so the hard FK is safe and buys integrity at the one place a dangling citation would be a truth catastrophe | `target-new` | 04 §8.8 | T0.12b |
+| `memory_relations` uniqueness | UNIQUE | `memory_relations` | `UNIQUE (source_memory_id, target_memory_id, rel_type)` | `target-new` | 04 §8.2, §10 | — (F-02) |
+| `memory_relations` endpoint FKs | FK | `memory_relations` | `(source_memory_id, project) → memories(id, project) ON DELETE CASCADE` and the same for `target_memory_id` — **composite**, which is why the `UNIQUE (id, project)` support above exists | `target-new` | 04 §8.2 | — (F-02) |
+| `memory_buffer` status CHECK | CHECK | `memory_buffer` | `CHECK (status IN ('pending','claimed','done','error'))` | `target-new` | 04 §8.6 | — (F-02) |
+| `memory_community_members` PK + FKs | PK, FK | `memory_community_members` | `PRIMARY KEY (community_id, memory_id)`; `community_id → memory_communities ON DELETE CASCADE`; `memory_id → memories ON DELETE CASCADE` | `target-new` | 04 §8.4 | — (F-02) |
+| `memory_access_stats` PK + FK | PK, FK | `memory_access_stats` | `memory_id uuid PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE` | `target-new` | 04 §9 | — (F-02) |
+| `project_repositories` PK + FK | PK, FK | `project_repositories` | `PRIMARY KEY (project, repo_id)`; `repo_id → repositories(id)` | `target-new` | 04 §8.7, §10 | — (F-02) |
+| `projects` PK | PK | `projects` | `PRIMARY KEY (name)` — lazy `INSERT … ON CONFLICT (name) DO NOTHING`; **no FK enforcement yet**, every scoped table keeps its bare `project text` | `target-new` | 04 §7, §10 | T0.12b |
+| `documents` / `blocks` FKs | FK | `documents`, `blocks` | `blocks.document_id → documents ON DELETE CASCADE`; `blocks.parent_id → blocks ON DELETE CASCADE` (deleting a block takes its subtree) | `target-new, inert` | 04 §8.5 | T0.13 |
+
+**Whether the baseline creates `events`' first monthly child partition is unresolved by
+both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one and doc 19 §9
+stance 3 puts the *pre-create* arm on `pipeline_failure_cleanup`'s schedule, but neither
+says whether the baseline itself lands month-0. **A partitioned parent with no matching
+child rejects every insert**, so this is not cosmetic: a baseline that omits it produces a
+database in which the first `events` write fails. Recorded as F-15 for T0.12b rather than
+decided here.
 
 ## 5. Column-level changes on carried-over tables
 
-_(pending: Task 4)_
+One row per column change on a table §2 dispositions `reshaped`, plus the activations that
+change no column at all. **Every "server default" statement here is read from Appendix
+A.2, not from the default doc 04's tables print** — the two disagree, and §9 audits the
+disagreement rather than reconciling it silently here.
+
+| Table.column | Change | Disposition | Doc § | Note |
+|---|---|---|---|---|
+| `memories.origin_key` | **ADD** `text NULL` | `target-new` | 04 §3.1, §8.3 | Capture-session / agent-run identity — the corroboration-independence key. `COUNT(DISTINCT origin_key)` per fact is the promotion signal, so this column is why `fact_sources` can count origins instead of rows. Set NULL for every carried row at the cutover: unknown identity **merges to one origin (undercount), never mints distinct ones** (doc 19 §4). |
+| `memories.llm_classified_type` → `classified_type` | **RENAME** | `reshaped` | 04 §3.1 | The `llm_` prefix drops because the classifier may be the local model — the column is source-neutral. **The target name collides with a column dropped at revision `0006`** carrying regex-classifier semantics (§8); a baseline built from migration history is exactly what gets that reuse wrong. |
+| `memories.llm_summary` → `summary` | **RENAME** | `reshaped` | 04 §3.1 | |
+| `memories.llm_emotions` → `emotions` | **RENAME** | `reshaped` | 04 §3.1 | |
+| `memories.llm_flags` → `flags` | **RENAME** | `reshaped` | 04 §3.1 | |
+| `memories.id` | v4 → **UUIDv7**, application-generated | `reshaped` | 04 §2, §3.1 | **No DDL change** — A.2 shows `uuid NOT NULL` with no server default today, and the target keeps exactly that. The change is in the generator, so a schema diff would show nothing; recorded here because the whole point of UUIDv7 (time-ordered B-tree insert locality) is lost silently if the generator is not changed with the baseline. `entities` and `entity_relations` deliberately keep server-side `gen_random_uuid()` (v4) — ANN-probed, not range-scanned, so insert locality buys nothing. |
+| `memories.{id, content, source, importance, metadata, is_archived}` | server defaults | **see §9** | 04 §3.1 vs A.2 | A.2 shows all six `NOT NULL` with **no server default**. Doc 04 §3.1 prints `0.5`, `{}` and `false` for `importance`/`metadata`/`is_archived` as if they were DDL defaults, and prints `source`'s as "ORM `'api'`". A plain-SQL INSERT omitting any of them fails today. Adjudicated in §9, not here. |
+| `memories.importance` | **activation by read** — no schema change | `carries-over` | 04 §9; 19 §3 | Populated at ingest today, never read by ranking. The target reads it behind a `w_*` flag defaulting to 0. First reader **T2.30** (§7). |
+| `memories.expires_at` | **activation by population** — no schema change | `carries-over` | 04 §3.1, §8.3 | Swept by `expired_memory_cleanup` today; the target additionally populates it from a fact's own stated expiry (self-expiring dated facts). First writer **T2.34** (§7). |
+| `memories.confidence` | value-quality change — no schema change | `carries-over` | 04 §9 | Already read by ranking (`_apply_confidence_weighting`). The change is replacing a placeholder value with a real estimate. |
+| `entities.repo_ids` | **ADD** `uuid[] DEFAULT '{}'` | `target-new, inert` | 04 §4.1, §4.2; 19 §3 | The invariant-8 amendment: a repo id is the code-side analog of a memory id, letting code assert a graph row without a memory. Lands with **empty arrays**, so both orphan sweeps' amended `NOT EXISTS (live repo)` predicates are vacuously true and behaviour is byte-identical to today. First writer in §7. |
+| `entity_relations.repo_ids` | **ADD** `uuid[] DEFAULT '{}'` | `target-new, inert` | 04 §4.2; 19 §3 | As above. |
+| `repositories.index_debt` | **ADD** `jsonb` | `target-new, inert` | 04 §6 | Persists the T2 re-trace drain: the 500-caller cap currently drops work silently, so outstanding debt is recorded and drained in continuation batches. **Doc 19 §3's disposition table does not carry a row for it and T0.13's object list does not name it** (F-13). First writer in §7. |
+| `llm_purpose_configs.provider_id`, `.profile_id`, `.ml_profile_id` | **DROP** | `dropped` (§8) | 04 §7; 19 §3 | The indirection columns doc 19 §3 calls "every `*_ref`" — none is actually named `*_ref` (F-08). |
+| `llm_purpose_configs.classifier_kind` | **ADD** `text` on the `classification` purpose row | `target-new` | 04 §7 | `llm \| local` — the in-process classifier re-homed inline, replacing the deleted `ml_profiles` reference. When the `[ml]` extra is absent, classification falls back to the LLM-backed classifier. |
+| `llm_purpose_configs.provider` | **unresolved** — kept or dropped | see F-10 | 04 §7 vs A.2 | A.2 shows `provider varchar NOT NULL DEFAULT 'ollama'` at HEAD; doc 04 §7's inline field list does not mention it, and fixes `api_kind` as the sole vendor-quirk home. Not decided here. |
+| `config.value` | server default `'{}'` | see F-09 | 04 §7 vs A.2 | Doc 04 §7 prints `value jsonb NOT NULL DEFAULT '{}'`; A.2 shows no server default. Same class as the `memories` deltas — adjudicated in §9. |
+| `repositories.{id, provider, default_branch, auto_sync, status}` | server defaults | **see §9** | 04 §6 vs A.2 | A.2 shows all five `NOT NULL` with **no server default**, while doc 04 §6 prints `provider 'local'` and `default_branch 'main'`. The plan for this task located the ORM-default class on `memories` alone; it is wider (§9). |
+
+**`memories`' column ordinals carry the fingerprint of the `0006` drop.** A.2 shows
+`memories` jumping from ordinal 11 (`is_archived`) to ordinal 14 (`llm_classified_type`) —
+positions 12 and 13 are the dropped `classified_type` and `classified_confidence`. The
+baseline, built from empty, will not reproduce that gap, which is a cosmetic difference and
+the only one: no code reads a column by ordinal.
 
 ## 6. Per-fingerprint partition templates (registry entries, not DDL)
 
@@ -155,6 +451,12 @@ tier and lifts the Tier-3 rows to the top under their own heading.
 | F-08 | doc 19 §3 vs Appendix A.2 | Doc 19 §3 drops "`llm_providers`, `llm_profiles`, `ml_profiles` + every `*_ref`". **No column named `*_ref` exists on `llm_purpose_configs`.** A.2 shows the three indirection columns are `provider_id`, `profile_id` and `ml_profile_id` (uuid, each with an `ON DELETE SET NULL` FK). The **only** `*_ref`-named column in the whole schema is `repositories.auth_token_ref`, which doc 04 §6 lists among `repositories`' target columns and which must be **kept**. A T0.12 executor following doc 19 §3 literally would drop the one column to keep and keep the three to drop. §8 names the three by their real names; `auth_token_ref` stays. |
 | F-09 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 prints `config` as `(key varchar(255) PK, value jsonb NOT NULL DEFAULT '{}')`. A.2 shows `config.value` as `NOT NULL` with **no server default**. Same class as the `memories` default deltas (§5, §9): the inventory records what A.2 says and dispositions `config` as `reshaped` on the assumption that the baseline authors the printed default. If §9's ORM-default question resolves the other way, `config` is `carries-over` and this row is a doc-04 description error instead. |
 | F-10 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 fixes the flattened `llm_purpose_configs` row as carrying `{model, base_url, api_key, api_kind, params jsonb, dimensions?, reasoning?}` plus `classifier_kind`. A.2 shows a **`provider varchar NOT NULL DEFAULT 'ollama'`** column at HEAD that this list does not mention. Doc 04 §7 also fixes `api_kind` as the sole vendor-quirk home (E1's T1.03 repeats it), which suggests `provider` is redundant and drops — but no doc says so. Whether `provider` is kept or dropped is a decision for T0.12b and E1's T1.01 (flatten `llm_purpose_configs`), not for this inventory. |
+
+| F-11 | This task's own step-level plan, internally | Task 4 Step 1 says rows belonging to a §8-dropped table are "**removed**, not dispositioned"; Task 4 Step 4 then asserts "the count of `carries-over` index rows **plus dropped-with-table index rows** equals 63", which only holds if they are present. §3 and §4 keep every row and disposition it `dropped`, because that makes the set difference against A.3/A.4 total — no "except" clause a reviewer must take on trust. Recorded so the deviation from the plan text is visible rather than silent. |
+| F-12 | Appendix A.3 vs doc 04 §7 | `token_blocklist` carries **two** indexes on `jti`: `token_blocklist_jti_key` (UNIQUE, from the constraint) and `ix_token_blocklist_jti` (a plain btree). The plain btree is fully redundant under the unique. Doc 04 §7 specifies only `jti UNIQUE`. **Recommendation:** the baseline lands the UNIQUE alone. Harmless either way, which is why it is recorded rather than escalated — but a baseline that reproduces it reproduces an accident of migration history, which is the thing T0.11 exists to prevent. |
+| F-13 | doc 04 §6 vs doc 19 §3 vs `E0-baseline-and-harness.md` T0.13 | `repositories.index_debt` is described by doc 04 §6 as landing **inert** ("It lands as an inert column here"), but **doc 19 §3's disposition table carries no row for it** — and doc 19 §3 is the section T0.11 is chartered against for dispositions. T0.13's own object list ("`repo_ids[]` on `entities`/`entity_relations`, the empty `documents`/`blocks` tables, and all four per-fingerprint partition templates") does not name it either, so no task text lands it and no task text labels it inert. §5 dispositions it `target-new, inert` on doc 04 §6's authority and §7 names its first writer; the gap in doc 19 §3's table and in T0.13's list is for the controller to close. |
+| F-14 | doc 04 §10, internally | The `(project, status)` pushdown support has **three stated forms** — bare `(project, status)`, `(project, status, is_archived)`, or partial `WHERE status='active' AND is_archived=false` — and doc 04 §10 does not pick. §3.2 records a recommendation (the partial) with its reasoning and marks the alternatives. T0.12c must write exactly one. If its executor judges this a design decision rather than an inventory one, it is adjudicated here, not chosen silently. |
+| F-15 | doc 04 §8.1 vs doc 19 §9 stance 3 | **Whether the baseline creates `events`' first monthly child partition is unresolved by both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one; doc 19 §9 stance 3 puts the *pre-create* arm on `pipeline_failure_cleanup`'s schedule. Neither says whether the baseline lands month-0. A `RANGE`-partitioned parent with no matching child **rejects every insert**, so a baseline that omits it produces a database whose first `events` write fails — and the first write happens as soon as T1.07's journaling ships. For T0.12b to decide, with the obvious safe answer being that the baseline creates the current month's child and the cleanup arm creates the next. |
 
 ### Amendments proposed to the task corpus
 

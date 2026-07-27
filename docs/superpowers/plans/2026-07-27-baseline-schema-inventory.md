@@ -327,11 +327,11 @@ Task: T0.11"
 
 **Why this is one task and not three:** the three sections share a single mechanical spine — Appendix A.2–A.4 supply every carried-over row verbatim, and doc 04 §10 supplies the target-new ones in one place ("The new tables carry their own load-bearing indexes, summarised here so §12 can order their creation"). Splitting them would triple the number of times someone re-reads the same two sources.
 
-- [ ] **Step 1: Seed §3 and §4 from Appendix A**
+- [x] **Step 1: Seed §3 and §4 from Appendix A**
 
 Every index in A.3 and every constraint in A.5 becomes a row, `Definition` copied verbatim from `indexdef`/`pg_get_constraintdef`. Disposition follows its owning table's from §2 unless the object itself changes. Rows belonging to a §8-dropped table are **removed**, not dispositioned — they leave with their table, and §8 already records why.
 
-- [ ] **Step 2: Add the target-new indexes and constraints from doc 04 §10 and §11**
+- [x] **Step 2: Add the target-new indexes and constraints from doc 04 §10 and §11**
 
 Doc 04 §10's second paragraph enumerates the new tables' load-bearing indexes; §11 restates the schema-level constraints. Two additions are easy to miss because they sit on tables that otherwise carry over:
 
@@ -340,13 +340,13 @@ Doc 04 §10's second paragraph enumerates the new tables' load-bearing indexes; 
 
 Also record the two SQL triggers doc 19 §2 says the baseline authors — the `memories` FTS trigger (exists today, `carries-over`, Appendix A.5 has its exact definition) and the `events` `BEFORE UPDATE OR DELETE OR TRUNCATE` forbid-trigger (`target-new`, doc 04 §8.1) — and note against the second that **T1.06 owns it**, per T0.12b's own text: "`events` is `RANGE(created_at)` partitioned (the trigger is T1.06's)". An inventory row whose landing task disagrees with T0.12b's text is a finding.
 
-- [ ] **Step 3: Write §5 — column-level changes**
+- [x] **Step 3: Write §5 — column-level changes**
 
 One row per column change on a `reshaped` table. Doc 04 §3.1's table is the source for `memories`; §4.1/§4.2 for the graph; §6 for `repositories`; §9 for the surgical list. The `llm_` prefix drop is four rows (`llm_classified_type → classified_type`, `llm_summary → summary`, `llm_emotions → emotions`, `llm_flags → flags`), each noting that the target *name* `classified_type` collides with a name dropped at `0006` under different semantics (cross-reference §8).
 
 Column rows carry the **server default from Appendix A.2**, not the default doc 04's table prints — because those disagree, and Task 7 needs the disagreement recorded here to audit it. On `memories`, A.2 shows `id`, `content`, `source`, `importance`, `metadata` and `is_archived` as `NOT NULL` with **no server default at all**, while doc 04 §3.1 prints `0.5`, `{}` and `false` for three of them. Record what A.2 says and flag the delta; do not reconcile it here.
 
-- [ ] **Step 4: Verify — full set difference against Appendix A**
+- [x] **Step 4: Verify — full set difference against Appendix A**
 
 This is the strict version of Task 3's table-level check, now over every object class:
 
@@ -362,7 +362,7 @@ Record the pipeline in Appendix B. Expected: five empty differences. Additionall
 
 Then `git status --porcelain` shows only the inventory file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md
