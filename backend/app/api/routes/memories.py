@@ -8,6 +8,7 @@ from app.api.mcp.client_identity import ORIGIN_HEADER, resolve_origin_key
 from app.models.memory import Memory
 from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
+from app.schemas.retrieval_trace import MemoryResultTrace
 from app.services.memory import MemoryService
 
 router = APIRouter(prefix="/api/v1/memories", tags=["memories"])
@@ -168,6 +169,23 @@ async def search_memories_paginated(
     service: MemoryService = Depends(get_memory_service),
 ):
     result = await service.search_memories_paginated(body)
+    if body.with_trace:
+        items = []
+        for row in result["items"]:
+            resp = _to_response(row.memory)
+            resp.trace = MemoryResultTrace(
+                scores=row.scores,
+                rank_fusion_factor=row.rank_fusion_factor,
+                rank_fusion_breakdown=row.rank_fusion_breakdown,
+            )
+            items.append(resp)
+        return PaginatedMemoryResponse(
+            items=items,
+            total=result["total"],
+            limit=result["limit"],
+            offset=result["offset"],
+            envelope=result["envelope"],
+        )
     return PaginatedMemoryResponse(
         items=[_to_response(m) for m in result["items"]],
         total=result["total"],

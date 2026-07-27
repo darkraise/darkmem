@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from sqlalchemy import text
@@ -11,11 +12,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
-from app.services.rank_fusion import RRF_K, RankedList, rrf_fuse
+from app.services.rank_fusion import RRF_K, RankedList, normalize_row_id, rrf_fuse
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["RRF_K", "HybridSearchService"]
+__all__ = ["RRF_K", "ChannelTrace", "HybridSearchService"]
+
+
+@dataclass(frozen=True)
+class ChannelTrace:
+    """The fused rows plus what each channel contributed before fusion.
+
+    Built only by :meth:`HybridSearchService.search_with_trace` — the plain
+    ``search`` path never constructs one, so a caller that does not ask for a
+    trace never pays for this bookkeeping (doc 07 §8, T1.33).
+    """
+
+    results: list[dict]
+    channel_scores: dict[str, dict[str, float]] = field(default_factory=dict)
+    semantic_failed: bool = False
+    keyword_failed: bool = False
 
 
 class HybridSearchService:
@@ -32,7 +48,53 @@ class HybridSearchService:
     ) -> list[dict]:
         fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
         vector, fingerprint = await self.llm.embed(query)
+        semantic_results, keyword_results, _, _ = await self._run_channels(
+            query, vector, fingerprint, fetch_n, filters,
+        )
+        return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
 
+    async def search_with_trace(
+        self,
+        query: str,
+        limit: int = 20,
+        semantic_weight: float = 0.7,
+        filters: MemoryFilter | None = None,
+    ) -> ChannelTrace:
+        """Same channels and fusion as :meth:`search`, plus what each channel
+        contributed per row — the input the retrieval trace envelope needs
+        (doc 07 §8). Only the caller that wants a trace pays for this; the
+        plain ``search`` path above never builds ``channel_scores``.
+        """
+        fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
+        vector, fingerprint = await self.llm.embed(query)
+        semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
+            query, vector, fingerprint, fetch_n, filters,
+        )
+
+        channel_scores: dict[str, dict[str, float]] = {}
+        for source_name, rows in (("semantic", semantic_results), ("keyword", keyword_results)):
+            for row in rows:
+                key = normalize_row_id(row)
+                if key is None:
+                    continue
+                channel_scores.setdefault(key, {})[source_name] = float(row["score"])
+
+        fused = self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        return ChannelTrace(
+            results=fused,
+            channel_scores=channel_scores,
+            semantic_failed=semantic_failed,
+            keyword_failed=keyword_failed,
+        )
+
+    async def _run_channels(
+        self,
+        query: str,
+        vector: list[float],
+        fingerprint: str,
+        fetch_n: int,
+        filters: MemoryFilter | None,
+    ) -> tuple[list[dict], list[dict], bool, bool]:
         semantic_failed = False
         keyword_failed = False
 
@@ -56,7 +118,7 @@ class HybridSearchService:
         if semantic_failed and keyword_failed:
             raise RuntimeError("Hybrid search failed on both semantic and keyword sides")
 
-        return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        return semantic_results, keyword_results, semantic_failed, keyword_failed
 
     async def search_code(
         self,
