@@ -43,13 +43,13 @@ and the Note says so. That rule is the whole point of this file.
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
-| E1 — Engine core | 75 | 75 | 0 | 0 | 0 | 0 | G-B open |
+| E1 — Engine core | 75 | 74 | 0 | 0 | 1 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **185** | **0** | **0** | **0** | **20** | |
+| **Total** | **205** | **184** | **0** | **0** | **1** | **20** | |
 
 ---
 

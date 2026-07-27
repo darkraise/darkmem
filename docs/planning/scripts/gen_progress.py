@@ -41,6 +41,21 @@ if os.path.exists("progress.md"):
         if len(cells) >= 11:
             prior[cells[1]] = tuple(cells[-6:-1])
 
+# The Gate cell is hand-maintained too: EPICS below carries the *initial* text,
+# but clearing a gate is recorded by editing that cell. Regenerating from the
+# literal would silently un-clear a cleared gate, which reads as the gate never
+# having been met.
+ROLLUP_ROW = re.compile(r"^\| (E0|E1|E2|E3|E4|EH1) — ")
+prior_gates = {}
+if os.path.exists("progress.md"):
+    for line in io.open("progress.md", encoding="utf-8").read().split("\n"):
+        m = ROLLUP_ROW.match(line)
+        if not m:
+            continue
+        cells = [c.strip() for c in CELL.split(line)]
+        if len(cells) >= 10:
+            prior_gates[m.group(1)] = cells[-2]
+
 
 def render(cells):
     # An empty cell renders as "| " so a fully-fresh table is byte-identical to
@@ -133,7 +148,7 @@ for code, name, path, gate in EPICS:
             continue
         counts[state[1]] += 1
         t.append(render([tid, title, size, model, effort] + list(state)))
-    rollup.append((code, name, len(rows), counts, gate))
+    rollup.append((code, name, len(rows), counts, prior_gates.get(code, gate)))
     tables.append("\n".join(t) + "\n")
 
 # State left over belongs to a task the epic files no longer define. Dropping it
