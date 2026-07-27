@@ -462,26 +462,66 @@ async def sweep_done(session: AsyncSession, *, retention_hours: int) -> int:
     )).scalars()))
 
 
+# The one definition of "stale", as a composable SQL fragment over
+# `memory_buffer` bound to `:seconds`. The monitor's read surface (T1.13b)
+# selects and filters on this same constant rather than restating it: a second
+# definition would be the one operators read off the screen, and it would drift
+# from the lease the reclaim arm actually enforces.
+STALE_CLAIM_PREDICATE = (
+    "status = 'claimed' AND claimed_at IS NOT NULL "
+    "AND claimed_at < NOW() - CAST(:seconds AS int) * INTERVAL '1 second'"
+)
+
+_PROJECT_PREDICATE = (
+    "(CAST(:project AS text) IS NULL OR project = CAST(:project AS text))"
+)
+
 _STALE_CLAIMS_SQL = text(
-    """
-    SELECT * FROM memory_buffer
-    WHERE status = 'claimed'
-      AND claimed_at IS NOT NULL
-      AND claimed_at < NOW() - CAST(:seconds AS int) * INTERVAL '1 second'
-    ORDER BY claimed_at
-    """
+    f"SELECT * FROM memory_buffer "
+    f"WHERE {STALE_CLAIM_PREDICATE} AND {_PROJECT_PREDICATE} "
+    "ORDER BY claimed_at, id "
+    "LIMIT CAST(:limit AS int) OFFSET CAST(:offset AS int)"
+)
+
+_STALE_CLAIM_COUNT_SQL = text(
+    f"SELECT COUNT(*) FROM memory_buffer "
+    f"WHERE {STALE_CLAIM_PREDICATE} AND {_PROJECT_PREDICATE}"
 )
 
 
 async def stale_claims(
-    session: AsyncSession, *, visibility_seconds: int,
+    session: AsyncSession,
+    *,
+    visibility_seconds: int,
+    project: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[MemoryBuffer]:
     """Rows still `claimed` past the visibility window — the buffer monitor's
-    poison/stall surface (doc 13 §6.1)."""
+    poison/stall surface (doc 13 §6.1).
+
+    `project` rides the WHERE clause rather than a post-fetch filter: this is a
+    read surface over caller data, and a project predicate applied in Python is
+    a leak the moment a caller reads `total` or a page boundary.
+    """
     return list((await session.execute(
         select(MemoryBuffer).from_statement(_STALE_CLAIMS_SQL),
-        {"seconds": visibility_seconds},
+        {
+            "seconds": visibility_seconds,
+            "project": project,
+            "limit": limit,
+            "offset": offset,
+        },
     )).scalars())
+
+
+async def count_stale_claims(
+    session: AsyncSession, *, visibility_seconds: int, project: str | None = None,
+) -> int:
+    return int((await session.execute(
+        _STALE_CLAIM_COUNT_SQL,
+        {"seconds": visibility_seconds, "project": project},
+    )).scalar_one())
 
 
 def detach(rows: list[MemoryBuffer]) -> tuple[list[ClaimedCapture], list[tuple[uuid.UUID, str]]]:
