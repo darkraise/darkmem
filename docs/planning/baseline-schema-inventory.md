@@ -19,40 +19,40 @@ they are in §8, with their own vocabulary.
 
 | Table | Owning doc § | Lands in | Disposition | Note |
 |---|---|---|---|---|
-| `memories` | 04 §3.1 | T0.12a | _(Task 3)_ | The central row and the `active → superseded → deprecated` lifecycle. |
-| `tags` | 04 §3.2 | T0.12a | _(Task 3)_ | `id serial` PK, `name` UNIQUE. |
-| `memory_tags` | 04 §3.2 | T0.12a | _(Task 3)_ | T0.12a's text says "tags"; doc 04 §3.2 treats the pair as one unit (F-03). |
-| `memory_crossrefs` | 04 §3.3 | — | _(Task 3)_ | Live precomputed similarity edges, distinct from `memory_relations` (F-02). |
-| `entities` | 04 §4.1 | T0.12a | _(Task 3)_ | `repo_ids[]` arrives with T0.13 (§5). |
-| `entity_relations` | 04 §4.2 | T0.12a | _(Task 3)_ | `repo_ids[]` arrives with T0.13 (§5). |
-| `embedders` | 04 §5.1 | T0.12a | _(Task 3)_ | The fingerprint registry; owns the child-table DDL (§6). |
-| `repositories` | 04 §6 | T0.12b | _(Task 3)_ | Gains `index_debt` jsonb (§5). |
-| `code_files` | 04 §6 | T0.12b | _(Task 3)_ | |
-| `code_symbols` | 04 §6 | T0.12b | _(Task 3)_ | The live enrichment backlog is its partial index, not `enrichment_queue` (§8). |
-| `code_graph_nodes` | 04 §6 | T0.12b | _(Task 3)_ | `kind` is polymorphic — communities and processes are node kinds. |
-| `code_edges` | 04 §6 | T0.12b | _(Task 3)_ | |
-| `llm_purpose_configs` | 04 §7 | — | _(Task 3)_ | Six inline rows; loses every `*_ref`, gains `classifier_kind` (F-02). |
-| `projects` | 04 §7 | T0.12b | _(Task 3)_ | `(name PK, display_name, properties, created_at)`; lazy registration, no FKs yet. |
-| `config` | 04 §7 | T0.12a | _(Task 3)_ | Key/value rows: feature flags, `job:<key>` state, `admin_password_hash`. |
-| `token_blocklist` | 04 §7 | — | _(Task 3)_ | JWT revocation store (F-02). |
-| `pipeline_failures` | 04 §7 | — | _(Task 3)_ | Polymorphic retry tracker, three partial indexes (F-02). |
-| `conversations` | 04 §7 | — | _(Task 3)_ | Chat surface; carried verbatim at cutover as user data (F-02). |
-| `messages` | 04 §7 | — | _(Task 3)_ | Chat surface (F-02). |
-| `api_keys` | 04 §7, §9 | — | _(Task 3)_ | Exists, unwired; doc 19 §3 `(activation)` (F-02, F-04). |
-| `events` | 04 §8.1 | T0.12b | _(Task 3)_ | `RANGE(created_at)` monthly; forbid-trigger is T1.06's. |
-| `memory_relations` | 04 §8.2 | — | _(Task 3)_ | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
-| `knowledge_triples` | 04 §8.3 | T0.12b | _(Task 3)_ | Rebuild that keeps a name — doc 04 §8.3 fixes it as target-new, not an activation. |
-| `fact_sources` | 04 §8.3 | T0.12b | _(Task 3)_ | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
-| `memory_communities` | 04 §8.4 | — | _(Task 3)_ | Leiden communities per project; ids churn every run (F-02). |
-| `memory_community_members` | 04 §8.4 | — | _(Task 3)_ | Join table, PK `(community_id, memory_id)` (F-02). |
-| `documents` | 04 §8.5 | T0.13 | _(Task 3)_ | Horizon; lands empty and inert. |
-| `blocks` | 04 §8.5 | T0.13 | _(Task 3)_ | Horizon; lands empty and inert. |
-| `memory_buffer` | 04 §8.6 | — | _(Task 3)_ | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
-| `project_repositories` | 04 §8.7 | — | _(Task 3)_ | M2M over one shared `Repository` (F-02). |
-| `knowledge_articles` | 04 §8.8 | T0.12b | _(Task 3)_ | T0.12b's "articles and citations". |
-| `article_citations` | 04 §8.8 | T0.12b | _(Task 3)_ | The one hard FK — `fact_id → knowledge_triples`. |
-| `memory_access_stats` | 04 §9 | — | _(Task 3)_ | 1:1 ranking-prior side table; keeps read churn off `memories` (F-02). |
-| `alembic_version` | — | n/a (Alembic) | _(Task 3)_ | Alembic's own bookkeeping; doc 04 never names it (F-01). |
+| `memories` | 04 §3.1 | T0.12a | `reshaped` | The central row and the `active → superseded → deprecated` lifecycle. |
+| `tags` | 04 §3.2 | T0.12a | `carries-over` | `id serial` PK, `name` UNIQUE. |
+| `memory_tags` | 04 §3.2 | T0.12a | `carries-over` | T0.12a's text says "tags"; doc 04 §3.2 treats the pair as one unit (F-03). |
+| `memory_crossrefs` | 04 §3.3 | — | `carries-over` | Live precomputed similarity edges, distinct from `memory_relations` (F-02). |
+| `entities` | 04 §4.1 | T0.12a | `reshaped` | `repo_ids[]` arrives with T0.13 (§5). |
+| `entity_relations` | 04 §4.2 | T0.12a | `reshaped` | `repo_ids[]` arrives with T0.13 (§5). |
+| `embedders` | 04 §5.1 | T0.12a | `carries-over` | The fingerprint registry; owns the child-table DDL (§6). |
+| `repositories` | 04 §6 | T0.12b | `reshaped` | Gains `index_debt` jsonb (§5). |
+| `code_files` | 04 §6 | T0.12b | `carries-over` | |
+| `code_symbols` | 04 §6 | T0.12b | `carries-over` | The live enrichment backlog is its partial index, not `enrichment_queue` (§8). |
+| `code_graph_nodes` | 04 §6 | T0.12b | `carries-over` | `kind` is polymorphic — communities and processes are node kinds. |
+| `code_edges` | 04 §6 | T0.12b | `carries-over` | |
+| `llm_purpose_configs` | 04 §7 | — | `reshaped` | Six inline rows; drops `provider_id`/`profile_id`/`ml_profile_id`, gains `classifier_kind` (F-02, F-08, F-10). |
+| `projects` | 04 §7 | T0.12b | `target-new` | `(name PK, display_name, properties, created_at)`; lazy registration, no FKs yet. |
+| `config` | 04 §7 | T0.12a | `reshaped` | Key/value rows: feature flags, `job:<key>` state, `admin_password_hash`. Doc 04 §7 prints `value jsonb NOT NULL DEFAULT '{}'`; A.2 shows no server default (§5, F-09). |
+| `token_blocklist` | 04 §7 | — | `carries-over` | JWT revocation store (F-02). |
+| `pipeline_failures` | 04 §7 | — | `carries-over` | Polymorphic retry tracker, three partial indexes (F-02). |
+| `conversations` | 04 §7 | — | `carries-over` | Chat surface; carried verbatim at cutover as user data (F-02). |
+| `messages` | 04 §7 | — | `carries-over` | Chat surface (F-02). |
+| `api_keys` | 04 §7, §9 | — | `carries-over` | Exists, unwired. Doc 19 §3 `(activation)`; schema unchanged in the baseline, first reader **T4.01** (F-02, F-04). |
+| `events` | 04 §8.1 | T0.12b | `target-new` | `RANGE(created_at)` monthly; forbid-trigger is T1.06's. |
+| `memory_relations` | 04 §8.2 | — | `target-new` | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
+| `knowledge_triples` | 04 §8.3 | T0.12b | `target-new` | Exists at HEAD but `target-new` by doc 04 §8.3 — "treated as target-new, NOT as an activation of the dormant demo scaffolding". |
+| `fact_sources` | 04 §8.3 | T0.12b | `target-new` | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
+| `memory_communities` | 04 §8.4 | — | `target-new` | Leiden communities per project; ids churn every run (F-02). |
+| `memory_community_members` | 04 §8.4 | — | `target-new` | Join table, PK `(community_id, memory_id)` (F-02). |
+| `documents` | 04 §8.5 | T0.13 | `target-new, inert` | Horizon; lands empty and inert. |
+| `blocks` | 04 §8.5 | T0.13 | `target-new, inert` | Horizon; lands empty and inert. |
+| `memory_buffer` | 04 §8.6 | — | `target-new` | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
+| `project_repositories` | 04 §8.7 | — | `target-new` | M2M over one shared `Repository` (F-02). |
+| `knowledge_articles` | 04 §8.8 | T0.12b | `target-new` | T0.12b's "articles and citations". |
+| `article_citations` | 04 §8.8 | T0.12b | `target-new` | The one hard FK — `fact_id → knowledge_triples`. |
+| `memory_access_stats` | 04 §9 | — | `target-new` | 1:1 ranking-prior side table; keeps read churn off `memories` (F-02). |
+| `alembic_version` | — | n/a (Alembic) | `carries-over` | Alembic's own bookkeeping; doc 04 never names it (F-01). |
 
 **34 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; thirteen are
 target-new. The remaining five of A.1's twenty-six are dropped and live in §8, so
@@ -107,7 +107,30 @@ _(pending: Task 6)_
 
 ## 8. Not landed — dropped objects, and why
 
-_(pending: Task 3)_
+**The four dispositions of §2 govern objects the baseline *lands*; they cannot express
+"present today, deliberately absent tomorrow".** Recording exactly that is the point of a
+task whose purpose is to prevent the baseline from being an accident of migration
+history: without this section a reader cannot tell a deliberate omission from an
+oversight. So dropped objects get their own two-value vocabulary — `dropped`, and
+`dropped, optional transform` for the one object whose rows may be carried at cutover as
+a convenience. The vocabulary extension is recorded as a Tier-2 amendment in §10 (A-01).
+
+| Object | Present at HEAD | Disposition | Doc § | Why it does not land |
+|---|---|---|---|---|
+| `audit_log` (table) | yes | `dropped, optional transform` | 04 §7, §8.1; 19 §3, §4 | `events` (§2) is the sole audit substrate from day one. Coarse, memory-level, no FKs, no indexes beyond the PK, and its `api_key_id` is always NULL because `api_keys` is unwired. The greenfield has no compatibility window. Doc 19 §4 keeps a one-time transform of legacy rows into `events` at the homelab cutover — `action → event_type`, `memory_id → object_id`, `details → payload` — as a **convenience taken only if the mapping is trivial**, skipped without loss otherwise, which is why this is not a plain drop. |
+| `enrichment_queue` (table) | yes | `dropped` | 04 §6, §12; 19 §3 | Zero code references — no app path inserts or selects from it. The live enrichment backlog is the `code_symbols.enrichment_status='pending'` partial index added at revision `0005`. Doc 04 §12 calls it "droppable once confirmed unreferenced" and doc 04 §7's operations-table set already omits it; doc 19 §3 resolves "droppable" to "never created" for the greenfield. |
+| `llm_providers` (table) | yes | `dropped` | 04 §7; 19 §3 | The LLM-config flattening. darkmem is not an LLM proxy, so the provider indirection is removed and each purpose row carries its connection inline. Doc 19 §3: these "**never exist** in the baseline — the flattening is greenfield, not a transform". |
+| `llm_profiles` (table) | yes | `dropped` | 04 §7; 19 §3 | Same flattening; the profile-management UI goes with it. |
+| `ml_profiles` (table) | yes | `dropped` | 04 §7; 19 §3 | Same flattening. The in-process classifier is re-homed as an inline `classifier_kind = llm \| local` on the `classification` purpose row, not referenced through a profile table. |
+| `llm_purpose_configs.provider_id` (column, uuid FK) | yes | `dropped` | 04 §7; 19 §3 | One of the three indirection columns doc 19 §3 calls "every `*_ref`". None is actually named `*_ref` — see F-08. |
+| `llm_purpose_configs.profile_id` (column, uuid FK) | yes | `dropped` | 04 §7; 19 §3 | As above. |
+| `llm_purpose_configs.ml_profile_id` (column, uuid FK) | yes | `dropped` | 04 §7; 19 §3 | As above; its replacement is the inline `classifier_kind`. |
+| `memories.classified_type` (regex-era column) | **no** — dropped at `0006` | `dropped` | 04 §3.1 | The regex classifier's verdict column, removed when LLM classification became unconditional. Listed here because **the name returns**: the target reuses `classified_type` as the rename target of `llm_classified_type`, carrying the LLM-or-local-classifier verdict, not the old regex semantics (§5). A baseline built from migration history is exactly what would get that name reuse wrong. |
+| `memories.classified_confidence` (regex-era column) | **no** — dropped at `0006` | `dropped` | 04 §3.1 | The regex classifier's confidence score. Doc 04 §3.1 is explicit that it is **not** reintroduced — unlike `classified_type`, the name does not return. |
+
+**Indexes and constraints belonging to a dropped table leave with it** and are not
+dispositioned individually in §3/§4 — §8 already records why they go. The set-difference
+check in Appendix B accounts for them on that basis rather than by omission.
 
 ## 9. SQL-first audit
 
@@ -129,6 +152,19 @@ tier and lifts the Tier-3 rows to the top under their own heading.
 | F-05 | `erd.md` §4 vs doc 04 §5.2 | `erd.md` §4's diagram shows two of the four existing partition parents (`memory_embeddings__slug`, `entity_embeddings__slug`); `code_chunk_embeddings` and `entity_embedding_cache` appear only in its prose notes. This is diagram resolution rather than a table-set disagreement — `erd.md`'s own header says "key columns only" — but it is recorded so §6's eight rows are not read against the diagram's six. |
 | F-06 | Appendix A.8 vs `CLAUDE.md` job registry | The migrations seed **four** `job:<key>` `config` rows against **seven** registered jobs. `graph_orphan_cleanup`, `tag_orphan_cleanup` and `expired_memory_cleanup` have no seeded state row and create theirs at runtime. Whether the baseline should seed all seven (uniform, greppable) or none (state is runtime data) is a decision for T0.12b's job-state work; today's split is neither. |
 | F-07 | `E0-baseline-and-harness.md` T0.12b vs doc 04 §7 | T0.12b's scope names "job state", which is not a table: job state lives in `config` rows keyed `job:<key>` (doc 04 §7), and `config` is T0.12a's. So T0.12b's "job state" is seed data in a table an earlier pass creates, not an object of its own. |
+| F-08 | doc 19 §3 vs Appendix A.2 | Doc 19 §3 drops "`llm_providers`, `llm_profiles`, `ml_profiles` + every `*_ref`". **No column named `*_ref` exists on `llm_purpose_configs`.** A.2 shows the three indirection columns are `provider_id`, `profile_id` and `ml_profile_id` (uuid, each with an `ON DELETE SET NULL` FK). The **only** `*_ref`-named column in the whole schema is `repositories.auth_token_ref`, which doc 04 §6 lists among `repositories`' target columns and which must be **kept**. A T0.12 executor following doc 19 §3 literally would drop the one column to keep and keep the three to drop. §8 names the three by their real names; `auth_token_ref` stays. |
+| F-09 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 prints `config` as `(key varchar(255) PK, value jsonb NOT NULL DEFAULT '{}')`. A.2 shows `config.value` as `NOT NULL` with **no server default**. Same class as the `memories` default deltas (§5, §9): the inventory records what A.2 says and dispositions `config` as `reshaped` on the assumption that the baseline authors the printed default. If §9's ORM-default question resolves the other way, `config` is `carries-over` and this row is a doc-04 description error instead. |
+| F-10 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 fixes the flattened `llm_purpose_configs` row as carrying `{model, base_url, api_key, api_kind, params jsonb, dimensions?, reasoning?}` plus `classifier_kind`. A.2 shows a **`provider varchar NOT NULL DEFAULT 'ollama'`** column at HEAD that this list does not mention. Doc 04 §7 also fixes `api_kind` as the sole vendor-quirk home (E1's T1.03 repeats it), which suggests `provider` is redundant and drops — but no doc says so. Whether `provider` is kept or dropped is a decision for T0.12b and E1's T1.01 (flatten `llm_purpose_configs`), not for this inventory. |
+
+### Amendments proposed to the task corpus
+
+Recorded as proposals with a recommended disposition. **No step of T0.11 edits an epic
+file or `progress.md`** — `docs/planning/` is canonical on `master` and the controller
+owns propagation (runbook §5).
+
+| # | Amendment | Tier | Recommended disposition |
+|---|---|---|---|
+| A-01 | **T0.11's four dispositions cannot express a dropped object.** The acceptance criterion names `carries-over` / `reshaped` / `target-new` / `target-new, inert`, and doc 19 §3's own table uses a wider set: `(target-new, inert)`, `(target-new, template only)`, `(activation)`, `(dropped)`, `(rebuild)`. Three fold cleanly — `(rebuild)` is `target-new` with a note (doc 04 §8.3 fixes `knowledge_triples` as "target-new, NOT an activation"), `(activation)` is `carries-over` with an activation note and a first-reader task id (`api_keys`, `memories.importance`), and `(template only)` is `target-new, inert` with a note (`triple_embeddings`). **`(dropped)` does not fold**, and T0.11's `Doc:` field names 19 **§3** — the section that is entirely about dropped and dormant objects. | **Tier 2** — changes T0.11's acceptance criteria. | Adopt as executed here: the four dispositions govern §2–§6 (objects the baseline lands) and §8 carries dropped objects under its own two-value vocabulary, `dropped` / `dropped, optional transform`. The controller adds the amendment to `E0-baseline-and-harness.md`'s amendment log and, if T0.11's checkbox text is restated, to `progress.md`. |
 
 ---
 

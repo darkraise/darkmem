@@ -260,7 +260,7 @@ Task: T0.11"
 | Object | Present at HEAD | Disposition | Doc § | Why it does not land |
 |---|---|---|---|---|
 
-- [ ] **Step 1: Disposition every §2 row**
+- [x] **Step 1: Disposition every §2 row**
 
 The decision rule, stated once so it is checkable rather than intuitive:
 
@@ -271,17 +271,17 @@ The decision rule, stated once so it is checkable rather than intuitive:
 
 Objects that exist today and are `(activation)` in doc 19 §3 — `api_keys`, `memories.importance` — are **`carries-over` with an activation note and a first-reader task id**, because their schema does not change; only a later phase's read path does.
 
-- [ ] **Step 2: Write §8**
+- [x] **Step 2: Write §8**
 
 Doc 19 §3 supplies the disposition and the reason for `enrichment_queue`, `audit_log`, `llm_providers`, `llm_profiles`, `ml_profiles` and every `*_ref`; doc 04 §7 and §12 corroborate. `audit_log` takes `dropped, optional transform` — doc 19 §4 keeps the legacy-row transform into `events` as a cutover convenience "taken only if the mapping is trivial", so it is not a plain drop.
 
 Add the two column-level drops that already happened: `memories.classified_type` and `memories.classified_confidence` were dropped at revision `0006`, and doc 04 §3.1 states that `classified_confidence` is **not** reintroduced while the *name* `classified_type` returns as the rename target of `llm_classified_type` carrying different semantics. That name reuse across a semantic change is exactly the kind of thing a baseline built from migration history gets wrong, so it earns its own §8 row and a pointer from §5.
 
-- [ ] **Step 3: Open §10 with the vocabulary amendment**
+- [x] **Step 3: Open §10 with the vocabulary amendment**
 
 Write the Tier-2 amendment this plan's vocabulary section specifies: T0.11's four dispositions cannot express `dropped`; §8 is added with its own two-value vocabulary; the change is to T0.11's acceptance criteria; the controller applies it to E0's amendment log and `progress.md`. State it as an amendment **proposal with a recommended disposition**, not as an accomplished edit, since no step here may touch the epic file.
 
-- [ ] **Step 4: Verify — nothing in Appendix A is unaccounted at table level**
+- [x] **Step 4: Verify — nothing in Appendix A is unaccounted at table level**
 
 ```bash
 cd /root/repositories/darkmem/docs/planning
@@ -292,7 +292,7 @@ Record the check in Appendix B as a reproducible `rg`/`comm` pipeline over Appen
 
 Then assert every §2 row has a non-empty disposition, and `git status --porcelain` shows only the inventory file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md
