@@ -146,12 +146,21 @@ class CodePipeline:
         full: bool = False,
         enrich_symbols: bool = False,
         generate_wiki: bool = False,
+        forced_files: tuple[list[str], list[str]] | None = None,
     ) -> dict:
         from app.api.websocket import event_manager
 
         self._repo = await self.repo_manager.get(repo_id)
         if not self._repo:
             raise ValueError(f"Repository {repo_id} not found")
+
+        # A working-tree hash mismatch that HEAD never moved for (T1.40's
+        # code_reconcile job): the caller already knows exactly which paths
+        # drifted, so the empty-diff/no-op case below must not swallow them.
+        # `not any(...)` also normalises an accidentally-empty pair back to
+        # "nothing forced" instead of taking the bypass for no reason.
+        if forced_files is not None and not any(forced_files):
+            forced_files = None
 
         repo = self._repo
         new_sha = await self.repo_manager.pull_repo(repo)
@@ -164,7 +173,7 @@ class CodePipeline:
 
         old_sha = repo.last_indexed_commit
 
-        if old_sha == new_sha and not full:
+        if old_sha == new_sha and not full and forced_files is None:
             # Outstanding debt is work this repo owes at the *current* sha, so an
             # unchanged HEAD must not short-circuit it: without this the queue
             # only ever drains when someone happens to push, which is the same
@@ -203,7 +212,7 @@ class CodePipeline:
         await self.session.commit()
 
         try:
-            await self.phase_01_file_discovery(old_sha, new_sha, full)
+            await self.phase_01_file_discovery(old_sha, new_sha, full, forced_files)
             total = len(self._changed_files)
 
             await event_manager.broadcast("repo.indexing_started", {
@@ -413,7 +422,11 @@ class CodePipeline:
         logger.info("[pipeline] phase %s done in %.2fs", name, elapsed)
 
     async def phase_01_file_discovery(
-        self, old_sha: str | None, new_sha: str, full: bool
+        self,
+        old_sha: str | None,
+        new_sha: str,
+        full: bool,
+        forced_files: tuple[list[str], list[str]] | None = None,
     ) -> None:
         t0 = await self._phase_log("01_file_discovery")
         work_dir = self._work_dir
@@ -429,22 +442,32 @@ class CodePipeline:
         else:
             used_full = full
             if not full:
-                try:
-                    self._changed_files, self._deleted_files = await _diff_files(
-                        work_dir, old_sha, new_sha
+                if forced_files is not None:
+                    # code_reconcile already found the exact drift by hashing
+                    # the working tree against CodeFile.content_hash — HEAD
+                    # didn't move, so there is no commit range for _diff_files
+                    # to compare, and re-deriving the same answer from git
+                    # would just repeat that hashing for nothing.
+                    self._changed_files, self._deleted_files = (
+                        list(forced_files[0]), list(forced_files[1]),
                     )
-                except Exception as exc:
-                    # A failed diff must not degrade into wiping the graph.
-                    # Fall back to a full pass instead: every file is
-                    # reprocessed in place (phase_03's per-file delete+insert,
-                    # not a repo-wide wipe), so a transient git failure costs
-                    # extra work, never data.
-                    logger.warning(
-                        "git diff failed for repo %s (%s -> %s); falling back "
-                        "to a full index instead of wiping the graph: %s",
-                        self._repo.name, old_sha, new_sha, exc,
-                    )
-                    used_full = True
+                else:
+                    try:
+                        self._changed_files, self._deleted_files = await _diff_files(
+                            work_dir, old_sha, new_sha
+                        )
+                    except Exception as exc:
+                        # A failed diff must not degrade into wiping the graph.
+                        # Fall back to a full pass instead: every file is
+                        # reprocessed in place (phase_03's per-file delete+insert,
+                        # not a repo-wide wipe), so a transient git failure costs
+                        # extra work, never data.
+                        logger.warning(
+                            "git diff failed for repo %s (%s -> %s); falling back "
+                            "to a full index instead of wiping the graph: %s",
+                            self._repo.name, old_sha, new_sha, exc,
+                        )
+                        used_full = True
 
             if used_full:
                 self._force_full = True

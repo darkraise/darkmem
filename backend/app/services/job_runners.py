@@ -72,6 +72,72 @@ def make_repo_sync_runner(
     return run
 
 
+def make_code_reconcile_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Hash every previously-indexed repo's working tree and reconcile drift.
+
+    Catches what `repo_sync`'s HEAD-sha comparison cannot see at all: a working
+    tree edited directly (a `local_path` repo with no fetchable remote, or a
+    write straight into a clone directory) never moves HEAD, so
+    `CodePipeline.run`'s own short-circuit treats it as up to date forever.
+    This job hashes the tree independently of HEAD (`compute_working_tree_drift`)
+    and, only when that finds a mismatch, feeds it through the same incremental
+    path via `CodePipeline.run(..., forced_files=...)`.
+
+    Deliberately runs with `llm=None`: reconcile rebuilds the code graph
+    (files, symbols, calls) from a hash mismatch, never the LLM-backed
+    embedding or enrichment phases, so it stays deterministic and free even
+    though live model credentials exist. A real commit still gets its
+    embeddings refreshed via `repo_sync`, which does carry the LLM.
+    """
+    async def run() -> None:
+        from app.models.code import Repository
+        from app.services.code_pipeline import CodePipeline
+        from app.services.code_reconcile import compute_working_tree_drift
+        from app.services.repo_manager import RepoManager
+
+        async with session_factory() as list_session:
+            repos = (await list_session.execute(
+                select(Repository).where(Repository.last_indexed_commit.isnot(None))
+            )).scalars().all()
+            repos_to_check = list(repos)
+
+        for repo in repos_to_check:
+            async with session_factory() as repo_session:
+                try:
+                    manager = RepoManager(repo_session)
+                    repo_row = await manager.get(repo.id)
+                    if repo_row is None:
+                        continue
+                    work_dir = manager.repo_working_dir(repo_row)
+                    if not work_dir.exists():
+                        continue
+
+                    changed, deleted = await compute_working_tree_drift(
+                        repo_session, repo_row, work_dir,
+                    )
+                    if not changed and not deleted:
+                        continue
+
+                    pipeline = CodePipeline(
+                        session=repo_session, llm=None, vector_repo=None,
+                        repo_manager=manager,
+                    )
+                    await pipeline.run(repo_row.id, forced_files=(changed, deleted))
+                    await repo_session.commit()
+                    logger.info(
+                        "Code reconcile: repo=%s changed=%d deleted=%d",
+                        repo_row.name, len(changed), len(deleted),
+                    )
+                except ValueError as e:
+                    # repo_working_dir's local_path revalidation rejects a row
+                    # whose path moved into a blocked tree since it was created.
+                    logger.warning("Code reconcile skipped repo %s: %s", repo.name, e)
+                except Exception as e:
+                    await repo_session.rollback()
+                    logger.error("Code reconcile failed for %s: %s", repo.name, e)
+    return run
+
+
 def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
     """Delete expired entries from the token blocklist."""
     async def run() -> None:
