@@ -578,8 +578,10 @@ def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
         if name in have:
             continue
         # Whole-word, case-insensitive match. Use a manual word boundary that
-        # accepts adjacent ``.``/``-``/``_`` as separators so ``CPU.``,
-        # ``CPU-bound``, and ``CPU_count`` all surface the bare token.
+        # accepts adjacent ``.`` and ``-`` as separators so ``CPU.`` and
+        # ``CPU-bound`` surface the bare token. ``_`` stays inside the class:
+        # it binds an identifier rather than separating words, so ``CPU_count``
+        # must not yield ``cpu``.
         pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", re.IGNORECASE)
         any_positive = False
         for m in pattern.finditer(content):
@@ -615,6 +617,95 @@ def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
                 ]
                 have = {(e.get("name") or "").strip().lower() for e in rescued}
     return rescued
+
+
+def _mentioned_whole_word(name: str, content: str) -> bool:
+    """True when ``name`` appears in ``content`` as a whole word."""
+    if not name:
+        return False
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])"
+    return re.search(pattern, content, re.IGNORECASE) is not None
+
+
+# Head nouns the extraction system prompt already declares to be `artifact`:
+# rule 7b's named app components and surfaces, and rule 9j's first-class
+# documents. Transcribed from the prompt rather than invented here, because
+# the model under-complies with both rules and doc 06 §4's standing remedy is
+# the pass chain, never another prompt round. Any head noun outside these two
+# sets keeps the taxonomy's default for an absent type — the prompt types
+# 'savepoint' `concept` for exactly that reason.
+_ARTIFACT_HEAD_NOUNS: frozenset[str] = frozenset({
+    # rule 7b — named app components and surfaces
+    "app", "frontend", "backend", "cli", "api", "gateway", "worker",
+    "daemon", "scheduler", "dashboard", "console", "panel", "portal",
+    "modal", "tab", "widget",
+    # rule 9j — first-class documents
+    "postmortem", "rfc", "doc", "report", "spec",
+})
+
+
+def _endpoint_entity_type(name: str) -> str:
+    head = re.split(r"[\s\-_/]+", name.strip().lower())[-1] if name.strip() else ""
+    head = head.rstrip("s") if head.rstrip("s") in _ARTIFACT_HEAD_NOUNS else head
+    return "artifact" if head in _ARTIFACT_HEAD_NOUNS else normalize_entity_type("")
+
+
+def _rescue_relation_endpoints(
+    entities: list[dict], relationships: list[dict], content: str,
+) -> list[dict]:
+    """Reinstate a name the model asserted in one of its own edges but left
+    out of its own entity list.
+
+    The extraction model's ``entities`` array is biased towards proper nouns.
+    It reliably lists ``Auth0``, ``RFC 7519`` and ``Datadog`` while dropping
+    the common-noun component the sentence is actually about — ``the design
+    doc``, ``the web app``, ``the CLI`` — even when its ``relationships``
+    array names that component as an endpoint of the same response.
+    ``_remap_to_valid_entities`` then deletes every edge anchored to the
+    missing name, so one omission costs the entity *and* all of its
+    relations. An edge is an assertion that both of its endpoints exist, so
+    the model's own output already carries the evidence and no curated list
+    of names is needed to act on it.
+
+    A candidate is admitted only if it clears the same bar a model-listed
+    entity clears: it must be grounded in the source text as a whole word,
+    and it is run through the entity-shaping stage itself, so the noise,
+    literal, fidelity and negation filters apply to it exactly as they
+    applied to the model's own list and cannot drift apart from it.
+    """
+    if not content or not relationships:
+        return entities
+    have = {(e.get("name") or "").strip().lower() for e in entities}
+    candidates: list[dict] = []
+    seen: set[str] = set()
+    for r in relationships:
+        for side in ("source", "target"):
+            name = (r.get(side) or "").strip()
+            key = name.lower()
+            if not name or key in have or key in seen:
+                continue
+            if not _mentioned_whole_word(name, content):
+                continue
+            seen.add(key)
+            candidates.append({
+                "name": name,
+                "type": _endpoint_entity_type(name),
+                "properties": {},
+            })
+    if not candidates:
+        return entities
+
+    shaping = tuple(p for p in PASS_REGISTRY if p.stage == STAGE_ENTITY_SHAPING)
+    shaped = run_passes(shaping, CleanState(content=content, entities=candidates))
+
+    out = list(entities)
+    for e in shaped.entities:
+        key = (e.get("name") or "").strip().lower()
+        if not key or key in have:
+            continue
+        have.add(key)
+        out.append(e)
+    return out
 
 
 # Connector phrases that imply a relation when sandwiched between two
@@ -2025,6 +2116,12 @@ PASS_REGISTRY: tuple[Pass, ...] = (
     Pass("dedup_entities", STAGE_ENTITY_SHAPING, _dedup_entities, ("entities",), ("entities",)),
     # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
     # not dropped as substrings of longer model proposals (``cpu_fallback``).
+    #
+    # Endpoint rescue leads the stage: it reinstates names the model itself
+    # asserted, so the passes after it see the model's complete claim set —
+    # ``rescue_known_entities`` builds its span guard from the entity list and
+    # ``rescue_happened_on`` picks its date anchor from it.
+    Pass("rescue_relation_endpoints", STAGE_ENTITY_RESCUE, _rescue_relation_endpoints, ("entities", "relationships", "content"), ("entities",)),
     Pass("rescue_known_entities", STAGE_ENTITY_RESCUE, _rescue_known_entities, ("entities", "content"), ("entities",)),
     # File-path rescue: scans for ``a/b/c.py``-style tokens the LLM
     # dropped and adds them as ``artifact`` entities. Closes the
@@ -2088,6 +2185,21 @@ ORDERING_CONSTRAINTS: tuple[OrderingConstraint, ...] = (
         why=(
             "rescue after dedup keeps canonical short names ('cpu', 'rg') that "
             "dedup would otherwise drop against a longer model proposal"
+        ),
+    ),
+    RunsBefore(
+        "dedup_entities", "rescue_relation_endpoints",
+        why=(
+            "the same whitespace-collapse equality that would drop a rescued "
+            "short name would drop a rescued edge endpoint ('web app' against "
+            "a model-listed 'webapp')"
+        ),
+    ),
+    RunsBefore(
+        "rescue_relation_endpoints", "remap_to_valid_entities",
+        why=(
+            "the remap deletes every edge whose endpoint is not a valid "
+            "entity, which is the loss the endpoint rescue exists to prevent"
         ),
     ),
     RunsBefore(
@@ -2177,6 +2289,10 @@ __all__ = [
     "_FILE_PATH_RE",
     "_rescue_file_path_entities",
     "_rescue_known_entities",
+    "_mentioned_whole_word",
+    "_ARTIFACT_HEAD_NOUNS",
+    "_endpoint_entity_type",
+    "_rescue_relation_endpoints",
     "_RESCUE_CONNECTORS",
     "_SUBJECT_TRACKED_CONNECTORS",
     "_TRANSITION_VERBS_RE",
