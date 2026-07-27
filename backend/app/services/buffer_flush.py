@@ -29,9 +29,19 @@ still walks into `buffer_max_attempts` instead of looping forever.
 row; `_assert_replay_coverage` turns a field added to that tuple without a
 replay into an import-time error rather than into data loss that reads as a
 successful capture.
+
+**A row fails alone.** Claiming is a batch operation but settling is per row.
+Whatever a claimed row shares a batch with, only failures that are genuinely
+batch-wide — a dead embedder, an exhausted deadline — may settle more than the
+row that caused them. Everything that can fail on one row's own data settles
+that row and lets its neighbours through; the batch is a throughput device, not
+a fate the rows share. Without this, one 202-accepted capture carrying data the
+schema cannot hold walks up to `buffer_claim_batch - 1` innocent, already
+acknowledged captures into `error` beside it (Fable review of T1.13, I-1).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import socket
@@ -76,6 +86,14 @@ BUFFER_FLUSH_MIN_INTERVAL_SECONDS = 1
 # `buffer_claim_visibility_seconds`, or a still-live run could have its own rows
 # reclaimed underneath it.
 BUFFER_FLUSH_MAX_RUN_SECONDS = 300
+# What the flush leaves itself to settle its own rows before the registry's
+# ceiling cancels it. A cancelled run never reaches a settle, so its rows sit
+# `claimed` for a whole visibility window and burn the attempt they took at
+# claim time with nothing recorded about why.
+BUFFER_FLUSH_SETTLE_MARGIN_SECONDS = 10
+BUFFER_FLUSH_DEADLINE_SECONDS = (
+    BUFFER_FLUSH_MAX_RUN_SECONDS - BUFFER_FLUSH_SETTLE_MARGIN_SECONDS
+)
 
 BUFFER_FLUSH_CONFIG_SCHEMA: list[FieldDescriptor] = [
     FieldDescriptor(
@@ -125,8 +143,10 @@ _REPLAY_TO_MEMORY_COLUMN: dict[str, str] = {
 _REPLAY_VIA_ASSOCIATION: frozenset[str] = frozenset({"tags"})
 
 # The buffer's own bookkeeping, not caller data: the pre-minted memory id is the
-# row's identity rather than one of its fields.
-_BUFFER_BOOKKEEPING_KEYS: frozenset[str] = frozenset({"memory_id"})
+# row's identity rather than one of its fields, and `flush_timeouts` is the
+# deadline ladder's counter.
+FLUSH_TIMEOUTS_KEY = "flush_timeouts"
+_BUFFER_BOOKKEEPING_KEYS: frozenset[str] = frozenset({"memory_id", FLUSH_TIMEOUTS_KEY})
 
 # A partial extraction is degraded, not failed: the vector and the content are
 # written and only the graph is thin, so re-claiming the row would burn attempts
@@ -305,6 +325,59 @@ _CLAIM_IDS_SQL = text(
     RETURNING b.id
     """
 )
+
+
+_HEAD_TIMEOUTS_SQL = text(
+    f"""
+    SELECT COALESCE(CAST(metadata ->> '{FLUSH_TIMEOUTS_KEY}' AS int), 0)
+    FROM memory_buffer
+    WHERE status = 'pending'
+    ORDER BY created_at, id
+    LIMIT 1
+    """
+)
+
+# A batch that cannot finish inside the deadline is halved on the next tick, so
+# the shift is bounded by the widest configurable batch rather than growing
+# without limit; ten halvings already take 1000 rows to one.
+_MAX_CLAIM_HALVINGS = 10
+
+_TIMED_OUT_SQL = text(
+    f"""
+    UPDATE memory_buffer
+    SET status = 'pending',
+        attempts = GREATEST(attempts - 1, 0),
+        last_error = CAST(:message AS text),
+        claimed_at = NULL,
+        claimed_by = NULL,
+        metadata = jsonb_set(
+            COALESCE(metadata, '{{}}'::jsonb),
+            '{{{FLUSH_TIMEOUTS_KEY}}}',
+            to_jsonb(
+                COALESCE(CAST(metadata ->> '{FLUSH_TIMEOUTS_KEY}' AS int), 0) + 1
+            )
+        )
+    WHERE id = ANY(CAST(:ids AS uuid[]))
+    """
+)
+
+
+async def claim_limit(session: AsyncSession, *, configured: int) -> int:
+    """How many rows this tick may claim: the configured batch, halved once per
+    deadline the row at the head of the queue has already caused.
+
+    This is what stops a batch too slow for the ceiling from marching a healthy
+    backlog into `error` (Fable review of T1.13, I-3). Raising the ceiling would
+    only move that cliff; shrinking the batch removes it, because the flush
+    converges on a size the ceiling can carry instead of failing every tick. The
+    counter lives on the row rather than in job state so the shrink follows the
+    slow work as it drains, and the claim's oldest-first order is what makes the
+    head row representative of what the tick is about to attempt.
+    """
+    head = (await session.execute(_HEAD_TIMEOUTS_SQL)).scalar()
+    if not head:
+        return configured
+    return max(1, configured >> min(int(head), _MAX_CLAIM_HALVINGS))
 
 
 async def claim_batch(
@@ -539,6 +612,28 @@ async def _release(
         )
 
 
+async def _requeue_timed_out(
+    session: AsyncSession, buffer_ids: list[uuid.UUID], *, message: str,
+) -> None:
+    """Return a batch the deadline cut short to `pending`, refunding the attempt.
+
+    A deadline says nothing about any individual row — nobody reached a settle,
+    and the rows that finished are indistinguishable from the ones that did not
+    — so charging every row an attempt for it walks a merely slow backlog into
+    `error` without a single row being poisonous. The refund is safe against the
+    livelock the claim-time increment exists to prevent because `claim_limit`
+    halves the next claim off the same event: the batch converges towards one
+    row, and a lone row that still cannot finish inside the whole deadline is
+    genuinely poisonous and settles through `_release` on the ordinary ladder.
+    """
+    if not buffer_ids:
+        return
+    await session.execute(
+        _TIMED_OUT_SQL,
+        {"ids": [str(i) for i in buffer_ids], "message": message[:2000]},
+    )
+
+
 async def _fail_permanently(
     session: AsyncSession, rejected: list[tuple[uuid.UUID, str]],
 ) -> None:
@@ -571,7 +666,11 @@ async def _claim_and_prepare(
         if buffer_ids is not None:
             rows = await claim_specific(session, buffer_ids=buffer_ids, worker=worker)
         else:
-            rows = await claim_batch(session, limit=limit or 0, worker=worker)
+            rows = await claim_batch(
+                session,
+                limit=await claim_limit(session, configured=limit or 0),
+                worker=worker,
+            )
         captures, rejected = detach(rows)
         await _fail_permanently(session, rejected)
         # Commit the claim before anything opens a pipeline session (invariant
@@ -582,32 +681,137 @@ async def _claim_and_prepare(
     return rows, captures, rejected
 
 
-async def _replay(
-    open_session, pipeline, captures: list[ClaimedCapture], *, max_attempts: int,
-) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-    """Materialize + run the pipeline (or skip it, pipeline-less) + settle.
+async def _materialize_batch(
+    open_session, captures: list[ClaimedCapture],
+) -> list[dict[str, Any]]:
+    """One `materialize` call inside its own transaction, rolled back on failure.
 
-    Returns `(done, failed)` buffer ids. Every capture passed in resolves into
-    exactly one of the two — the caller-visible "did this row's flush finish"
-    signal is `done | failed`, regardless of which one, since the `memories`
-    row is written by `materialize` before the pipeline ever runs.
+    The rollback is explicit because `open_session` may be
+    `as_session_factory`'s adapter over a caller's session, which deliberately
+    neither commits nor rolls back on exit — leaving that session poisoned for
+    every statement after this one.
     """
-    if not captures:
-        return [], []
-
-    try:
-        async with open_session() as session:
+    async with open_session() as session:
+        try:
             entries = await materialize(session, captures)
             await session.commit()
-        if pipeline is not None:
-            statuses = await pipeline.process_batch(entries)
-        else:
+        except Exception:
+            await session.rollback()
+            raise
+    return entries
+
+
+async def _materialize_isolated(
+    open_session, captures: list[ClaimedCapture],
+) -> tuple[list[ClaimedCapture], list[dict[str, Any]], list[tuple[uuid.UUID, str]]]:
+    """Materialize the batch, falling back to one row at a time if it raises.
+
+    `materialize` is where a capture's own data first meets the schema, so it is
+    where a single bad row can raise for the batch — an over-length tag against
+    `tags.name`'s `String(255)` is the proven case. The batch attempt stays for
+    throughput; the fallback is what stops the raiser from settling anybody
+    else, and it also produces a `last_error` that names the actual failure
+    instead of the batch's shared, untriageable one.
+    """
+    if not captures:
+        return [], [], []
+    if len(captures) > 1:
+        try:
+            return list(captures), await _materialize_batch(open_session, captures), []
+        except Exception:
+            logger.warning(
+                "buffer flush: batch materialize of %d captures failed, "
+                "retrying row by row to isolate the offender",
+                len(captures),
+                exc_info=True,
+            )
+
+    survivors: list[ClaimedCapture] = []
+    entries: list[dict[str, Any]] = []
+    failures: list[tuple[uuid.UUID, str]] = []
+    for capture in captures:
+        try:
+            entries.extend(await _materialize_batch(open_session, [capture]))
+        except Exception as exc:
+            failures.append((capture.buffer_id, f"{type(exc).__name__}: {exc}"))
+            continue
+        survivors.append(capture)
+    return survivors, entries, failures
+
+
+async def _replay(
+    open_session,
+    pipeline,
+    captures: list[ClaimedCapture],
+    *,
+    max_attempts: int,
+    deadline_seconds: float | None = None,
+) -> tuple[list[uuid.UUID], list[uuid.UUID], list[uuid.UUID]]:
+    """Materialize + run the pipeline (or skip it, pipeline-less) + settle.
+
+    Returns `(done, failed, timed_out)` buffer ids. Every capture passed in
+    resolves into exactly one of the three — the caller-visible "did this row's
+    flush finish" signal is `done | failed`, regardless of which one, since the
+    `memories` row is written by `materialize` before the pipeline ever runs.
+
+    `deadline_seconds` bounds the pipeline call so the flush settles its own
+    rows rather than being cancelled mid-call with them left `claimed`; the
+    scheduled job passes it and the interactive `wait_process` bypass does not,
+    since that caller carries its own bound.
+    """
+    if not captures:
+        return [], [], []
+
+    captures, entries, unmaterializable = await _materialize_isolated(
+        open_session, captures
+    )
+    if unmaterializable:
+        async with open_session() as session:
+            await _release(session, unmaterializable, max_attempts=max_attempts)
+            await session.commit()
+    failed = [buffer_id for buffer_id, _ in unmaterializable]
+    if not captures:
+        return [], failed, []
+
+    try:
+        if pipeline is None:
             # No pipeline configured (e.g. a Postgres-only boot, or a test
             # harness that never wires one): the memory row still
             # materializes above, just unenriched — mirrors the pre-buffer
             # `if self.pipeline:` gate MemoryService always had.
             statuses = [{} for _ in entries]
+        elif deadline_seconds is None:
+            statuses = await pipeline.process_batch(entries)
+        else:
+            statuses = await asyncio.wait_for(
+                pipeline.process_batch(entries), timeout=deadline_seconds
+            )
+    except asyncio.TimeoutError:
+        message = (
+            f"flush deadline of {deadline_seconds:g}s exceeded with "
+            f"{len(captures)} row(s) in flight"
+        )
+        logger.warning("buffer flush: %s", message)
+        timed_out = [c.buffer_id for c in captures]
+        async with open_session() as session:
+            if len(captures) > 1:
+                await _requeue_timed_out(session, timed_out, message=message)
+            else:
+                # A lone row that cannot finish inside the whole deadline is the
+                # row's own problem, so it pays an attempt and reaches triage.
+                await _release(
+                    session,
+                    [(c.buffer_id, message) for c in captures],
+                    max_attempts=max_attempts,
+                )
+                await session.commit()
+                return [], failed + timed_out, []
+            await session.commit()
+        return [], failed, timed_out
     except Exception as exc:
+        # Everything left is batch-wide by construction: `process_batch` swallows
+        # per-memory failures into `statuses`, so an exception escaping it is the
+        # embedder or the session, not one capture's data.
         logger.exception("buffer flush batch failed for %d captures", len(captures))
         async with open_session() as session:
             await _release(
@@ -616,7 +820,7 @@ async def _replay(
                 max_attempts=max_attempts,
             )
             await session.commit()
-        return [], [c.buffer_id for c in captures]
+        return [], failed + [c.buffer_id for c in captures], []
 
     done: list[uuid.UUID] = []
     failures: list[tuple[uuid.UUID, str]] = []
@@ -632,7 +836,7 @@ async def _replay(
         await _mark_done(session, done)
         await _release(session, failures, max_attempts=max_attempts)
         await session.commit()
-    return done, [buffer_id for buffer_id, _ in failures]
+    return done, failed + [buffer_id for buffer_id, _ in failures], []
 
 
 async def flush_once(
@@ -640,11 +844,15 @@ async def flush_once(
     pipeline,
     *,
     worker: str | None = None,
+    deadline_seconds: float = BUFFER_FLUSH_DEADLINE_SECONDS,
 ) -> dict[str, int]:
     """One flush tick: recover, sweep, claim, replay, settle."""
     settings = await buffer_settings(session_factory)
     worker = worker or worker_identity()
-    stats = {"reclaimed": 0, "swept": 0, "claimed": 0, "done": 0, "failed": 0, "rejected": 0}
+    stats = {
+        "reclaimed": 0, "swept": 0, "claimed": 0,
+        "done": 0, "failed": 0, "rejected": 0, "timed_out": 0,
+    }
 
     async with session_factory() as session:
         reclaimed = await reclaim_stale(
@@ -664,11 +872,16 @@ async def flush_once(
     stats["claimed"] = len(rows)
     stats["rejected"] = len(rejected)
 
-    done, failed = await _replay(
-        session_factory, pipeline, captures, max_attempts=settings["buffer_max_attempts"]
+    done, failed, timed_out = await _replay(
+        session_factory,
+        pipeline,
+        captures,
+        max_attempts=settings["buffer_max_attempts"],
+        deadline_seconds=deadline_seconds,
     )
     stats["done"] = len(done)
     stats["failed"] = len(failed)
+    stats["timed_out"] = len(timed_out)
     return stats
 
 
@@ -715,7 +928,9 @@ async def flush_claimed(
     rows, captures, rejected = await _claim_and_prepare(
         open_session, worker=worker, buffer_ids=buffer_ids
     )
-    done, failed = await _replay(open_session, pipeline, captures, max_attempts=max_attempts)
+    done, failed, _ = await _replay(
+        open_session, pipeline, captures, max_attempts=max_attempts
+    )
     return ClaimedFlushResult(
         claimed=frozenset(r.id for r in rows),
         rejected=frozenset(buffer_id for buffer_id, _ in rejected),

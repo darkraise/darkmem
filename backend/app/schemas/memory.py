@@ -2,10 +2,43 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.models.memory import (
+    TAG_CATEGORY_MAX_LENGTH,
+    TAG_NAME_MAX_LENGTH,
+    tag_category,
+)
 
 
 MemoryStatus = Literal["active", "deprecated", "superseded"]
+
+
+def _validate_tag_lengths(tags: list[str] | None) -> list[str] | None:
+    """Reject a tag the `tags` table cannot hold, at the door.
+
+    Capture is a 202 accept: the write it acknowledges happens later, in the
+    buffer flush, where a tag longer than its column raises against data the
+    caller can no longer be told about. Rejecting it here keeps the ack honest —
+    a capture that cannot possibly be materialised is a 4xx, never an accept
+    followed by a silent landing in the poison queue (Fable review of T1.13,
+    finding I-1).
+    """
+    if not tags:
+        return tags
+    for tag in tags:
+        if len(tag) > TAG_NAME_MAX_LENGTH:
+            raise ValueError(
+                f"tag is {len(tag)} characters, over the "
+                f"{TAG_NAME_MAX_LENGTH}-character limit: {tag[:40]!r}..."
+            )
+        category = tag_category(tag)
+        if category is not None and len(category) > TAG_CATEGORY_MAX_LENGTH:
+            raise ValueError(
+                f"tag category {category[:40]!r}... is {len(category)} characters, "
+                f"over the {TAG_CATEGORY_MAX_LENGTH}-character limit"
+            )
+    return tags
 
 
 class MemoryCreate(BaseModel):
@@ -21,6 +54,8 @@ class MemoryCreate(BaseModel):
     metadata: dict = Field(default_factory=dict)
     expires_at: datetime | None = None
     project: str | None = None
+
+    _check_tags = field_validator("tags")(_validate_tag_lengths)
 
 
 class CaptureAck(BaseModel):
@@ -46,6 +81,8 @@ class MemoryUpdate(BaseModel):
     is_archived: bool | None = None
     project: str | None = None
     status: MemoryStatus | None = None
+
+    _check_tags = field_validator("tags")(_validate_tag_lengths)
 
 
 

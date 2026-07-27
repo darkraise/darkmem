@@ -94,6 +94,65 @@ async def test_capture_validation_failure_writes_nothing(client, auth_headers, s
     assert await _buffer_count(session) == 0
 
 
+async def test_capture_rejects_a_tag_the_tags_table_cannot_hold(
+    client, auth_headers, session
+):
+    """Fable review of T1.13, finding I-1. `tags.name` is `String(255)` and the
+    door used to bound nothing, so a 302-character tag was 202-accepted and then
+    raised in the flush — where the caller can no longer be told. An accept that
+    cannot possibly be materialised is a 4xx, and it writes no buffer row."""
+    response = await client.post(
+        "/api/v1/memories",
+        json={"content": "over-long tag", "tags": ["x" * 302]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    assert "255" in response.text
+    assert await _buffer_count(session) == 0
+
+
+async def test_capture_rejects_a_tag_whose_category_cannot_be_held(
+    client, auth_headers, session
+):
+    """`tags.category` is `String(50)` and is derived from the name's prefix, so
+    a tag can be short enough itself and still not fit."""
+    response = await client.post(
+        "/api/v1/memories",
+        json={"content": "over-long tag category", "tags": ["c" * 60 + "/value"]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    assert "50" in response.text
+    assert await _buffer_count(session) == 0
+
+
+async def test_batch_capture_rejects_an_over_long_tag(client, auth_headers, session):
+    """The batch door validates every entry through the same schema, so one bad
+    entry is rejected before any of its 99 neighbours is buffered."""
+    response = await client.post(
+        "/api/v1/memories/batch",
+        json={"entries": [
+            {"content": "innocent"},
+            {"content": "poison", "tags": ["x" * 302]},
+        ]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    assert await _buffer_count(session) == 0
+
+
+async def test_a_tag_at_the_column_limit_is_still_accepted(client, auth_headers, session):
+    """The bound is the column's, not a guess: the longest tag the table can
+    hold must still capture."""
+    response = await client.post(
+        "/api/v1/memories",
+        json={"content": "boundary tag", "tags": ["x" * 255]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 202
+    assert await _buffer_count(session) == 1
+
+
 async def test_capture_requires_auth(client):
     response = await client.post("/api/v1/memories", json={"content": "no auth"})
     assert response.status_code in (401, 403)

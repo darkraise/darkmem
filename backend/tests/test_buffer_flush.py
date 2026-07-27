@@ -39,10 +39,12 @@ from app.services.embedder_registry import child_table
 from app.services.buffer_flush import (
     BUFFER_FLUSH_CONFIG_SCHEMA,
     BUFFER_FLUSH_CRON,
+    BUFFER_FLUSH_DEADLINE_SECONDS,
     BUFFER_FLUSH_DEFAULTS,
     BUFFER_FLUSH_JOB_KEY,
     BUFFER_FLUSH_MAX_RUN_SECONDS,
     BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
+    BUFFER_FLUSH_SETTLE_MARGIN_SECONDS,
     _assert_replay_coverage,
     buffer_settings,
     claim_batch,
@@ -537,6 +539,200 @@ async def test_a_raising_pipeline_releases_the_whole_batch(setup_database):
         assert all(r["claimed_by"] is None for r in rows.values())
     finally:
         await drop_buffer(buffer_ids)
+
+
+# ── Fable review of T1.13, finding I-1: one poison row, one victim ──
+
+
+async def test_an_unmaterializable_row_fails_alone(setup_database):
+    """A capture whose own data cannot be written must settle by itself.
+
+    The reviewer's driver: one buffered capture carrying a 302-character tag
+    (`tags.name` is `String(255)`) plus two innocent neighbours, claimed in one
+    batch. Before the fix `materialize` raised for the batch and `_replay`'s
+    single handler released all three, so two 202-acknowledged captures with
+    nothing wrong with them walked the attempts ladder into `error` beside the
+    poison one, all three carrying the same uninformative `DBAPIError`. At the
+    default claim batch of 32 that is up to 31 innocent captures per tick.
+    """
+    await set_job_config({"buffer_max_attempts": 2})
+    first = await seed_buffer(1)
+    poison = await seed_buffer(1, tags=["x" * 302])
+    last = await seed_buffer(1)
+    innocent = first + last
+    pipeline = RecordingPipeline()
+    memory_ids: list[uuid.UUID] = []
+    try:
+        stats = await flush_once(factory(), pipeline)
+        assert stats["claimed"] == 3
+        assert stats["done"] == 2, "the innocent rows must still flush"
+        assert stats["failed"] == 1
+
+        rows = await buffer_rows(innocent + poison)
+        memory_ids = [uuid.UUID(r["metadata"]["memory_id"]) for r in rows.values()]
+        assert {rows[i]["status"] for i in innocent} == {"done"}
+        assert {rows[i]["attempts"] for i in innocent} == {1}
+        assert rows[poison[0]]["status"] == "pending"
+
+        # Triage has to be able to name the culprit from `last_error` alone.
+        assert rows[poison[0]]["last_error"] is not None
+        assert "too long" in rows[poison[0]]["last_error"]
+        assert all(rows[i]["last_error"] is None for i in innocent)
+
+        # And the poison row still walks its own attempts ladder into triage.
+        stats = await flush_once(factory(), pipeline)
+        assert stats["claimed"] == 1
+        rows = await buffer_rows(poison)
+        assert rows[poison[0]]["status"] == "error"
+        assert rows[poison[0]]["attempts"] == 2
+    finally:
+        async with factory()() as s:
+            await s.execute(
+                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [str(m) for m in memory_ids]},
+            )
+            await s.commit()
+        await drop_buffer(innocent + poison)
+        await clear_job_config()
+
+
+async def test_the_innocent_rows_of_a_poisoned_batch_reach_the_pipeline(setup_database):
+    """The isolation is real work, not just bookkeeping: the surviving captures
+    have to be handed to `process_batch`, with the poison one left out."""
+    innocent = await seed_buffer(2)
+    poison = await seed_buffer(1, tags=["y" * 400])
+    pipeline = RecordingPipeline()
+    memory_ids: list[uuid.UUID] = []
+    try:
+        await flush_once(factory(), pipeline)
+        assert len(pipeline.batches) == 1
+        entries = pipeline.batches[0]
+        assert len(entries) == 2
+        rows = await buffer_rows(innocent + poison)
+        memory_ids = [uuid.UUID(r["metadata"]["memory_id"]) for r in rows.values()]
+        assert {e["memory_id"] for e in entries} == {
+            uuid.UUID(rows[i]["metadata"]["memory_id"]) for i in innocent
+        }
+    finally:
+        async with factory()() as s:
+            await s.execute(
+                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [str(m) for m in memory_ids]},
+            )
+            await s.commit()
+        await drop_buffer(innocent + poison)
+
+
+# ── Fable review of T1.13, finding I-3: slow is not poisonous ──────
+
+
+class SlowPipeline:
+    """Healthy but too slow for the deadline: every call outlives it."""
+
+    def __init__(self):
+        self.batch_sizes: list[int] = []
+
+    async def process_batch(self, entries):
+        self.batch_sizes.append(len(entries))
+        await asyncio.Event().wait()
+
+
+async def _reap_memories_of(buffer_ids: list[uuid.UUID]) -> None:
+    rows = await buffer_rows(buffer_ids)
+    async with factory()() as s:
+        await s.execute(
+            text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            {"ids": [str(r["metadata"]["memory_id"]) for r in rows.values()]},
+        )
+        await s.commit()
+
+
+async def test_a_deadline_requeues_the_batch_and_halves_the_next_claim(setup_database):
+    """A deadline is nobody's failure, so it costs no attempt — and the next
+    claim halves, so the flush converges on a batch the ceiling can carry
+    instead of failing identically forever."""
+    await set_job_config({"buffer_max_attempts": 2, "buffer_claim_batch": 4})
+    buffer_ids = await seed_buffer(4)
+    slow = SlowPipeline()
+    try:
+        stats = await flush_once(factory(), slow, deadline_seconds=0.05)
+        assert slow.batch_sizes == [4]
+        assert stats["timed_out"] == 4
+        assert stats["failed"] == 0
+
+        rows = await buffer_rows(buffer_ids)
+        assert {r["status"] for r in rows.values()} == {"pending"}
+        assert {r["attempts"] for r in rows.values()} == {0}
+        assert {r["metadata"]["flush_timeouts"] for r in rows.values()} == {1}
+        assert all("deadline" in r["last_error"] for r in rows.values())
+
+        await flush_once(factory(), slow, deadline_seconds=0.05)
+        assert slow.batch_sizes == [4, 2]
+        await flush_once(factory(), slow, deadline_seconds=0.05)
+        assert slow.batch_sizes == [4, 2, 1]
+    finally:
+        await _reap_memories_of(buffer_ids)
+        await drop_buffer(buffer_ids)
+        await clear_job_config()
+
+
+async def test_a_lone_row_outliving_the_deadline_still_reaches_triage(setup_database):
+    """The refund cannot livelock. Once the shrink has put a row in a batch of
+    its own, the whole deadline was its to use, so a timeout there is the row's
+    own failure and walks the ordinary attempts ladder into `error`."""
+    await set_job_config({"buffer_max_attempts": 1, "buffer_claim_batch": 1})
+    buffer_ids = await seed_buffer(1)
+    slow = SlowPipeline()
+    try:
+        stats = await flush_once(factory(), slow, deadline_seconds=0.05)
+        assert stats["timed_out"] == 0
+        assert stats["failed"] == 1
+        rows = await buffer_rows(buffer_ids)
+        assert rows[buffer_ids[0]]["status"] == "error"
+        assert rows[buffer_ids[0]]["attempts"] == 1
+        assert "deadline" in rows[buffer_ids[0]]["last_error"]
+    finally:
+        await _reap_memories_of(buffer_ids)
+        await drop_buffer(buffer_ids)
+        await clear_job_config()
+
+
+async def test_a_slow_batch_does_not_march_the_backlog_into_error(setup_database):
+    """Finding I-3. A run cancelled at the fixed ceiling never reached a settle,
+    so every claimed row burned the attempt it took at claim time; at
+    `buffer_max_attempts` ticks the whole co-claimed batch reached `error`
+    without any row being individually poisonous, and the oldest-first claim fed
+    the next batch into the same grinder.
+
+    The bound that replaces it: no row settles to `error` for a deadline it did
+    not exhaust on its own. Four ticks against a pipeline that never returns
+    leave exactly the head row in triage and the backlog behind it untouched.
+    """
+    await set_job_config({"buffer_max_attempts": 1, "buffer_claim_batch": 8})
+    buffer_ids = await seed_buffer(8)
+    slow = SlowPipeline()
+    try:
+        for _ in range(4):
+            await flush_once(factory(), slow, deadline_seconds=0.05)
+        assert slow.batch_sizes == [8, 4, 2, 1]
+
+        rows = await buffer_rows(buffer_ids)
+        assert rows[buffer_ids[0]]["status"] == "error"
+        backlog = buffer_ids[1:]
+        assert {rows[i]["status"] for i in backlog} == {"pending"}
+        assert {rows[i]["attempts"] for i in backlog} == {0}
+    finally:
+        await _reap_memories_of(buffer_ids)
+        await drop_buffer(buffer_ids)
+        await clear_job_config()
+
+
+async def test_a_deadline_never_outlasts_the_registry_ceiling():
+    """The margin is the whole point: a deadline at or past the ceiling would be
+    cancelled before it could settle anything, which is the state finding I-3
+    describes."""
+    assert BUFFER_FLUSH_DEADLINE_SECONDS < BUFFER_FLUSH_MAX_RUN_SECONDS
+    assert BUFFER_FLUSH_SETTLE_MARGIN_SECONDS > 0
 
 
 async def test_a_row_with_no_preminted_memory_id_goes_to_error_alone(setup_database):
