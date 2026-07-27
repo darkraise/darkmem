@@ -16,7 +16,7 @@ from app.utils.background import spawn
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
-from app.models.llm_config import LLMProvider, LLMProfile, LLMPurposeConfigRow, MLProfile
+from app.models.llm_config import LLMPurposeConfigRow
 from app.schemas.config import (
     LLMConfigResponse,
     LLMConfigUpdate,
@@ -123,21 +123,12 @@ async def update_llm_config(
     async with request.app.state.llm_config_lock:
         update_data = body.model_dump(exclude_unset=True)
 
-        # Look up provider/profile/ml-profile name → id once for the
-        # whole request.
-        prov_rows = (await session.execute(select(LLMProvider))).scalars().all()
-        provider_id_by_name = {row.name: row.id for row in prov_rows}
-        prof_rows = (await session.execute(select(LLMProfile))).scalars().all()
-        profile_id_by_name = {row.name: row.id for row in prof_rows}
-        ml_prof_rows = (await session.execute(select(MLProfile))).scalars().all()
-        ml_profile_id_by_name = {row.name: row.id for row in ml_prof_rows}
-
         for purpose in PURPOSES:
             purpose_update = getattr(body, purpose, None)
             if purpose not in update_data or purpose_update is None:
                 continue
             # Keep only the fields the client actually set, but preserve an
-            # explicit ``null`` so dimensions/provider_ref/profile_ref can be
+            # explicit ``null`` so a nullable field such as dimensions can be
             # CLEARED — an omitted field stays untouched, an explicit null
             # clears the column.
             incoming = {
@@ -156,44 +147,9 @@ async def update_llm_config(
                 row = LLMPurposeConfigRow(purpose=purpose, model="")
                 session.add(row)
 
-            # Map name-based fields onto the FK columns. Empty string means
-            # "clear the link" (matches the API contract used by the UI).
-            if "provider_ref" in incoming:
-                ref = incoming.pop("provider_ref") or None
-                if ref and ref not in provider_id_by_name:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"unknown provider {ref!r}",
-                    )
-                row.provider_id = provider_id_by_name.get(ref) if ref else None
-            if "profile_ref" in incoming:
-                ref = incoming.pop("profile_ref") or None
-                if ref and ref not in profile_id_by_name:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"unknown profile {ref!r}",
-                    )
-                row.profile_id = profile_id_by_name.get(ref) if ref else None
-                # Picking an LLM profile clears any previously-set ML
-                # profile reference. Only one of the two FKs should be
-                # populated at a time; the pipeline dispatch reads
-                # ml_profile_id first and falls back to the LLM path.
-                if ref:
-                    row.ml_profile_id = None
-            if "ml_profile_ref" in incoming:
-                ref = incoming.pop("ml_profile_ref") or None
-                if ref and ref not in ml_profile_id_by_name:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"unknown ml-profile {ref!r}",
-                    )
-                row.ml_profile_id = ml_profile_id_by_name.get(ref) if ref else None
-                if ref:
-                    row.profile_id = None
-
             for field in (
                 "model", "dimensions", "reasoning", "api_kind",
-                "provider", "base_url", "api_key", "params",
+                "base_url", "api_key", "params", "classifier_kind",
             ):
                 if field in incoming:
                     setattr(row, field, incoming[field])

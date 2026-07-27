@@ -376,10 +376,10 @@ class ProcessingPipeline:
                         mem_record = mem_result.scalar_one_or_none()
                         if mem_record:
                             if llm_classification:
-                                mem_record.llm_classified_type = llm_classification.get("hall") or None
-                                mem_record.llm_summary = llm_classification.get("summary") or None
-                                mem_record.llm_emotions = llm_classification.get("emotions") or None
-                                mem_record.llm_flags = llm_classification.get("flags") or None
+                                mem_record.classified_type = llm_classification.get("hall") or None
+                                mem_record.summary = llm_classification.get("summary") or None
+                                mem_record.emotions = llm_classification.get("emotions") or None
+                                mem_record.flags = llm_classification.get("flags") or None
 
                             mem_record.memory_type = resolved_memory_type
                             if extracted_importance is not None:

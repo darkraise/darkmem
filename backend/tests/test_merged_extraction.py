@@ -116,7 +116,7 @@ async def _seed_memory(factory, mem_id, content):
 async def _read_memory(factory, mem_id):
     async with factory() as s:
         row = (await s.execute(
-            text("SELECT memory_type, llm_classified_type, llm_summary, llm_emotions "
+            text("SELECT memory_type, classified_type, summary, emotions "
                  "FROM memories WHERE id = :id"), {"id": str(mem_id)},
         )).first()
     return row
@@ -162,10 +162,10 @@ async def test_simple_llm_mode_merges_to_one_call(setup_database, monkeypatch):
 
         row = await _read_memory(factory, mem_id)
         assert row.memory_type == "decision"
-        # llm_classified_type is the SAME normalized label extraction produced.
-        assert row.llm_classified_type == "decision"
-        assert row.llm_summary == "Chose Postgres."
-        assert row.llm_emotions == ["proud"]
+        # classified_type is the SAME normalized label extraction produced.
+        assert row.classified_type == "decision"
+        assert row.summary == "Chose Postgres."
+        assert row.emotions == ["proud"]
     finally:
         async with factory() as s:
             await s.execute(text("DELETE FROM memories WHERE id = :id"),
@@ -213,8 +213,8 @@ async def test_ml_classifier_keeps_two_calls(setup_database, monkeypatch):
 
         row = await _read_memory(factory, mem_id)
         assert row.memory_type == "problem"
-        assert row.llm_classified_type == "problem"
-        assert row.llm_summary is None
+        assert row.classified_type == "problem"
+        assert row.summary is None
     finally:
         async with factory() as s:
             await s.execute(text("DELETE FROM memories WHERE id = :id"),

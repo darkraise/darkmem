@@ -30,10 +30,10 @@ from app.api.auth import (
 )
 from app.config import settings
 from app.database import get_session
-from app.models.audit import AuditLog
 from app.models.code import Repository
 from app.models.config import Config
-from app.models.llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
+from app.services.events import record_event
+from app.models.llm_config import LLMPurposeConfigRow
 from app.services.repo_manager import validate_local_path
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
@@ -354,10 +354,12 @@ async def setup_finalize(
             key=ADMIN_PASSWORD_KEY,
             value={"hash": hash_password(body.password)},
         ))
-        session.add(AuditLog(
-            action="auth_setup",
-            details={"ip": _client_ip(request)},
-        ))
+        await record_event(
+            session,
+            event_type="auth_setup",
+            object_type="system",
+            payload={"ip": _client_ip(request)},
+        )
         await session.commit()
 
         # 2. LLM block — optional. Inserts the full default seed
@@ -378,51 +380,14 @@ async def setup_finalize(
                     provider_seed_by_kind,
                 )
 
-                # Insert every seeded provider. The matching api_kind
-                # row gets the user-supplied api_key and (optionally)
-                # an overridden base_url and supports_embedding flag.
-                provider_id_by_name: dict[str, uuid.UUID] = {}
-                for ps in DEFAULT_PROVIDERS:
-                    is_user_choice = (ps.api_kind == body.llm.api_kind)
-                    provider = LLMProvider(
-                        name=ps.name,
-                        provider=ps.provider,
-                        base_url=(body.llm.base_url or ps.base_url) if is_user_choice else ps.base_url,
-                        api_key=body.llm.api_key if is_user_choice else None,
-                        api_kind=ps.api_kind,
-                        supports_embedding=(
-                            body.llm.supports_embedding if is_user_choice else ps.supports_embedding
-                        ),
-                    )
-                    if is_user_choice and body.llm.api_key:
-                        provider.api_key_rotated_at = datetime.now(timezone.utc)
-                    session.add(provider)
-                    await session.flush()
-                    provider_id_by_name[ps.name] = provider.id
-
-                # Insert every seeded profile.
-                profile_id_by_name: dict[str, uuid.UUID] = {}
-                for prof in DEFAULT_PROFILES:
-                    profile = LLMProfile(
-                        name=prof.name,
-                        provider_id=provider_id_by_name[prof.provider_name],
-                        model=prof.model,
-                        params=dict(prof.params),
-                        is_embedding=prof.is_embedding,
-                        reasoning=prof.reasoning,
-                    )
-                    session.add(profile)
-                    await session.flush()
-                    profile_id_by_name[prof.name] = profile.id
-
-                # Insert default purpose configs (Ollama defaults so a
-                # no-credentials install still runs end-to-end).
+                # Six inline purpose rows. The provider/profile
+                # indirection is gone (doc 04 §7), so the seed writes the
+                # connection details straight onto each purpose row and the
+                # user's choices overlay the same row -- no FK to resolve.
                 purpose_rows: dict[str, LLMPurposeConfigRow] = {}
                 for pc in DEFAULT_PURPOSE_CONFIGS:
                     row = LLMPurposeConfigRow(
                         purpose=pc.purpose,
-                        provider_id=provider_id_by_name.get(pc.provider_name),
-                        profile_id=None,
                         model=pc.model,
                         dimensions=pc.dimensions,
                         reasoning=pc.reasoning,
@@ -436,20 +401,10 @@ async def setup_finalize(
                     purpose_rows[pc.purpose] = row
                 await session.flush()
 
-                # Apply user choices on top: for each purpose the user
-                # picked a model for, overlay api_kind / base_url /
-                # api_key / model onto the seeded purpose-config row,
-                # and create a ``default-<purpose>`` profile pointing
-                # at the user's vendor for the dropdown to surface.
                 user_provider_seed = provider_seed_by_kind(body.llm.api_kind)
-                user_provider_id = (
-                    provider_id_by_name.get(user_provider_seed.name)
-                    if user_provider_seed else None
-                )
                 user_base_url = body.llm.base_url or (
                     user_provider_seed.base_url if user_provider_seed else ""
                 )
-                from app.services.llm_seed import DEFAULT_PROFILES
 
                 for purpose_key, spec in body.llm.purposes.items():
                     is_embedding = (purpose_key == "embedding")
@@ -469,25 +424,12 @@ async def setup_finalize(
                     )
                     seed_params = dict(seed_match.params) if seed_match else {}
 
-                    user_profile = LLMProfile(
-                        name=f"default-{purpose_key}",
-                        provider_id=user_provider_id,
-                        model=spec.model,
-                        params=seed_params,
-                        is_embedding=is_embedding,
-                        reasoning=False if is_embedding else spec.reasoning,
-                    )
-                    session.add(user_profile)
-                    await session.flush()
-
                     pcfg = purpose_rows.get(purpose_key)
                     if pcfg is None:
                         # Should not happen for the six canonical
                         # purposes; create the row defensively.
                         pcfg = LLMPurposeConfigRow(purpose=purpose_key, model="")
                         session.add(pcfg)
-                    pcfg.provider_id = user_provider_id
-                    pcfg.profile_id = user_profile.id
                     pcfg.model = spec.model
                     pcfg.dimensions = spec.dimensions if is_embedding else None
                     pcfg.reasoning = False if is_embedding else spec.reasoning
@@ -588,9 +530,11 @@ async def setup_finalize(
             _replace_orchestrator(request, new_llm)
 
         # 5. Audit log
-        session.add(AuditLog(
-            action="setup_complete",
-            details={
+        await record_event(
+            session,
+            event_type="setup_complete",
+            object_type="system",
+            payload={
                 "ip": _client_ip(request),
                 "llm": llm_status.ok,
                 "llm_skipped": body.llm is None,
@@ -599,7 +543,7 @@ async def setup_finalize(
                 "repos_added": repos_added,
                 "repos_failed_count": len(repos_failed),
             },
-        ))
+        )
         await session.commit()
 
     payload = SetupResponse(

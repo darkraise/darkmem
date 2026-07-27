@@ -76,6 +76,55 @@ _TABLE_TEMPLATES: dict[str, str] = {
         " PRIMARY KEY (name_lower, fingerprint)"
         ")"
     ),
+    # ── The four target-new families (doc 04 §5.3). They land as templates
+    # only: T0.13 labels them inert and each names its first writer in the
+    # schema inventory §7. Nothing writes to them yet.
+    "block_embeddings": (
+        "CREATE TABLE IF NOT EXISTS {name} ("
+        " block_id UUID NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " embedding vector({dims}) NOT NULL,"
+        " payload JSONB NOT NULL DEFAULT '{{}}'::jsonb,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (block_id, fingerprint)"
+        ")"
+    ),
+    # Keys on the REAL entity_relations.id — no synthetic ids — so
+    # strip-before-rewrite and the self-healing delete kill the vector with
+    # the relation instead of orphaning it. Carries no project predicate of
+    # its own, because entity_relations is global.
+    "relation_embeddings": (
+        "CREATE TABLE IF NOT EXISTS {name} ("
+        " relation_id UUID NOT NULL REFERENCES entity_relations(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " embedding vector({dims}) NOT NULL,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (relation_id, fingerprint)"
+        ")"
+    ),
+    "article_embeddings": (
+        "CREATE TABLE IF NOT EXISTS {name} ("
+        " article_id UUID NOT NULL REFERENCES knowledge_articles(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " embedding vector({dims}) NOT NULL,"
+        " payload JSONB NOT NULL DEFAULT '{{}}'::jsonb,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (article_id, fingerprint)"
+        ")"
+    ),
+    # Template ships now; the WRITER is deferred behind a measured
+    # pg_trgm-on-fact undercount (T2.33) and may never ship. Deliberately NO
+    # cascade: facts are invalidate-not-delete, so a cascade would destroy
+    # the history the fact layer exists to keep.
+    "triple_embeddings": (
+        "CREATE TABLE IF NOT EXISTS {name} ("
+        " fact_id UUID NOT NULL REFERENCES knowledge_triples(id),"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " embedding vector({dims}) NOT NULL,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (fact_id, fingerprint)"
+        ")"
+    ),
 }
 
 
@@ -93,6 +142,18 @@ _AUX_INDEXES: dict[str, list[str]] = {
     ],
     "entity_embedding_cache": [
         "CREATE INDEX IF NOT EXISTS ix_{name}_last_used ON {name} (last_used_at)",
+    ],
+    "block_embeddings": [
+        "CREATE INDEX IF NOT EXISTS ix_{name}_block_id ON {name} (block_id)",
+    ],
+    "relation_embeddings": [
+        "CREATE INDEX IF NOT EXISTS ix_{name}_relation_id ON {name} (relation_id)",
+    ],
+    "article_embeddings": [
+        "CREATE INDEX IF NOT EXISTS ix_{name}_article_id ON {name} (article_id)",
+    ],
+    "triple_embeddings": [
+        "CREATE INDEX IF NOT EXISTS ix_{name}_fact_id ON {name} (fact_id)",
     ],
 }
 

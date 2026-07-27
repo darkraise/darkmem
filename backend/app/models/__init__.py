@@ -1,13 +1,12 @@
 from .api_key import ApiKey
 from .token_blocklist import TokenBlocklist
-from .audit import AuditLog
 from .base import Base
 from app.models.chat import Conversation, Message  # noqa: F401
 from .code import CodeEdge, CodeFile, CodeGraphNode, CodeSymbol, Repository
 from .config import Config
 from .embedding import Embedder
 from .graph import Entity, EntityRelation, KnowledgeTriple
-from .llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
+from .llm_config import LLMPurposeConfigRow
 from .memory import Memory, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
 
@@ -18,7 +17,6 @@ __all__ = [
     "memory_tags",
     "ApiKey",
     "TokenBlocklist",
-    "AuditLog",
     "Config",
     "Conversation",
     "Message",
@@ -31,8 +29,6 @@ __all__ = [
     "EntityRelation",
     "KnowledgeTriple",
     "Embedder",
-    "LLMProvider",
-    "LLMProfile",
     "LLMPurposeConfigRow",
     "PipelineFailure",
 ]

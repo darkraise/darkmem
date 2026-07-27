@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -17,9 +17,9 @@ from app.api.auth import (
 )
 from app.config import settings
 from app.database import async_session_factory, get_session
-from app.models.audit import AuditLog
 from app.models.config import Config
 from app.models.token_blocklist import TokenBlocklist
+from app.services.events import record_event
 from app.services.login_rate_limit import login_rate_limiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -37,7 +37,9 @@ async def _record_audit(action: str, details: dict) -> None:
     the audit trail independently of the request outcome.
     """
     async with async_session_factory() as audit_session:
-        audit_session.add(AuditLog(action=action, details=details))
+        await record_event(
+            audit_session, event_type=action, object_type="system", payload=details
+        )
         await audit_session.commit()
 
 
@@ -102,8 +104,9 @@ async def auth_login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
 
     login_rate_limiter.record_success(ip)
-    session.add(AuditLog(action="auth_login_success", details={"ip": ip}))
-    await session.flush()
+    await record_event(
+        session, event_type="auth_login_success", object_type="system", payload={"ip": ip}
+    )
 
     token = create_access_token({"sub": "admin"})
     response = JSONResponse(content={"ok": True})
@@ -117,7 +120,10 @@ async def auth_logout(
 ):
     expires_at = datetime.fromtimestamp(payload.exp, tz=timezone.utc)
     session.add(TokenBlocklist(jti=payload.jti, expires_at=expires_at))
-    session.add(AuditLog(action="auth_logout", details={"sub": payload.sub}))
+    await record_event(
+        session, event_type="auth_logout", object_type="system",
+        payload={"sub": payload.sub},
+    )
     await session.commit()
 
     response = JSONResponse(content={"ok": True}, status_code=status.HTTP_200_OK)
@@ -153,7 +159,10 @@ async def auth_change_password(
     else:
         session.add(Config(key=PASSWORD_CHANGED_AT_KEY, value={"ts": changed_at}))
 
-    session.add(AuditLog(action="auth_password_change", details={"ip": _client_ip(request)}))
+    await record_event(
+        session, event_type="auth_password_change", object_type="system",
+        payload={"ip": _client_ip(request)},
+    )
 
     # Rotate: revoke the presented token so it can't be reused after the
     # reissue (belt-and-suspenders with the changed_at epoch).
@@ -206,29 +215,36 @@ async def auth_audit(
     The audit rows are committed independently of the request so failed logins
     survive a 401 rollback; this endpoint makes them visible to an operator.
     """
-    base = select(AuditLog).where(
-        AuditLog.action.like("auth_%") | AuditLog.action.like("setup_%")
-    )
+    # Reads the same security trail from ``events``, which replaced
+    # ``audit_log`` in the baseline (doc 04 §8.1). The response shape is an
+    # operator contract and is preserved verbatim: event_type surfaces as
+    # ``action`` and payload as ``details``. T1.09 owns moving readers onto
+    # the general /events surface.
+    where = "(event_type LIKE 'auth\\_%' OR event_type LIKE 'setup\\_%')"
+    params: dict[str, object] = {}
     if action:
-        base = base.where(AuditLog.action == action)
+        where += " AND event_type = :action"
+        params["action"] = action
 
     total = (await session.execute(
-        select(func.count()).select_from(base.subquery())
+        sa_text(f"SELECT count(*) FROM events WHERE {where}"), params
     )).scalar() or 0
 
     rows = (await session.execute(
-        base.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
-        .offset(offset)
-        .limit(limit)
-    )).scalars().all()
+        sa_text(
+            f"SELECT id, event_type, payload, created_at FROM events WHERE {where} "
+            "ORDER BY created_at DESC, id DESC OFFSET :offset LIMIT :limit"
+        ),
+        {**params, "offset": offset, "limit": limit},
+    )).all()
 
     return {
         "items": [
             {
                 "id": r.id,
-                "action": r.action,
-                "details": r.details or {},
-                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "action": r.event_type,
+                "details": r.payload or {},
+                "timestamp": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
         ],

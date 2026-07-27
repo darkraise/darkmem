@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.audit import AuditLog
+from app.models.pipeline_failure import PipelineFailure
 from app.models.memory import Memory, Tag, memory_tags
 from app.repositories.relational import PostgresAuditRepository
 from app.services.pipeline import ProcessingPipeline
@@ -241,13 +241,14 @@ class AnalyticsService:
             for m in mem_rows
         ]
 
-        # Recent pipeline errors
+        # Unresolved pipeline failures are the honest count: pipeline_failures
+        # is the per-memory failure substrate (invariant 14), which is a
+        # stricter source than counting audit rows that merely carried an
+        # error detail. audit_log itself is dropped by the baseline.
         error_stmt = (
             select(func.count())
-            .select_from(AuditLog)
-            .where(AuditLog.action == "pipeline")
-            .where(AuditLog.details["error"].as_string() != "null")
-            .where(AuditLog.details["error"].as_string().isnot(None))
+            .select_from(PipelineFailure)
+            .where(PipelineFailure.resolved_at.is_(None))
         )
         recent_errors = (await self.session.execute(error_stmt)).scalar() or 0
 

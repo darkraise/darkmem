@@ -1,5 +1,4 @@
 from app.models.memory import Memory, Tag, memory_tags
-from app.models.audit import AuditLog
 
 
 async def test_overview_returns_counts(client, session, auth_headers):
