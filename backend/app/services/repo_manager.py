@@ -300,8 +300,12 @@ class RepoManager:
         if not repo:
             return None
         message = _sanitize_url(str(error))[:500]
-        repo.status = "error"
-        repo.status_message = message
+        # CodePipeline.run() already set and committed its own terminal status
+        # for this failure, including "stale" when it kept the prior graph
+        # rather than wiping it; don't overwrite that back to a bare "error".
+        if repo.status != "stale":
+            repo.status = "error"
+            repo.status_message = message
         repo.auto_sync = False
         await self.session.commit()
         await self.session.refresh(repo)
