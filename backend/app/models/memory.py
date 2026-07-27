@@ -21,6 +21,8 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+from app.utils.ids import new_id
+
 from .base import Base
 
 
@@ -37,7 +39,7 @@ memory_tags = Table(
 class Memory(Base):
     __tablename__ = "memories"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(100), nullable=False, default="api")
     source_agent: Mapped[str | None] = mapped_column(String(255))
@@ -77,6 +79,49 @@ class Memory(Base):
     )
 
     tags: Mapped[list["Tag"]] = relationship(secondary=memory_tags, back_populates="memories", lazy="selectin")
+
+
+class MemoryBuffer(Base):
+    """The durable Tier-B landing zone for accepted-but-unprocessed captures.
+
+    Doc 04 §8.6. Capture commits a row here and acks; the flush worker claims it
+    with ``FOR UPDATE SKIP LOCKED`` and runs the five-phase pipeline. Durability
+    is the whole point — an in-process queue loses the backlog on restart, and
+    this tier exists so an accepted capture cannot be lost.
+
+    ``id`` is minted by the caller at accept (UUIDv7) rather than defaulted here,
+    because a 202 has to hand back a real handle before the pipeline has run, and
+    that same id becomes the ``memories`` row's id at flush.
+
+    Caller-supplied fields with no column of their own — ``memory_type``,
+    ``tags``, ``importance``, ``expires_at``, ``source_agent``, ``origin_key`` —
+    ride ``metadata_`` and are replayed verbatim at flush. Doc 04 §8.6 is
+    explicit that the buffer may never silently drop a captured field.
+    """
+
+    __tablename__ = "memory_buffer"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    project: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    token_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'claimed', 'done', 'error')",
+            name="memory_buffer_status_check",
+        ),
+    )
 
 
 class Tag(Base):

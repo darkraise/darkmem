@@ -7,12 +7,13 @@ from .config import Config
 from .embedding import Embedder
 from .graph import Entity, EntityRelation, KnowledgeTriple
 from .llm_config import LLMPurposeConfigRow
-from .memory import Memory, Tag, memory_tags
+from .memory import Memory, MemoryBuffer, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
 
 __all__ = [
     "Base",
     "Memory",
+    "MemoryBuffer",
     "Tag",
     "memory_tags",
     "ApiKey",
