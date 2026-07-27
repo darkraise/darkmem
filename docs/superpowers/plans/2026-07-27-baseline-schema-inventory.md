@@ -201,21 +201,21 @@ Task: T0.11"
 
 `Lands in` is `T0.12a` / `T0.12b` / `T0.12c` / `—` (not landed) / `n/a (runtime)`. T0.12a's own text names `memories`, `entities`, `entity_relations`, tags, `config`, `embedders`; T0.12b's names `knowledge_triples`, `fact_sources`, articles and citations, `projects`, `repositories` and the `code_*` tables, job state, and `events` with its partitioning. **A table named by neither is a finding, not a guess** — record it in §10 addressed to T0.12b's executor. That assignment is what turns this inventory from a description into the work order T0.12a–c execute against.
 
-- [ ] **Step 1: Create the skeleton**
+- [x] **Step 1: Create the skeleton**
 
 Write all headings §0–§10 plus Appendix B, each unfilled one carrying `_(pending: Task N)_`. Appendix A already exists from Task 1 and moves below them.
 
-- [ ] **Step 2: Enumerate from doc 04, section by section, in doc order**
+- [x] **Step 2: Enumerate from doc 04, section by section, in doc order**
 
 Walk doc 04 §2's object map first (it is the spine and names every table or explicitly says "no new table"), then §3–§9 for the tables each section owns, then §12's own enumeration of what the baseline creates as a cross-check against your list. Every row cites the **most specific** section that fixes its shape — `§8.3` for `knowledge_triples`, not `§8`.
 
 Then sweep Appendix A's table list and add any table present today that doc 04 never mentions. Such a row gets doc § `—` and is a **finding**, not a silent carry-over: doc 19 §3's disposition table is finite, so an object in neither doc 04 nor doc 19 §3 has no owner and cannot be dispositioned by anyone but a human.
 
-- [ ] **Step 3: Cross-check against `erd.md` and record disagreements as findings**
+- [x] **Step 3: Cross-check against `erd.md` and record disagreements as findings**
 
 `erd.md` §1–§5 diagram the same target at lower resolution and its own header subordinates it to doc 04. Diff its table set against §2's. Every table in one and not the other is a §10 row naming both sources — **not** a silent adoption of either. `erd.md` never wins; it only reveals.
 
-- [ ] **Step 4: Verify — bidirectional completeness**
+- [x] **Step 4: Verify — bidirectional completeness**
 
 Two checks, both mechanical, both recorded in Appendix B:
 
@@ -230,7 +230,7 @@ Check (a) over-collects (it catches column and function names too), which is the
 
 Then assert every row carries a non-empty `Owning doc §` or is listed in §10, and that `git status --porcelain` shows only the inventory file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md

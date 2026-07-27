@@ -1,7 +1,134 @@
 # Baseline schema inventory
 
-**Status:** under construction — Appendix A only. §0–§10 arrive in Task 2 of
-[`../superpowers/plans/2026-07-27-baseline-schema-inventory.md`](../superpowers/plans/2026-07-27-baseline-schema-inventory.md).
+_(pending: Task 8 — §0 front matter)_
+
+## 1. How to read this inventory
+
+_(pending: Task 8)_
+
+## 2. Tables — the target roll-call
+
+**One row per table in the target.** `Owning doc §` is the *most specific* section of
+doc 04 that fixes the table's shape. `Lands in` is the T0.12 pass (or other task) whose
+own text names the table; `—` means **no task text names it**, which is a finding in §10,
+not a guess. Dispositions are filled in §2 by Task 3 against the legend in §1.
+
+Rows are ordered by their owning doc 04 section, so the roll-call reads as doc 04's own
+spine. Tables present at HEAD but deliberately absent from the target are **not** here —
+they are in §8, with their own vocabulary.
+
+| Table | Owning doc § | Lands in | Disposition | Note |
+|---|---|---|---|---|
+| `memories` | 04 §3.1 | T0.12a | _(Task 3)_ | The central row and the `active → superseded → deprecated` lifecycle. |
+| `tags` | 04 §3.2 | T0.12a | _(Task 3)_ | `id serial` PK, `name` UNIQUE. |
+| `memory_tags` | 04 §3.2 | T0.12a | _(Task 3)_ | T0.12a's text says "tags"; doc 04 §3.2 treats the pair as one unit (F-03). |
+| `memory_crossrefs` | 04 §3.3 | — | _(Task 3)_ | Live precomputed similarity edges, distinct from `memory_relations` (F-02). |
+| `entities` | 04 §4.1 | T0.12a | _(Task 3)_ | `repo_ids[]` arrives with T0.13 (§5). |
+| `entity_relations` | 04 §4.2 | T0.12a | _(Task 3)_ | `repo_ids[]` arrives with T0.13 (§5). |
+| `embedders` | 04 §5.1 | T0.12a | _(Task 3)_ | The fingerprint registry; owns the child-table DDL (§6). |
+| `repositories` | 04 §6 | T0.12b | _(Task 3)_ | Gains `index_debt` jsonb (§5). |
+| `code_files` | 04 §6 | T0.12b | _(Task 3)_ | |
+| `code_symbols` | 04 §6 | T0.12b | _(Task 3)_ | The live enrichment backlog is its partial index, not `enrichment_queue` (§8). |
+| `code_graph_nodes` | 04 §6 | T0.12b | _(Task 3)_ | `kind` is polymorphic — communities and processes are node kinds. |
+| `code_edges` | 04 §6 | T0.12b | _(Task 3)_ | |
+| `llm_purpose_configs` | 04 §7 | — | _(Task 3)_ | Six inline rows; loses every `*_ref`, gains `classifier_kind` (F-02). |
+| `projects` | 04 §7 | T0.12b | _(Task 3)_ | `(name PK, display_name, properties, created_at)`; lazy registration, no FKs yet. |
+| `config` | 04 §7 | T0.12a | _(Task 3)_ | Key/value rows: feature flags, `job:<key>` state, `admin_password_hash`. |
+| `token_blocklist` | 04 §7 | — | _(Task 3)_ | JWT revocation store (F-02). |
+| `pipeline_failures` | 04 §7 | — | _(Task 3)_ | Polymorphic retry tracker, three partial indexes (F-02). |
+| `conversations` | 04 §7 | — | _(Task 3)_ | Chat surface; carried verbatim at cutover as user data (F-02). |
+| `messages` | 04 §7 | — | _(Task 3)_ | Chat surface (F-02). |
+| `api_keys` | 04 §7, §9 | — | _(Task 3)_ | Exists, unwired; doc 19 §3 `(activation)` (F-02, F-04). |
+| `events` | 04 §8.1 | T0.12b | _(Task 3)_ | `RANGE(created_at)` monthly; forbid-trigger is T1.06's. |
+| `memory_relations` | 04 §8.2 | — | _(Task 3)_ | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
+| `knowledge_triples` | 04 §8.3 | T0.12b | _(Task 3)_ | Rebuild that keeps a name — doc 04 §8.3 fixes it as target-new, not an activation. |
+| `fact_sources` | 04 §8.3 | T0.12b | _(Task 3)_ | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
+| `memory_communities` | 04 §8.4 | — | _(Task 3)_ | Leiden communities per project; ids churn every run (F-02). |
+| `memory_community_members` | 04 §8.4 | — | _(Task 3)_ | Join table, PK `(community_id, memory_id)` (F-02). |
+| `documents` | 04 §8.5 | T0.13 | _(Task 3)_ | Horizon; lands empty and inert. |
+| `blocks` | 04 §8.5 | T0.13 | _(Task 3)_ | Horizon; lands empty and inert. |
+| `memory_buffer` | 04 §8.6 | — | _(Task 3)_ | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
+| `project_repositories` | 04 §8.7 | — | _(Task 3)_ | M2M over one shared `Repository` (F-02). |
+| `knowledge_articles` | 04 §8.8 | T0.12b | _(Task 3)_ | T0.12b's "articles and citations". |
+| `article_citations` | 04 §8.8 | T0.12b | _(Task 3)_ | The one hard FK — `fact_id → knowledge_triples`. |
+| `memory_access_stats` | 04 §9 | — | _(Task 3)_ | 1:1 ranking-prior side table; keeps read churn off `memories` (F-02). |
+| `alembic_version` | — | n/a (Alembic) | _(Task 3)_ | Alembic's own bookkeeping; doc 04 never names it (F-01). |
+
+**34 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; thirteen are
+target-new. The remaining five of A.1's twenty-six are dropped and live in §8, so
+`21 + 5 = 26` reconciles the roll-call against the manifest exactly.
+
+**Three classes of name doc 04 backticks are deliberately not roll-call rows.** The eight
+per-fingerprint **partition parents** (`memory_embeddings`, `entity_embeddings`,
+`code_chunk_embeddings`, `entity_embedding_cache`, `block_embeddings`,
+`relation_embeddings`, `article_embeddings`, `triple_embeddings`) are registry entries,
+not migration DDL, and live in §6 — putting them here would invite exactly the eight
+`CREATE TABLE`s doc 19 §2 forbids. The one **native enum** `memory_status` is a type, and
+lives in §4. And two names doc 04 raises **conditionally** are not in the target at all:
+`pinned_subjects` ("promoted to a dedicated `pinned_subjects` store **only if** they grow
+large" — doc 04 §7; today the lists ride `projects.properties`) and `retrieval_traces`
+("persist a `retrieval_traces` table **only if** the ADE viewer or eval harness needs
+durable audit" — doc 04 §13, whose recommendation for v1 is no table). Neither is a
+finding; both are recorded so the reviewer's over-collecting sweep resolves without
+re-reading doc 04.
+
+### 2.1 Seed data the baseline carries
+
+Seed rows are an inventory concern, not just DDL, because a table that exists but is
+empty behaves differently from one the migration populates.
+
+| Table | Rows seeded by the migrations (A.8) | Target |
+|---|---|---|
+| `config` | 4 — `job:code_enrichment`, `job:pipeline_failure_cleanup`, `job:repo_sync`, `job:token_blocklist_cleanup` | The other three registered jobs create their state rows at runtime (F-06). |
+| `llm_purpose_configs` | 0 | The six purpose rows are written by the setup wizard's finalize step from `app/services/llm_seed.py`, never by a migration (doc 04 §7). |
+| `embedders` | 0 | Registered at runtime by `embedder_registry.register` (doc 04 §5.1). |
+| `llm_providers` | 0 | Dropped (§8). |
+| `tags` | 0 | Tags are created on use. |
+
+## 3. Indexes
+
+_(pending: Task 4)_
+
+## 4. Constraints, triggers, and types
+
+_(pending: Task 4)_
+
+## 5. Column-level changes on carried-over tables
+
+_(pending: Task 4)_
+
+## 6. Per-fingerprint partition templates (registry entries, not DDL)
+
+_(pending: Task 5)_
+
+## 7. Inert objects and their first writers
+
+_(pending: Task 6)_
+
+## 8. Not landed — dropped objects, and why
+
+_(pending: Task 3)_
+
+## 9. SQL-first audit
+
+_(pending: Task 7)_
+
+## 10. Findings — where the sources disagree
+
+_(pending: Task 8 — consolidation and tiering)_
+
+Findings accumulate here as each pass locates them. Task 8 assigns every row a runbook §5
+tier and lifts the Tier-3 rows to the top under their own heading.
+
+| # | Sources in conflict | What each says |
+|---|---|---|
+| F-01 | Appendix A.1 vs doc 04 | `alembic_version` exists in every migrated database; doc 04 never names it. It is Alembic's own bookkeeping table, so the honest disposition is `carries-over`, `Lands in: n/a (Alembic)`, traced to doc 19 §2 rather than to doc 04. Recorded so a reviewer does not read its absence as an oversight. |
+| F-02 | §2 vs `E0-baseline-and-harness.md` T0.12a–c | **Thirteen target tables are named by no T0.12 pass.** T0.12a names `memories`, `entities`, `entity_relations`, tags, `config`, `embedders`; T0.12b names `knowledge_triples`, `fact_sources`, articles and citations, `projects`, `repositories` and the `code_*` tables, job state, and `events`. Neither names `memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`, `memory_buffer`, `project_repositories`, `conversations`, `messages`, `pipeline_failures`, `token_blocklist`, `api_keys`, or `llm_purpose_configs`. **Recommendation (for the controller and T0.12b's executor to ratify, not applied here):** the memory satellites (`memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`) belong to T0.12a's "core memory" pass; the operations, chat, auth and LLM-config tables (`pipeline_failures`, `token_blocklist`, `conversations`, `messages`, `api_keys`, `llm_purpose_configs`) and the ingest/bridge tables (`memory_buffer`, `project_repositories`) belong to T0.12b. Assigning by guess would send work to the wrong pass, and T0.12a–c are floor-exempt and merge as one atomic unit, so the mistake would not surface until T0.12c. |
+| F-03 | `E0-baseline-and-harness.md` T0.12a vs doc 04 §3.2 | T0.12a's text says "tags" where doc 04 §3.2 fixes the pair `tags` + `memory_tags`. The roll-call reads "tags" as the pair, since the join table is undeclarable without both. Recorded because the reading is an inference, not a quotation. |
+| F-04 | `erd.md` vs doc 04 §7/§9 | `erd.md` diagrams no `api_keys` table anywhere, while doc 04 §7 names it among the operations tables and §9 describes its activation, and doc 19 §3 carries an `(activation)` row for it. Doc 04 wins per the authority order: `api_keys` is in the target. `erd.md` reveals the gap; it never decides it. |
+| F-05 | `erd.md` §4 vs doc 04 §5.2 | `erd.md` §4's diagram shows two of the four existing partition parents (`memory_embeddings__slug`, `entity_embeddings__slug`); `code_chunk_embeddings` and `entity_embedding_cache` appear only in its prose notes. This is diagram resolution rather than a table-set disagreement — `erd.md`'s own header says "key columns only" — but it is recorded so §6's eight rows are not read against the diagram's six. |
+| F-06 | Appendix A.8 vs `CLAUDE.md` job registry | The migrations seed **four** `job:<key>` `config` rows against **seven** registered jobs. `graph_orphan_cleanup`, `tag_orphan_cleanup` and `expired_memory_cleanup` have no seeded state row and create theirs at runtime. Whether the baseline should seed all seven (uniform, greppable) or none (state is runtime data) is a decision for T0.12b's job-state work; today's split is neither. |
+| F-07 | `E0-baseline-and-harness.md` T0.12b vs doc 04 §7 | T0.12b's scope names "job state", which is not a table: job state lives in `config` rows keyed `job:<key>` (doc 04 §7), and `config` is T0.12a's. So T0.12b's "job state" is seed data in a table an earlier pass creates, not an object of its own. |
 
 ---
 
@@ -478,3 +605,7 @@ llm_providers=0
 llm_purpose_configs=0
 tags=0
 ```
+
+## Appendix B — reproducible checks
+
+_(pending: Task 8)_
