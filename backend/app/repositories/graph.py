@@ -423,6 +423,10 @@ class PostgresGraphRepository:
                           SELECT 1 FROM memories m
                           WHERE m.id = ANY(entity_relations.memory_ids)
                       )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM repositories rp
+                          WHERE rp.id = ANY(entity_relations.repo_ids)
+                      )
                 """),
                 {"ids": rel_ids},
             )
@@ -441,6 +445,9 @@ class PostgresGraphRepository:
                     WHERE e.id = ANY(CAST(:ids AS uuid[]))
                       AND NOT EXISTS (
                           SELECT 1 FROM memories m WHERE m.id = ANY(e.memory_ids)
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM repositories rp WHERE rp.id = ANY(e.repo_ids)
                       )
                       AND NOT EXISTS (
                           SELECT 1 FROM entity_relations r
@@ -462,15 +469,22 @@ class PostgresGraphRepository:
         full-table sweep — meant for the periodic maintenance job, not the write
         path. Relations are pruned first so the entity guard sees only surviving
         relations; the ``entity_embeddings__*`` FK is ON DELETE CASCADE, so an
-        entity's embeddings go with it (which is what stops the dedup match)."""
+        entity's embeddings go with it (which is what stops the dedup match).
+
+        Invariant-8 amendment (T0.13): a row survives while any live memory OR
+        any live repo still asserts it. ``repo_ids`` is empty everywhere until
+        the code deriver (T2.27) ships, so the added predicate is
+        vacuously true and this sweep behaves byte-identically to before."""
         rel_ids = (await self.session.execute(text("""
             DELETE FROM entity_relations r
             WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ANY(r.memory_ids))
+              AND NOT EXISTS (SELECT 1 FROM repositories rp WHERE rp.id = ANY(r.repo_ids))
             RETURNING r.id
         """))).scalars().all()
         ent_ids = (await self.session.execute(text("""
             DELETE FROM entities e
             WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ANY(e.memory_ids))
+              AND NOT EXISTS (SELECT 1 FROM repositories rp WHERE rp.id = ANY(e.repo_ids))
               AND NOT EXISTS (
                   SELECT 1 FROM entity_relations r
                   WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id

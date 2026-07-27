@@ -241,6 +241,12 @@ def upgrade() -> None:
             entity_type VARCHAR(100) NOT NULL,
             properties  JSONB  DEFAULT '{}'::jsonb,
             memory_ids  UUID[] DEFAULT '{}'::uuid[],
+            -- target-new, INERT: the code-assertion analog of memory_ids, by
+            -- which a repo asserts a graph row without a memory (invariant 8
+            -- amendment, doc 04 §4.1/§4.2). Lands with empty arrays, so the
+            -- sweeps' NOT EXISTS (live repo) clauses are vacuously true and
+            -- behaviour is byte-identical. First writer: T2.27.
+            repo_ids    UUID[] DEFAULT '{}'::uuid[],
             created_at  TIMESTAMPTZ DEFAULT now(),
             CONSTRAINT entities_pkey PRIMARY KEY (id),
             CONSTRAINT entities_name_entity_type_key UNIQUE (name, entity_type)
@@ -248,6 +254,7 @@ def upgrade() -> None:
         """
     )
     op.execute("CREATE INDEX ix_entities_memory_ids ON entities USING gin (memory_ids)")
+    op.execute("CREATE INDEX ix_entities_repo_ids ON entities USING gin (repo_ids)")
 
     op.execute(
         """
@@ -259,6 +266,8 @@ def upgrade() -> None:
             properties       JSONB  DEFAULT '{}'::jsonb,
             weight           DOUBLE PRECISION DEFAULT 0.5,
             memory_ids       UUID[] DEFAULT '{}'::uuid[],
+            -- target-new, INERT — as on entities above. First writer: T2.27.
+            repo_ids         UUID[] DEFAULT '{}'::uuid[],
             created_at       TIMESTAMPTZ DEFAULT now(),
             CONSTRAINT entity_relations_pkey PRIMARY KEY (id),
             CONSTRAINT entity_relations_source_entity_id_target_entity_id_rel_type_key
@@ -268,6 +277,9 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE INDEX ix_entity_relations_memory_ids ON entity_relations USING gin (memory_ids)"
+    )
+    op.execute(
+        "CREATE INDEX ix_entity_relations_repo_ids ON entity_relations USING gin (repo_ids)"
     )
     # Reverse-lookup, neighbour and orphan-guard queries filter on the target,
     # which the UNIQUE's source-prefix cannot serve.

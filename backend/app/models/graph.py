@@ -18,6 +18,9 @@ class Entity(Base):
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     properties: Mapped[dict] = mapped_column(JSONB, default=dict)
     memory_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
+    # Inert until T2.27 (the code deriver). A repo id here is the code-side
+    # analog of a memory id: it lets code assert a graph row without a memory.
+    repo_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("name", "entity_type"),)
@@ -37,6 +40,8 @@ class EntityRelation(Base):
     properties: Mapped[dict] = mapped_column(JSONB, default=dict)
     weight: Mapped[float] = mapped_column(Float, default=0.5)
     memory_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
+    # Inert until T2.27 — see Entity.repo_ids.
+    repo_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

@@ -1,0 +1,236 @@
+"""Every dormant object lands reviewed, frozen, and with NO writer (T0.13).
+
+Doc 19 §3 and invariant 23: what lands inert lands *reviewed and frozen* with
+nothing writing to it, so the risky logic is tested while it is riskless and
+its writer ships later against an unchanged contract. The point of this module
+is that "nothing writes to it" is **asserted**, not inspected — a future writer
+that lands early fails here rather than being noticed in review.
+
+Each object's first-writer task id lives in
+``docs/planning/baseline-schema-inventory.md`` §7.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from sqlalchemy import text
+
+from app.services.embedder_registry import _AUX_INDEXES, _TABLE_TEMPLATES
+
+BACKEND = Path(__file__).resolve().parent.parent
+
+# The inert objects, with the task that will first write to each.
+INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
+INERT_COLUMNS = {
+    ("entities", "repo_ids"): "T2.27",
+    ("entity_relations", "repo_ids"): "T2.27",
+    ("repositories", "index_debt"): "T1.39",
+}
+INERT_TEMPLATES = {
+    "block_embeddings": "TH1.05",
+    "relation_embeddings": "T2.49",
+    "article_embeddings": "T3.23",
+    "triple_embeddings": "T2.33",
+}
+
+
+# ── the objects exist ────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_inert_tables_exist(session):
+    for table in INERT_TABLES:
+        found = (await session.execute(
+            text("SELECT to_regclass(:t)"), {"t": f"public.{table}"}
+        )).scalar()
+        assert found is not None, f"{table} is missing from the baseline"
+
+
+@pytest.mark.asyncio
+async def test_inert_columns_exist(session):
+    for (table, column) in INERT_COLUMNS:
+        found = (await session.execute(
+            text("SELECT 1 FROM information_schema.columns "
+                 "WHERE table_schema='public' AND table_name=:t AND column_name=:c"),
+            {"t": table, "c": column},
+        )).scalar()
+        assert found == 1, f"{table}.{column} is missing from the baseline"
+
+
+def test_inert_templates_are_registered():
+    for parent in INERT_TEMPLATES:
+        assert parent in _TABLE_TEMPLATES, f"{parent} template is missing"
+        assert parent in _AUX_INDEXES, f"{parent} aux indexes are missing"
+
+
+# ── the objects are empty ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_inert_tables_are_empty(session):
+    for table in INERT_TABLES:
+        count = (await session.execute(text(f"SELECT count(*) FROM {table}"))).scalar()
+        assert count == 0, f"{table} is not empty — something wrote to an inert table"
+
+
+@pytest.mark.asyncio
+async def test_inert_columns_hold_only_their_empty_default(session):
+    # repo_ids must be empty everywhere: that is what makes the amended sweeps
+    # vacuously true and therefore byte-identical to their pre-amendment form.
+    for table in ("entities", "entity_relations"):
+        non_empty = (await session.execute(
+            text(f"SELECT count(*) FROM {table} "
+                 "WHERE repo_ids IS NOT NULL AND cardinality(repo_ids) > 0")
+        )).scalar()
+        assert non_empty == 0, f"{table}.repo_ids has a writer — it must stay inert"
+
+    debt = (await session.execute(
+        text("SELECT count(*) FROM repositories WHERE index_debt IS NOT NULL")
+    )).scalar()
+    assert debt == 0, "repositories.index_debt has a writer — it must stay inert"
+
+
+# ── no code path writes to them ──────────────────────────────────────────
+
+def _app_sources() -> list[Path]:
+    return [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+
+
+def test_no_app_code_writes_the_inert_columns():
+    """A write is an assignment or an INSERT/UPDATE naming the column.
+
+    Reads are fine — the amended orphan sweeps read ``repo_ids`` in their
+    ``NOT EXISTS`` predicates, which is exactly the frozen-but-inert shape
+    doc 19 §3 asks for.
+    """
+    offenders: list[str] = []
+    for path in _app_sources():
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            for column in ("repo_ids", "index_debt"):
+                writes = (
+                    f".{column} =" in line
+                    or f"{column}=" in line.replace("==", "")
+                    or f"SET {column}" in line
+                )
+                if writes:
+                    offenders.append(f"{path.relative_to(BACKEND)}:{lineno}: {stripped}")
+    assert not offenders, (
+        "an inert column gained a writer:\n" + "\n".join(offenders)
+        + "\nIf this is the intended first writer, remove the object from this "
+          "module and update the schema inventory §7."
+    )
+
+
+def test_no_app_code_writes_the_inert_tables():
+    offenders: list[str] = []
+    for path in _app_sources():
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            upper = stripped.upper()
+            for table in INERT_TABLES:
+                if (f"INSERT INTO {table.upper()}" in upper
+                        or f"UPDATE {table.upper()}" in upper
+                        or f"DELETE FROM {table.upper()}" in upper):
+                    offenders.append(f"{path.relative_to(BACKEND)}:{lineno}: {stripped}")
+    assert not offenders, (
+        "an inert table gained a writer:\n" + "\n".join(offenders)
+    )
+
+
+def test_no_app_code_writes_the_inert_partitions():
+    """The templates are registered but nothing may embed into them.
+
+    ``child_table(parent, fingerprint)`` is the only sanctioned namer, so a
+    writer shows up as that call with one of the four inert parents.
+    """
+    offenders: list[str] = []
+    for path in _app_sources():
+        src = path.read_text()
+        for parent in INERT_TEMPLATES:
+            for marker in (f'child_table("{parent}"', f"child_table('{parent}'"):
+                if marker in src:
+                    offenders.append(f"{path.relative_to(BACKEND)}: {marker}")
+    assert not offenders, (
+        "an inert partition family gained a writer:\n" + "\n".join(offenders)
+    )
+
+
+# ── the amendment is behaviour-preserving ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_amended_sweeps_carry_the_live_repo_predicate(session):
+    """The predicate is present *and* vacuous.
+
+    Doc 04 §4.2: both sweeps gain one ``NOT EXISTS (live repo)`` clause each,
+    and with every ``repo_ids`` empty they are always true — so the deletion
+    logic is reviewed and frozen while it is riskless. The existing graph
+    tests passing unchanged is the other half of this proof.
+    """
+    src = (BACKEND / "app" / "repositories" / "graph.py").read_text()
+    assert src.count("FROM repositories rp") == 4, (
+        "expected one live-repo predicate in each of the four sweep statements"
+    )
+
+    # Vacuous today: no row anywhere carries a repo assertion.
+    for table in ("entities", "entity_relations"):
+        asserted = (await session.execute(
+            text(f"SELECT count(*) FROM {table} WHERE cardinality(repo_ids) > 0")
+        )).scalar()
+        assert asserted == 0
+
+
+@pytest.mark.asyncio
+async def test_live_repo_predicate_spares_a_repo_asserted_row(session):
+    """The amendment is *correct*, not merely vacuous.
+
+    Doc 19 §3's rationale for landing this inert is that the deletion-logic
+    change gets reviewed and tested **while it is riskless**. That is only true
+    if the predicate is exercised in its non-vacuous form, so this test writes
+    ``repo_ids`` directly — the deriver that will do so for real is T2.27 —
+    and proves the sweep spares a row a live repo still asserts.
+    """
+    from uuid import uuid4
+
+    from app.repositories.graph import PostgresGraphRepository
+
+    repo_id = uuid4()
+    await session.execute(
+        text("INSERT INTO repositories (id, name, auto_sync, status) "
+             "VALUES (CAST(:id AS uuid), 'probe', false, 'ready')"),
+        {"id": str(repo_id)},
+    )
+    # An entity no memory asserts, but a live repo does.
+    ent_id = uuid4()
+    await session.execute(
+        text("INSERT INTO entities (id, name, entity_type, memory_ids, repo_ids) "
+             "VALUES (CAST(:id AS uuid), 'repo-asserted', 'concept', "
+             "'{}'::uuid[], ARRAY[CAST(:rid AS uuid)])"),
+        {"id": str(ent_id), "rid": str(repo_id)},
+    )
+    # A second entity nothing asserts at all — the control.
+    ghost_id = uuid4()
+    await session.execute(
+        text("INSERT INTO entities (id, name, entity_type, memory_ids, repo_ids) "
+             "VALUES (CAST(:id AS uuid), 'ghost', 'concept', '{}'::uuid[], '{}'::uuid[])"),
+        {"id": str(ghost_id)},
+    )
+    await session.flush()
+
+    result = await PostgresGraphRepository(session).prune_orphan_entities()
+
+    survived = (await session.execute(
+        text("SELECT count(*) FROM entities WHERE id = CAST(:id AS uuid)"),
+        {"id": str(ent_id)},
+    )).scalar()
+    reaped = (await session.execute(
+        text("SELECT count(*) FROM entities WHERE id = CAST(:id AS uuid)"),
+        {"id": str(ghost_id)},
+    )).scalar()
+
+    assert survived == 1, "a row a live repo asserts must survive the sweep"
+    assert reaped == 0, "a row nothing asserts must still be reaped"
+    assert result["entities_pruned"] >= 1
