@@ -1561,25 +1561,24 @@ def _dedup_by_target_predicate(relationships: list[dict]) -> list[dict]:
     1. **Subject anchoring** — the LLM emits both the correct
        ``darkmem USES rrf`` (subject = project) and a spurious
        ``qwen3-embedding USES rrf`` (subject = neighbouring tool the
-       model anchored to). Neither carries ``properties.rescue``, so
-       the tie-break falls through to weight and picks whichever the
-       model was more confident in. This is the original motivation
-       for the dedup; behaviour preserved.
+       model anchored to). Neither claims a pattern-grounded
+       direction, so the tie-break falls through to weight and picks
+       whichever the model was more confident in. This is the
+       original motivation for the dedup.
     2. **Wrong-direction REPLACES** — the LLM emits
        ``darkmem REPLACES qdrant`` while the rescue layer's pattern
        extractor (``_rescue_relations_replaces``) emits
        ``pgvector REPLACES qdrant`` from the literal "from X to Y"
-       phrasing. The rescue triple is regex-grounded against the
-       source text, so its directional claim is more reliable than
-       the LLM's free-form interpretation. This handler now picks
-       the rescue-tagged triple over the LLM emission regardless of
-       weight.
+       phrasing, at a lower weight. ``_prefer_relation`` picks the
+       pattern-grounded triple regardless of weight.
 
     The same logic applies generically to any direction-sensitive
-    predicate where a rescue layer pattern-matches the text and the
-    LLM emits a conflicting subject (IMPLEMENTS, EXTENDS,
-    DEPLOYED_ON, etc.) — the rescue layer's structural grounding is
-    a stronger signal than the LLM's confidence weight.
+    predicate where a rescue pass matches a *directional* pattern and
+    the LLM emits a conflicting subject (IMPLEMENTS, EXTENDS,
+    DEPLOYED_ON, etc.). It deliberately does not extend to the
+    adjacency and subject-tracking rescues, whose subject is inferred
+    from position and is the same guess failure mode 1 exists to
+    correct.
 
     Self-loops are ignored (already dropped earlier). Entries missing
     source/target/type pass through unchanged.
@@ -1599,24 +1598,44 @@ def _dedup_by_target_predicate(relationships: list[dict]) -> list[dict]:
     return list(by_key.values()) + untouchable
 
 
+def _is_direction_grounded(relation: dict) -> bool:
+    """True for a rescue triple whose DIRECTION came from a pattern.
+
+    The three rescue emitters are not equally trustworthy about which
+    endpoint is the source. ``_rescue_relations`` (adjacency) and
+    ``_rescue_relations_subject_tracking`` ground *adjacency* and then
+    infer the subject from position, so their direction is a guess.
+    Only ``_rescue_relations_replaces`` matches a directional pattern
+    ("from X to Y", "Y supersedes X") and stamps its label, and it is
+    that pattern — not the rescue tag — that makes the triple's
+    direction more reliable than the model's.
+    """
+    props = relation.get("properties") or {}
+    return bool(props.get("rescue")) and bool(props.get("pattern"))
+
+
 def _prefer_relation(candidate: dict, current: dict) -> bool:
     """Tie-break ordering for ``_dedup_by_target_predicate``.
 
     Order:
 
-    1. Rescue-tagged beats non-tagged. The rescue layer stamps
-       ``properties.rescue=True`` on every triple it emits; those are
-       regex-grounded against the source text so their direction is
-       structurally more trustworthy than the LLM's free-form
-       interpretation.
-    2. When both have the same rescue status, the higher-weight
-       triple wins. Preserves the original subject-anchoring fix
-       where two LLM emissions disagree on the subject.
+    1. A direction-grounded rescue triple beats one that is not. This is
+       the wrong-direction-REPLACES fix: the LLM reads the sentence
+       subject as the replacer and emits ``darkmem REPLACES qdrant``
+       from "we migrated from qdrant to pgvector", while the pattern
+       extractor reads the phrasing itself and emits
+       ``pgvector REPLACES qdrant`` at a *lower* weight — so weight
+       alone keeps the backwards edge, and a backwards ``REPLACES`` is
+       what ``detect_supersessions`` acts on.
+    2. Otherwise the higher-weight triple wins. Preserves the original
+       subject-anchoring fix where two emissions disagree on the
+       subject, including the case where one of them is an adjacency
+       rescue whose subject is itself a guess.
     """
-    cand_rescue = bool((candidate.get("properties") or {}).get("rescue"))
-    curr_rescue = bool((current.get("properties") or {}).get("rescue"))
-    if cand_rescue != curr_rescue:
-        return cand_rescue and not curr_rescue
+    cand_grounded = _is_direction_grounded(candidate)
+    curr_grounded = _is_direction_grounded(current)
+    if cand_grounded != curr_grounded:
+        return cand_grounded and not curr_grounded
     return float(candidate.get("weight") or 0) > float(current.get("weight") or 0)
 
 
@@ -2029,7 +2048,12 @@ def _fan_out_coordinated(
         s, t = (r.get("source") or "").lower(), (r.get("target") or "").lower()
         for g in groups:
             if s in g and t not in g:
-                for member in g:
+                # sorted, not the set's own iteration order: string hash
+                # randomisation would otherwise make the emission ORDER of a
+                # coordinated group differ between processes, which breaks
+                # the reproducibility contract from the opposite end to the
+                # one the LLM seed protects.
+                for member in sorted(g):
                     if member == s or _DATE_ONLY_RE.fullmatch(member):
                         continue
                     key = (member, r.get("type"), t)
@@ -2364,6 +2388,7 @@ __all__ = [
     "_IMPROVES_PATTERNS",
     "_entity_matches",
     "_dedup_by_target_predicate",
+    "_is_direction_grounded",
     "_prefer_relation",
     "_drop_uses_when_deployed_on_exists",
     "_drop_uses_when_replaces_exists",

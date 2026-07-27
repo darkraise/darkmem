@@ -11,9 +11,13 @@ regexes (``test_extraction_rescue.py`` owns those):
   because that tag is what wins the Stage-5 tie-break;
 * the REPLACES family collapses through ``family_key`` on the dedup key,
   for every member of ``REPLACES_FAMILY``;
-* a rescue triple beats a higher-weighted LLM triple in
-  ``_dedup_by_target_predicate`` — the recorded wrong-direction-REPLACES
-  fix — and weight decides only when both sides agree on rescue status.
+* a *direction-grounded* rescue triple — one this stage's REPLACES
+  pattern pass emitted, carrying its pattern label — beats a
+  higher-weighted LLM triple in ``_dedup_by_target_predicate``, which is
+  the recorded wrong-direction-REPLACES fix; weight decides otherwise.
+  T1.24e narrowed that from "any rescue tag wins" after measuring that
+  the adjacency pass's guessed subject was outranking the model's on the
+  only case in either gold set where the rule fired.
 """
 from __future__ import annotations
 
@@ -277,8 +281,8 @@ def test_without_the_rescue_the_wrong_direction_edge_survives():
     assert ("darkmem", "REPLACES", "qdrant") in _triples(out["relationships"])
 
 
-def test_rescue_outranks_weight_in_the_tie_break():
-    rescued = {"properties": {"rescue": True}, "weight": 0.1}
+def test_a_direction_grounded_rescue_outranks_weight_in_the_tie_break():
+    rescued = {"properties": {"rescue": True, "pattern": "from-to"}, "weight": 0.1}
     llm = {"properties": {}, "weight": 0.99}
     assert _prefer_relation(rescued, llm) is True
     assert _prefer_relation(llm, rescued) is False
