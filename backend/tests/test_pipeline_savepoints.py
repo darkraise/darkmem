@@ -687,3 +687,129 @@ async def test_a_crossref_failure_changes_no_step_status(setup_database, monkeyp
         assert status["graph"] == "ok"
         assert status["error"] is None
         assert [e for e, _ in bed.broadcasts] == ["pipeline.completed"]
+
+
+async def _failure_rows(bed) -> dict[str, tuple[str | None, bool]]:
+    async with bed.factory() as s:
+        rows = (await s.execute(
+            text("SELECT entity_id, failed_step, resolved_at FROM pipeline_failures "
+                 "WHERE entity_id = ANY(CAST(:ids AS uuid[]))"),
+            {"ids": [str(m) for m in bed.memory_ids]},
+        )).mappings().all()
+    return {
+        str(r["entity_id"]): (r["failed_step"], r["resolved_at"] is not None)
+        for r in rows
+    }
+
+
+@pytest.mark.asyncio
+async def test_every_entry_gets_one_status_one_failure_row_one_broadcast(
+    setup_database, monkeypatch
+):
+    """Done-when 3 and 4, stated as a total function over the batch.
+
+    The broadcast used to live in ``_write_memory``, so it could not fire for a
+    memory whose own write raised: that memory got a normalised status dict, no
+    ``pipeline.*`` event at all, and a triage list the wire never pointed at.
+    """
+    contents = ["batch one", "batch two", "batch three"]
+    async with savepoint_bed(contents, "savepoint-batch|4") as bed:
+        real_write = ProcessingPipeline._write_memory
+
+        async def spy_write(self, entry, *a, **k):
+            if entry["memory_id"] == bed.memory_ids[1]:
+                raise RuntimeError("write escaped")
+            return await real_write(self, entry, *a, **k)
+
+        monkeypatch.setattr(ProcessingPipeline, "_write_memory", spy_write)
+
+        results = await bed.pipe.process_batch(
+            [bed.entry(i, content) for i, content in enumerate(contents)]
+        )
+
+        assert len(results) == len(contents)
+        assert [r["memory_id"] for r in results] == [str(m) for m in bed.memory_ids]
+
+        broadcast_ids = [payload["memory_id"] for _, payload in bed.broadcasts]
+        assert broadcast_ids == [str(m) for m in bed.memory_ids]
+        assert [e for e, _ in bed.broadcasts] == [
+            "pipeline.completed", "pipeline.failed", "pipeline.completed",
+        ]
+
+        failures = await _failure_rows(bed)
+        assert failures[str(bed.memory_ids[1])] == ("vector_write", False)
+
+
+@pytest.mark.asyncio
+async def test_the_journal_and_the_wire_agree_per_memory(setup_database, monkeypatch):
+    """``_derive_outcome`` is shared, so the durable ``extracted`` event's
+    outcome and the broadcast's suffix may never disagree."""
+    async with savepoint_bed(["journal agrees"], "savepoint-agree|4") as bed:
+        async def _boom(self, *a, **k):
+            raise RuntimeError("entity boom")
+
+        monkeypatch.setattr(PostgresGraphRepository, "create_entity", _boom)
+
+        await bed.pipe.process_batch([bed.entry()])
+
+        async with bed.factory() as s:
+            outcome = (await s.execute(
+                text("SELECT payload->>'outcome' FROM events "
+                     "WHERE event_type = 'extracted' "
+                     "AND object_id = CAST(:m AS uuid)"),
+                {"m": str(bed.memory_id)},
+            )).scalar_one()
+
+        assert [e for e, _ in bed.broadcasts] == [f"pipeline.{outcome}"]
+
+
+@pytest.mark.asyncio
+async def test_a_successful_reprocess_resolves_the_open_failure_row(
+    setup_database, monkeypatch
+):
+    """Done-when 3's other half: derive_memory_failed_step *resolves*, not only
+    records."""
+    async with savepoint_bed(["resolve me"], "savepoint-resolve|4") as bed:
+        async def _boom(self, *a, **k):
+            raise RuntimeError("entity boom")
+
+        monkeypatch.setattr(PostgresGraphRepository, "create_entity", _boom)
+        first = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert first["graph"] == "error"
+        assert (await _failure_rows(bed))[str(bed.memory_id)] == ("graph_write", False)
+
+        monkeypatch.undo()
+        second = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert second["graph"] == "ok"
+        assert (await _failure_rows(bed))[str(bed.memory_id)][1] is True
+
+
+@pytest.mark.asyncio
+async def test_one_bad_failure_row_does_not_suppress_the_others(
+    setup_database, monkeypatch
+):
+    """The record/resolve calls used to sit bare in the loop under one broad
+    ``except``, so the first raising row aborted every memory after it."""
+    from app.services.pipeline_failures import PipelineFailureService
+
+    contents = ["record one", "record two", "record three"]
+    async with savepoint_bed(contents, "savepoint-recfail|4") as bed:
+        real_resolve = PipelineFailureService.resolve
+        seen: list[str] = []
+
+        async def flaky_resolve(self, entity_type, entity_id, pipeline_name):
+            seen.append(str(entity_id))
+            if str(entity_id) == str(bed.memory_ids[0]):
+                raise RuntimeError("record boom")
+            return await real_resolve(self, entity_type, entity_id, pipeline_name)
+
+        monkeypatch.setattr(PipelineFailureService, "resolve", flaky_resolve)
+
+        results = await bed.pipe.process_batch(
+            [bed.entry(i, content) for i, content in enumerate(contents)]
+        )
+
+        assert len(results) == len(contents)
+        assert seen == [str(m) for m in bed.memory_ids]
+        assert len(bed.broadcasts) == len(contents)

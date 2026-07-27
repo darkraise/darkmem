@@ -762,18 +762,6 @@ class ProcessingPipeline:
             except Exception as e:
                 logger.warning(f"Crossref computation failed for {memory_id}: {e}")
 
-        # Derived again here rather than reused from the write block above:
-        # that block is skipped whenever the writes are (a failed Phase 1 marks
-        # every memory embed=error and skips them), which would leave this
-        # reading the PREVIOUS memory's outcome — or nothing at all on the first.
-        event_type = f"pipeline.{_derive_outcome(status)}"
-
-        if self._broadcast:
-            try:
-                await self._broadcast(event_type, status)
-            except Exception as e:
-                logger.warning(f"Pipeline broadcast failed: {e}")
-
         return status
 
     async def process_memory(
@@ -1106,23 +1094,49 @@ class ProcessingPipeline:
                     except (ValueError, TypeError):
                         continue
                     failed_step = derive_memory_failed_step(result)
-                    if failed_step is not None:
-                        await failure_svc.record(
-                            entity_type="memory",
-                            entity_id=entity_id,
-                            pipeline_name="memory_ingest",
-                            failed_step=failed_step,
-                            error_message=result.get("error") or "Unknown error",
-                        )
-                    else:
-                        await failure_svc.resolve(
-                            entity_type="memory",
-                            entity_id=entity_id,
-                            pipeline_name="memory_ingest",
+                    # Per memory in its own savepoint: one bad row must not
+                    # abort the rest of the batch's failure records, which is
+                    # the batch's only route into triage.
+                    try:
+                        async with failure_session.begin_nested():
+                            if failed_step is not None:
+                                await failure_svc.record(
+                                    entity_type="memory",
+                                    entity_id=entity_id,
+                                    pipeline_name="memory_ingest",
+                                    failed_step=failed_step,
+                                    error_message=result.get("error") or "Unknown error",
+                                )
+                            else:
+                                await failure_svc.resolve(
+                                    entity_type="memory",
+                                    entity_id=entity_id,
+                                    pipeline_name="memory_ingest",
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to record pipeline failure for %s: %s",
+                            mem_id_str, e,
                         )
                 await failure_session.commit()
         except Exception as e:
             logger.warning("Failed to record pipeline failures for batch: %s", e)
+
+        # Doc 05 §10: exactly one pipeline.{completed,partial,failed} per memory
+        # per batch, on EVERY path. Emitted here rather than from _write_memory,
+        # which cannot fire for a memory whose own write raised — that path
+        # produced a normalised status and no broadcast at all. Emitting after
+        # the pipeline_failures commit also means a UI reacting to
+        # pipeline.failed by fetching the failure list cannot race an unwritten
+        # row.
+        if self._broadcast:
+            for status in normalized:
+                try:
+                    await self._broadcast(
+                        f"pipeline.{_derive_outcome(status)}", status,
+                    )
+                except Exception as e:
+                    logger.warning(f"Pipeline broadcast failed: {e}")
 
         return normalized
 
