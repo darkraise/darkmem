@@ -1,4 +1,5 @@
-"""The append-only events writer and the journaling convention (T1.07).
+"""The append-only events writer, the journaling convention (T1.07), and the
+read API over the durable substrate (T1.08).
 
 Doc 04 §8.1 makes ``events`` the sole audit substrate from day one.
 ``record_event`` is the one helper every subsystem journals through —
@@ -20,12 +21,24 @@ that would quietly misfile the row. That asymmetry is why these vocabularies
 live beside their one writer instead of joining taxonomy.py's LLM-facing set
 — the same reasoning that already keeps ``TECH_TYPES`` in ``app.services.relations``
 beside the graph code that reads it rather than in taxonomy.py.
+
+``list_events``/``calendar_counts``/``object_timeline`` back the doc 12 §7
+read API. Each builds its WHERE clause (and the calendar's GROUP BY) so the
+project/object/date predicates ride the query Postgres actually executes,
+never a post-fetch Python filter — that is what lets the two doc 04 §8.1
+indexes carry the read: ``ix_events_object`` for the timeline,
+``ix_events_day`` for the calendar. The calendar bucket expression,
+``(created_at AT TIME ZONE 'UTC')::date``, must match the index expression
+verbatim — a bare ``created_at::date`` is only STABLE (it resolves against
+the session ``TimeZone`` GUC), so it neither matches the IMMUTABLE index
+expression nor means the same UTC day to every viewer.
 """
 from __future__ import annotations
 
 import json
 import logging
 import uuid
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -166,3 +179,157 @@ async def reconcile_event_partitions(session: AsyncSession) -> list[str]:
     """
     rows = await session.execute(_ENSURE_PARTITIONS, {"months_ahead": _MONTHS_AHEAD})
     return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Read API (T1.08, doc 12 §7) — three shapes over the durable substrate.
+# `events` is never written through the API (§8.1: forbid-triggers, no
+# POST/PUT/DELETE here), so every route this module backs is a GET.
+# ---------------------------------------------------------------------------
+
+_EVENT_COLUMNS = (
+    "id, created_at, event_type, object_type, object_id, "
+    "project, actor, api_key_id, source, payload"
+)
+
+
+async def list_events(
+    session: AsyncSession,
+    *,
+    object_type: str | None = None,
+    object_id: uuid.UUID | None = None,
+    project: str | None = None,
+    event_type: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Filtered, paginated event list — newest first.
+
+    Every predicate lands in the SQL WHERE clause (never a post-fetch Python
+    filter), so `project` isolation and the other filters ride the same
+    query the partition-pruning and `ix_events_object` planner sees.
+    """
+    where_parts: list[str] = []
+    params: dict = {"limit": limit, "offset": offset}
+    if object_type:
+        where_parts.append("object_type = :object_type")
+        params["object_type"] = object_type
+    if object_id is not None:
+        where_parts.append("object_id = CAST(:object_id AS uuid)")
+        params["object_id"] = str(object_id)
+    if project:
+        where_parts.append("project = :project")
+        params["project"] = project
+    if event_type:
+        where_parts.append("event_type = :event_type")
+        params["event_type"] = event_type
+    if since is not None:
+        where_parts.append("created_at >= :since")
+        params["since"] = since
+    if until is not None:
+        where_parts.append("created_at <= :until")
+        params["until"] = until
+    where_sql = " AND ".join(where_parts) if where_parts else "TRUE"
+
+    items_sql = (
+        f"SELECT {_EVENT_COLUMNS} FROM events "
+        f"WHERE {where_sql} "
+        "ORDER BY created_at DESC, id DESC "
+        "LIMIT :limit OFFSET :offset"
+    )
+    result = await session.execute(text(items_sql), params)
+    items = [dict(row) for row in result.mappings().all()]
+
+    count_sql = f"SELECT COUNT(*) FROM events WHERE {where_sql}"
+    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+    total = (await session.execute(text(count_sql), count_params)).scalar_one()
+
+    return items, int(total)
+
+
+async def calendar_counts(
+    session: AsyncSession,
+    *,
+    project: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> list[dict]:
+    """Per-UTC-day event counts for the contribution heatmap.
+
+    The GROUP BY expression is `(created_at AT TIME ZONE 'UTC')::date`,
+    byte-for-byte the `ix_events_day` index expression — a bare
+    `created_at::date` would still group correctly today but would silently
+    change which day a row belongs to under a non-UTC session `TimeZone` GUC,
+    since that cast is only STABLE (doc 04 §8.1).
+    """
+    where_parts: list[str] = []
+    params: dict = {}
+    if project:
+        where_parts.append("project = :project")
+        params["project"] = project
+    if since is not None:
+        where_parts.append("created_at >= :since")
+        params["since"] = since
+    if until is not None:
+        where_parts.append("created_at <= :until")
+        params["until"] = until
+    where_sql = " AND ".join(where_parts) if where_parts else "TRUE"
+
+    sql = (
+        "SELECT (created_at AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS count "
+        "FROM events "
+        f"WHERE {where_sql} "
+        "GROUP BY (created_at AT TIME ZONE 'UTC')::date "
+        "ORDER BY day"
+    )
+    result = await session.execute(text(sql), params)
+    return [{"day": row["day"], "count": int(row["count"])} for row in result.mappings().all()]
+
+
+async def object_timeline(
+    session: AsyncSession,
+    *,
+    object_type: str,
+    object_id: uuid.UUID,
+    project: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """One object's full history, oldest-to-newest.
+
+    `object_type = ... AND object_id = ...` are the two leading columns of
+    `ix_events_object`, and the ASC order matches the index's own
+    `created_at` order exactly, so the planner needs no extra sort.
+
+    Accepted limitation (doc 04 §8.1): bigint-keyed code-graph objects carry
+    their key in `payload`, not `object_id`, so their timelines are not
+    reachable through this index-backed shape.
+    """
+    where_parts = ["object_type = :object_type", "object_id = CAST(:object_id AS uuid)"]
+    params: dict = {
+        "object_type": object_type,
+        "object_id": str(object_id),
+        "limit": limit,
+        "offset": offset,
+    }
+    if project:
+        where_parts.append("project = :project")
+        params["project"] = project
+    where_sql = " AND ".join(where_parts)
+
+    items_sql = (
+        f"SELECT {_EVENT_COLUMNS} FROM events "
+        f"WHERE {where_sql} "
+        "ORDER BY created_at ASC, id ASC "
+        "LIMIT :limit OFFSET :offset"
+    )
+    result = await session.execute(text(items_sql), params)
+    items = [dict(row) for row in result.mappings().all()]
+
+    count_sql = f"SELECT COUNT(*) FROM events WHERE {where_sql}"
+    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+    total = (await session.execute(text(count_sql), count_params)).scalar_one()
+
+    return items, int(total)
