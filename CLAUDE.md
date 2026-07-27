@@ -409,6 +409,37 @@ caller's raw User-Agent.
   over plain-HTTP LAN. There are no `LLM_*` env vars — all LLM config
   lives in the DB via the setup wizard.
 
+## Live model endpoints (dev machine)
+
+Recorded at the owner's explicit instruction, 2026-07-28. **The key below
+is a real credential in a private repo; it is committed knowingly and is to
+be rotated before the repo is ever published.** Note that removing it in a
+later commit does not remove it from git history — that needs a history
+rewrite or a rotated key.
+
+- **Extraction / classification / reasoning — DeepSeek.**
+  `base_url=https://api.deepseek.com/v1`, `api_kind=deepseek`,
+  key `REDACTED-DEEPSEEK-KEY-ROTATE-ME`. Models offered:
+  **`deepseek-v4-flash`** and `deepseek-v4-pro`. **The F1 baseline and every
+  gate re-measurement use `deepseek-v4-flash`** — the gate ledger fixes the
+  model, so a run on `-pro` is not comparable and must not be used for
+  parity. Export as `DEEPSEEK_API_KEY` for `run_bench.py` and
+  `benchlib/run_smoke.py`.
+- **Embeddings — Ollama on the LAN.** `http://192.168.0.196:11434`,
+  `api_kind=ollama`. Two embedding models, and the choice is load-bearing
+  because the fingerprint partitions on it:
+
+  | Model | Dims | Context |
+  |---|---|---|
+  | `nomic-embed-text:latest` | 768 | 2048 |
+  | `qwen3-embedding:0.6b` | 1024 | 32768 |
+
+  Switching between them is an embedder rotation, not a config tweak: each
+  fingerprint gets its own `memory_embeddings__<slug>` child table and a
+  cross-fingerprint comparison has no defined cosine distance. DeepSeek has
+  **no** embeddings capability, so `assert_can_embed` will refuse an embed
+  call routed there — that guard is working, not a misconfiguration.
+
 ## Code indexing
 
 `POST /repos/{id}/reindex` accepts `{full, enrich_symbols,
