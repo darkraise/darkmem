@@ -45,15 +45,20 @@ from app.services.extraction_clean import (
     _TEMPORAL_BETWEEN_RE,
     _downgrade_future_to_mentions,
     _drop_date_misuse,
+    _drop_edges_to_negated,
     _entity_matches,
     _gate_replaces_requires_verb,
     _gate_replaces_selection,
+    _remap_to_valid_entities,
     _snap_hardware_types,
     _suppress_temporal_edges,
     _validate_directions,
     _validate_hosting_direction,
+    clean_extraction,
     normalize_relation_type,
+    run_passes,
 )
+from app.services.extraction_pass_harness import index_of, without
 
 STAGE4_PASS_NAMES = (
     "remap_to_valid_entities",
@@ -666,4 +671,180 @@ def test_the_hosting_pass_does_not_mutate_its_input():
     rels = _directional("gpu", "darkmem", "DEPLOYED_ON")
     before = copy.deepcopy(rels)
     _validate_hosting_direction(rels)
+    assert rels == before
+
+
+# ── Remap and negation stripping (doc 06 §4 S4 box D1) ───────────────
+
+
+def test_an_endpoint_that_survived_shaping_under_another_name_is_rewritten():
+    shaped = [{"name": "Postgres", "type": "database"}, {"name": "darkmem", "type": "project"}]
+    raw = [{"name": "Postgres cluster", "type": "database"}, {"name": "darkmem", "type": "project"}]
+    out = _remap_to_valid_entities(
+        [{"source": "darkmem", "target": "Postgres cluster", "type": "USES"}], shaped, raw
+    )
+    assert _triples(out) == {("darkmem", "USES", "Postgres")}
+
+
+def test_an_acronym_endpoint_is_rewritten_onto_its_expansion():
+    shaped = [
+        {"name": "Central Processing Unit", "type": "concept"},
+        {"name": "darkmem", "type": "project"},
+    ]
+    raw = [{"name": "CPU", "type": "tool"}, *shaped]
+    out = _remap_to_valid_entities(
+        [{"source": "darkmem", "target": "CPU", "type": "USES"}], shaped, raw
+    )
+    assert _triples(out) == {("darkmem", "USES", "Central Processing Unit")}
+
+
+def test_an_endpoint_that_did_not_survive_shaping_drops_its_edge():
+    shaped = [{"name": "darkmem", "type": "project"}]
+    out = _remap_to_valid_entities(
+        [{"source": "darkmem", "target": "ghost", "type": "USES"}], shaped, shaped
+    )
+    assert out == []
+
+
+def test_a_self_edge_after_the_remap_is_dropped():
+    shaped = [{"name": "Postgres", "type": "database"}]
+    raw = [{"name": "Postgres cluster", "type": "database"}, *shaped]
+    out = _remap_to_valid_entities(
+        [{"source": "Postgres cluster", "target": "Postgres", "type": "USES"}], shaped, raw
+    )
+    assert out == []
+
+
+def test_the_remap_normalises_the_relation_type_through_the_closed_taxonomy():
+    shaped = [{"name": "darkmem", "type": "project"}, {"name": "proxmox", "type": "tool"}]
+    unknown = _remap_to_valid_entities(
+        [{"source": "darkmem", "target": "proxmox", "type": "FROBNICATES"}], shaped, shaped
+    )
+    legacy = _remap_to_valid_entities(
+        [{"source": "darkmem", "target": "proxmox", "type": "RUNS_ON"}], shaped, shaped
+    )
+    assert _triples(unknown) == {("darkmem", "RELATED_TO", "proxmox")}
+    assert _triples(legacy) == {("darkmem", "DEPLOYED_ON", "proxmox")}
+
+
+def test_the_remap_reads_the_raw_entity_list_not_the_shaped_one():
+    # The binding T1.24a put in the registry declaration. Reading the shaped
+    # list instead loses exactly the mappings the pass exists for, and the
+    # loss is silent -- the edge is dropped, not flagged.
+    step = PASS_REGISTRY[index_of(PASS_REGISTRY, "remap_to_valid_entities")]
+    assert step.reads == ("relationships", "entities", "raw_entities")
+
+    shaped = [{"name": "Postgres", "type": "database"}, {"name": "darkmem", "type": "project"}]
+    raw = [{"name": "Postgres cluster", "type": "database"}, {"name": "darkmem", "type": "project"}]
+    edge = [{"source": "darkmem", "target": "Postgres cluster", "type": "USES"}]
+    assert _remap_to_valid_entities(edge, shaped, raw) != []
+    assert _remap_to_valid_entities(edge, shaped, shaped) == []
+
+
+def test_the_remap_does_not_mutate_its_input():
+    shaped = [{"name": "darkmem", "type": "project"}, {"name": "proxmox", "type": "tool"}]
+    rels = [{"source": "darkmem", "target": "proxmox", "type": "RUNS_ON"}]
+    before = copy.deepcopy(rels)
+    _remap_to_valid_entities(rels, shaped, shaped)
+    assert rels == before
+
+
+# The reachable input for ``drop_edges_to_negated``. It exists because two
+# file-path vocabularies disagree: ``_filter_noise``'s ``_FILENAME_PATTERN``
+# lists far fewer extensions than the rescue's ``_FILE_PATH_RE``, so a
+# ``.css`` / ``.scss`` / ``.lua`` path is NOT dropped as noise and reaches
+# ``_filter_negation_only``, which records it in ``negated_names``. A short
+# leading directory keeps ``_filter_hallucinated_names`` under its two-token
+# threshold. ``_rescue_file_path_entities`` -- the one rescue that is not
+# negation-aware -- then re-adds it, so the endpoint is valid again by the
+# time the remap runs and only this pass removes the edge.
+_NEGATED_PATH_CONTENT = "The dashboard was rebuilt without ui/theme.css in the bundle."
+_NEGATED_PATH_ENTITIES = [
+    {"name": "ui/theme.css", "type": "artifact"},
+    {"name": "dashboard", "type": "concept"},
+]
+
+
+def test_the_negated_entity_reaches_the_pass_with_a_live_edge():
+    state = _state(
+        content=_NEGATED_PATH_CONTENT,
+        entities=_NEGATED_PATH_ENTITIES,
+        relationships=[
+            {"source": "dashboard", "target": "ui/theme.css", "type": "USES"},
+        ],
+    )
+    spot = index_of(PASS_REGISTRY, "drop_edges_to_negated")
+    at = run_passes(PASS_REGISTRY[:spot], state)
+    assert "ui/theme.css" in at.negated_names
+    assert "ui/theme.css" in _names(at.entities)
+    assert _triples(at.relationships) == {("dashboard", "USES", "ui/theme.css")}
+
+
+def test_an_edge_to_a_negated_entity_is_dropped():
+    out = _drop_edges_to_negated(
+        [
+            {"source": "dashboard", "target": "ui/theme.css", "type": "USES"},
+            {"source": "dashboard", "target": "ui/tokens.css", "type": "USES"},
+        ],
+        {"ui/theme.css"},
+    )
+    assert _triples(out) == {("dashboard", "USES", "ui/tokens.css")}
+
+
+def test_an_empty_negated_set_is_a_no_op():
+    rels = [{"source": "dashboard", "target": "ui/theme.css", "type": "USES"}]
+    assert _drop_edges_to_negated(rels, set()) is rels
+
+
+def test_only_this_pass_removes_the_edge_to_the_negated_path():
+    raw = {
+        "entities": _NEGATED_PATH_ENTITIES,
+        "relationships": [
+            {"source": "dashboard", "target": "ui/theme.css", "type": "USES"},
+        ],
+    }
+    kept = clean_extraction(raw, _NEGATED_PATH_CONTENT)
+    assert kept["relationships"] == []
+
+    state = _state(
+        content=_NEGATED_PATH_CONTENT,
+        entities=raw["entities"],
+        relationships=raw["relationships"],
+    )
+    reduced = run_passes(without(PASS_REGISTRY, "drop_edges_to_negated"), state)
+    assert _triples(reduced.relationships) == {("dashboard", "USES", "ui/theme.css")}
+
+
+def test_a_negation_does_not_mint_a_replaces_against_the_denied_entity():
+    # The consequence that makes this pass invariant-bearing: without it the
+    # REPLACES survives to detect_supersessions and flips a live memory out
+    # of the default active view on the strength of a denial.
+    content = (
+        "We migrated the dashboard to ui/tokens.css "
+        "without ui/theme.css in the bundle."
+    )
+    raw = {
+        "entities": [
+            {"name": "ui/theme.css", "type": "artifact"},
+            {"name": "ui/tokens.css", "type": "artifact"},
+        ],
+        "relationships": [
+            {"source": "ui/tokens.css", "target": "ui/theme.css", "type": "REPLACES"},
+        ],
+    }
+    assert clean_extraction(raw, content)["relationships"] == []
+
+    state = _state(
+        content=content, entities=raw["entities"], relationships=raw["relationships"]
+    )
+    reduced = run_passes(without(PASS_REGISTRY, "drop_edges_to_negated"), state)
+    assert _triples(reduced.relationships) == {
+        ("ui/tokens.css", "REPLACES", "ui/theme.css")
+    }
+
+
+def test_the_negation_pass_does_not_mutate_its_input():
+    rels = [{"source": "dashboard", "target": "ui/theme.css", "type": "USES"}]
+    before = copy.deepcopy(rels)
+    _drop_edges_to_negated(rels, {"ui/theme.css"})
     assert rels == before
