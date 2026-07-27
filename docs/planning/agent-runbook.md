@@ -279,8 +279,17 @@ silently tests the wrong database. Set `TEST_DATABASE_URL` instead. And the deri
 default resolves to port **5432** while the dev Postgres runs on **5433**, so any bare
 shell command that reaches the database needs an explicit URL.
 
+**A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
+does not populate it and there is no interpreter at the path every **Verify** field names.
+Run the main checkout's interpreter by absolute path
+(`/root/repositories/darkmem/backend/.venv/bin/python`) *from* your worktree's `backend/`
+directory, so imports resolve against your code rather than the main checkout's. The same
+applies to the bench cache below, for the same reason — both are gitignored, and both fail
+in ways that look like a code problem rather than a missing file.
+
 **The extraction bench does not work cold.** `scripts/extraction_bench/.cache/` is
 gitignored and machine-local, and `--algo-only` exits non-zero on any uncached content.
+On a fresh lane worktree, copy it in from the main checkout before running the bench.
 The cache key is `sha256(content + system_prompt)`, so **any prompt change invalidates
 it**. Before `--algo-only` can serve as a merge gate on a fresh worktree, someone must run
 the live pass — which needs both an explicit `DATABASE_URL` (the bench reads LLM config
