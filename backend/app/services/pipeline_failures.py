@@ -378,7 +378,16 @@ class PipelineFailureService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """List unresolved failures with entity_preview enrichment.
-        Returns (items, total_count)."""
+        Returns (items, total_count).
+
+        The join to `memories` carries no project or lifecycle predicate on
+        purpose. It is addressed by `pf.entity_id`, so it can only return the
+        one row the operator is already being shown a failure for, and a
+        predicate there would blank the preview for exactly the failures most
+        in need of triage — an archived or superseded memory whose extraction
+        failed still has to be resolvable. The scope the row came from rides
+        along instead, as `entity_project` / `entity_status`.
+        """
         where_parts = ["pf.resolved_at IS NULL"]
         params: dict = {"limit": limit, "offset": offset}
         if entity_type:
@@ -399,7 +408,9 @@ class PipelineFailureService:
                     WHEN pf.entity_type = 'memory' THEN LEFT(m.content, 80)
                     WHEN pf.entity_type = 'code_repo' THEN r.name
                     ELSE NULL
-                END AS entity_preview
+                END AS entity_preview,
+                m.project AS entity_project,
+                m.status AS entity_status
             FROM pipeline_failures pf
             LEFT JOIN memories m ON pf.entity_type = 'memory' AND m.id = pf.entity_id
             LEFT JOIN repositories r ON pf.entity_type = 'code_repo' AND r.id = pf.entity_id
@@ -423,6 +434,8 @@ class PipelineFailureService:
                 "resolved_at": row["resolved_at"],
                 "metadata": row["metadata"] or {},
                 "entity_preview": row["entity_preview"],
+                "entity_project": row["entity_project"],
+                "entity_status": row["entity_status"],
             })
 
         count_sql = f"SELECT COUNT(*) FROM pipeline_failures pf WHERE {where_sql}"
