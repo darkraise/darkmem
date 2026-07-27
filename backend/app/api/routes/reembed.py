@@ -3,6 +3,13 @@
 After the per-fingerprint redesign these endpoints are a missing-fingerprint
 backfill: they look for memories/entities/code chunks whose vector for the
 active embedder partition does not yet exist, and produce one.
+
+The obsolete listings are deliberately deployment-wide — every project and every
+lifecycle state needs a vector under the active embedder, exactly as the write
+path does — and `partition_missing` is what keeps that honest: when the active
+partition is absent no row can be singled out, so the count stays exact and the
+enumeration is withheld rather than paging the whole table. The decision and its
+reasoning live in `app.services.content_surfaces`.
 """
 
 from __future__ import annotations
@@ -70,8 +77,10 @@ async def list_obsolete_memories(
 ):
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_memories(fingerprint, limit=limit, offset=offset)
-    return {"items": items, "total": total}
+    items, total, partition_missing = await svc.list_obsolete_memories(
+        fingerprint, limit=limit, offset=offset,
+    )
+    return {"items": items, "total": total, "partition_missing": partition_missing}
 
 
 @router.get("/obsolete/code-chunks")
@@ -84,8 +93,10 @@ async def list_obsolete_code_chunks(
 ):
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_code_chunks(fingerprint, limit=limit, offset=offset)
-    return {"items": items, "total": total}
+    items, total, partition_missing = await svc.list_obsolete_code_chunks(
+        fingerprint, limit=limit, offset=offset,
+    )
+    return {"items": items, "total": total, "partition_missing": partition_missing}
 
 
 @router.get("/obsolete/entities")
@@ -98,8 +109,10 @@ async def list_obsolete_entities(
 ):
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_entities(fingerprint, limit=limit, offset=offset)
-    return {"items": items, "total": total}
+    items, total, partition_missing = await svc.list_obsolete_entities(
+        fingerprint, limit=limit, offset=offset,
+    )
+    return {"items": items, "total": total, "partition_missing": partition_missing}
 
 
 async def _dispatch_single_category(

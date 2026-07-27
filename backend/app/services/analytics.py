@@ -229,12 +229,18 @@ class AnalyticsService:
             .limit(5)
         )
         mem_rows = (await self.session.execute(mem_stmt)).scalars().all()
+        # Deliberately deployment-wide, like every other number on this
+        # dashboard, so the rows carry the scope they came from instead of
+        # being narrowed: a superseded row is part of what recently happened,
+        # and it is honest only while it says so.
         recent_memories = [
             {
                 "id": str(m.id),
                 "content": m.content,
                 "source": m.source,
                 "memory_type": m.memory_type,
+                "project": m.project,
+                "status": m.status,
                 "tags": [t.name for t in m.tags],
                 "created_at": m.created_at.isoformat(),
             }

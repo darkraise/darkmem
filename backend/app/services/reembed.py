@@ -46,6 +46,10 @@ reembed_locks = ReembedLockSet()
 BroadcastFn = Callable[[str, dict], Awaitable[None]]
 
 
+def _where(clause: str | None) -> str:
+    return f" WHERE {clause}" if clause else ""
+
+
 class ReembedService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -57,15 +61,18 @@ class ReembedService:
             )
         ).scalar_one_or_none() is not None
 
-    async def _missing_filter(self, table: str, anti_join: str) -> str:
-        """WHERE-clause body selecting rows absent from the active partition.
+    async def _anti_join(self, table: str, anti_join: str) -> str | None:
+        """The anti-join selecting rows absent from the active partition, or
+        ``None`` when that partition does not exist.
 
         Until the partition exists (fresh install, or right after an embedder
         rotation), no row is embedded under this fingerprint, so every row is
-        'missing'. The anti-join can't run against a non-existent relation, so
-        degrade the filter to TRUE rather than crashing with UndefinedTable.
+        'missing' and the anti-join cannot run against a non-existent relation.
+        Callers branch on ``None`` rather than substituting a predicate that
+        matches every row: the counts are exact either way, but a listing whose
+        only filter cannot discriminate would page previews of the whole table.
         """
-        return anti_join if await self._table_exists(table) else "TRUE"
+        return anti_join if await self._table_exists(table) else None
 
     async def _non_active_code_chunk_tables(self, fingerprint: str) -> list[str]:
         active = child_table("code_chunk_embeddings", fingerprint)
@@ -113,22 +120,22 @@ class ReembedService:
         mem_table = child_table("memory_embeddings", fingerprint)
         ent_table = child_table("entity_embeddings", fingerprint)
 
-        mem_filter = await self._missing_filter(
+        mem_anti = await self._anti_join(
             mem_table, f"NOT EXISTS (SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id)"
         )
         mem_count = (await self.session.execute(
-            text(f"SELECT COUNT(*) FROM memories m WHERE {mem_filter}"),
+            text(f"SELECT COUNT(*) FROM memories m{_where(mem_anti)}"),
         )).scalar_one()
 
         # Code chunks live only inside per-fingerprint tables; after a rotation
         # they sit under the old fingerprint, missing from the active partition.
         chunk_count = await self._count_missing_code_chunks(fingerprint)
 
-        ent_filter = await self._missing_filter(
+        ent_anti = await self._anti_join(
             ent_table, f"NOT EXISTS (SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id)"
         )
         entity_count = (await self.session.execute(
-            text(f"SELECT COUNT(*) FROM entities e WHERE {ent_filter}"),
+            text(f"SELECT COUNT(*) FROM entities e{_where(ent_anti)}"),
         )).scalar_one()
 
         return {
@@ -146,20 +153,31 @@ class ReembedService:
         fingerprint: str,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[dict], int, bool]:
+        """Memories with no vector in the active partition, newest first.
+
+        Returns ``(items, total, partition_missing)``. When the partition is
+        absent every memory is missing from it, so the anti-join cannot single
+        any row out; the count stays exact and the enumeration is withheld
+        rather than paging a content preview of the entire table under a filter
+        that discriminates nothing.
+        """
         mem_table = child_table("memory_embeddings", fingerprint)
-        mem_filter = await self._missing_filter(
+        mem_anti = await self._anti_join(
             mem_table, f"NOT EXISTS (SELECT 1 FROM {mem_table} me WHERE me.memory_id = m.id)"
         )
-        total = (await self.session.execute(
-            text(f"SELECT COUNT(*) FROM memories m WHERE {mem_filter}"),
-        )).scalar_one()
+        total = int((await self.session.execute(
+            text(f"SELECT COUNT(*) FROM memories m{_where(mem_anti)}"),
+        )).scalar_one())
+
+        if mem_anti is None:
+            return [], total, True
 
         rows = (await self.session.execute(
             text(f"""
                 SELECT m.id AS memory_id, LEFT(m.content, 120) AS content_preview
                 FROM memories m
-                WHERE {mem_filter}
+                WHERE {mem_anti}
                 ORDER BY m.created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
@@ -173,24 +191,27 @@ class ReembedService:
             }
             for r in rows
         ]
-        return items, int(total)
+        return items, total, False
 
     async def list_obsolete_code_chunks(
         self,
         fingerprint: str,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[dict], int, bool]:
+        active_present = await self._table_exists(
+            child_table("code_chunk_embeddings", fingerprint)
+        )
         others = await self._non_active_code_chunk_tables(fingerprint)
         if not others:
-            return [], 0
+            return [], 0, not active_present
         total = await self._count_missing_code_chunks(fingerprint)
         union = " UNION ALL ".join(
             f"SELECT repo_id, file_path, symbol_name, line_start, line_end FROM {t}" for t in others
         )
         active = child_table("code_chunk_embeddings", fingerprint)
         not_exists = ""
-        if await self._table_exists(active):
+        if active_present:
             not_exists = f"""
                 WHERE NOT EXISTS (
                     SELECT 1 FROM {active} a
@@ -219,27 +240,30 @@ class ReembedService:
             }
             for r in rows
         ]
-        return items, total
+        return items, total, not active_present
 
     async def list_obsolete_entities(
         self,
         fingerprint: str,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[dict], int, bool]:
         ent_table = child_table("entity_embeddings", fingerprint)
-        ent_filter = await self._missing_filter(
+        ent_anti = await self._anti_join(
             ent_table, f"NOT EXISTS (SELECT 1 FROM {ent_table} ee WHERE ee.entity_id = e.id)"
         )
-        total = (await self.session.execute(
-            text(f"SELECT COUNT(*) FROM entities e WHERE {ent_filter}"),
-        )).scalar_one()
+        total = int((await self.session.execute(
+            text(f"SELECT COUNT(*) FROM entities e{_where(ent_anti)}"),
+        )).scalar_one())
+
+        if ent_anti is None:
+            return [], total, True
 
         rows = (await self.session.execute(
             text(f"""
                 SELECT e.id, e.name, e.entity_type
                 FROM entities e
-                WHERE {ent_filter}
+                WHERE {ent_anti}
                 ORDER BY e.created_at DESC
                 LIMIT :limit OFFSET :offset
             """),
@@ -254,7 +278,7 @@ class ReembedService:
             }
             for r in rows
         ]
-        return items, int(total)
+        return items, total, False
 
     async def prune_obsolete_cache_entries(self, fingerprint: str) -> int:
         """Drop entity-embedding-cache child tables for retired fingerprints.
