@@ -43,13 +43,13 @@ and the Note says so. That rule is the whole point of this file.
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
-| E1 — Engine core | 75 | 73 | 0 | 0 | 2 | 0 | G-B open |
+| E1 — Engine core | 75 | 72 | 0 | 0 | 3 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **183** | **0** | **0** | **2** | **20** | |
+| **Total** | **205** | **182** | **0** | **0** | **3** | **20** | |
 
 ---
 
@@ -91,7 +91,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.07 | `events` writer and the journaling convention | M | Sonnet | high | | todo | | | |
 | T1.08 | `GET /events`, `/events/calendar`, `/events/timeline` | M | Sonnet | high | | todo | | | |
 | T1.09 | Retire `audit_log` reads | S | Sonnet | high | | todo | | | |
-| T1.10 | `memory_buffer` table + pre-minted UUIDv7 ids | M | Sonnet | high | | todo | | | |
+| T1.10 | `memory_buffer` table + pre-minted UUIDv7 ids | M | Sonnet | high | claude/e1-engine-core | review | 33b896d | — | UUIDv7 source **decided**: `uuid6` package, not a Python-floor raise (stdlib `uuid.uuid7` is 3.14+; venv is 3.13.5 and the image is `python:3.12-slim`, so the floor raise is a toolchain migration). `app/utils/ids.py::new_id()` is the single call site; lock regenerated with the universal command, diff exactly 2 lines. `origin_key` rides `metadata` per doc 04 §8.6 rather than a new column — so **no schema change**. Model + service + 16 tests; durability proven against a separate connection, and every replayed field asserted to round-trip. Verify: 16 passed. Gate GREEN exit 0 — backend 751 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 unchanged (0.925/0.955/0.865/0.892) |
 | T1.11 | `origin_key` resolution — born at capture | M | Opus | high | | todo | | | |
 | T1.12 | Tier-A synchronous accept + 202 ack | M | Sonnet | high | | todo | | | |
 | T1.13 | `buffer_flush` job with `FOR UPDATE SKIP LOCKED` | M | Opus | high | | todo | | | |
