@@ -43,13 +43,13 @@ and the Note says so. That rule is the whole point of this file.
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
-| E1 — Engine core | 75 | 58 | 0 | 0 | 0 | 17 | G-B open |
+| E1 — Engine core | 75 | 51 | 7 | 0 | 0 | 17 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **168** | **0** | **0** | **0** | **37** | |
+| **Total** | **205** | **161** | **7** | **0** | **0** | **37** | |
 
 ---
 
@@ -94,16 +94,16 @@ and the Note says so. That rule is the whole point of this file.
 | T1.10 | `memory_buffer` table + pre-minted UUIDv7 ids | M | Sonnet | high | claude/e1-engine-core | done | 33b896d, 04ae49f | fable adversarial: spec PASS, 3 Important + 4 Minor; re-review ADDRESSED (04ae49f) | UUIDv7 via `uuid6` (floor raise rejected: image is python:3.12-slim). Review found the buffer id and pre-minted memory id must be **two distinct ids** (doc 05 §2.2, T1.10's own owning section, unread by me) — unwound; memory id rides `metadata_`. `REPLAYED_METADATA_FIELDS` gained the caller's `metadata`. Durability proven cross-connection. Gate GREEN exit 0 — backend 774 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
 | T1.11 | `origin_key` resolution — born at capture | M | Opus | high | claude/e1-engine-core | done | 34a79d2 | — (Opus tier; Fable review owed before G-B) | `origin_key` resolved at the front door: declared identity → `source:origin_id` (explicit arg or `X-Darkmem-Origin`), else the merge-to-one `unknown:source:project`. **A per-request random is forbidden** (doc 05 §12) — mutating the fallback to exactly that fails 4 tests, including the 100-capture flood case. The batch path resolves per entry from one request context, so 100 undeclared entries are one origin. Threaded through ORM, `MemoryCreate`, repo, both service paths and both MCP doors. Gate GREEN exit 0 — backend 1127 passed/1 skipped, frontend 340 + typecheck + build, benchlib 276, F1 gold 0.932/0.962/0.865/0.892 (entity dims UP from the 0.925/0.955 baseline), held-out unchanged |
 | T1.12 | Tier-A synchronous accept + 202 ack | M | Sonnet | high | claude/e1-lane-b | done | 7eb822f, 3dc2356 | — (Sonnet tier; Fable review owed before G-B) | Tier-A accept landed **additively** — new REST `POST /memories/capture(/batch)` and MCP `memory_capture`/`memory_capture_batch` over the same service layer, so invariant 17 parity holds. Returns the **pre-minted memory id**, not the buffer handle (doc 05 §2.2's two-distinct-ids rule, the seam T1.10 already got wrong once). No-model-call proven structurally by a call-counter, not by latency; rejected requests proven to leave the buffer row count unchanged. **Did not cut `POST /memories`/`memory_add` over**, verified by running it: nothing drains the buffer until T1.13 and no synchronous escape exists until T1.14, so the flip would strand every capture. Controller assigned the cutover to **T1.14** and recorded that **G-B may not claim doc 05 §2 until it lands**. Gate GREEN exit 0 (standard) — backend 1247 passed, frontend 354 + typecheck + build, benchlib 276, F1 gold 0.940/0.970/0.895/0.921, held-out 0.949/0.983/0.872/0.872 (both sets UP on all four dimensions). `--full` RED at the retrieval eval: needs DEEPSEEK_API_KEY, which this machine does not have — environmental, not a regression. |
-| T1.13 | `buffer_flush` job with `FOR UPDATE SKIP LOCKED` | M | Opus | high | | todo | | | |
+| T1.13 | `buffer_flush` job with `FOR UPDATE SKIP LOCKED` | M | Opus | high | claude/e1-lane-b | wip | | | |
 | T1.14 | `wait_process` interactive bypass | M | Sonnet | high | | todo | | | |
 | T1.15 | Repo-hint auto-provision handoff + SSRF allowlist gate | M | Opus | high | | todo | | | |
 | T1.16 | Phase 1: content embed + register-before-insert | M | Opus | high | claude/e1-lane-a | done | ea436bb, c247942, 072e8ce | — (Opus tier; Fable review owed before G-B) | Phase 1 failure states defined and the fingerprint-registered-before-any-partition-write invariant pinned; 3 mutations (registration removed, count guard removed, registration failure allowed to escape) each failed the intended test. **Replaced the `test_pipeline_process_batch.py` placeholder with a real integration test** (controller Tier-2): it asserts `embed=='error'` rather than the `'unknown'` the exception path stamps, making it a regression test for T1.07's defect class — the one benchlib caught over a 909-green floor. **Found a pre-existing invariant-2 hole**, correctly left unfixed as out-of-lane: on mid-batch rotation Phase 3 writes pre-rotation cache hits into the new fingerprint's partition, silent whenever the two embedders share a dimension count. Controller re-routed it from T1.19 to **T1.22**. Also observed Phase 2 still burns LLM calls after a Phase-1 failure and discards them — T1.17's call. Gate GREEN exit 0 (standard) — backend 1247 passed, frontend 354 + typecheck + build, benchlib 276, F1 gold 0.940/0.970/0.895/0.921, held-out 0.949/0.983/0.872/0.872 (both sets UP on all four dimensions). `--full` RED at the retrieval eval: needs DEEPSEEK_API_KEY, which this machine does not have — environmental, not a regression. |
 | T1.17 | Phase 2: merged extract + classify in one call | L | Opus | high | | todo | | | |
 | T1.18 | `classifier_kind=local` narrowing path | S | Sonnet | high | | todo | | | |
-| T1.19 | Phase 3: entity embed with the two-level cache | M | Opus | high | | todo | | | |
+| T1.19 | Phase 3: entity embed with the two-level cache | M | Opus | high | claude/e1-lane-d | wip | | | |
 | T1.20 | Phase 4: type-constrained dedup + `names_distinct` | M | Opus | high | | todo | | | |
 | T1.21 | Phase 5: the two-savepoint write | L | Opus | high | | todo | | | |
-| T1.22 | Mid-batch embedder rotation | M | Opus | high | | todo | | | |
+| T1.22 | Mid-batch embedder rotation | M | Opus | high | claude/e1-lane-d | wip | | | |
 | T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | high | claude/e1-engine-core | done | f74ba76, 04ae49f | fable adversarial: spec PASS (1 box deferred, logged), 3 Important + 5 Minor; re-review ADDRESSED (04ae49f) | MEMORY_TYPES 7→9; memory-relation set reserved (5 stored, SUPERSEDES projected). Review found `PRECEDES→FOLLOWS` silently inverted edge direction (alias deleted), the demo fixture still carried 1000 `context` rows (regenerated), and a pre-existing invariant-5 hole on the update path (closed + pinned). **The F1-green does NOT measure the widening**: the bench cache key covers only the system prompt, while the schema string rides the user message — real measurement is G-B's live run. Gate GREEN exit 0 — backend 774 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
 | T1.24a | Pass registry, the ordering contract, and the per-pass harness | M | Opus | high | claude/e1-lane-c | done | b43eec3 | — (Opus tier; Fable review owed before G-B) | Ordered `PASS_REGISTRY` + `ORDERING_CONSTRAINTS`, validated at import so a bad reorder cannot be imported. 28 top-level entries (not doc 06's ~40 — that count includes sub-passes; logged). Pass bodies untouched: F1 unmoved AND a stricter equivalence check compared full output dicts over all cached extractions in both gold files under both `relation_rescue` states — 72 cases, 0 mismatches. All three ordering constraints mutation-checked both with the import guard and with it disabled. Found doc 06 §4's stated reason for constraint 1 wrong (dedup has no substring rule); doc corrected, constraint unchanged. Gate GREEN exit 0 — backend 911 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
 | T1.24b | Stage 1: entity shaping | M | Opus | high | claude/e1-lane-c | done | 34a79d2 | — (Opus tier; Fable review owed before G-B) | Stage-1 entity shaping in doc order, 147 tests, 10 guards each mutation-checked. Entity F1 **improved** (gold ent_nt 0.925→0.932, ent_n 0.955→0.962) with relations and the full held-out set unchanged. Three measured behaviour fixes: absolute URLs were only ever dropped by accident, `_filter_literals` sat after the type snappers, and `never use X` was not read as negation. **Declined a curated-map entry worth +0.030** because `phoenix v2` appears only in gold.json — a fitted constant would reach G-B looking like generalising quality. Escalated rather than taken. Gate GREEN exit 0 — backend 1127 passed/1 skipped, frontend 340 + typecheck + build, benchlib 276, F1 gold 0.932/0.962/0.865/0.892 (entity dims UP from the 0.925/0.955 baseline), held-out unchanged |
@@ -111,11 +111,11 @@ and the Note says so. That rule is the whole point of this file.
 | T1.24d | Stage 4: relation gating and direction | L | Opus | high | | todo | | | |
 | T1.24e | Stage 5: collapse, dedup, fan-out | L | Opus | high | | todo | | | |
 | T1.24f | Whole-chain F1 parity against the recorded baseline | M | Fable | high | | todo | | | |
-| T1.25 | `relation_rescue` layer | M | Opus | high | | todo | | | |
+| T1.25 | `relation_rescue` layer | M | Opus | high | claude/e1-lane-c | wip | | | |
 | T1.26 | Strip-before-rewrite: idempotent re-extraction | M | Opus | high | | todo | | | |
 | T1.27 | `technologies` denorm recompute | M | Opus | high | | todo | | | |
 | T1.28 | `graph_orphan_cleanup` backstop | S | Sonnet | high | | todo | | | |
-| T1.29a | Pushdown on the semantic channel | M | Opus | high | | todo | | | |
+| T1.29a | Pushdown on the semantic channel | M | Opus | high | claude/e1-lane-a | wip | | | |
 | T1.29b | Pushdown on the keyword and graph channels | M | Opus | high | | todo | | | |
 | T1.29c | Pushdown on `memory_reason` and code search | M | Opus | high | | todo | | | |
 | T1.30 | RRF fusion + the unified `rank_fusion_factor` | M | Opus | high | | todo | | | |
@@ -146,8 +146,8 @@ and the Note says so. That rule is the whole point of this file.
 | T1.52 | Tier-C re-extraction backfill + verification counts | L | Opus | high | | todo | | | |
 | T1.53 | Cutover rehearsal on a dump copy + restore drill | M | Sonnet | high | | todo | | | |
 | T1.54 | Execute the cutover, verify, apply the freeze tag | M | Fable | high | | todo | | | |
-| T1.55 | Settings → LLM: six inline purpose cards | M | Sonnet | high | | todo | | | |
-| T1.56 | Setup wizard finalize against the flattened config | M | Sonnet | high | | todo | | | |
+| T1.55 | Settings → LLM: six inline purpose cards | M | Sonnet | high | claude/e1-lane-e | wip | | | |
+| T1.56 | Setup wizard finalize against the flattened config | M | Sonnet | high | claude/e1-lane-e | wip | | | |
 | T1.57 | Settings → Flags, bound to `config` | M | Sonnet | high | | todo | | | |
 | T1.58 | Retire demo mode as the default | L | Sonnet | high | | todo | | | |
 | T1.59 | Bind the Code section to live data | L | Sonnet | high | | todo | | | |
