@@ -112,7 +112,7 @@ def _clamp_limit(limit: int, default: int) -> int:
 
 
 @mcp.tool(
-    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. The origin tool is auto-detected and recorded in 'source'."
+    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. The origin tool is auto-detected and recorded in 'source'. Buffered by default (Tier-A accept, doc 05 §2): returns immediately with the memory's final id while extraction/classification runs asynchronously. Pass wait_process=true to drive that processing inline instead, bounded by buffer_wait_timeout_seconds — the fully processed memory is returned when it settles in time, otherwise the same buffered ack."
 )
 async def memory_add(
     content: str,
@@ -123,6 +123,7 @@ async def memory_add(
     source_agent: str | None = None,
     memory_type: str | None = None,
     project: str | None = None,
+    wait_process: bool = False,
     ctx: Context | None = None,
 ) -> str:
     """
@@ -133,6 +134,7 @@ async def memory_add(
         source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
         memory_type: One of fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
         project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
+        wait_process: If true, drive this capture's flush inline (bounded by buffer_wait_timeout_seconds) instead of only buffering it. Use when you need the memory queryable immediately; the default leaves extraction to run asynchronously.
     """
     async with _memory_service_context() as service:
         resolved_source = resolve_client_source(source, ctx)
@@ -146,47 +148,10 @@ async def memory_add(
             ),
             memory_type=memory_type, project=resolved_project,
         )
-        memory = await service.create_memory(data, api_key_id=None)
-        return json.dumps(_memory_to_dict(memory))
-
-
-@mcp.tool(
-    description="Durably buffer a new memory and return immediately with its final id (Tier-A accept, doc 05 §2). No extraction, embedding, or classification runs on this call — the memory is queued for asynchronous processing. Use memory_get or memory_search once it has gone through if you need the enriched result; memory_add still processes inline today."
-)
-async def memory_capture(
-    content: str,
-    tags: list[str] | None = None,
-    source: Annotated[str | None, Field(
-        description="Origin tool. Auto-detected for known clients; pass a value only to override."
-    )] = None,
-    source_agent: str | None = None,
-    memory_type: str | None = None,
-    project: str | None = None,
-    ctx: Context | None = None,
-) -> str:
-    """
-    Args:
-        content: The memory content to store. Be specific and include context.
-        tags: Categorization tags using slash notation (e.g., "project/darkmem", "debug/root-cause", "infra/services").
-        source: Origin tool. Auto-detected per request (X-Darkmem-Client header, then User-Agent); pass a value only to override. Falls back to "mcp".
-        source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
-        memory_type: Normalized the same way as memory_add's memory_type (same closed vocabulary; unknown values fall back to "fact").
-        project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
-    """
-    async with _memory_service_context() as service:
-        resolved_source = resolve_client_source(source, ctx)
-        resolved_project = project or "default"
-        data = MemoryCreate(
-            content=content, tags=tags or [],
-            source=resolved_source,
-            source_agent=resolve_source_agent(source_agent, ctx),
-            origin_key=resolve_origin_key(
-                None, ctx, source=resolved_source, project=resolved_project,
-            ),
-            memory_type=memory_type, project=resolved_project,
-        )
-        ack = await service.accept_capture(data, api_key_id=None)
-        return json.dumps({"id": str(ack.id), "status": ack.status})
+        result = await service.create_memory(data, api_key_id=None, wait_process=wait_process)
+        if result.memory is not None:
+            return json.dumps(_memory_to_dict(result.memory))
+        return json.dumps({"id": str(result.ack.id), "status": result.ack.status})
 
 
 @mcp.tool(
@@ -298,12 +263,15 @@ async def memory_delete(memory_id: str) -> str:
 
 
 @mcp.tool(
-    description="Create multiple memories in a single operation with parallel pipeline processing. Each entry follows the same format as memory_add; entries without 'source' get the auto-detected origin tool. Concurrency is controlled by the pipeline_concurrency setting."
+    description="Create multiple memories in a single operation. Each entry follows the same format as memory_add; entries without 'source' get the auto-detected origin tool. Buffered by default (one 202-style accept per entry, doc 05 §2); pass wait_process=true to drive the whole batch's flush inline as a single pipeline pass, bounded by buffer_wait_timeout_seconds."
 )
-async def memory_batch_add(entries: list[dict], ctx: Context | None = None) -> str:
+async def memory_batch_add(
+    entries: list[dict], wait_process: bool = False, ctx: Context | None = None,
+) -> str:
     """
     Args:
         entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source' (auto-detected when omitted), 'source_agent' (defaults to the caller's User-Agent), 'memory_type', 'project' (supersession scope).
+        wait_process: If true, drive the whole batch's flush inline instead of only buffering it. Use when you need every memory queryable immediately.
     """
     # Resolve on the raw dicts: MemoryCreate stamps its "api" default during
     # validation, erasing the absent-vs-explicit distinction afterwards. The
@@ -343,47 +311,14 @@ async def memory_batch_add(entries: list[dict], ctx: Context | None = None) -> s
     # once. Re-implementing creation here previously dropped ``project``,
     # landing every batch-added memory in 'default'.
     async with _memory_service_context() as service:
-        memories = await service.batch_create_memories(validated.entries, api_key_id=None)
-        return json.dumps([_memory_to_dict(m) for m in memories])
-
-
-@mcp.tool(
-    description="Batch variant of memory_capture: durably buffer 1-100 memories in one call and return their final ids immediately. Each entry follows the same format as memory_capture."
-)
-async def memory_capture_batch(entries: list[dict], ctx: Context | None = None) -> str:
-    """
-    Args:
-        entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source' (auto-detected when omitted), 'source_agent' (defaults to the caller's User-Agent), 'memory_type', 'project' (supersession scope).
-    """
-    # Same raw-dict resolution as memory_batch_add, and for the same reason:
-    # MemoryCreate would stamp its "api" default and erase the
-    # absent-vs-explicit distinction the source/origin_key chains rely on.
-    resolved = []
-    for entry in entries:
-        if isinstance(entry, dict):
-            entry = dict(entry)
-            raw_source = entry.get("source")
-            if raw_source is None or isinstance(raw_source, str):
-                entry["source"] = resolve_client_source(raw_source, ctx)
-            raw_agent = entry.get("source_agent")
-            if raw_agent is None or isinstance(raw_agent, str):
-                entry["source_agent"] = resolve_source_agent(raw_agent, ctx)
-            raw_origin = entry.get("origin_key")
-            if raw_origin is None or isinstance(raw_origin, str):
-                entry["origin_key"] = resolve_origin_key(
-                    raw_origin, ctx,
-                    source=entry["source"],
-                    project=entry.get("project") or "default",
-                )
-        resolved.append(entry)
-
-    # Mirrors the HTTP /memories/capture/batch and memory_batch_add cap
-    # (MemoryBatchCreate: 1-100 entries).
-    validated = MemoryBatchCreate(entries=resolved)
-
-    async with _memory_service_context() as service:
-        acks = await service.accept_capture_batch(validated.entries, api_key_id=None)
-        return json.dumps([{"id": str(a.id), "status": a.status} for a in acks])
+        results = await service.batch_create_memories(
+            validated.entries, api_key_id=None, wait_process=wait_process,
+        )
+        return json.dumps([
+            _memory_to_dict(r.memory) if r.memory is not None
+            else {"id": str(r.ack.id), "status": r.ack.status}
+            for r in results
+        ])
 
 
 @mcp.tool(

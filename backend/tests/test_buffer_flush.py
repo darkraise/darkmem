@@ -317,6 +317,54 @@ async def test_config_schema_defaults_match_the_service_defaults(setup_database)
     assert {fd.key: fd.default for fd in BUFFER_FLUSH_CONFIG_SCHEMA} == BUFFER_FLUSH_DEFAULTS
 
 
+# ── Fable review of T1.13, finding I-2: the ceiling can't outrun the lease ──
+
+
+def test_visibility_floor_matches_the_max_run_ceiling_at_the_type_level():
+    """`max_run_seconds` is a fixed 300s ceiling, not a config field — so the
+    only reachable way to break `max_run_seconds <= buffer_claim_visibility_seconds`
+    is a runtime-configured visibility BELOW that ceiling. Pinning this against
+    the constant (not a copy of the number) catches either side moving."""
+    visibility_field = next(
+        fd for fd in BUFFER_FLUSH_CONFIG_SCHEMA if fd.key == "buffer_claim_visibility_seconds"
+    )
+    assert visibility_field.min == BUFFER_FLUSH_MAX_RUN_SECONDS
+
+
+async def test_set_config_rejects_a_visibility_below_the_max_run_ceiling(setup_database):
+    """Proves the invariant holds for every reachable runtime value, not just
+    the default (Fable review of T1.13, finding I-2): with the pre-fix min=10,
+    this call would have succeeded and left a live run's claim reclaimable
+    before the runner watchdog even fires — exactly the window a concurrent
+    `wait_process` claimer (T1.14) turns into a real double-process, since it
+    claims through the same lease outside the scheduled job's lock."""
+    registry = JobRegistry(factory())
+    registry.register(Job(
+        key=BUFFER_FLUSH_JOB_KEY,
+        display_name="Buffer Flush",
+        description="(I-2 regression)",
+        default_cron=BUFFER_FLUSH_CRON,
+        min_interval_seconds=BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
+        runner=lambda: flush_once(factory(), RecordingPipeline()),
+        config_schema=BUFFER_FLUSH_CONFIG_SCHEMA,
+        max_run_seconds=BUFFER_FLUSH_MAX_RUN_SECONDS,
+    ))
+    try:
+        with pytest.raises(ValueError, match="buffer_claim_visibility_seconds.*>="):
+            await registry.set_config(
+                BUFFER_FLUSH_JOB_KEY,
+                {"buffer_claim_visibility_seconds": 10},
+            )
+        # The floor itself, and anything at or above it, must still be settable.
+        await registry.set_config(
+            BUFFER_FLUSH_JOB_KEY,
+            {"buffer_claim_visibility_seconds": BUFFER_FLUSH_MAX_RUN_SECONDS},
+        )
+    finally:
+        await registry.stop_all()
+        await clear_job_config()
+
+
 # ── Ruling 4: a crashed claim is reclaimable ────────────────────────
 
 

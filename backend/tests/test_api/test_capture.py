@@ -1,21 +1,19 @@
-"""Tier-A synchronous accept + 202 ack (T1.12, doc 05 §2).
+"""Tier-A synchronous accept + 202 ack (T1.12/T1.14, doc 05 §2).
 
 Capture validates against `MemoryCreate`, writes a durable `memory_buffer`
 row, journals a `created` event, and returns a 202-style ack carrying the
 pre-minted **memory** id — never the buffer row's own id (doc 05 §2.2; T1.10
 shipped this conflated once and review unwound it). No embedder, extractor,
-or classifier call runs on this path; the buffer flush (T1.13) and the
-`wait_process` bypass (T1.14) are what actually drain it later.
+or classifier call runs on this path unless the caller opts into
+`wait_process` (T1.14), which drives that row's own flush inline instead.
 
-`POST /memories` and `memory_add` are deliberately left running their
-existing inline pipeline in this task — see the T1.12 amendment log entry.
-Cutting them over before the flush job exists would strand every capture
-in `memory_buffer` forever (nothing drains it yet) and would break every
-test across the floor that expects `create_memory`/`batch_create_memories`
-to produce an immediately-queryable `memories` row, since the `wait_process`
-opt-in bypass that would restore that capability doesn't exist until T1.14.
-`POST /memories/capture` and `memory_capture` are the new, additive doors
-this task lands instead.
+T1.12 landed this behavior on additive `POST /memories/capture(/batch)` and
+MCP `memory_capture`/`memory_capture_batch` doors because nothing drained the
+buffer yet and no synchronous escape existed. T1.14 collapses that scaffolding
+back: `POST /memories`, `POST /memories/batch`, `memory_add`, and
+`memory_batch_add` now carry this buffered contract directly, opting into the
+old inline behavior only via `wait_process=true`. This file exercises the
+buffered-by-default path on the canonical doors.
 """
 from __future__ import annotations
 
@@ -55,7 +53,7 @@ async def _only_buffer_row(session) -> MemoryBuffer:
 
 async def test_capture_returns_202_with_pre_minted_memory_id(client, auth_headers, session):
     response = await client.post(
-        "/api/v1/memories/capture",
+        "/api/v1/memories",
         json={"content": "capture me"},
         headers=auth_headers,
     )
@@ -72,7 +70,7 @@ async def test_capture_ack_id_is_not_the_buffer_rows_own_id(client, auth_headers
     """Ruling 1: the two ids are deliberately distinct. Returning the buffer
     handle would hand the caller an id that never resolves to anything."""
     response = await client.post(
-        "/api/v1/memories/capture", json={"content": "distinct ids"}, headers=auth_headers,
+        "/api/v1/memories", json={"content": "distinct ids"}, headers=auth_headers,
     )
     ack_id = UUID(response.json()["id"])
 
@@ -83,21 +81,21 @@ async def test_capture_ack_id_is_not_the_buffer_rows_own_id(client, auth_headers
 
 async def test_capture_writes_no_memories_row(client, auth_headers, session):
     """Tier-A never creates the `memories` row; that's the flush's job."""
-    await client.post("/api/v1/memories/capture", json={"content": "buffered only"}, headers=auth_headers)
+    await client.post("/api/v1/memories", json={"content": "buffered only"}, headers=auth_headers)
     assert await _memories_count(session) == 0
     assert await _buffer_count(session) == 1
 
 
 async def test_capture_validation_failure_writes_nothing(client, auth_headers, session):
     response = await client.post(
-        "/api/v1/memories/capture", json={"content": ""}, headers=auth_headers,
+        "/api/v1/memories", json={"content": ""}, headers=auth_headers,
     )
     assert response.status_code == 422
     assert await _buffer_count(session) == 0
 
 
 async def test_capture_requires_auth(client):
-    response = await client.post("/api/v1/memories/capture", json={"content": "no auth"})
+    response = await client.post("/api/v1/memories", json={"content": "no auth"})
     assert response.status_code in (401, 403)
 
 
@@ -106,12 +104,13 @@ async def test_capture_requires_auth(client):
 
 class _ExplodingPipeline:
     """Any attribute access yields a coroutine that fails the test. Standing
-    in for the LLM orchestrator: if `accept_capture` ever reaches it, the
-    "no model call on this path" invariant is broken."""
+    in for the LLM orchestrator: if the default (non-`wait_process`) accept
+    path ever reaches it, the "no model call on this path" invariant is
+    broken."""
 
     def __getattr__(self, name):
         async def _boom(*args, **kwargs):
-            raise AssertionError(f"accept_capture must never call pipeline.{name}")
+            raise AssertionError(f"buffered accept must never call pipeline.{name}")
         return _boom
 
 
@@ -122,7 +121,7 @@ async def test_capture_never_touches_the_pipeline(client, auth_headers, session)
     app.dependency_overrides[get_memory_service] = _override
     try:
         response = await client.post(
-            "/api/v1/memories/capture", json={"content": "no model calls here"}, headers=auth_headers,
+            "/api/v1/memories", json={"content": "no model calls here"}, headers=auth_headers,
         )
         assert response.status_code == 202
     finally:
@@ -145,7 +144,7 @@ async def test_capture_replays_every_field(client, auth_headers, session):
         "project": "proj-capture",
         "origin_key": "session-1",
     }
-    response = await client.post("/api/v1/memories/capture", json=payload, headers=auth_headers)
+    response = await client.post("/api/v1/memories", json=payload, headers=auth_headers)
     assert response.status_code == 202
 
     row = await _only_buffer_row(session)
@@ -167,7 +166,7 @@ async def test_capture_replays_every_field(client, auth_headers, session):
 
 async def test_capture_origin_key_from_header(client, auth_headers, session):
     response = await client.post(
-        "/api/v1/memories/capture",
+        "/api/v1/memories",
         json={"content": "header origin", "source": "test"},
         headers={**auth_headers, ORIGIN_HEADER: "boot-xyz"},
     )
@@ -181,10 +180,10 @@ async def test_capture_unknown_origin_collapses_to_one(client, auth_headers, ses
     captures from the same source/project must produce the SAME origin_key,
     not two fresh ones."""
     await client.post(
-        "/api/v1/memories/capture", json={"content": "first", "source": "test"}, headers=auth_headers,
+        "/api/v1/memories", json={"content": "first", "source": "test"}, headers=auth_headers,
     )
     await client.post(
-        "/api/v1/memories/capture", json={"content": "second", "source": "test"}, headers=auth_headers,
+        "/api/v1/memories", json={"content": "second", "source": "test"}, headers=auth_headers,
     )
     rows = (await session.execute(select(MemoryBuffer))).scalars().all()
     assert len(rows) == 2
@@ -197,7 +196,7 @@ async def test_capture_unknown_origin_collapses_to_one(client, auth_headers, ses
 
 async def test_capture_batch_writes_one_row_per_entry(client, auth_headers, session):
     response = await client.post(
-        "/api/v1/memories/capture/batch",
+        "/api/v1/memories/batch",
         json={"entries": [{"content": "b1"}, {"content": "b2"}, {"content": "b3"}]},
         headers=auth_headers,
     )
@@ -214,7 +213,7 @@ async def test_capture_batch_writes_one_row_per_entry(client, auth_headers, sess
 async def test_capture_batch_rejects_over_the_cap(client, auth_headers, session):
     entries = [{"content": f"entry {i}"} for i in range(101)]
     response = await client.post(
-        "/api/v1/memories/capture/batch", json={"entries": entries}, headers=auth_headers,
+        "/api/v1/memories/batch", json={"entries": entries}, headers=auth_headers,
     )
     assert response.status_code == 422
     assert await _buffer_count(session) == 0
@@ -235,11 +234,11 @@ async def test_mcp_capture_parity_with_rest(client, auth_headers, session, monke
     mcp_server.set_pipeline(None)
 
     rest_response = await client.post(
-        "/api/v1/memories/capture", json={"content": "rest door", "source": "test"}, headers=auth_headers,
+        "/api/v1/memories", json={"content": "rest door", "source": "test"}, headers=auth_headers,
     )
     assert rest_response.status_code == 202
 
-    raw = await mcp_server.memory_capture(content="mcp door", source="test")
+    raw = await mcp_server.memory_add(content="mcp door", source="test")
     mcp_ack = json.loads(raw)
     assert mcp_ack["status"] == "accepted"
     UUID(mcp_ack["id"])  # a real uuid, not the buffer row's own id
@@ -260,7 +259,7 @@ async def test_mcp_capture_batch_mirrors_rest_cap(session, monkeypatch):
 
     entries = [{"content": f"entry {i}"} for i in range(101)]
     with pytest.raises(Exception):
-        await mcp_server.memory_capture_batch(entries=entries)
+        await mcp_server.memory_batch_add(entries=entries)
     assert await _buffer_count(session) == 0
 
 
@@ -270,7 +269,7 @@ async def test_mcp_capture_makes_no_model_call(session, monkeypatch):
     monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _fake_mcp_session(session))
     mcp_server.set_pipeline(_ExplodingPipeline())
     try:
-        raw = await mcp_server.memory_capture(content="mcp no model call")
+        raw = await mcp_server.memory_add(content="mcp no model call")
     finally:
         mcp_server.set_pipeline(None)
 

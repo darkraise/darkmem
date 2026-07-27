@@ -94,7 +94,14 @@ BUFFER_FLUSH_CONFIG_SCHEMA: list[FieldDescriptor] = [
     FieldDescriptor(
         key="buffer_claim_visibility_seconds", label="Claim Visibility (s)",
         default=BUFFER_FLUSH_DEFAULTS["buffer_claim_visibility_seconds"],
-        min=10, max=86400,
+        # Floored at BUFFER_FLUSH_MAX_RUN_SECONDS, not a smaller round number:
+        # the registry cancels a run at that ceiling and leaves its rows
+        # `claimed` for the next stale sweep, so a visibility window shorter
+        # than the ceiling would let that sweep reclaim a run that is still
+        # legitimately in flight — and, since T1.14, let a concurrent
+        # wait_process claim the same row a second time before the original
+        # runner's own claim even expires (Fable review of T1.13, finding I-2).
+        min=BUFFER_FLUSH_MAX_RUN_SECONDS, max=86400,
         help="A claim older than this is treated as abandoned and retried.",
     ),
     FieldDescriptor(
@@ -166,6 +173,39 @@ def worker_identity() -> str:
     """Who holds a claim, recorded in `claimed_by` so a stale claim names the
     process that abandoned it."""
     return f"{socket.gethostname()}:{os.getpid()}"
+
+
+class _ReuseSessionFactory:
+    """Adapts one already-open `AsyncSession` to the zero-arg,
+    async-context-manager-returning shape `session_factory()` calls expect.
+
+    Doc 05 §2.2's `wait_process` bypass has only the caller's request-scoped
+    session, not a session_factory — but the claim and replay code below is
+    written once, against that call shape, and shared verbatim with the
+    scheduled `buffer_flush` job (Ruling 3: a second claim implementation is
+    exactly how a concurrent scheduled flush ends up double-processing a row).
+    This wrapper closes that gap without forking the code: it never closes or
+    commits the wrapped session on its own, since it is still the caller's.
+    """
+
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    def __call__(self) -> "_ReuseSessionFactory":
+        return self
+
+    async def __aenter__(self) -> AsyncSession:
+        return self._session
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+
+def as_session_factory(session: AsyncSession) -> _ReuseSessionFactory:
+    """Public constructor for `_ReuseSessionFactory` — the seam `wait_process`
+    (and anything else driving the flush over one caller session) is meant to
+    use rather than reaching for the private class directly."""
+    return _ReuseSessionFactory(session)
 
 
 async def buffer_settings(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, int]:
@@ -243,6 +283,29 @@ _SWEEP_DONE_SQL = text(
     """
 )
 
+# Doc 05 §2.2's `wait_process` bypass claims a caller-known row set instead of
+# the oldest-N scan `_CLAIM_SQL` runs, but the predicate that matters — SKIP
+# LOCKED against status='pending' — is identical. A concurrent scheduled flush
+# racing this one is decided by the same lease, never a second claim path.
+_CLAIM_IDS_SQL = text(
+    """
+    UPDATE memory_buffer AS b
+    SET status = 'claimed',
+        attempts = b.attempts + 1,
+        claimed_at = NOW(),
+        claimed_by = CAST(:worker AS text)
+    FROM (
+        SELECT id
+        FROM memory_buffer
+        WHERE status = 'pending'
+          AND id = ANY(CAST(:ids AS uuid[]))
+        FOR UPDATE SKIP LOCKED
+    ) AS c
+    WHERE b.id = c.id
+    RETURNING b.id
+    """
+)
+
 
 async def claim_batch(
     session: AsyncSession, *, limit: int, worker: str,
@@ -258,6 +321,32 @@ async def claim_batch(
         return []
     claimed_ids = list((await session.execute(
         _CLAIM_SQL, {"limit": limit, "worker": worker}
+    )).scalars())
+    if not claimed_ids:
+        return []
+    rows = (await session.execute(
+        select(MemoryBuffer)
+        .where(MemoryBuffer.id.in_(claimed_ids))
+        .order_by(MemoryBuffer.created_at, MemoryBuffer.id)
+    )).scalars().all()
+    return list(rows)
+
+
+async def claim_specific(
+    session: AsyncSession, *, buffer_ids: list[uuid.UUID], worker: str,
+) -> list[MemoryBuffer]:
+    """Claim whichever of ``buffer_ids`` are still `pending`. Does not commit.
+
+    The interactive counterpart to `claim_batch`: same locking clause, same
+    status qual, scoped to a known id set instead of an oldest-N scan. An id
+    absent from the result was raced away by another claimer (most likely the
+    scheduled `buffer_flush` tick) rather than rejected — the caller decides
+    what to do about that (doc 05 §2.2 polls rather than reprocessing).
+    """
+    if not buffer_ids:
+        return []
+    claimed_ids = list((await session.execute(
+        _CLAIM_IDS_SQL, {"ids": [str(i) for i in buffer_ids], "worker": worker}
     )).scalars())
     if not claimed_ids:
         return []
@@ -465,6 +554,87 @@ async def _fail_permanently(
         )
 
 
+async def _claim_and_prepare(
+    open_session,
+    *,
+    worker: str,
+    limit: int | None = None,
+    buffer_ids: list[uuid.UUID] | None = None,
+) -> tuple[list[MemoryBuffer], list[ClaimedCapture], list[tuple[uuid.UUID, str]]]:
+    """Claim (batch-scan or id-scoped) then split into replayable/rejected.
+
+    Shared by the scheduled flush and `wait_process` so both run through the
+    identical claim SQL and rejection handling — `open_session` is either a
+    real `session_factory` or `as_session_factory`'s single-session adapter.
+    """
+    async with open_session() as session:
+        if buffer_ids is not None:
+            rows = await claim_specific(session, buffer_ids=buffer_ids, worker=worker)
+        else:
+            rows = await claim_batch(session, limit=limit or 0, worker=worker)
+        captures, rejected = detach(rows)
+        await _fail_permanently(session, rejected)
+        # Commit the claim before anything opens a pipeline session (invariant
+        # 11): the locks taken above are released here, and the claim is durable
+        # so a crash from this point on leaves a reclaimable row rather than a
+        # lost one.
+        await session.commit()
+    return rows, captures, rejected
+
+
+async def _replay(
+    open_session, pipeline, captures: list[ClaimedCapture], *, max_attempts: int,
+) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    """Materialize + run the pipeline (or skip it, pipeline-less) + settle.
+
+    Returns `(done, failed)` buffer ids. Every capture passed in resolves into
+    exactly one of the two — the caller-visible "did this row's flush finish"
+    signal is `done | failed`, regardless of which one, since the `memories`
+    row is written by `materialize` before the pipeline ever runs.
+    """
+    if not captures:
+        return [], []
+
+    try:
+        async with open_session() as session:
+            entries = await materialize(session, captures)
+            await session.commit()
+        if pipeline is not None:
+            statuses = await pipeline.process_batch(entries)
+        else:
+            # No pipeline configured (e.g. a Postgres-only boot, or a test
+            # harness that never wires one): the memory row still
+            # materializes above, just unenriched — mirrors the pre-buffer
+            # `if self.pipeline:` gate MemoryService always had.
+            statuses = [{} for _ in entries]
+    except Exception as exc:
+        logger.exception("buffer flush batch failed for %d captures", len(captures))
+        async with open_session() as session:
+            await _release(
+                session,
+                [(c.buffer_id, f"{type(exc).__name__}: {exc}") for c in captures],
+                max_attempts=max_attempts,
+            )
+            await session.commit()
+        return [], [c.buffer_id for c in captures]
+
+    done: list[uuid.UUID] = []
+    failures: list[tuple[uuid.UUID, str]] = []
+    for capture, status in zip(captures, statuses):
+        step = derive_memory_failed_step(status if isinstance(status, dict) else {})
+        if step in _HARD_FAILURE_STEPS:
+            message = (status or {}).get("error") or f"pipeline failed at {step}"
+            failures.append((capture.buffer_id, str(message)))
+        else:
+            done.append(capture.buffer_id)
+
+    async with open_session() as session:
+        await _mark_done(session, done)
+        await _release(session, failures, max_attempts=max_attempts)
+        await session.commit()
+    return done, [buffer_id for buffer_id, _ in failures]
+
+
 async def flush_once(
     session_factory: async_sessionmaker[AsyncSession],
     pipeline,
@@ -488,54 +658,67 @@ async def flush_once(
         await session.commit()
     stats["reclaimed"] = len(reclaimed)
 
-    async with session_factory() as session:
-        rows = await claim_batch(
-            session, limit=settings["buffer_claim_batch"], worker=worker
-        )
-        captures, rejected = detach(rows)
-        await _fail_permanently(session, rejected)
-        # Commit the claim before anything opens a pipeline session (invariant
-        # 11): the locks taken above are released here, and the claim is durable
-        # so a crash from this point on leaves a reclaimable row rather than a
-        # lost one.
-        await session.commit()
+    rows, captures, rejected = await _claim_and_prepare(
+        session_factory, worker=worker, limit=settings["buffer_claim_batch"]
+    )
     stats["claimed"] = len(rows)
     stats["rejected"] = len(rejected)
 
-    if not captures:
-        return stats
-
-    failures: list[tuple[uuid.UUID, str]] = []
-    try:
-        async with session_factory() as session:
-            entries = await materialize(session, captures)
-            await session.commit()
-        statuses = await pipeline.process_batch(entries)
-    except Exception as exc:
-        logger.exception("buffer flush batch failed for %d captures", len(captures))
-        async with session_factory() as session:
-            await _release(
-                session,
-                [(c.buffer_id, f"{type(exc).__name__}: {exc}") for c in captures],
-                max_attempts=settings["buffer_max_attempts"],
-            )
-            await session.commit()
-        stats["failed"] = len(captures)
-        return stats
-
-    done: list[uuid.UUID] = []
-    for capture, status in zip(captures, statuses):
-        step = derive_memory_failed_step(status if isinstance(status, dict) else {})
-        if step in _HARD_FAILURE_STEPS:
-            message = (status or {}).get("error") or f"pipeline failed at {step}"
-            failures.append((capture.buffer_id, str(message)))
-        else:
-            done.append(capture.buffer_id)
-
-    async with session_factory() as session:
-        await _mark_done(session, done)
-        await _release(session, failures, max_attempts=settings["buffer_max_attempts"])
-        await session.commit()
+    done, failed = await _replay(
+        session_factory, pipeline, captures, max_attempts=settings["buffer_max_attempts"]
+    )
     stats["done"] = len(done)
-    stats["failed"] = len(failures)
+    stats["failed"] = len(failed)
     return stats
+
+
+@dataclass(frozen=True)
+class ClaimedFlushResult:
+    """The outcome of driving one caller-known buffer-id set through the claim
+    and replay `wait_process` shares with the scheduled flush.
+
+    `claimed` is every id this call actually claimed (regardless of whether its
+    replay then succeeded or hard-failed) — an id can only be missing from it
+    by losing the `FOR UPDATE SKIP LOCKED` race to a concurrent claimer, most
+    likely the scheduled `buffer_flush` tick. `settled` is the set whose
+    `memories` row is guaranteed to exist and whose replay (if any) has
+    finished — `wait_process` only needs to poll for ids outside it.
+    """
+
+    claimed: frozenset[uuid.UUID]
+    rejected: frozenset[uuid.UUID]
+    done: frozenset[uuid.UUID]
+    failed: frozenset[uuid.UUID]
+
+    @property
+    def settled(self) -> frozenset[uuid.UUID]:
+        return self.claimed | self.rejected
+
+
+async def flush_claimed(
+    session: AsyncSession,
+    pipeline,
+    *,
+    buffer_ids: list[uuid.UUID],
+    worker: str | None = None,
+    max_attempts: int,
+) -> ClaimedFlushResult:
+    """Interactive counterpart to `flush_once`, scoped to a known row set and
+    driven over the caller's own session (doc 05 §2.2's `wait_process`).
+
+    Runs through the identical `_claim_and_prepare` / `_replay` the scheduled
+    job uses, parameterised over `as_session_factory(session)` instead of a
+    real factory — never a second claim or replay implementation (Ruling 3).
+    """
+    worker = worker or worker_identity()
+    open_session = as_session_factory(session)
+    rows, captures, rejected = await _claim_and_prepare(
+        open_session, worker=worker, buffer_ids=buffer_ids
+    )
+    done, failed = await _replay(open_session, pipeline, captures, max_attempts=max_attempts)
+    return ClaimedFlushResult(
+        claimed=frozenset(r.id for r in rows),
+        rejected=frozenset(buffer_id for buffer_id, _ in rejected),
+        done=frozenset(done),
+        failed=frozenset(failed),
+    )

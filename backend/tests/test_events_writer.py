@@ -59,13 +59,15 @@ async def test_record_event_defaults_payload_to_empty_object(session):
 
 @pytest.mark.asyncio
 async def test_capture_writes_a_created_event(session):
-    """MemoryService.create_memory (no pipeline attached) journals the
-    capture itself, independent of any downstream extraction outcome."""
+    """`MemoryService.create_memory` journals the capture at accept time,
+    independent of any downstream extraction outcome — the buffered contract
+    (T1.14) writes this event before any flush runs, `wait_process` or not."""
     svc = MemoryService(session, pipeline=None)
-    memory = await svc.create_memory(
+    result = await svc.create_memory(
         MemoryCreate(content="capture journals", source="test", project="evt-capture"),
         api_key_id=None,
     )
+    memory_id = result.ack.id
 
     row = (
         await session.execute(
@@ -73,12 +75,12 @@ async def test_capture_writes_a_created_event(session):
                 "SELECT event_type, object_type, object_id FROM events "
                 "WHERE event_type = 'created' AND object_id = CAST(:mid AS uuid)"
             ),
-            {"mid": str(memory.id)},
+            {"mid": str(memory_id)},
         )
     ).one()
     assert row.event_type == "created"
     assert row.object_type == "memory"
-    assert row.object_id == memory.id
+    assert row.object_id == memory_id
 
 
 @pytest.mark.asyncio
@@ -251,10 +253,11 @@ async def test_capture_survives_a_journal_failure(session, monkeypatch):
     monkeypatch.setattr(events_module, "_INSERT", broken_insert)
 
     svc = MemoryService(session, pipeline=None)
-    memory = await svc.create_memory(
+    result = await svc.create_memory(
         MemoryCreate(content="survives a broken journal", source="test"),
-        api_key_id=None,
+        api_key_id=None, wait_process=True,
     )
+    memory = result.memory
     assert memory is not None
     assert memory.content == "survives a broken journal"
 

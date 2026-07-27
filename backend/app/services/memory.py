@@ -1,8 +1,11 @@
 import logging
 import re
+from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.memory import Memory, MemoryBuffer
 from app.repositories.relational import (
@@ -12,15 +15,33 @@ from app.repositories.relational import (
 )
 from app.repositories.vector import MemoryFilter
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
-from app.services import memory_buffer
+from app.services import buffer_flush, memory_buffer
 from app.services.extraction import _MAX_CONTENT_CHARS
+from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
+from app.services.wait_process import drive as _drive_wait_process_flush
 from app.taxonomy import MEMORY_TYPES, normalize_memory_type
 from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CaptureResult:
+    """One capture's outcome behind the buffered contract (doc 05 §2/§2.2).
+
+    `memory` is populated only when `wait_process` was set on the call AND
+    the row settled before `buffer_wait_timeout_seconds` expired; the default
+    path, and a timed-out `wait_process`, leave it `None` and the caller reads
+    `ack` — the plain buffered accept, exactly as if `wait_process` had never
+    been set (Ruling 2: a timeout must never look like anything worse than
+    "still processing").
+    """
+
+    ack: CaptureAck
+    memory: Memory | None = None
 
 
 class MemoryService:
@@ -31,94 +52,43 @@ class MemoryService:
         self.session = session
         self.pipeline = pipeline
 
-    async def create_memory(self, data: MemoryCreate, api_key_id: UUID | None) -> Memory:
-        memory = await self.memory_repo.create(
-            content=data.content, source=data.source, source_agent=data.source_agent,
-            memory_type=data.memory_type, importance=data.importance,
-            metadata=data.metadata, expires_at=data.expires_at,
-            project=data.project, origin_key=data.origin_key,
-        )
-        if data.tags:
-            await self.memory_repo.set_tags(memory.id, data.tags)
-            await self.session.refresh(memory, ["tags"])
-
-        await self.audit_repo.log("create", memory.id, api_key_id, {"source": data.source})
-
-        # Commit memory record before pipeline dispatch so FK constraints are satisfied
-        await self.session.commit()
-
-        # Process through pipeline (embedding + extraction) in separate sessions
-        if self.pipeline:
-            status = await self.pipeline.process_memory(
-                memory_id=memory.id, content=memory.content, source=memory.source,
-                tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
-                created_at=memory.created_at.isoformat(),
-            )
-            await self.audit_repo.log("pipeline", memory.id, api_key_id, status)
-            await self.session.commit()
-
-        return memory
+    async def create_memory(
+        self, data: MemoryCreate, api_key_id: UUID | None, *, wait_process: bool = False,
+    ) -> CaptureResult:
+        results = await self._capture_batch([data], api_key_id, wait_process=wait_process)
+        return results[0]
 
     async def batch_create_memories(
-        self, entries: list[MemoryCreate], api_key_id: UUID | None,
-    ) -> list[Memory]:
-        """Bulk-insert N memories then run a single ``pipeline.process_batch``.
-
-        Beats the per-entry loop because the pipeline runs embedding,
-        extraction, classification, and entity dedup in phased fan-outs
-        sized by ``pipeline_concurrency`` instead of N sequential calls.
+        self,
+        entries: list[MemoryCreate],
+        api_key_id: UUID | None,
+        *,
+        wait_process: bool = False,
+    ) -> list[CaptureResult]:
+        """Buffer N captures in one round-trip; with ``wait_process`` drive
+        their flush inline as a single batch, through the identical
+        ``pipeline.process_batch`` call the scheduled ``buffer_flush`` job
+        uses (doc 05 §2/§3, T1.14) — never a second, per-entry code path.
         """
-        memories: list[Memory] = []
-        for data in entries:
-            memory = await self.memory_repo.create(
-                content=data.content, source=data.source, source_agent=data.source_agent,
-                memory_type=data.memory_type, importance=data.importance,
-                metadata=data.metadata, expires_at=data.expires_at,
-                project=data.project, origin_key=data.origin_key,
-            )
-            if data.tags:
-                await self.memory_repo.set_tags(memory.id, data.tags)
-                await self.session.refresh(memory, ["tags"])
-            await self.audit_repo.log("create", memory.id, api_key_id, {"source": data.source})
-            memories.append(memory)
+        return await self._capture_batch(entries, api_key_id, wait_process=wait_process)
 
-        # Commit before dispatching so FK constraints are satisfied and the
-        # pipeline's fresh sessions read the new rows.
-        await self.session.commit()
+    async def _capture_batch(
+        self, entries: list[MemoryCreate], api_key_id: UUID | None, *, wait_process: bool,
+    ) -> list[CaptureResult]:
+        """Tier-A accept (doc 05 §2): validate, buffer, journal, ack — every
+        front door funnels through here, buffered by default. The caller's
+        ``MemoryCreate`` is already validated by the time it reaches here
+        (pydantic, at the front door), so a rejected request never gets this
+        far and never writes anything.
 
-        if self.pipeline and memories:
-            batch_entries = [
-                {
-                    "memory_id": m.id, "content": m.content, "source": m.source,
-                    "tags": [t.name for t in m.tags], "memory_type": m.memory_type,
-                    "created_at": m.created_at.isoformat() if m.created_at else "",
-                }
-                for m in memories
-            ]
-            statuses = await self.pipeline.process_batch(batch_entries)
-            for m, status in zip(memories, statuses):
-                await self.audit_repo.log("pipeline", m.id, api_key_id, status)
-            await self.session.commit()
-
-        return memories
-
-    async def accept_capture(self, data: MemoryCreate, api_key_id: UUID | None) -> CaptureAck:
-        acks = await self.accept_capture_batch([data], api_key_id)
-        return acks[0]
-
-    async def accept_capture_batch(
-        self, entries: list[MemoryCreate], api_key_id: UUID | None,
-    ) -> list[CaptureAck]:
-        """Tier-A accept (doc 05 §2): validate, buffer, journal, ack.
-
-        The caller's ``MemoryCreate`` is already validated by the time it
-        reaches here (pydantic, at the front door), so a rejected request
-        never gets this far and never writes anything. What runs here is
-        exactly one buffer insert per entry plus a journal event — no
-        embedder, no extractor, no classifier call, ever. That is what makes
-        "accept latency is dominated by one insert" true structurally rather
-        than by observation: this method holds no reference to ``self.pipeline``
-        at all.
+        ``wait_process`` is the sanctioned Tier-A exception (doc 05 §2.2): it
+        drives the just-written row(s) through the buffer's own claim and
+        replay (``buffer_flush.flush_claimed`` / ``wait_process.drive``) —
+        the exact machinery the scheduled job uses, bounded by
+        ``buffer_wait_timeout_seconds`` — rather than re-running the pipeline
+        through a second path. On timeout, or by default, the caller gets
+        back the plain buffered ack; nothing about the buffer write itself
+        changes either way.
 
         Every ``MemoryCreate`` field the buffer's own columns don't cover
         rides ``metadata_`` via ``memory_buffer.enqueue``'s ``**extra`` and is
@@ -146,8 +116,7 @@ class MemoryService:
 
         for row, data in zip(rows, entries):
             await self.audit_repo.log(
-                "create", buffered_memory_id(row), api_key_id,
-                {"source": data.source, "buffered": True},
+                "create", buffered_memory_id(row), api_key_id, {"source": data.source},
             )
 
         # Commit before acking (invariant 11, doc 05 §2.2): a crash between
@@ -155,7 +124,48 @@ class MemoryService:
         # for a capture that turns out not to durably exist.
         await self.session.commit()
 
-        return [CaptureAck(id=buffered_memory_id(row)) for row in rows]
+        acks = [CaptureAck(id=buffered_memory_id(row)) for row in rows]
+        if not wait_process:
+            return [CaptureResult(ack=ack) for ack in acks]
+
+        settled = await self._drive_wait_process([row.id for row in rows])
+        settled_memory_ids = [buffered_memory_id(row) for row in rows if row.id in settled]
+        memories_by_id: dict[UUID, Memory] = {}
+        if settled_memory_ids:
+            # The flush's own writes — materialize() adding the bare row,
+            # process_batch's enrichment — happen through sessions other than
+            # this one's identity map is aware of (its own session_factory,
+            # separate connections). A plain re-select would hand back this
+            # session's stale, pre-enrichment copy of the same row rather
+            # than raise, so `populate_existing` forces this read to
+            # overwrite it in place instead of expiring it — expiring would
+            # also invalidate any OTHER object this call's caller is still
+            # holding a plain (non-awaited) reference to.
+            fresh = (await self.session.execute(
+                select(Memory)
+                .options(selectinload(Memory.tags))
+                .where(Memory.id.in_(settled_memory_ids))
+                .execution_options(populate_existing=True)
+            )).scalars().all()
+            memories_by_id = {m.id: m for m in fresh}
+        return [
+            CaptureResult(ack=ack, memory=memories_by_id.get(ack.id))
+            for ack in acks
+        ]
+
+    async def _drive_wait_process(self, buffer_ids: list[UUID]) -> frozenset[UUID]:
+        flags = await get_feature_flags_dict(self.session)
+        timeout_seconds = float(flags.get("buffer_wait_timeout_seconds", 10))
+        settings = await buffer_flush.buffer_settings(
+            buffer_flush.as_session_factory(self.session)
+        )
+        return await _drive_wait_process_flush(
+            self.session,
+            self.pipeline,
+            buffer_ids=buffer_ids,
+            timeout_seconds=timeout_seconds,
+            max_attempts=settings["buffer_max_attempts"],
+        )
 
     async def get_memory(self, memory_id: UUID) -> Memory | None:
         return await self.memory_repo.get(memory_id)

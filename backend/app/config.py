@@ -188,4 +188,8 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     # to evaluate raw recall or when the heuristics over-fire.
     "relation_rescue": True,
     "confidence_rank_gamma": 0.0,
+    # Doc 05 §2.2: how long an interactive `wait_process` capture may hold
+    # Tier A driving its own buffer row's flush before degrading to the plain
+    # 202 accept.
+    "buffer_wait_timeout_seconds": 10,
 }
