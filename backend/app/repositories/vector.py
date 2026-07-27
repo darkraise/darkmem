@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import numpy as np
-from sqlalchemy import text
+from sqlalchemy import Text, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedder_registry import child_table
@@ -25,8 +25,9 @@ class MemoryFilter:
     the scope is selective, and any consumer that forgets the drop leaks
     foreign rows into its results.
 
-    ``None`` (rather than an instance) means no scoping at all — the dedup and
-    crossref probes want every candidate regardless of lifecycle.
+    ``None`` (rather than an instance) means no scoping at all — the crossref
+    probe wants every candidate regardless of lifecycle, because its output is
+    ids and scores rather than content.
     """
 
     project: str | None = None
@@ -58,6 +59,22 @@ class MemoryFilter:
             "EXISTS (SELECT 1 FROM memories flt_m "
             f"WHERE flt_m.id = ANY({memory_ids_expr}) AND {self.where_sql('flt_m')})"
         )
+
+    def orm_criteria(self, model) -> list:
+        """The same scope as ``where_sql``, for a caller building a Core/ORM select.
+
+        Kept on the filter rather than open-coded at the call site: a second
+        rendering of these predicates is how one arm silently stops applying a
+        field the other one gained.
+        """
+        criteria: list = []
+        if not self.include_archived:
+            criteria.append(model.is_archived.is_(False))
+        if self.project is not None:
+            criteria.append(model.project == self.project)
+        if self.statuses:
+            criteria.append(cast(model.status, Text).in_(list(self.statuses)))
+        return criteria
 
     def params(self) -> dict:
         out: dict = {}
@@ -168,31 +185,59 @@ class PostgresVectorRepository:
             return [float(x) for x in raw.strip("[]").split(",")]
         return [float(x) for x in raw]
 
-    async def get_all_vectors(self, fingerprint: str, limit: int = 500) -> list[dict]:
+    async def get_all_vectors(
+        self, fingerprint: str, limit: int = 500, filters: MemoryFilter | None = None,
+    ) -> list[dict]:
+        """Bulk read of one partition, for the projection and clustering views.
+
+        The join to ``memories`` is unconditional even when nothing is being
+        scoped: the FK makes it lossless, and it is what puts ``project`` and
+        ``status`` on every point, so an unscoped caller still hands back
+        labelled rows rather than anonymous content snippets.
+        """
         table = child_table("memory_embeddings", fingerprint)
+        params: dict = {"limit": limit}
+        where_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
         result = await self.session.execute(
             text(f"""
-                SELECT memory_id, embedding::text AS embedding_text, payload
-                FROM {table}
+                SELECT e.memory_id,
+                       e.embedding::text AS embedding_text,
+                       e.payload,
+                       m.project,
+                       m.status::text AS status
+                FROM {table} e
+                JOIN memories m ON m.id = e.memory_id
+                {where_sql}
                 LIMIT :limit
             """),
-            {"limit": limit},
+            params,
         )
         return [
             {
                 "memory_id": UUID(str(row.memory_id)),
                 "vector": self._parse_vector(row.embedding_text),
                 "payload": row.payload,
+                "project": row.project,
+                "status": row.status,
             }
             for row in result
         ]
 
     async def get_clustered_vectors(
-        self, fingerprint: str, eps: float = 0.5, min_samples: int = 2, limit: int = 300,
+        self,
+        fingerprint: str,
+        eps: float = 0.5,
+        min_samples: int = 2,
+        limit: int = 300,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
         from sklearn.cluster import DBSCAN
 
-        points = await self.get_all_vectors(fingerprint, limit=limit)
+        points = await self.get_all_vectors(fingerprint, limit=limit, filters=filters)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
@@ -212,10 +257,11 @@ class PostgresVectorRepository:
         min_score: float = 0.5,
         min_cluster_size: int = 3,
         limit: int = 500,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
         import igraph  # noqa: F401
 
-        points = await self.get_all_vectors(fingerprint, limit=limit)
+        points = await self.get_all_vectors(fingerprint, limit=limit, filters=filters)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
@@ -360,7 +406,12 @@ class PostgresVectorRepository:
         return None
 
     async def find_similar(
-        self, memory_id: UUID, fingerprint: str, threshold: float = 0.9, limit: int = 10,
+        self,
+        memory_id: UUID,
+        fingerprint: str,
+        threshold: float = 0.9,
+        limit: int = 10,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
         table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
@@ -375,7 +426,9 @@ class PostgresVectorRepository:
         if row is None:
             return []
         vector = self._parse_vector(row["embedding_text"])
-        results = await self.search(vector, fingerprint=fingerprint, limit=limit + 1)
+        results = await self.search(
+            vector, fingerprint=fingerprint, limit=limit + 1, filters=filters,
+        )
         # Slice back to ``limit``: the +1 over-fetch only leaves room to drop the
         # source row, but when the source isn't in the ANN result nothing is
         # dropped and up to limit+1 rows would be returned.

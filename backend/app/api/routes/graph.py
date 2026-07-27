@@ -50,6 +50,7 @@ async def get_unified_graph(
     similarity_threshold: float = Query(0.75, ge=0.0, le=1.0),
     min_cluster_size: int = Query(3, ge=2, le=10),
     include_entities: bool = Query(False),
+    project: str | None = Query(None),
     _user=Depends(require_auth),
     service: GraphService = Depends(get_graph_service),
 ):
@@ -58,6 +59,7 @@ async def get_unified_graph(
         similarity_threshold=similarity_threshold,
         min_cluster_size=min_cluster_size,
         include_entities=include_entities,
+        project=project,
     )
 
 
