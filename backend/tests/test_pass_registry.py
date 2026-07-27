@@ -96,6 +96,11 @@ def _check_dedup_entities(out):
     assert _names(out.entities) == ["Central Processing Unit"]
 
 
+def _check_rescue_relation_endpoints(out):
+    added = [e for e in out.entities if e["name"] == "design doc"]
+    assert added and added[0]["type"] == "artifact"
+
+
 def _check_rescue_known_entities(out):
     assert "cpu" in _names(out.entities)
 
@@ -236,6 +241,16 @@ PASS_FIXTURES: dict[str, tuple[CleanState, object]] = {
             {"name": "CPU", "type": "tool"},
         ]),
         _check_dedup_entities,
+    ),
+    "rescue_relation_endpoints": (
+        _state(
+            content="The design doc cites RFC 7519.",
+            entities=[{"name": "RFC 7519", "type": "paper"}],
+            relationships=[
+                {"source": "design doc", "target": "RFC 7519", "type": "CITES"},
+            ],
+        ),
+        _check_rescue_relation_endpoints,
     ),
     "rescue_known_entities": (
         _state(content="the CPU stayed pinned all night", entities=[]),
@@ -406,7 +421,7 @@ REGISTRY_NAMES = sorted({p.name for p in PASS_REGISTRY})
 def test_registry_is_an_explicit_ordered_sequence():
     assert isinstance(PASS_REGISTRY, tuple)
     assert all(isinstance(p, Pass) for p in PASS_REGISTRY)
-    assert len(PASS_REGISTRY) == 28
+    assert len(PASS_REGISTRY) == 29
 
 
 def test_registry_validates_against_its_own_contract():
@@ -504,6 +519,68 @@ def test_swapping_dedup_and_rescue_breaks_the_declared_contract():
     swapped = _reorder(PASS_REGISTRY, "dedup_entities", "rescue_known_entities")
     with pytest.raises(RegistryContractError):
         validate_registry(swapped, ORDERING_CONSTRAINTS)
+
+
+def test_endpoint_rescue_also_runs_after_entity_dedup():
+    assert index_of(PASS_REGISTRY, "dedup_entities") < index_of(
+        PASS_REGISTRY, "rescue_relation_endpoints"
+    )
+
+
+def test_endpoint_rescue_before_dedup_loses_a_name_to_whitespace_collapse():
+    state = _state(
+        content="The webapp team shipped; the web app now calls Auth0.",
+        entities=[
+            {"name": "webapp", "type": "artifact"},
+            {"name": "Auth0", "type": "service"},
+        ],
+        relationships=[{"source": "web app", "target": "Auth0", "type": "USES"}],
+    )
+    kept = _names(run_passes(PASS_REGISTRY, state).entities)
+    swapped = _reorder(PASS_REGISTRY, "dedup_entities", "rescue_relation_endpoints")
+    lost = _names(run_passes(swapped, state).entities)
+    assert {"webapp", "web app"} <= set(kept)
+    assert not {"webapp", "web app"} <= set(lost)
+
+
+def test_swapping_dedup_and_endpoint_rescue_breaks_the_declared_contract():
+    swapped = _reorder(PASS_REGISTRY, "dedup_entities", "rescue_relation_endpoints")
+    with pytest.raises(RegistryContractError):
+        validate_registry(swapped, ORDERING_CONSTRAINTS)
+
+
+# ── Ordering constraint 4: endpoint rescue before the remap ──────────
+
+
+def test_endpoint_rescue_runs_before_the_remap():
+    assert index_of(PASS_REGISTRY, "rescue_relation_endpoints") < index_of(
+        PASS_REGISTRY, "remap_to_valid_entities"
+    )
+
+
+def test_endpoint_rescue_after_the_remap_loses_the_edge_it_exists_to_save():
+    state = _state(
+        content="The design doc cites RFC 7519.",
+        entities=[{"name": "RFC 7519", "type": "paper"}],
+        relationships=[
+            {"source": "design doc", "target": "RFC 7519", "type": "CITES"},
+        ],
+    )
+    kept = _triples(run_passes(PASS_REGISTRY, state).relationships)
+    moved = _reorder(
+        PASS_REGISTRY, "rescue_relation_endpoints", "remap_to_valid_entities"
+    )
+    lost = _triples(run_passes(moved, state).relationships)
+    assert ("design doc", "CITES", "RFC 7519") in kept
+    assert ("design doc", "CITES", "RFC 7519") not in lost
+
+
+def test_moving_the_endpoint_rescue_past_the_remap_breaks_the_contract():
+    moved = _reorder(
+        PASS_REGISTRY, "rescue_relation_endpoints", "remap_to_valid_entities"
+    )
+    with pytest.raises(RegistryContractError):
+        validate_registry(moved, ORDERING_CONSTRAINTS)
 
 
 # ── Ordering constraint 2: fan-out last ──────────────────────────────
