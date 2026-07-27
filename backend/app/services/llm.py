@@ -236,8 +236,15 @@ class LLMOrchestrator:
         response_format: dict | None = None,
         seed: int | None = None,
         raise_on_truncation: bool = False,
-    ) -> str:
+        return_meta: bool = False,
+    ) -> str | tuple[str, dict]:
         """Send a chat-completion request to the configured LLM.
+
+        ``return_meta`` opts into ``(content, meta)`` where ``meta`` carries
+        the served ``model``, the usage envelope and ``system_fingerprint``.
+        Additive by design: the ~30 call sites that read a ``str`` keep it.
+        A gate re-measurement must record what was actually served, and the
+        response body is the only place that exists.
 
         ``seed`` (when set) is forwarded to the vendor as a top-level
         ``seed`` parameter in the request body. OpenAI, DeepSeek, z.ai,
@@ -256,7 +263,7 @@ class LLMOrchestrator:
         if quirks_for(cfg.api_kind).native_protocol:
             return await self._chat_completion_native(
                 cfg, purpose, messages, response_format, headers, seed=seed,
-                raise_on_truncation=raise_on_truncation,
+                raise_on_truncation=raise_on_truncation, return_meta=return_meta,
             )
 
         body = self._build_openai_chat_body(
@@ -294,6 +301,12 @@ class LLMOrchestrator:
             raise RuntimeError(f"LLM {purpose} unexpected response: {str(data)[:200]}") from e
         if raise_on_truncation and choice.get("finish_reason") == "length":
             raise LLMTruncationError(self._truncation_message(purpose, cfg))
+        if return_meta:
+            return content, {
+                "model": data.get("model"),
+                "usage": data.get("usage"),
+                "system_fingerprint": data.get("system_fingerprint"),
+            }
         return content
 
     async def _chat_completion_native(
@@ -305,7 +318,8 @@ class LLMOrchestrator:
         headers: dict,
         seed: int | None = None,
         raise_on_truncation: bool = False,
-    ) -> str:
+        return_meta: bool = False,
+    ) -> str | tuple[str, dict]:
         """Native (Ollama protocol) ``/api/chat`` call.
 
         Sends ``"think": false`` when ``cfg.reasoning`` is False — this
@@ -376,6 +390,15 @@ class LLMOrchestrator:
             ) from e
         if raise_on_truncation and data.get("done_reason") == "length":
             raise LLMTruncationError(self._truncation_message(purpose, cfg))
+        if return_meta:
+            return content, {
+                "model": data.get("model"),
+                "usage": {
+                    "prompt_tokens": data.get("prompt_eval_count"),
+                    "completion_tokens": data.get("eval_count"),
+                },
+                "system_fingerprint": None,
+            }
         return content
 
     @staticmethod
