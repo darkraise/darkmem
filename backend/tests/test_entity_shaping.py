@@ -13,14 +13,13 @@ import pytest
 from app.services.extraction_clean import (
     ENTITY_TYPES,
     PASS_REGISTRY,
-    CleanState,
     _TYPE_OVERRIDES,
     _apply_type_overrides,
+    _filter_hallucinated_names,
     _filter_literals,
     _filter_noise,
     _normalize_names,
     _snap_hardware_types,
-    run_passes,
 )
 from app.services.extraction_pass_harness import index_of
 
@@ -402,3 +401,73 @@ def test_apply_type_overrides_does_not_mutate_its_input():
     given = [{"name": "qdrant", "type": "tool"}]
     _apply_type_overrides(given)
     assert given == [{"name": "qdrant", "type": "tool"}]
+
+
+# ── _filter_hallucinated_names ───────────────────────────────────────
+
+
+def test_filter_hallucinated_names_drops_a_multiword_name_absent_from_the_source():
+    content = "the february outage took the cluster down"
+    out = _filter_hallucinated_names(
+        [
+            {"name": "february outage", "type": "event"},
+            {"name": "march outage", "type": "event"},
+        ],
+        content,
+    )
+    assert _names(out) == ["february outage"]
+
+
+def test_filter_hallucinated_names_requires_every_significant_token():
+    content = "we tuned the retrieval path this week"
+    out = _filter_hallucinated_names(
+        [{"name": "retrieval reranker", "type": "concept"}], content
+    )
+    assert out == []
+
+
+def test_filter_hallucinated_names_ignores_stopwords_and_short_tokens():
+    content = "hybrid search over the memories table"
+    out = _filter_hallucinated_names(
+        [{"name": "hybrid search of memories", "type": "concept"}], content
+    )
+    assert _names(out) == ["hybrid search of memories"]
+
+
+def test_filter_hallucinated_names_tolerates_a_plural_shift():
+    content = "the savepoint wraps the graph write"
+    out = _filter_hallucinated_names(
+        [{"name": "savepoints wrap", "type": "concept"}], content
+    )
+    assert _names(out) == ["savepoints wrap"]
+
+
+def test_filter_hallucinated_names_does_not_police_a_single_token():
+    # 'postgres' is a canonical short form of 'PostgreSQL' and must survive
+    # even though the exact token is absent.
+    content = "we run PostgreSQL 16 in the homelab"
+    out = _filter_hallucinated_names([{"name": "postgres", "type": "database"}], content)
+    assert _names(out) == ["postgres"]
+
+
+def test_filter_hallucinated_names_drops_a_fabricated_date():
+    content = "the incident closed on 2026-05-20"
+    out = _filter_hallucinated_names(
+        [
+            {"name": "2026-05-12", "type": "concept"},
+            {"name": "2026-05-20", "type": "concept"},
+        ],
+        content,
+    )
+    assert _names(out) == ["2026-05-20"]
+
+
+def test_filter_hallucinated_names_is_a_noop_without_content():
+    given = [{"name": "march outage", "type": "event"}]
+    assert _filter_hallucinated_names(given, "") == given
+
+
+def test_filter_hallucinated_names_does_not_mutate_its_input():
+    given = [{"name": "march outage", "type": "event"}]
+    _filter_hallucinated_names(given, "the february outage")
+    assert given == [{"name": "march outage", "type": "event"}]
