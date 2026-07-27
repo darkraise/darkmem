@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
-import { FlagsTab } from "../components/flags-tab"
 import { SecurityTab } from "../components/security-tab"
 import { MaintenanceTab } from "../components/maintenance-tab"
 import { DistributionTab } from "../components/distribution-tab"
@@ -16,35 +15,7 @@ afterEach(() => {
   useDemoStore.getState().resetSettings()
 })
 
-describe("FlagsTab — invariant 23 honesty", () => {
-  it("renders every dormant arm as inactive, never omitted", () => {
-    render(<FlagsTab />)
-    // 4 dormant (w_importance, w_heat, w_recency, w_ppr) vs 3 active.
-    expect(screen.getAllByText("inactive")).toHaveLength(4)
-    expect(screen.getAllByText("active")).toHaveLength(3)
-  })
-
-  it("labels coded defaults distinctly from written overrides", () => {
-    render(<FlagsTab />)
-    expect(screen.getAllByText("(coded default)").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("(override)").length).toBeGreaterThan(0)
-  })
-
-  it("shows the no-weight note for community injection", () => {
-    render(<FlagsTab />)
-    expect(
-      screen.getByText(/no paired RRF weight/),
-    ).toBeInTheDocument()
-  })
-
-  it("summarises all seven job cadences with a pointer to the Jobs tab", () => {
-    render(<FlagsTab />)
-    expect(screen.getByText("expired_memory_cleanup")).toBeInTheDocument()
-    expect(
-      screen.getByText(/edited in the dedicated Settings → Jobs tab/),
-    ).toBeInTheDocument()
-  })
-})
+// FlagsTab's own tests live in settings-flags.test.tsx / .real.test.tsx.
 
 describe("SecurityTab — dormant ApiKey honesty", () => {
   it("renders the Phase-4 card with every control disabled", () => {

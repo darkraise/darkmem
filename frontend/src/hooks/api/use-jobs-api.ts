@@ -44,12 +44,13 @@ export interface JobTriggerResponse {
   last_run_at: string | null
 }
 
-export function useJobs() {
+export function useJobs(enabled: boolean = true) {
   return useQuery<JobsResponse>({
     queryKey: ["jobs"],
     queryFn: () => apiFetch<JobsResponse>("/jobs"),
     refetchInterval: 5000,
     refetchIntervalInBackground: false,
+    enabled,
   })
 }
 

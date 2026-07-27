@@ -178,9 +178,13 @@ const countOverrides = (flags: DemoFlagsState): number => {
   const flagOverrides = flags.graph_flags.filter(
     (f) => f.source === "override",
   ).length
+  const behavioralOverrides = flags.behavioral_flags.filter(
+    (f) => f.source === "override",
+  ).length
   return (
     armOverrides +
     flagOverrides +
+    behavioralOverrides +
     (flags.corroboration.source === "override" ? 1 : 0)
   )
 }
@@ -479,6 +483,20 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
       }
       return { flags: { ...flags, overrides_written: countOverrides(flags) } }
     }),
+  setBehavioralFlag: (key, enabled) =>
+    set((s) => {
+      const flags: DemoFlagsState = {
+        ...s.flags,
+        behavioral_flags: s.flags.behavioral_flags.map((f) =>
+          f.key === key ? { ...f, enabled, source: "override" } : f,
+        ),
+      }
+      return { flags: { ...flags, overrides_written: countOverrides(flags) } }
+    }),
+  saveRepoAllowlist: (patterns) =>
+    set((s) => ({
+      flags: { ...s.flags, repo_allowlist: { patterns } },
+    })),
   saveLLMPurpose: (purpose, patch) =>
     set((s) => ({
       llm: {

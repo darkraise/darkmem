@@ -60,6 +60,17 @@ export function useUpdateLlmConfig() {
   })
 }
 
+/** One rank_fusion_factor arm (doc 07 §3), read straight from the backend's
+ *  `RANK_ARMS` — `activation` is the task id that turns it on, or null if
+ *  it is already live. T1.57 ruling 1: the single source both the "inactive,
+ *  activated by T2.30" label and this type must agree with. */
+export interface RankArmInfo {
+  name: string
+  flag: string
+  value: number
+  activation: string | null
+}
+
 export interface FeatureFlags {
   hybrid_search_enabled: boolean
   reranker_enabled: boolean
@@ -75,13 +86,24 @@ export interface FeatureFlags {
   entity_cache_ttl_minutes: number
   relation_rescue: boolean
   confidence_rank_gamma: number
+  // Doc 07 §3 rank_fusion_factor arms wired at zero by T1.31.
+  w_importance: number
+  w_heat: number
+  w_recency: number
+  w_context_boost: number
+  rank_arms: RankArmInfo[]
+  // Which flags are subject to the gate-ledger's "flip on a measured win"
+  // rule, and which of those have actually cleared one (T1.57 ruling 3).
+  measurable_flags: string[]
+  measured_flags: string[]
 }
 
-export function useFeatureFlags() {
+export function useFeatureFlags(enabled: boolean = true) {
   return useQuery<FeatureFlags>({
     queryKey: ["featureFlags"],
     queryFn: () => apiFetch<FeatureFlags>("/config/feature-flags"),
     staleTime: 30_000,
+    enabled,
   })
 }
 
@@ -97,6 +119,31 @@ export function useUpdateFeatureFlags() {
       qc.invalidateQueries({ queryKey: ["featureFlags"] })
       qc.invalidateQueries({ queryKey: ["pipeline"] })
     },
+  })
+}
+
+export interface RepoAllowlist {
+  patterns: string[]
+}
+
+export function useRepoAllowlist(enabled: boolean = true) {
+  return useQuery<RepoAllowlist>({
+    queryKey: ["repoAllowlist"],
+    queryFn: () => apiFetch<RepoAllowlist>("/config/repo-allowlist"),
+    staleTime: 30_000,
+    enabled,
+  })
+}
+
+export function useUpdateRepoAllowlist() {
+  const qc = useQueryClient()
+  return useMutation<RepoAllowlist, Error, string[]>({
+    mutationFn: (patterns) =>
+      apiFetch<RepoAllowlist>("/config/repo-allowlist", {
+        method: "PUT",
+        body: JSON.stringify({ patterns }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["repoAllowlist"] }),
   })
 }
 
