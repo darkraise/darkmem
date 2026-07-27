@@ -23,6 +23,19 @@ class MemoryCreate(BaseModel):
     project: str | None = None
 
 
+class CaptureAck(BaseModel):
+    """Tier-A accept response (doc 05 §2.2).
+
+    ``id`` is the pre-minted **memory** id — the caller's durable reference,
+    resolvable once the buffer flush (T1.13) runs. It is deliberately not the
+    internal `memory_buffer` row's own id, which is a tracking handle the
+    caller never sees (`memory_buffer.buffered_memory_id`).
+    """
+
+    id: uuid.UUID
+    status: Literal["accepted"] = "accepted"
+
+
 class MemoryUpdate(BaseModel):
     content: str | None = None
     tags: list[str] | None = None
