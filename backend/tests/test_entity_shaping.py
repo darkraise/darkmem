@@ -125,10 +125,18 @@ def test_normalize_names_carries_unrelated_keys_forward(payload):
 
 
 @pytest.mark.parametrize("name", [
-    "value", "result", "config", "framework", "session", "codebase",
+    "value", "result", "config", "framework", "session", "codebase", "source",
 ])
 def test_filter_noise_drops_a_generic_noun(name):
     assert _filter_noise([{"name": name, "type": "concept"}]) == []
+
+
+def test_filter_noise_drops_the_stem_a_stripped_connector_leaves_behind():
+    out = _filter_noise(_normalize_names([
+        {"name": "Kafka source connector", "type": "service"},
+        {"name": "source connector", "type": "concept"},
+    ]))
+    assert _names(out) == ["Kafka"]
 
 
 @pytest.mark.parametrize("name", [

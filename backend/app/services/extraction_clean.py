@@ -149,6 +149,9 @@ _NOISE_NAMES: frozenset[str] = frozenset({
     # "auth", "filesystem", "process_batch") and bare directory parts.
     "auth", "filesystem", "process_batch", "config",
     "request", "response", "session", "context", "scope",
+    # 'kafka source connector' loses its descriptor suffix and leaves the bare
+    # stem behind; the stem is a generic noun either way.
+    "source",
     # Host stem left behind when the dotted-name collapse eats a bare
     # hostname ('www.example.com' -> 'www').
     "www",
