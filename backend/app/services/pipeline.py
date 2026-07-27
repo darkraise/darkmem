@@ -528,21 +528,6 @@ class ProcessingPipeline:
             graph_repo = PostgresGraphRepository(session)
 
             if status["embed"] == "ok":
-                # Idempotent re-extraction: strip any prior contributions of
-                # this memory_id from the entity graph before writing the new
-                # set. Otherwise re-running with a different model just
-                # accumulates duplicate-by-type rows on top of the previous
-                # extraction. ``delete_by_memory_id`` only removes entities
-                # whose memory_ids array becomes empty after the strip, so
-                # entities shared with other memories are preserved.
-                try:
-                    await graph_repo.delete_by_memory_id(memory_id)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to strip prior graph contributions for %s: %s",
-                        memory_id, exc,
-                    )
-
                 extracted_type = (
                     extraction.get("memory_type") if isinstance(extraction, dict) else None
                 )
@@ -614,6 +599,27 @@ class ProcessingPipeline:
                 if status["vector"] == "ok" and status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
                     try:
                         async with session.begin_nested():
+                            # Idempotent re-extraction: strip any prior
+                            # contributions of this memory_id from the entity
+                            # graph before writing the new set. Otherwise
+                            # re-running with a different model just accumulates
+                            # duplicate-by-type rows on top of the previous
+                            # extraction. ``delete_by_memory_id`` only removes
+                            # entities whose memory_ids array becomes empty after
+                            # the strip, so entities shared with other memories
+                            # are preserved.
+                            #
+                            # Inside savepoint B rather than ahead of it, so
+                            # strip-and-write is one atomic replace: a failure
+                            # here rolls the strip back and the memory keeps its
+                            # previous graph, instead of the outer commit making
+                            # the deletion durable and leaving it with no graph
+                            # at all and a technologies denorm matching nothing.
+                            # For the same reason an ordinary extraction failure,
+                            # which never enters this savepoint, no longer empties
+                            # a good graph.
+                            await graph_repo.delete_by_memory_id(memory_id)
+
                             # Technologies are denormalised to the memory row so the
                             # GIN index on `memories.technologies` can answer retrieval
                             # filters without joining. Store lowercase so case drift in

@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories.graph import PostgresGraphRepository
+from app.repositories.vector import PostgresVectorRepository
 from app.services.embedder_registry import child_table
 from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
 from tests.conftest import test_engine
@@ -55,6 +56,8 @@ class Bed:
     memory_ids: list[uuid.UUID]
     fingerprint: str
     broadcasts: list[tuple[str, dict]] = field(default_factory=list)
+    extraction: dict = field(default_factory=lambda: dict(EXTRACTION))
+    extraction_error: Exception | None = None
 
     @property
     def memory_id(self) -> uuid.UUID:
@@ -126,8 +129,13 @@ async def savepoint_bed(
 
     bed.pipe._broadcast = _capture
 
+    if extraction is not None:
+        bed.extraction = dict(extraction)
+
     async def _extract(content, system_prompt=None, **kwargs):
-        return dict(extraction if extraction is not None else EXTRACTION)
+        if bed.extraction_error is not None:
+            raise bed.extraction_error
+        return dict(bed.extraction)
 
     async def _resolve():
         return bed.pipe.classification
@@ -240,3 +248,151 @@ async def test_flush_failure_inside_savepoint_b_still_commits_the_vector_write(
         assert results[0]["vector"] == "ok"
         assert results[0]["graph"] == "error"
         assert await bed.embedding_rows() == 1
+
+
+@pytest.mark.asyncio
+async def test_vector_failure_skips_the_graph_entirely(setup_database, monkeypatch):
+    """Savepoint A is the gate on savepoint B: no vector, no graph attempt."""
+    async with savepoint_bed(["vector write fails"], "savepoint-vecfail|4") as bed:
+        async def _boom(self, *a, **k):
+            raise RuntimeError("vector boom")
+
+        monkeypatch.setattr(PostgresVectorRepository, "upsert", _boom)
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["vector"] == "error"
+        assert status["graph"] == "skipped"
+        assert await bed.embedding_rows() == 0
+        assert await bed.entity_names() == set()
+
+
+@pytest.mark.asyncio
+async def test_entity_write_failure_keeps_the_embedding(setup_database, monkeypatch):
+    async with savepoint_bed(["entity write fails"], "savepoint-entfail|4") as bed:
+        async def _boom(self, *a, **k):
+            raise RuntimeError("entity boom")
+
+        monkeypatch.setattr(PostgresGraphRepository, "create_entity", _boom)
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["vector"] == "ok"
+        assert status["graph"] == "error"
+        assert await bed.embedding_rows() == 1
+        assert await bed.entity_names() == set()
+
+
+@pytest.mark.asyncio
+async def test_entity_embedding_failure_rolls_back_only_the_graph(
+    setup_database, monkeypatch
+):
+    """The entity row is written before its embedding, so a failure on the
+    embedding must take the entity with it and leave the content vector."""
+    async with savepoint_bed(["entity embedding fails"], "savepoint-embfail|4") as bed:
+        async def _boom(self, *a, **k):
+            raise RuntimeError("entity embedding boom")
+
+        monkeypatch.setattr(PostgresGraphRepository, "upsert_entity_embedding", _boom)
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["vector"] == "ok"
+        assert status["graph"] == "error"
+        assert await bed.embedding_rows() == 1
+        assert await bed.entity_names() == set()
+
+
+@pytest.mark.asyncio
+async def test_strip_failure_fails_the_graph_step(setup_database, monkeypatch):
+    """A failed strip must fail savepoint B, not warn and write on top.
+
+    The strip is what makes re-extraction idempotent. Swallowing its failure and
+    proceeding writes the new graph over the un-stripped old one, which is
+    exactly the duplicate-by-type accumulation the strip exists to prevent — with
+    a log line as the only symptom and ``graph=ok`` on the wire.
+    """
+    async with savepoint_bed(
+        ["strip fails"], "savepoint-stripfail|4", ("pgvector", "faiss", "chroma"),
+    ) as bed:
+        first = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert first["graph"] == "ok"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+
+        async def _boom(self, *a, **k):
+            raise RuntimeError("strip boom")
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", _boom)
+        bed.extraction = {
+            "entities": [{"name": "chroma", "type": "tool"}],
+            "relationships": [],
+            "memory_type": "fact",
+        }
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["vector"] == "ok"
+        assert status["graph"] == "error"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+
+
+@pytest.mark.asyncio
+async def test_savepoint_b_failure_leaves_the_prior_graph_standing(
+    setup_database, monkeypatch
+):
+    """D1, in executable form: the strip lives INSIDE savepoint B.
+
+    With the strip outside the savepoints its deletion is made durable by the
+    outer commit, so a savepoint-B failure leaves the memory with no graph at all
+    and a `technologies` denorm that no longer matches anything on disk. Inside
+    B, strip-and-write is one atomic replace: the graph for a memory is always
+    exactly one extraction's output.
+    """
+    async with savepoint_bed(
+        ["prior graph survives"], "savepoint-prior|4", ("pgvector", "faiss", "chroma"),
+    ) as bed:
+        first = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert first["graph"] == "ok"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+        assert await bed.technologies() == ["faiss", "pgvector"]
+
+        async def _boom(self, *a, **k):
+            raise RuntimeError("entity boom")
+
+        monkeypatch.setattr(PostgresGraphRepository, "create_entity", _boom)
+        bed.extraction = {
+            "entities": [{"name": "chroma", "type": "tool"}],
+            "relationships": [],
+            "memory_type": "fact",
+        }
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["graph"] == "error"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+        assert await bed.technologies() == ["faiss", "pgvector"]
+
+
+@pytest.mark.asyncio
+async def test_extraction_failure_never_strips_the_prior_graph(setup_database):
+    """The routine path: savepoint B is never entered, so nothing is stripped.
+
+    An extraction failure is an ordinary outcome, not a decision to empty the
+    memory's graph. With the strip outside the savepoints it ran and committed
+    on this path, silently discarding a good graph whenever the extractor had a
+    bad day.
+    """
+    async with savepoint_bed(
+        ["extraction fails on the second pass"], "savepoint-extfail|4",
+    ) as bed:
+        first = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert first["graph"] == "ok"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+
+        bed.extraction_error = RuntimeError("extractor unreachable")
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["extract"] == "error"
+        assert status["graph"] == "skipped"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+        assert await bed.technologies() == ["faiss", "pgvector"]
