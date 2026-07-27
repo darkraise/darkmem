@@ -396,3 +396,187 @@ async def test_extraction_failure_never_strips_the_prior_graph(setup_database):
         assert status["graph"] == "skipped"
         assert await bed.entity_names() == {"pgvector", "faiss"}
         assert await bed.technologies() == ["faiss", "pgvector"]
+
+
+CANON_FP = "savepoint-canon|4"
+
+
+async def _write_with_map(bed, extraction, canonical_map):
+    return await bed.pipe._write_memory(
+        bed.entry(), VECTOR, bed.fingerprint, bed.fingerprint,
+        extraction, None, {}, canonical_map,
+    )
+
+
+async def _entity_rows(bed) -> dict[tuple[str, str], dict]:
+    async with bed.factory() as s:
+        rows = (await s.execute(
+            text("SELECT name, entity_type, properties FROM entities "
+                 "WHERE CAST(:m AS uuid) = ANY(memory_ids)"),
+            {"m": str(bed.memory_id)},
+        )).mappings().all()
+    return {(r["name"], r["entity_type"]): dict(r["properties"] or {}) for r in rows}
+
+
+async def _relation_endpoints(bed) -> set[tuple[str, str, str]]:
+    async with bed.factory() as s:
+        rows = (await s.execute(
+            text("SELECT s.name AS src, t.name AS tgt, r.rel_type "
+                 "FROM entity_relations r "
+                 "JOIN entities s ON s.id = r.source_entity_id "
+                 "JOIN entities t ON t.id = r.target_entity_id "
+                 "WHERE CAST(:m AS uuid) = ANY(r.memory_ids)"),
+            {"m": str(bed.memory_id)},
+        )).mappings().all()
+    return {(r["src"], r["tgt"], r["rel_type"]) for r in rows}
+
+
+@pytest.mark.asyncio
+async def test_endpoint_types_are_recovered_before_names_are_rewritten(setup_database):
+    """The ordering clause of the Phase-4 contract, made unbreakable.
+
+    Endpoint types come from the extraction's PRE-canonicalisation names. Build
+    that map after the rewrite loop and every endpoint whose entity was
+    canonicalized stops resolving, because its type is then looked up under a
+    name the map no longer carries.
+    """
+    async with savepoint_bed(
+        ["postgresql runs on linux"], CANON_FP,
+        ("postgresql", "postgres", "linux"),
+    ) as bed:
+        status = await _write_with_map(
+            bed,
+            {
+                "entities": [
+                    {"name": "PostgreSQL", "type": "tool"},
+                    {"name": "linux", "type": "tool"},
+                ],
+                "relationships": [
+                    {"source": "PostgreSQL", "target": "linux", "type": "DEPLOYED_ON"},
+                ],
+            },
+            {("postgresql", "tool"): "postgres"},
+        )
+
+        assert status["graph"] == "ok"
+        assert set(await _entity_rows(bed)) == {("postgres", "tool"), ("linux", "tool")}
+        assert await _relation_endpoints(bed) == {("postgres", "linux", "DEPLOYED_ON")}
+
+
+@pytest.mark.asyncio
+async def test_a_name_absent_from_the_map_is_never_rewritten(setup_database):
+    """``key in canonical_map`` is the rewrite test.
+
+    The map carries only canonicalized names; a name that stayed distinct is
+    absent rather than mapped to itself. An implementation that resolved by name
+    alone would rewrite the ``concept`` here off the ``tool`` entry.
+    """
+    async with savepoint_bed(
+        ["react the concept"], CANON_FP, ("react", "reactjs", "linux"),
+    ) as bed:
+        status = await _write_with_map(
+            bed,
+            {
+                "entities": [{"name": "react", "type": "concept"}],
+                "relationships": [],
+            },
+            {("react", "tool"): "reactjs"},
+        )
+
+        assert status["graph"] == "ok"
+        assert set(await _entity_rows(bed)) == {("react", "concept")}
+
+
+@pytest.mark.asyncio
+async def test_an_ambiguous_name_leaves_its_endpoints_untouched(setup_database):
+    """One name under two types in one extraction has no recoverable type.
+
+    Keyed by name alone, the last entity wins and every endpoint named ``react``
+    resolves under that arbitrary type — so an endpoint that was really the
+    ``tool`` gets rewritten off the ``concept``'s map entry.
+    """
+    async with savepoint_bed(
+        ["react and react"], CANON_FP, ("react", "reactjs", "webpack"),
+    ) as bed:
+        status = await _write_with_map(
+            bed,
+            {
+                "entities": [
+                    {"name": "react", "type": "tool"},
+                    {"name": "React", "type": "concept"},
+                    {"name": "webpack", "type": "tool"},
+                ],
+                "relationships": [
+                    {"source": "react", "target": "webpack", "type": "USES"},
+                ],
+            },
+            {("react", "concept"): "reactjs"},
+        )
+
+        assert status["graph"] == "ok"
+        assert set(await _entity_rows(bed)) == {
+            ("react", "tool"), ("reactjs", "concept"), ("webpack", "tool"),
+        }
+        assert await _relation_endpoints(bed) == {("react", "webpack", "USES")}
+
+
+@pytest.mark.asyncio
+async def test_canonicalization_never_collapses_across_types(setup_database):
+    async with savepoint_bed(
+        ["react tool stays"], CANON_FP, ("react", "reactjs"),
+    ) as bed:
+        await _write_with_map(
+            bed,
+            {"entities": [{"name": "react", "type": "tool"}], "relationships": []},
+            {("react", "concept"): "reactjs"},
+        )
+
+        assert set(await _entity_rows(bed)) == {("react", "tool")}
+
+
+@pytest.mark.asyncio
+async def test_display_name_follows_the_surviving_entity_not_the_variant(
+    setup_database,
+):
+    """Invariant 7, both halves.
+
+    A canonicalized entity must not stamp the variant's casing onto the
+    surviving entity's display_name; a distinct entity whose original casing
+    differs must keep it.
+    """
+    async with savepoint_bed(
+        ["casing"], CANON_FP, ("postgresql", "postgres", "darkmem"),
+    ) as bed:
+        await _write_with_map(
+            bed,
+            {
+                "entities": [
+                    {"name": "PostgreSQL", "type": "tool"},
+                    {"name": "Darkmem", "type": "tool"},
+                ],
+                "relationships": [],
+            },
+            {("postgresql", "tool"): "postgres"},
+        )
+
+        rows = await _entity_rows(bed)
+        assert set(rows) == {("postgres", "tool"), ("darkmem", "tool")}
+        assert "display_name" not in rows[("postgres", "tool")]
+        assert rows[("darkmem", "tool")]["display_name"] == "Darkmem"
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_entity_dict_is_an_extraction_failure(setup_database):
+    """Nothing was written, so nothing may be reported as a failed write."""
+    async with savepoint_bed(["malformed"], CANON_FP, ()) as bed:
+        status = await _write_with_map(
+            bed,
+            {"entities": [{"type": "tool"}], "relationships": []},
+            {},
+        )
+
+        assert status["extract"] == "error"
+        assert status["vector"] == "ok"
+        assert status["graph"] == "skipped"
+        assert status["entities_count"] == 0
+        assert await bed.embedding_rows() == 1

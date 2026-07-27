@@ -489,25 +489,51 @@ class ProcessingPipeline:
             # renamed onto a `tool` "react". Relationship endpoints carry no type,
             # so resolve each endpoint's type from this extraction's own entities;
             # if unknown, leave the endpoint untouched.
-            ent_types = {
-                (e.get("name") or "").lower(): e.get("type")
-                for e in extraction.get("entities", [])
-            }
-            for entity in extraction.get("entities", []):
-                low = entity["name"].lower()
-                entity["_orig_lower"] = low
-                key = (low, entity.get("type"))
-                if key in canonical_map:
-                    entity["name"] = canonical_map[key]
-            for rel in extraction.get("relationships", []):
-                src_low = rel.get("source", "").lower()
-                tgt_low = rel.get("target", "").lower()
-                src_key = (src_low, ent_types.get(src_low))
-                tgt_key = (tgt_low, ent_types.get(tgt_low))
-                if src_key in canonical_map:
-                    rel["source"] = canonical_map[src_key]
-                if tgt_key in canonical_map:
-                    rel["target"] = canonical_map[tgt_key]
+            # Built to completion BEFORE the rewrite loop below mutates any
+            # entity["name"]. An endpoint's type has to be recovered from this
+            # extraction's PRE-canonicalisation names; recovering it afterwards
+            # looks up an already-rewritten name and silently resolves nothing.
+            # That ordering is the subtle clause of the Phase-4 contract and
+            # nothing else in the code signals it.
+            ent_types: dict[str, set[str]] = {}
+            for e in extraction.get("entities", []):
+                etype = e.get("type")
+                if etype:
+                    ent_types.setdefault((e.get("name") or "").lower(), set()).add(etype)
+
+            def _endpoint_type(name_lower: str) -> str | None:
+                # A name emitted under two types in one extraction is a name
+                # whose type cannot be recovered. Picking one of them rewrites
+                # the endpoint under a type it may not have, which is the
+                # cross-type rebinding the (name, type) key exists to prevent.
+                types = ent_types.get(name_lower) or set()
+                return next(iter(types)) if len(types) == 1 else None
+
+            try:
+                for entity in extraction.get("entities", []):
+                    low = entity["name"].lower()
+                    entity["_orig_lower"] = low
+                    key = (low, entity.get("type"))
+                    if key in canonical_map:
+                        entity["name"] = canonical_map[key]
+                for rel in extraction.get("relationships", []):
+                    src_low = (rel.get("source") or "").lower()
+                    tgt_low = (rel.get("target") or "").lower()
+                    src_key = (src_low, _endpoint_type(src_low))
+                    tgt_key = (tgt_low, _endpoint_type(tgt_low))
+                    if src_key in canonical_map:
+                        rel["source"] = canonical_map[src_key]
+                    if tgt_key in canonical_map:
+                        rel["target"] = canonical_map[tgt_key]
+            except (AttributeError, KeyError, TypeError) as e:
+                # A malformed entity dict is the extractor's failure, not the
+                # writer's; attributing it to the vector step would report a
+                # write that was never attempted.
+                status["extract"] = "error"
+                status["error"] = f"Extraction returned a malformed entity: {e}"
+                status["entities_count"] = 0
+                status["relations_count"] = 0
+                extraction = None
         else:
             status["extract"] = "error"
             status["error"] = status["error"] or "Extraction returned invalid data"
