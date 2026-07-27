@@ -239,13 +239,24 @@ class PostgresTagRepository(TagRepositoryBase):
 
 
 class PostgresAuditRepository(AuditRepositoryBase):
+    # Only the two actions T1.07 names (capture, pipeline outcome) are
+    # remapped onto doc 04 §8.1's closed vocabulary. "update"/"delete"/
+    # "merge" are unchanged: they are not among the four subsystems T1.07
+    # scopes (capture, extraction, supersession, pipeline outcomes), and
+    # ``test_audit_endpoint.py`` already asserts the exact strings the
+    # audit endpoint's action filter excludes.
+    _ACTION_EVENT_TYPE = {
+        "create": "created",
+        "pipeline": "extracted",
+    }
+
     def __init__(self, session: AsyncSession):
         self.session = session
 
     async def log(self, action, memory_id=None, api_key_id=None, details=None):
         await record_event(
             self.session,
-            event_type=action,
+            event_type=self._ACTION_EVENT_TYPE.get(action, action),
             object_type="memory" if memory_id else "system",
             object_id=memory_id,
             api_key_id=api_key_id,
