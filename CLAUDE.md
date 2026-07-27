@@ -444,9 +444,24 @@ rewrite or a rotated key.
 
 `POST /repos/{id}/reindex` accepts `{full, enrich_symbols,
 generate_wiki}`, all default False. An unchanged HEAD sha
-short-circuits the reindex unless `full=true`. Symbol enrichment and
+short-circuits the reindex unless `full=true` **or the repo carries
+outstanding index debt** (below). Symbol enrichment and
 wiki generation run only when their toggles are set; `GET /code/wiki`
 is read-only and never implicitly generates.
+
+An incremental run re-traces the callers of every changed file, because
+re-indexing a file deletes every call edge pointing into it. That
+re-trace is capped at `DEPENDENT_RETRACE_CAP` (500); the callers past
+the cap are **persisted to `repositories.index_debt`, never dropped** —
+dropping them leaves a graph that is quietly wrong, with no error and
+no symptom but missing callers. Later runs fold a bounded batch
+(`config` row `code_index_debt`, default the cap) of that queue back
+into their changed set until it reaches zero, and the batch leaves the
+queue only after the run that re-traced it succeeded. Debt files are
+only ever *added* to a changed set: their content hash is unchanged, so
+phase 03 skips them and the drain deletes nothing. Both the deferral
+and the drain journal a `repo_indexed` `events` row and surface on
+`RepoResponse.index_debt`.
 
 ## Cross-cutting invariants
 

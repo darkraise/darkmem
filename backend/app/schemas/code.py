@@ -69,6 +69,29 @@ class ReindexRequest(BaseModel):
     generate_wiki: bool = False
 
 
+class IndexDebtDrain(BaseModel):
+    at: str = ""
+    count: int = 0
+    commit: str = ""
+    vanished: int = 0
+
+
+class IndexDebtStatus(BaseModel):
+    """The re-trace debt signal (doc 10 §3 T2).
+
+    ``queued`` on its own reads the same whether the queue is draining or
+    wedged, so the lifetime totals and the two timestamped records ship with it:
+    a consumer showing "queued, draining" rather than "queued" needs the
+    difference to be readable from one response.
+    """
+
+    queued: int = 0
+    deferred_total: int = 0
+    drained_total: int = 0
+    last_defer: IndexDebtDrain | None = None
+    last_drain: IndexDebtDrain | None = None
+
+
 class RepoResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -81,6 +104,7 @@ class RepoResponse(BaseModel):
     status: str = "pending"
     status_message: str | None = None
     auto_sync: bool
+    index_debt: IndexDebtStatus = IndexDebtStatus()
     file_count: int = 0
     symbol_count: int = 0
     created_at: datetime

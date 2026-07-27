@@ -18,6 +18,7 @@ from app.services.code_parser import (
     ExtractedCall, ExtractedHeritage, ExtractedImport, ExtractedProperty,
     ExtractedRoute, ExtractedSymbol, detect_language, parse_file,
 )
+from app.services import index_debt
 from app.services.community_detector import CommunityDetector
 from app.services.heritage_resolver import AccessResolver, HeritageResolver
 from app.services.llm import LLMOrchestrator
@@ -133,6 +134,12 @@ class CodePipeline:
         # rebuilds everything instead of silently no-op'ing on matching hashes.
         self._force_full: bool = False
 
+        # Re-trace overflow this run deferred, and the debt batch it claimed.
+        # The batch is only removed from the queue once the run succeeds.
+        self._debt_deferred: list[str] = []
+        self._debt_batch: list[str] = []
+        self._debt_vanished: list[str] = []
+
     async def run(
         self,
         repo_id: UUID,
@@ -158,11 +165,21 @@ class CodePipeline:
         old_sha = repo.last_indexed_commit
 
         if old_sha == new_sha and not full:
-            if repo.status != "ready":
-                repo.status = "ready"
-                repo.status_message = None
-                await self.session.flush()
-            return {"status": "up_to_date", "commit": new_sha}
+            # Outstanding debt is work this repo owes at the *current* sha, so an
+            # unchanged HEAD must not short-circuit it: without this the queue
+            # only ever drains when someone happens to push, which is the same
+            # unbounded staleness the debt exists to end.
+            debt = await index_debt.load(self.session, repo.id)
+            if not index_debt.queued_files(debt):
+                if repo.status != "ready":
+                    repo.status = "ready"
+                    repo.status_message = None
+                    await self.session.flush()
+                return {
+                    "status": "up_to_date",
+                    "commit": new_sha,
+                    "index_debt_queued": 0,
+                }
 
         self._work_dir = self.repo_manager.repo_working_dir(repo)
         self._repo_id_str = str(repo.id)
@@ -176,6 +193,8 @@ class CodePipeline:
             "symbols_indexed": 0,
             "chunks_stored": 0,
             "calls_resolved": 0,
+            "index_debt_drained": 0,
+            "index_debt_queued": 0,
             "errors": [],
         }
 
@@ -266,10 +285,22 @@ class CodePipeline:
             repo.status_message = None
             await self.session.commit()
 
+            try:
+                await self._settle_index_debt(new_sha)
+            except Exception as exc:
+                # The index itself is committed and correct at this point. A
+                # bookkeeping failure must not send a successful run down the
+                # failure path and label the graph stale; the batch simply stays
+                # queued and the next run re-traces it again.
+                logger.warning("Failed to settle index debt for repo %s: %s", repo.id, exc)
+                await self.session.rollback()
+
             await event_manager.broadcast("repo.indexing_completed", {
                 "repo_id": self._repo_id_str,
                 "files_changed": self._stats["files_changed"],
                 "symbols_indexed": self._stats["symbols_indexed"],
+                "index_debt_drained": self._stats["index_debt_drained"],
+                "index_debt_queued": self._stats["index_debt_queued"],
             })
 
             logger.info(
@@ -430,17 +461,20 @@ class CodePipeline:
                 # phase_06.
                 targets = self._changed_files + self._deleted_files
                 if targets:
-                    deps, total = await _find_dependent_caller_files(
+                    deps, overflow = await _find_dependent_caller_files(
                         self.session, self._repo.id, targets,
+                        cap=DEPENDENT_RETRACE_CAP,
                     )
-                    if total > len(deps):
-                        logger.info(
-                            "Incremental reindex: %d dependent caller files exceed cap "
-                            "%d; re-tracing %d (run a full reindex to refresh the rest)",
-                            total, DEPENDENT_RETRACE_CAP, len(deps),
-                        )
                     already = set(targets)
                     self._changed_files.extend(d for d in deps if d not in already)
+                    self._debt_deferred = [f for f in overflow if f not in already]
+                    if self._debt_deferred:
+                        logger.info(
+                            "Incremental reindex: %d dependent caller files exceed cap "
+                            "%d; re-tracing %d and queueing %d as index debt",
+                            len(deps) + len(self._debt_deferred), DEPENDENT_RETRACE_CAP,
+                            len(deps), len(self._debt_deferred),
+                        )
 
         for rel_path in self._deleted_files:
             try:
@@ -450,7 +484,85 @@ class CodePipeline:
                 logger.error("Error deleting data for %s: %s", rel_path, exc)
                 self._stats["errors"].append(f"delete:{rel_path}:{exc}")
 
+        await self._fold_index_debt(new_sha)
+
         self._phase_done("01_file_discovery", t0)
+
+    async def _fold_index_debt(self, new_sha: str) -> None:
+        """Persist this run's re-trace overflow and claim a batch to drain.
+
+        The deferral is committed here, before any later phase can fail, because
+        those callers are already missing edges whether or not this run finishes
+        — losing the record of that is the truncation this exists to prevent.
+        The claimed batch stays in the queue until the run succeeds
+        (``_settle_index_debt``), so a failure re-offers it rather than eating it.
+
+        Debt files are only ever *added* to the changed set. Their content hash
+        is unchanged, so phase 03 takes its skip path and no graph rows are
+        deleted for them: the drain restores edges, it never removes any.
+        """
+        debt = await index_debt.load(self.session, self._repo.id)
+        deferred = self._debt_deferred
+        # Only debt carried in from earlier runs is drainable here. Folding back
+        # what this run just deferred would spend the budget the cap withheld.
+        carried = index_debt.queued_files(debt)
+
+        if deferred:
+            debt = index_debt.record_overflow(debt, deferred, new_sha)
+
+        if self._force_full:
+            # Every file is re-traced by this pass, so the whole queue is settled
+            # by it — there is nothing left for a continuation batch to do.
+            batch = index_debt.queued_files(debt)
+        elif carried:
+            size = await index_debt.drain_batch_size(self.session, DEPENDENT_RETRACE_CAP)
+            batch = carried[:size]
+        else:
+            batch = []
+
+        if deferred:
+            await index_debt.save(self.session, self._repo.id, debt)
+            await index_debt.journal(
+                self.session, repo_id=self._repo.id, action="deferred",
+                count=len(deferred), debt=debt, commit=new_sha,
+            )
+            await self.session.commit()
+
+        self._debt_batch = batch
+        self._debt_vanished = []
+        if not batch or self._force_full:
+            return
+
+        work_dir = self._work_dir
+        present: list[str] = []
+        for rel_path in batch:
+            if (work_dir / rel_path).is_file():
+                present.append(rel_path)
+            else:
+                # The file left the working tree, so there is no caller left to
+                # re-trace. Settling it is a resolution, not a dropped re-trace.
+                self._debt_vanished.append(rel_path)
+
+        already = set(self._changed_files) | set(self._deleted_files)
+        self._changed_files.extend(f for f in present if f not in already)
+
+    async def _settle_index_debt(self, new_sha: str) -> None:
+        """Remove the claimed batch now that the run that re-traced it succeeded."""
+        drained = self._debt_batch
+        debt = await index_debt.load(self.session, self._repo.id)
+        if drained:
+            debt = index_debt.record_drain(
+                debt, drained, new_sha, vanished=len(self._debt_vanished),
+            )
+            await index_debt.save(self.session, self._repo.id, debt)
+            await index_debt.journal(
+                self.session, repo_id=self._repo.id, action="drained",
+                count=len(drained), debt=debt, commit=new_sha,
+                vanished=len(self._debt_vanished),
+            )
+            await self.session.commit()
+        self._stats["index_debt_drained"] = len(drained)
+        self._stats["index_debt_queued"] = debt["queued"]
 
     async def _find_removed_files(self, current_files: list[str]) -> list[str]:
         """Files this repo has an indexed ``CodeFile`` row for that are no
@@ -1515,7 +1627,7 @@ async def _find_dependent_caller_files(
     repo_id,
     changed_files: list[str],
     cap: int = DEPENDENT_RETRACE_CAP,
-) -> tuple[list[str], int]:
+) -> tuple[list[str], list[str]]:
     """Files (outside ``changed_files``) whose ``calls`` edges target a symbol
     in a changed file, so their call edges must be re-traced.
 
@@ -1523,15 +1635,17 @@ async def _find_dependent_caller_files(
     that targets a renamed/moved symbol in a changed file loses its edge
     (``_delete_file_data`` drops it when the changed file is re-indexed) and
     never regains it until a full reindex. Re-tracing these dependents recreates
-    the edge. Returns ``(files, total)`` where ``total`` is the pre-cap count so
-    the caller can log any truncation rather than silently dropping work.
+    the edge. Returns ``(kept, overflow)``: ``kept`` is re-traced by this run and
+    ``overflow`` is the work past the cap, which the caller persists as index
+    debt. The overflow is named rather than counted precisely because it must be
+    drained later, never dropped.
 
     Symbol keys are ``name::file_path`` or ``name::file_path::owner``, so the
     file is always segment 2 of ``::`` — matched here with ``split_part`` rather
     than a ``%::<file>`` suffix so owner-qualified method keys still match.
     """
     if not changed_files:
-        return [], 0
+        return [], []
     changed_set = set(changed_files)
     rows = (await session.execute(
         text("""
@@ -1544,7 +1658,7 @@ async def _find_dependent_caller_files(
         {"rid": str(repo_id), "files": changed_files},
     )).scalars().all()
     deps = sorted({f for f in rows if f and f not in changed_set})
-    return deps[:cap], len(deps)
+    return deps[:cap], deps[cap:]
 
 
 async def _diff_files(

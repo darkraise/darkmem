@@ -22,10 +22,11 @@ BACKEND = Path(__file__).resolve().parent.parent
 
 # The inert objects, with the task that will first write to each.
 INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
+# repositories.index_debt is no longer here: T1.39, its declared first writer
+# (schema inventory §7), landed the re-trace drain that writes it.
 INERT_COLUMNS = {
     ("entities", "repo_ids"): "T2.27",
     ("entity_relations", "repo_ids"): "T2.27",
-    ("repositories", "index_debt"): "T1.39",
 }
 INERT_TEMPLATES = {
     "block_embeddings": "TH1.05",
@@ -83,11 +84,6 @@ async def test_inert_columns_hold_only_their_empty_default(session):
         )).scalar()
         assert non_empty == 0, f"{table}.repo_ids has a writer — it must stay inert"
 
-    debt = (await session.execute(
-        text("SELECT count(*) FROM repositories WHERE index_debt IS NOT NULL")
-    )).scalar()
-    assert debt == 0, "repositories.index_debt has a writer — it must stay inert"
-
 
 # ── no code path writes to them ──────────────────────────────────────────
 
@@ -108,7 +104,7 @@ def test_no_app_code_writes_the_inert_columns():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for column in ("repo_ids", "index_debt"):
+            for column in ("repo_ids",):
                 writes = (
                     f".{column} =" in line
                     or f"{column}=" in line.replace("==", "")
