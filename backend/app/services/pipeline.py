@@ -572,6 +572,9 @@ class ProcessingPipeline:
           4. Dedup lookup (per unique name)
           5. Per-memory writes (concurrent)
         """
+        if not entries:
+            return []
+
         flags = await _get_feature_flags_cached(self.session_factory)
         pipeline_concurrency = flags.get("pipeline_concurrency", 5)
         embed_chunk_size = flags.get("embedding_batch_size", 20)
@@ -591,6 +594,17 @@ class ProcessingPipeline:
             vectors, embedding_fingerprint = await self.llm.embed_batch_chunked(
                 contents, embed_chunk_size, embed_concurrency,
             )
+            if len(vectors) != len(entries):
+                # Position is the only thing binding a vector to its content, so
+                # a short or long return leaves us unable to say which vector
+                # belongs to which memory. Pairing them anyway would either zip
+                # the tail of the batch away — no status, no failure row, a
+                # caller silently handed fewer results than entries — or store
+                # one memory's embedding under another memory's id.
+                raise RuntimeError(
+                    f"embed_batch_chunked returned {len(vectors)} vectors for "
+                    f"{len(entries)} contents"
+                )
             logger.info(
                 "Phase 1 complete: embedded %d contents under %s",
                 len(vectors), embedding_fingerprint,
@@ -598,12 +612,24 @@ class ProcessingPipeline:
         except Exception as e:
             logger.error("Phase 1 content embedding failed: %s: %s", type(e).__name__, e)
             vectors = [None] * len(entries)
+            embedding_fingerprint = None
 
-        # Register the producing embedder before any partition write. Skipped
-        # when Phase 1 failed entirely; downstream writes will be marked as
-        # error in that case.
+        # Register the producing embedder before any partition write. Phase 5's
+        # content vectors and Phase 3's entity-cache rows both land in tables
+        # this call creates, so a registration failure has to degrade to the
+        # Phase-1-failure state rather than escape the batch: drop the vectors
+        # and the fingerprint so nothing downstream writes into or probes a
+        # partition that was never registered.
         if embedding_fingerprint and any(v is not None for v in vectors):
-            await self._register_fingerprint(embedding_fingerprint)
+            try:
+                await self._register_fingerprint(embedding_fingerprint)
+            except Exception as e:
+                logger.error(
+                    "Phase 1 fingerprint registration failed for %s: %s: %s",
+                    embedding_fingerprint, type(e).__name__, e,
+                )
+                vectors = [None] * len(entries)
+                embedding_fingerprint = None
 
         # Phase 2: Extraction and LLM classification. Classification always runs
         # alongside extraction — the regex classifier it used to A/B against is
