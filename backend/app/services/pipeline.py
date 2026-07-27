@@ -749,7 +749,15 @@ class ProcessingPipeline:
                     similar = await xref_repo.find_similar_memories(
                         memory_id, fingerprint=content_fingerprint, top_k=5, min_score=0.4,
                     )
-                    await xref_repo.store_crossrefs(memory_id, similar)
+                    # Normalized here rather than left to the CAST: ids cross
+                    # this boundary as either str or UUID depending on which
+                    # probe answered, and a mismatch drops matches silently.
+                    normalized = [
+                        {"memory_id": UUID(str(ref["memory_id"])),
+                         "score": float(ref["score"])}
+                        for ref in similar
+                    ]
+                    await xref_repo.store_crossrefs(memory_id, normalized)
                     await xref_session.commit()
             except Exception as e:
                 logger.warning(f"Crossref computation failed for {memory_id}: {e}")

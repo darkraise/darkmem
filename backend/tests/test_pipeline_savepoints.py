@@ -580,3 +580,110 @@ async def test_a_malformed_entity_dict_is_an_extraction_failure(setup_database):
         assert status["graph"] == "skipped"
         assert status["entities_count"] == 0
         assert await bed.embedding_rows() == 1
+
+
+@pytest.mark.asyncio
+async def test_crossrefs_run_in_a_separate_session_after_the_main_commit(
+    setup_database, monkeypatch
+):
+    """Invariant 11: the main transaction still holds locks on the rows the
+    crossref probe reads, so its session may only open after that commit."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    async with savepoint_bed(["crossref ordering"], "savepoint-xreford|4") as bed:
+        trace: list[str] = []
+        tags: dict[int, int] = {}
+        counter = {"n": 0}
+        real_factory = bed.pipe.session_factory
+
+        def recording_factory():
+            counter["n"] += 1
+            session = real_factory()
+            tags[id(session)] = counter["n"]
+            return session
+
+        bed.pipe.session_factory = recording_factory
+
+        real_commit = AsyncSession.commit
+        real_upsert = PostgresVectorRepository.upsert
+        real_find = PostgresVectorRepository.find_similar_memories
+
+        async def commit(self):
+            trace.append(f"commit:{tags.get(id(self))}")
+            return await real_commit(self)
+
+        async def upsert(self, *a, **k):
+            trace.append(f"vector:{tags.get(id(self.session))}")
+            return await real_upsert(self, *a, **k)
+
+        async def find(self, *a, **k):
+            trace.append(f"crossref:{tags.get(id(self.session))}")
+            return await real_find(self, *a, **k)
+
+        monkeypatch.setattr(AsyncSession, "commit", commit)
+        monkeypatch.setattr(PostgresVectorRepository, "upsert", upsert)
+        monkeypatch.setattr(PostgresVectorRepository, "find_similar_memories", find)
+
+        await bed.pipe.process_batch([bed.entry()])
+
+        write = next(e for e in trace if e.startswith("vector:")).split(":")[1]
+        xref = next(e for e in trace if e.startswith("crossref:")).split(":")[1]
+        assert write != xref
+        assert trace.index(f"commit:{write}") < trace.index(f"crossref:{xref}")
+
+
+@pytest.mark.asyncio
+async def test_an_empty_similar_set_clears_the_previous_crossrefs(
+    setup_database, monkeypatch
+):
+    """DELETE+INSERT, not INSERT-when-non-empty.
+
+    The early return on an empty list sat above the DELETE, so a memory whose
+    neighbours were since deleted — or which an embedder rotation moved into a
+    sparse partition — kept crossref rows pointing at similarities that no
+    longer hold, with nothing that ever clears them.
+    """
+    async with savepoint_bed(
+        ["stale crossrefs", "the neighbour"], "savepoint-xrefstale|4",
+    ) as bed:
+        async with bed.factory() as s:
+            await s.execute(
+                text("INSERT INTO memory_crossrefs (memory_id, related_memory_id, score) "
+                     "VALUES (CAST(:a AS uuid), CAST(:b AS uuid), 0.9)"),
+                {"a": str(bed.memory_ids[0]), "b": str(bed.memory_ids[1])},
+            )
+            await s.commit()
+
+        async def _none(self, *a, **k):
+            return []
+
+        monkeypatch.setattr(PostgresVectorRepository, "find_similar_memories", _none)
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert status["vector"] == "ok"
+
+        async with bed.factory() as s:
+            remaining = (await s.execute(
+                text("SELECT count(*) FROM memory_crossrefs "
+                     "WHERE memory_id = CAST(:a AS uuid)"),
+                {"a": str(bed.memory_ids[0])},
+            )).scalar_one()
+        assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_a_crossref_failure_changes_no_step_status(setup_database, monkeypatch):
+    """Crossrefs are enrichment after the commit, not a pipeline step; there is
+    deliberately no ``crossref`` field in the status dict."""
+    async with savepoint_bed(["crossref fails"], "savepoint-xreffail|4") as bed:
+        async def _boom(self, *a, **k):
+            raise RuntimeError("crossref boom")
+
+        monkeypatch.setattr(PostgresVectorRepository, "find_similar_memories", _boom)
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["vector"] == "ok"
+        assert status["graph"] == "ok"
+        assert status["error"] is None
+        assert [e for e, _ in bed.broadcasts] == ["pipeline.completed"]
