@@ -453,7 +453,6 @@ class ProcessingPipeline:
         llm_classification: dict | None,
         name_to_embedding: dict[str, list[float]],
         canonical_map: dict[tuple[str, str], str],
-        flags: dict,
     ) -> dict:
         memory_id = entry["memory_id"]
         content = entry["content"]
@@ -1005,7 +1004,7 @@ class ProcessingPipeline:
                 return await self._write_memory(
                     entry, vector, content_write_fingerprint, entity_write_fingerprint,
                     extraction, classification,
-                    name_to_embedding, canonical_map, flags,
+                    name_to_embedding, canonical_map,
                 )
 
         results = await asyncio.gather(
