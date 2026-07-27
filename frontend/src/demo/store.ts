@@ -145,7 +145,7 @@ const initialActivity = () => ({
     ...j,
     config_schema: j.config_schema.map((f) => ({ ...f })),
   })),
-  bufferMonitor: CURATED_BUFFER_MONITOR,
+  bufferMonitor: structuredClone(CURATED_BUFFER_MONITOR),
   dreamMonitor: CURATED_DREAM_MONITOR,
   dreamCycle: CURATED_DREAM_CYCLE,
   dreamActions: CURATED_DREAM_ACTIONS.map((a) => ({ ...a })),
@@ -358,6 +358,33 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
   forgetFailure: (id) =>
     set((s) => ({
       pipelineFailures: s.pipelineFailures.filter((f) => f.id !== id),
+    })),
+  retryBufferRow: (id) =>
+    set((s) => ({
+      bufferMonitor: {
+        ...s.bufferMonitor,
+        target: {
+          ...s.bufferMonitor.target,
+          error: Math.max(0, s.bufferMonitor.target.error - 1),
+          pending: s.bufferMonitor.target.pending + 1,
+          poisonRows: s.bufferMonitor.target.poisonRows.filter(
+            (r) => r.id !== id,
+          ),
+        },
+      },
+    })),
+  forgetBufferRow: (id) =>
+    set((s) => ({
+      bufferMonitor: {
+        ...s.bufferMonitor,
+        target: {
+          ...s.bufferMonitor.target,
+          error: Math.max(0, s.bufferMonitor.target.error - 1),
+          poisonRows: s.bufferMonitor.target.poisonRows.filter(
+            (r) => r.id !== id,
+          ),
+        },
+      },
     })),
   triggerJob: (key) => {
     const job = get().jobs.find((j) => j.key === key)

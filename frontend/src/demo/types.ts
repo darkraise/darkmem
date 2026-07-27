@@ -638,8 +638,22 @@ export type JobTriggerResult =
   | { ok: true }
   | { ok: false; status: 409; lock_held_since: string }
 
+/** One `memory_buffer` row as the monitor renders it. `attempts` is a
+ *  claim count, not a failure count — it increments when a row is claimed,
+ *  so it means "times claimed", never "times failed" (T1.13, T1.61
+ *  ruling 1). */
+export interface DemoBufferRow {
+  id: string
+  project: string
+  attempts: number
+  maxAttempts: number
+  lastError: string | null
+  claimedAt?: string
+}
+
 export interface DemoBufferMonitor {
-  /** false — the memory_buffer backend does not exist yet (invariant 23). */
+  /** false — no REST surface reads memory_buffer yet, even though the
+   *  table and the buffer_flush job are live (invariant 23; T1.61 ruling). */
   live: false
   staged_phase: string
   staged_reason: string
@@ -648,7 +662,15 @@ export interface DemoBufferMonitor {
     claimed: number
     done: number
     error: number
-    poison: { headline: string; detail: string } | null
+    /** Still `status='claimed'` but past `buffer_claim_visibility_seconds`
+     *  — the `stale_claims()` read helper's subject. Self-healing (the
+     *  `buffer_flush` job's reclaim arm resolves these automatically), so
+     *  this list is observational only, never actionable. */
+    staleClaims: DemoBufferRow[]
+    /** `status='error'` — attempts exhausted, retained for triage forever
+     *  (the retention sweep only ever deletes `done`). Actionable: retry
+     *  re-queues to pending, forget deletes permanently. */
+    poisonRows: DemoBufferRow[]
     wait_process_note: string
   }
 }
@@ -1037,6 +1059,10 @@ export interface DemoStoreState {
   retryFailure: (id: string) => void
   retryAllFailures: () => void
   forgetFailure: (id: string) => void
+  /** Re-buffers a poison row: back to pending, attempts untouched. */
+  retryBufferRow: (id: string) => void
+  /** Explicitly forgets a poison row: removed from triage permanently. */
+  forgetBufferRow: (id: string) => void
   /** Busy honesty: a trigger on a held lock returns 409 — never queued. */
   triggerJob: (key: string) => JobTriggerResult
   saveJobConfig: (key: string, values: Record<string, number>) => void
