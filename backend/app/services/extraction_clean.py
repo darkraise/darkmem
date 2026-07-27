@@ -301,6 +301,10 @@ _NEGATION_WINDOW = re.compile(
     # 'instead of' is a comparative/selection cue ("chose X instead of Y"), not a
     # use-negation; the selection gate keeps both endpoints as X IMPROVES_ON Y, so
     # dropping Y here would orphan that edge.
+    # 'never use X' needs its own alternative: the bare 'never' branch requires
+    # the marker to sit immediately before the mention, so the intervening verb
+    # hides it.
+    r"|never\s+(?:to\s+)?us(?:e|ed|ing)"
     r"|never"
     r"|avoid(?:s|ing|ed)?"
     r"|skip(?:ped|ping)?"

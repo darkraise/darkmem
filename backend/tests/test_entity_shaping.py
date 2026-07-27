@@ -17,6 +17,7 @@ from app.services.extraction_clean import (
     _apply_type_overrides,
     _filter_hallucinated_names,
     _filter_literals,
+    _filter_negation_only,
     _filter_noise,
     _normalize_names,
     _snap_hardware_types,
@@ -471,3 +472,81 @@ def test_filter_hallucinated_names_does_not_mutate_its_input():
     given = [{"name": "march outage", "type": "event"}]
     _filter_hallucinated_names(given, "the february outage")
     assert given == [{"name": "march outage", "type": "event"}]
+
+
+# ── _filter_negation_only ────────────────────────────────────────────
+
+
+def test_filter_negation_only_drops_an_entity_mentioned_only_negatively():
+    kept, dropped = _filter_negation_only(
+        [
+            {"name": "postgres", "type": "database"},
+            {"name": "redis", "type": "database"},
+        ],
+        "we run postgres without redis",
+    )
+    assert _names(kept) == ["postgres"]
+    assert dropped == {"redis"}
+
+
+@pytest.mark.parametrize("phrase", [
+    "we use postgres, no redis",
+    "we use postgres and never redis",
+    "we use postgres and never use redis",
+    "we use postgres and never used redis",
+    "we use postgres, avoiding redis",
+    "we use postgres and do not use redis",
+    "we use postgres and don't use redis",
+    "we use postgres, skipping redis",
+])
+def test_filter_negation_only_recognises_the_negation_markers(phrase):
+    kept, dropped = _filter_negation_only(
+        [
+            {"name": "postgres", "type": "database"},
+            {"name": "redis", "type": "database"},
+        ],
+        phrase,
+    )
+    assert _names(kept) == ["postgres"]
+    assert dropped == {"redis"}
+
+
+def test_filter_negation_only_keeps_an_entity_with_one_positive_mention():
+    kept, dropped = _filter_negation_only(
+        [{"name": "redis", "type": "database"}],
+        "we deploy redis for the queue, though the cache runs without redis",
+    )
+    assert _names(kept) == ["redis"]
+    assert dropped == set()
+
+
+def test_filter_negation_only_treats_instead_of_as_a_selection_not_a_negation():
+    # 'chose X instead of Y' keeps both endpoints so the IMPROVES_ON edge the
+    # selection gate emits is not orphaned.
+    kept, _ = _filter_negation_only(
+        [{"name": "qdrant", "type": "database"}],
+        "we chose pgvector instead of qdrant",
+    )
+    assert _names(kept) == ["qdrant"]
+
+
+def test_filter_negation_only_keeps_an_entity_the_source_never_mentions():
+    # Absence is the rescue passes' business, not this one's.
+    kept, dropped = _filter_negation_only(
+        [{"name": "clickhouse", "type": "database"}], "we run postgres"
+    )
+    assert _names(kept) == ["clickhouse"]
+    assert dropped == set()
+
+
+def test_filter_negation_only_is_a_noop_without_content():
+    given = [{"name": "redis", "type": "database"}]
+    kept, dropped = _filter_negation_only(given, "")
+    assert kept == given
+    assert dropped == set()
+
+
+def test_filter_negation_only_does_not_mutate_its_input():
+    given = [{"name": "redis", "type": "database"}]
+    _filter_negation_only(given, "we run postgres without redis")
+    assert given == [{"name": "redis", "type": "database"}]
