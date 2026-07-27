@@ -689,6 +689,39 @@ prerequisite**, and no phase after 1 may describe isolation as holding without i
 
 **Verify.** `cd backend && python -m pytest tests/test_pushdown_reason_code.py -q`
 
+#### T1.29d — Close the channels the pushdown enumeration missed
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29c` · `Doc: 07 §7, §9, 20 §4` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Three confirmed live isolation leaks on channels **no task enumerated**, found by
+T1.29c's code-derived channel inventory. **Added by amendment 2026-07-27.** T1.29a–c were
+scoped from doc 07 §7/§9's consumer list, and that list is now demonstrably incomplete —
+it had already missed `ChatService`, and the inventory found three more.
+
+**The leaks, each verified in the tree:**
+
+1. **`GET /api/v1/vectors/projection`** — authenticated, `limit` up to **5000**, calls
+   `get_all_vectors(fingerprint, limit)` with **no project, status or archived predicate**,
+   and its points carry memory content snippets. This is the one most likely to make
+   T1.35's zero a false pass.
+2. **`memory_find_duplicates`** — calls `find_similar` with no filters, and its rows carry
+   the payload content.
+3. **`GraphService._fetch_neighbor_memories`** — applies project and archived but **never
+   status**, so a superseded neighbour still reaches `get_memory_context`. T1.29c reported
+   rather than fixed this, because changing it also changes the shape T1.29b deliberately
+   chose for the entity and relation arms; resolve that interaction explicitly.
+
+**Done when:**
+- [ ] All three filter in SQL, with the same predicates the other channels use
+- [ ] The projection endpoint keeps its single-fingerprint constraint — inactive
+      fingerprints live in other partitions and mixing spaces yields meaningless
+      coordinates (invariant 2)
+- [ ] T1.29c's channel inventory is re-derived from the code and reported **empty of
+      unscoped channels**, not merely updated by hand
+- [ ] Each fix has a hostile-fixture test that fails if the predicate is removed
+
+**Verify.** `cd backend && python -m pytest tests/test_pushdown_remaining_channels.py -q`
+
 #### T1.30 — RRF fusion + the unified `rank_fusion_factor`
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
@@ -1490,3 +1523,6 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-27 | T1.29c | 1 | Touched five files the lane list does not name: `app/schemas/reason.py`, `app/api/routes/memories.py` and `app/api/mcp/server.py` (a `project` argument on both `reason` front doors), `app/repositories/graph.py` (a `scope` argument on `get_entities`, matching its neighbour-walk siblings), and `tests/test_services_reason.py` (a stale `semantic_search` stub signature). | A scope the service accepts and no front door can set is a leak that is merely harder to reach, and invariant 17 forbids a behaviour existing on one door and not the other. `get_entities` is how chat resolves an `@mention`; leaving it unscoped would have closed chat's memory arm while its entity arm still handed the model a foreign project's graph. The stub predates the `filters` keyword T1.29a added and broke the floor on signature alone, not behaviour. |
 | 2026-07-27 | T1.29c | 2 | **Doc 07 §9's consumer enumeration is incomplete, and a T1.35 probe built from it would return a clean zero over live leaks.** Code-derived inventory in the T1.29c report. Three memory-content channels the doc omits: `ChatService._retrieve` (fixed here), `GET /api/v1/vectors/projection` (`get_all_vectors` — up to 5000 rows with content snippets, **no project, status or archived predicate**), and `memory_find_duplicates` / `GET /memories/{id}/duplicates` (`find_similar` is called with no `filters`, and its rows carry the payload content). | The projection route and the duplicates probe are the two that matter for the gate: both are unscoped by construction and both return memory content to a caller. The duplicates probe may be deliberately unscoped — the `MemoryFilter` docstring says the dedup and crossref probes want every candidate regardless of lifecycle — but the same function now serves a user-facing tool, so the choice needs an owner rather than an inherited default. T1.35's probe must be built from the code, never from the doc's list. |
 | 2026-07-27 | T1.29c | 2 | **Found, not fixed: `GraphService._fetch_neighbor_memories` applies `project` and `is_archived` but never `scope.statuses`, so a superseded neighbour still reaches `get_memory_context`.** `_project_scope` builds `MemoryFilter(project=project)` with `statuses=None`, so no graph arm — neighbours, relations or the traversal — carries a status predicate. | Left to its owner deliberately. T1.29b chose project+archived for the graph channel and reversing that shape from a sibling lane would change the entity and relation arms too, where "an entity asserted only by a superseded memory" is a genuine design question rather than an oversight. Doc 07 §7's "the pushdown's default excludes non-active rows from the default view" argues it should be closed; recording it so the graph channel is not counted as fully scoped in a gate claim. |
+| 2026-07-27 | T1.29d | 2 | **New task — doc 07 §7/§9's channel enumeration is demonstrably incomplete, and three more live leaks were found.** T1.29c's code-derived inventory (required by its brief precisely because the doc's list had already missed `ChatService`) surfaced: `GET /api/v1/vectors/projection`, authenticated, up to **5000** rows carrying content snippets, with **no** project/status/archived predicate; `memory_find_duplicates`, calling `find_similar` unfiltered with payload content on its rows; and `GraphService._fetch_neighbor_memories`, which scopes project and archived but **never status**, so superseded neighbours still reach `get_memory_context`. Controller verified the projection endpoint in the tree. | This is the second time the doc's consumer list has proven wrong, and it is the reason T1.29c's brief demanded an inventory derived from code rather than from the doc. **T1.35's bar is zero leaked rows on every channel, so a probe built from the doc's list would return a clean zero over three live leaks** — the gate passing for the wrong reason. Made a task rather than folded into T1.35 because runbook §2 keeps measurement design and measurement plumbing separate: the probe must not be written by the same pass that fixes what it measures. |
+| 2026-07-27 | T1.29c | 1 | **Controller ruling on `reason`'s default scope: `project=None` meaning "every project" is correct and stands.** T1.29c asked whether doc 07 §7 requires a default project scope rather than merely the ability to scope. | It matches the search surface, which is the consistency that matters: a channel that silently defaulted to a narrower scope than its sibling would surprise every caller and would be discovered as missing results rather than as a policy. Doc 07 §7's actual complaint about `memory_reason` was that it could not scope **at all** and leaked superseded and archived rows unconditionally; both are now unconditionally scoped and project is scopeable. The leak is closed; the default is a separate question and the consistent answer is the right one. |
+| 2026-07-27 | T1.29c | 1 | Fixed a floor failure not of this task's making: `tests/test_services_reason.py`'s pipeline stub predated the `filters` keyword T1.29a added and raised `TypeError` on signature alone. | Recording it because it was latent across a merge — the stub was signature-incompatible from the moment T1.29a landed, and it surfaced only when this lane exercised that path. A stub that mirrors a production signature without being pinned to it will drift again; worth remembering when the next keyword is added. |
