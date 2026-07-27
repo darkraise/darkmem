@@ -2,7 +2,17 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Collection
 
+from app.services.extraction_pass_harness import (
+    CleanState,
+    OrderingConstraint,
+    Pass,
+    RunsBefore,
+    StraddlesPivot,
+    run_passes,
+    validate_registry,
+)
 from app.taxonomy import (
     ENTITY_TYPES,
     MEMORY_TYPES,
@@ -1954,6 +1964,132 @@ def _filter_event_edges(relationships: list[dict], entities: list[dict]) -> list
     return out
 
 
+def _remap_to_valid_entities(
+    relationships: list[dict], entities: list[dict], raw_entities: list[dict],
+) -> list[dict]:
+    """Rewrite every edge endpoint onto a surviving entity, dropping the rest."""
+    valid_names = {e["name"] for e in entities}
+    name_remap = _build_name_remap(raw_entities, valid_names)
+    return _remap_relationships(relationships, name_remap, valid_names)
+
+
+def _drop_edges_to_negated(
+    relationships: list[dict], negated_names: Collection[str],
+) -> list[dict]:
+    """Drop relations that reference an entity removed for being negation-only."""
+    if not negated_names:
+        return relationships
+    return [
+        r for r in relationships
+        if r.get("source") not in negated_names and r.get("target") not in negated_names
+    ]
+
+
+STAGE_ENTITY_SHAPING = "entity_shaping"
+STAGE_ENTITY_RESCUE = "entity_rescue"
+STAGE_RELATION_SYNTHESIS = "relation_synthesis"
+STAGE_RELATION_GATING = "relation_gating"
+STAGE_COLLAPSE_AND_FANOUT = "collapse_and_fanout"
+
+
+# The post-processor, as an explicit ordered sequence. One line per pass;
+# reordering, dropping, or inserting a pass is a one-line edit whose effect
+# the F1 bench measures. Every entry is a pure function with no hidden state.
+PASS_REGISTRY: tuple[Pass, ...] = (
+    Pass("normalize_names", STAGE_ENTITY_SHAPING, _normalize_names, ("entities",), ("entities",)),
+    Pass("filter_noise", STAGE_ENTITY_SHAPING, _filter_noise, ("entities",), ("entities",)),
+    Pass("snap_hardware_types", STAGE_ENTITY_SHAPING, _snap_hardware_types, ("entities",), ("entities",)),
+    Pass("apply_type_overrides", STAGE_ENTITY_SHAPING, _apply_type_overrides, ("entities",), ("entities",)),
+    Pass("filter_literals", STAGE_ENTITY_SHAPING, _filter_literals, ("entities", "content"), ("entities",)),
+    Pass("filter_hallucinated_names", STAGE_ENTITY_SHAPING, _filter_hallucinated_names, ("entities", "content"), ("entities",)),
+    Pass("filter_negation_only", STAGE_ENTITY_SHAPING, _filter_negation_only, ("entities", "content"), ("entities", "negated_names")),
+    Pass("dedup_entities", STAGE_ENTITY_SHAPING, _dedup_entities, ("entities",), ("entities",)),
+    # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
+    # not dropped as substrings of longer model proposals (``cpu_fallback``).
+    Pass("rescue_known_entities", STAGE_ENTITY_RESCUE, _rescue_known_entities, ("entities", "content"), ("entities",)),
+    # File-path rescue: scans for ``a/b/c.py``-style tokens the LLM
+    # dropped and adds them as ``artifact`` entities. Closes the
+    # round-10 recall gap that broke Pattern D's B-zone selection on
+    # relocation memories. Plain dotted forms (``classA.method1()``)
+    # are intentionally NOT matched — see ``_FILE_PATH_RE`` docstring.
+    Pass("rescue_file_path_entities", STAGE_ENTITY_RESCUE, _rescue_file_path_entities, ("entities", "content"), ("entities",)),
+    # Attach ISO dates to their event/release entity (HAPPENED_ON) before
+    # ``valid_names`` is computed, so the date node + edge survive remap.
+    Pass("rescue_happened_on", STAGE_ENTITY_RESCUE, _rescue_happened_on, ("entities", "relationships", "content"), ("entities", "relationships")),
+    # Pattern-based relation synthesis. Adds DEPLOYED_ON / USES / REPLACES
+    # triples for adjacent entity pairs joined by a connector phrase the
+    # LLM misses (``X on Y``, ``X with Y``, ``X via Y``, ``X uses Y``,
+    # etc.). Runs before remap/direction/collapse so the synthetic triples
+    # go through the same downstream cleanup as LLM-emitted ones. The
+    # entire pass is skipped when ``relation_rescue`` is False; the
+    # model's raw triples still go through direction/collapse cleanup below.
+    Pass("rescue_relations", STAGE_RELATION_SYNTHESIS, _rescue_relations, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
+    Pass("remap_to_valid_entities", STAGE_RELATION_GATING, _remap_to_valid_entities, ("relationships", "entities", "raw_entities"), ("relationships",)),
+    Pass("drop_edges_to_negated", STAGE_RELATION_GATING, _drop_edges_to_negated, ("relationships", "negated_names"), ("relationships",)),
+    # Reserve REPLACES for real migrations; a selection ('chose X over Y') is
+    # IMPROVES_ON. Drop edges joined only by a temporal connector. Future/planned
+    # references are MENTIONS, not USES.
+    Pass("gate_replaces_selection", STAGE_RELATION_GATING, _gate_replaces_selection, ("relationships", "content"), ("relationships",)),
+    Pass("gate_replaces_requires_verb", STAGE_RELATION_GATING, _gate_replaces_requires_verb, ("relationships", "content"), ("relationships",)),
+    Pass("suppress_temporal_edges", STAGE_RELATION_GATING, _suppress_temporal_edges, ("relationships", "content"), ("relationships",)),
+    Pass("downgrade_future_to_mentions", STAGE_RELATION_GATING, _downgrade_future_to_mentions, ("relationships", "content"), ("relationships",)),
+    Pass("drop_date_misuse", STAGE_RELATION_GATING, _drop_date_misuse, ("relationships",), ("relationships",)),
+    Pass("validate_directions", STAGE_RELATION_GATING, _validate_directions, ("relationships", "content"), ("relationships",)),
+    Pass("validate_hosting_direction", STAGE_RELATION_GATING, _validate_hosting_direction, ("relationships",), ("relationships",)),
+    # Events are passive temporal nodes: strip any non-temporal/causal edge the
+    # model hung off an incident/outage/release (rule 16a; model under-complies).
+    Pass("filter_event_edges", STAGE_RELATION_GATING, _filter_event_edges, ("relationships", "entities"), ("relationships",)),
+    # Suppress USES between a pair already covered by REPLACES (any
+    # direction). Runs after the direction validators so the REPLACES
+    # is in the right shape, and before the 10->5 collapse so we still
+    # see IMPROVES_ON as part of the REPLACES family.
+    Pass("drop_uses_when_replaces_exists", STAGE_COLLAPSE_AND_FANOUT, _drop_uses_when_replaces_exists, ("relationships",), ("relationships",)),
+    # Same idea for hosting: when a pair already has DEPLOYED_ON, the
+    # parallel USES edge is redundant (DEPLOYED_ON ⊂ USES semantically).
+    Pass("drop_uses_when_deployed_on_exists", STAGE_COLLAPSE_AND_FANOUT, _drop_uses_when_deployed_on_exists, ("relationships",), ("relationships",)),
+    # Cross-source dedup: when a (target, predicate) appears with two
+    # different sources, keep the highest-weight one. Catches the
+    # subject-tracking failure where the extractor anchors a relation
+    # to the most-recent technology entity in addition to (or instead
+    # of) the correct project subject.
+    Pass("dedup_by_target_predicate", STAGE_COLLAPSE_AND_FANOUT, _dedup_by_target_predicate, ("relationships",), ("relationships",)),
+    Pass("fan_out_coordinated", STAGE_COLLAPSE_AND_FANOUT, _fan_out_coordinated, ("relationships", "entities", "content"), ("relationships",)),
+    Pass("filter_event_edges", STAGE_COLLAPSE_AND_FANOUT, _filter_event_edges, ("relationships", "entities"), ("relationships",)),
+    # Drop any date entity left without a HAPPENED_ON edge (dangling value node).
+    Pass("drop_unlinked_dates", STAGE_COLLAPSE_AND_FANOUT, _drop_unlinked_dates, ("entities", "relationships"), ("entities",)),
+)
+
+
+# The three orderings doc 06 §4 calls load-bearing. Declared as data and
+# checked at import time so a reorder fails loudly instead of silently
+# costing F1.
+ORDERING_CONSTRAINTS: tuple[OrderingConstraint, ...] = (
+    RunsBefore(
+        "dedup_entities", "rescue_known_entities",
+        why=(
+            "rescue after dedup keeps canonical short names ('cpu', 'rg') that "
+            "dedup would otherwise drop against a longer model proposal"
+        ),
+    ),
+    RunsBefore(
+        "dedup_by_target_predicate", "fan_out_coordinated",
+        why=(
+            "fan-out deliberately mints a multi-source set for one "
+            "(target, predicate) that the dedup would collapse back to one edge"
+        ),
+    ),
+    StraddlesPivot(
+        "filter_event_edges", "fan_out_coordinated",
+        why=(
+            "fan-out can mint an edge with an event-typed endpoint that the "
+            "first event-legality pass never saw"
+        ),
+    ),
+)
+
+validate_registry(PASS_REGISTRY, ORDERING_CONSTRAINTS)
+
+
 def clean_extraction(
     result: dict,
     content: str = "",
@@ -1962,95 +2098,30 @@ def clean_extraction(
 ) -> dict:
     """Normalize and post-process raw extraction output.
 
+    Runs ``PASS_REGISTRY`` in order; every pass is deterministic and
+    in-process, so the whole chain makes zero model calls.
+
     ``relation_rescue`` toggles the pattern-based relation synthesis pass
     (adjacency + subject-tracking + REPLACES). Defaults to ``True`` so
     existing call sites and tests behave unchanged. Pipeline call sites
     pass the live ``relation_rescue`` feature flag.
     """
-    entities = result.get("entities", [])
-    relationships = result.get("relationships", [])
-
-    entities = _normalize_names(entities)
-    entities = _filter_noise(entities)
-    entities = _snap_hardware_types(entities)
-    entities = _apply_type_overrides(entities)
-    entities = _filter_literals(entities, content)
-    entities = _filter_hallucinated_names(entities, content)
-    entities, negated_names = _filter_negation_only(entities, content)
-    entities = _dedup_entities(entities)
-    # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
-    # not dropped as substrings of longer model proposals (``cpu_fallback``).
-    entities = _rescue_known_entities(entities, content)
-    # File-path rescue: scans for ``a/b/c.py``-style tokens the LLM
-    # dropped and adds them as ``artifact`` entities. Closes the
-    # round-10 recall gap that broke Pattern D's B-zone selection on
-    # relocation memories. Plain dotted forms (``classA.method1()``)
-    # are intentionally NOT matched — see ``_FILE_PATH_RE`` docstring.
-    entities = _rescue_file_path_entities(entities, content)
-    # Attach ISO dates to their event/release entity (HAPPENED_ON) before
-    # ``valid_names`` is computed, so the date node + edge survive remap.
-    entities, relationships = _rescue_happened_on(entities, relationships, content)
-    # Pattern-based relation synthesis. Adds DEPLOYED_ON / USES / REPLACES
-    # triples for adjacent entity pairs joined by a connector phrase the
-    # LLM misses (``X on Y``, ``X with Y``, ``X via Y``, ``X uses Y``,
-    # etc.). Runs before remap/direction/collapse so the synthetic triples
-    # go through the same downstream cleanup as LLM-emitted ones. The
-    # entire pass is skipped when ``relation_rescue`` is False; the
-    # model's raw triples still go through direction/collapse cleanup below.
-    if relation_rescue:
-        relationships = _rescue_relations(entities, relationships, content)
-
-    valid_names = {e["name"] for e in entities}
-    name_remap = _build_name_remap(result.get("entities", []), valid_names)
-    relationships = _remap_relationships(relationships, name_remap, valid_names)
-    # Drop relations that reference an entity we removed for being negation-only.
-    if negated_names:
-        relationships = [
-            r for r in relationships
-            if r.get("source") not in negated_names and r.get("target") not in negated_names
-        ]
-    # Reserve REPLACES for real migrations; a selection ('chose X over Y') is
-    # IMPROVES_ON. Drop edges joined only by a temporal connector. Future/planned
-    # references are MENTIONS, not USES.
-    relationships = _gate_replaces_selection(relationships, content)
-    relationships = _gate_replaces_requires_verb(relationships, content)
-    relationships = _suppress_temporal_edges(relationships, content)
-    relationships = _downgrade_future_to_mentions(relationships, content)
-    relationships = _drop_date_misuse(relationships)
-    relationships = _validate_directions(relationships, content)
-    relationships = _validate_hosting_direction(relationships)
-    # Events are passive temporal nodes: strip any non-temporal/causal edge the
-    # model hung off an incident/outage/release (rule 16a; model under-complies).
-    relationships = _filter_event_edges(relationships, entities)
-    # Suppress USES between a pair already covered by REPLACES (any
-    # direction). Runs after the direction validators so the REPLACES
-    # is in the right shape, and before the 10->5 collapse so we still
-    # see IMPROVES_ON as part of the REPLACES family.
-    relationships = _drop_uses_when_replaces_exists(relationships)
-    # Same idea for hosting: when a pair already has DEPLOYED_ON, the
-    # parallel USES edge is redundant (DEPLOYED_ON ⊂ USES semantically).
-    relationships = _drop_uses_when_deployed_on_exists(relationships)
-    # Cross-source dedup: when a (target, predicate) appears with two
-    # different sources, keep the highest-weight one. Catches the
-    # subject-tracking failure where the extractor anchors a relation
-    # to the most-recent technology entity in addition to (or instead
-    # of) the correct project subject.
-    relationships = _dedup_by_target_predicate(relationships)
-    # Fan-out runs LAST: replicating a predicate across coordinated subjects
-    # ('A, B and C all use X') must happen after _dedup_by_target_predicate,
-    # which would otherwise collapse the multi-source set back to one edge.
-    relationships = _fan_out_coordinated(relationships, entities, content)
-    # Re-apply the event-legality guard: fan-out can mint edges with an
-    # event-typed entity as an endpoint for a relation type the guard forbids,
-    # and the earlier pass already ran before these edges existed.
-    relationships = _filter_event_edges(relationships, entities)
-    # Drop any date entity left without a HAPPENED_ON edge (dangling value node).
-    entities = _drop_unlinked_dates(entities, relationships)
+    raw_entities = result.get("entities", [])
+    state = run_passes(
+        PASS_REGISTRY,
+        CleanState(
+            content=content,
+            entities=raw_entities,
+            relationships=result.get("relationships", []),
+            raw_entities=raw_entities,
+            relation_rescue=relation_rescue,
+        ),
+    )
 
     return {
         **result,
-        "entities": entities,
-        "relationships": relationships,
+        "entities": state.entities,
+        "relationships": state.relationships,
     }
 
 
@@ -2138,6 +2209,22 @@ __all__ = [
     "_EVENT_ALLOWED_RELS",
     "_drop_unlinked_dates",
     "_filter_event_edges",
+    "_remap_to_valid_entities",
+    "_drop_edges_to_negated",
+    "CleanState",
+    "Pass",
+    "RunsBefore",
+    "StraddlesPivot",
+    "OrderingConstraint",
+    "run_passes",
+    "validate_registry",
+    "STAGE_ENTITY_SHAPING",
+    "STAGE_ENTITY_RESCUE",
+    "STAGE_RELATION_SYNTHESIS",
+    "STAGE_RELATION_GATING",
+    "STAGE_COLLAPSE_AND_FANOUT",
+    "PASS_REGISTRY",
+    "ORDERING_CONSTRAINTS",
     "clean_extraction",
     "ENTITY_TYPES",
     "RELATIONSHIP_TYPES",
