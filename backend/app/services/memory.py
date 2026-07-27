@@ -4,17 +4,20 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.memory import Memory
+from app.models.memory import Memory, MemoryBuffer
 from app.repositories.relational import (
     PostgresAuditRepository,
     PostgresMemoryRepository,
     PostgresTagRepository,
 )
-from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
+from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
+from app.services import memory_buffer
 from app.services.extraction import _MAX_CONTENT_CHARS
+from app.services.memory_buffer import buffered_memory_id
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
 from app.taxonomy import MEMORY_TYPES, normalize_memory_type
+from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +100,61 @@ class MemoryService:
             await self.session.commit()
 
         return memories
+
+    async def accept_capture(self, data: MemoryCreate, api_key_id: UUID | None) -> CaptureAck:
+        acks = await self.accept_capture_batch([data], api_key_id)
+        return acks[0]
+
+    async def accept_capture_batch(
+        self, entries: list[MemoryCreate], api_key_id: UUID | None,
+    ) -> list[CaptureAck]:
+        """Tier-A accept (doc 05 §2): validate, buffer, journal, ack.
+
+        The caller's ``MemoryCreate`` is already validated by the time it
+        reaches here (pydantic, at the front door), so a rejected request
+        never gets this far and never writes anything. What runs here is
+        exactly one buffer insert per entry plus a journal event — no
+        embedder, no extractor, no classifier call, ever. That is what makes
+        "accept latency is dominated by one insert" true structurally rather
+        than by observation: this method holds no reference to ``self.pipeline``
+        at all.
+
+        Every ``MemoryCreate`` field the buffer's own columns don't cover
+        rides ``metadata_`` via ``memory_buffer.enqueue``'s ``**extra`` and is
+        replayed verbatim at flush (doc 04 §8.6) — dropping one silently here
+        is the exact failure that tuple exists to make visible.
+        """
+        rows: list[MemoryBuffer] = []
+        for data in entries:
+            project = data.project or "default"
+            row = await memory_buffer.enqueue(
+                self.session,
+                content=data.content,
+                project=project,
+                source=data.source,
+                origin_key=data.origin_key,
+                memory_id=new_id(),
+                memory_type=data.memory_type,
+                tags=data.tags or None,
+                importance=data.importance,
+                expires_at=data.expires_at.isoformat() if data.expires_at else None,
+                source_agent=data.source_agent,
+                metadata=data.metadata or None,
+            )
+            rows.append(row)
+
+        for row, data in zip(rows, entries):
+            await self.audit_repo.log(
+                "create", buffered_memory_id(row), api_key_id,
+                {"source": data.source, "buffered": True},
+            )
+
+        # Commit before acking (invariant 11, doc 05 §2.2): a crash between
+        # the insert and the ack must never leave a caller holding a "200 OK"
+        # for a capture that turns out not to durably exist.
+        await self.session.commit()
+
+        return [CaptureAck(id=buffered_memory_id(row)) for row in rows]
 
     async def get_memory(self, memory_id: UUID) -> Memory | None:
         return await self.memory_repo.get(memory_id)

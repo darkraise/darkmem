@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.auth import require_auth
 from app.api.deps import get_memory_service
+from app.api.mcp.client_identity import ORIGIN_HEADER, resolve_origin_key
 from app.models.memory import Memory
-from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
+from app.schemas.memory import CaptureAck, MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.services.memory import MemoryService
 
@@ -46,6 +47,59 @@ async def create_memory(
 ):
     memory = await service.create_memory(body, api_key_id=None)
     return _to_response(memory)
+
+
+def _resolve_capture_origin_key(entry: MemoryCreate, request: Request) -> str:
+    # Reuses T1.11's resolution verbatim (doc 05 §2.1) rather than
+    # reimplementing the declared-identity/merge-to-one chain: an explicit
+    # body field wins, then the X-Darkmem-Origin header, then the coarse
+    # per-(source, project) fallback. `ctx=None` here is fine — the MCP
+    # `ctx`-based header lookup this function was written for is bypassed by
+    # resolving the header ourselves, since a REST call has no MCP Context.
+    return resolve_origin_key(
+        entry.origin_key or request.headers.get(ORIGIN_HEADER),
+        None, source=entry.source, project=entry.project or "default",
+    )
+
+
+@router.post("/capture", response_model=CaptureAck, status_code=status.HTTP_202_ACCEPTED)
+async def capture_memory(
+    body: MemoryCreate,
+    request: Request,
+    _user=Depends(require_auth),
+    service: MemoryService = Depends(get_memory_service),
+):
+    """Tier-A synchronous accept (doc 05 §2): durably buffer the capture and
+    hand back its pre-minted memory id. No embedding, extraction, or
+    classification runs on this path. ``POST /memories`` still runs the
+    pipeline inline until the buffer flush (T1.13) and the interactive
+    `wait_process` bypass (T1.14) land behind it."""
+    project = body.project or "default"
+    resolved = body.model_copy(update={
+        "project": project,
+        "origin_key": _resolve_capture_origin_key(body, request),
+    })
+    return await service.accept_capture(resolved, api_key_id=None)
+
+
+@router.post("/capture/batch", response_model=list[CaptureAck], status_code=status.HTTP_202_ACCEPTED)
+async def capture_memory_batch(
+    body: MemoryBatchCreate,
+    request: Request,
+    _user=Depends(require_auth),
+    service: MemoryService = Depends(get_memory_service),
+):
+    # Resolved per entry but against the SAME request, mirroring
+    # memory_batch_add: an undeclared batch of N collapses to one origin,
+    # never N counterfeit ones (doc 05 §2.1).
+    entries = [
+        entry.model_copy(update={
+            "project": entry.project or "default",
+            "origin_key": _resolve_capture_origin_key(entry, request),
+        })
+        for entry in body.entries
+    ]
+    return await service.accept_capture_batch(entries, api_key_id=None)
 
 
 @router.post("/reason", response_model=ReasonResponse)
