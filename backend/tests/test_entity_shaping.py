@@ -11,8 +11,10 @@ sequence itself is pinned at the bottom of the file.
 import pytest
 
 from app.services.extraction_clean import (
+    ENTITY_TYPES,
     PASS_REGISTRY,
     CleanState,
+    _TYPE_OVERRIDES,
     _apply_type_overrides,
     _filter_literals,
     _filter_noise,
@@ -296,3 +298,107 @@ def test_the_literal_drop_commutes_with_the_type_snappers():
     )
     assert literals_first == snappers_first
     assert _types(literals_first) == {"gpu": "tool", "qdrant": "database"}
+
+
+# ── _snap_hardware_types ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["cpu", "gpu", "nvme", "vram", "cuda", "rocm"])
+@pytest.mark.parametrize("given_type", ["entity", "artifact", "service", "concept"])
+def test_snap_hardware_types_forces_a_hardware_token_to_tool(name, given_type):
+    # The taxonomy has no hardware class, so the model scatters these across
+    # several buckets; 'tool' is the closest one and is applied unconditionally.
+    out = _snap_hardware_types([{"name": name, "type": given_type}])
+    assert _types(out) == {name: "tool"}
+
+
+def test_snap_hardware_types_matches_case_and_whitespace_insensitively():
+    out = _snap_hardware_types([{"name": "  GPU  ", "type": "artifact"}])
+    assert out[0]["type"] == "tool"
+
+
+def test_snap_hardware_types_leaves_other_names_alone():
+    out = _snap_hardware_types([{"name": "postgres", "type": "database"}])
+    assert _types(out) == {"postgres": "database"}
+
+
+def test_snap_hardware_types_keeps_every_entity():
+    given = [{"name": "gpu", "type": "entity"}, {"name": "postgres", "type": "database"}]
+    assert len(_snap_hardware_types(given)) == 2
+
+
+def test_snap_hardware_types_does_not_mutate_its_input():
+    given = [{"name": "gpu", "type": "artifact"}]
+    _snap_hardware_types(given)
+    assert given == [{"name": "gpu", "type": "artifact"}]
+
+
+# ── _apply_type_overrides ────────────────────────────────────────────
+#
+# The curated map is where nuanced typing is fixed. The model flips the
+# same well-known name between buckets from one run to the next, and six
+# rounds of prompt patches failed to move it; the map settles it.
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("darkmem", "project"),
+    ("darkraise-ui", "tool"),
+    ("qdrant", "database"),
+    ("postgres", "database"),
+    ("pgvector", "tool"),
+    ("github", "service"),
+    ("ollama", "service"),
+    ("leiden", "algorithm"),
+    ("mcp", "protocol"),
+])
+def test_apply_type_overrides_snaps_a_curated_name(name, expected):
+    out = _apply_type_overrides([{"name": name, "type": "concept"}])
+    assert _types(out) == {name: expected}
+
+
+@pytest.mark.parametrize("guess", ["tool", "service", "concept", "database", "project"])
+def test_apply_type_overrides_beats_every_guess_the_model_makes(guess):
+    out = _apply_type_overrides([{"name": "qdrant", "type": guess}])
+    assert out[0]["type"] == "database"
+
+
+def test_apply_type_overrides_separates_a_store_from_its_extension():
+    # pgvector is a Postgres extension, so it stays a tool while the vector
+    # stores it competes with are databases.
+    out = _apply_type_overrides([
+        {"name": "pgvector", "type": "database"},
+        {"name": "qdrant", "type": "tool"},
+    ])
+    assert _types(out) == {"pgvector": "tool", "qdrant": "database"}
+
+
+def test_apply_type_overrides_separates_the_project_from_its_ui_library():
+    out = _apply_type_overrides([
+        {"name": "darkraise", "type": "tool"},
+        {"name": "darkraise-ui", "type": "project"},
+    ])
+    assert _types(out) == {"darkraise": "project", "darkraise-ui": "tool"}
+
+
+def test_apply_type_overrides_matches_case_insensitively():
+    out = _apply_type_overrides([{"name": "PostgreSQL", "type": "tool"}])
+    assert out[0]["type"] == "database"
+
+
+def test_apply_type_overrides_leaves_an_uncurated_name_alone():
+    out = _apply_type_overrides([{"name": "phoenix v2", "type": "tool"}])
+    assert _types(out) == {"phoenix v2": "tool"}
+
+
+def test_every_curated_type_is_in_the_closed_taxonomy():
+    assert set(_TYPE_OVERRIDES.values()) <= set(ENTITY_TYPES)
+
+
+def test_every_curated_key_is_lowercase():
+    assert all(k == k.lower() for k in _TYPE_OVERRIDES)
+
+
+def test_apply_type_overrides_does_not_mutate_its_input():
+    given = [{"name": "qdrant", "type": "tool"}]
+    _apply_type_overrides(given)
+    assert given == [{"name": "qdrant", "type": "tool"}]
