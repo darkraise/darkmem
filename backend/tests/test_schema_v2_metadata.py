@@ -18,7 +18,6 @@ from app.services.confidence import (
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     estimate_confidence,
-    rank_fusion_factor,
 )
 from app.services.supersession import detect_supersessions, is_speculative
 
@@ -77,29 +76,9 @@ def test_estimate_confidence_is_case_insensitive():
     assert estimate_confidence("Maybe we should revisit", None) == CONFIDENCE_LOW
 
 
-# --- rank_fusion_factor ----------------------------------------------------
-
-def test_rank_fusion_factor_is_identity_when_gamma_zero():
-    assert rank_fusion_factor(0.5, 0.0) == 1.0
-    assert rank_fusion_factor(0.9, 0.0) == 1.0
-
-
-def test_rank_fusion_factor_boosts_high_confidence():
-    # 0.9 confidence, gamma=1.0 => 1 + 1*(0.9-0.75) = 1.15
-    assert rank_fusion_factor(0.9, 1.0) == pytest.approx(1.15)
-
-
-def test_rank_fusion_factor_dampens_low_confidence():
-    # 0.5 confidence, gamma=1.0 => 1 + 1*(0.5-0.75) = 0.75
-    assert rank_fusion_factor(0.5, 1.0) == pytest.approx(0.75)
-
-
-def test_rank_fusion_factor_clamps_at_zero_for_pathological_gamma():
-    # gamma=10 on confidence=0.5 would give 1 + 10*(0.5-0.75) = -1.5 without
-    # the clamp, which would invert ranking when multiplied against a
-    # positive base score. Clamp keeps the factor non-negative.
-    assert rank_fusion_factor(0.5, 10.0) == 0.0
-    assert rank_fusion_factor(0.0, 10.0) == 0.0
+# ``rank_fusion_factor`` moved to app/services/rank_fusion.py when it grew
+# from the confidence arm to the composed multiplier; its tests live in
+# tests/test_rrf_fusion.py.
 
 
 # --- is_speculative --------------------------------------------------------

@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
+from app.services.rank_fusion import RRF_K, RankedList, rrf_fuse
 
 logger = logging.getLogger(__name__)
 
-RRF_K = 60
+__all__ = ["RRF_K", "HybridSearchService"]
 
 
 class HybridSearchService:
@@ -206,34 +207,17 @@ class HybridSearchService:
         semantic_weight: float,
         limit: int,
     ) -> list[dict]:
-        keyword_weight = 1.0 - semantic_weight
-        fused: dict[str, dict] = {}
+        """The memory channel's two ranked lists, joined under their weights.
 
-        for rank, item in enumerate(semantic_results, start=1):
-            item_id = item.get("memory_id") or item.get("id")
-            if item_id is None:
-                continue
-            rrf_score = semantic_weight / (RRF_K + rank)
-            if item_id in fused:
-                fused[item_id]["rrf_score"] += rrf_score
-            else:
-                entry = dict(item)
-                entry["rrf_score"] = rrf_score
-                entry.pop("source", None)
-                fused[item_id] = entry
-
-        for rank, item in enumerate(keyword_results, start=1):
-            item_id = item.get("memory_id") or item.get("id")
-            if item_id is None:
-                continue
-            rrf_score = keyword_weight / (RRF_K + rank)
-            if item_id in fused:
-                fused[item_id]["rrf_score"] += rrf_score
-            else:
-                entry = dict(item)
-                entry["rrf_score"] = rrf_score
-                entry.pop("source", None)
-                fused[item_id] = entry
-
-        sorted_results = sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
-        return sorted_results[:limit]
+        ``semantic_weight`` splits the memory channel's weight between its
+        two sides; it is a list weight inside the fusion and never a
+        per-row multiplier. Additional ranked producers join by appending a
+        ``RankedList`` here, each with its own config-row weight.
+        """
+        return rrf_fuse(
+            [
+                RankedList("semantic", semantic_results, semantic_weight),
+                RankedList("keyword", keyword_results, 1.0 - semantic_weight),
+            ],
+            limit,
+        )

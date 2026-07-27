@@ -14,8 +14,9 @@ from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.classification_llm import ClassificationService
 from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
-from app.services.confidence import estimate_confidence, rank_fusion_factor
+from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
+from app.services.rank_fusion import any_arm_active, rank_fusion_factor
 from app.services.relations import TECH_TYPES, names_distinct
 from app.services.supersession import detect_supersessions
 from app.services import prompt
@@ -1134,19 +1135,18 @@ class ProcessingPipeline:
         flags: dict,
         preserve_order: bool = False,
     ) -> list[dict]:
-        """Rescale retrieval scores by memory confidence, multiplicatively.
+        """Apply the deterministic post-fusion multiplier to retrieval scores.
 
-        ``final = base * (1 + gamma * (confidence - 0.75))``. With ``gamma=0``
-        (the default) the call is a no-op, so this stays behind the
-        ``confidence_rank_gamma`` flag until we have evidence that the signal
-        improves MRR.
+        ``final = base * rank_fusion_factor(signals, flags)``. Confidence is
+        the only arm spent today; the importance/heat/recency arms sit at
+        weight zero and contribute exactly 1.0, so the composed factor is
+        bit-identical to the confidence-only one until an arm is turned on.
 
         When ``preserve_order`` is set (the reranker has already imposed a
         ranking), scores are still rescaled but the input order is kept — the
         reranker's order is authoritative and must not be sorted away.
         """
-        gamma = float(flags.get("confidence_rank_gamma", 0.0) or 0.0)
-        if gamma == 0.0 or not results:
+        if not results or not any_arm_active(flags):
             return results
 
         # Coerce every retrieval row's id to a real UUID so the bound
@@ -1174,9 +1174,9 @@ class ProcessingPipeline:
         score_key = "rrf_score" if results and "rrf_score" in results[0] else "score"
         for r in results:
             mid = str(r.get("memory_id") or r.get("id") or "")
-            conf = conf_map.get(mid, 0.75)
+            conf = conf_map.get(mid, CONFIDENCE_DEFAULT)
             base = float(r.get(score_key, 0.0) or 0.0)
-            r[score_key] = base * rank_fusion_factor(conf, gamma)
+            r[score_key] = base * rank_fusion_factor({"confidence": conf}, flags)
 
         if preserve_order:
             return results
