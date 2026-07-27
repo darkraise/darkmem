@@ -104,7 +104,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.20 | Phase 4: type-constrained dedup + `names_distinct` | M | Opus | high | | todo | | | |
 | T1.21 | Phase 5: the two-savepoint write | L | Opus | high | | todo | | | |
 | T1.22 | Mid-batch embedder rotation | M | Opus | high | | todo | | | |
-| T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | high | claude/e1-engine-core | wip | | | |
+| T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | high | claude/e1-engine-core | review | f74ba76 | — (Fable adversarial review owed: Opus tier + G-B) | MEMORY_TYPES 7->9 (+episodic, +procedural); memory-relation set landed reserved (5 stored, SUPERSEDES projected, DERIVED_FROM cut). Swept 8 hard-coded copies: extraction schema string, reason(), SIMPLE_TYPES + the general area, MCP descriptions, and 5 frontend sites onto one lib/taxonomy.ts. Extraction **system prompt** deliberately untouched and fingerprint-pinned — it is half the F1 cache key; T1.17 owns that edit (Tier-2 amendment). Verify: 100 passed. Gate GREEN exit 0 — 1 revision, backend 722 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 reproduces T0.05 exactly (ent_nt 0.925 / ent_n 0.955 / rel_full 0.865 / rel_pair 0.892) |
 | T1.24a | Pass registry, the ordering contract, and the per-pass harness | M | Opus | high | | todo | | | |
 | T1.24b | Stage 1: entity shaping | M | Opus | high | | todo | | | |
 | T1.24c | Stage 2: entity rescue | M | Opus | high | | todo | | | |
