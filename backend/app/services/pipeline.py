@@ -519,7 +519,6 @@ class ProcessingPipeline:
             try:
                 for entity in extraction.get("entities", []):
                     low = entity["name"].lower()
-                    entity["_orig_lower"] = low
                     key = (low, entity.get("type"))
                     if key in canonical_map:
                         entity["name"] = canonical_map[key]
@@ -681,7 +680,18 @@ class ProcessingPipeline:
                                     properties=props, memory_id=memory_id,
                                 )
                                 name_to_type[canonical_name] = entity["type"]
-                                emb = name_to_embedding.get(entity.get("_orig_lower", canonical_name))
+                                # Keyed by ``canonical_name`` — the name this row is
+                                # actually written under — never by the pre-rewrite
+                                # variant name. Phase 3 embeds raw extracted names,
+                                # so a canonicalized variant's survivor name is
+                                # usually absent from ``name_to_embedding``; when it
+                                # is, this looks up nothing and the survivor's
+                                # stored embedding is left alone instead of being
+                                # overwritten with a vector computed for a
+                                # different name. A name that stays distinct still
+                                # resolves here, since its own canonical_name is
+                                # its own extracted name.
+                                emb = name_to_embedding.get(canonical_name)
                                 if emb and created:
                                     await graph_repo.upsert_entity_embedding(
                                         created["id"], emb, fingerprint=entity_fingerprint,

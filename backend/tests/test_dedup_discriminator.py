@@ -45,7 +45,7 @@ from app.services.embedder_registry import child_table
 from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
 from tests.conftest import test_engine
 from tests.test_pipeline_phase1 import cleanup, seed_memories
-from tests.test_pipeline_phase3 import MarkedEmbedder
+from tests.test_pipeline_phase3 import MarkedEmbedder, entity_vectors
 
 DIMS = 8
 
@@ -591,3 +591,128 @@ async def test_one_dedup_pass_probes_exactly_one_fingerprint(
         assert {p["fingerprint"] for p in probes} == {second}
     finally:
         await cleanup(factory, memory_ids, [first, second], names)
+
+
+# ── Canonicalization must never overwrite the survivor's embedding ──────────
+
+
+@pytest.mark.asyncio
+async def test_a_canonicalized_variants_embedding_does_not_overwrite_the_survivor(
+    setup_database, monkeypatch
+):
+    """Done-when 1 and 2.
+
+    ``postgresql`` is created first and is the ANN match target, so it is the
+    survivor when ``postgres`` merges onto it a batch later. The survivor's
+    stored vector must still be its own after the merge, never the
+    last-written variant's — reverting Phase 5's lookup key back to the
+    pre-canonicalization name makes this fail: it would read back
+    ``variant_vec`` instead.
+    """
+    fingerprint = "dedup-embed-survivor|8"
+    survivor_vec, variant_vec = _pair(0, POSTGRES_POSTGRESQL_COSINE)
+    names = ["PostgreSQL", "Postgres"]
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    _flag_cache_reset()
+    memory_ids = await seed_memories(factory, ["we run postgresql", "we run postgres"])
+
+    try:
+        embedder = CalibratedEmbedder(
+            fingerprint, {"postgresql": survivor_vec, "postgres": variant_vec}
+        )
+        pipe = make_pipeline(
+            factory,
+            embedder,
+            [
+                entities_of(("PostgreSQL", "database")),
+                entities_of(("Postgres", "database")),
+            ],
+            monkeypatch,
+        )
+        await pipe.process_batch(
+            [{"memory_id": memory_ids[0], "content": "we run postgresql", "source": "api"}]
+        )
+        created = await entity_vectors(factory, fingerprint)
+        assert created["postgresql"] == pytest.approx(survivor_vec)
+
+        results = await pipe.process_batch(
+            [{"memory_id": memory_ids[1], "content": "we run postgres", "source": "api"}]
+        )
+        assert results[0]["graph"] == "ok"
+        assert await entity_rows(factory, names) == [("postgresql", "database", 2)]
+
+        after_merge = await entity_vectors(factory, fingerprint)
+        assert after_merge["postgresql"] == pytest.approx(survivor_vec), (
+            "the survivor's stored vector must remain its own after a "
+            "canonicalized variant merges onto it"
+        )
+    finally:
+        await cleanup(factory, memory_ids, [fingerprint], names)
+
+
+@pytest.mark.asyncio
+async def test_two_merges_leave_the_survivors_embedding_unchanged(
+    setup_database, monkeypatch
+):
+    """Done-when 3, the compounding half a single pass cannot see.
+
+    ``postgres`` merges onto the already-created ``postgresql`` twice, in two
+    separate batches. The first merge's entity embedding is a Phase 3 cache
+    *miss*; the second reads the same name back out of the in-memory cache —
+    a *hit*. Ruling 2 is that the survivor's vector must hold steady across
+    both, so a fix that only keys the miss path correctly and falls back to
+    the pre-canonicalization name on a cache hit would still fail this.
+    """
+    fingerprint = "dedup-embed-compound|8"
+    survivor_vec, variant_vec = _pair(4, POSTGRES_POSTGRESQL_COSINE)
+    names = ["PostgreSQL", "Postgres"]
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    _flag_cache_reset()
+    memory_ids = await seed_memories(
+        factory,
+        ["we run postgresql", "we run postgres first", "we run postgres again"],
+    )
+
+    try:
+        embedder = CalibratedEmbedder(
+            fingerprint, {"postgresql": survivor_vec, "postgres": variant_vec}
+        )
+        pipe = make_pipeline(
+            factory,
+            embedder,
+            [
+                entities_of(("PostgreSQL", "database")),
+                entities_of(("Postgres", "database")),
+                entities_of(("Postgres", "database")),
+            ],
+            monkeypatch,
+        )
+        await pipe.process_batch(
+            [{"memory_id": memory_ids[0], "content": "we run postgresql", "source": "api"}]
+        )
+
+        first = await pipe.process_batch(
+            [{"memory_id": memory_ids[1], "content": "we run postgres first", "source": "api"}]
+        )
+        assert first[0]["graph"] == "ok"
+        assert pipe.last_entity_cache_stats.misses == 1, "the first merge must be a cache miss"
+        after_first = await entity_vectors(factory, fingerprint)
+        assert after_first["postgresql"] == pytest.approx(survivor_vec)
+
+        second = await pipe.process_batch(
+            [{"memory_id": memory_ids[2], "content": "we run postgres again", "source": "api"}]
+        )
+        assert second[0]["graph"] == "ok"
+        assert pipe.last_entity_cache_stats.memory_hits == 1, (
+            "the second merge must read postgres's embedding back out of the "
+            "cache, not re-embed it, or this run never exercises Ruling 2"
+        )
+        after_second = await entity_vectors(factory, fingerprint)
+        assert after_second["postgresql"] == pytest.approx(survivor_vec), (
+            "two merges compounded and moved the survivor's vector away from "
+            "its own"
+        )
+
+        assert await entity_rows(factory, names) == [("postgresql", "database", 3)]
+    finally:
+        await cleanup(factory, memory_ids, [fingerprint], names)
