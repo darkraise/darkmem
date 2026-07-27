@@ -42,14 +42,14 @@ and the Note says so. That rule is the whole point of this file.
 
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 20 | 12 | 0 | 0 | 0 | 8 | G-A open |
+| E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 75 | 75 | 0 | 0 | 0 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **197** | **0** | **0** | **0** | **8** | |
+| **Total** | **205** | **185** | **0** | **0** | **0** | **20** | |
 
 ---
 
@@ -68,15 +68,15 @@ and the Note says so. That rule is the whole point of this file.
 | T0.08 | Latency and token-cost twin | M | Sonnet | high | claude/e0-lane-b | done | 2432986 | fable adversarial: spec PASS, 4 Important; addressed after 1 fix round | benchlib/twin.py: p95 per channel (live vs cache-served kept separate), tokens by purpose, usage persisted into the cache so warm runs report unknown not zero. Accuracy without a twin is unconstructible. Verify 23 passed; benchlib 198; floor 614 passed, 1 skipped; gate exit 0 |
 | T0.09 | Full-context baseline comparator | M | Opus | high | claude/e0-lane-b | done | e7ab956 | fable adversarial: spec PASS, 1 Important; addressed after 1 fix round | benchlib/full_context.py: stuffs all 94 memories, scored by the SAME scorer as retrieval. Full context WINS on accuracy (pooled MRR 0.907 vs 0.858, hit@10 0.931 vs 0.843) at 472,558 prompt tokens and p95 1.54s vs cached ms. Comparability caveats derive from the twins. Verify 48 passed; benchlib 249; floor 614 passed, 1 skipped; gate exit 0 |
 | T0.10 | Retrieval eval runner + dated report | M | Sonnet | high | claude/e0-lane-b | done | 4e4c1e3 | fable adversarial: spec FAIL, 2 Important; addressed after 1 fix round | run_retrieval_eval.py + docs/eval/2026-07-27-retrieval-eval.md. Two runs differ only in latency; accuracy and tokens byte-identical. Runtime guard asserts expected caveat kinds; the designed-state note fires only at hit@k==0. benchlib 276; floor 614 passed, 1 skipped |
-| T0.11 | Target schema snapshot + baseline design note | L | Opus | high | claude/e0-lane-c | wip | | | |
-| T0.12a | Baseline part 1: core memory, graph, and taxonomy tables | M | Opus | high | | todo | | | |
-| T0.12b | Baseline part 2: knowledge, code, jobs, and events tables | M | Opus | high | | todo | | | |
-| T0.12c | Baseline part 3: partition templates, indexes, full-suite green | M | Opus | high | | todo | | | |
-| T0.13 | Dormant objects landed inert | M | Sonnet | high | | todo | | | |
-| T0.14 | Boot-time partition reconciliation, idempotent | M | Opus | high | | todo | | | |
-| T0.15 | Freeze event + regeneration protocol | S | Haiku | high | | todo | | | |
-| T0.16 | Scripted merge-gate runner | M | Sonnet | high | | todo | | | |
-| T0.17 | G-A evidence run and ledger entry | M | Fable | xhigh | | todo | | | |
+| T0.11 | Target schema snapshot + baseline design note | L | Opus | high | claude/e0-lane-c | done | 99f2935 | —  (Fable adversarial review still owed) | baseline-schema-inventory.md: 34 tables, all 63 indexes + 59 constraints dispositioned, 8 partition templates, 10 inert objects each naming a quoted first writer, SQL-first audit. 27 findings; 2 Tier-3 escalated and both adjudicated by the maintainer. Verify: check_plan GREEN, floor 614 passed 1 skipped |
+| T0.12a | Baseline part 1: core memory, graph, and taxonomy tables | M | Opus | high | claude/e0-lane-c | done | 4865858 | — | Baseline part 1 in plain SQL via op.execute; revisions 0001-0006 deleted in the same commit, one head. Floor-exempt by design |
+| T0.12b | Baseline part 2: knowledge, code, jobs, and events tables | M | Opus | high | claude/e0-lane-c | done | ca0fbf0 | — | Baseline part 2: knowledge vault, memory satellites, code graph, ops, events (RANGE monthly + month-0 child). Probes: cross-project memory_relation rejected by the composite FK, dangling citation rejected by the hard FK. Floor-exempt by design |
+| T0.12c | Baseline part 3: partition templates, indexes, full-suite green | L | Opus | high | claude/e0-lane-c | done | ad63a3d | — | Re-sized M->L (F-22); executed from a reviewed step-level plan. Closed all 108 read-path failures: llm_ renames, audit_log onto events, LLM indirection retired. Floor asserted: 606 passed 1 skipped 0 failed against the baseline alone; one head, one revision, one file |
+| T0.13 | Dormant objects landed inert | M | Sonnet | high | claude/e0-lane-c | done | c1fe34e | — | repo_ids[] + GIN; both orphan sweeps carry the NOT EXISTS (live repo) predicate, vacuous today so the 5 graph tests pass unchanged. test_inert_objects.py asserts no writer, and one test proves the predicate SPARES a repo-asserted row while still reaping a ghost. Floor 616 passed |
+| T0.14 | Boot-time partition reconciliation, idempotent | M | Opus | high | claude/e0-lane-c | done | 40e8dc0 | — | Permanent boot-time reconciliation replacing the one-time sweep; child DDL shared by register() and reconcile() so they cannot drift; child_table() the sole namer (asserted). Manual double-boot: 8 -> 8, one dropped child regrown exactly (7->8). Floor 622 passed |
+| T0.15 | Freeze event + regeneration protocol | S | Haiku | high | | done | 4e44655 | — | Both protocols: the freeze EVENT (tag schema-frozen) and the during-window rule (regenerate in place, never append 0002; serialise through one owner per epic). Assertion wired into gate.sh; verified red on a deliberate 0002. Freeze date deliberately blank |
+| T0.16 | Scripted merge-gate runner | M | Sonnet | high | | done | aada376 | — | scripts/gate.sh: alembic single-revision, backend pytest, frontend typecheck/test/build, benchlib, F1 --algo-only; --full adds retrieval eval + e2e. Reaps every process group it starts. Verified green, and red naming the gate on a deliberate failure |
+| T0.17 | G-A evidence run and ledger entry | M | Fable | xhigh | | done | d99d470 | — | G-A CLEARED, all three probes. F1 reproduced all 8 cells byte-for-byte (0 live calls); retrieval eval MRR 0.8582/hit@10 0.8431, p95 2.43ms, full-context 472,558 prompt tokens (0 live calls, 2 caveats recorded); clean boot + idempotent reconciliation. Found and fixed the benchlib MLProfile break the floor could not see |
 
 ## E1 — Engine core (75 tasks)
 
