@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.config import FEATURE_FLAGS_DEFAULTS, settings
 from app.models.config import Config
 from app.repositories.graph import PostgresGraphRepository
-from app.repositories.vector import PostgresVectorRepository
+from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.classification_llm import ClassificationService
 from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
@@ -924,14 +924,22 @@ class ProcessingPipeline:
         except Exception as e:
             logger.exception(f"Cleanup failed for {memory_id}")
 
-    async def semantic_search(self, query: str, limit: int = 20, semantic_weight: float = 0.7) -> list[dict]:
+    async def semantic_search(
+        self,
+        query: str,
+        limit: int = 20,
+        semantic_weight: float = 0.7,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
         try:
             flags = await _get_feature_flags_cached(self.session_factory)
             if flags["hybrid_search_enabled"]:
                 from app.services.hybrid_search import HybridSearchService
                 async with self.session_factory() as session:
                     hybrid = HybridSearchService(self.llm, session)
-                    results = await hybrid.search(query, limit=limit, semantic_weight=semantic_weight)
+                    results = await hybrid.search(
+                        query, limit=limit, semantic_weight=semantic_weight, filters=filters,
+                    )
 
                     reranked = bool(flags["reranker_enabled"])
                     if reranked:
@@ -947,7 +955,9 @@ class ProcessingPipeline:
                 vector, fingerprint = await self.llm.embed(query)
                 async with self.session_factory() as session:
                     vector_repo = PostgresVectorRepository(session)
-                    results = await vector_repo.search(vector, fingerprint=fingerprint, limit=limit)
+                    results = await vector_repo.search(
+                        vector, fingerprint=fingerprint, limit=limit, filters=filters,
+                    )
                     results = await self._apply_confidence_weighting(session, results, flags)
                     return results
         except Exception as e:

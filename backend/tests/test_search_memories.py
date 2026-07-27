@@ -29,9 +29,11 @@ class _FakePipeline:
     def __init__(self, ranked_ids):
         self.ranked_ids = ranked_ids
         self.last_limit = None
+        self.last_filters = None
 
-    async def semantic_search(self, query, limit=20, semantic_weight=0.7):
+    async def semantic_search(self, query, limit=20, semantic_weight=0.7, filters=None):
         self.last_limit = limit
+        self.last_filters = filters
         return [{"memory_id": str(m), "score": 1.0} for m in self.ranked_ids[:limit]]
 
 
