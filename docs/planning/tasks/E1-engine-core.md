@@ -722,6 +722,51 @@ it had already missed `ChatService`, and the inventory found three more.
 
 **Verify.** `cd backend && python -m pytest tests/test_pushdown_remaining_channels.py -q`
 
+#### T1.29e — Adjudicate the operational surfaces that return memory content
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29d` · `Doc: 07 §7, 18, 20 §4` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** T1.29d's inventory came back **empty of unscoped retrieval channels but not empty
+of unscoped memory-content channels**. Five live authenticated surfaces still return memory
+content with predicates missing, none owned by any task. **Added by amendment 2026-07-27,
+the third round of this discovery.**
+
+**This task is an adjudication, not a blanket fix.** Some of these are operator/triage
+surfaces where cross-project visibility may be *correct* — a pipeline-failure triage screen
+that hid failures from other projects would be a worse tool. The deliverable is a decision
+per surface, with its reason recorded, exactly as T1.42d does for two-door parity. What is
+**not** acceptable is a surface whose scoping nobody has decided.
+
+**The five, from T1.29d's report:**
+
+1. **`GET /reembed/obsolete/memories`** — 120-char previews, and **its anti-join degrades to
+   a literal `TRUE` when the active partition is absent**, at which point it previews every
+   row in the database. That degradation is a defect in its own right regardless of the
+   scoping decision, and makes it a larger surface than `/vectors/projection` was.
+2. **`GET /pipeline-failures`** — 80-char preview over an unscoped `LEFT JOIN memories`.
+3. **The analytics recents list.**
+4. **`GET /memory-buffer`** (T1.13b's) — *scopeable*: it takes a `project` parameter and
+   passes it through, but defaults to all projects. Consistent with the ratified `reason`
+   default, so this may well be correct; decide and record it.
+5. **`GET /events`** — a 500-char content preview that **survives deletion of the memory it
+   came from**. `events` is append-only by design (T1.06's three forbid-triggers), so this
+   is a retention property, not a bug: deleting a memory does not remove its content from
+   the journal. **Escalate this one rather than deciding it** — it is a data-retention and
+   privacy question, not an isolation question.
+
+**Done when:**
+- [ ] Each of the five carries a recorded decision: scoped, or deliberately operator-wide
+      **with its reason stated in the doc**
+- [ ] The `/reembed/obsolete/memories` anti-join degradation is fixed regardless of the
+      scoping decision — a filter that silently becomes `TRUE` is a defect on any reading
+- [ ] `GET /events`' content-retention question is escalated, not resolved unilaterally
+- [ ] **T1.35's probe covers memory-content surfaces, not only retrieval channels** — this
+      is the distinction that made three rounds of discovery necessary, and the probe must
+      encode it or its zero is false
+- [ ] Every surface decided "operator-wide" is enumerated somewhere T1.42d's audit can read
+
+**Verify.** `cd backend && python -m pytest tests/test_content_surface_scoping.py -q`
+
 #### T1.30 — RRF fusion + the unified `rank_fusion_factor`
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.29b` · `Doc: 07 §3` · `Tag: rebuild` · `Gate: G-B`
@@ -1553,3 +1598,6 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-27 | T1.29d | 2 | **The re-derived inventory is empty of unscoped *retrieval* channels but NOT empty of unscoped memory-content channels, and the residue has no owner.** Five live, authenticated surfaces return memory content with predicates missing, none of them named by any task: `GET /reembed/obsolete/memories` (`LEFT(content,120)`, and its anti-join degrades to literal `TRUE` when the active partition is absent, so it previews *every* row); `GET /pipeline-failures` (`LEFT(m.content,80)` over an unscoped `LEFT JOIN memories`); `GET /analytics/overview` recent-memories (full content, `is_archived` only — T1.29c's F4); `GET /memory-buffer` and its requeue (500-char `content_preview`, project optional); `GET /events` and `/events/timeline` (`buffer_discarded` rows carry a 500-char `content_preview`, project optional). | **T1.35's probe must cover these or its zero is false**, which is the entire reason this task exists. Not fixed here: every one sits outside this lane's file list, and `memory-buffer` is adjacent to `buffer_flush.py`, which the brief excludes by name. They are operator and diagnostic surfaces rather than retrieval channels, so the honest claim is the narrow one — the retrieval channel inventory is closed, the memory-content inventory is not. Recording the distinction rather than letting "every channel filters in SQL" be read as the wider statement. |
 | 2026-07-27 | T1.29d | 1 | **The three arms of `get_memory_context` are now deliberately asymmetric, and the asymmetry is pinned by test rather than by comment alone.** The neighbour-memory arm renders `project + status IN ('active') + is_archived = FALSE`; the relation arm keeps `project + is_archived` with **no** status; the entity arm stays seed-addressed. `MemoryFilter.orm_criteria` was added so the ORM arm and the SQL-text arms render one definition of the scope. | Resolves the interaction T1.29c logged and left open. Collapsing the arms onto one scope object is the obvious "fix" and it is wrong in both directions: adding status to the shared filter empties the context view of a superseded memory of its own edges — the view a reader opens precisely to understand what replaced it — while leaving it off the neighbour arm presents retired content as a live peer, which is what doc 07 §7 counts. `test_memory_context_keeps_an_edge_its_only_asserter_superseded` makes the *same* superseded memory both the excluded neighbour and the sole asserter of a required edge, so one scope object cannot pass both tests. |
 | 2026-07-27 | T1.29d | 2 | **`KnowledgeGraphService` and the `knowledge_triples` read path carry no project predicate and have no front door yet.** `get_triples_by_subject/object/predicate`, `get_triples_for_entity_timeline` and `get_recent_triples` filter on subject/object/predicate and the temporal window only, while `knowledge_triples` carries both a `project` column and a `fact TEXT` payload. `KnowledgeGraphService` has no caller anywhere in `app/`. | Recorded now, while it is still inert and therefore free to fix. The Layer-2 fact store is a memory-content channel by construction, and the first task that wires a route or MCP tool to it will otherwise inherit exactly the unscoped default this whole T1.29 series has been unwinding. Whoever owns that wiring should render the scope in the repository, not at the front door. |
+| 2026-07-27 | T1.29e | 2 | **New task, and the third round of this discovery.** T1.29d's code-derived inventory is **empty of unscoped retrieval channels but not of unscoped memory-content channels** — five live authenticated surfaces still return content with predicates missing, none owned by any task. Framed as an **adjudication**, not a blanket fix: several are operator/triage surfaces where cross-project visibility may be correct, and a pipeline-failure screen that hid other projects' failures would be a worse tool. | The distinction between a *retrieval channel* and a *memory-content surface* is what made three rounds necessary: each earlier sweep enumerated the former and stopped. **T1.35's probe must encode that distinction or its zero is false** — that is the load-bearing item, above any individual fix. Two of the five are not scoping questions at all: `/reembed/obsolete/memories`'s anti-join **degrades to a literal `TRUE`** when the active partition is absent, previewing every row (a defect on any reading), and `/events`' 500-char preview **survives deletion of its source memory**, which is a retention and privacy question escalated rather than decided, since `events` is append-only by design. |
+| 2026-07-27 | T1.29d | 1 | **Found and fixed a fourth leak the brief did not name:** `GET /graph/unified` reads the same `get_all_vectors` through the Louvain wrapper and returned full content per node. `get_all_vectors` now labels every row with `project` and `status` **unconditionally**, including for `filters=None` callers. | Defence in depth rather than another enumeration: a row escaping through a caller nobody has enumerated now arrives **self-describing**, so the next missed channel leaks a labelled row instead of an anonymous one. Given that the consumer list has now been wrong three times, a mechanism that degrades safely is worth more than another sweep. |
+| 2026-07-27 | T1.29d | 1 | **The three graph arms are deliberately asymmetric and must stay so:** neighbour memories get project + status + archived; relations keep project + archived with **no** status; entities stay seed-addressed. | Collapsing them onto one scope is wrong in both directions, and the lane pinned it with a test that makes this impossible to "simplify" by accident: `test_memory_context_keeps_an_edge_its_only_asserter_superseded` makes the same superseded memory both the excluded neighbour **and** the sole asserter of a required edge, so no single scope object can pass both assertions. Also corrects the controller's brief on one fact — `get_memory_context` feeds the frontend graph explorer, not an LLM context, so the exclusion rests on the honesty bar rather than on prompt hygiene. |
