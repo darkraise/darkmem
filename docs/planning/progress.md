@@ -82,7 +82,7 @@ and the Note says so. That rule is the whole point of this file.
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
-| T1.01 | Flatten `llm_purpose_configs` to inline rows | L | Opus | high | | todo | | | |
+| T1.01 | Flatten `llm_purpose_configs` to inline rows | M | Opus | high | claude/e1-engine-core | wip | | | |
 | T1.02 | One shared `httpx.AsyncClient` with atomic live reload | M | Sonnet | high | | todo | | | |
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | high | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | high | | todo | | | |
