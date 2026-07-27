@@ -35,3 +35,19 @@ export function findApiKind(kind: string | undefined): ApiKindOption | undefined
 export function apiKindLabel(kind: string | undefined): string {
   return findApiKind(kind)?.label ?? kind ?? ""
 }
+
+// Mirrors ``supports_embedding`` in backend/app/services/llm_quirks.py. These
+// two vendors expose chat completions only, so an embed call 404s on every
+// request. Derived from api_kind directly: the provider table that used to
+// carry a supports_embedding flag is gone, and the backend's runtime
+// assertion is keyed the same way.
+const NO_EMBEDDING_KINDS: readonly string[] = ["anthropic", "deepseek"]
+
+export function apiKindSupportsEmbedding(kind: string | undefined): boolean {
+  return !NO_EMBEDDING_KINDS.includes(kind ?? "")
+}
+
+export function embeddingKindWarning(kind: string | undefined): string | null {
+  if (apiKindSupportsEmbedding(kind)) return null
+  return `${apiKindLabel(kind)} exposes no embeddings endpoint — an embed call against it fails on every request.`
+}

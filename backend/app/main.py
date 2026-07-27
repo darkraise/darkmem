@@ -15,6 +15,7 @@ from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
+from app.services.llm_quirks import models_probe
 from app.services.pipeline import ProcessingPipeline
 
 logger = logging.getLogger(__name__)
@@ -401,35 +402,25 @@ async def health():
     async def check_llm() -> bool:
         """Light-weight reachability probe for the configured embedding provider.
 
-        Branches on the provider's ``api_kind`` instead of assuming Ollama —
-        the previous implementation hard-coded ``/api/tags`` and stripped
-        ``/v1`` with ``rstrip`` (which removes a character set, not a suffix),
-        so it returned False for every cloud provider and surfaced as a
-        permanent 503 even when the configured LLM was perfectly reachable.
+        Resolves the probe endpoint and auth through the ``api_kind`` quirk
+        table instead of assuming Ollama — the original implementation
+        hard-coded ``/api/tags`` and stripped ``/v1`` with ``rstrip`` (which
+        removes a character set, not a suffix), so it returned False for every
+        cloud provider and surfaced as a permanent 503 even when the
+        configured LLM was perfectly reachable.
         """
         try:
             embedding_cfg = llm.config.get("embedding") if llm else None
             if embedding_cfg is None or not embedding_cfg.base_url:
                 return False
-            api_kind = getattr(embedding_cfg, "api_kind", "openai")
-            base = embedding_cfg.base_url.rstrip("/")
-            api_key = getattr(embedding_cfg, "api_key", None)
-
-            if api_kind == "ollama":
-                root = base.removesuffix("/v1").removesuffix("/api")
-                url = f"{root}/api/tags"
-                headers: dict[str, str] = {}
-            else:
-                url = f"{base}/models"
-                headers = {}
-                if api_kind == "anthropic" and api_key:
-                    headers["x-api-key"] = api_key
-                    headers["anthropic-version"] = "2023-06-01"
-                elif api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
+            target = models_probe(
+                getattr(embedding_cfg, "api_kind", None),
+                embedding_cfg.base_url,
+                getattr(embedding_cfg, "api_key", None),
+            )
 
             async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(url, headers=headers)
+                resp = await client.get(target.url, headers=target.headers)
             return resp.is_success
         except Exception:
             return False

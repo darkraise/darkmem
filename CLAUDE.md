@@ -320,12 +320,23 @@ query-counting test.
 `api_kind` selects the wire protocol and is the only place vendor
 quirks live: `openai` (compat path), `ollama` (native, exposes
 `think:false`), and reserved slots for `anthropic`, `google`, `deepseek`,
-`zai` that today still dispatch through the OpenAI-compat path. Vendor
-auth and reasoning-control quirks are handled inside the orchestrator;
-do not paper over them at the call site. Some vendors (Anthropic,
-DeepSeek today) lack embeddings; the runtime guard against an embed call
-landing on a no-embeddings vendor is `LLMOrchestrator._assert_can_embed`,
-keyed off `api_kind`.
+`zai` that today still dispatch through the OpenAI-compat path. Every
+quirk — auth scheme, reasoning-disable knob, structured-output and seed
+acceptance, embeddings capability, output-cap key, model-probe endpoint —
+is **one `VendorQuirks` row in `app/services/llm_quirks.py`**, which the
+orchestrator, the health check and the setup wizard's probe all read; no
+call site may compare `api_kind` to a vendor name, and a test fails the
+build if one does. Adding a vendor is the four-step rule in doc 11 §4:
+enum, quirk row, doc table, seed. Some vendors (Anthropic, DeepSeek
+today) lack embeddings; the runtime guard against an embed call landing
+on a no-embeddings vendor is the `api_kind`-keyed `assert_can_embed`
+(reached via `LLMOrchestrator._assert_can_embed`), and the settings
+picker derives its cannot-embed hint from `api_kind` the same way.
+Anthropic needs `x-api-key` + `anthropic-version` rather than Bearer;
+DeepSeek and z.ai need `thinking:{type:disabled}`; Gemini's compat shim
+honours only `reasoning_effort=none`; and `minimal` is no longer in
+OpenAI's effort set, so a config carrying it fails loud instead of 400ing
+at the vendor.
 
 LLM seeds for the six purposes live in `app/services/llm_seed.py`, not
 in any migration. The setup wizard finalize step writes seed-plus-overlay

@@ -39,7 +39,11 @@ import {
 import { navigateToSettingsTab } from "@/lib/settings-tab"
 import { PROMPT_PURPOSE_MAP, type LLMPurpose } from "./prompt-map"
 import { LLMPurposePromptEditor } from "./LLMPurposePromptEditor"
-import { API_KIND_OPTIONS } from "./api-kinds"
+import {
+  API_KIND_OPTIONS,
+  apiKindSupportsEmbedding,
+  embeddingKindWarning,
+} from "./api-kinds"
 
 // The dropdown reflects the explicit ``profile_ref`` link the server stores
 // on the purpose row. Returns that name when it still exists in the current
@@ -176,14 +180,15 @@ export function LLMPurposeCard({
       const p = allLlmProfiles[name]
       if (!p) return false
       const provider = allProviders[p.provider_ref]
+      const canEmbed = apiKindSupportsEmbedding(provider?.api_kind)
       if (p.purpose) {
         if (p.purpose !== purpose) return false
-        if (purpose === "embedding") return provider?.supports_embedding ?? true
+        if (purpose === "embedding") return canEmbed
         return true
       }
       // Legacy fallback when purpose isn't set on the profile row.
       if (purpose === "embedding") {
-        return p.is_embedding && (provider?.supports_embedding ?? true)
+        return p.is_embedding && canEmbed
       }
       return !p.is_embedding
     })
@@ -202,6 +207,7 @@ export function LLMPurposeCard({
       : "",
   )
   const [dirty, setDirty] = useState(false)
+  const embeddingWarning = embeddingKindWarning(draft.api_kind)
   // ``provider_ref`` is the connection-inheritance link; when set, the purpose
   // resolves its endpoint from a Provider, so the raw connection fields are not
   // the source of truth. Default the override drawer open only for purposes
@@ -527,6 +533,10 @@ export function LLMPurposeCard({
                 Custom — not linked to a Profile. Connection is set in the
                 override below.
               </p>
+            )}
+
+            {purpose === "embedding" && embeddingWarning && (
+              <p className="text-destructive text-sm">{embeddingWarning}</p>
             )}
 
             {purpose === "embedding" && (
