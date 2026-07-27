@@ -114,7 +114,7 @@ A memory carries:
   whose `entity_type` is in `TECH_TYPES`. The supersession detector and
   the retrieval filter both consult this column instead of joining.
 - `confidence` (REAL, default 0.75) — content-quality estimate; used by
-  `_apply_confidence_weighting` when `confidence_rank_gamma > 0`.
+  `_apply_rank_fusion_factor` when `confidence_rank_gamma > 0`.
 
 Entities and relations live in `entities` / `entity_relations` and are
 **not memory-scoped**: each row carries a `memory_ids` UUID[] of every

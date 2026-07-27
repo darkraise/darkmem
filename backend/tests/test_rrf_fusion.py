@@ -346,7 +346,7 @@ async def test_weighting_reorders_when_no_rerank_ran(session):
         {"memory_id": str(low), "rrf_score": 0.010},
         {"memory_id": str(high), "rrf_score": 0.009},
     ]
-    out = await pipe._apply_confidence_weighting(
+    out = await pipe._apply_rank_fusion_factor(
         session, rows, {"confidence_rank_gamma": 2.0}, preserve_order=False,
     )
 
@@ -367,7 +367,7 @@ async def test_weighting_preserves_a_reranked_order_while_rescaling(session):
         {"memory_id": str(low), "rrf_score": 0.010},
         {"memory_id": str(high), "rrf_score": 0.009},
     ]
-    out = await pipe._apply_confidence_weighting(
+    out = await pipe._apply_rank_fusion_factor(
         session, rows, {"confidence_rank_gamma": 2.0}, preserve_order=True,
     )
 

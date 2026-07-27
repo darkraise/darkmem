@@ -1111,7 +1111,7 @@ class ProcessingPipeline:
                         reranker = RerankerService(self.llm)
                         results = await reranker.rerank(query, results, top_k=limit)
 
-                    results = await self._apply_confidence_weighting(
+                    results = await self._apply_rank_fusion_factor(
                         session, results, flags, preserve_order=reranked,
                     )
                     return results
@@ -1122,13 +1122,13 @@ class ProcessingPipeline:
                     results = await vector_repo.search(
                         vector, fingerprint=fingerprint, limit=limit, filters=filters,
                     )
-                    results = await self._apply_confidence_weighting(session, results, flags)
+                    results = await self._apply_rank_fusion_factor(session, results, flags)
                     return results
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
             raise
 
-    async def _apply_confidence_weighting(
+    async def _apply_rank_fusion_factor(
         self,
         session,
         results: list[dict],

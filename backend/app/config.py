@@ -188,6 +188,13 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     # to evaluate raw recall or when the heuristics over-fire.
     "relation_rescue": True,
     "confidence_rank_gamma": 0.0,
+    # Doc 07 §3: importance/heat/recency arms of rank_fusion_factor. Each is a
+    # no-op at 0 (see app/services/rank_fusion.py RANK_ARMS); T2.30 activates
+    # w_importance, T2.31 activates w_heat and w_recency once their signals
+    # are wired.
+    "w_importance": 0.0,
+    "w_heat": 0.0,
+    "w_recency": 0.0,
     # Doc 05 §2.2: how long an interactive `wait_process` capture may hold
     # Tier A driving its own buffer row's flush before degrading to the plain
     # 202 accept.
