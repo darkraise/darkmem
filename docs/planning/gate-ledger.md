@@ -521,3 +521,64 @@ ledger's own requirement.
 **Do not work around this.** Widening the tolerance, substituting a different model,
 or citing the warm cache as a post-T1.17 measurement would each convert a missing
 number into a false one, which is the failure this ledger exists to prevent.
+
+---
+
+## G-B — WHAT THE F1 NUMBER CAN AND CANNOT EVIDENCE (measured, 2026-07-28)
+
+**G-B's extraction-F1 parity number is real evidence of the model's extraction quality and
+weak evidence of the pass chain's correctness.** Three independent measurements now show the
+36-memory gold corpus cannot see large parts of the chain it is being used to guard. Recorded
+here because T1.50 must word its claim against this, not around it.
+
+**Measurement 1 — Stage 3 (`relation_rescue`) is invisible.** T1.25 ablated it four ways
+(flag off, each of three passes dropped): **0.000 delta on all eight dimensions**, output
+bit-identical across all 36 memories. The layer alters **one** memory and contributes **one**
+surviving triple, which duplicates one the model already emitted. Independently re-measured
+by the controller.
+
+**Measurement 2 — seven of Stage 4's ten passes are invisible.** T1.24d's planning pass ran a
+per-pass ablation over all 36 memories using the harness's own `without()` primitive, with
+baselines reproducing exactly. Only three passes move anything at all:
+
+| Pass | gold Δ rel_full | gold changed | held-out Δ rel_full | held-out changed |
+|---|---|---|---|---|
+| `remap_to_valid_entities` | −0.045 | 3/26 | −0.022 | 1/10 |
+| `downgrade_future_to_mentions` | −0.012 | 1/26 | 0.000 | 0/10 |
+| `drop_date_misuse` | −0.012 | 1/26 | 0.000 | 0/10 |
+| the other **seven** | 0.000 | **0/26** | 0.000 | **0/10** |
+
+So **"relation F1 does not regress" is satisfiable by deleting 70% of Stage 4.** And the
+blind passes are the worst possible ones to be blind to: `gate_replaces_selection`,
+`gate_replaces_requires_verb`, `drop_edges_to_negated` and the direction validators — whose
+shared failure mode is **a false `REPLACES` reaching supersession**. Supersession flips a
+memory out of the default view; a false one silently removes a live memory, which is the
+exact failure `chk_superseded_has_pointer` and the six-rule gate exist to prevent.
+
+**Measurement 3 — the vocabulary widening was never measured at all.** T1.23 widened
+`MEMORY_TYPES` 7 → 9 and recorded that the F1-green did not cover it: the bench cache key is
+`sha256(content + "\0" + system_prompt)`, while the widened schema string rides the **user**
+message. It has been carried on an unmeasured assumption since it landed. T1.17's live
+re-record is its first real measurement.
+
+### What this means for T1.50
+
+- **Do not cite F1 as evidence for Stage 3 or for the seven blind Stage-4 passes.** A flat
+  delta across an ablation is evidence of *nothing measured*, not of *no regression*.
+- **T1.24f's "per-pass contribution recorded" box must record these passes as
+  `unmeasurable on this corpus`, not as `zero contribution`.** Those are different claims and
+  only one is true.
+- The substitute evidence is behavioural: per-gate tests, named mutation proofs, and
+  order-insensitive whole-chain diffs. T1.24d's plan builds that guard; it is what should be
+  cited where F1 cannot reach.
+- **The honest form of the G-B claim** is parity of *model extraction quality* against the
+  T0.05 baseline, plus behavioural coverage of the pass chain — not "the extraction chain is
+  verified by F1".
+
+### The underlying cause, and who could fix it
+
+The corpus is 36 memories chosen to exercise the model, not the pass chain. Closing this is
+**gold-set authoring**, which the runbook routes to Fable tier and which no current task
+owns. It is deliberately **not** being added as a task now: it does not block G-B provided
+G-B's claim is worded to match what was actually measured, and inventing gold cases to make
+a guard light up is the fitted-evidence failure the `phoenix v2` ruling already rejected.
