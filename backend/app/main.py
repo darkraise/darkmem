@@ -4,7 +4,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Mount
 
 from sqlalchemy import select, text
@@ -13,6 +16,7 @@ from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.routes import analytics, auth, buffer as buffer_routes, chat, code, config, events as events_routes, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
+from app.schemas.envelope import ErrorDetail, ErrorEnvelope
 from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
 from app.services.llm_quirks import models_probe
@@ -396,6 +400,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_HTTP_ERROR_CODES = {
+    400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
+    405: "method_not_allowed", 409: "conflict", 413: "payload_too_large",
+    422: "validation_error", 429: "rate_limited", 502: "upstream_error",
+    503: "unavailable", 504: "upstream_timeout",
+}
+
+
+def _error_response(status_code: int, code: str, message: str, details=None, headers=None):
+    from starlette.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorEnvelope(
+            error=ErrorDetail(code=code, message=message, details=details),
+            # `detail` is a string mirror of error.message on EVERY shape,
+            # including the 422 that FastAPI answers with a list today.
+            # frontend/src/lib/api.ts interpolates this field straight into an
+            # Error, so a list here renders a stringified array to the user.
+            # T1.42b retires the mirror once the frontend reads error.message.
+            detail=message,
+        ).model_dump(),
+        headers=headers,
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(_request, exc: StarletteHTTPException):
+    detail = exc.detail
+    message = detail if isinstance(detail, str) else "Request failed"
+    details = detail if isinstance(detail, list) else None
+    code = _HTTP_ERROR_CODES.get(exc.status_code, f"http_{exc.status_code}")
+    return _error_response(exc.status_code, code, message, details, getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(_request, exc: RequestValidationError):
+    errors = jsonable_encoder(exc.errors())
+    first = errors[0] if errors else {}
+    location = ".".join(str(part) for part in first.get("loc", ())[1:])
+    message = first.get("msg", "Request validation failed")
+    if location:
+        message = f"{location}: {message}"
+    return _error_response(422, "validation_error", message, errors)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(_request, exc: Exception):
+    # Logged with the traceback, answered without one: an internal message can
+    # carry a connection string or a row's contents, and this is the one
+    # response shape a caller reaches by accident rather than by asking.
+    logger.exception("unhandled exception on the request path", exc_info=exc)
+    return _error_response(500, "internal_error", "Internal server error")
+
 
 app.include_router(auth.router)
 app.include_router(memories.router)

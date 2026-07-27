@@ -1,10 +1,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from app.api.auth import require_auth
 from app.api.deps import get_memory_service
-from app.api.mcp.client_identity import ORIGIN_HEADER, resolve_origin_key
+from app.api.mcp.client_identity import (
+    ORIGIN_HEADER,
+    REST_FALLBACK_SOURCE,
+    resolve_client_source,
+    resolve_entry_identity,
+    resolve_origin_key,
+    resolve_source_agent,
+)
 from app.models.memory import Memory
 from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
@@ -40,16 +49,44 @@ def _to_response(memory: Memory) -> MemoryResponse:
     )
 
 
-def _resolve_request_origin_key(entry: MemoryCreate, request: Request) -> str:
+async def _json_body(request: Request):
+    try:
+        return await request.json()
+    except ValueError:
+        raise RequestValidationError(
+            [{"type": "json_invalid", "loc": ("body",), "msg": "malformed JSON body", "input": None}]
+        )
+
+
+def _validated(model, raw):
+    """Validate a hand-read body into ``model``, keeping FastAPI's 422.
+
+    A raw ``ValidationError`` escaping a route body is a 500; converting it to
+    ``RequestValidationError`` is what keeps a malformed batch answering with
+    the same error envelope as every other malformed request.
+    """
+    try:
+        return model.model_validate(raw)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors())
+
+
+def _resolve_request_origin_key(entry: MemoryCreate, request: Request, source: str) -> str:
     # Reuses T1.11's resolution verbatim (doc 05 §2.1) rather than
     # reimplementing the declared-identity/merge-to-one chain: an explicit
     # body field wins, then the X-Darkmem-Origin header, then the coarse
     # per-(source, project) fallback. `ctx=None` here is fine — the MCP
     # `ctx`-based header lookup this function was written for is bypassed by
     # resolving the header ourselves, since a REST call has no MCP Context.
+    #
+    # `source` is the *resolved* label, never `entry.source`: origin_key's own
+    # logic is unchanged, but feeding it the unresolved body field is what made
+    # every REST fallback key read `unknown:api:<project>` no matter which
+    # client sent the request. It must be resolved before this call, so the
+    # coarse fallback can never mint `unknown:None:<project>`.
     return resolve_origin_key(
         entry.origin_key or request.headers.get(ORIGIN_HEADER),
-        None, source=entry.source, project=entry.project or "default",
+        None, source=source, project=entry.project or "default",
     )
 
 
@@ -70,9 +107,14 @@ async def create_memory(
     timeout it degrades to the plain 202 — the row is already durably
     buffered either way."""
     project = body.project or "default"
+    source = resolve_client_source(
+        body.source, headers=request.headers, fallback=REST_FALLBACK_SOURCE,
+    )
     resolved = body.model_copy(update={
         "project": project,
-        "origin_key": _resolve_request_origin_key(body, request),
+        "source": source,
+        "source_agent": resolve_source_agent(body.source_agent, headers=request.headers),
+        "origin_key": _resolve_request_origin_key(body, request, source),
     })
     result = await service.create_memory(resolved, api_key_id=None, wait_process=wait_process)
     if result.memory is not None:
@@ -165,10 +207,11 @@ async def search_memories(
 @router.post("/search/paginated", response_model=PaginatedMemoryResponse)
 async def search_memories_paginated(
     body: MemorySearchRequest,
+    request: Request,
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    result = await service.search_memories_paginated(body)
+    result = await service.search_memories_paginated(body, headers=request.headers)
     if body.with_trace:
         items = []
         for row in result["items"]:
@@ -196,7 +239,6 @@ async def search_memories_paginated(
 
 @router.post("/batch")
 async def batch_create(
-    body: MemoryBatchCreate,
     request: Request,
     response: Response,
     wait_process: bool = False,
@@ -205,12 +247,29 @@ async def batch_create(
 ):
     """Batch counterpart of ``POST /memories`` — one 202-buffered accept per
     entry by default; ``wait_process=true`` drives the whole batch's flush
-    inline as a single ``process_batch`` call (never one per entry)."""
+    inline as a single ``process_batch`` call (never one per entry).
+
+    Body: ``MemoryBatchCreate`` — validated below rather than by a signature
+    annotation, because identity resolution reads the **raw** entry dicts.
+    Whatever the schema's defaults are, the raw dict is what the caller
+    actually sent, and it is the only thing an absent-versus-explicit
+    ``source`` distinction can be read from. The MCP batch door runs the same
+    helper on the same shape.
+    """
+    raw = await _json_body(request)
+    if isinstance(raw, dict) and isinstance(raw.get("entries"), list):
+        raw = {
+            **raw,
+            "entries": [
+                resolve_entry_identity(
+                    entry, headers=request.headers, fallback=REST_FALLBACK_SOURCE,
+                )
+                for entry in raw["entries"]
+            ],
+        }
+    body = _validated(MemoryBatchCreate, raw)
     entries = [
-        entry.model_copy(update={
-            "project": entry.project or "default",
-            "origin_key": _resolve_request_origin_key(entry, request),
-        })
+        entry.model_copy(update={"project": entry.project or "default"})
         for entry in body.entries
     ]
     results = await service.batch_create_memories(entries, api_key_id=None, wait_process=wait_process)

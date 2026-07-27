@@ -9,6 +9,7 @@ from app.models.memory import (
     TAG_NAME_MAX_LENGTH,
     tag_category,
 )
+from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
 from app.schemas.retrieval_trace import MemoryResultTrace, RetrievalEnvelope
 
 
@@ -45,7 +46,14 @@ def _validate_tag_lengths(tags: list[str] | None) -> list[str] | None:
 class MemoryCreate(BaseModel):
     content: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
-    source: str = "api"
+    # No default, deliberately. A default here stamps a value during
+    # validation, after which a caller who omitted `source` and one who sent
+    # the door's own fallback literal are indistinguishable — and the sentinel
+    # rule that stops an agent masking detection by copying the old default
+    # has nothing left to read. Each front door resolves the chain and applies
+    # its own fallback ("api" for REST, "mcp" for MCP) before constructing
+    # this model; `tests/test_envelope.py` fails if the default returns.
+    source: str | None = None
     source_agent: str | None = None
     # Declared capture-session identity. Resolved at the front door before
     # this schema is built; see resolve_origin_key (doc 05 §2.1).
@@ -68,6 +76,7 @@ class CaptureAck(BaseModel):
     caller never sees (`memory_buffer.buffered_memory_id`).
     """
 
+    schema_version: int = ENVELOPE_SCHEMA_VERSION
     id: uuid.UUID
     status: Literal["accepted"] = "accepted"
 
@@ -143,6 +152,11 @@ class MemorySearchRequest(BaseModel):
     # per-row trace to the paginated search response. Structurally
     # zero-cost when unset — the trace-assembly path is never entered.
     with_trace: bool = False
+    # Tier 1 of doc 12 §5's declared-context chain: the per-call argument,
+    # which outranks the X-Darkmem-Context header and the project default.
+    # `project` is not an axis and is stripped before the declaration is
+    # built — the isolation boundary is not the context hint (T1.65).
+    context: dict | None = None
 
 
 class MemoryBatchCreate(BaseModel):
