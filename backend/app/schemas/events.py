@@ -53,6 +53,8 @@ class RepoIndexingCompleted(BaseModel):
     repo_id: str
     files_changed: int
     symbols_indexed: int
+    index_debt_drained: int = 0
+    index_debt_queued: int = 0
 
 
 class RepoIndexingFailed(BaseModel):

@@ -39,9 +39,9 @@ async def test_finds_caller_of_changed_file(session):
     await _edge(session, repo.id, "callerFn::caller.py", "targetFn::target.py")
     await _edge(session, repo.id, "other::x.py", "y::unrelated.py")
 
-    deps, total = await _find_dependent_caller_files(session, repo.id, ["target.py"])
+    deps, overflow = await _find_dependent_caller_files(session, repo.id, ["target.py"])
     assert deps == ["caller.py"]
-    assert total == 1
+    assert overflow == []
 
 
 @pytest.mark.asyncio
@@ -61,10 +61,12 @@ async def test_ignores_non_call_edges(session):
 
 
 @pytest.mark.asyncio
-async def test_caps_and_reports_total(session):
+async def test_caps_and_names_the_overflow(session):
     repo = await _repo(session, "dep-4")
     for i in range(5):
         await _edge(session, repo.id, f"c{i}::caller{i}.py", "t::target.py")
-    deps, total = await _find_dependent_caller_files(session, repo.id, ["target.py"], cap=3)
+    deps, overflow = await _find_dependent_caller_files(session, repo.id, ["target.py"], cap=3)
     assert len(deps) == 3
-    assert total == 5
+    # The work past the cap is named, not counted: it becomes index debt.
+    assert overflow == ["caller3.py", "caller4.py"]
+    assert set(deps) | set(overflow) == {f"caller{i}.py" for i in range(5)}
