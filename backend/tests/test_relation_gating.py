@@ -35,10 +35,16 @@ from app.services.extraction_clean import (
     STAGE_RELATION_GATING,
     STAGE_RELATION_SYNTHESIS,
     CleanState,
+    _CAUSAL_BETWEEN_RE,
+    _FUTURE_RE,
     _REPLACE_EVIDENCE_RE,
     _SELECTION_RE,
+    _TEMPORAL_BETWEEN_RE,
+    _downgrade_future_to_mentions,
+    _drop_date_misuse,
     _gate_replaces_requires_verb,
     _gate_replaces_selection,
+    _suppress_temporal_edges,
     normalize_relation_type,
 )
 
@@ -128,6 +134,26 @@ def _top_level_groups(pattern: str) -> list[str]:
             buf.append(c)
         i += 1
     return bodies
+
+
+# ── Stage shape ──────────────────────────────────────────────────────
+
+
+def test_stage_four_runs_the_ten_gating_steps_in_doc_06_s4_order():
+    gating = [p.name for p in PASS_REGISTRY if p.stage == STAGE_RELATION_GATING]
+    assert gating == list(STAGE4_PASS_NAMES)
+
+
+def test_stage_four_follows_the_synthesis_stage():
+    assert max(_stage_indices(STAGE_RELATION_SYNTHESIS)) < min(
+        _stage_indices(STAGE_RELATION_GATING)
+    )
+
+
+def test_stage_four_precedes_the_collapse_stage():
+    assert max(_stage_indices(STAGE_RELATION_GATING)) < min(
+        _stage_indices(STAGE_COLLAPSE_AND_FANOUT)
+    )
 
 
 # ── The two REPLACES gates (doc 06 §4 S4 box D2) ─────────────────────
@@ -278,21 +304,206 @@ def test_the_verb_gate_does_not_mutate_its_input():
     assert rels == before
 
 
-# ── Stage shape ──────────────────────────────────────────────────────
+# ── The temporal trio (doc 06 §4 S4 box D3) ──────────────────────────
+
+_TEMPORAL_CONNECTORS: dict[str, str] = {
+    "after": "the outage happened after the deploy",
+    "before": "the outage happened before the deploy",
+    "since": "the outage has been quiet since the deploy",
+    "following": "the outage occurred following the deploy",
+    "prior to": "the outage occurred prior to the deploy",
+    "then": "the outage landed and then the deploy",
+    "once": "the outage cleared once the deploy",
+    "later": "the outage came, later the deploy",
+}
+
+_FUTURE_MARKERS: dict[str, str] = {
+    r"plan(?:s|ned|ning)?\s+to": "we plan to adopt redis next quarter",
+    r"will\s+(?:add|support|build|introduce|ship)": "we will add redis next quarter",
+    r"going\s+to": "we are going to adopt redis next quarter",
+    r"intend(?:s|ed)?\s+to": "we intend to adopt redis next quarter",
+    "upcoming": "the upcoming release brings redis",
+    r"on\s+the\s+roadmap": "on the roadmap: redis for session state",
+    "considering": "we are considering redis for session state",
+    r"may\s+add": "we may add redis for session state",
+    r"to\s+be\s+added": "to be added: redis for session state",
+}
 
 
-def test_stage_four_runs_the_ten_gating_steps_in_doc_06_s4_order():
-    gating = [p.name for p in PASS_REGISTRY if p.stage == STAGE_RELATION_GATING]
-    assert gating == list(STAGE4_PASS_NAMES)
+def _related(source="outage", target="deploy", rtype="RELATED_TO"):
+    return [{"source": source, "target": target, "type": rtype, "weight": 0.8}]
 
 
-def test_stage_four_follows_the_synthesis_stage():
-    assert max(_stage_indices(STAGE_RELATION_SYNTHESIS)) < min(
-        _stage_indices(STAGE_RELATION_GATING)
+def test_every_temporal_connector_has_a_worked_example():
+    (body,) = _top_level_groups(_TEMPORAL_BETWEEN_RE.pattern)
+    assert set(_alternatives(body)) == set(_TEMPORAL_CONNECTORS)
+
+
+@pytest.mark.parametrize("content", sorted(_TEMPORAL_CONNECTORS.values()))
+def test_a_purely_temporal_join_drops_the_edge(content):
+    assert _suppress_temporal_edges(_related(), content) == []
+
+
+def test_a_causal_verb_in_the_same_span_rescues_the_edge():
+    causal = "the deploy then caused the outage"
+    bare = "the deploy, then the outage"
+    assert _triples(_suppress_temporal_edges(_related(), causal)) == {
+        ("outage", "RELATED_TO", "deploy")
+    }
+    assert _suppress_temporal_edges(_related(), bare) == []
+
+
+def test_every_causal_verb_alternative_rescues_the_edge():
+    (body,) = _top_level_groups(_CAUSAL_BETWEEN_RE.pattern)
+    for alt in _alternatives(body):
+        verb = alt.replace(r"\w*", "ed")
+        content = f"the deploy then {verb} the outage"
+        assert _triples(_suppress_temporal_edges(_related(), content)) == {
+            ("outage", "RELATED_TO", "deploy")
+        }, alt
+
+
+@pytest.mark.parametrize("rtype", ["RELATED_TO", "CAUSES"])
+def test_only_related_to_and_causes_are_candidates(rtype):
+    content = "the outage happened after the deploy"
+    assert _suppress_temporal_edges(_related(rtype=rtype), content) == []
+
+
+@pytest.mark.parametrize("rtype", ["USES", "DEPLOYED_ON", "MENTIONS", "REPLACES"])
+def test_other_relation_types_survive_a_temporal_join(rtype):
+    content = "the outage happened after the deploy"
+    out = _suppress_temporal_edges(_related(rtype=rtype), content)
+    assert _triples(out) == {("outage", rtype, "deploy")}
+
+
+def test_the_guard_runs_on_the_closest_mention_pair_not_the_first():
+    # The subject recurs, which is the common case for a project name. Its
+    # FIRST mention spans an unrelated temporal window; its nearest one does
+    # not, and the edge must survive on the nearest.
+    recurring = "darkmem was rebuilt after the february outage. darkmem uses pgvector."
+    single = "darkmem was rebuilt after the february outage. pgvector is the store."
+    edge = _related("darkmem", "pgvector")
+    assert _triples(_suppress_temporal_edges(edge, recurring)) == {
+        ("darkmem", "RELATED_TO", "pgvector")
+    }
+    assert _suppress_temporal_edges(edge, single) == []
+
+
+def test_the_temporal_span_search_matches_endpoint_names_as_bare_substrings():
+    # Characterisation, not endorsement. This pass spans mentions with a
+    # bare ``re.escape`` substring search, while ``_validate_directions``
+    # deliberately uses word boundaries via ``_entity_matches`` after a
+    # recorded ``postgres`` / ``postgres 17`` regression. Whether the
+    # looser matching here is intentional is an open question routed to
+    # the controller; this test pins today's behaviour so a change to it
+    # is a decision rather than an accident.
+    inside = "postgresql was patched after the outage"
+    absent = "mysql was patched after the outage"
+    edge = _related("postgres", "outage")
+    assert _suppress_temporal_edges(edge, inside) == []
+    assert _triples(_suppress_temporal_edges(edge, absent)) == {
+        ("postgres", "RELATED_TO", "outage")
+    }
+
+
+def test_the_temporal_pass_does_not_mutate_its_input():
+    rels = _related()
+    before = copy.deepcopy(rels)
+    _suppress_temporal_edges(rels, "the outage happened after the deploy")
+    assert rels == before
+
+
+def test_every_future_marker_has_a_worked_example():
+    (body,) = _top_level_groups(_FUTURE_RE.pattern)
+    assert set(_alternatives(body)) == set(_FUTURE_MARKERS)
+
+
+@pytest.mark.parametrize("content", sorted(_FUTURE_MARKERS.values()))
+def test_a_future_marker_downgrades_the_edge_to_mentions(content):
+    out = _downgrade_future_to_mentions(
+        [{"source": "darkmem", "target": "redis", "type": "USES", "weight": 0.9}],
+        content,
     )
+    assert _triples(out) == {("darkmem", "MENTIONS", "redis")}
 
 
-def test_stage_four_precedes_the_collapse_stage():
-    assert max(_stage_indices(STAGE_RELATION_GATING)) < min(
-        _stage_indices(STAGE_COLLAPSE_AND_FANOUT)
+@pytest.mark.parametrize("rtype", ["USES", "IMPLEMENTS", "EXTENDS", "DEPENDS_ON"])
+def test_only_the_four_usage_predicates_downgrade(rtype):
+    content = "we plan to adopt redis next quarter"
+    out = _downgrade_future_to_mentions(
+        [{"source": "darkmem", "target": "redis", "type": rtype, "weight": 0.9}],
+        content,
     )
+    assert _triples(out) == {("darkmem", "MENTIONS", "redis")}
+
+
+@pytest.mark.parametrize("rtype", ["RELATED_TO", "HAPPENED_ON", "REPLACES", "CAUSES"])
+def test_other_predicates_are_left_alone_in_the_future_zone(rtype):
+    content = "we plan to adopt redis next quarter"
+    out = _downgrade_future_to_mentions(
+        [{"source": "darkmem", "target": "redis", "type": rtype, "weight": 0.9}],
+        content,
+    )
+    assert _triples(out) == {("darkmem", rtype, "redis")}
+
+
+@pytest.mark.parametrize(("weight", "expected"), [(0.9, 0.5), (0.5, 0.5), (0.3, 0.3)])
+def test_the_downgrade_clamps_the_weight_without_raising_it(weight, expected):
+    out = _downgrade_future_to_mentions(
+        [{"source": "darkmem", "target": "redis", "type": "USES", "weight": weight}],
+        "we plan to adopt redis next quarter",
+    )
+    assert out[0]["weight"] == expected
+
+
+def test_the_future_zone_runs_from_the_marker_to_the_end_of_content():
+    # Characterisation of a document-scoped rule: a target named BEFORE the
+    # marker is untouched, one named after it is downgraded however far away.
+    content = "redis was removed last year; we plan to adopt valkey next quarter."
+    out = _downgrade_future_to_mentions(
+        [
+            {"source": "darkmem", "target": "redis", "type": "USES", "weight": 0.9},
+            {"source": "darkmem", "target": "valkey", "type": "USES", "weight": 0.9},
+        ],
+        content,
+    )
+    assert _triples(out) == {
+        ("darkmem", "USES", "redis"),
+        ("darkmem", "MENTIONS", "valkey"),
+    }
+
+
+def test_the_future_pass_does_not_mutate_its_input():
+    rels = [{"source": "darkmem", "target": "redis", "type": "USES", "weight": 0.9}]
+    before = copy.deepcopy(rels)
+    _downgrade_future_to_mentions(rels, "we plan to adopt redis next quarter")
+    assert rels == before
+
+
+@pytest.mark.parametrize("rtype", ["USES", "DEPLOYED_ON", "AUTHORED_BY", "RELATED_TO"])
+def test_a_bare_date_endpoint_is_dropped_from_a_non_happened_on_edge(rtype):
+    as_target = [{"source": "darkmem", "target": "2026-05-12", "type": rtype}]
+    as_source = [{"source": "2026-05-12", "target": "darkmem", "type": rtype}]
+    assert _drop_date_misuse(as_target) == []
+    assert _drop_date_misuse(as_source) == []
+
+
+def test_a_date_survives_as_a_happened_on_target():
+    rels = [{"source": "outage", "target": "2026-05-12", "type": "HAPPENED_ON"}]
+    assert _triples(_drop_date_misuse(rels)) == {("outage", "HAPPENED_ON", "2026-05-12")}
+
+
+def test_a_name_that_merely_contains_a_date_is_not_a_date_endpoint():
+    # ``fullmatch``, not ``search``. With ``search`` this would delete every
+    # edge hanging off a dated event name, which the bench cannot see.
+    rels = [{"source": "2026-05-12 outage", "target": "disk", "type": "CAUSES"}]
+    assert _triples(_drop_date_misuse(rels)) == {
+        ("2026-05-12 outage", "CAUSES", "disk")
+    }
+
+
+def test_the_date_pass_does_not_mutate_its_input():
+    rels = [{"source": "darkmem", "target": "2026-05-12", "type": "USES"}]
+    before = copy.deepcopy(rels)
+    _drop_date_misuse(rels)
+    assert rels == before
