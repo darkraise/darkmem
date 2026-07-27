@@ -542,7 +542,124 @@ check in Appendix B accounts for them on that basis rather than by omission.
 
 ## 9. SQL-first audit
 
-_(pending: Task 7)_
+**The rule being audited, quoted so the verdict column means something.** Doc 19 §2:
+"Every table, constraint, index, trigger, and the reconciliation's own DDL stays
+expressible as plain SQL — **no ORM-only construct is load-bearing anywhere in the
+schema** … the FTS trigger, the `events` forbid-trigger and its monthly
+`RANGE(created_at)` partitioning, the partial and composite indexes, the
+`chk_superseded_has_pointer` CHECK, and the one native enum are all authored as SQL in the
+baseline; SQLAlchemy models mirror the SQL, not the reverse. A schema change that only an
+ORM construct can express is rejected at review as a portability regression." Doc 20 §7
+makes it standing across Phases 0–4.
+
+**`In the DDL?` is answered from Appendix A, never from reading the migration.** A
+construct is in the DDL if and only if the extracted manifest shows it. That is the whole
+methodology of this section: the phantom UNIQUE below is invisible to anyone who audits by
+reading `__table_args__` against `0001`.
+
+**Completeness of the sweep, stated as a number.** The two `rg` sweeps of Appendix B check
+7 return hits across nine construct kinds: `server_default` (21 declarations),
+`UniqueConstraint` (5 declarations), `__table_args__` (5 blocks), `onupdate=` (3),
+`CheckConstraint` (1), `Index(` (1), `create_type=False` (1), `event.listen` (1), and no
+hits at all for `server_onupdate`, `@validates`, `@hybrid_property`, `DDL(`, `Computed(` or
+`Identity(` — so those six construct classes simply do not exist in this codebase, which is
+itself a compliance result. §9.1 carries one row per distinct construct; the one bulk kind
+is `server_default`, and it is dispatched mechanically rather than row by row: **all 21
+declarations are mirrored by a real server default in Appendix A.2 — zero are ORM-only**
+(Appendix B check 8). The kinds that survive that filter are the rows below, plus the two
+sections that follow.
+
+### 9.1 Structural constructs
+
+| Construct | Where | What it does | In the DDL? | Load-bearing? | Verdict | Action for T0.12a–c |
+|---|---|---|---|---|---|---|
+| `CheckConstraint("status != 'superseded' OR superseded_by IS NOT NULL", name="chk_superseded_has_pointer")` | `models/memory.py:72–77` | The supersession lifecycle contract | **Yes** — A.4 shows it verbatim | Yes | **Compliant** — the ORM mirrors SQL that exists | Author as SQL; T0.12a's acceptance already names it |
+| `ForeignKey("memories.id", ondelete="SET NULL")` on `superseded_by` | `models/memory.py:61–65` | The self-FK that forces demote-before-delete | **Yes** — `fk_memories_superseded_by` in A.4 | Yes | **Compliant** | Author as SQL |
+| `Enum(*MEMORY_STATUS_VALUES, name="memory_status", **create_type=False**)` | `models/memory.py:58` | The one native enum | **Yes** — A.7 | Yes | **Compliant, and deliberately so.** `create_type=False` is the ORM explicitly declining to own the type: the SQL creates it, the model mirrors it. This is doc 19 §2's rule already implemented. | Author `CREATE TYPE` as SQL; keep `create_type=False` |
+| `UniqueConstraint("name", "entity_type")` | `models/graph.py:23` | Entity uniqueness (inv. 4) | **Yes** — A.4 | Yes | **Compliant** | Author as SQL |
+| `UniqueConstraint("source_entity_id", "target_entity_id", "rel_type")` | `models/graph.py:43` | Relation uniqueness (inv. 4) | **Yes** — A.4 | Yes | **Compliant** | Author as SQL |
+| `UniqueConstraint("repo_id", "kind", "key")` / `(...6 cols...)` on edges | `models/code.py:82, 99–101` | Code-graph node/edge identity | **Yes** — A.4 | Yes | **Compliant** | Author as SQL |
+| `Index("ix_token_blocklist_jti", "jti")` | `models/token_blocklist.py:20` | A plain btree on `jti` | **Yes** — A.3 | **No** — fully redundant under `token_blocklist_jti_key` (UNIQUE) | **Compliant but redundant** (F-12) | Land the UNIQUE only; drop the model's `Index` with it |
+| `UniqueConstraint("purpose", name="uq_llm_purpose_configs_purpose")` | `models/llm_config.py:174` | Intended belt-and-suspenders over the PK | **NO** — A.4 shows `llm_purpose_configs` carrying only its PK on `purpose` and three FKs | No | **Phantom.** The table is built by raw `CREATE TABLE` inside `op.execute`, so `__table_args__` never reached the database. **Doc 04 §12 reasons about this object** — "The `llm_purpose_configs` redundant `UNIQUE(purpose)` … can stay or be dropped; it is harmless" — i.e. it discusses keeping or dropping a constraint **that was never created**. Harmless in effect, and the cleanest possible demonstration that this audit is not ceremonial. | Nothing to carry. `llm_purpose_configs` is `reshaped` anyway; do not resurrect the constraint from ORM metadata |
+| `_TABLE_TEMPLATES` / `_AUX_INDEXES` | `services/embedder_registry.py:31–97` | The per-fingerprint child DDL | n/a — runtime, by design (§6) | Yes | **Compliant.** Every template is a **plain-SQL string** with `{name}`/`{dims}` placeholders, not a SQLAlchemy schema object, so doc 19 §2's "the reconciliation's own DDL" clause holds: the .NET port's equivalent is a loop over `embedders` rows running the same parameterised SQL. The HNSW index name is a blake2b digest rather than a derived name, which is a `NAMEDATALEN` defence, not an ORM dependency. | Keep as strings; T0.12c adds four entries, T0.14 runs the reconciliation |
+| `@event.listens_for(engine.sync_engine, "connect")` setting `hnsw.ef_search=100`, `hnsw.iterative_scan=relaxed_order` | `database.py:19–25` | Per-connection pgvector GUCs | n/a — session settings, not schema | Yes, for recall behaviour | **Out of scope for doc 19 §2** (it governs the schema), but recorded: it is the codebase's only `event.listen`, and a .NET port must reproduce it in Npgsql connection setup or silently change ANN recall. | No baseline action; noted for the doc 19 §7 replay residuals |
+
+### 9.2 The `updated_at` auto-bump — **Tier 3, escalated, not resolved here**
+
+`models/memory.py:48` declares `updated_at … server_default=func.now(), onupdate=func.now()`.
+SQLAlchemy's `onupdate` is **client-side**: it emits the new value in the ORM's own UPDATE
+and does nothing to the database. Appendix A.2 shows `memories.updated_at` with server
+default `now()` and A.5 shows the **only** user trigger in the entire schema is
+`memories_fts_update`. So the bump exists solely in Python. `conversations.updated_at`
+(`models/chat.py:19`) and `repositories.updated_at` (`models/code.py:28`) carry the
+identical construct.
+
+The contradiction, with both sides quoted:
+
+- **Doc 04 §3.1** lists the column as `now() (onupdate)` in its schema table, and **doc 04
+  §9 reasons *from* the bump as a semantic worth protecting** — it is the entire
+  justification for `memory_access_stats` being a side table rather than two columns on
+  `memories`: "any ORM-path update would additionally fire `onupdate=now()`, silently
+  corrupting `updated_at`'s 'content changed' meaning."
+- **Doc 19 §2** forbids a load-bearing ORM-only construct and enumerates the triggers the
+  baseline authors — the FTS trigger and the `events` forbid-trigger — **with no third**.
+  **Doc 04 §12**'s own enumeration of what the baseline creates names no `updated_at`
+  trigger either.
+
+**Either the baseline gains a trigger no doc lists, or a documented semantic stays ORM-only
+in violation of a rule both doc 19 §2 and doc 20 §7 state as binding.** The .NET replay
+sharpens it: `onupdate` is SQLAlchemy-specific behaviour that a DbUp replay would have to
+re-derive from ORM metadata, which is precisely what doc 19 §2 says a replay must never do.
+Neither doc resolves it. Under runbook §5 this is **Tier 3 — a design doc is wrong or
+ambiguous — and Tier 3 means do not proceed to resolve it.** Both readings are stated; the
+inventory picks neither. See §10.
+
+### 9.3 Column defaults that live only in the ORM
+
+**Scope first, because the plan for this task under-counted it.** That plan named "five NOT
+NULL columns on `memories`". Cross-referencing every client-side `default=` in
+`app/models/*.py` against A.2's nullability and server default gives **twelve non-key
+columns across five surviving tables**, plus seven uuid primary keys:
+
+| Table | NOT NULL columns whose only default is in the ORM | ORM default |
+|---|---|---|
+| `memories` | `source`, `importance`, `metadata`, `is_archived` | `'api'`, `0.5`, `dict`, `False` |
+| `repositories` | `provider`, `default_branch`, `status`, `auto_sync` | `'local'`, `'main'`, `'pending'`, `True` |
+| `code_symbols` | `enrichment_status`, `enrichment_priority` | `'pending'`, `0` |
+| `api_keys` | `scopes` | `lambda: ["read", "write"]` |
+| `config` | `value` | `dict` |
+
+A plain-SQL `INSERT` omitting any of them fails today. **The uuid primary keys are
+deliberately not in this class**: doc 04 §2 fixes application generation as the design
+("every application-generated uuid PK is **UUIDv7**"), with server-side
+`gen_random_uuid()` only for `entities`/`entity_relations`. `code_graph_nodes`/`code_edges`
+carry `bigserial` sequences in the DDL and their models' `default=uuid.uuid4` is dead
+metadata the database overrides — cosmetic, not load-bearing.
+
+**Verdict: this is Tier 2, not Tier 3 — the corpus does answer it.** Applying the stated
+test (*does doc 19 §2's "no ORM-only construct is load-bearing in the schema" cover column
+value defaults, or only structural objects?*): doc 19 §2's own enumeration is entirely
+structural — trigger, partitioning, indexes, CHECK, enum — and its rationale is that a
+replay must not "re-derive behaviour from ORM metadata". A missing column default does not
+make the schema inexpressible in SQL; it makes callers supply a value. So doc 19 §2 does
+**not** independently force these defaults into the DDL.
+
+What does force three of them is **doc 04 itself**, which doc 19 §1 makes authoritative for
+table shapes: doc 04 §3.1 prints `0.5`, `{}` and `false` for `importance`, `metadata` and
+`is_archived` in its target column table, with no ORM annotation — so the **target** shape
+carries them as DDL defaults even though HEAD does not, which is why §5 records those as
+`reshaped`. Doc 04 §3.1 annotates `source`'s as **"ORM `'api'`"**, knowingly recording an
+ORM-only default, so `source` stays as it is. `config.value` is the same case as the first
+three (doc 04 §7 prints `NOT NULL DEFAULT '{}'`, F-09) and `repositories`' four are the
+same as `source`'s in reverse — doc 04 §6 prints `provider 'local'` and
+`default_branch 'main'` without saying which side owns them (F-18).
+
+**Action for T0.12a–c:** author server defaults for `memories.{importance, metadata,
+is_archived}` and `config.value`; leave `memories.source` ORM-only as doc 04 §3.1
+specifies; treat `repositories.{provider, default_branch}` as doc-04-printed defaults and
+author them too, recording the reading. Cost is one clause per column; the benefit is that
+a hand-written `INSERT` — in a migration, a fixture, a psql session, or the .NET replay —
+behaves the same as an ORM write.
 
 ## 10. Findings — where the sources disagree
 
@@ -572,6 +689,9 @@ tier and lifts the Tier-3 rows to the top under their own heading.
 
 | F-16 | `E0-baseline-and-harness.md` T0.12c vs T0.13 | T0.12c says the four target-new templates "land here as **registry entries** … (their inert labelling is T0.13's)"; T0.13's own **What** says it lands "all four per-fingerprint partition templates (block, relation, article, `triple_embeddings`)". Both cannot be the landing task. §6 follows T0.12c, whose statement is the more specific of the two (it names the mechanism, `_TABLE_TEMPLATES`/`_AUX_INDEXES`, and explicitly hands labelling to T0.13). T0.13's wording should be narrowed to labelling and the no-writer assertion. |
 | F-17 | Migration `0001` `downgrade()` vs doc 04 §5.3 | `0001`'s `downgrade()` drops runtime child tables by walking `pg_tables` for **four** `LIKE` patterns. The target has **eight** parents, so the same sweep would strand `block_embeddings__*`, `relation_embeddings__*`, `article_embeddings__*` and `triple_embeddings__*`. Moot for the six revisions the baseline deletes; **not** moot for the baseline's own `downgrade()`, which T0.12c writes. Recorded against T0.12c. |
+
+| F-18 | doc 04 §6 vs Appendix A.2 | `repositories.{provider, default_branch, status, auto_sync}` are `NOT NULL` with **no server default**; doc 04 §6 prints `provider 'local'` and `default_branch 'main'` without saying which side owns them, and says nothing about `status` or `auto_sync`. Same class as F-09 and §9.3. §9.3's action treats the two doc-04-printed ones as DDL defaults and records the reading; `status` and `auto_sync` have no doc-04 default to honour and stay as they are unless T0.12b decides otherwise. |
+| F-19 | `models/*.py` vs Appendix A.2 | `code_graph_nodes.id` and `code_edges.id` carry `default=uuid.uuid4` in the ORM while the DDL gives them `bigserial` sequences (`nextval(...)`), which the database applies and the ORM value never reaches. Dead metadata, cosmetic only — recorded so the audit's "every sweep hit is a row" claim is literally true and a reviewer does not read the omission as an oversight. The baseline should not mirror it. |
 
 ### Amendments proposed to the task corpus
 

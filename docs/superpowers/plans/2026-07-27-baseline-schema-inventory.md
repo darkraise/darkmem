@@ -518,7 +518,7 @@ Task: T0.11"
 | Construct | Where | What it does | In the DDL? | Load-bearing? | Verdict | Action for T0.12a–c |
 |---|---|---|---|---|---|---|
 
-- [ ] **Step 1: Sweep the ORM for every candidate construct**
+- [x] **Step 1: Sweep the ORM for every candidate construct**
 
 ```bash
 cd /root/repositories/darkmem/backend
@@ -528,7 +528,7 @@ rg -n 'DDL\(|event\.listen|Computed\(|Identity\(' app/
 
 Every hit becomes a row. The `In the DDL?` column is answered from Appendix A, never from reading the migration: a construct is in the DDL if and only if the extracted manifest shows it.
 
-- [ ] **Step 2: Adjudicate the three findings this plan already located**
+- [x] **Step 2: Adjudicate the three findings this plan already located**
 
 These are named here so they are audited rather than rediscovered, and so a reviewer can check the executing agent's verdict against the same evidence. Each was confirmed against a live database built from the six revisions, not inferred.
 
@@ -538,17 +538,17 @@ These are named here so they are audited rather than rediscovered, and so a revi
 
 **(c) A constraint doc 04 discusses that does not exist.** `app/models/llm_config.py:174` declares `UniqueConstraint("purpose", name="uq_llm_purpose_configs_purpose")`, and doc 04 §12 offers a choice about it — "The `llm_purpose_configs` redundant `UNIQUE(purpose)` (belt-and-suspenders over the PK) can stay or be dropped; it is harmless." Appendix A.4 shows `llm_purpose_configs` carrying only its PK on `purpose` and three FKs: **the UNIQUE was never created**. The table is built by raw `CREATE TABLE` inside `op.execute`, so the ORM's `__table_args__` never reached the database. Doc 04 §12 is therefore reasoning about an object that exists only in ORM metadata. The verdict is straightforward (`llm_purpose_configs` is `reshaped` anyway under the LLM flattening, and the phantom UNIQUE simply does not carry), but the row belongs in §9 because it is the cleanest possible demonstration of why this audit is not ceremonial.
 
-- [ ] **Step 3: Audit the registry's DDL for SQL-first compliance**
+- [x] **Step 3: Audit the registry's DDL for SQL-first compliance**
 
 Doc 19 §2 binds "the reconciliation's own DDL" to the same rule, because the .NET replay moves it into "the registry's C# equivalent" as "a loop over rows running parameterised plain-SQL DDL". Read `_TABLE_TEMPLATES` and `_AUX_INDEXES` in `embedder_registry.py` and record whether each template is a plain-SQL string (portable) or built through SQLAlchemy schema objects (not). Record the verdict; do not change the file.
 
-- [ ] **Step 4: Verify — the audit is complete and reproducible**
+- [x] **Step 4: Verify — the audit is complete and reproducible**
 
 Every `rg` hit from Step 1 appears as a §9 row (set difference over the sweep output, expected empty), every row has a non-empty verdict, and every row whose verdict is "load-bearing and ORM-only" has either an action for T0.12a–c or a §10 finding. Record the sweep commands in Appendix B so a reviewer re-runs them rather than trusting the list.
 
 Then `git status --porcelain` shows only the inventory file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md
