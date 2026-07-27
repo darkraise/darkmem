@@ -1,0 +1,1 @@
+{"entities": [{"name": "PostgresVectorRepo", "type": "artifact", "properties": {}}, {"name": "VectorRepo", "type": "protocol", "properties": {}}], "relationships": [{"source": "PostgresVectorRepo", "target": "VectorRepo", "type": "IMPLEMENTS", "properties": {}, "weight": 1.0}], "memory_type": "fact", "importance": 0.5}

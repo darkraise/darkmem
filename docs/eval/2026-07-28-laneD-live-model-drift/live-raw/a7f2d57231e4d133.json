@@ -1,0 +1,1 @@
+{"entities": [{"name": "ClickHouse", "type": "database", "properties": {}}, {"name": "TimescaleDB", "type": "database", "properties": {}}], "relationships": [{"source": "ClickHouse", "target": "TimescaleDB", "type": "IMPROVES_ON", "properties": {}, "weight": 0.8}], "memory_type": "decision", "importance": 0.7}

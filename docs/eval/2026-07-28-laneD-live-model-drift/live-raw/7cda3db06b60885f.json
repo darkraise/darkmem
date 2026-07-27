@@ -1,0 +1,1 @@
+{"entities": [{"name": "RabbitMQ", "type": "service", "properties": {}}, {"name": "NATS", "type": "service", "properties": {}}], "relationships": [{"source": "NATS", "target": "RabbitMQ", "type": "REPLACES", "properties": {}, "weight": 0.9}], "memory_type": "decision", "importance": 0.7}

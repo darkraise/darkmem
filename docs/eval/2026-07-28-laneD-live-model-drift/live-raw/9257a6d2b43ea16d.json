@@ -1,0 +1,1 @@
+{"entities": [{"name": "finalize handler", "type": "artifact", "properties": {}}, {"name": "commit-per-block", "type": "concept", "properties": {}}], "relationships": [{"source": "finalize handler", "target": "commit-per-block", "type": "USES", "properties": {}, "weight": 0.8}], "memory_type": "decision", "importance": 0.6}

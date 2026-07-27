@@ -1,0 +1,1 @@
+{"entities": [{"name": "black", "type": "tool", "properties": {}}, {"name": "isort", "type": "tool", "properties": {}}], "relationships": [], "memory_type": "preference", "importance": 0.3}

@@ -1,0 +1,1 @@
+{"entities": [{"name": "JWT", "type": "protocol", "properties": {}}, {"name": "RFC 7519", "type": "paper", "properties": {}}], "relationships": [{"source": "JWT", "target": "RFC 7519", "type": "IMPLEMENTS", "weight": 0.8}], "memory_type": "fact", "importance": 0.5}

@@ -1,0 +1,1 @@
+{"entities": [{"name": "Phoenix v2", "type": "event", "properties": {}}, {"name": "March outage", "type": "event", "properties": {}}], "relationships": [{"source": "Phoenix v2", "target": "March outage", "type": "REPLACES", "properties": {}, "weight": 0.5}], "memory_type": "milestone", "importance": 0.7}
