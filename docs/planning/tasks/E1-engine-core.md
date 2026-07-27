@@ -874,6 +874,40 @@ cases most likely to leak, not the ones most likely to pass.
 
 ## Lane E — lifecycle (F4, F5)
 
+#### T1.35a — Label the escapes the isolation probe counted
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.35` · `Doc: 20 §4` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** T1.35's probe returned **10**, against a bar of 0, so G-B's isolation row is a
+recorded FAIL. **Added by amendment 2026-07-28.** Close them.
+
+**All ten are the same failure mode, and it is not the one the earlier five rounds fixed.**
+Every one is `[V2]` — *a row returned without its label*, not a row wrongly returned. These
+surfaces legitimately default to every project (the `reason` default was ratified), but the
+rows arrive carrying no `project` and no `status`, so a consumer cannot tell a cross-project
+or superseded row from a local live one. That is the honesty half of invariant 14, and it is
+exactly what the bar's word "unlabelled" was there to catch.
+
+| Surface | Door | Count |
+|---|---|---|
+| `memory_reason` | `POST /api/v1/memories/reason` **and** `mcp:memory_reason` | 4 |
+| `chat_retrieval` | `POST /api/v1/chat/completions` | 2 |
+| `chat_history_citations` | `GET /api/v1/chat/conversations/{id}` | 2 |
+| `reembed_backfill_queue` | `GET /api/v1/reembed/obsolete/memories` | 2 |
+
+**Done when:**
+- [ ] All four surfaces emit `project` and `status` on every memory row they return
+- [ ] `python scripts/benchlib/run_isolation_probe.py` returns **0**, recorded in
+      `gate-ledger.md` under G-B alongside the failing 10
+- [ ] The registry's own claims are made true: `memory_reason` and `chat_retrieval` are
+      classified as label-emitting in `app/services/content_surfaces.py` while their
+      responses do not emit — fix the responses, **not** the classification
+- [ ] Follow the precedent T1.29d set: `get_all_vectors` labels every row **unconditionally**,
+      including for `filters=None` callers, so a row escaping an unenumerated caller arrives
+      self-describing. Prefer that shape over per-call-site labelling
+
+**Verify.** `cd backend && python scripts/benchlib/run_isolation_probe.py` — expect `0`.
+
 #### T1.36 — Supersession detector, rules 1–6 verbatim
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T1.21, T1.27` · `Doc: 08 §2.1` · `Tag: exists-today` · `Gate: G-B`
