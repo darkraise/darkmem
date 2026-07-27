@@ -28,7 +28,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories.graph import PostgresGraphRepository
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, parse_fingerprint
 from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
 from tests.conftest import test_engine
 from tests.test_pipeline_phase1 import (
@@ -43,18 +43,18 @@ class MarkedEmbedder:
     """Embedder stand-in whose vectors say who produced them.
 
     Component 0 carries a per-fingerprint marker and the rest is a one-hot slot
-    per distinct text. Two consequences the tests depend on: a vector read back
-    out of a partition can be attributed to the embedder that produced it, and
-    two distinct names are near-orthogonal, so Phase 4's 0.85 dedup probe cannot
-    quietly canonicalize one test entity onto another.
+    per distinct text; the width comes from the fingerprint's own ``|dims``.
+    Two consequences the tests depend on: a vector read back out of a partition
+    can be attributed to the embedder that produced it, and two distinct names
+    are near-orthogonal, so Phase 4's 0.85 dedup probe cannot quietly
+    canonicalize one test entity onto another.
 
     ``fingerprints`` is consumed one entry per call (the last entry repeats),
     which is how a mid-batch rotation is reproduced without a live model.
     """
 
-    def __init__(self, fingerprints: list[str], dims: int = 8):
+    def __init__(self, fingerprints: list[str]):
         self._fingerprints = list(fingerprints)
-        self.dims = dims
         self.calls = 0
         self.fail_calls: set[int] = set()
         self._slots: dict[str, int] = {}
@@ -63,10 +63,11 @@ class MarkedEmbedder:
         return 0.25 * (self._fingerprints.index(fingerprint) + 1)
 
     def vector(self, value: str, fingerprint: str) -> list[float]:
+        dims = parse_fingerprint(fingerprint)[1]
         slot = self._slots.setdefault(value, len(self._slots))
-        vec = [0.0] * self.dims
+        vec = [0.0] * dims
         vec[0] = self.marker(fingerprint)
-        vec[1 + slot % (self.dims - 1)] = 1.0
+        vec[1 + slot % (dims - 1)] = 1.0
         return vec
 
     async def embed_batch_chunked(self, texts, chunk_size, concurrency):

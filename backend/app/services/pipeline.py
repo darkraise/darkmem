@@ -92,6 +92,11 @@ def _flag_cache_reset() -> None:
 _LOCAL_CLASSIFIER_MODEL_REPO = "darkraise/darkmem-classifier-v1"
 _LOCAL_CLASSIFIER_TTL_SECONDS = 0
 
+# How many times Phase 3 will re-resolve its entity names after the active
+# embedder rotates under it. Two is already pathological; the bound only exists
+# so an embedder that hands back a new fingerprint on every call cannot spin.
+_ENTITY_EMBED_ROTATION_ATTEMPTS = 3
+
 
 def _ml_extra_available() -> bool:
     """Whether the optional CPU-only ``[ml]`` extra (torch + transformers) is
@@ -365,54 +370,75 @@ class ProcessingPipeline:
         one passed in: the active embedder can rotate between Phase 1 and here,
         in which case the new one is registered before anything is written into
         its partition.
+
+        A rotation discards everything resolved so far and restarts, because
+        the hits were read out of the pre-rotation partition and belong to a
+        different embedding space — Phase 4 probes and Phase 5 writes them
+        against the returned fingerprint, so carrying them across would put one
+        embedder's vectors in another's ``vector(N)`` column. That is silent
+        whenever the two embedders share a width. Bounded: an embedder that
+        rotates on every call gets no entity vectors at all rather than a
+        mixed partition or an endless retry.
         """
-        hits, misses, stats = await self._lookup_entity_embeddings(
-            name_lowers, fingerprint, ttl_seconds, use_memory_cache=True,
-        )
-        self._record_entity_cache_stats(stats)
-        logger.info(
-            "Phase 3 cache lookup: %d memory hits, %d db hits, %d misses "
-            "(batch hit rate %.1f%%, run hit rate %.1f%%)",
-            stats.memory_hits, stats.db_hits, stats.misses,
-            stats.hit_rate * 100, self.entity_cache_stats.hit_rate * 100,
-        )
-
-        name_to_embedding = dict(hits)
-        if not misses:
-            return name_to_embedding, fingerprint
-
-        try:
-            new_vectors, new_fp = await self.llm.embed_batch_chunked(
-                misses, chunk_size, concurrency,
+        for _ in range(_ENTITY_EMBED_ROTATION_ATTEMPTS):
+            hits, misses, stats = await self._lookup_entity_embeddings(
+                name_lowers, fingerprint, ttl_seconds, use_memory_cache=True,
             )
-        except Exception as e:
-            logger.warning("Phase 3 entity embedding failed: %s: %s", type(e).__name__, e)
-            return name_to_embedding, fingerprint
+            self._record_entity_cache_stats(stats)
+            logger.info(
+                "Phase 3 cache lookup: %d memory hits, %d db hits, %d misses "
+                "(batch hit rate %.1f%%, run hit rate %.1f%%)",
+                stats.memory_hits, stats.db_hits, stats.misses,
+                stats.hit_rate * 100, self.entity_cache_stats.hit_rate * 100,
+            )
+            if not misses:
+                return dict(hits), fingerprint
 
-        if new_fp != fingerprint:
-            # Active embedder changed between Phase 1 and Phase 3. Register the
-            # new one and use it as the entity-cache key.
             try:
-                await self._register_fingerprint(new_fp)
+                new_vectors, new_fp = await self.llm.embed_batch_chunked(
+                    misses, chunk_size, concurrency,
+                )
             except Exception as e:
                 logger.warning(
-                    "Phase 3 fingerprint registration failed for %s: %s: %s",
-                    new_fp, type(e).__name__, e,
+                    "Phase 3 entity embedding failed: %s: %s", type(e).__name__, e
                 )
-                return name_to_embedding, fingerprint
-            fingerprint = new_fp
+                return dict(hits), fingerprint
 
-        if len(new_vectors) != len(misses):
-            logger.warning(
-                "Phase 3 embedder returned %d vectors for %d names; "
-                "%d entity names will go unembedded this batch",
-                len(new_vectors), len(misses), abs(len(misses) - len(new_vectors)),
-            )
-        new_map = dict(zip(misses, new_vectors))
-        await self._store_entity_embeddings(new_map, fingerprint, use_memory_cache=True)
-        name_to_embedding.update(new_map)
-        logger.info("Phase 3 complete: embedded %d new entity names", len(new_map))
-        return name_to_embedding, fingerprint
+            if new_fp != fingerprint:
+                # Active embedder changed between Phase 1 and Phase 3. Register
+                # the new one and use it as the entity-cache key.
+                try:
+                    await self._register_fingerprint(new_fp)
+                except Exception as e:
+                    logger.warning(
+                        "Phase 3 fingerprint registration failed for %s: %s: %s",
+                        new_fp, type(e).__name__, e,
+                    )
+                    return dict(hits), fingerprint
+                logger.info(
+                    "Phase 3 embedder rotated %s -> %s; re-resolving %d entity "
+                    "names under the new fingerprint",
+                    fingerprint, new_fp, len(name_lowers),
+                )
+                fingerprint = new_fp
+                continue
+
+            if len(new_vectors) != len(misses):
+                logger.warning(
+                    "Phase 3 embedder returned %d vectors for %d names; "
+                    "%d entity names will go unembedded this batch",
+                    len(new_vectors), len(misses), abs(len(misses) - len(new_vectors)),
+                )
+            new_map = dict(zip(misses, new_vectors))
+            await self._store_entity_embeddings(new_map, fingerprint, use_memory_cache=True)
+            logger.info("Phase 3 complete: embedded %d new entity names", len(new_map))
+            return {**hits, **new_map}, fingerprint
+
+        logger.warning(
+            "Phase 3 gave up after %d embedder rotations; this batch gets no "
+            "entity embeddings", _ENTITY_EMBED_ROTATION_ATTEMPTS,
+        )
+        return {}, fingerprint
 
     async def _write_memory(
         self,
