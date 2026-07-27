@@ -198,7 +198,10 @@ async def reindex_repo(
                     r = (await session.execute(
                         select(Repository).where(Repository.id == repo_id)
                     )).scalar_one_or_none()
-                    if r:
+                    # CodePipeline.run() already set and committed its own
+                    # terminal status (including "stale" when it kept a prior
+                    # graph); don't stomp that back to a bare "error" here.
+                    if r and r.status != "stale":
                         r.status = "error"
                         r.status_message = str(e)[:500]
                         await session.commit()

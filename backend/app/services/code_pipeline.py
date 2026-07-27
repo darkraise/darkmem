@@ -126,6 +126,13 @@ class CodePipeline:
 
         self._stats: dict = {}
 
+        # Set by phase_01 when this run must reprocess every file even where
+        # content_hash is unchanged (a genuine first index, a forced `full`
+        # reindex, or a diff failure falling back to one). Phase 03 reads this
+        # to bypass its unchanged-file skip so a `full` reindex actually
+        # rebuilds everything instead of silently no-op'ing on matching hashes.
+        self._force_full: bool = False
+
     async def run(
         self,
         repo_id: UUID,
@@ -311,12 +318,34 @@ class CodePipeline:
             # exception. Roll back so the cleanup runs in a clean transaction.
             await self.session.rollback()
             repo = await self.repo_manager.get(repo_id) or repo
-            repo.status = "error"
-            repo.status_message = str(exc)[:500]
-            try:
-                await self._delete_all_repo_data(repo.id)
-            except Exception:
-                logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
+            cause = f"{type(exc).__name__}: {exc}"[:400]
+
+            # last_indexed_commit is only ever advanced on a full success
+            # (below), so it still names the last graph this repo successfully
+            # built. If one exists, a mid-run failure must never destroy it —
+            # the user's symptom for a wiped graph is "my code search went
+            # empty" with no visible error, and it is unrecoverable short of a
+            # full re-index. Keep serving that graph and label it stale instead.
+            # Only a repo that never finished a first index (nothing to lose)
+            # still gets the destructive cleanup.
+            if repo.last_indexed_commit:
+                repo.status = "stale"
+                repo.status_message = (
+                    f"Indexing failed; still serving the graph from commit "
+                    f"{repo.last_indexed_commit}. Cause: {cause}"
+                )
+                logger.warning(
+                    "Repo %s indexing failed after commit %s; keeping prior "
+                    "graph and marking stale instead of wiping: %s",
+                    repo.name, repo.last_indexed_commit, exc,
+                )
+            else:
+                repo.status = "error"
+                repo.status_message = str(exc)[:500]
+                try:
+                    await self._delete_all_repo_data(repo.id)
+                except Exception:
+                    logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
             await self.session.commit()
 
             # Feature 2: record the exception as an unresolved failure
@@ -358,31 +387,60 @@ class CodePipeline:
         t0 = await self._phase_log("01_file_discovery")
         work_dir = self._work_dir
 
-        if full or not old_sha:
+        if not old_sha:
+            # A genuine first index: there is no prior graph to protect, so the
+            # eager wipe here is safe (it clears only leftover junk from an
+            # earlier, never-completed attempt).
+            self._force_full = True
             self._changed_files = _list_all_files(work_dir)
             self._deleted_files = []
             await self._delete_all_repo_data(self._repo.id)
         else:
-            self._changed_files, self._deleted_files = await _diff_files(work_dir, old_sha, new_sha)
-            # Re-trace callers of changed/deleted files so a renamed or removed
-            # target doesn't leave an unchanged caller's edge missing until the
-            # next full reindex. Computed BEFORE the deleted-file delete loop
-            # below (which drops those edges). Added dependents hit phase_03's
-            # content-hash skip — no structure rewrite, only their calls are
-            # re-resolved in phase_06.
-            targets = self._changed_files + self._deleted_files
-            if targets:
-                deps, total = await _find_dependent_caller_files(
-                    self.session, self._repo.id, targets,
-                )
-                if total > len(deps):
-                    logger.info(
-                        "Incremental reindex: %d dependent caller files exceed cap "
-                        "%d; re-tracing %d (run a full reindex to refresh the rest)",
-                        total, DEPENDENT_RETRACE_CAP, len(deps),
+            used_full = full
+            if not full:
+                try:
+                    self._changed_files, self._deleted_files = await _diff_files(
+                        work_dir, old_sha, new_sha
                     )
-                already = set(targets)
-                self._changed_files.extend(d for d in deps if d not in already)
+                except Exception as exc:
+                    # A failed diff must not degrade into wiping the graph.
+                    # Fall back to a full pass instead: every file is
+                    # reprocessed in place (phase_03's per-file delete+insert,
+                    # not a repo-wide wipe), so a transient git failure costs
+                    # extra work, never data.
+                    logger.warning(
+                        "git diff failed for repo %s (%s -> %s); falling back "
+                        "to a full index instead of wiping the graph: %s",
+                        self._repo.name, old_sha, new_sha, exc,
+                    )
+                    used_full = True
+
+            if used_full:
+                self._force_full = True
+                all_files = _list_all_files(work_dir)
+                self._changed_files = all_files
+                self._deleted_files = await self._find_removed_files(all_files)
+            else:
+                # Re-trace callers of changed/deleted files so a renamed or
+                # removed target doesn't leave an unchanged caller's edge
+                # missing until the next full reindex. Computed BEFORE the
+                # deleted-file delete loop below (which drops those edges).
+                # Added dependents hit phase_03's content-hash skip — no
+                # structure rewrite, only their calls are re-resolved in
+                # phase_06.
+                targets = self._changed_files + self._deleted_files
+                if targets:
+                    deps, total = await _find_dependent_caller_files(
+                        self.session, self._repo.id, targets,
+                    )
+                    if total > len(deps):
+                        logger.info(
+                            "Incremental reindex: %d dependent caller files exceed cap "
+                            "%d; re-tracing %d (run a full reindex to refresh the rest)",
+                            total, DEPENDENT_RETRACE_CAP, len(deps),
+                        )
+                    already = set(targets)
+                    self._changed_files.extend(d for d in deps if d not in already)
 
         for rel_path in self._deleted_files:
             try:
@@ -393,6 +451,21 @@ class CodePipeline:
                 self._stats["errors"].append(f"delete:{rel_path}:{exc}")
 
         self._phase_done("01_file_discovery", t0)
+
+    async def _find_removed_files(self, current_files: list[str]) -> list[str]:
+        """Files this repo has an indexed ``CodeFile`` row for that are no
+        longer present in ``current_files``.
+
+        Used by the full/forced-full path in place of the git-diff deleted
+        list, so a forced full reindex (or a diff-failure fallback) still
+        removes graph data for files that genuinely no longer exist, without
+        needing the old sha at all.
+        """
+        current_set = set(current_files)
+        rows = (await self.session.execute(
+            select(CodeFile.file_path).where(CodeFile.repo_id == self._repo.id)
+        )).scalars().all()
+        return [fp for fp in rows if fp not in current_set]
 
     async def phase_02_parsing(self) -> None:
         t0 = await self._phase_log("02_parsing")
@@ -529,7 +602,11 @@ class CodePipeline:
                 )
             ).scalar_one_or_none()
 
-            if existing and existing.content_hash == parsed["content_hash"]:
+            if (
+                existing
+                and existing.content_hash == parsed["content_hash"]
+                and not self._force_full
+            ):
                 self._all_file_paths.append(fp)
                 if pr.calls:
                     self._all_calls[fp] = pr.calls
