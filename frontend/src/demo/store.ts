@@ -2,7 +2,6 @@ import { create } from "zustand"
 import memoriesData from "./data/memories.json"
 import reposData from "./data/repos.json"
 import jobsData from "./data/jobs.json"
-import llmProfilesData from "./data/llm-profiles.json"
 import { CURATED_MEMORIES } from "./data/memories-curated"
 import {
   CURATED_ARTICLES,
@@ -59,7 +58,6 @@ import type {
   DemoRankArm,
   MaintenanceOpKey,
   Repo,
-  LlmProfile,
 } from "./types"
 
 const initialMemories: DemoMemory[] = [
@@ -193,7 +191,6 @@ const writeArm = (arm: DemoRankArm, key: string, value: number): DemoRankArm =>
 export const useDemoStore = create<DemoStoreState>((set, get) => ({
   memories: initialMemories,
   repos: reposData as unknown as Repo[],
-  llmProfiles: llmProfilesData as unknown as LlmProfile[],
   ...initialActivity(),
   ...initialSettings(),
   stats: initialStats,

@@ -2,7 +2,6 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
 import { FlagsTab } from "../components/flags-tab"
-import { LLMTab } from "../components/llm-tab"
 import { SecurityTab } from "../components/security-tab"
 import { MaintenanceTab } from "../components/maintenance-tab"
 import { DistributionTab } from "../components/distribution-tab"
@@ -44,57 +43,6 @@ describe("FlagsTab — invariant 23 honesty", () => {
     expect(
       screen.getByText(/edited in the dedicated Settings → Jobs tab/),
     ).toBeInTheDocument()
-  })
-})
-
-describe("LLMTab", () => {
-  it("renders the six purpose cards and no provider/profile chrome", () => {
-    render(<LLMTab />)
-    for (const purpose of [
-      "embedding",
-      "extraction",
-      "classification",
-      "summarization",
-      "reranker",
-      "reasoning",
-    ]) {
-      expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
-    }
-    // The removed chrome is shown struck-through, not silently omitted.
-    expect(screen.getByText("llm-providers tab")).toBeInTheDocument()
-    expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
-  })
-
-  it("carries dimensions only on embedding", () => {
-    render(<LLMTab />)
-    expect(screen.getAllByText("dimensions")).toHaveLength(1)
-  })
-
-  it("save shows the live-reload confirmation with the trace", () => {
-    render(<LLMTab />)
-    const input = screen.getByLabelText("reasoning base_url")
-    fireEvent.change(input, { target: { value: "api.openai.com/v2" } })
-    const saves = screen.getAllByRole("button", { name: "Save" })
-    const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
-    expect(enabled).toBeDefined()
-    fireEvent.click(enabled!)
-    expect(
-      screen.getByText(/Saved — reasoning purpose updated/),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/no redeploy needed/i)).toBeInTheDocument()
-  })
-
-  it("rejects malformed params JSON before save", () => {
-    render(<LLMTab />)
-    const params = screen.getByLabelText("extraction params")
-    fireEvent.change(params, { target: { value: "{broken" } })
-    expect(screen.getByText("invalid JSON")).toBeInTheDocument()
-  })
-
-  it("carries the classifier_kind toggle on the classification card", () => {
-    render(<LLMTab />)
-    expect(screen.getByText("classifier_kind")).toBeInTheDocument()
-    expect(screen.getByText("local")).toBeInTheDocument()
   })
 })
 

@@ -6,6 +6,7 @@ import {
   Check,
   FileText,
   Filter,
+  ShieldCheck,
   Tag,
   Trash2,
   type LucideIcon,
@@ -25,14 +26,10 @@ import {
 } from "darkraise-ui/components/toggle-group"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
-import {
-  API_KINDS,
-  embeddingKindWarning,
-  validateParamsJson,
-} from "@/demo/settings"
-import { useDemoLLM } from "@/demo/hooks"
-import { useDemoStore } from "@/demo/store"
-import type { ApiKind, DemoLLMPurpose } from "@/demo/types"
+import { API_KINDS, embeddingKindWarning, validateParamsJson } from "@/demo/settings"
+import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/demo/types"
+import { INERT_LLM_PURPOSES } from "../llm-inert-purposes"
+import { useLLMTabBinding, type LLMTabBinding } from "../use-llm-tab-binding"
 
 const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   embedding: Braces,
@@ -41,6 +38,14 @@ const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   summarization: FileText,
   reranker: ArrowDownUp,
   reasoning: Bot,
+}
+
+const INERT_PURPOSE_ICONS: Record<
+  (typeof INERT_LLM_PURPOSES)[number]["purpose"],
+  LucideIcon
+> = {
+  synthesis: FileText,
+  verification: ShieldCheck,
 }
 
 type Draft = {
@@ -123,8 +128,13 @@ function SegmentedPair({
   )
 }
 
-function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
-  const saveLLMPurpose = useDemoStore((s) => s.saveLLMPurpose)
+function PurposeCard({
+  purpose,
+  binding,
+}: {
+  purpose: DemoLLMPurpose
+  binding: LLMTabBinding
+}) {
   const [draft, setDraft] = useState<Draft>(() => toDraft(purpose))
   const dirty = dirtyFields(purpose, draft)
   const paramsCheck = validateParamsJson(draft.params)
@@ -165,7 +175,7 @@ function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
           break
       }
     }
-    saveLLMPurpose(purpose.purpose, changed)
+    binding.savePurpose(purpose.purpose, changed)
   }
 
   return (
@@ -190,7 +200,9 @@ function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
         </span>
       </div>
 
-      {purpose.purpose === "classification" && <ClassifierKindRow />}
+      {purpose.purpose === "classification" && (
+        <ClassifierKindRow binding={binding} />
+      )}
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         <Field label="model">
@@ -289,7 +301,15 @@ function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
         <p className="text-warning text-sm">{purpose.hint.text}</p>
       )}
 
-      {wide && <CodeBuckets />}
+      {wide &&
+        (binding.buckets ? (
+          <CodeBuckets
+            buckets={binding.buckets}
+            saveCodeBucket={binding.saveCodeBucket!}
+          />
+        ) : (
+          <CodeBucketsUnavailable />
+        ))}
 
       <div className="flex items-center gap-2.5 pt-1">
         <Button
@@ -311,16 +331,53 @@ function PurposeCard({ purpose }: { purpose: DemoLLMPurpose }) {
   )
 }
 
-function ClassifierKindRow() {
-  const kind = useDemoLLM().classifier_kind
-  const setClassifierKind = useDemoStore((s) => s.setClassifierKind)
+function InertPurposeCard({
+  purpose,
+}: {
+  purpose: (typeof INERT_LLM_PURPOSES)[number]
+}) {
+  const Icon = INERT_PURPOSE_ICONS[purpose.purpose]
+  return (
+    <div className="border-border bg-card/60 flex flex-col gap-2.5 rounded-lg border border-dashed p-4 opacity-90">
+      <div className="flex flex-wrap items-center gap-2">
+        <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
+        <span className="font-mono text-sm font-semibold">
+          {purpose.purpose}
+        </span>
+        <HelpTip label={`About the ${purpose.purpose} purpose`}>
+          {purpose.role}
+        </HelpTip>
+        <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
+          inert
+        </span>
+      </div>
+      <p className="text-muted-foreground text-sm">
+        Seeded row, resolvable, no consumer yet — activates with{" "}
+        <span className="font-mono">{purpose.activatesWith}</span>. Rendered
+        rather than omitted: a hidden inert purpose reads as "not
+        configured", the same misreading a dormant w_* arm at zero would
+        cause if it were left off the Flags tab.
+      </p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <Field label="model">
+          <Input value={purpose.model} disabled className="font-mono" />
+        </Field>
+        <Field label="api_kind">
+          <Input value={purpose.api_kind} disabled className="font-mono" />
+        </Field>
+      </div>
+    </div>
+  )
+}
+
+function ClassifierKindRow({ binding }: { binding: LLMTabBinding }) {
   return (
     <div className="border-primary/40 bg-primary/5 flex flex-wrap items-center gap-2.5 rounded-md border border-dashed px-2.5 py-2">
       <span className="font-mono text-sm">classifier_kind</span>
       <SegmentedPair
-        value={kind}
+        value={binding.classifierKind}
         options={["llm", "local"]}
-        onChange={(v) => setClassifierKind(v as "llm" | "local")}
+        onChange={(v) => binding.setClassifierKind(v as "llm" | "local")}
         label="classifier_kind"
       />
       <HelpTip label="About classifier_kind">
@@ -331,9 +388,13 @@ function ClassifierKindRow() {
   )
 }
 
-function CodeBuckets() {
-  const buckets = useDemoLLM().buckets
-  const saveCodeBucket = useDemoStore((s) => s.saveCodeBucket)
+function CodeBuckets({
+  buckets,
+  saveCodeBucket,
+}: {
+  buckets: DemoCodeBucket[]
+  saveCodeBucket: NonNullable<LLMTabBinding["saveCodeBucket"]>
+}) {
   return (
     <div className="border-border flex flex-col gap-2 border-t border-dashed pt-2.5">
       <div className="flex items-center gap-1.5">
@@ -372,9 +433,22 @@ function CodeBuckets() {
   )
 }
 
-function SaveConfirmation() {
-  const lastSave = useDemoLLM().last_save
-  const dismiss = useDemoStore((s) => s.dismissLLMSave)
+function CodeBucketsUnavailable() {
+  return (
+    <div className="border-border text-muted-foreground flex flex-col gap-1 border-t border-dashed pt-2.5 text-sm">
+      <span className="font-mono text-[10px] tracking-wide uppercase">
+        code-summarization buckets
+      </span>
+      <span>
+        not yet exposed via the API — there is no backend row for these,
+        in either mode.
+      </span>
+    </div>
+  )
+}
+
+function SaveConfirmation({ binding }: { binding: LLMTabBinding }) {
+  const lastSave = binding.lastSave
   if (!lastSave) return null
   return (
     <div className="flex flex-col gap-2.5">
@@ -390,7 +464,7 @@ function SaveConfirmation() {
             requests — no redeploy needed.
           </span>
         </div>
-        <Button size="sm" variant="ghost" onClick={dismiss}>
+        <Button size="sm" variant="ghost" onClick={binding.dismissSave}>
           Dismiss
         </Button>
       </div>
@@ -440,6 +514,9 @@ function RemovedChrome() {
           ml_profile_ref dropped from every purpose row. A profile picker over
           a schema with no profiles table would be scaffolding rendered as a
           feature — the honest move is deletion, not a greyed-out control.
+          The dead LLMProvidersPanel / LLMProfilesPanel / MLProfilesPanel
+          components themselves are gone from the source tree, not merely
+          unmounted.
         </HelpTip>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">
@@ -467,13 +544,15 @@ function RemovedChrome() {
 }
 
 export function LLMTab() {
-  const { purposes } = useDemoLLM()
+  const binding = useLLMTabBinding()
+
   return (
     <div className="space-y-4">
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
-          Six inline purpose cards — each a self-contained connection binding.
-          A save live-reloads the orchestrator; no redeploy, no LLM_* env vars.
+          Six inline purpose cards — each a self-contained connection binding
+          — plus the two Tier-C purposes seeded inert. A save live-reloads
+          the orchestrator; no redeploy, no LLM_* env vars.
         </span>
         <HelpTip label="About the LLM tab">
           Each purpose is one row with no provider/profile indirection. Every
@@ -483,10 +562,13 @@ export function LLMTab() {
           effect without a redeploy.
         </HelpTip>
       </div>
-      <SaveConfirmation />
+      <SaveConfirmation binding={binding} />
       <div className="grid gap-3.5 sm:grid-cols-2">
-        {purposes.map((purpose) => (
-          <PurposeCard key={purpose.purpose} purpose={purpose} />
+        {binding.purposes.map((purpose) => (
+          <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
+        ))}
+        {INERT_LLM_PURPOSES.map((purpose) => (
+          <InertPurposeCard key={purpose.purpose} purpose={purpose} />
         ))}
       </div>
       <RemovedChrome />

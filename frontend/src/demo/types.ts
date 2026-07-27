@@ -1,9 +1,8 @@
 export type { Memory, MemoryStatus } from "@/hooks/api"
 export type { Repo } from "@/hooks/api"
 export type { Job } from "@/hooks/api"
-export type { LlmProfile } from "@/hooks/api"
 
-import type { Memory, MemoryStatus, Repo, LlmProfile } from "@/hooks/api"
+import type { Memory, MemoryStatus, Repo } from "@/hooks/api"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
 
 export interface DashboardStats {
@@ -990,7 +989,6 @@ export interface DemoStoreState {
   memories: DemoMemory[]
   repos: Repo[]
   jobs: DemoJob[]
-  llmProfiles: LlmProfile[]
   stats: DashboardStats
   events: ActivityEvent[]
   contributions: ContributionDay[]
