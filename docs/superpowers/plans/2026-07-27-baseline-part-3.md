@@ -63,7 +63,7 @@ Both were located by measurement while scoping, and both are the kind of call th
 
 **Why first:** `select(Memory)` emits every mapped column, so while `models/memory.py` names a column that no longer exists, *any* test touching a memory fails. This one file is ~73 of the 108 failures.
 
-- [ ] **Step 1: Run the targeted test to see the current failure**
+- [x] **Step 1: Run the targeted test to see the current failure**
 
 ```bash
 cd /root/repositories/darkmem/backend
@@ -75,7 +75,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_models.py -
 
 Expected: FAIL with `column memories.llm_classified_type does not exist`.
 
-- [ ] **Step 2: Rename the four ORM attributes**
+- [x] **Step 2: Rename the four ORM attributes**
 
 In `backend/app/models/memory.py`, replace lines 51-54:
 
@@ -88,7 +88,7 @@ In `backend/app/models/memory.py`, replace lines 51-54:
 
 `updated_at` keeps its `onupdate=func.now()` or loses it — either is correct now that `touch_updated_at` is authoritative in SQL (inventory F-20), and the model mirrors the SQL either way. Leave it; removing it is not this task's business.
 
-- [ ] **Step 3: Run the test to confirm the bulk failure is gone**
+- [x] **Step 3: Run the test to confirm the bulk failure is gone**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_models.py tests/test_repositories.py -q
@@ -96,7 +96,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_models.py t
 
 Expected: PASS. If `test_repositories.py` still fails, read the error — it should no longer mention `llm_`.
 
-- [ ] **Step 4: Keep the wire contract stable at the response builders**
+- [x] **Step 4: Keep the wire contract stable at the response builders**
 
 `backend/app/schemas/memory.py:49-52` is the **wire** shape and does **not** change — the field names stay `llm_classified_type`, `llm_summary`, `llm_emotions`, `llm_flags`. Only the values feeding them move. In `backend/app/api/routes/memories.py`, replace lines 29-32:
 
@@ -116,7 +116,7 @@ and in `backend/app/utils/serialization.py`, replace lines 16-19:
         "llm_flags": memory.flags,
 ```
 
-- [ ] **Step 5: Move the pipeline's enrichment writes**
+- [x] **Step 5: Move the pipeline's enrichment writes**
 
 In `backend/app/services/pipeline.py`, the `payload[...]` keys at lines 360-363 feed the **websocket** payload, which is also a wire contract — leave those four keys named `llm_*`. Change only the ORM writes at lines 379-382:
 
@@ -127,7 +127,7 @@ In `backend/app/services/pipeline.py`, the `payload[...]` keys at lines 360-363 
                                 mem_record.flags = llm_classification.get("flags") or None
 ```
 
-- [ ] **Step 6: Update the raw-SQL test assertions**
+- [x] **Step 6: Update the raw-SQL test assertions**
 
 `tests/test_merged_extraction.py` asserts on the columns directly. At line 119 the `text(...)` query selects the old names; change the projection and the attribute reads:
 
@@ -137,7 +137,7 @@ In `backend/app/services/pipeline.py`, the `payload[...]` keys at lines 360-363 
 
 and at lines 166-168 and 216-217, `row.llm_classified_type` → `row.classified_type`, `row.llm_summary` → `row.summary`, `row.llm_emotions` → `row.emotions`.
 
-- [ ] **Step 7: Run the affected suites**
+- [x] **Step 7: Run the affected suites**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest \
@@ -153,7 +153,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest -q 2>&1 | tail -3
 
 Expected: roughly **35 failures remain** (was 108) — the `llm_providers` and `audit_log` groups, which Tasks 2 and 3 own. Record the real number; if it is materially different, stop and find out why before continuing.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/app/models/memory.py backend/app/schemas/memory.py \
@@ -189,7 +189,7 @@ Task: T0.12c"
 
 **Scope note the implementer must not widen:** this task keeps an existing security feature alive on the new substrate. It does **not** build the journaling convention, the `/events` REST surface, or the calendar — those are T1.07 and T1.08.
 
-- [ ] **Step 1: Write the failing test for the writer**
+- [x] **Step 1: Write the failing test for the writer**
 
 Create `backend/tests/test_events_writer.py`:
 
@@ -240,7 +240,7 @@ async def test_record_event_defaults_payload_to_empty_object(session):
     assert payload == {}
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_events_writer.py -q
@@ -248,7 +248,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_events_writ
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'app.services.events'`.
 
-- [ ] **Step 3: Write the writer**
+- [x] **Step 3: Write the writer**
 
 Create `backend/app/services/events.py`:
 
@@ -304,7 +304,7 @@ async def record_event(
 
 Replace the `__import__("json")` with a module-level `import json` and `json.dumps(...)` — it is written inline here only to keep the snippet self-contained; the real file imports json at the top.
 
-- [ ] **Step 4: Run the test and confirm it passes**
+- [x] **Step 4: Run the test and confirm it passes**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_events_writer.py -q
@@ -312,7 +312,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_events_writ
 
 Expected: 2 passed.
 
-- [ ] **Step 5: Point the audit repository at `events`**
+- [x] **Step 5: Point the audit repository at `events`**
 
 In `backend/app/repositories/relational.py`, replace `PostgresAuditRepository.log` (lines 245-248):
 
@@ -330,7 +330,7 @@ In `backend/app/repositories/relational.py`, replace `PostgresAuditRepository.lo
 
 Import `record_event` from `app.services.events` at the top of the file, and delete the now-unused `AuditLog` import.
 
-- [ ] **Step 6: Move the auth writes and the audit read**
+- [x] **Step 6: Move the auth writes and the audit read**
 
 In `backend/app/api/routes/auth.py`, replace each `session.add(AuditLog(action=..., details=...))` (lines 40, 105, 120, 156) with an awaited `record_event(session, event_type=..., object_type="system", payload=...)`, and rewrite the `select(AuditLog)` at line 209 as a select over `events` filtered on `event_type LIKE 'auth\\_%' OR event_type LIKE 'setup\\_%'`, ordered by `created_at DESC`. Keep the endpoint's response shape identical — it is an operator-facing contract and the tests assert on it. Delete the `AuditLog` import.
 
@@ -347,7 +347,7 @@ In `backend/app/api/routes/analytics.py:90-92` and `backend/app/services/analyti
         )
 ```
 
-- [ ] **Step 7: Delete the model**
+- [x] **Step 7: Delete the model**
 
 ```bash
 git rm backend/app/models/audit.py
@@ -355,7 +355,7 @@ git rm backend/app/models/audit.py
 
 Remove `from .audit import AuditLog` (line 3) and `"AuditLog",` (line 21) from `backend/app/models/__init__.py`. Update `tests/test_audit_endpoint.py` to import nothing from `app.models.audit` and to seed rows through `record_event` instead.
 
-- [ ] **Step 8: Run the affected suites**
+- [x] **Step 8: Run the affected suites**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest \
@@ -365,7 +365,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest \
 
 Expected: all pass. `rg -n 'AuditLog|audit_log' backend/app/` must return **no matches**.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A backend/app backend/tests
@@ -406,7 +406,7 @@ Task: T0.12c"
 
 **This is the task that most tempts scope creep.** T1.01 still owns the *designed* behaviour — one-query resolution asserted by a query-counting test, and the wizard's flattened finalize. This task only removes the dead indirection so the suite can run. If a step here starts designing purpose resolution, stop: that is T1.01.
 
-- [ ] **Step 1: Confirm the current failure**
+- [x] **Step 1: Confirm the current failure**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_llm_pipeline_config.py -q 2>&1 | tail -5
@@ -414,7 +414,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_llm_pipelin
 
 Expected: errors mentioning `relation "llm_providers" does not exist`.
 
-- [ ] **Step 2: Cut the three model classes**
+- [x] **Step 2: Cut the three model classes**
 
 In `backend/app/models/llm_config.py`, delete the `LLMProvider`, `LLMProfile` and `MLProfile` classes entirely, and on `LLMPurposeConfigRow` delete the `provider_id`, `profile_id` and `ml_profile_id` columns and the `provider` column, then add:
 
@@ -424,7 +424,7 @@ In `backend/app/models/llm_config.py`, delete the `LLMProvider`, `LLMProfile` an
 
 Also delete the phantom `UniqueConstraint("purpose", name="uq_llm_purpose_configs_purpose")` from `__table_args__` — inventory §9.1 records that it was **never created in the database**, so removing it changes nothing and stops the next reader believing it exists.
 
-- [ ] **Step 3: Delete the registry route module**
+- [x] **Step 3: Delete the registry route module**
 
 ```bash
 git rm backend/app/api/routes/config_llm_registry.py
@@ -432,19 +432,19 @@ git rm backend/app/api/routes/config_llm_registry.py
 
 Remove its import and `include_router` call from `backend/app/main.py`. This is 630 lines of provider/profile/ml-profile management API whose backing tables no longer exist; doc 04 §7 removes "the profile-management UI" with them.
 
-- [ ] **Step 4: Collapse the service-layer resolution**
+- [x] **Step 4: Collapse the service-layer resolution**
 
 In `backend/app/services/config.py`, delete `get_llm_providers` and `get_llm_profiles` and the `LLMProvider` / `LLMProfileRow` imports, and make the purpose loader read `LLMPurposeConfigRow` alone — each row already carries `model`, `base_url`, `api_key`, `api_kind`, `params`, `dimensions` and `reasoning` inline. Update the module docstring at lines 8-9, which still advertises the two deleted functions.
 
-- [ ] **Step 5: Strip the indirection from the config and setup routes**
+- [x] **Step 5: Strip the indirection from the config and setup routes**
 
 In `backend/app/api/routes/config.py`, delete the `provider_id_by_name` / `profile_id_by_name` / `ml_profile_id_by_name` lookups (lines 128-133) and the `ref` resolution that writes them onto the row (lines 163-185); a purpose update now assigns the inline fields directly. In `backend/app/api/routes/setup.py`, delete the provider and profile seeding loops (lines 384-416) and have the finalize step write the six purpose rows straight from `app/services/llm_seed.py`.
 
-- [ ] **Step 6: Update the two test modules**
+- [x] **Step 6: Update the two test modules**
 
 `tests/test_llm_pipeline_config.py`'s `seeded_llm` fixture seeds `DEFAULT_PROVIDERS` + `DEFAULT_PROFILES`; delete the fixture and the six tests that exercise the providers/profiles UI (`test_llm_providers_seed_includes_known_vendors`, `test_llm_profiles_seed_covers_all_purposes`, `test_test_provider_rejects_embedding_when_unsupported`, `test_test_provider_ollama_strips_v1_for_native_path`, `test_provider_models_short_circuits_when_cloud_key_missing`, `test_test_provider_short_circuits_when_cloud_key_missing`) — they test a surface the target does not have. Keep every test that covers purpose settings, feature-flag toggles and the prompt override. In `tests/test_setup_route.py`, drop the provider/profile assertions from the four finalize tests and assert instead that six `llm_purpose_configs` rows exist with inline connection fields.
 
-- [ ] **Step 7: Run the affected suites**
+- [x] **Step 7: Run the affected suites**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest \
@@ -453,7 +453,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest \
 
 Expected: all pass, no errors. Then `rg -n 'LLMProvider|MLProfile|provider_id|ml_profile_id' backend/app/` must return no matches outside comments.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A backend/app backend/tests
@@ -488,7 +488,7 @@ Task: T0.12c"
 
 **These are registry entries, not migration DDL** (inventory §6). Doc 19 §2 rejects static child-table DDL because the shape is fingerprint-parameterised. **Nothing in this task touches `0001_baseline.py`.**
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/test_partition_templates.py`:
 
@@ -557,7 +557,7 @@ def test_no_migration_creates_a_child_table():
             assert f"CREATE TABLE IF NOT EXISTS {parent}__" not in src
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_partition_templates.py -q
@@ -565,7 +565,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_partition_t
 
 Expected: FAIL — `_TABLE_TEMPLATES` holds four parents, not eight.
 
-- [ ] **Step 3: Add the four templates**
+- [x] **Step 3: Add the four templates**
 
 In `backend/app/services/embedder_registry.py`, add to `_TABLE_TEMPLATES`:
 
@@ -630,7 +630,7 @@ and to `_AUX_INDEXES`:
     ],
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_partition_templates.py -q
@@ -640,7 +640,7 @@ Expected: 6 passed.
 
 **Known consequence to check, not to fix here:** `block_embeddings` references `blocks(id)`, and `blocks` does not exist until T0.13. Registering a fingerprint before T0.13 will therefore fail on that one template. Run `tests/test_reembed_absent_partition.py` and `tests/test_embedder_registry*.py`; if they fail on a missing `blocks` relation, **stop and record it** — the fix is T0.13's ordering, not a template edit.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/embedder_registry.py backend/tests/test_partition_templates.py
@@ -673,7 +673,7 @@ Task: T0.12c"
 
 Inventory §3.2 records the recommendation among doc 04 §10's three stated forms: the **partial** `WHERE status='active' AND is_archived=false`, because the pushed-down predicate's overwhelmingly common shape is "live rows in this project" and the partial index is the smallest of the three. The two full composites stay available if a later measurement wants `status` values other than `'active'`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/test_pushdown_index.py`:
 
@@ -705,7 +705,7 @@ async def test_pushdown_index_exists_and_is_partial(session):
     assert "is_archived = false" in row
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 ```bash
 TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_pushdown_index.py -q
@@ -713,7 +713,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_pushdown_in
 
 Expected: FAIL on `the pushdown support index is missing`.
 
-- [ ] **Step 3: Add the index to the baseline**
+- [x] **Step 3: Add the index to the baseline**
 
 In `backend/migrations/versions/0001_baseline.py`, immediately after the `ix_memories_fts` statement:
 
@@ -730,7 +730,7 @@ In `backend/migrations/versions/0001_baseline.py`, immediately after the `ix_mem
     )
 ```
 
-- [ ] **Step 4: Rebuild the scratch database and run the test**
+- [x] **Step 4: Rebuild the scratch database and run the test**
 
 The baseline is edited in place, so it must be re-run from empty — never patched by hand:
 
@@ -744,7 +744,7 @@ TEST_DATABASE_URL=$CHECK_URL ./.venv/bin/python -m pytest tests/test_pushdown_in
 
 Expected: 1 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/migrations/versions/0001_baseline.py backend/tests/test_pushdown_index.py
@@ -770,7 +770,7 @@ Task: T0.12c"
 - Consumes: everything above.
 - Produces: the measured evidence T0.13, T0.14 and ultimately G-A depend on.
 
-- [ ] **Step 1: Rebuild from the baseline alone and run the whole suite**
+- [x] **Step 1: Rebuild from the baseline alone and run the whole suite**
 
 ```bash
 cd /root/repositories/darkmem/backend
@@ -783,7 +783,7 @@ TEST_DATABASE_URL=$CHECK_URL timeout 1500 ./.venv/bin/python -m pytest -q 2>&1 |
 
 Expected: **0 failed**. The pre-work reading was `108 failed, 500 passed, 1 skipped, 6 errors`; the target is every one of those closed, with the passed count risen by roughly the failures fixed minus the tests Task 3 deliberately deleted. **Record the real numbers.** A task deleted a test only if this plan named it; if the passed count is lower than expected, find out which test vanished and why before claiming green.
 
-- [ ] **Step 2: Assert the single head**
+- [x] **Step 2: Assert the single head**
 
 ```bash
 cd /root/repositories/darkmem/backend
@@ -794,7 +794,7 @@ ls migrations/versions/
 
 Expected: exactly one head (`0001 (head)`), one revision in the history, and `0001_baseline.py` as the only file. The six brownfield revisions went in T0.12a and nothing has re-chained behind the baseline since.
 
-- [ ] **Step 3: Re-verify the inventory's mechanical checks still hold**
+- [x] **Step 3: Re-verify the inventory's mechanical checks still hold**
 
 ```bash
 cd /root/repositories/darkmem/docs/planning
@@ -803,7 +803,7 @@ cd /root/repositories/darkmem/docs/planning
 
 Expected: `PLAN GREEN — 205 tasks, all structural claims verified`.
 
-- [ ] **Step 4: Record what this task discovered as findings**
+- [x] **Step 4: Record what this task discovered as findings**
 
 Append to `docs/planning/baseline-schema-inventory.md` §10, tiered per runbook §5:
 
@@ -812,7 +812,7 @@ Append to `docs/planning/baseline-schema-inventory.md` §10, tiered per runbook 
 - **T0.12c deleted `config_llm_registry.py` and six provider/profile tests.** T1.01's remaining scope is one-query resolution plus the wizard finalize; T1.55's provider/profile UI has no backing surface. **Tier 2.**
 - Any Task-4 finding about `block_embeddings` referencing `blocks` before T0.13 lands it.
 
-- [ ] **Step 5: Commit and hand off**
+- [x] **Step 5: Commit and hand off**
 
 ```bash
 cd /root/repositories/darkmem
