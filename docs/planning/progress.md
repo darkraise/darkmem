@@ -43,13 +43,13 @@ and the Note says so. That rule is the whole point of this file.
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
-| E1 — Engine core | 75 | 72 | 0 | 0 | 3 | 0 | G-B open |
+| E1 — Engine core | 75 | 71 | 0 | 0 | 4 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **182** | **0** | **0** | **3** | **20** | |
+| **Total** | **205** | **181** | **0** | **0** | **4** | **20** | |
 
 ---
 
@@ -82,7 +82,7 @@ and the Note says so. That rule is the whole point of this file.
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
-| T1.01 | Flatten `llm_purpose_configs` to inline rows | M | Opus | high | claude/e1-engine-core | wip | | | |
+| T1.01 | Flatten `llm_purpose_configs` to inline rows | L | Opus | high | claude/e1-engine-core | review | f7ade9f | — (Fable adversarial review owed: Opus tier + G-B) | Re-sized L→M (Phase 0 had done the mechanical work). One-query resolution asserted by a statement-counting test, mutation-checked (per-purpose resolution fails 2 tests). **F-10 decided: `provider` DROPPED** end-to-end — column, ORM, dataclass, both wire schemas, frontend interface, purpose card, benchlib seed; nothing dispatched on it and the wizard wrote it as a verbatim copy of `api_kind`. Two RED gate rounds caught what grep missed: `LLMPurposeCard.tsx` (5 sites) and the benchlib harness (33 failures the backend floor cannot see). Verify: 13 passed. Gate GREEN exit 0 — backend 764 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 unchanged (0.925/0.955/0.865/0.892) |
 | T1.02 | One shared `httpx.AsyncClient` with atomic live reload | M | Sonnet | high | | todo | | | |
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | high | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | high | | todo | | | |
