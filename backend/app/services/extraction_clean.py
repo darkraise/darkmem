@@ -149,6 +149,9 @@ _NOISE_NAMES: frozenset[str] = frozenset({
     # "auth", "filesystem", "process_batch") and bare directory parts.
     "auth", "filesystem", "process_batch", "config",
     "request", "response", "session", "context", "scope",
+    # Host stem left behind when the dotted-name collapse eats a bare
+    # hostname ('www.example.com' -> 'www').
+    "www",
 })
 
 _TRAILING_SUFFIXES = re.compile(
@@ -174,6 +177,13 @@ _FILENAME_PATTERN = re.compile(
 
 # URL paths starting with a slash.
 _URL_PATH_PATTERN = re.compile(r"^/[\w/\.\-_]*(?:\?[\w&=\.\-]*)?$")
+
+# Absolute URLs. Matched on the scheme prefix rather than the whole string so a
+# query string or fragment cannot smuggle one past. Without this the chain drops
+# them only by accident, when ``_filter_hallucinated_names`` happens to find a
+# dot-stripped token absent from the source; a dotless authority
+# (``http://localhost:8000/api``) survives that check and reaches the graph.
+_URL_ABSOLUTE_PATTERN = re.compile(r"^[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
 
 # Environment variable names: all-caps with at least one underscore and 4+ chars.
 _ENV_VAR_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*_[A-Z0-9_]+$")
@@ -372,6 +382,8 @@ def _filter_noise(entities: list[dict]) -> list[dict]:
         if _FILENAME_PATTERN.match(name):
             continue
         if _URL_PATH_PATTERN.match(name_stripped):
+            continue
+        if _URL_ABSOLUTE_PATTERN.match(name_stripped):
             continue
         if _ENV_VAR_PATTERN.match(name_stripped):
             continue
@@ -2140,6 +2152,7 @@ __all__ = [
     "_DOTTED_METHOD",
     "_FILENAME_PATTERN",
     "_URL_PATH_PATTERN",
+    "_URL_ABSOLUTE_PATTERN",
     "_ENV_VAR_PATTERN",
     "_VALUE_PATTERN",
     "_HARDWARE_TOKENS",

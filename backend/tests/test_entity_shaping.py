@@ -11,6 +11,7 @@ sequence itself is pinned at the bottom of the file.
 import pytest
 
 from app.services.extraction_clean import (
+    _filter_noise,
     _normalize_names,
 )
 
@@ -111,3 +112,89 @@ def test_normalize_names_does_not_mutate_its_input():
 def test_normalize_names_carries_unrelated_keys_forward(payload):
     out = _normalize_names([payload])
     assert out[0]["properties"] == {"display_name": "PostgreSQL"}
+
+
+# ── _filter_noise ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", [
+    "value", "result", "config", "framework", "session", "codebase",
+])
+def test_filter_noise_drops_a_generic_noun(name):
+    assert _filter_noise([{"name": name, "type": "concept"}]) == []
+
+
+@pytest.mark.parametrize("name", [
+    "pipeline.py", "backend/app/main.py", "docker-compose.yml",
+    "requirements.lock.txt", "schema.sql",
+])
+def test_filter_noise_drops_a_filename(name):
+    assert _filter_noise([{"name": name, "type": "artifact"}]) == []
+
+
+@pytest.mark.parametrize("name", [
+    "/api/v1/memories",
+    "/mcp",
+    "/api/v1/jobs/repo_sync/config?dry_run=true",
+    "https://example.com/guide",
+    "http://api.internal:8080/hooks",
+    "http://localhost:8000/api",
+    "postgresql+asyncpg://darkmem@localhost:5433/darkmem",
+])
+def test_filter_noise_drops_a_url(name):
+    assert _filter_noise([{"name": name, "type": "artifact"}]) == []
+
+
+def test_filter_noise_keeps_a_scheme_word_that_is_not_a_url():
+    # 'https' alone is a protocol entity; only the '://' form is a URL.
+    out = _filter_noise([{"name": "https", "type": "protocol"}])
+    assert _names(out) == ["https"]
+
+
+@pytest.mark.parametrize("name", [
+    "DATABASE_URL", "MCP_ALLOWED_HOSTS", "JWT_SECRET", "DB_PASSWORD",
+])
+def test_filter_noise_drops_an_env_var(name):
+    assert _filter_noise([{"name": name, "type": "concept"}]) == []
+
+
+@pytest.mark.parametrize("name", [
+    "2026-05-12", "2026/4/23", "2026-04", "2026", "23/04/2026",
+    "v2.0", "1.2.3", "2.0.0-beta", "30s", "512MB", "30%", "1,000.5",
+])
+def test_filter_noise_drops_a_value_literal(name):
+    assert _filter_noise([{"name": name, "type": "concept"}]) == []
+
+
+@pytest.mark.parametrize("name", ["@darkraise/ui", "$HOME"])
+def test_filter_noise_drops_a_sigil_prefixed_name(name):
+    assert _filter_noise([{"name": name, "type": "tool"}]) == []
+
+
+def test_filter_noise_drops_a_phrase_opening_with_an_article():
+    out = _filter_noise([
+        {"name": "the pipeline", "type": "concept"},
+        {"name": "this outage", "type": "event"},
+        {"name": "hybrid search", "type": "concept"},
+    ])
+    assert _names(out) == ["hybrid search"]
+
+
+def test_filter_noise_keeps_real_entities():
+    given = [
+        {"name": "postgres", "type": "database"},
+        {"name": "pgvector", "type": "tool"},
+        {"name": "february outage", "type": "event"},
+    ]
+    assert _names(_filter_noise(given)) == ["postgres", "pgvector", "february outage"]
+
+
+def test_filter_noise_drops_the_host_stem_left_by_a_collapsed_hostname():
+    out = _filter_noise(_normalize_names([{"name": "www.example.com", "type": "artifact"}]))
+    assert out == []
+
+
+def test_filter_noise_does_not_mutate_its_input():
+    given = [{"name": "value", "type": "concept"}, {"name": "postgres", "type": "database"}]
+    _filter_noise(given)
+    assert len(given) == 2
