@@ -324,15 +324,18 @@ async def memory_batch_add(
 @mcp.tool(
     description="Ask a question and get an answer based on stored memories (RAG). Searches semantically for relevant memories, then uses an LLM to synthesize an answer with source citations."
 )
-async def memory_reason(question: str, limit: int = 10) -> str:
+async def memory_reason(
+    question: str, limit: int = 10, project: str | None = None,
+) -> str:
     """
     Args:
         question: The question to answer using stored knowledge.
         limit: Maximum number of source memories to consider (default: 10).
+        project: Optional project to restrict the reasoning context to.
     """
     limit = _clamp_limit(limit, default=10)
     async with _memory_service_context() as service:
-        result = await service.reason(question, limit=limit)
+        result = await service.reason(question, limit=limit, project=project)
         return json.dumps(result)
 
 

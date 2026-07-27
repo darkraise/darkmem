@@ -171,11 +171,13 @@ class HybridSearchService:
         filters = ""
         params: dict = {"vec": str(vector), "limit": limit}
         if repo_id is not None:
-            filters += " AND repo_id = :repo_id"
-            params["repo_id"] = repo_id
+            filters += " AND repo_id = CAST(:repo_id AS uuid)"
+            params["repo_id"] = str(repo_id)
         if language is not None:
             filters += " AND language = :language"
             params["language"] = language
+        if filters:
+            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
 
         result = await self.session.execute(
             text(f"""
@@ -189,7 +191,7 @@ class HybridSearchService:
             """),
             params,
         )
-        return [
+        rows = [
             {
                 "id": str(row.id), "repo_id": str(row.repo_id),
                 "file_path": row.file_path, "symbol_name": row.symbol_name,
@@ -199,6 +201,7 @@ class HybridSearchService:
             }
             for row in result
         ]
+        return rows[:limit]
 
     @staticmethod
     def _rrf_fuse(

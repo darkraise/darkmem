@@ -501,11 +501,13 @@ class PostgresVectorRepository:
         filters = ""
         params: dict = {"vec": str(vector), "limit": limit}
         if repo_id is not None:
-            filters += " AND repo_id = :repo_id"
-            params["repo_id"] = repo_id
+            filters += " AND repo_id = CAST(:repo_id AS uuid)"
+            params["repo_id"] = str(repo_id)
         if language is not None:
             filters += " AND language = :language"
             params["language"] = language
+        if filters:
+            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
 
         result = await self.session.execute(
             text(f"""
@@ -525,7 +527,7 @@ class PostgresVectorRepository:
             """),
             params,
         )
-        return [
+        rows = [
             {
                 "id": UUID(str(row.id)),
                 "repo_id": UUID(str(row.repo_id)),
@@ -539,6 +541,7 @@ class PostgresVectorRepository:
             }
             for row in result
         ]
+        return rows[:limit]
 
     async def delete_code_chunks_by_repo(self, repo_id: UUID):
         rows = (

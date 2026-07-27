@@ -236,6 +236,7 @@ class PostgresGraphRepository:
         entity_type: str | None = None,
         name_query: str | None = None,
         limit: int = 50,
+        scope: MemoryFilter | None = None,
     ) -> list[dict]:
         conditions = []
         params: dict = {"limit": limit}
@@ -247,6 +248,9 @@ class PostgresGraphRepository:
             conditions.append("name ILIKE :name_query ESCAPE '\\'")
             escaped = name_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             params["name_query"] = f"%{escaped}%"
+        if scope is not None:
+            params.update(scope.params())
+            conditions.append(scope.asserted_by_sql("memory_ids"))
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         result = await self.session.execute(
