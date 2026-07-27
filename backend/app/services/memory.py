@@ -15,7 +15,7 @@ from app.repositories.relational import (
 )
 from app.repositories.vector import MemoryFilter
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
-from app.services import buffer_flush, memory_buffer
+from app.services import buffer_flush, memory_buffer, repo_provision
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
@@ -119,6 +119,8 @@ class MemoryService:
                 "create", buffered_memory_id(row), api_key_id, {"source": data.source},
             )
 
+        await self._handoff_repo_hints(rows, entries)
+
         # Commit before acking (invariant 11, doc 05 §2.2): a crash between
         # the insert and the ack must never leave a caller holding a "200 OK"
         # for a capture that turns out not to durably exist.
@@ -152,6 +154,41 @@ class MemoryService:
             CaptureResult(ack=ack, memory=memories_by_id.get(ack.id))
             for ack in acks
         ]
+
+    async def _handoff_repo_hints(
+        self, rows: list[MemoryBuffer], entries: list[MemoryCreate],
+    ) -> None:
+        """Validate-and-enqueue for any repository hint this batch carries
+        (doc 05 §2.4), at accept rather than at flush.
+
+        Accept is where doc 18 §6's sequence puts the gate, and it is the one
+        place every front door already funnels through, so REST and MCP get
+        one gate instead of two. It also keeps the handoff writes in the same
+        transaction as the buffer row the caller is being acked for: the
+        registry row and the refusal event become durable exactly when the
+        capture does, instead of minutes later at the flush's mercy — and a
+        `wait_process` caller does not get a different provisioning outcome
+        from a buffered one. The gate itself is pure parsing plus one config
+        read, so it costs the hot path no network call and no subprocess.
+
+        The allowlist is read once per batch, never once per entry.
+        """
+        hinted = [
+            (row, data) for row, data in zip(rows, entries)
+            if repo_provision.extract_hint(data.metadata) is not None
+        ]
+        if not hinted:
+            return
+        patterns = await repo_provision.load_allowlist(self.session)
+        for row, data in hinted:
+            await repo_provision.handoff_capture_hint(
+                self.session,
+                metadata=data.metadata,
+                memory_id=buffered_memory_id(row),
+                project=row.project,
+                source=data.source,
+                patterns=patterns,
+            )
 
     async def _drive_wait_process(self, buffer_ids: list[UUID]) -> frozenset[UUID]:
         flags = await get_feature_flags_dict(self.session)
