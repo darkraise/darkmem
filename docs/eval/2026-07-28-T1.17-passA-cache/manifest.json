@@ -1,0 +1,16 @@
+{
+  "gate": "merged",
+  "git_sha": "48d3c0d",
+  "gold_files": [
+    "gold.json",
+    "gold_heldout.json"
+  ],
+  "model": "deepseek-v4-flash",
+  "prompt_sha16": "775ca7c45ed9a06a",
+  "recorded_at": "2026-07-27T19:10:40+00:00",
+  "schema_sha16": "34e62626caafa8c8",
+  "system_fingerprints": [
+    "fp_8b330d02d0_prod0820_fp8_kvcache_20260402"
+  ],
+  "with_classification": true
+}

@@ -785,3 +785,101 @@ fail rather than merely mislead. That is the gate working; report it and leave G
 - **The five-phase pipeline ran end to end against live models for the first time**: 94
   memories, 131 entities, 63 relations, **0 pipeline failures**, exactly one fingerprint
   (`qwen3-embedding:0.6b|1024`, no rotation), 0 non-lowercase entity names.
+
+---
+
+## G-B — T1.17 live re-record. Evidence, not a verdict. Measured 2026-07-28.
+
+T1.50 owns the G-B verdict and the probe rows. What follows is the measurement T1.17 was
+scheduled to produce: the F1 bench moved onto the shipping request, the cache re-recorded
+live, and the prompt strip measured as its own arm.
+
+**72 live calls** against `deepseek-v4-flash` — two passes of 36 (26 `gold.json` + 10
+`gold_heldout.json`). The 36-call control arm the T1.17 plan budgeted was **dropped**: lane D
+already ran it, and run through current code it could not have isolated drift anyway, because
+the 9-type `EXTRACTION_SCHEMA` rides the user message. Budget spent: 2 passes of the 2
+expected, 0 prompt revisions of the 1 allowed.
+
+`system_fingerprint = fp_8b330d02d0_prod0820_fp8_kvcache_20260402` on **all 72 calls**, equal
+to lane D's. The bench now pins that string and **exits non-zero mid-run** if the served stack
+rotates, so a vendor swap can no longer fold fresh drift into a measured delta unnoticed.
+Model string `deepseek-v4-flash` and the usage envelope are captured per cache entry.
+
+### The five arms
+
+Cells are `entity name+type / entity name only / relation full triple / relation pair`.
+
+| Arm | Algorithm | Prompt | Gate | Raw | gold | held-out |
+|---|---|---|---|---|---|---|
+| **A** — recorded T0.05 / G-A | 2026-07-26 | `775ca7c4` | extract-only | cache | 0.925 / 0.955 / 0.865 / 0.892 | 0.893 / 0.929 / 0.667 / 0.667 |
+| **B** — today's algo, cached raw | `dbde017` | `775ca7c4` | extract-only | cache | 0.940 / 0.970 / 0.895 / 0.921 | 0.949 / 0.983 / 0.872 / 0.872 |
+| **C** — today's algo, live raw | `dbde017` | `775ca7c4` | extract-only | live | 0.925 / 0.970 / 0.921 / 0.921 | 0.862 / 0.931 / 0.765 / 0.765 |
+| **Pass A** — T1.17, prompt unchanged | `48d3c0d` | `775ca7c4` | **merged** | live | 0.925 / 0.970 / 0.853 / 0.853 | 0.881 / 0.949 / 0.895 / 0.895 |
+| **Pass B** — T1.17, prompt stripped | `48d3c0d` | `f59a62d1` | **merged** | live | 0.912 / 0.971 / 0.857 / 0.857 | 0.967 / 0.967 / 0.950 / 0.950 |
+
+Floors: gold `0.881 / 0.910 / 0.784 / 0.811`; held-out `0.786 / 0.821 / 0.485 / 0.485`.
+
+**All eight Pass B cells clear their floor.** So do all eight Pass A cells. The held-out
+relation cells clear by a wide margin, so the one-way cascade valve was not reached and no
+`--diffs` triage was owed.
+
+### The decomposition, which is the point
+
+- **Pass A − arm C = the merged classification fields**, same day, same schema width, same
+  prompt, same served stack. gold `0.000 / 0.000 / −0.068 / −0.068`; held-out
+  `+0.019 / +0.018 / +0.130 / +0.130`. Folding classification into the extraction call moves
+  relation extraction in **opposite directions on the two gold files** — it costs 0.068 on
+  gold and gains 0.130 on held-out. Both stay above the floor, and gold's `rel_pair` retains
+  ~1.6 flips of headroom, but the sign flip is worth naming rather than netting: this is one
+  measurement of a change that alters what the model is asked to produce in a single response.
+- **Pass B − Pass A = the prompt strip.** gold `−0.013 / +0.001 / +0.004 / +0.004`; held-out
+  `+0.086 / +0.018 / +0.055 / +0.055`. The strip is close to neutral on gold and positive on
+  held-out — consistent with a strip that removed only rules the schema string or a
+  deterministic pass already carries (audit below). It is **not** evidence that a larger strip
+  would be neutral.
+- **Arm C − arm B** remains lane D's drift arm, and per the T1.17 review it is honestly
+  labelled **"drift + the 7→9 schema widening, not separable"**: arm B's raws were recorded
+  under the 7-type user message, so part of the held-out `−0.087 / −0.052 / −0.107 / −0.107`
+  is T1.23's request change rather than vendor weights.
+
+### What changed in the harness, and why the absolute number now means something
+
+The bench previously keyed its cache on `sha256(content + "\0" + system_prompt)` and assembled
+its own request. Both are fixed:
+
+- The request comes from `ExtractionService.build_extraction_request` — the same function the
+  pipeline calls. The bench keeps its own `clean_extraction` call so the cache still stores
+  **raw** output and `--algo-only` re-scores the deterministic passes for free.
+- The key now covers the whole assembled request, so the schema string, the taxonomy width and
+  the merge gate all key. This closes the staleness recorded above: between T1.23 landing and
+  today, `--algo-only` replayed outputs produced by a request the code no longer sent.
+- `.cache/manifest.json` records the prompt and schema fingerprints, the gate, the model, the
+  git sha and the served fingerprints. `--algo-only` **exits non-zero naming the mismatching
+  field** rather than silently replaying a stale generation.
+- The bench asserts the configured extraction model equals `deepseek-v4-flash` and fails loud
+  otherwise, since the ledger fixes the model for parity.
+
+### The prompt strip was small, and that is the finding
+
+`775ca7c45ed9a06a` → `f59a62d1be7273a8`; 35,665 → 35,188 characters. **4 rules stripped, 1
+stale statement corrected, ~44 kept.** Doc 05 §6's "strip every rule the passes already
+enforce" assumes deterministic twins that mostly do not exist yet: rule 2a's 28-builtin filter
+is carried by `_NOISE_NAMES` for **10 of 28**; nothing at all covers rule 2b (config values and
+CSS tokens) or rule 9h-dir (`CAUSES` root→symptom, the largest uncovered recall surface); and
+`weight` (rule 14) has no downstream enforcement while `_prefer_relation` still consumes it.
+Evidence per rule, and the six pass gaps handed to T1.24b–e, are in
+`docs/eval/2026-07-28-T1.17-prompt-rule-audit.md`.
+
+### Artefacts
+
+- `docs/eval/2026-07-28-T1.17-merged-prompt-cache/` — Pass B's 36 raws + manifest. The
+  generation `--algo-only` replays; the README carries the cross-worktree restore.
+- `docs/eval/2026-07-28-T1.17-passA-cache/` — Pass A's 36 raws + manifest, the other arm.
+- `docs/eval/2026-07-26-T0.05-extraction-baseline-cache/` — untouched, and now replayable
+  **only at a commit before T1.17**: both the key definition and the prompt changed.
+
+### Still open for T1.50
+
+The `benchlib` retrieval cache — roughly 94 cached extraction calls **and the ingested graph
+the accuracy numbers were computed over** — is invalidated by this prompt change, as recorded
+above. T1.17 did not pay it and did not re-run the retrieval eval.

@@ -314,6 +314,29 @@ def test_extraction_schema_advertises_every_memory_type():
         assert mtype in schema, f"{mtype} missing from the extraction schema string"
 
 
+def test_extraction_schema_advertises_every_entity_type():
+    """The closed entity set reaches the model through the schema, not the prompt.
+
+    The system prompt's "use ONLY these fifteen" sentence was folded into the
+    schema string; this is what stops the fold from rotting into a request that
+    names no closed set at all.
+    """
+    from app.services.extraction_clean import _build_extraction_schema
+
+    schema = _build_extraction_schema()
+    for etype in ENTITY_TYPES:
+        assert etype in schema, f"{etype} missing from the extraction schema string"
+
+
+def test_extraction_schema_advertises_every_relationship_type():
+    """Same fold, relation side: the sixteen types live in the schema string."""
+    from app.services.extraction_clean import _build_extraction_schema
+
+    schema = _build_extraction_schema()
+    for rtype in RELATIONSHIP_TYPES:
+        assert rtype in schema, f"{rtype} missing from the extraction schema string"
+
+
 def test_reason_type_hints_cover_every_memory_type():
     from app.services import memory as memory_service
 
@@ -400,30 +423,24 @@ def test_graph_colour_map_covers_every_memory_type():
 # ── The extraction prompt is pinned, not swept ──────────────────────
 
 
-def test_extraction_prompt_is_unchanged_by_the_widening():
-    """The widened vocabulary reaches the model through the schema string only.
+def test_extraction_prompt_fingerprint_is_pinned():
+    """The prompt cannot drift without a deliberate live re-record.
 
-    The extraction *system prompt* still enumerates the original seven types and
-    is deliberately left alone here: its text is half of the F1 bench's cache key
-    (`sha256(content + "\\x00" + prompt)`), so editing it invalidates all 36
-    cached raw outputs and `run_bench.py --algo-only` — the merge gate — can only
-    be re-greened by a live re-measurement against the same model.
+    The prompt text is part of the F1 bench's cache key, so editing it
+    invalidates every cached raw output and `run_bench.py --algo-only` — the
+    merge gate — can only be re-greened by a live re-measurement against the
+    pinned model. The pin exists so that cost is always a decision.
 
-    T1.17 owns that edit: it strips the prompt to schema + content + seed +
-    minimal rules, and G-B's tolerance already budgets two F1 flips for the
-    re-sample. Until then nothing emits `episodic` or `procedural` from
-    extraction, which is exactly the taxonomy-first ordering: the value lands in
-    the vocabulary before any feature emits it.
-
-    The pin is the fingerprint recorded with the T0.05 baseline in
-    gate-ledger.md. If this fails, the cache is already invalid.
+    The value below is the fingerprint recorded with the 2026-07-28 cache
+    archive in gate-ledger.md. If this fails, the cache is already invalid:
+    re-record live and archive the new generation, or revert the prompt.
     """
     import hashlib
 
     from app.services import prompt
 
     fingerprint = hashlib.sha256(prompt.get("extraction").encode("utf-8")).hexdigest()[:16]
-    assert fingerprint == "775ca7c45ed9a06a"
+    assert fingerprint == "f59a62d1be7273a8"
 
 
 # ── The update path normalises too (invariant 5) ────────────────────
