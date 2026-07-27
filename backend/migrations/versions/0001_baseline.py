@@ -182,6 +182,17 @@ def upgrade() -> None:
     op.execute("CREATE INDEX ix_memories_technologies ON memories USING gin (technologies)")
     op.execute("CREATE INDEX ix_memories_fts ON memories USING gin (search_vector)")
 
+    # The one index change the SQL filter-pushdown strictly requires
+    # (doc 04 §10). Partial rather than a full composite: the pushed-down
+    # predicate's common shape is "live rows in this project", and this is the
+    # smallest of the three forms doc 04 offers. The semantic channel cannot
+    # use it — an HNSW scan applies the predicate post-scan — so it serves the
+    # keyword and direct-scan sides.
+    op.execute(
+        "CREATE INDEX ix_memories_project_live ON memories (project) "
+        "WHERE status = 'active' AND is_archived = false"
+    )
+
     op.execute(
         "CREATE TRIGGER memories_fts_update BEFORE INSERT OR UPDATE OF content "
         "ON memories FOR EACH ROW EXECUTE FUNCTION memories_fts_trigger()"
