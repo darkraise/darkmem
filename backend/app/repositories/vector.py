@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -8,6 +9,50 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.embedder_registry import child_table
 
 _COMMUNITY_SAMPLE_CAP = 10_000
+
+# An HNSW scan applies a WHERE as a post-scan filter over the candidate stream
+# it produces; it cannot seek on the predicate. Over-fetching by this factor is
+# what stops a selective scope from silently under-returning.
+SEMANTIC_FETCH_MULTIPLIER = 3
+
+
+@dataclass(frozen=True)
+class MemoryFilter:
+    """Project / status / archived scope for the semantic retrieval channel.
+
+    Rendered into the channel's SQL as a join against ``memories`` rather than
+    re-applied in Python: an over-fetch-then-drop filter under-returns whenever
+    the scope is selective, and any consumer that forgets the drop leaks
+    foreign rows into its results.
+
+    ``None`` (rather than an instance) means no scoping at all — the dedup and
+    crossref probes want every candidate regardless of lifecycle.
+    """
+
+    project: str | None = None
+    statuses: tuple[str, ...] | None = None
+    include_archived: bool = False
+
+    def where_sql(self, alias: str) -> str:
+        clauses: list[str] = []
+        if not self.include_archived:
+            clauses.append(f"{alias}.is_archived = FALSE")
+        if self.project is not None:
+            clauses.append(f"{alias}.project = CAST(:flt_project AS text)")
+        if self.statuses:
+            # memories.status is a Postgres enum; comparing as text keeps an
+            # unrecognised status a no-match instead of a query-aborting
+            # InvalidTextRepresentation.
+            clauses.append(f"{alias}.status::text = ANY(CAST(:flt_statuses AS text[]))")
+        return " AND ".join(clauses) if clauses else "TRUE"
+
+    def params(self) -> dict:
+        out: dict = {}
+        if self.project is not None:
+            out["flt_project"] = self.project
+        if self.statuses:
+            out["flt_statuses"] = list(self.statuses)
+        return out
 
 
 class PostgresVectorRepository:
@@ -48,23 +93,41 @@ class PostgresVectorRepository:
             },
         )
 
-    async def search(self, vector: list[float], fingerprint: str, limit: int = 20) -> list[dict]:
+    async def search(
+        self,
+        vector: list[float],
+        fingerprint: str,
+        limit: int = 20,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
         table = child_table("memory_embeddings", fingerprint)
+        params: dict = {"vec": str(vector), "limit": limit}
+        join_sql = ""
+        where_sql = ""
+        if filters is not None:
+            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
+            params.update(filters.params())
+            join_sql = "JOIN memories m ON m.id = e.memory_id"
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
         result = await self.session.execute(
             text(f"""
-                SELECT memory_id,
-                       1 - (embedding <=> CAST(:vec AS vector)) AS score,
-                       payload
-                FROM {table}
-                ORDER BY embedding <=> CAST(:vec AS vector)
+                SELECT e.memory_id,
+                       1 - (e.embedding <=> CAST(:vec AS vector)) AS score,
+                       e.payload
+                FROM {table} e
+                {join_sql}
+                {where_sql}
+                ORDER BY e.embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
             """),
-            {"vec": str(vector), "limit": limit},
+            params,
         )
-        return [
+        rows = [
             {"memory_id": UUID(str(row.memory_id)), "score": float(row.score), "payload": row.payload}
             for row in result
         ]
+        return rows[:limit]
 
     async def delete(self, memory_id: UUID):
         """Delete the memory's embedding from every registered fingerprint table.

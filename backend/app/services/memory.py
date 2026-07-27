@@ -10,6 +10,7 @@ from app.repositories.relational import (
     PostgresMemoryRepository,
     PostgresTagRepository,
 )
+from app.repositories.vector import MemoryFilter
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services import memory_buffer
 from app.services.extraction import _MAX_CONTENT_CHARS
@@ -277,11 +278,25 @@ class MemoryService:
 
         return {"deleted": deleted, "not_found": not_found, "errored": errored}
 
+    @staticmethod
+    def _semantic_filter(params: MemorySearchRequest) -> MemoryFilter:
+        return MemoryFilter(
+            project=params.project,
+            statuses=tuple(params.status) if params.status else None,
+            include_archived=False,
+        )
+
     def _matches_schema_v2_filters(self, memory: Memory, params: MemorySearchRequest) -> bool:
         """Schema-v2 filters applied in-memory after semantic search returns IDs.
 
         Mirrors the SQL predicates in `_apply_filters`; used when the semantic
         path has already fetched rows by id.
+
+        Project, status and archived are scoped in SQL on the semantic channel,
+        so for those rows this is a no-op. They stay here because the keyword
+        side of hybrid search is not scoped in SQL yet and fuses its own rows
+        into the same result list; dropping these checks before that lands
+        would let cross-project and superseded rows through the fusion.
         """
         if params.memory_type and memory.memory_type != params.memory_type:
             return False
@@ -315,6 +330,7 @@ class MemoryService:
             fetch_n = params.limit + params.offset + 50
             semantic_results = await self.pipeline.semantic_search(
                 params.query, limit=fetch_n, semantic_weight=params.semantic_weight,
+                filters=self._semantic_filter(params),
             )
             if semantic_results:
                 memory_ids = [r["memory_id"] for r in semantic_results]
@@ -338,7 +354,9 @@ limit=params.limit,
     async def search_memories_paginated(self, params: MemorySearchRequest) -> dict:
         if params.query and self.pipeline:
             semantic_results = await self.pipeline.semantic_search(
-                params.query, limit=params.limit + params.offset + 50, semantic_weight=params.semantic_weight,
+                params.query, limit=params.limit + params.offset + 50,
+                semantic_weight=params.semantic_weight,
+                filters=self._semantic_filter(params),
             )
             if semantic_results:
                 memory_ids = [r["memory_id"] for r in semantic_results]

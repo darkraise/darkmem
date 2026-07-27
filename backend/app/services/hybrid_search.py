@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
 
@@ -26,15 +27,16 @@ class HybridSearchService:
         query: str,
         limit: int = 20,
         semantic_weight: float = 0.7,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
-        fetch_n = limit * 3
+        fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
         vector, fingerprint = await self.llm.embed(query)
 
         semantic_failed = False
         keyword_failed = False
 
         try:
-            semantic_results = await self._semantic_search(vector, fingerprint, fetch_n)
+            semantic_results = await self._semantic_search(vector, fingerprint, fetch_n, filters)
         except Exception as e:
             logger.error("Semantic search failed: %s", e)
             semantic_results = []
@@ -75,18 +77,34 @@ class HybridSearchService:
             logger.error("Semantic code search failed: %s", e)
             return []
 
-    async def _semantic_search(self, vector: list[float], fingerprint: str, limit: int) -> list[dict]:
+    async def _semantic_search(
+        self,
+        vector: list[float],
+        fingerprint: str,
+        limit: int,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
         table = child_table("memory_embeddings", fingerprint)
+        params: dict = {"vec": str(vector), "limit": limit}
+        join_sql = ""
+        where_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            join_sql = "JOIN memories m ON m.id = e.memory_id"
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
         result = await self.session.execute(
             text(f"""
-                SELECT memory_id,
-                       1 - (embedding <=> CAST(:vec AS vector)) AS score,
-                       payload
-                FROM {table}
-                ORDER BY embedding <=> CAST(:vec AS vector)
+                SELECT e.memory_id,
+                       1 - (e.embedding <=> CAST(:vec AS vector)) AS score,
+                       e.payload
+                FROM {table} e
+                {join_sql}
+                {where_sql}
+                ORDER BY e.embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
             """),
-            {"vec": str(vector), "limit": limit},
+            params,
         )
         return [
             {"memory_id": str(row.memory_id), "score": float(row.score), "payload": row.payload, "source": "semantic"}
