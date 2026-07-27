@@ -395,6 +395,38 @@ rebuild intact.
 
 **Verify.** `cd backend && python -m pytest tests/test_dedup_discriminator.py -q`
 
+#### T1.20a — A canonicalized entity's embedding overwrites the survivor's
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.20, T1.21` · `Doc: 06 §5` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** **Added by amendment 2026-07-28.** Raised first by T1.21's planning pass and again
+by its execution, both of which correctly declined to fix it in lane.
+
+When Phase 4 canonicalizes a variant onto a survivor — `postgresql` → `postgres` —
+`pipeline.py` looks the embedding up under the **variant's** name and writes it against the
+**survivor's** row. So the canonical entity's stored vector is whichever variant was written
+last, not its own.
+
+**Why it is small but real.** Dedup only merges at ≥0.85 cosine, so the wrong vector is by
+construction a near neighbour and no single write is visibly harmful. But it is wrong in a
+way that **compounds**: every re-extraction that merges a different variant rewrites the
+canonical vector again, so the survivor's embedding random-walks among its variants instead
+of being stable. That undermines the two things the entity partition exists for — the
+`(name_lower, fingerprint)` cache, which now caches a value keyed to a name it was not
+computed from, and Phase 4's own ANN probe, which compares future candidates against a drifting
+target.
+
+**Done when:**
+- [ ] The survivor's row stores the embedding computed for the **survivor's** name
+- [ ] A test merges two variants and asserts the stored vector is the survivor's, not the
+      last-written variant's — and fails if the lookup key reverts
+- [ ] Re-running the same batch twice leaves the survivor's vector **unchanged** (the
+      compounding half; a single-pass test cannot see it)
+- [ ] The two-level cache is keyed consistently with whatever the fix decides, so a cache hit
+      cannot reintroduce the variant's vector
+
+**Verify.** `cd backend && python -m pytest tests/test_dedup_discriminator.py tests/test_pipeline_phase3.py -q`
+
 #### T1.21 — Phase 5: the two-savepoint write
 
 `Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T1.20` · `Doc: 05 §5` · `Tag: rebuild` · `Gate: G-B`
@@ -1676,3 +1708,6 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-28 | T1.21 | 2 | **D3 resolved as option (a): the `pipeline.{completed,partial,failed}` broadcast moves from `_write_memory` to `process_batch`, emitted after the `pipeline_failures` rows commit.** `_write_memory` no longer broadcasts. **T1.45 inherits this**: the emission order changed, and the wire event now always follows its triage row. | The broadcast could not fire for a memory whose own `_write_memory` raised — that memory got a normalised status dict and a failure row but no wire event at all, so "exactly one broadcast per memory per batch" was false on precisely the path a stepper UI most needs. Centralising it makes the property checkable in one place and orders the event after the row, so a UI reacting to `pipeline.failed` by fetching the failure list cannot race an unwritten row. T1.45 is not built yet, which made this the only cheap moment to change it. |
 | 2026-07-28 | T1.21 | 2 | **Carried forward, not fixed here: a canonicalized entity's embedding overwrites the surviving entity's.** `_write_memory` looks the embedding up under `entity["_orig_lower"]` — the *variant's* name — and upserts it onto the *canonical* entity's row, so ingesting `postgresql` (canonicalized onto `postgres`) replaces `postgres`'s stored vector and the ANN centroid drifts to whichever variant was written last. | It sits inside savepoint B, so T1.21 *could* have absorbed it, but the semantics belong to the Phase-3 cache and Phase-4 dedup design (T1.19/T1.20, both merged) rather than to the transactional structure this task owns. It is arguably deliberate (the variant is fresh signal) and arguably a defect (the canonical entity's identity is decided by write order) — which makes it a design question, not a bug fix. Recorded so T1.26 and T1.27 do not each assume the other handled it; it wants its own task. |
 | 2026-07-28 | T1.21 | 2 | **Boundary restated for T1.26, T1.27 and T1.36.** T1.21 delivered only the *transactional position* of the strip (inside savepoint B) and that its failure is visible in the per-memory status — **T1.26 still owns what `delete_by_memory_id` deletes**: relation only when no live memory asserts it, entity only when no live memory asserts it and no surviving relation references it, dangling `memory_ids` self-heal, re-extraction idempotence. T1.21 delivered that the `technologies` recompute happens inside savepoint B as one whole-column assignment; **T1.27 owns** lowercase, the GIN index and `_TYPE_OVERRIDES`. T1.21 delivered that `detect_supersessions` is called inside savepoint B after `flush([mem_record])` and that its failure attributes to `graph`; **T1.36 owns** rules 1-6, the `(created_at, id)` tie-break, the per-target speculative gate, the atomic flip, and **widening the trigger predicate from `REPLACES` to `REPLACES_FAMILY`** — still narrow in both `pipeline.py` and `supersession.py`, deliberately left as one behaviour in two files that must change together. T1.21 emitted no `sources_changed` event and added no provenance-no-op guard; that stays **T2.47's**. | Three tasks cover mechanisms that physically live inside savepoint B, and without the split stated in one place each would assume another delivered it. Moving the strip touches T1.26's subject, so the split is stated explicitly: T1.21 changed **where** the strip runs, T1.26 owns **what** it deletes and the self-healing semantics. |
+| 2026-07-28 | T1.20a | 2 | **New task: a canonicalized entity's embedding overwrites the survivor's.** Raised by T1.21's planning pass and again by its execution; both correctly declined to fix it in lane. `pipeline.py` looks the embedding up under the **variant's** name and writes it against the **survivor's** row. | Small per write and compounding over time, which is why it earns a task rather than a note. Dedup merges only at ≥0.85 cosine, so any single wrong vector is a near neighbour — but every re-extraction that merges a different variant rewrites the canonical vector again, so the survivor's embedding random-walks among its variants. That degrades exactly the two mechanisms the entity partition exists for: the `(name_lower, fingerprint)` cache ends up caching a value keyed to a name it was not computed from, and Phase 4's ANN probe compares future candidates against a drifting target. The acceptance deliberately includes a **two-pass** test, because a single-pass one cannot see the compounding half. |
+| 2026-07-28 | T1.21 | 2 | **D1's resolution is now reflected in `CLAUDE.md`'s Phase-5 description**, which still described the strip as running before the savepoints. The baseline now states that the strip runs **inside savepoint B**, that strip-and-write is one atomic replace, and that a failed strip fails B rather than being swallowed and written over. | T1.21's lane flagged the imprecision and correctly left the shared baseline alone, since it was outside the lane's file list. Runbook §1 makes `CLAUDE.md` every agent's bootstrap contract, so leaving it describing the arrangement that silently emptied a memory's graph on two failure paths would have taught the wrong invariant to every later task. |
+| 2026-07-28 | T1.45 | 1 | **T1.45 inherits a changed emission order:** T1.21 resolved its D3 as (a), moving the `pipeline.*` broadcast to `process_batch`. | Recorded because T1.45 builds the pipeline stepper over that broadcast, and its Done-when requires the stepper to reflect real per-phase status **including `partial`**. A stepper written against the old emission point would mis-sequence. Pairs with the already-recorded finding that `GET /pipeline-logs` queries an event type nothing emits — T1.45 should treat both as one piece of work on its signal source. |

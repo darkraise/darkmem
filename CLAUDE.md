@@ -183,7 +183,14 @@ A batch flows through five phases. Each phase is a hard checkpoint:
    + supersession — so a graph failure does not roll back the vector
    write:
    - Strip prior contributions of this `memory_id` from the graph
-     (`delete_by_memory_id`) before writing the new set. This is what
+     (`delete_by_memory_id`) before writing the new set, **inside
+     savepoint B** (T1.21, 2026-07-28). The strip and the write are one
+     atomic replace: a savepoint-B failure rolls the strip back so the
+     prior graph survives, and an extraction failure never enters B so
+     the strip never runs. Running it outside the savepoints — which is
+     what doc 05 §8's flowchart used to show — silently left a memory
+     with **no** graph on either path. A failed strip fails savepoint B;
+     it must never be swallowed and written over. This is what
      makes re-extraction idempotent. `delete_by_memory_id` deletes a
      relation only when no live memory still asserts it (self-healing
      dangling `memory_ids`), and an entity only when no live memory
