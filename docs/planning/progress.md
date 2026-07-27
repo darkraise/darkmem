@@ -86,9 +86,9 @@ and the Note says so. That rule is the whole point of this file.
 | T1.02 | One shared `httpx.AsyncClient` with atomic live reload | M | Sonnet | high | | todo | | | |
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | high | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | high | | todo | | | |
-| T1.05 | Seed `synthesis` and `verification` purposes inert | S | Haiku | high | | todo | | | |
+| T1.05 | Seed `synthesis` and `verification` purposes inert | S | Haiku | high | claude/e1-lane-a | wip | | | |
 | T1.06 | `events` table, monthly partitioning, append-only trigger | M | Opus | high | claude/e1-engine-core | done | 0168f98, 04ae49f | fable adversarial: spec PASS, 1 Important + 8 Minor; re-review ADDRESSED (04ae49f) | Three forbid-triggers, not doc 04's one; per-child TRUNCATE guard (parent's does not cascade — measured PG 17). Review found `events_ensure_partition` emitted session-timezone-dependent bounds: months created under UTC then +07 silently leave a 7-hour hole, failing journaled requests. Bounds now UTC-pinned; guard matched by OID; mid-month normalised; concurrent duplicate_table caught; arm runs first in its own session. Gate GREEN exit 0 — backend 774 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
-| T1.07 | `events` writer and the journaling convention | M | Sonnet | high | | todo | | | |
+| T1.07 | `events` writer and the journaling convention | M | Sonnet | high | claude/e1-lane-b | wip | | | |
 | T1.08 | `GET /events`, `/events/calendar`, `/events/timeline` | M | Sonnet | high | | todo | | | |
 | T1.09 | Retire `audit_log` reads | S | Sonnet | high | | todo | | | |
 | T1.10 | `memory_buffer` table + pre-minted UUIDv7 ids | M | Sonnet | high | claude/e1-engine-core | done | 33b896d, 04ae49f | fable adversarial: spec PASS, 3 Important + 4 Minor; re-review ADDRESSED (04ae49f) | UUIDv7 via `uuid6` (floor raise rejected: image is python:3.12-slim). Review found the buffer id and pre-minted memory id must be **two distinct ids** (doc 05 §2.2, T1.10's own owning section, unread by me) — unwound; memory id rides `metadata_`. `REPLAYED_METADATA_FIELDS` gained the caller's `metadata`. Durability proven cross-connection. Gate GREEN exit 0 — backend 774 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
@@ -105,7 +105,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.21 | Phase 5: the two-savepoint write | L | Opus | high | | todo | | | |
 | T1.22 | Mid-batch embedder rotation | M | Opus | high | | todo | | | |
 | T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | high | claude/e1-engine-core | done | f74ba76, 04ae49f | fable adversarial: spec PASS (1 box deferred, logged), 3 Important + 5 Minor; re-review ADDRESSED (04ae49f) | MEMORY_TYPES 7→9; memory-relation set reserved (5 stored, SUPERSEDES projected). Review found `PRECEDES→FOLLOWS` silently inverted edge direction (alias deleted), the demo fixture still carried 1000 `context` rows (regenerated), and a pre-existing invariant-5 hole on the update path (closed + pinned). **The F1-green does NOT measure the widening**: the bench cache key covers only the system prompt, while the schema string rides the user message — real measurement is G-B's live run. Gate GREEN exit 0 — backend 774 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
-| T1.24a | Pass registry, the ordering contract, and the per-pass harness | M | Opus | high | | todo | | | |
+| T1.24a | Pass registry, the ordering contract, and the per-pass harness | M | Opus | high | claude/e1-lane-c | wip | | | |
 | T1.24b | Stage 1: entity shaping | M | Opus | high | | todo | | | |
 | T1.24c | Stage 2: entity rescue | M | Opus | high | | todo | | | |
 | T1.24d | Stage 4: relation gating and direction | L | Opus | high | | todo | | | |
