@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.models.audit import AuditLog
+from app.services.events import record_event
 
 
 @pytest.mark.asyncio
@@ -20,13 +20,16 @@ async def test_audit_requires_auth(client):
 
 @pytest.mark.asyncio
 async def test_audit_returns_only_security_rows_newest_first(client, session, auth_headers):
-    session.add_all([
-        AuditLog(action="auth_login_failed", details={"ip": "1.1.1.1"}),
-        AuditLog(action="auth_login_success", details={"ip": "2.2.2.2"}),
-        AuditLog(action="setup_complete", details={}),
-        AuditLog(action="pipeline", details={}),          # excluded
-        AuditLog(action="create", details={}),            # excluded
-    ])
+    for event_type, payload in [
+        ("auth_login_failed", {"ip": "1.1.1.1"}),
+        ("auth_login_success", {"ip": "2.2.2.2"}),
+        ("setup_complete", {}),
+        ("pipeline", {}),          # excluded
+        ("create", {}),            # excluded
+    ]:
+        await record_event(
+            session, event_type=event_type, object_type="system", payload=payload
+        )
     await session.flush()
 
     r = await client.get("/api/v1/auth/audit", headers=auth_headers)
@@ -39,10 +42,13 @@ async def test_audit_returns_only_security_rows_newest_first(client, session, au
 
 @pytest.mark.asyncio
 async def test_audit_filters_by_action(client, session, auth_headers):
-    session.add_all([
-        AuditLog(action="auth_login_failed", details={"ip": "1.1.1.1"}),
-        AuditLog(action="auth_login_success", details={"ip": "2.2.2.2"}),
-    ])
+    for event_type, payload in [
+        ("auth_login_failed", {"ip": "1.1.1.1"}),
+        ("auth_login_success", {"ip": "2.2.2.2"}),
+    ]:
+        await record_event(
+            session, event_type=event_type, object_type="system", payload=payload
+        )
     await session.flush()
 
     r = await client.get(

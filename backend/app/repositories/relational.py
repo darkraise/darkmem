@@ -5,8 +5,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.audit import AuditLog
 from app.models.memory import Memory, Tag, memory_tags
+from app.services.events import record_event
 
 from .base import AuditRepositoryBase, MemoryRepositoryBase, TagRepositoryBase
 
@@ -243,6 +243,11 @@ class PostgresAuditRepository(AuditRepositoryBase):
         self.session = session
 
     async def log(self, action, memory_id=None, api_key_id=None, details=None):
-        entry = AuditLog(action=action, memory_id=memory_id, api_key_id=api_key_id, details=details or {})
-        self.session.add(entry)
-        await self.session.flush()
+        await record_event(
+            self.session,
+            event_type=action,
+            object_type="memory" if memory_id else "system",
+            object_id=memory_id,
+            api_key_id=api_key_id,
+            payload=details or {},
+        )

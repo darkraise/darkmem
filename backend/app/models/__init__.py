@@ -1,6 +1,5 @@
 from .api_key import ApiKey
 from .token_blocklist import TokenBlocklist
-from .audit import AuditLog
 from .base import Base
 from app.models.chat import Conversation, Message  # noqa: F401
 from .code import CodeEdge, CodeFile, CodeGraphNode, CodeSymbol, Repository
@@ -18,7 +17,6 @@ __all__ = [
     "memory_tags",
     "ApiKey",
     "TokenBlocklist",
-    "AuditLog",
     "Config",
     "Conversation",
     "Message",

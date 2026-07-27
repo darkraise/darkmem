@@ -18,12 +18,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.api import auth as auth_module
 from app.api.auth import hash_password
 from app.config import settings
-from app.models.audit import AuditLog
 from app.models.config import Config
 
 
@@ -86,14 +85,15 @@ async def test_failed_login_persists_audit_row(client, session, monkeypatch):
     # actually committed via async_session_factory.
     async with AsyncSession(test_engine) as verify_session:
         rows = (await verify_session.execute(
-            select(AuditLog).where(AuditLog.action == "auth_login_failed")
-        )).scalars().all()
+            text("SELECT id FROM events WHERE event_type = 'auth_login_failed'")
+        )).all()
         assert len(rows) >= 1
 
         # The committed row lives outside the fixture's rollback boundary;
         # delete it so it does not leak into other tests.
-        for row in rows:
-            await verify_session.delete(row)
+        await verify_session.execute(
+            text("DELETE FROM events WHERE event_type = 'auth_login_failed'")
+        )
         await verify_session.commit()
 
 

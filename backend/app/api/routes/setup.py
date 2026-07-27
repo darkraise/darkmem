@@ -30,9 +30,9 @@ from app.api.auth import (
 )
 from app.config import settings
 from app.database import get_session
-from app.models.audit import AuditLog
 from app.models.code import Repository
 from app.models.config import Config
+from app.services.events import record_event
 from app.models.llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
 from app.services.repo_manager import validate_local_path
 
@@ -354,10 +354,12 @@ async def setup_finalize(
             key=ADMIN_PASSWORD_KEY,
             value={"hash": hash_password(body.password)},
         ))
-        session.add(AuditLog(
-            action="auth_setup",
-            details={"ip": _client_ip(request)},
-        ))
+        await record_event(
+            session,
+            event_type="auth_setup",
+            object_type="system",
+            payload={"ip": _client_ip(request)},
+        )
         await session.commit()
 
         # 2. LLM block — optional. Inserts the full default seed
@@ -588,9 +590,11 @@ async def setup_finalize(
             _replace_orchestrator(request, new_llm)
 
         # 5. Audit log
-        session.add(AuditLog(
-            action="setup_complete",
-            details={
+        await record_event(
+            session,
+            event_type="setup_complete",
+            object_type="system",
+            payload={
                 "ip": _client_ip(request),
                 "llm": llm_status.ok,
                 "llm_skipped": body.llm is None,
@@ -599,7 +603,7 @@ async def setup_finalize(
                 "repos_added": repos_added,
                 "repos_failed_count": len(repos_failed),
             },
-        ))
+        )
         await session.commit()
 
     payload = SetupResponse(

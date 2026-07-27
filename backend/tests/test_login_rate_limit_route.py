@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import hash_password
 from app.api.routes import auth as auth_routes
-from app.models.audit import AuditLog
 from app.models.config import Config
 from app.services.login_rate_limit import LoginRateLimiter
 
@@ -38,9 +37,7 @@ async def test_login_locks_out_after_repeated_failures(client, session, monkeypa
     # The committed failed-login audit rows live outside the fixture rollback;
     # clean them up so they don't leak into other tests.
     async with AsyncSession(test_engine) as vs:
-        rows = (await vs.execute(
-            select(AuditLog).where(AuditLog.action == "auth_login_failed")
-        )).scalars().all()
-        for row in rows:
-            await vs.delete(row)
+        await vs.execute(
+            text("DELETE FROM events WHERE event_type = 'auth_login_failed'")
+        )
         await vs.commit()

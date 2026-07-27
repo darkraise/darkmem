@@ -4,10 +4,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.api.auth import hash_password
-from app.models.audit import AuditLog
 from app.models.code import Repository
 from app.models.config import Config
 from app.models.llm_config import LLMProfile, LLMProvider, LLMPurposeConfigRow
@@ -252,8 +251,9 @@ async def test_setup_finalize_password_only(client, session):
     )).scalar_one_or_none()
     assert config is not None
 
-    audits = (await session.execute(select(AuditLog))).scalars().all()
-    actions = {a.action for a in audits}
+    actions = set((await session.execute(
+        text("SELECT event_type FROM events")
+    )).scalars().all())
     assert "auth_setup" in actions and "setup_complete" in actions
 
 

@@ -3,14 +3,13 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text as sa_text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import get_analytics_service
 from app.database import get_session
-from app.models.audit import AuditLog
 from app.models.memory import Memory, Tag
 from app.repositories.graph import PostgresGraphRepository
 from app.schemas.config import StatsResponse
@@ -86,22 +85,24 @@ async def get_pipeline_logs(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    stmt = (
-        select(AuditLog)
-        .where(AuditLog.action == "pipeline")
-        .order_by(AuditLog.timestamp.desc())
-        .limit(limit)
-    )
-    result = await session.execute(stmt)
-    logs = result.scalars().all()
+    # audit_log was dropped by the baseline; events is the audit substrate
+    # (doc 04 §8.1). The response shape is preserved: event_type 'pipeline'
+    # rows carry the same object_id and payload the old columns did.
+    rows = (await session.execute(
+        sa_text(
+            "SELECT id, object_id, payload, created_at FROM events "
+            "WHERE event_type = 'pipeline' ORDER BY created_at DESC LIMIT :limit"
+        ),
+        {"limit": limit},
+    )).all()
     return [
         {
-            "id": log.id,
-            "memory_id": str(log.memory_id) if log.memory_id else None,
-            "details": log.details,
-            "timestamp": log.timestamp.isoformat(),
+            "id": r.id,
+            "memory_id": str(r.object_id) if r.object_id else None,
+            "details": r.payload,
+            "timestamp": r.created_at.isoformat(),
         }
-        for log in logs
+        for r in rows
     ]
 
 

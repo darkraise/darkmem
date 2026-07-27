@@ -1,5 +1,4 @@
 from app.models.api_key import ApiKey
-from app.models.audit import AuditLog
 from app.models.memory import Memory, Tag
 
 
@@ -36,12 +35,3 @@ async def test_create_api_key(session):
 
     assert key.id is not None
     assert key.scopes == ["read", "write"]
-
-
-async def test_create_audit_log(session):
-    entry = AuditLog(action="create", details={"test": True})
-    session.add(entry)
-    await session.flush()
-
-    assert entry.id is not None
-    assert entry.action == "create"
