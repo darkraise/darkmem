@@ -310,9 +310,19 @@ class ProcessingPipeline:
         stats.memory_hits = len(hits)
 
         if still_missing:
-            async with self.session_factory() as session:
-                repo = PostgresGraphRepository(session)
-                db_hits = await repo.get_cached_entity_embeddings(still_missing, fingerprint)
+            db_hits: dict[str, list[float]] = {}
+            try:
+                async with self.session_factory() as session:
+                    repo = PostgresGraphRepository(session)
+                    db_hits = await repo.get_cached_entity_embeddings(
+                        still_missing, fingerprint,
+                    )
+            except Exception:
+                # The DB cache is an optimisation. Losing it must cost latency —
+                # every name becomes a miss and gets re-embedded — not the batch.
+                logger.warning(
+                    "Failed to read entity embedding cache from DB", exc_info=True,
+                )
             if db_hits:
                 if use_memory_cache:
                     async with self._entity_cache_lock:
@@ -794,10 +804,38 @@ class ProcessingPipeline:
           3. Entity embedding with cache
           4. Dedup lookup (per unique name)
           5. Per-memory writes (concurrent)
+
+        Returns a list the same length as ``entries`` on every path, and every
+        entry gets a ``pipeline_failures`` row (or a resolution) and exactly one
+        ``pipeline.*`` broadcast.
         """
         if not entries:
             return []
 
+        try:
+            normalized = await self._run_phases(entries)
+        except Exception as e:
+            # The backstop that makes "no memory leaves process_batch without a
+            # status" a property rather than a coincidence. Guarding each phase
+            # individually re-opens the hole on the next phase edit, and an
+            # exception escaping here records NO failure row at all — the whole
+            # batch becomes invisible to triage rather than mislabelled.
+            logger.exception("Batch pipeline failed before the write: %s", e)
+            normalized = [
+                {
+                    "memory_id": str(entry.get("memory_id")),
+                    "embed": "unknown", "extract": "unknown",
+                    "vector": "error", "graph": "error",
+                    "entities_count": 0, "relations_count": 0,
+                    "error": str(e),
+                }
+                for entry in entries
+            ]
+
+        await self._record_batch_outcomes(entries, normalized)
+        return normalized
+
+    async def _run_phases(self, entries: list[dict]) -> list[dict]:
         flags = await _get_feature_flags_cached(self.session_factory)
         pipeline_concurrency = flags.get("pipeline_concurrency", 5)
         embed_chunk_size = flags.get("embedding_batch_size", 20)
@@ -1072,6 +1110,11 @@ class ProcessingPipeline:
             else:
                 normalized.append(result)
 
+        return normalized
+
+    async def _record_batch_outcomes(
+        self, entries: list[dict], normalized: list[dict],
+    ) -> None:
         # Feature 2: record pipeline failure state for each memory
         try:
             from app.services.pipeline_failures import (
@@ -1137,8 +1180,6 @@ class ProcessingPipeline:
                     )
                 except Exception as e:
                     logger.warning(f"Pipeline broadcast failed: {e}")
-
-        return normalized
 
     async def delete_memory(self, memory_id: UUID, broadcast: bool = True):
         try:

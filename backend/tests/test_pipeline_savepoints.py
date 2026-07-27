@@ -813,3 +813,59 @@ async def test_one_bad_failure_row_does_not_suppress_the_others(
         assert len(results) == len(contents)
         assert seen == [str(m) for m in bed.memory_ids]
         assert len(bed.broadcasts) == len(contents)
+
+
+@pytest.mark.asyncio
+async def test_an_entity_cache_read_failure_degrades_to_a_cold_cache(
+    setup_database, monkeypatch
+):
+    """The DB entity cache is an optimisation. Losing it costs latency, not the
+    batch: the read was unguarded, so a DB error there escaped process_batch
+    with no status, no failure row and no broadcast for any memory."""
+    async def _boom(self, *a, **k):
+        raise RuntimeError("cache read boom")
+
+    async with savepoint_bed(["cache read fails"], "savepoint-cacheread|4") as bed:
+        monkeypatch.setattr(
+            PostgresGraphRepository, "get_cached_entity_embeddings", _boom,
+        )
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["vector"] == "ok"
+        assert status["graph"] == "ok"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+        assert [e for e, _ in bed.broadcasts] == ["pipeline.completed"]
+
+
+@pytest.mark.asyncio
+async def test_a_phase_escape_still_gives_every_entry_an_outcome(
+    setup_database, monkeypatch
+):
+    """The general property, and the reason the backstop is batch-level.
+
+    Guarding each phase in turn repairs one call site; the next phase edit
+    re-opens the hole. What has to hold is that every entry leaves
+    process_batch with a status, a failure row and a broadcast, whatever
+    escaped upstream of the write.
+    """
+    contents = ["escape one", "escape two"]
+    async with savepoint_bed(contents, "savepoint-escape|4") as bed:
+        def _boom(self, *a, **k):
+            raise RuntimeError("phase 3 boom")
+
+        monkeypatch.setattr(
+            ProcessingPipeline, "_record_entity_cache_stats", _boom,
+        )
+
+        results = await bed.pipe.process_batch(
+            [bed.entry(i, content) for i, content in enumerate(contents)]
+        )
+
+        assert len(results) == len(contents)
+        assert [r["memory_id"] for r in results] == [str(m) for m in bed.memory_ids]
+        assert [e for e, _ in bed.broadcasts] == ["pipeline.failed"] * len(contents)
+
+        failures = await _failure_rows(bed)
+        assert set(failures) == {str(m) for m in bed.memory_ids}
+        assert all(resolved is False for _, resolved in failures.values())
