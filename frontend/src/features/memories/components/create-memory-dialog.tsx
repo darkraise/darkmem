@@ -20,19 +20,10 @@ import {
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
+import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 import { createMemorySchema, type CreateMemoryInput } from "../schemas"
 
 type MemoryTypeValue = CreateMemoryInput["memory_type"]
-
-const MEMORY_TYPE_OPTIONS = [
-  { value: "fact", label: "Fact" },
-  { value: "decision", label: "Decision" },
-  { value: "preference", label: "Preference" },
-  { value: "problem", label: "Problem" },
-  { value: "reference", label: "Reference" },
-  { value: "architecture", label: "Architecture" },
-  { value: "milestone", label: "Milestone" },
-]
 
 interface CreateMemoryDialogProps {
   open: boolean

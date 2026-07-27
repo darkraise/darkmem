@@ -127,7 +127,7 @@ async def memory_add(
         tags: Categorization tags using slash notation (e.g., "project/darkmem", "debug/root-cause", "infra/services").
         source: Origin tool. Auto-detected per request (X-Darkmem-Client header, then User-Agent); pass a value only to override. Falls back to "mcp".
         source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
-        memory_type: One of fact, decision, preference, problem, architecture, reference, milestone. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
+        memory_type: One of fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
         project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
     """
     async with _memory_service_context() as service:
@@ -161,7 +161,7 @@ async def memory_search(
         query: Natural language search query. Uses semantic search if available, falls back to text matching.
         tags_any: Return memories matching ANY of these tags.
         tags_all: Return memories matching ALL of these tags.
-        memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone.
+        memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural.
         source: Filter by origin tool (e.g., "claude-code", "codex", "dashboard", "api", "mcp"). "mcp"/"api" also cover all writes from before attribution landed (2026-06).
         limit: Maximum number of results (default: 20).
         offset: Pagination offset (default: 0).

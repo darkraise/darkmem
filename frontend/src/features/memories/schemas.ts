@@ -1,22 +1,14 @@
 import { z } from "zod"
 
+import { MEMORY_TYPES } from "@/lib/taxonomy"
+
 export const createMemorySchema = z.object({
   content: z
     .string()
     .min(1, "Content required")
     .max(20_000, "Content too long"),
   project: z.string().default("default"),
-  // Mirrors backend MEMORY_TYPES (app/taxonomy.py). Values absent here are
-  // silently normalized to the default on the server.
-  memory_type: z.enum([
-    "fact",
-    "decision",
-    "preference",
-    "problem",
-    "reference",
-    "architecture",
-    "milestone",
-  ]),
+  memory_type: z.enum(MEMORY_TYPES),
   tags: z.array(z.string().min(1)).max(20, "Up to 20 tags"),
 })
 export type CreateMemoryInput = z.infer<typeof createMemorySchema>

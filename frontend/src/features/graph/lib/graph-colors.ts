@@ -68,6 +68,8 @@ const ENTITY_HUES: Record<string, number> = {
   organization: 330,
 }
 
+// One index per MEMORY_TYPES value; a type missing here would fall through to
+// the hash path and change colour whenever the cluster space shifts.
 const KNOWN_TYPE_INDICES: Record<string, number> = {
   fact: 4,
   decision: 15,
@@ -76,6 +78,8 @@ const KNOWN_TYPE_INDICES: Record<string, number> = {
   preference: 14,
   reference: 10,
   milestone: 16,
+  episodic: 8,
+  procedural: 6,
 }
 
 export interface MemoryPalette {

@@ -30,17 +30,7 @@ import {
 import { toast } from "darkraise-ui/components/sonner"
 import { useDemoStore } from "@/demo/store"
 import type { DemoMemory } from "@/demo/types"
-
-const MEMORY_TYPE_OPTIONS = [
-  "fact",
-  "decision",
-  "preference",
-  "problem",
-  "reference",
-  "architecture",
-  "milestone",
-  "context",
-]
+import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 
 export interface MemoryEditorDialogProps {
   open: boolean
@@ -211,8 +201,8 @@ export function MemoryEditorDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {MEMORY_TYPE_OPTIONS.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

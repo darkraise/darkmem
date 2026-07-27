@@ -413,6 +413,18 @@ consolidation passes emit any edge (doc 06 §10).
       `insight` and `profile` do **not** join. This changes the extraction prompt, so
       it lands taxonomy-first and is measured on the F1 bench like any prompt change
 
+**The extraction system prompt is out of scope here — T1.17 owns it** (amended
+2026-07-27). The widened vocabulary reaches the model through the schema string
+`_build_extraction_schema` builds; the system prompt's own seven-type enumeration is
+left byte-identical and pinned by a test, because that text is half the F1 bench's
+cache key and editing it invalidates all 36 cached raw outputs, turning the merge
+gate red until a live re-measurement against the same model re-warms it. T1.17
+already rewrites that prompt to schema + content + seed + minimal rules, and G-B's
+tolerance already budgets the re-sample. Until then nothing *emits* the two new
+kinds from extraction — which is the taxonomy-first ordering, not a gap: the value
+lands in the vocabulary, and every hard-coded copy is swept, before any feature
+emits it.
+
 **Verify.** `cd backend && python -m pytest tests/test_taxonomy.py -q`
 
 #### T1.24a — Pass registry, the ordering contract, and the per-pass harness
@@ -1365,4 +1377,7 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
-| — | — | — | (none yet) | — |
+| 2026-07-27 | T1.23 | 2 | The extraction **system prompt** is explicitly **not** swept by T1.23; the widened vocabulary reaches the model through the schema string only, and T1.17 owns the prompt-side edit. Added to T1.23's text and pinned by a test. | The prompt text is half the F1 bench's cache key (`sha256(content + "\0" + prompt)`), so any edit invalidates all 36 cached raw outputs and turns `gate.sh`'s `--algo-only` step red. Re-greening needs a live re-measurement against the same model (`deepseek-v4-flash`, `DEEPSEEK_API_KEY`), which this environment cannot reach. T1.17 already rewrites that prompt and G-B's tolerance already budgets 2 F1 flips for the re-sample, so folding the edit there costs nothing and duplicating it here would spend the budget twice. Nothing emits `episodic`/`procedural` in the meantime — which is the taxonomy-first ordering working as designed, not a gap. |
+| 2026-07-27 | T1.23 | 1 | Swept two hard-coded vocabularies doc 06 §3 and doc 04 §12 do not name: the classification label space (`SIMPLE_TYPES` and the always-on `general` area in `classification_areas.py`) and the MCP tool descriptions. | The named list ( `reason()`, `_build_extraction_schema`, UI filters) is "the known hard-coded vocabularies", not an exhaustive one. Left unswept, classification could never produce the two new kinds in either mode, and the MCP surface would advertise a stale seven to every agent — both silent, both exactly the failure the sweep rule exists to prevent. |
+| 2026-07-27 | T1.23 | 1 | Found and fixed a fourth frontend copy of the vocabulary (`demo/data/generate.ts`, which also emitted a non-existent `context` type) and a fifth in `memory-editor-dialog.tsx`. Doc 13's "single shared vocabulary source" is now `frontend/src/lib/taxonomy.ts`, enforced by a backend drift test. | Grep found three sites; the drift test found the fourth. A per-component list that misses a widening hides every row of the new type instead of failing, so the enforcement matters more than the sweep. |
+| 2026-07-27 | T0.11 / T1.23 | 1 | Discharged the trigger-enumeration obligation E0 left open: doc 04 §12 and doc 19 §2 now name three trigger kinds. Also corrected `baseline-schema-inventory.md` §4.3/§9.2, which named three `touch_updated_at` triggers where the baseline authors **four** (it omitted `documents`). | The inventory is the schema work order; a divergence between it and the migration is a defect in one of them. Here the baseline was right — the rule is per-table and `documents` carries `updated_at`. |

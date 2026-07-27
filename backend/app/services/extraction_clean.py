@@ -5,6 +5,7 @@ import re
 
 from app.taxonomy import (
     ENTITY_TYPES,
+    MEMORY_TYPES,
     RELATIONSHIP_TYPES,
     normalize_entity_type,
     normalize_relation_type,
@@ -102,9 +103,10 @@ def _loads_extraction(response: str) -> dict:
 def _build_extraction_schema(with_classification: bool = False) -> str:
     entity_types = "|".join(ENTITY_TYPES)
     rel_types = "|".join(RELATIONSHIP_TYPES)
+    memory_types = "|".join(MEMORY_TYPES)
     # When merged with classification, the same call also returns the
     # enrichment fields the standalone classifier would. ``memory_type`` already
-    # carries the type label (the simple-7 vocabulary), so no separate type
+    # carries the type label (the MEMORY_TYPES vocabulary), so no separate type
     # field is needed — only summary/emotions/flags ride along.
     classification_fields = (
         ',\n'
@@ -116,7 +118,7 @@ def _build_extraction_schema(with_classification: bool = False) -> str:
         "{\n"
         f'  "entities": [{{"name": "string", "type": "{entity_types}", "properties": {{}}}}],\n'
         f'  "relationships": [{{"source": "entity_name", "target": "entity_name", "type": "{rel_types}", "properties": {{}}, "weight": 0.8}}],\n'
-        '  "memory_type": "fact|decision|preference|problem|reference|architecture|milestone",\n'
+        f'  "memory_type": "{memory_types}",\n'
         f'  "importance": 0.7{classification_fields}\n'
         "}"
     )

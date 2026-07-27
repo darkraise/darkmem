@@ -14,6 +14,7 @@ from app.schemas.memory import MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
+from app.taxonomy import MEMORY_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -315,10 +316,7 @@ limit=params.limit, offset=params.offset,
         # (e.g. "decisions" rarely appears inside a decision memory body).
         # Use word-boundary matching so "artifact" does not trigger "fact"
         # and "preferential" does not trigger "preference".
-        KNOWN_TYPES = (
-            "fact", "decision", "problem", "preference",
-            "reference", "architecture", "milestone",
-        )
+        KNOWN_TYPES = tuple(MEMORY_TYPES)
         q_lower = question.lower()
         type_hints: list[str] = []
         tag_hints: list[str] = []

@@ -30,6 +30,8 @@ AREAS: dict[str, ClassificationArea] = {
             "milestone": "breakthroughs, things that finally worked, achievements, releases",
             "problem": "bugs found, errors encountered, root causes identified, workarounds applied",
             "emotional": "feelings, vulnerability, relationships, personal reflections",
+            "episodic": "what happened in a session or episode — a sequence of events, an interaction, a narrative recollection",
+            "procedural": "how to carry something out — an ordered procedure, runbook, or repeatable workflow",
         },
     ),
 
@@ -154,6 +156,9 @@ AREAS: dict[str, ClassificationArea] = {
 }
 
 
+# The simple-mode label space is exactly ``MEMORY_TYPES`` with a one-line
+# description per value; the keys are asserted equal to it in test_taxonomy.py,
+# so widening the vocabulary must add a description here in the same change.
 SIMPLE_TYPES: dict[str, str] = {
     "fact": "neutral factual information, how things work, definitions, specifications",
     "decision": "explicit choices made, architecture rationale, trade-offs with reasoning",
@@ -162,6 +167,8 @@ SIMPLE_TYPES: dict[str, str] = {
     "reference": "documentation pointers, specs, standards, protocol descriptions",
     "architecture": "system design, component responsibilities, patterns, data flow",
     "milestone": "breakthroughs, achievements, releases, things that finally worked",
+    "episodic": "what happened in a session or episode — a sequence of events, an interaction, a narrative recollection",
+    "procedural": "how to carry something out — an ordered procedure, runbook, or repeatable workflow",
 }
 
 SIMPLE_NORMALIZATION: dict[str, str] = {
