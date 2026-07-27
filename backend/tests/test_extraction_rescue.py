@@ -1,16 +1,34 @@
-"""Tests for the relation-rescue regex layer in ``extraction._rescue_relations``.
+"""Tests for the relation-rescue regex layer — doc 06 §4's Stage 3.
 
 Three pattern families need coverage because the regexes are subtle and
 silently degrade if a future tweak breaks a clause boundary, distance
-guard, or negation suppression. The orchestrator (``_rescue_relations``)
-is the public entry point; we test it end-to-end with concrete sentences
-and a small entity list.
+guard, or negation suppression. The tests drive the whole stage as the
+registry composes it, with concrete sentences and a small entity list.
 """
 from __future__ import annotations
 
 import pytest
 
-from app.services.extraction import _rescue_relations
+from app.services.extraction import (
+    PASS_REGISTRY,
+    STAGE_RELATION_SYNTHESIS,
+    CleanState,
+    run_passes,
+)
+
+_STAGE3 = tuple(p for p in PASS_REGISTRY if p.stage == STAGE_RELATION_SYNTHESIS)
+
+
+def _stage3(entities: list[dict], relations: list[dict], content: str) -> list[dict]:
+    return run_passes(
+        _STAGE3,
+        CleanState(
+            content=content,
+            entities=entities,
+            relationships=relations,
+            raw_entities=entities,
+        ),
+    ).relationships
 
 
 def _entities(*names: str) -> list[dict]:
@@ -45,19 +63,19 @@ def test_rescue_replaces_pattern_a_from_to(content):
     should emit ``Y REPLACES X``."""
     if "Jenkins" in content:
         ents = _entities("Jenkins", "GitHub Actions")
-        out = _rescue_relations(ents, [], content)
+        out = _stage3(ents, [], content)
         assert _has(out, "GitHub Actions", "Jenkins", "REPLACES")
     elif "Qdrant" in content:
         ents = _entities("Qdrant", "pgvector", "darkmem")
-        out = _rescue_relations(ents, [], content)
+        out = _stage3(ents, [], content)
         assert _has(out, "pgvector", "Qdrant", "REPLACES")
     elif "Celery" in content:
         ents = _entities("Celery", "asyncio")
-        out = _rescue_relations(ents, [], content)
+        out = _stage3(ents, [], content)
         assert _has(out, "asyncio", "Celery", "REPLACES")
     else:
         ents = _entities("Promtail", "Alloy")
-        out = _rescue_relations(ents, [], content)
+        out = _stage3(ents, [], content)
         assert _has(out, "Alloy", "Promtail", "REPLACES")
 
 
@@ -78,11 +96,11 @@ def test_rescue_replaces_pattern_b_verb_x_prep_y(content, src, tgt):
     if tgt is None:
         # X is not a named entity; pattern should not fire.
         ents = _entities("NATS")
-        out = _rescue_relations(ents, [], content)
+        out = _stage3(ents, [], content)
         assert not any(r.get("type") == "REPLACES" for r in out)
         return
     ents = _entities(src, tgt)
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, src, tgt, "REPLACES")
 
 
@@ -99,7 +117,7 @@ def test_rescue_replaces_pattern_b_verb_x_prep_y(content, src, tgt):
 )
 def test_rescue_replaces_pattern_c_supersedes(content, src, tgt):
     ents = _entities(src, tgt)
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, src, tgt, "REPLACES")
 
 
@@ -128,7 +146,7 @@ def test_rescue_replaces_pattern_d_out_of_into(content, a, b):
     Existing Pattern A only handles 'from X to Y'; refactor decision
     memories use 'out of … into …' instead, which Pattern D captures."""
     ents = _entities(a, b)
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, b, a, "REPLACES"), (
         f"expected {b!r} REPLACES {a!r}; got {out}"
     )
@@ -138,7 +156,7 @@ def test_rescue_replaces_pattern_d_skips_when_endpoint_missing():
     """If only one endpoint is in the entity list, Pattern D emits nothing
     (consistent with Pattern A's 'both endpoints required' contract)."""
     ents = _entities("llm_seed.py")
-    out = _rescue_relations(
+    out = _stage3(
         ents, [],
         "Seed data was moved out of migration 0001 into llm_seed.py",
     )
@@ -148,7 +166,7 @@ def test_rescue_replaces_pattern_d_skips_when_endpoint_missing():
 def test_rescue_replaces_pattern_d_negation_suppresses():
     """Clause-level negation guard applies to Pattern D too."""
     ents = _entities("migration 0001", "llm_seed.py")
-    out = _rescue_relations(
+    out = _stage3(
         ents, [],
         "Seed data was not moved out of migration 0001 into llm_seed.py",
     )
@@ -160,7 +178,7 @@ def test_rescue_replaces_pattern_d_prefers_longest_a_zone_entity():
     'alembic migration 0001' both extracted), Pattern D must pick the
     longest-span entity as the REPLACES target, not the shortest."""
     ents = _entities("alembic", "alembic migration 0001", "llm_seed.py")
-    out = _rescue_relations(
+    out = _stage3(
         ents, [],
         "Seed data was moved out of Alembic migration 0001 into llm_seed.py",
     )
@@ -186,7 +204,7 @@ def test_rescue_replaces_pattern_d_b_zone_window_blocks_distant_entity():
     # file path in the same clause; the previous (windowless)
     # implementation incorrectly picked it as the new home.
     ents = _entities("alembic migration 0001", "finalize handler")
-    out = _rescue_relations(
+    out = _stage3(
         ents, [],
         "Seed data was moved out of Alembic migration 0001 into "
         "backend/app/services/llm_seed.py and is now applied by the "
@@ -203,7 +221,7 @@ def test_rescue_replaces_pattern_d_b_zone_window_accepts_close_entity():
     """Sanity check the inverse: when the obvious new-home IS extracted
     and sits within the 80-char window, Pattern D fires normally."""
     ents = _entities("alembic migration 0001", "llm_seed.py", "finalize handler")
-    out = _rescue_relations(
+    out = _stage3(
         ents, [],
         "Seed data was moved out of Alembic migration 0001 into "
         "llm_seed.py and is now applied by the finalize handler instead.",
@@ -276,10 +294,8 @@ def test_rescue_file_path_entities_pattern_d_picks_up_rescued_path():
     """End-to-end: when Pattern D's B-zone target is missing from the
     LLM extraction, the file-path rescue adds it, and Pattern D then
     emits the right REPLACES edge — closing the round-9/round-10 gap."""
-    from app.services.extraction import (
-        _rescue_file_path_entities,
-        _rescue_relations,
-    )
+    from app.services.extraction import _rescue_file_path_entities
+
     text = (
         "Seed data was moved out of Alembic migration 0001 into "
         "backend/app/services/llm_seed.py and is now applied by the "
@@ -294,7 +310,7 @@ def test_rescue_file_path_entities_pattern_d_picks_up_rescued_path():
     rescued = _rescue_file_path_entities(llm_entities, text)
     rescued_names = {e["name"] for e in rescued}
     assert "backend/app/services/llm_seed.py" in rescued_names
-    out = _rescue_relations(rescued, [], text)
+    out = _stage3(rescued, [], text)
     assert _has(
         out,
         "backend/app/services/llm_seed.py",
@@ -310,7 +326,7 @@ def test_rescue_replaces_skips_negated_clause():
     """Clause containing 'not / no / without / never' is skipped entirely."""
     content = "We did not switch from Jenkins to GitHub Actions this quarter"
     ents = _entities("Jenkins", "GitHub Actions")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert not _has(out, "GitHub Actions", "Jenkins", "REPLACES")
 
 
@@ -319,7 +335,7 @@ def test_rescue_replaces_clause_scope_holds():
     the next. The pattern must respect ``. ! ? ;`` clause boundaries."""
     content = "We migrated. Jenkins from is fine; we use GitHub Actions to deploy."
     ents = _entities("Jenkins", "GitHub Actions")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert not _has(out, "GitHub Actions", "Jenkins", "REPLACES")
 
 
@@ -343,11 +359,11 @@ def test_rescue_adjacency_basic(content, src, tgt, rtype):
         # The 'with X' rescue should not fire when no upstream subject
         # entity exists in the clause.
         ents = _entities("tree-sitter")
-        out = _rescue_relations(ents, [], content)
+        out = _stage3(ents, [], content)
         assert not any(r.get("type") == "USES" for r in out)
         return
     ents = _entities(src, tgt)
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, src, tgt, rtype)
 
 
@@ -355,7 +371,7 @@ def test_rescue_adjacency_skips_negated_pair():
     """``X with no Y`` must not infer USES."""
     content = "darkmem runs with no GPU acceleration"
     ents = _entities("darkmem", "GPU")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert not _has(out, "darkmem", "GPU", "USES")
 
 
@@ -365,7 +381,7 @@ def test_rescue_adjacency_avoids_prepositional_object_subject():
     pgvector`` should not yield ``MCP USES pgvector``."""
     content = "Adding via MCP to confirm extraction with pgvector"
     ents = _entities("MCP", "pgvector")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert not _has(out, "MCP", "pgvector", "USES")
 
 
@@ -443,7 +459,7 @@ def test_rescue_does_not_duplicate_existing_relations():
         "source": "GitHub Actions", "target": "Jenkins",
         "type": "REPLACES", "properties": {}, "weight": 0.9,
     }]
-    out = _rescue_relations(ents, seed, content)
+    out = _stage3(ents, seed, content)
     replaces = [r for r in out if r.get("type") == "REPLACES"]
     assert len(replaces) == 1
 
@@ -479,7 +495,7 @@ def test_rescue_uses_promotes_clause_subject_when_closest_entity_is_object_of_pr
         "and uses ClickHouse for analytics storage."
     )
     ents = _entities("Phoenix v2", "Kubernetes", "eu-west-1", "ClickHouse")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, "Phoenix v2", "ClickHouse", "USES"), (
         f"expected phoenix v2 USES clickhouse, got: "
         f"{[(r['source'], r['type'], r['target']) for r in out if r.get('type') == 'USES']}"
@@ -497,7 +513,7 @@ def test_rescue_depends_on_promotes_clause_subject():
         "Phoenix v2 is written in Rust and depends on Tokio for async I/O."
     )
     ents = _entities("Phoenix v2", "Rust", "Tokio")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, "Phoenix v2", "Tokio", "DEPENDS_ON"), (
         f"expected phoenix v2 DEPENDS_ON tokio, got: "
         f"{[(r['source'], r['type'], r['target']) for r in out if r.get('type') == 'DEPENDS_ON']}"
@@ -516,7 +532,7 @@ def test_rescue_replaces_pattern_c_promotes_clause_subject():
         "that replaces the legacy Triton pipeline."
     )
     ents = _entities("Phoenix v2", "Riya Patel", "Triton")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, "Phoenix v2", "Triton", "REPLACES"), (
         f"expected phoenix v2 REPLACES triton, got: "
         f"{[(r['source'], r['type'], r['target']) for r in out if r.get('type') == 'REPLACES']}"
@@ -533,5 +549,5 @@ def test_rescue_subject_promotion_does_not_fire_when_closest_entity_is_real_subj
     ``Postgres uses HNSW indexing`` -> postgres USES hnsw (no change)."""
     content = "Postgres uses HNSW indexing for vector search."
     ents = _entities("Postgres", "HNSW")
-    out = _rescue_relations(ents, [], content)
+    out = _stage3(ents, [], content)
     assert _has(out, "Postgres", "HNSW", "USES")

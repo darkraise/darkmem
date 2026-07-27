@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from collections.abc import Collection
+from typing import NamedTuple
 
 from app.services.extraction_pass_harness import (
     CleanState,
@@ -901,10 +902,67 @@ def _clause_subject(
     return None
 
 
+# Dedup key for the rescue layer: source, target, and the relation's
+# REPLACES-family bucket rather than its raw type, so an LLM-emitted
+# IMPROVES_ON suppresses a rescue-emitted REPLACES for the same pair.
+def _rescue_key(r: dict) -> tuple[str, str, str]:
+    return (
+        (r.get("source") or "").strip().lower(),
+        (r.get("target") or "").strip().lower(),
+        _family_key(r.get("type") or ""),
+    )
+
+
+class _RescueContext(NamedTuple):
+    text_lower: str
+    name_to_entity: dict[str, dict]
+    occurrences: list[tuple[str, int, int]]
+    existing: set[tuple[str, str, str]]
+    clauses: list[tuple[int, int]]
+
+
+def _rescue_context(
+    entities: list[dict], relations: list[dict], content: str,
+) -> _RescueContext | None:
+    """The span index the three Stage-3 synthesis passes share.
+
+    Rebuilt per pass rather than threaded between them: each pass reads
+    only ``(entities, relationships, content)`` from the registry state,
+    and ``existing`` recomputed from the incoming relations equals the
+    set the previous pass left behind, since every emitted triple is
+    appended under exactly the key that was added.
+    """
+    if not entities or not content:
+        return None
+
+    text_lower = content.lower()
+    name_to_entity: dict[str, dict] = {}
+    for e in entities:
+        n = (e.get("name") or "").strip().lower()
+        if n:
+            name_to_entity[n] = e
+
+    occurrences: list[tuple[str, int, int]] = []
+    for name in name_to_entity:
+        for m in re.finditer(
+            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text_lower,
+        ):
+            occurrences.append((name, m.start(), m.end()))
+    occurrences.sort(key=lambda x: x[1])
+
+    return _RescueContext(
+        text_lower=text_lower,
+        name_to_entity=name_to_entity,
+        occurrences=occurrences,
+        existing={_rescue_key(r) for r in relations},
+        clauses=_split_clauses(text_lower),
+    )
+
+
 def _rescue_relations(
     entities: list[dict], relations: list[dict], content: str,
 ) -> list[dict]:
-    """Pattern-based relation synthesis from text.
+    """Pattern-based relation synthesis from text — the adjacency pass.
 
     For each pair of entities in close text proximity, emit an inferred
     triple if a connector phrase (``on``, ``with``, ``uses``, ``runs on``,
@@ -929,41 +987,14 @@ def _rescue_relations(
     Skips any pair whose between-text contains a negation marker so we
     don't infer ``X USES Y`` from ``X with no Y``.
     """
-    if not entities or not content:
+    ctx = _rescue_context(entities, relations, content)
+    if ctx is None:
         return relations
-
-    text_lower = content.lower()
-    name_to_entity: dict[str, dict] = {}
-    for e in entities:
-        n = (e.get("name") or "").strip().lower()
-        if n:
-            name_to_entity[n] = e
-
-    occurrences: list[tuple[str, int, int]] = []
-    for name in name_to_entity:
-        for m in re.finditer(
-            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text_lower,
-        ):
-            occurrences.append((name, m.start(), m.end()))
-    occurrences.sort(key=lambda x: x[1])
-
-    # Use 5-type-collapsed labels for dedup so that an existing IMPROVES_ON
-    # blocks a rescue candidate of REPLACES (they collapse to the same 5-type
-    # label downstream). Without this the rescue can produce a near-duplicate
-    # ``X REPLACES Y`` alongside an existing ``X IMPROVES_ON Y``.
-    def _key(r: dict) -> tuple[str, str, str]:
-        return (
-            (r.get("source") or "").strip().lower(),
-            (r.get("target") or "").strip().lower(),
-            _family_key(r.get("type") or ""),
-        )
-    existing = {_key(r) for r in relations}
+    text_lower, name_to_entity, occurrences, existing, clauses = ctx
     out = list(relations)
 
     MAX_HEAD_GAP = 15  # src_end -> connector_start
     MAX_TAIL_GAP = 15  # connector_end -> tgt_start
-
-    clauses = _split_clauses(text_lower)
 
     for i, (src_name, src_start, src_end) in enumerate(occurrences):
         for j in range(i + 1, len(occurrences)):
@@ -1063,33 +1094,11 @@ def _rescue_relations(
                 "weight": weight,
             })
 
-    # Second pass: subject-tracking. For each clause, identify the clause
-    # subject (first entity mentioned) and pair it with entities that follow
-    # an "implicit subject" connector like ``via``, ``with``, ``using``,
-    # ``to``. This catches ``Promtail ships logs to Loki via gRPC`` as
-    # ``promtail USES grpc`` + ``promtail USES loki`` instead of the
-    # adjacency-only misreads (``loki USES grpc``).
-    out = _rescue_relations_subject_tracking(
-        text_lower, name_to_entity, occurrences, out, existing, clauses,
-    )
-
-    # Third pass: generic REPLACES from transition-verb patterns. Catches
-    # "switched/migrated/moved ... from X to Y", "replaced X with Y",
-    # "swapped X for Y", "Y supersedes X", etc. without case-by-case
-    # connector phrases for every English verb form.
-    out = _rescue_relations_replaces(
-        text_lower, name_to_entity, occurrences, out, existing, clauses,
-    )
     return out
 
 
 def _rescue_relations_replaces(
-    text_lower: str,
-    name_to_entity: dict,
-    occurrences: list[tuple[str, int, int]],
-    current: list[dict],
-    existing: set,
-    clauses: list | None = None,
+    entities: list[dict], relations: list[dict], content: str,
 ) -> list[dict]:
     """Generic REPLACES extractor for transition-verb patterns.
 
@@ -1104,7 +1113,11 @@ def _rescue_relations_replaces(
 
     Negation between the verb and the entities suppresses the rescue.
     """
-    out = list(current)
+    ctx = _rescue_context(entities, relations, content)
+    if ctx is None:
+        return relations
+    text_lower, name_to_entity, occurrences, existing, clauses = ctx
+    out = list(relations)
 
     def _emit(src_name: str, tgt_name: str, weight: float, label: str) -> None:
         if src_name == tgt_name:
@@ -1130,7 +1143,7 @@ def _rescue_relations_replaces(
                 return occ
         return None
 
-    for clause_start, clause_end in (clauses if clauses is not None else _split_clauses(text_lower)):
+    for clause_start, clause_end in clauses:
         clause = text_lower[clause_start:clause_end]
         if re.search(r"\b(?:no|not|without|never)\b", clause):
             # Skip outright; cheap negation guard at clause level.
@@ -1282,12 +1295,7 @@ def _rescue_relations_replaces(
 
 
 def _rescue_relations_subject_tracking(
-    text_lower: str,
-    name_to_entity: dict,
-    occurrences: list[tuple[str, int, int]],
-    current: list[dict],
-    existing: set,
-    clauses: list | None = None,
+    entities: list[dict], relations: list[dict], content: str,
 ) -> list[dict]:
     """Emit triples keyed on the clause's grammatical subject, not nearest entity.
 
@@ -1299,9 +1307,16 @@ def _rescue_relations_subject_tracking(
       triple is not already present.
 
     Negation between the subject and the connector still suppresses.
+
+    Catches ``Promtail ships logs to Loki via gRPC`` as ``promtail USES
+    grpc`` + ``promtail USES loki`` instead of the adjacency pass's
+    nearest-entity misread (``loki USES grpc``).
     """
-    clauses = clauses if clauses is not None else _split_clauses(text_lower)
-    out = list(current)
+    ctx = _rescue_context(entities, relations, content)
+    if ctx is None:
+        return relations
+    text_lower, name_to_entity, occurrences, existing, clauses = ctx
+    out = list(relations)
     MAX_TAIL_GAP = 15
 
     # Group occurrences by clause index for fast lookup.
@@ -2132,14 +2147,20 @@ PASS_REGISTRY: tuple[Pass, ...] = (
     # Attach ISO dates to their event/release entity (HAPPENED_ON) before
     # ``valid_names`` is computed, so the date node + edge survive remap.
     Pass("rescue_happened_on", STAGE_ENTITY_RESCUE, _rescue_happened_on, ("entities", "relationships", "content"), ("entities", "relationships")),
-    # Pattern-based relation synthesis. Adds DEPLOYED_ON / USES / REPLACES
-    # triples for adjacent entity pairs joined by a connector phrase the
-    # LLM misses (``X on Y``, ``X with Y``, ``X via Y``, ``X uses Y``,
-    # etc.). Runs before remap/direction/collapse so the synthetic triples
-    # go through the same downstream cleanup as LLM-emitted ones. The
-    # entire pass is skipped when ``relation_rescue`` is False; the
-    # model's raw triples still go through direction/collapse cleanup below.
+    # Pattern-based relation synthesis, doc 06 §4's Stage 3 — three passes
+    # in the order the doc declares them. They add DEPLOYED_ON / USES /
+    # REPLACES triples the LLM missed, and run before remap/direction/
+    # collapse so the synthetic triples go through the same downstream
+    # cleanup as LLM-emitted ones. Each is skipped when ``relation_rescue``
+    # is False; the model's raw triples still go through the cleanup below.
+    #
+    # The adjacency pass leads: it and the subject-tracking pass can both
+    # reach the same (source, target, USES) key, and the first emitter of a
+    # key wins it — so the order decides which weight and which properties
+    # the surviving triple carries into ``dedup_by_target_predicate``.
     Pass("rescue_relations", STAGE_RELATION_SYNTHESIS, _rescue_relations, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
+    Pass("rescue_relations_subject_tracking", STAGE_RELATION_SYNTHESIS, _rescue_relations_subject_tracking, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
+    Pass("rescue_relations_replaces", STAGE_RELATION_SYNTHESIS, _rescue_relations_replaces, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
     Pass("remap_to_valid_entities", STAGE_RELATION_GATING, _remap_to_valid_entities, ("relationships", "entities", "raw_entities"), ("relationships",)),
     Pass("drop_edges_to_negated", STAGE_RELATION_GATING, _drop_edges_to_negated, ("relationships", "negated_names"), ("relationships",)),
     # Reserve REPLACES for real migrations; a selection ('chose X over Y') is
@@ -2304,6 +2325,8 @@ __all__ = [
     "_is_object_of_preposition",
     "_clause_for_position",
     "_clause_subject",
+    "_rescue_key",
+    "_rescue_context",
     "_rescue_relations",
     "_rescue_relations_replaces",
     "_rescue_relations_subject_tracking",
