@@ -802,7 +802,7 @@ behaves the same as an ORM write.
 
 ## 10. Findings — where the sources disagree
 
-Twenty findings and one amendment, each tiered against
+Twenty-one findings and one amendment, each tiered against
 [`agent-runbook.md`](agent-runbook.md) §5. **Tier 1** is task-local. **Tier 2** reaches
 beyond this task — it changes what a later task must do, so it is corrected, logged, and
 *surfaced*. **Tier 3** contradicts the design corpus and **stops execution** rather than
@@ -811,7 +811,7 @@ being resolved here.
 | Tier | Count | Findings |
 |---|---|---|
 | **3 — escalated, answered 2026-07-27** | 1 | F-20 — resolved, no longer blocking |
-| **2 — changes a later task's work** | 7 findings + 1 amendment | F-02, F-08, F-09, F-13, F-14, F-15, F-17, and A-01 |
+| **2 — changes a later task's work** | 8 findings + 1 amendment | F-02, F-08, F-09, F-13, F-14, F-15, F-17, F-21, and A-01 |
 | **1 — task-local, recorded** | 12 | F-01, F-03, F-04, F-05, F-06, F-07, F-10, F-11, F-12, F-16, F-18, F-19 |
 
 ### Tier 3 — not resolved here
@@ -851,6 +851,7 @@ being resolved here.
 | F-16 | **1** | `E0-baseline-and-harness.md` T0.12c vs T0.13 | T0.12c says the four target-new templates "land here as **registry entries** … (their inert labelling is T0.13's)"; T0.13's own **What** says it lands "all four per-fingerprint partition templates (block, relation, article, `triple_embeddings`)". Both cannot be the landing task. §6 follows T0.12c, whose statement is the more specific of the two (it names the mechanism, `_TABLE_TEMPLATES`/`_AUX_INDEXES`, and explicitly hands labelling to T0.13). T0.13's wording should be narrowed to labelling and the no-writer assertion. |
 | F-18 | **1** | doc 04 §6 vs Appendix A.2 | `repositories.{provider, default_branch, status, auto_sync}` are `NOT NULL` with **no server default**; doc 04 §6 prints `provider 'local'` and `default_branch 'main'` without saying which side owns them, and says nothing about `status` or `auto_sync`. Same class as F-09 and §9.3. §9.3's action treats the two doc-04-printed ones as DDL defaults and records the reading; `status` and `auto_sync` have no doc-04 default to honour and stay as they are unless T0.12b decides otherwise. |
 | F-19 | **1** | `models/*.py` vs Appendix A.2 | `code_graph_nodes.id` and `code_edges.id` carry `default=uuid.uuid4` in the ORM while the DDL gives them `bigserial` sequences (`nextval(...)`), which the database applies and the ORM value never reaches. Dead metadata, cosmetic only — recorded so the audit's "every sweep hit is a row" claim is literally true and a reviewer does not read the omission as an oversight. The baseline should not mirror it. |
+| F-21 | **2** | `E0-baseline-and-harness.md` T0.12c vs `backend/app/` | **T0.12c's floor assertion cannot be met by DDL alone, and no T0.12a–c task authorises the code change it needs.** T0.12c requires "the **full backend suite passes** against a database built from the baseline alone", but the baseline renames four `memories` columns (`llm_classified_type → classified_type`, `llm_summary → summary`, `llm_emotions → emotions`, `llm_flags → flags`, §5) and drops the `llm_purpose_configs` indirection columns (§8). Measured blast radius at the T0.12a commit: **24 occurrences across five app files** (`models/memory.py`, `schemas/memory.py`, `api/routes/memories.py`, `services/pipeline.py`, `utils/serialization.py`) plus **7 in `tests/`** for the renames, and five more app files for `provider_id`/`profile_id`/`ml_profile_id`. Until those are updated the suite cannot pass, so T0.12c is not "write the remaining indexes and prove the suite carries" — it necessarily includes bringing the ORM mirror and every call site onto the target column names. **Recommendation:** state that scope in T0.12c explicitly and re-size it from `M` to `L`, which under runbook §3 means it needs a reviewed step-level plan before execution. The alternative — deferring the renames into E1 — is worse: it would put the baseline out of step with doc 04 §3.1 on day one, which is the exact failure T0.11 exists to prevent. |
 
 ### Amendments proposed to the task corpus
 
