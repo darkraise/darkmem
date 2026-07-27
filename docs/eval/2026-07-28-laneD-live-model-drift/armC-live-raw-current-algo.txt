@@ -1,0 +1,59 @@
+JWT_SECRET is weak — set a 32+ character secret for production
+
+live calls made: 0
+
+########## gold.json — LIVE RE-MEASUREMENT {} ##########
+
+================ PER-MEMORY (entity F1 / relation F1) ================
+  e1    ent=1.00  rel=1.00
+  e2    ent=1.00  rel=1.00
+  e3    ent=0.50  rel=1.00  <--
+  e4    ent=1.00  rel=1.00
+  e5    ent=1.00  rel=1.00
+  e6    ent=1.00  rel=1.00
+  e7    ent=1.00  rel=1.00
+  e8    ent=0.50  rel=1.00  <--
+  e9    ent=1.00  rel=1.00
+  e10   ent=1.00  rel=1.00
+  e11   ent=1.00  rel=1.00
+  e12   ent=1.00  rel=1.00
+  e13   ent=1.00  rel=1.00
+  e14   ent=0.67  rel=0.50  <--
+  e15   ent=0.50  rel=1.00  <--
+  e16   ent=1.00  rel=1.00
+  e17   ent=1.00  rel=1.00
+  e18   ent=0.80  rel=0.67  <--
+  e19   ent=1.00  rel=1.00
+  e20   ent=1.00  rel=0.67  <--
+  e21   ent=0.86  rel=0.50  <--
+  e22   ent=1.00  rel=1.00
+  e23   ent=1.00  rel=1.00
+  e24   ent=1.00  rel=1.00
+  e25   ent=1.00  rel=1.00
+  e26   ent=1.00  rel=1.00
+
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.954 R=0.899 F1=0.925   (tp=62 fp=3 fn=7)
+  Entity (name only)               P=1.000 R=0.942 F1=0.970   (tp=65 fp=0 fn=4)
+  Relation (s,TYPE,t)              P=0.946 R=0.897 F1=0.921   (tp=35 fp=2 fn=4)
+  Relation (s,t) type-agnostic     P=0.946 R=0.897 F1=0.921   (tp=35 fp=2 fn=4)
+
+########## gold_heldout.json — LIVE RE-MEASUREMENT {} ##########
+
+================ PER-MEMORY (entity F1 / relation F1) ================
+  h1    ent=1.00  rel=1.00
+  h2    ent=1.00  rel=1.00
+  h3    ent=0.57  rel=0.00  <--
+  h4    ent=1.00  rel=1.00
+  h5    ent=0.67  rel=1.00  <--
+  h6    ent=1.00  rel=1.00
+  h7    ent=0.80  rel=0.67  <--
+  h8    ent=1.00  rel=1.00
+  h9    ent=1.00  rel=1.00
+  h10   ent=0.80  rel=1.00
+
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.893 R=0.833 F1=0.862   (tp=25 fp=3 fn=5)
+  Entity (name only)               P=0.964 R=0.900 F1=0.931   (tp=27 fp=1 fn=3)
+  Relation (s,TYPE,t)              P=0.929 R=0.650 F1=0.765   (tp=13 fp=1 fn=7)
+  Relation (s,t) type-agnostic     P=0.929 R=0.650 F1=0.765   (tp=13 fp=1 fn=7)

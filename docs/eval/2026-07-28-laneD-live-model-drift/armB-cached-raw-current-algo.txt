@@ -1,0 +1,12 @@
+##### ARM B (dbde017 algo, CACHED raw) gold.json #####
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.969 R=0.913 F1=0.940   (tp=63 fp=2 fn=6)
+  Entity (name only)               P=1.000 R=0.942 F1=0.970   (tp=65 fp=0 fn=4)
+  Relation (s,TYPE,t)              P=0.919 R=0.872 F1=0.895   (tp=34 fp=3 fn=5)
+  Relation (s,t) type-agnostic     P=0.946 R=0.897 F1=0.921   (tp=35 fp=2 fn=4)
+##### ARM B (dbde017 algo, CACHED raw) gold_heldout.json #####
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.966 R=0.933 F1=0.949   (tp=28 fp=1 fn=2)
+  Entity (name only)               P=1.000 R=0.967 F1=0.983   (tp=29 fp=0 fn=1)
+  Relation (s,TYPE,t)              P=0.895 R=0.850 F1=0.872   (tp=17 fp=2 fn=3)
+  Relation (s,t) type-agnostic     P=0.895 R=0.850 F1=0.872   (tp=17 fp=2 fn=3)

@@ -1,0 +1,1 @@
+{"entities": [{"name": "Promtail", "type": "tool", "properties": {}}, {"name": "192.168.0.50:9080", "type": "place", "properties": {}}], "relationships": [{"source": "Promtail", "target": "192.168.0.50:9080", "type": "DEPLOYED_ON", "properties": {}, "weight": 0.8}], "memory_type": "fact", "importance": 0.5}

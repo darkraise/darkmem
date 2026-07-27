@@ -1,0 +1,1 @@
+{"entities": [{"name": "Qdrant", "type": "database", "properties": {}}, {"name": "pgvector", "type": "tool", "properties": {}}], "relationships": [{"source": "Qdrant", "target": "pgvector", "type": "IMPROVES_ON", "weight": 0.7}], "memory_type": "decision", "importance": 0.6}
