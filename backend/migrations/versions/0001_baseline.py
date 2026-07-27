@@ -840,6 +840,66 @@ def _pass_two() -> None:
     )
 
     # ------------------------------------------------------------------
+    # documents + blocks — the PKM expansion horizon (doc 04 §8.5)
+    # ------------------------------------------------------------------
+    # Land empty and INERT: nothing writes them until the PKM pipeline
+    # (TH1.02). They are here rather than in T0.13 because the
+    # block_embeddings registry template references blocks(id), so a
+    # fingerprint registration fails while the table is absent — the same
+    # lands-here/labelled-there split the four templates already take
+    # (T0.12c lands, T0.13 labels). T0.13 keeps repo_ids[], the inert
+    # labelling, and the no-writer assertion.
+    op.execute(
+        """
+        CREATE TABLE documents (
+            id           UUID NOT NULL,
+            project      TEXT NOT NULL,
+            title        TEXT,
+            source_type  TEXT,
+            uri          TEXT,
+            content_hash TEXT,
+            properties   JSONB,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT documents_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    # Identity key: re-filing the same source finds and re-ingests the
+    # existing row (content_hash gates the actual work) instead of minting a
+    # duplicate. uri-less sources (ad-hoc notes) are identified by id.
+    op.execute(
+        "CREATE UNIQUE INDEX ux_documents_project_uri ON documents (project, uri) "
+        "WHERE uri IS NOT NULL"
+    )
+    op.execute(
+        "CREATE TRIGGER documents_touch_updated_at BEFORE UPDATE "
+        "ON documents FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+    )
+
+    # A block is simultaneously the chunk unit, the citation anchor, the link
+    # endpoint and the transclusion target. parent_id CASCADE makes the tree
+    # delete take its subtree; re-ingest strips blocks by document_id before
+    # re-chunking (strip-before-rewrite generalised).
+    op.execute(
+        """
+        CREATE TABLE blocks (
+            id          UUID NOT NULL,
+            document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            parent_id   UUID REFERENCES blocks(id) ON DELETE CASCADE,
+            order_index INTEGER,
+            type        TEXT,
+            text        TEXT,
+            properties  JSONB,
+            char_span   INT4RANGE,
+            CONSTRAINT blocks_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_blocks_document_order ON blocks (document_id, order_index)")
+    op.execute("CREATE INDEX ix_blocks_parent ON blocks (parent_id)")
+
+    # ------------------------------------------------------------------
     # events — the durable, append-only operation stream (doc 04 §8.1)
     # ------------------------------------------------------------------
     # The ONE declaratively partitioned table in the schema. memories is
@@ -960,6 +1020,8 @@ def downgrade() -> None:
         "knowledge_articles",
         "fact_sources",
         "knowledge_triples",
+        "blocks",
+        "documents",
         "memory_buffer",
         "memory_community_members",
         "memory_communities",
