@@ -121,6 +121,18 @@ def _check_rescue_relations(out):
     assert rescued
 
 
+def _check_rescue_relations_subject_tracking(out):
+    assert ("promtail", "USES", "grpc") in _triples(out.relationships)
+    rescued = [r for r in out.relationships if (r.get("properties") or {}).get("rescue")]
+    assert rescued
+
+
+def _check_rescue_relations_replaces(out):
+    assert ("pgvector", "REPLACES", "qdrant") in _triples(out.relationships)
+    rescued = [r for r in out.relationships if (r.get("properties") or {}).get("rescue")]
+    assert rescued
+
+
 def _check_remap_to_valid_entities(out):
     assert _triples(out.relationships) == {("darkmem", "DEPLOYED_ON", "proxmox")}
 
@@ -277,6 +289,28 @@ PASS_FIXTURES: dict[str, tuple[CleanState, object]] = {
         ),
         _check_rescue_relations,
     ),
+    "rescue_relations_subject_tracking": (
+        _state(
+            content="Promtail ships logs to Loki via gRPC",
+            entities=[
+                {"name": "promtail", "type": "service"},
+                {"name": "loki", "type": "service"},
+                {"name": "grpc", "type": "protocol"},
+            ],
+        ),
+        _check_rescue_relations_subject_tracking,
+    ),
+    "rescue_relations_replaces": (
+        _state(
+            content="we migrated darkmem from qdrant to pgvector",
+            entities=[
+                {"name": "darkmem", "type": "project"},
+                {"name": "qdrant", "type": "database"},
+                {"name": "pgvector", "type": "tool"},
+            ],
+        ),
+        _check_rescue_relations_replaces,
+    ),
     "remap_to_valid_entities": (
         _state(
             entities=[
@@ -421,7 +455,7 @@ REGISTRY_NAMES = sorted({p.name for p in PASS_REGISTRY})
 def test_registry_is_an_explicit_ordered_sequence():
     assert isinstance(PASS_REGISTRY, tuple)
     assert all(isinstance(p, Pass) for p in PASS_REGISTRY)
-    assert len(PASS_REGISTRY) == 29
+    assert len(PASS_REGISTRY) == 31
 
 
 def test_registry_validates_against_its_own_contract():
