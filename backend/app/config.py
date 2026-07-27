@@ -213,6 +213,21 @@ class Settings(BaseSettings):
         base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
+    # Tier-C purposes, seeded inert (doc 11 §6). No consumer dispatches on
+    # either yet: `synthesis` gets its first writer in T3.02 (Layer-3 article
+    # write-ups), `verification` in T2.26 (the contradiction check behind the
+    # dispute veto, and article claim-level entailment). They are resolvable
+    # from day one because doc 11 §6 requires the seed and the PURPOSES sweep to
+    # land BEFORE any consumer dispatches — a consumer reaching an unseeded
+    # purpose is the same class of bug as a feature emitting an untabled type.
+    llm_synthesis: LLMPurposeConfig = LLMPurposeConfig(
+        base_url="http://localhost:11434/v1",
+        model="qwen2.5:3b", params={"temperature": 0.3},
+    )
+    llm_verification: LLMPurposeConfig = LLMPurposeConfig(
+        base_url="http://localhost:11434/v1",
+        model="qwen2.5:3b", params={"temperature": 0},
+    )
 
 
 settings = Settings()

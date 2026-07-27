@@ -2,15 +2,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.pipeline_aggregator import build_pipeline_state
+from app.services.config import PURPOSES
 
 
 @pytest.mark.asyncio
 async def test_aggregator_returns_llm_state(session: AsyncSession):
     state = await build_pipeline_state(session)
-    assert set(state["llm"].keys()) == {
-        "embedding", "extraction", "classification",
-        "reasoning", "summarization", "reranker",
-    }
+    assert set(state["llm"].keys()) == set(PURPOSES)
     assert "extraction" in state["prompts"]
     assert state["relation_rescue"] is True
 

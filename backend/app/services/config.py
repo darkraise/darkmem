@@ -24,7 +24,14 @@ LLM_CONFIG_KEY = "llm_config"
 LLM_PROVIDERS_KEY = "llm_providers"
 LLM_PROFILES_KEY = "llm_profiles"
 
-PURPOSES = ["embedding", "extraction", "classification", "reasoning", "summarization", "reranker"]
+# The six live purposes plus the two Tier-C purposes seeded inert by T1.05.
+# Resolvable, but no consumer dispatches on synthesis (T3.02) or
+# verification (T2.26) yet — doc 11 §6 requires the rows and this sweep to
+# land before any consumer reaches them.
+PURPOSES = [
+    "embedding", "extraction", "classification", "reasoning",
+    "summarization", "reranker", "synthesis", "verification",
+]
 
 
 def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeConfigSchema:
@@ -50,6 +57,8 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
         "reasoning": settings.llm_reasoning,
         "summarization": settings.llm_summarization,
         "reranker": settings.llm_reranker,
+        "synthesis": settings.llm_synthesis,
+        "verification": settings.llm_verification,
     }
 
     rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()

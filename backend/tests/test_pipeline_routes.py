@@ -1,4 +1,5 @@
 import pytest
+from app.services.config import PURPOSES
 
 
 @pytest.mark.asyncio
@@ -12,10 +13,7 @@ async def test_get_pipeline_returns_aggregator(client, auth_headers):
     resp = await client.get("/api/v1/pipeline", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body["llm"].keys()) == {
-        "embedding", "extraction", "classification",
-        "reasoning", "summarization", "reranker",
-    }
+    assert set(body["llm"].keys()) == set(PURPOSES)
     assert "relation_rescue" in body
     assert "prompts" in body
 

@@ -142,6 +142,10 @@ DEFAULT_PURPOSE_CONFIGS: list[PurposeConfigSeed] = [
     PurposeConfigSeed("reasoning",      "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.7}),
     PurposeConfigSeed("summarization",  "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.3}),
     PurposeConfigSeed("reranker",       "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
+    # Inert (T1.05, doc 11 §6): seeded and resolvable, dispatched by nothing.
+    # First writers are T3.02 (synthesis) and T2.26 (verification).
+    PurposeConfigSeed("synthesis",      "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.3}),
+    PurposeConfigSeed("verification",   "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
 ]
 
 
