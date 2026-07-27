@@ -397,6 +397,13 @@ async def test_a_broken_handoff_never_fails_the_capture(
     assert (await session.execute(
         select(func.count()).select_from(MemoryBuffer)
     )).scalar() == 1
+    # The verdict is the gate's decision, so a failed registry write does not
+    # retract it — the handoff still reports what the gate said.
+    verdict = await provision.handoff_capture_hint(
+        session, metadata={"repo_hint": GOOD_HINT}, memory_id=uuid4(),
+        project="darkmem", patterns=OPERATOR_ALLOWLIST,
+    )
+    assert verdict is not None and verdict.allowed
 
 
 # ── Ruling 3: capture never clones, proven structurally ─────────────

@@ -147,9 +147,9 @@ async def handoff_capture_hint(
 ) -> HintVerdict | None:
     """Validate this capture's repository hint and queue Tier C past it.
 
-    Returns the gate's verdict, or `None` when the capture carried no hint.
-    Never raises: the caller is a capture, and a capture must not fail over
-    a provisioning convenience.
+    Returns the gate's verdict — the decision, not the provisioning outcome —
+    or `None` when the capture carried no hint. Never raises: the caller is a
+    capture, and a capture must not fail over a provisioning convenience.
     """
     raw = extract_hint(metadata)
     if raw is None:
@@ -159,6 +159,11 @@ async def handoff_capture_hint(
         if patterns is None:
             patterns = await load_allowlist(session)
         verdict = evaluate_hint(raw, patterns)
+    except Exception:
+        logger.error("repo hint gate failed for memory %s", memory_id, exc_info=True)
+        return None
+
+    try:
         async with session.begin_nested():
             if verdict.allowed:
                 await _provision(
@@ -182,10 +187,9 @@ async def handoff_capture_hint(
                         "memory_id": str(memory_id),
                     },
                 )
-        return verdict
     except Exception:
         logger.error(
             "repo hint handoff failed for memory %s; capture continues",
             memory_id, exc_info=True,
         )
-        return None
+    return verdict
