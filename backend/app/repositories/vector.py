@@ -46,6 +46,19 @@ class MemoryFilter:
             clauses.append(f"{alias}.status::text = ANY(CAST(:flt_statuses AS text[]))")
         return " AND ".join(clauses) if clauses else "TRUE"
 
+    def asserted_by_sql(self, memory_ids_expr: str) -> str:
+        """Scope a row that carries ``memory_ids`` instead of a ``project``.
+
+        ``entities`` and ``entity_relations`` are not memory-scoped — the only
+        project a graph row has is the one its asserting memories carry. A walk
+        that scopes its seed but expands through an unscoped predicate steps
+        straight over the boundary, so every hop renders this.
+        """
+        return (
+            "EXISTS (SELECT 1 FROM memories flt_m "
+            f"WHERE flt_m.id = ANY({memory_ids_expr}) AND {self.where_sql('flt_m')})"
+        )
+
     def params(self) -> dict:
         out: dict = {}
         if self.project is not None:

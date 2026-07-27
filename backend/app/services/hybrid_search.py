@@ -43,7 +43,7 @@ class HybridSearchService:
             semantic_failed = True
 
         try:
-            keyword_results = await self._keyword_search(query, fetch_n)
+            keyword_results = await self._keyword_search(query, fetch_n, filters)
         except Exception as e:
             logger.error("Keyword search failed: %s", e)
             keyword_results = []
@@ -111,19 +111,43 @@ class HybridSearchService:
             for row in result
         ]
 
-    async def _keyword_search(self, query: str, limit: int) -> list[dict]:
-        result = await self.session.execute(
-            text("""
+    def keyword_query(
+        self,
+        query: str,
+        limit: int,
+        filters: MemoryFilter | None = None,
+    ) -> tuple[str, dict]:
+        """The keyword statement and its bound parameters.
+
+        Exposed so the query plan can be measured against the statement the
+        channel actually runs, rather than against a transcription of it.
+        """
+        params: dict = {"q": query, "limit": limit}
+        scope_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            scope_sql = f"AND {filters.where_sql('m')}"
+
+        sql = f"""
                 SELECT m.id AS memory_id,
                        ts_rank(m.search_vector, plainto_tsquery('english', :q)) AS rank,
                        m.content
                 FROM memories m
                 WHERE m.search_vector @@ plainto_tsquery('english', :q)
+                  {scope_sql}
                 ORDER BY rank DESC
                 LIMIT :limit
-            """),
-            {"q": query, "limit": limit},
-        )
+        """
+        return sql, params
+
+    async def _keyword_search(
+        self,
+        query: str,
+        limit: int,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
+        sql, params = self.keyword_query(query, limit, filters)
+        result = await self.session.execute(text(sql), params)
         return [
             {
                 "memory_id": str(row.memory_id),

@@ -6,9 +6,14 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.vector import MemoryFilter
 from app.services.embedder_registry import child_table
 
 logger = logging.getLogger(__name__)
+
+# Ceiling on a scoped walk. Every extra hop multiplies the frontier, and the
+# read paths that traverse the graph want a neighbourhood, not a component.
+MAX_TRAVERSAL_DEPTH = 5
 
 
 class PostgresGraphRepository:
@@ -260,7 +265,78 @@ class PostgresGraphRepository:
             for r in rows
         ]
 
-    async def _build_neighbors(self, entity_row) -> dict:
+    def neighbors_query(
+        self,
+        entity_id,
+        max_depth: int = 1,
+        scope: MemoryFilter | None = None,
+    ) -> tuple[str, dict]:
+        """The traversal statement and its bound parameters.
+
+        Exposed so the query plan can be measured against the statement the
+        read path actually runs, rather than against a transcription of it.
+        """
+        depth = max(1, min(int(max_depth), MAX_TRAVERSAL_DEPTH))
+        params: dict = {"entity_id": str(entity_id), "max_depth": depth}
+        entity_scope = "TRUE"
+        relation_scope = "TRUE"
+        if scope is not None:
+            params.update(scope.params())
+            entity_scope = scope.asserted_by_sql("n.memory_ids")
+            relation_scope = scope.asserted_by_sql("r.memory_ids")
+
+        # The scope predicates sit inside the recursive term, not on its
+        # output: a walk that admits an out-of-scope entity has already
+        # crossed the boundary even if that row is dropped afterwards,
+        # because the next hop expands from it.
+        sql = f"""
+                WITH RECURSIVE walk(entity_id, depth) AS (
+                    SELECT CAST(:entity_id AS uuid), 0
+                    UNION
+                    SELECT n.id, w.depth + 1
+                    FROM walk w
+                    JOIN entity_relations r
+                        ON r.source_entity_id = w.entity_id
+                        OR r.target_entity_id = w.entity_id
+                    JOIN entities n ON n.id = CASE
+                        WHEN r.source_entity_id = w.entity_id THEN r.target_entity_id
+                        ELSE r.source_entity_id
+                    END
+                    WHERE w.depth < :max_depth
+                      AND {relation_scope}
+                      AND {entity_scope}
+                ),
+                reached AS (
+                    SELECT entity_id, MIN(depth) AS depth FROM walk GROUP BY entity_id
+                )
+                SELECT
+                    r.rel_type,
+                    r.weight,
+                    src.id AS source_id,
+                    src.name AS source_name,
+                    src.entity_type AS source_type,
+                    src.properties AS source_properties,
+                    tgt.id AS target_id,
+                    tgt.name AS target_name,
+                    tgt.entity_type AS target_type,
+                    tgt.properties AS target_properties
+                FROM entity_relations r
+                JOIN reached ra ON ra.entity_id = r.source_entity_id
+                JOIN reached rb ON rb.entity_id = r.target_entity_id
+                JOIN entities src ON src.id = r.source_entity_id
+                JOIN entities tgt ON tgt.id = r.target_entity_id
+                WHERE LEAST(ra.depth, rb.depth) < :max_depth
+                  AND {relation_scope}
+                ORDER BY LEAST(ra.depth, rb.depth), src.name, tgt.name, r.rel_type
+        """
+        return sql, params
+
+    async def _build_neighbors(
+        self,
+        entity_row,
+        max_depth: int = 1,
+        scope: MemoryFilter | None = None,
+    ) -> dict:
         if not entity_row:
             return {"entity": None, "neighbors": [], "relations": []}
 
@@ -272,43 +348,26 @@ class PostgresGraphRepository:
             "properties": entity_row["properties"] or {},
         }
 
-        rel_result = await self.session.execute(
-            text("""
-                SELECT
-                    r.rel_type,
-                    r.weight,
-                    src.name AS source_name,
-                    tgt.name AS target_name,
-                    n.id AS neighbor_id,
-                    n.name AS neighbor_name,
-                    n.entity_type AS neighbor_type,
-                    n.properties AS neighbor_properties
-                FROM entity_relations r
-                JOIN entities src ON src.id = r.source_entity_id
-                JOIN entities tgt ON tgt.id = r.target_entity_id
-                JOIN entities n ON n.id = CASE
-                    WHEN r.source_entity_id = :entity_id THEN r.target_entity_id
-                    ELSE r.source_entity_id
-                END
-                WHERE r.source_entity_id = :entity_id OR r.target_entity_id = :entity_id
-            """),
-            {"entity_id": entity_id},
-        )
+        sql, params = self.neighbors_query(entity_id, max_depth, scope)
+        rel_result = await self.session.execute(text(sql), params)
         rel_rows = rel_result.mappings().all()
 
+        seed_id = str(entity_id)
         seen_neighbor_ids: set = set()
         neighbors = []
         relations = []
 
         for r in rel_rows:
-            nid = str(r["neighbor_id"])
-            if nid not in seen_neighbor_ids:
+            for side in ("source", "target"):
+                nid = str(r[f"{side}_id"])
+                if nid == seed_id or nid in seen_neighbor_ids:
+                    continue
                 seen_neighbor_ids.add(nid)
                 neighbors.append({
                     "id": nid,
-                    "name": r["neighbor_name"],
-                    "entity_type": r["neighbor_type"],
-                    "properties": r["neighbor_properties"] or {},
+                    "name": r[f"{side}_name"],
+                    "entity_type": r[f"{side}_type"],
+                    "properties": r[f"{side}_properties"] or {},
                 })
             relations.append({
                 "type": r["rel_type"],
@@ -319,27 +378,45 @@ class PostgresGraphRepository:
 
         return {"entity": entity_dict, "neighbors": neighbors, "relations": relations}
 
-    async def get_neighbors_by_name(self, name: str) -> dict:
+    async def get_neighbors_by_name(
+        self, name: str, max_depth: int = 1, scope: MemoryFilter | None = None,
+    ) -> dict:
         # Entity uniqueness is (name, entity_type), so a bare name can match
         # several types. This by-name read path can't disambiguate type, so it
         # picks the most-referenced one deterministically (callers that know the
         # type should use get_neighbors_by_id).
+        params: dict = {"name": name}
+        seed_scope = ""
+        if scope is not None:
+            params.update(scope.params())
+            seed_scope = f"AND {scope.asserted_by_sql('e.memory_ids')}"
         result = await self.session.execute(
             text(
-                "SELECT id, name, entity_type, properties, memory_ids FROM entities "
-                "WHERE name = :name "
-                "ORDER BY COALESCE(array_length(memory_ids, 1), 0) DESC, id LIMIT 1"
+                "SELECT e.id, e.name, e.entity_type, e.properties, e.memory_ids "
+                "FROM entities e "
+                f"WHERE e.name = :name {seed_scope} "
+                "ORDER BY COALESCE(array_length(e.memory_ids, 1), 0) DESC, e.id LIMIT 1"
             ),
-            {"name": name},
+            params,
         )
-        return await self._build_neighbors(result.mappings().first())
+        return await self._build_neighbors(result.mappings().first(), max_depth, scope)
 
-    async def get_neighbors_by_id(self, entity_id: str) -> dict:
+    async def get_neighbors_by_id(
+        self, entity_id: str, max_depth: int = 1, scope: MemoryFilter | None = None,
+    ) -> dict:
+        params: dict = {"id": entity_id}
+        seed_scope = ""
+        if scope is not None:
+            params.update(scope.params())
+            seed_scope = f"AND {scope.asserted_by_sql('e.memory_ids')}"
         result = await self.session.execute(
-            text("SELECT id, name, entity_type, properties, memory_ids FROM entities WHERE id = :id LIMIT 1"),
-            {"id": entity_id},
+            text(
+                "SELECT e.id, e.name, e.entity_type, e.properties, e.memory_ids "
+                f"FROM entities e WHERE e.id = CAST(:id AS uuid) {seed_scope} LIMIT 1"
+            ),
+            params,
         )
-        return await self._build_neighbors(result.mappings().first())
+        return await self._build_neighbors(result.mappings().first(), max_depth, scope)
 
     async def get_full_graph(self, limit: int = 200) -> dict:
         entity_result = await self.session.execute(
@@ -520,19 +597,29 @@ class PostgresGraphRepository:
             for r in rows
         ]
 
-    async def get_relations_between(self, entity_names: list[str]) -> list[dict]:
+    async def get_relations_between(
+        self, entity_names: list[str], scope: MemoryFilter | None = None,
+    ) -> list[dict]:
         if not entity_names:
             return []
 
+        params: dict = {"names": entity_names}
+        scope_sql = ""
+        if scope is not None:
+            params.update(scope.params())
+            scope_sql = f"AND {scope.asserted_by_sql('r.memory_ids')}"
+
         result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT src.name AS source, tgt.name AS target, r.rel_type AS type, r.weight
                 FROM entity_relations r
                 JOIN entities src ON src.id = r.source_entity_id
                 JOIN entities tgt ON tgt.id = r.target_entity_id
-                WHERE src.name = ANY(:names) AND tgt.name = ANY(:names)
+                WHERE src.name = ANY(CAST(:names AS varchar[]))
+                  AND tgt.name = ANY(CAST(:names AS varchar[]))
+                  {scope_sql}
             """),
-            {"names": entity_names},
+            params,
         )
         rows = result.mappings().all()
         return [

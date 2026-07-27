@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
-from app.repositories.vector import PostgresVectorRepository
+from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
 from app.services import prompt
 
@@ -93,9 +93,14 @@ class GraphService:
         if not self.graph_repo:
             return {"entities": [], "relations": [], "neighbors": []}
 
+        # Entities are not memory-scoped, so their memory_ids reach into every
+        # project that asserts them. Scope the expansion by the seed memory's
+        # own project or the walk hands back foreign rows.
+        scope = await self._project_scope(memory_id)
+
         entities = await self.graph_repo.get_entities_by_memory_id(memory_id)
         entity_names = [e["name"] for e in entities]
-        relations = await self.graph_repo.get_relations_between(entity_names)
+        relations = await self.graph_repo.get_relations_between(entity_names, scope=scope)
 
         neighbor_memory_ids = set()
         for entity in entities:
@@ -103,7 +108,9 @@ class GraphService:
                 if mid != memory_id:
                     neighbor_memory_ids.add(mid)
 
-        neighbors = await self._fetch_neighbor_memories(list(neighbor_memory_ids)[:20])
+        neighbors = await self._fetch_neighbor_memories(
+            list(neighbor_memory_ids)[:20], scope,
+        )
 
         return {
             "entities": entities,
@@ -215,14 +222,30 @@ class GraphService:
             logger.exception("Failed to fetch entity data")
             return [], []
 
-    async def _fetch_neighbor_memories(self, memory_ids: list[str]) -> list[dict]:
+    async def _project_scope(self, memory_id: str) -> MemoryFilter | None:
+        try:
+            project = (
+                await self.session.execute(
+                    select(Memory.project).where(Memory.id == UUID(memory_id))
+                )
+            ).scalar_one_or_none()
+        except ValueError:
+            return None
+        return MemoryFilter(project=project) if project is not None else None
+
+    async def _fetch_neighbor_memories(
+        self, memory_ids: list[str], scope: MemoryFilter | None = None,
+    ) -> list[dict]:
         if not memory_ids:
             return []
         try:
             uuids = [UUID(mid) for mid in memory_ids]
-            result = await self.session.execute(
-                select(Memory).where(Memory.id.in_(uuids))
-            )
+            stmt = select(Memory).where(Memory.id.in_(uuids))
+            if scope is not None:
+                stmt = stmt.where(Memory.is_archived == False)  # noqa: E712
+                if scope.project is not None:
+                    stmt = stmt.where(Memory.project == scope.project)
+            result = await self.session.execute(stmt)
             return [
                 {
                     "id": str(mem.id),
