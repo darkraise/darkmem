@@ -89,7 +89,7 @@ def _meta(**overrides) -> dict:
         "run_id": "11111111-1111-1111-1111-111111111111",
         "timestamp": "2026-01-02T00:00:00+00:00",
         "date": "2026-01-02", "git_sha": "deadbeefcafef00d", "fingerprint": "stub-fp|3",
-        "gate_config": {"ml_profile_ref": None, "classification_mode": "simple", "relation_rescue": True},
+        "gate_config": {"classifier_kind": None, "classification_mode": "simple", "relation_rescue": True},
         "corpus_entries": 3, "gold_version": 1, "n_pairs_authored": 4, "n_pairs_live": 4,
         "retrieval_limit": 3, "full_context_limit": 3, "k": 1, "min_pairs": 1,
         "ingest_live_calls": 0, "retrieval_live_calls": 0, "full_context_live_calls": 0,
@@ -237,7 +237,7 @@ def test_render_report_carries_git_sha_fingerprint_gate_config_and_both_sections
 
     assert meta["git_sha"] in text
     assert meta["fingerprint"] in text
-    assert "ml_profile_ref=None" in text
+    assert "classifier_kind=None" in text
     assert "## Comparison (human-readable)" in text
     assert "## Reproducibility" in text
     assert "```json" in text

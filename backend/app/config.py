@@ -93,20 +93,18 @@ class LLMPurposeConfig(BaseModel):
     # qwen3-style internal reasoning that the OpenAI compat shim ignores.
     api_kind: LLMApiKind = "openai"
     params: dict = Field(default_factory=dict)
-    # Optional reference to an entry in the ``llm_providers`` table.
-    # When set, the resolution step overlays that provider's
-    # provider/base_url/api_key/api_kind onto this purpose, leaving model,
-    # params, and per-purpose toggles intact. ``None`` means this purpose
-    # carries its own connection details inline.
+    # ``llm`` | ``local`` on the classification purpose: which classifier
+    # serves it. ``local`` selects the in-process classifier, anything else
+    # (including None) the LLM-backed one. This replaced the deleted
+    # ``ml_profiles`` reference in T0.12c (doc 04 §7); T1.04 owns wiring the
+    # dispatch to read it, T1.18 the narrowing path.
+    classifier_kind: str | None = None
+    # Inert on the wire, not in the resolution path: the provider/profile
+    # indirection is gone (doc 04 §7), but these three keys still appear in
+    # the config API response the frontend reads. Retiring them from the
+    # contract is T1.42b's.
     provider_ref: str | None = None
-    # Optional reference to an entry in the ``llm_profiles`` table — the
-    # explicit "selected profile" link the UI dropdown reads. Cleared
-    # when the user manually edits a field that diverges from the
-    # profile's preset.
     profile_ref: str | None = None
-    # Optional reference to an entry in the ``ml_profiles`` table —
-    # when set, the classifier purpose dispatches to the in-process
-    # MLClassificationService instead of the LLM-backed one.
     ml_profile_ref: str | None = None
 
 

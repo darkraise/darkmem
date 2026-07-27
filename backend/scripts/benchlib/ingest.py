@@ -18,7 +18,7 @@ from benchlib.caching_llm import CachingLLMOrchestrator
 
 from app.config import FEATURE_FLAGS_DEFAULTS, settings
 from app.models.config import Config
-from app.models.llm_config import LLMPurposeConfigRow, MLProfile
+from app.models.llm_config import LLMPurposeConfigRow
 from app.repositories.relational import PostgresMemoryRepository
 from app.schemas.memory import MemoryCreate
 from app.services.feature_flags import FEATURE_FLAGS_KEY
@@ -31,19 +31,22 @@ class GateConfig:
     explicitly, not inherit from whatever the DB happens to hold (doc 17
     §7's gate-state caveat; CLAUDE.md's Pipeline-phases section).
 
-    ml_profile_ref: set -> the pipeline swaps in MLClassificationService for
-        the classification purpose; None -> the LLM classifier.
+    classifier_kind: ``'local'`` -> the pipeline swaps in the in-process
+        classifier for the classification purpose; ``'llm'`` or None -> the
+        LLM classifier.
     classification_mode: folds into extraction's schema and the
         extraction/classification merge gate.
     relation_rescue: the only surviving ingestion-side behavioural flag
         (CLAUDE.md) -- it changes the graph the bench measures.
 
-    Doc 17 §7 names this field ``classifier_kind``; that field does not
-    exist in this codebase (confirmed against doc 03 §5.6, which describes
-    it as target-new vocabulary re-homing ``ml_profile_ref``). Pin today's
-    real fields instead -- see ctx-c-offline-ingest.md.
+    This field was ``ml_profile_ref`` until T0.12c, which dropped the
+    ``ml_profiles`` table and re-homed the choice inline on the
+    classification purpose row as ``classifier_kind`` (doc 04 §7). Doc 17 §7
+    named ``classifier_kind`` all along; it simply did not exist yet.
     """
-    ml_profile_ref: str | None = None
+    CLASSIFIER_KINDS = ("llm", "local")
+
+    classifier_kind: str | None = None
     classification_mode: str = "simple"
     relation_rescue: bool = True
 
@@ -74,18 +77,11 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
     recorded ``gate_config`` stayed identical to a clean run's.
     """
     async with session_factory() as session:
-        ml_profile_id = None
-        if gate.ml_profile_ref is not None:
-            ml_row = (await session.execute(
-                select(MLProfile).where(MLProfile.name == gate.ml_profile_ref)
-            )).scalar_one_or_none()
-            if ml_row is None:
-                raise ValueError(
-                    f"gate.ml_profile_ref={gate.ml_profile_ref!r} has no matching "
-                    "ml_profiles row in this database; pin a profile that exists "
-                    "before running"
-                )
-            ml_profile_id = ml_row.id
+        if gate.classifier_kind is not None and gate.classifier_kind not in GateConfig.CLASSIFIER_KINDS:
+            raise ValueError(
+                f"gate.classifier_kind={gate.classifier_kind!r} is not one of "
+                f"{GateConfig.CLASSIFIER_KINDS}; pin a kind that exists before running"
+            )
 
         result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
         flags_row = result.scalar_one_or_none()
@@ -101,7 +97,7 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
             select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "classification")
         )).scalar_one_or_none()
         if purpose_row is not None:
-            purpose_row.ml_profile_id = ml_profile_id
+            purpose_row.classifier_kind = gate.classifier_kind
         else:
             defaults = settings.llm_classification
             session.add(LLMPurposeConfigRow(
@@ -114,7 +110,7 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
                 base_url=defaults.base_url,
                 api_key=defaults.api_key,
                 params=defaults.params,
-                ml_profile_id=ml_profile_id,
+                classifier_kind=gate.classifier_kind,
             ))
 
         await session.commit()
@@ -127,7 +123,7 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
     _flag_cache_reset()
 
     return {
-        "ml_profile_ref": gate.ml_profile_ref,
+        "classifier_kind": gate.classifier_kind,
         "classification_mode": gate.classification_mode,
         "relation_rescue": gate.relation_rescue,
     }
@@ -223,7 +219,7 @@ async def run_ingest(
 
     A fresh ProcessingPipeline is constructed on every call: its classifier
     resolution cache (self._classifier_cache) is instance-scoped, so a new
-    instance always re-resolves ml_profile_ref against the DB row
+    instance always re-resolves classifier_kind against the DB row
     pin_gate_config just wrote, instead of risking a stale resolution
     carried over from a previous pipeline instance in the same process.
     """

@@ -33,7 +33,7 @@ def _corpus(n: int) -> list[dict]:
 async def test_run_ingest_returns_per_memory_outcomes(tmp_path):
     llm = _StubLLM({}, cache_dir=str(tmp_path))
     entries = _corpus(3)
-    gate = ingest.GateConfig(ml_profile_ref=None, classification_mode="simple", relation_rescue=True)
+    gate = ingest.GateConfig(classifier_kind=None, classification_mode="simple", relation_rescue=True)
 
     result = await ingest.run_ingest(llm, entries, gate)
 
@@ -46,7 +46,7 @@ async def test_run_ingest_returns_per_memory_outcomes(tmp_path):
 
     assert result.fingerprint == "stub-embed|3"
     assert result.gate_config == {
-        "ml_profile_ref": None,
+        "classifier_kind": None,
         "classification_mode": "simple",
         "relation_rescue": True,
     }
@@ -109,11 +109,11 @@ async def test_pin_gate_config_sets_explicit_values_not_ambient(tmp_path):
     from app.services.config import get_llm_config
     from app.services.feature_flags import get_feature_flags_dict
 
-    gate = ingest.GateConfig(ml_profile_ref=None, classification_mode="expanded", relation_rescue=False)
+    gate = ingest.GateConfig(classifier_kind=None, classification_mode="expanded", relation_rescue=False)
     pinned = await ingest.pin_gate_config(bench_db.session_factory, gate)
 
     assert pinned == {
-        "ml_profile_ref": None,
+        "classifier_kind": None,
         "classification_mode": "expanded",
         "relation_rescue": False,
     }
@@ -124,19 +124,19 @@ async def test_pin_gate_config_sets_explicit_values_not_ambient(tmp_path):
         assert flags["relation_rescue"] is False
 
         cfg = await get_llm_config(session)
-        assert cfg["classification"].ml_profile_ref is None
+        assert cfg["classification"].classifier_kind is None
 
     # Re-pin back to the simple/rescue-on defaults so later tests in this
     # module (which share one session-scoped bench DB) see a known state.
     await ingest.pin_gate_config(
         bench_db.session_factory,
-        ingest.GateConfig(ml_profile_ref=None, classification_mode="simple", relation_rescue=True),
+        ingest.GateConfig(classifier_kind=None, classification_mode="simple", relation_rescue=True),
     )
 
 
 @pytest.mark.asyncio
-async def test_pin_gate_config_rejects_unknown_ml_profile_ref(tmp_path):
-    gate = ingest.GateConfig(ml_profile_ref="does-not-exist")
+async def test_pin_gate_config_rejects_unknown_classifier_kind(tmp_path):
+    gate = ingest.GateConfig(classifier_kind="does-not-exist")
     with pytest.raises(ValueError, match="does-not-exist"):
         await ingest.pin_gate_config(bench_db.session_factory, gate)
 
@@ -147,16 +147,16 @@ async def test_run_ingest_pins_gate_config_even_when_process_left_it_dirty(tmp_p
     earlier run (or process) left in the DB."""
     await ingest.pin_gate_config(
         bench_db.session_factory,
-        ingest.GateConfig(ml_profile_ref=None, classification_mode="expanded", relation_rescue=False),
+        ingest.GateConfig(classifier_kind=None, classification_mode="expanded", relation_rescue=False),
     )
 
     llm = _StubLLM({}, cache_dir=str(tmp_path))
     result = await ingest.run_ingest(llm, _corpus(1), ingest.GateConfig(
-        ml_profile_ref=None, classification_mode="simple", relation_rescue=True,
+        classifier_kind=None, classification_mode="simple", relation_rescue=True,
     ))
 
     assert result.gate_config == {
-        "ml_profile_ref": None,
+        "classifier_kind": None,
         "classification_mode": "simple",
         "relation_rescue": True,
     }

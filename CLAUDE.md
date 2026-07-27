@@ -7,6 +7,15 @@ behavior change, not a cleanup.
 
 ## Commands
 
+- **Merge gate (from the repo root): `./scripts/gate.sh`** — one command for
+  the whole floor: the alembic single-revision assertion, backend pytest,
+  frontend typecheck/test/build, the benchlib harness suite, and the F1 bench
+  in `--algo-only` mode. `--full` adds the retrieval eval and Playwright e2e.
+  Exits non-zero naming the failing gate; `GATE BLOCKED` (exit 2) means a
+  missing toolchain, not a red gate. **`pyproject.toml` sets
+  `testpaths = ["tests"]`, so plain `pytest -q` does NOT collect
+  `scripts/benchlib/tests`** — run the gate, or the harness can break while the
+  floor stays green.
 - Backend tests (from `backend/`): `python -m pytest -q`. Needs a
   `darkmem_test` database on the dev-compose Postgres
   (127.0.0.1:5433); create it once:
@@ -58,7 +67,10 @@ behavior change, not a cleanup.
 code_pipeline.py, job_registry.py, ...), `repositories`
 (graph/relational/vector), `models`, `schemas`; entry point
 `app/main.py`. `backend/migrations/versions` is Alembic;
-`backend/scripts` holds eval harnesses (`extraction_bench/`).
+`backend/scripts` holds the eval harnesses: `extraction_bench/` (the F1
+bench and its gold files) and `benchlib/` (corpus loader, offline ingest
+driver, run ledger, retrieval gold + scorer, latency/token twin,
+full-context comparator, and the `run_*.py` runners).
 `frontend/src`: `features/*` plus TanStack Router file-based `routes/`
 — `routeTree.gen.ts` is generated, never hand-edit it. `docs/` holds
 dated audit reports, `api-rest-conventions.md` (the REST contract new
@@ -85,11 +97,19 @@ A memory carries:
 - `content` (Text) and `source` (where it came from: `mcp`, `api`, ...).
 - `project` (Text, default `default`) — the supersession scope.
 - `memory_type` from `MEMORY_TYPES` in `app.taxonomy`.
-- `llm_classified_type` / `llm_summary` / `llm_emotions` / `llm_flags` —
-  classification/enrichment output, populated on every ingest. The regex
-  classifier and its `classified_type` / `classified_confidence` columns
-  were removed; classification now always runs through the LLM (or the
-  in-process ML classifier when `ml_profile_ref` is set).
+- `classified_type` / `summary` / `emotions` / `flags` —
+  classification/enrichment output, populated on every ingest. The `llm_`
+  prefix was dropped in the baseline (doc 04 §3.1) because the classifier
+  may be the local model; the **REST and websocket payload keys still read
+  `llm_*`**, which is a deliberate split — the frontend reads them in 61
+  places and retiring them from the wire is T1.42b's. The regex classifier
+  and its `classified_confidence` column are gone; classification runs
+  through the LLM, or the in-process classifier when the classification
+  purpose's inline `classifier_kind` is `local`.
+- `origin_key` (Text, nullable) — capture-session identity, the
+  corroboration-independence key facts count `DISTINCT` on. No writer yet.
+- `updated_at` is bumped by the **`touch_updated_at` SQL trigger**, not by
+  SQLAlchemy's client-side `onupdate`: a raw-SQL UPDATE must move it too.
 - `technologies` (lowercase Text[]) — denormalised cache of entity names
   whose `entity_type` is in `TECH_TYPES`. The supersession detector and
   the retrieval filter both consult this column instead of joining.
@@ -125,22 +145,24 @@ A batch flows through five phases. Each phase is a hard checkpoint:
 2. **Extract + classify.** Per-memory, bounded by `pipeline_concurrency`.
    Classification always runs alongside extraction. The classifier
    instance is chosen per
-   batch: if the classification purpose has `ml_profile_ref` set, the
-   pipeline swaps in `MLClassificationService`; otherwise it uses the
-   LLM-backed one. The two implementations share the same surface
+   batch: if the classification purpose's inline `classifier_kind` is
+   `local`, the pipeline swaps in the in-process classifier; otherwise it
+   uses the LLM-backed one. (`ml_profiles` and the `*_ref` indirection were
+   dropped in the baseline; wiring the dispatch to read `classifier_kind`
+   is T1.04's.) The two implementations share the same surface
    (`classify(content, areas, prompt, mode) → {hall, summary, emotions, flags}`).
    **Single-call merge:** when the classifier is the LLM-backed one
-   (no `ml_profile_ref`) AND `classification_mode == 'simple'`, the
+   (`classifier_kind` not `local`) AND `classification_mode == 'simple'`, the
    pipeline folds classification into the one extraction call
    (`extract(..., with_classification=True)`) instead of a second LLM
    round-trip — the merged schema adds `summary`/`emotions`/`flags`, and
    extraction's `memory_type` (already the simple-7 vocabulary) doubles
-   as the classification label written to `llm_classified_type`. Any
+   as the classification label written to `classified_type`. Any
    other config (an ML classifier, or an area-grained non-simple mode
    whose larger label space the extraction schema does not carry) keeps
    the two concurrent calls. Because the gate changes the extraction
    prompt, re-extracting the same content under a different gate state
-   (mode flip, `ml_profile_ref` set/cleared) is not bit-identical even
+   (mode flip, `classifier_kind` set/cleared) is not bit-identical even
    with the same content seed.
 3. **Entity embed with cache.** Lookup `(name_lower, fingerprint)` in
    memory cache, fall back to DB cache, fall back to embedding the
@@ -189,7 +211,7 @@ After Phase 5, `derive_memory_failed_step` records or resolves a row in
   always runs. There is no longer a regex classifier or an
   `llm_enrichment_enabled` gate; the only choice is which model-backed
   classifier serves the `classification` purpose (LLM by default, or the
-  in-process ML classifier when `ml_profile_ref` is set).
+  in-process classifier when `classifier_kind` is `local`).
 
 The **only** surviving ingestion-side behavioral flag is `relation_rescue`
 (pattern-based rescue layer for relations the LLM misses); retrieval has
@@ -284,12 +306,16 @@ Current behavioral flags (the rest govern concurrency or thresholds):
 ## LLM configuration
 
 Six purposes: `embedding`, `extraction`, `classification`, `reasoning`,
-`summarization`, `reranker`. Each is an `LLMPurposeConfig` row that may
-inline its connection details or reference an `llm_providers` row via
-`provider_ref` (rotation in one place) and an `llm_profiles` row via
-`profile_ref` (UI dropdown anchor). The classification purpose may also
-reference an `ml_profiles` row via `ml_profile_ref` to swap the LLM
-classifier for in-process HF dispatch.
+`summarization`, `reranker`. Each is **one inline `llm_purpose_configs`
+row** carrying its own `{model, base_url, api_key, api_kind, params,
+dimensions?, reasoning?}` — resolution is one row read and no joins. The
+`llm_providers` / `llm_profiles` / `ml_profiles` indirection tables and
+their `*_id` columns were **dropped in the baseline** (doc 04 §7); the
+classification purpose carries an inline `classifier_kind` (`llm` |
+`local`) where it used to reference a profile. The six rows are written by
+the setup wizard's finalize step from `app/services/llm_seed.py`, never by
+a migration. T1.01 owns asserting the one-query property with a
+query-counting test.
 
 `api_kind` selects the wire protocol and is the only place vendor
 quirks live: `openai` (compat path), `ollama` (native, exposes
@@ -297,8 +323,9 @@ quirks live: `openai` (compat path), `ollama` (native, exposes
 `zai` that today still dispatch through the OpenAI-compat path. Vendor
 auth and reasoning-control quirks are handled inside the orchestrator;
 do not paper over them at the call site. Some vendors (Anthropic,
-DeepSeek today) lack embeddings — `LLMProviderProfile.supports_embedding`
-gates the embedding-purpose profile picker.
+DeepSeek today) lack embeddings; the runtime guard against an embed call
+landing on a no-embeddings vendor is `LLMOrchestrator._assert_can_embed`,
+keyed off `api_kind`.
 
 LLM seeds for the six purposes live in `app/services/llm_seed.py`, not
 in any migration. The setup wizard finalize step writes seed-plus-overlay

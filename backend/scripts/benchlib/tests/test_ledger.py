@@ -159,12 +159,12 @@ def test_json_native_values_round_trip_with_their_types_intact(tmp_path):
         "an_unknown_future_key": {"nested": [1, 2.5, True, None]},
         "note": "café ☕",
         "live_calls": 0,
-        "gate_config": {"ml_profile_ref": None, "relation_rescue": False},
+        "gate_config": {"classifier_kind": None, "relation_rescue": False},
     }
     ledger.record(run, path)
 
     (read_back,) = ledger.read_runs(path)
     assert read_back == run
     assert isinstance(read_back["an_unknown_future_key"]["nested"][1], float)
-    assert read_back["gate_config"]["ml_profile_ref"] is None
+    assert read_back["gate_config"]["classifier_kind"] is None
     assert read_back["gate_config"]["relation_rescue"] is False

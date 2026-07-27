@@ -1,0 +1,10 @@
+### boot 1 — migration from empty
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, baseline
+  relations after migration: 36
+  child tables after boot 1: 8
+### boot 2 — fresh registry, same database
+  child tables after boot 2: 8  reconcile={'fingerprints': 1, 'parents': 8}
+  SECOND BOOT IS A NO-OP: True
+### drift — drop one child, boot again
+  after drop: 7 -> after boot 3: 8
+  SELF-HEALS EXACTLY THE GAP: True

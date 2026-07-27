@@ -70,5 +70,6 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
             reasoning=row.reasoning,
             api_kind=row.api_kind,
             params=row.params or {},
+            classifier_kind=row.classifier_kind,
         )
     return merged

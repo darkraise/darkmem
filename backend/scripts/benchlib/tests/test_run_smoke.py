@@ -171,7 +171,7 @@ def test_git_sha_returns_a_full_hex_sha():
 def test_build_run_record_carries_all_six_ledger_fields():
     class _Result:
         fingerprint = "model|1024"
-        gate_config = {"ml_profile_ref": None, "classification_mode": "simple", "relation_rescue": True}
+        gate_config = {"classifier_kind": None, "classification_mode": "simple", "relation_rescue": True}
         live_calls = 0
 
     record = run_smoke.build_run_record(_Result(), pass1_live_calls=5, sha="a" * 40)

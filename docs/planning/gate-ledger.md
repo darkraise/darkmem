@@ -42,9 +42,63 @@ Three probes, all of which must hold:
 
 | Probe | Bar | Measured | Twin | Artifact | Verdict |
 |---|---|---|---|---|---|
-| Extraction F1 bench reproduces the recorded as-is baseline (entity name+type F1, relations F1) | Reproduce T0.05's recorded numbers | — | n/a (deterministic, zero model calls) | — | — |
-| Retrieval eval runs with accuracy + p95 latency + token cost | Runs and reports all three columns | — | — | — | — |
-| Baseline migration boots clean; boot-time reconciliation idempotent | Clean boot; second boot is a no-op | — | n/a | — | — |
+| Extraction F1 bench reproduces the recorded as-is baseline (entity name+type F1, relations F1) | Reproduce T0.05's recorded numbers | **All 8 cells reproduced exactly** — gold ent_nt 0.925 / ent_n 0.955 / rel_full 0.865 / rel_pair 0.892; held-out 0.893 / 0.929 / 0.667 / 0.667 | n/a (deterministic, zero model calls) | `docs/eval/2026-07-27-T0.17-ga-evidence/` | **PASS** |
+| Retrieval eval runs with accuracy + p95 latency + token cost | Runs and reports all three columns | **not run** — requires `DEEPSEEK_API_KEY` | — | — | **BLOCKED** |
+| Baseline migration boots clean; boot-time reconciliation idempotent | Clean boot; second boot is a no-op | Clean boot to 36 relations; 8 child tables; second boot a no-op (8→8); one dropped child regrown exactly (7→8) | n/a | `docs/eval/2026-07-27-T0.17-ga-evidence/boot.txt` | **PASS** |
+
+### G-A verdict: **OPEN** (2026-07-27)
+
+**Two of three probes pass; the third did not run, so the gate does not clear.**
+Doc 20 §4's rule is that no layer advances on intuition — a probe that could not
+be measured is not a probe that passed, and T0.17's own acceptance says a
+shortfall is recorded rather than argued around.
+
+**Probe 1 — PASS, exact.** `run_bench.py --algo-only` over the restored T0.05
+cache reproduced all eight cells of the recorded baseline byte-for-byte on both
+`gold.json` and `gold_heldout.json`. Tolerance for this probe is 0 (it is
+exact-match from a warm cache, not a live re-measurement), and it was met with
+**zero live model calls** — `--algo-only` raises rather than calling out if any
+output is uncached. Cache restored from the committed archive
+`docs/eval/2026-07-26-T0.05-extraction-baseline-cache/` (36 files).
+
+**Probe 2 — BLOCKED on a credential, not failed.** `run_retrieval_eval.py` calls
+`require_deepseek_api_key()` before it seeds the bench purpose configs, and the
+bench DB is reset (`DROP SCHEMA`) on every run so there is no stored key to fall
+back on. `DEEPSEEK_API_KEY` is not set in this environment. The retrieval LLM
+cache **is** warm (550 entries under `scripts/benchlib/retrieval/cache/`, machine-local
+and gitignored), so a run would very likely make zero live calls — but the runner
+has no fail-on-uncached mode equivalent to the bench's `--algo-only`, so a
+placeholder key could send real requests instead of failing closed. Runbook §7
+stops on a task that requires a credential it was not given, so the probe was not
+attempted. **This is the one thing standing between G-A and green.**
+
+**Probe 3 — PASS.** A database built from the single baseline revision alone
+reaches 36 relations on a clean boot. The boot-time reconciliation created 8
+child tables for a registered fingerprint; a second boot with a *fresh registry
+object* (the restarted-process shape) left the count unchanged at 8, and dropping
+one child then booting again regrew exactly that one (7 → 8), which is the
+self-healing doc 19 §6 relies on for a restored dump.
+
+**Backend floor at the time of this run:** 622 passed, 1 skipped, 0 failed against
+a database built from the baseline alone; `alembic history` at exactly one
+revision; `./scripts/gate.sh` green across all six floor gates (alembic
+single-revision, backend pytest, frontend typecheck, frontend test, frontend
+build, F1 bench `--algo-only`), plus 276 benchlib tests.
+
+**Defect this run found, now fixed.** The eval could not even import before this
+task: `benchlib/ingest.py` imported `MLProfile`, which T0.12c deleted, and
+`pyproject.toml` sets `testpaths = ["tests"]` so the backend floor never collects
+`scripts/benchlib/tests` and never saw the break. The gate runner's floor has the
+same blind spot. Migrated `GateConfig.ml_profile_ref` → `classifier_kind` (the
+re-homing doc 04 §7 describes and `ingest.py`'s own docstring predicted), added
+`classifier_kind` to `LLMPurposeConfig`, and carried it through `get_llm_config`.
+**Recorded as a finding: `scripts/gate.sh` should also run the benchlib suite**,
+or a T0.12-shaped change will break the harness again without the floor noticing.
+
+**To clear G-A:** export `DEEPSEEK_API_KEY` and run
+`cd backend && ./.venv/bin/python scripts/benchlib/run_retrieval_eval.py`, then
+record its accuracy, p95 latency and token-cost columns here with the dated report
+it emits under `docs/eval/`. Nothing else is outstanding.
 
 **Recorded as-is baseline (T0.05)** — the reference every later phase compares against:
 

@@ -46,7 +46,7 @@ SHA-256 hash (truncated to 16 hex chars) of a JSON-serialized
   for the exact prompt it was produced under (doc 17 §7: "a cached output
   is valid only for the prompt it was keyed under"). Changing the
   extraction/classification prompt, the gate state that selects it
-  (`classification_mode`, `ml_profile_ref` — see `ingest.GateConfig`), or
+  (`classification_mode`, `classifier_kind` — see `ingest.GateConfig`), or
   any call kwarg (e.g. `seed`) invalidates the cache for that call
   automatically, by construction, with no separate invalidation step.
 

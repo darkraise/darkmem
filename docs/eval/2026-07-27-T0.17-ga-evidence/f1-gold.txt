@@ -1,0 +1,12 @@
+  e21   ent=0.86  rel=0.50  <--
+  e22   ent=1.00  rel=0.00  <--
+  e23   ent=1.00  rel=0.00  <--
+  e24   ent=0.80  rel=1.00
+  e25   ent=1.00  rel=1.00
+  e26   ent=1.00  rel=0.00  <--
+
+================ AGGREGATE (micro) ================
+  Entity (name+type)               P=0.954 R=0.899 F1=0.925   (tp=62 fp=3 fn=7)
+  Entity (name only)               P=0.985 R=0.928 F1=0.955   (tp=64 fp=1 fn=5)
+  Relation (s,TYPE,t)              P=0.914 R=0.821 F1=0.865   (tp=32 fp=3 fn=7)
+  Relation (s,t) type-agnostic     P=0.943 R=0.846 F1=0.892   (tp=33 fp=2 fn=6)

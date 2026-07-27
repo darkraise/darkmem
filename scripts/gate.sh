@@ -152,6 +152,14 @@ run_gate "frontend test" 900 "$FRONTEND" \
 run_gate "frontend build" 900 "$FRONTEND" \
     env -C "$FRONTEND" npm run build
 
+# The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
+# backend gate above does NOT collect scripts/benchlib/tests — which is how a
+# schema change once broke the harness with the floor still green (T0.17).
+run_gate "benchlib tests" 900 "$BACKEND" \
+    env -C "$BACKEND" \
+        TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
+        "$PY" -m pytest scripts/benchlib/tests -q
+
 # The F1 bench in --algo-only mode: it errors rather than calling the LLM if
 # any output is uncached, which is what keeps the gate free of live calls and
 # therefore fast, offline and deterministic.
