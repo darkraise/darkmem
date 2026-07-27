@@ -637,10 +637,12 @@ class ProcessingPipeline:
                             # graph before writing the new set. Otherwise
                             # re-running with a different model just accumulates
                             # duplicate-by-type rows on top of the previous
-                            # extraction. ``delete_by_memory_id`` only removes
-                            # entities whose memory_ids array becomes empty after
-                            # the strip, so entities shared with other memories
-                            # are preserved.
+                            # extraction. ``delete_by_memory_id`` removes a
+                            # relation only when no live memory still asserts it
+                            # and an entity only when no live memory asserts it
+                            # AND no surviving relation references it, so
+                            # entities shared with other memories are preserved
+                            # and no other memory's edge is cascaded away.
                             #
                             # Inside savepoint B rather than ahead of it, so
                             # strip-and-write is one atomic replace: a failure
