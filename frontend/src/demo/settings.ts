@@ -1,3 +1,4 @@
+import { embeddingKindWarning as sharedEmbeddingKindWarning } from "@/features/setup/api-kinds"
 import type { ApiKind, DemoFlagsState, DemoRankArm } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -91,13 +92,11 @@ export const API_KINDS: ApiKind[] = [
   "zai",
 ]
 
-/** Derived from api_kind directly, not a stored provider flag: these two
- *  vendors expose no embeddings endpoint — selecting either 404s. */
+/** Derives from `api_kind` via the one canonical mirror of the backend's
+ *  `llm_quirks.py` supports_embedding table (`features/setup/api-kinds.ts`)
+ *  — never a second hard-coded vendor-name check duplicated in this module. */
 export function embeddingKindWarning(kind: ApiKind): string | null {
-  if (kind === "anthropic" || kind === "deepseek") {
-    return `${kind} exposes no embeddings endpoint — selecting it here 404s on every request. This hint is derived from api_kind directly, not a stored provider flag.`
-  }
-  return null
+  return sharedEmbeddingKindWarning(kind)
 }
 
 /** Display masking for a stored key; the row keeps the unmasked value. */
