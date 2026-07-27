@@ -453,6 +453,7 @@ behaviour change, not a tidy-up.
 | `memories_touch_updated_at` | trigger | `memories` | `BEFORE UPDATE ON memories FOR EACH ROW EXECUTE FUNCTION touch_updated_at()` — replaces SQLAlchemy's client-side `onupdate`, which no raw-SQL writer honours | `target-new` | **F-20 resolution** (§9.2) | T0.12a |
 | `conversations_touch_updated_at` | trigger | `conversations` | As above on `conversations` | `target-new` | **F-20 resolution** (§9.2) | T0.12b (F-02) |
 | `repositories_touch_updated_at` | trigger | `repositories` | As above on `repositories` | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
+| `documents_touch_updated_at` | trigger | `documents` | As above on `documents`. Omitted from this table when F-20 was written (which named three triggers) but authored by `0001_baseline.py`; the rule is per-table, so every table carrying `updated_at` takes one. | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
 | `knowledge_triples` PK | PK | `knowledge_triples` | `id uuid PRIMARY KEY`, application-generated **UUIDv7** — the rebuild keeps a name, not an object (doc 04 §8.3) | `target-new` | 04 §8.3 | T0.12b |
 | `events` composite PK | PK | `events` | `(id, created_at)` — the partition key must sit in the PK; nothing joins events by id, so folding `created_at` in costs nothing | `target-new` | 04 §8.1 | T0.12b |
 | `events` monthly range partitioning | partitioning | `events` | `PARTITION BY RANGE(created_at)`, monthly, from day one — the **only** declaratively partitioned table in the schema | `target-new` | 04 §8.1, §2 | T0.12b |
@@ -779,8 +780,14 @@ demote-before-delete paths, which currently leave the column stale on a change t
 enumerate the triggers the baseline authors — the FTS trigger and the `events`
 forbid-trigger — and **neither lists a third**. Adopting Reading 1 means those two
 enumerations are now incomplete. **The controller must amend doc 04 §12 and doc 19 §2 to
-name `touch_updated_at` and its three triggers.** No step of T0.11 edits the design corpus;
+name `touch_updated_at` and its triggers.** No step of T0.11 edits the design corpus;
 the decision is recorded here and the doc edit is surfaced in the completion report.
+
+**Discharged 2026-07-27 (T1.23).** Both enumerations now name three trigger kinds. The
+count of `touch_updated_at` triggers is **four**, not the three this section originally
+wrote: `0001_baseline.py` also authors one on `documents`, which the §4.3 table had
+omitted. The rule is per-table — every table carrying `updated_at` takes one — so the
+baseline was right and this inventory was the incomplete side.
 
 The rows themselves are in §4.3.
 
