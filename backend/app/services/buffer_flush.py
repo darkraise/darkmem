@@ -7,13 +7,15 @@ is the other half — a `JobRegistry` job that claims a batch of those rows with
 
 Three properties carry the tier, and every one of them fails silently:
 
-**A row is never processed twice.** The claim is one `UPDATE … FROM (SELECT …
-FOR UPDATE SKIP LOCKED)` statement. The locking clause is what makes it safe:
-Postgres re-evaluates the sub-select's `status='pending'` qual against the
-freshly-committed row after the lock is released (EvalPlanQual), so a claimer
-that raced another one comes away with nothing rather than with a row the other
-claimer already holds. Drop the locking clause and the outer `b.id = c.id` has
-no status qual to recheck — both claimers "win" the same row.
+**A row is never processed twice.** The claim is one `UPDATE … FROM c`
+statement over a `WITH c AS MATERIALIZED (SELECT … FOR UPDATE SKIP LOCKED)` row
+set. The locking clause is what makes it safe: Postgres re-evaluates the row
+set's `status='pending'` qual against the freshly-committed row after the lock
+is released (EvalPlanQual), so a claimer that raced another one comes away with
+nothing rather than with a row the other claimer already holds. Drop the
+locking clause and the outer `b.id = c.id` has no status qual to recheck — both
+claimers "win" the same row. `MATERIALIZED` is what bounds the claim; see
+`_CLAIM_SQL`.
 
 **A row is never stranded.** The claim transaction commits immediately, before
 any pipeline session opens (invariant 11), so the row lock lives for exactly one
@@ -249,21 +251,28 @@ async def buffer_settings(session_factory: async_sessionmaker[AsyncSession]) -> 
     return merged
 
 
+# MATERIALIZED is load-bearing, not a hint. As a plain sub-select the planner
+# is free to put the row set on the inner side of a nested loop and re-execute
+# it per outer row; each re-execution steps past the rows this same command
+# already claimed and yields the next pending one, so LIMIT bounds nothing and
+# the claim takes the whole backlog. A drained buffer that autovacuum has just
+# analysed — the queue's normal steady state — is enough to reach that plan.
 _CLAIM_SQL = text(
     """
-    UPDATE memory_buffer AS b
-    SET status = 'claimed',
-        attempts = b.attempts + 1,
-        claimed_at = NOW(),
-        claimed_by = CAST(:worker AS text)
-    FROM (
+    WITH c AS MATERIALIZED (
         SELECT id
         FROM memory_buffer
         WHERE status = 'pending'
         ORDER BY created_at, id
         LIMIT CAST(:limit AS int)
         FOR UPDATE SKIP LOCKED
-    ) AS c
+    )
+    UPDATE memory_buffer AS b
+    SET status = 'claimed',
+        attempts = b.attempts + 1,
+        claimed_at = NOW(),
+        claimed_by = CAST(:worker AS text)
+    FROM c
     WHERE b.id = c.id
     RETURNING b.id
     """
@@ -307,20 +316,27 @@ _SWEEP_DONE_SQL = text(
 # the oldest-N scan `_CLAIM_SQL` runs, but the predicate that matters — SKIP
 # LOCKED against status='pending' — is identical. A concurrent scheduled flush
 # racing this one is decided by the same lease, never a second claim path.
+#
+# `id = ANY(:ids)` is a fixed set no rescan can grow, so this one cannot
+# overrun a bound the way an unmaterialized `_CLAIM_SQL` does; MATERIALIZED is
+# here so the lock decisions are taken once rather than once per outer row,
+# which on a caller's full id set is quadratic re-locking of rows SKIP LOCKED
+# has already declined.
 _CLAIM_IDS_SQL = text(
     """
-    UPDATE memory_buffer AS b
-    SET status = 'claimed',
-        attempts = b.attempts + 1,
-        claimed_at = NOW(),
-        claimed_by = CAST(:worker AS text)
-    FROM (
+    WITH c AS MATERIALIZED (
         SELECT id
         FROM memory_buffer
         WHERE status = 'pending'
           AND id = ANY(CAST(:ids AS uuid[]))
         FOR UPDATE SKIP LOCKED
-    ) AS c
+    )
+    UPDATE memory_buffer AS b
+    SET status = 'claimed',
+        attempts = b.attempts + 1,
+        claimed_at = NOW(),
+        claimed_by = CAST(:worker AS text)
+    FROM c
     WHERE b.id = c.id
     RETURNING b.id
     """

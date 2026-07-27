@@ -284,6 +284,82 @@ async def test_claim_takes_the_oldest_rows_first(setup_database):
         await drop_buffer(buffer_ids)
 
 
+async def drain_and_analyze_buffer() -> None:
+    """Leave `memory_buffer` in the steady state a drained queue actually has:
+    a heap with pages, and a `reltuples` autovacuum last recorded as zero.
+
+    At that statistic the planner costs the claim's row set as one row and puts
+    it on the inner side of a nested loop, where it is re-executed once per
+    outer row. Each re-execution steps past the rows this same command already
+    claimed, so an unmaterialized sub-select hands back a further row every
+    time and the bound is silently unenforced. Driving the tests below off the
+    statistic rather than off a race is what makes that reachable on demand
+    instead of once in every few runs.
+
+    `ANALYZE` writes `relpages`/`reltuples` through `heap_inplace_update`,
+    which is not transactional, so this state outlives the caller and every
+    later test in the session sees it too.
+    """
+    async with factory()() as s:
+        await s.execute(text(
+            "INSERT INTO memory_buffer (id, project, content) "
+            "SELECT gen_random_uuid(), 'claim-stats-probe', 'filler' "
+            "FROM generate_series(1, 200)"
+        ))
+        await s.execute(
+            text("DELETE FROM memory_buffer WHERE project = 'claim-stats-probe'")
+        )
+        await s.commit()
+    async with factory()() as s:
+        await s.execute(text("ANALYZE memory_buffer"))
+        stats = (await s.execute(text(
+            "SELECT relpages, reltuples FROM pg_class WHERE relname = 'memory_buffer'"
+        ))).one()
+        await s.commit()
+    # Without this the tests below would still pass on a plan that never
+    # rescans, and would guard nothing.
+    assert stats.relpages > 0 and stats.reltuples == 0, (
+        f"planner statistics not in the drained state: {stats!r}"
+    )
+
+
+async def test_claim_holds_its_limit_when_the_planner_rescans_the_claim(setup_database):
+    """`buffer_claim_batch` has to bound the claim under every plan the planner
+    may pick, not only the ones that evaluate the row set once. This is the
+    property the deadline valve rests on: `claim_limit` halving the batch does
+    nothing if the SQL then claims the backlog anyway."""
+    await drain_and_analyze_buffer()
+    buffer_ids = await seed_buffer(8)
+    try:
+        async with factory()() as s:
+            rows = await claim_batch(s, limit=3, worker="w")
+            await s.commit()
+        assert [r.id for r in rows] == buffer_ids[:3]
+        by_id = await buffer_rows(buffer_ids)
+        assert [by_id[i]["status"] for i in buffer_ids] == (
+            ["claimed"] * 3 + ["pending"] * 5
+        )
+        assert [by_id[i]["attempts"] for i in buffer_ids] == [1] * 3 + [0] * 5
+    finally:
+        await drop_buffer(buffer_ids)
+
+
+async def test_a_single_row_claim_rescanned_does_not_take_the_backlog(setup_database):
+    """The narrowest bound is the one a rescan overruns most visibly, and it is
+    the bound `claim_limit` converges on after repeated deadlines."""
+    await drain_and_analyze_buffer()
+    buffer_ids = await seed_buffer(12)
+    try:
+        async with factory()() as s:
+            rows = await claim_batch(s, limit=1, worker="w")
+            await s.commit()
+        assert [r.id for r in rows] == buffer_ids[:1]
+        by_id = await buffer_rows(buffer_ids)
+        assert sum(r["status"] == "pending" for r in by_id.values()) == 11
+    finally:
+        await drop_buffer(buffer_ids)
+
+
 # ── Ruling 2: the claim batch is its own number ─────────────────────
 
 
