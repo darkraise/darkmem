@@ -86,12 +86,16 @@ async def get_pipeline_logs(
     session: AsyncSession = Depends(get_session),
 ):
     # audit_log was dropped by the baseline; events is the audit substrate
-    # (doc 04 §8.1). The response shape is preserved: event_type 'pipeline'
-    # rows carry the same object_id and payload the old columns did.
+    # (doc 04 §8.1). This used to query event_type='pipeline', a value
+    # outside EVENT_TYPES that nothing ever wrote, so the endpoint returned
+    # empty forever. 'extracted' is what process_batch actually journals
+    # per memory (pipeline.py), one row per memory per batch with the same
+    # status dict the pipeline.* broadcast carries, plus 'outcome'
+    # (completed/partial/failed) folded in.
     rows = (await session.execute(
         sa_text(
             "SELECT id, object_id, payload, created_at FROM events "
-            "WHERE event_type = 'pipeline' ORDER BY created_at DESC LIMIT :limit"
+            "WHERE event_type = 'extracted' ORDER BY created_at DESC LIMIT :limit"
         ),
         {"limit": limit},
     )).all()

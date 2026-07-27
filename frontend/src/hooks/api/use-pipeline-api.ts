@@ -71,10 +71,11 @@ export function useHealth() {
   })
 }
 
-export function usePipelineLogs(limit = 10) {
+export function usePipelineLogs(limit = 10, enabled: boolean = true) {
   return useQuery<PipelineLog[]>({
     queryKey: ["pipelineLogs", limit],
     queryFn: () => apiFetch(`/analytics/pipeline-logs?limit=${limit}`),
+    enabled,
   })
 }
 
@@ -200,10 +201,10 @@ export function useOverview(days: number = 7) {
   })
 }
 
-export function usePipelineFailures(filters?: {
-  entity_type?: string
-  pipeline_name?: string
-}) {
+export function usePipelineFailures(
+  filters?: { entity_type?: string; pipeline_name?: string },
+  enabled: boolean = true,
+) {
   const qs = new URLSearchParams()
   if (filters?.entity_type) qs.set("entity_type", filters.entity_type)
   if (filters?.pipeline_name) qs.set("pipeline_name", filters.pipeline_name)
@@ -211,6 +212,7 @@ export function usePipelineFailures(filters?: {
   return useQuery<PipelineFailureListResponse>({
     queryKey: ["pipelineFailures", filters ?? {}],
     queryFn: () => apiFetch<PipelineFailureListResponse>(url),
+    enabled,
   })
 }
 

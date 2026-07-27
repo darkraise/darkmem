@@ -1,14 +1,16 @@
 import {
   Check,
+  CircleAlert,
   RefreshCw,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { cn } from "darkraise-ui/lib"
 import { deriveRunFailedStep, failedStepSeverity } from "@/demo/activity"
-import { useDemoPipelineRuns } from "@/demo/hooks"
 import type { DemoPipelineRun, PipelineTerminal } from "@/demo/types"
+import { usePipelineRuns } from "../use-pipeline-runs"
 import { ModuleSurface } from "./module-surface"
 import { PipelineStepper } from "./pipeline-stepper"
 
@@ -88,7 +90,7 @@ function PipelineRow({ run }: { run: DemoPipelineRun }) {
 }
 
 export function PipelineTab() {
-  const runs = useDemoPipelineRuns()
+  const { runs, isLoading, isError } = usePipelineRuns()
   const inFlight = runs.filter((r) => r.terminal === "running")
   const recent = runs.filter((r) => r.terminal !== "running")
   const partial = recent.filter((r) => r.terminal === "partial").length
@@ -122,12 +124,18 @@ export function PipelineTab() {
       </ModuleSurface>
       <ModuleSurface
         title="Pipeline — recent"
-        state="populated"
+        state={isLoading ? "empty" : recent.length > 0 ? "populated" : "empty"}
         meta={`${recent.length} memories · ${partial} partial · ${failed} failed`}
       >
-        {recent.map((run) => (
-          <PipelineRow key={run.id} run={run} />
-        ))}
+        {isError ? (
+          <EmptyState
+            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            title="Couldn't load recent pipeline runs"
+            description="The /analytics/pipeline-logs request failed — this is an error state, not an absence of activity."
+          />
+        ) : (
+          recent.map((run) => <PipelineRow key={run.id} run={run} />)
+        )}
       </ModuleSurface>
     </div>
   )

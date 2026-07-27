@@ -1,16 +1,28 @@
-import { CircleCheck, FileText, FolderGit2, RefreshCw, X } from "lucide-react"
+import {
+  CircleAlert,
+  CircleCheck,
+  FileText,
+  FolderGit2,
+  RefreshCw,
+  X,
+} from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { cn } from "darkraise-ui/lib"
 import { groupFailuresByStep, isPoison, POISON_ATTEMPTS } from "@/demo/activity"
-import { useDemoPipelineFailures } from "@/demo/hooks"
-import { useDemoStore } from "@/demo/store"
 import type { DemoPipelineFailure } from "@/demo/types"
+import { usePipelineTriage } from "../use-pipeline-triage"
 import { ModuleSurface } from "./module-surface"
 
-function FailureRow({ failure }: { failure: DemoPipelineFailure }) {
-  const retry = useDemoStore((s) => s.retryFailure)
-  const forget = useDemoStore((s) => s.forgetFailure)
+function FailureRow({
+  failure,
+  retry,
+  forget,
+}: {
+  failure: DemoPipelineFailure
+  retry: (id: string) => void
+  forget: (id: string) => void
+}) {
   const poison = isPoison(failure)
   const Icon = failure.target_kind === "memory" ? FileText : FolderGit2
 
@@ -94,8 +106,8 @@ function FailureRow({ failure }: { failure: DemoPipelineFailure }) {
 }
 
 export function TriageTab() {
-  const failures = useDemoPipelineFailures()
-  const retryAll = useDemoStore((s) => s.retryAllFailures)
+  const { failures, isLoading, isError, retry, retryAll, forget } =
+    usePipelineTriage()
   const groups = groupFailuresByStep(failures)
   const retryable = failures.filter((f) => !f.retry_queued).length
 
@@ -110,7 +122,9 @@ export function TriageTab() {
       </p>
       <ModuleSurface
         title="Failure triage"
-        state={failures.length > 0 ? "populated" : "empty"}
+        state={
+          isLoading ? "empty" : failures.length > 0 ? "populated" : "empty"
+        }
         meta={`pipeline_failures · ${failures.length} unresolved`}
         actions={
           failures.length > 0 ? (
@@ -126,7 +140,13 @@ export function TriageTab() {
           ) : undefined
         }
       >
-        {failures.length === 0 ? (
+        {isError ? (
+          <EmptyState
+            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            title="Couldn't load pipeline failures"
+            description="The /pipeline-failures request failed — this is an error state, not an empty triage queue."
+          />
+        ) : failures.length === 0 ? (
           // Healthy-empty: a queue at zero is a positive state, not an
           // absence to explain away.
           <EmptyState
@@ -143,7 +163,12 @@ export function TriageTab() {
                 {group.failures.length === 1 ? "" : "s"}
               </p>
               {group.failures.map((failure) => (
-                <FailureRow key={failure.id} failure={failure} />
+                <FailureRow
+                  key={failure.id}
+                  failure={failure}
+                  retry={retry}
+                  forget={forget}
+                />
               ))}
             </div>
           ))
