@@ -500,11 +500,8 @@ class ProcessingPipeline:
             # so resolve each endpoint's type from this extraction's own entities;
             # if unknown, leave the endpoint untouched.
             # Built to completion BEFORE the rewrite loop below mutates any
-            # entity["name"]. An endpoint's type has to be recovered from this
-            # extraction's PRE-canonicalisation names; recovering it afterwards
-            # looks up an already-rewritten name and silently resolves nothing.
-            # That ordering is the subtle clause of the Phase-4 contract and
-            # nothing else in the code signals it.
+            # entity["name"]: built afterwards it would look endpoints up under
+            # already-rewritten names and silently resolve nothing.
             ent_types: dict[str, set[str]] = {}
             for e in extraction.get("entities", []):
                 etype = e.get("type")
