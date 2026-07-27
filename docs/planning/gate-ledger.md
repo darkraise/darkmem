@@ -582,3 +582,36 @@ The corpus is 36 memories chosen to exercise the model, not the pass chain. Clos
 owns. It is deliberately **not** being added as a task now: it does not block G-B provided
 G-B's claim is worded to match what was actually measured, and inventing gold cases to make
 a guard light up is the fitted-evidence failure the `phoenix v2` ruling already rejected.
+
+### Sharpening of Measurement 3, and a controller correction (2026-07-28)
+
+T1.17's planning pass established the precise form, and the controller confirmed it: the
+bench cache key is `sha256(content + "\0" + system_prompt)`, `EXTRACTION_SCHEMA` rides the
+**user** message, and `MEMORY_TYPES` is **already 9**. So the 36 outputs cached on 2026-07-26
+under the **7-type** schema are still being served on every `--algo-only` run.
+
+**The F1 merge gate has therefore been green over a configuration nobody runs since T1.23
+landed.** Two things follow, and they are different:
+
+- The **wave-to-wave comparisons remain valid.** Every run this session replayed the same
+  cache, so a change in the number was a real change in the pass chain. Nothing reported as
+  a delta was wrong.
+- The **absolute number describes a stale configuration.** It is not the F1 of the shipping
+  extractor and must not be presented as such at G-B.
+
+T1.17's re-record is what closes this — and its Done-when box asking `run_bench.py` to
+exercise the merged shipping path with its gate state pinned is precisely the fix, which is
+why that box matters more than it reads.
+
+**Controller correction:** T1.17's brief described capturing response metadata (model string,
+token counts) as *an opportunity*. That was wrong. This ledger already records it as a
+**requirement** — "'silent vendor update' must not be accepted as an explanation for a
+shortfall unless the G-B runner captured response metadata showing what was actually served".
+The re-record is the measurement G-B cites, so it must capture that metadata. The plan is to
+treat it as required.
+
+**Blast radius, recorded for T1.50:** the prompt edit invalidates more than the 36 extraction
+entries. `benchlib` keys its cache on the whole `messages` list, so T1.50's retrieval
+baseline — roughly 94 cached extraction calls plus the ingested graph itself — dies with it.
+T1.17's task text does not warn about this, and T1.50's brief must budget for re-establishing
+that baseline after the prompt change rather than before.
