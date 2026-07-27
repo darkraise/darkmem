@@ -18,14 +18,11 @@ import {
 } from "darkraise-ui/components/stat"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
-import {
-  useDemoContributions,
-  useDemoEvents,
-  useDemoStats,
-} from "@/demo/hooks"
+import { useDemoEvents, useDemoStats } from "@/demo/hooks"
 import type { ActivityEvent } from "@/demo/types"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
-import { YearHeatmap } from "@/features/dashboard/year-heatmap"
+import { CalendarCard } from "@/features/dashboard/calendar-card"
+import { useContributionCalendar } from "@/features/dashboard/use-contribution-calendar"
 
 export const Route = createFileRoute("/_authenticated/")({
   component: DashboardPage,
@@ -98,9 +95,8 @@ function ActivityFeedItem({ event }: { event: ActivityEvent }) {
 function DashboardPage() {
   const stats = useDemoStats()
   const events = useDemoEvents()
-  const contributions = useDemoContributions()
-
-  const todayCount = contributions[contributions.length - 1]?.count ?? 0
+  const { days, isLoading, isError } = useContributionCalendar()
+  const todayCount = days[days.length - 1]?.count ?? 0
 
   return (
     <div className="space-y-4">
@@ -115,9 +111,11 @@ function DashboardPage() {
           label="Total memories"
           value={stats.totalMemories.toLocaleString()}
           change={
-            todayCount > 0
-              ? { direction: "up", text: `+${todayCount} today` }
-              : { direction: "flat", text: "quiet today" }
+            isLoading
+              ? undefined
+              : todayCount > 0
+                ? { direction: "up", text: `+${todayCount} today` }
+                : { direction: "flat", text: "quiet today" }
           }
         />
         <StatTile
@@ -141,16 +139,7 @@ function DashboardPage() {
         />
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-muted-foreground text-sm font-medium tracking-wider uppercase">
-            Contribution Calendar
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <YearHeatmap days={contributions} />
-        </CardContent>
-      </Card>
+      <CalendarCard days={days} isLoading={isLoading} isError={isError} />
 
       <Card>
         <CardHeader className="pb-2">
