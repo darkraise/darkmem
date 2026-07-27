@@ -602,6 +602,34 @@ class CodePipeline:
         )).scalars().all()
         return [fp for fp in rows if fp not in current_set]
 
+    async def _snapshot_symbol_enrichment(
+        self, file_id: UUID,
+    ) -> dict[tuple[str, str, str | None, str], tuple[str | None, str]]:
+        """Enrichment state of ``file_id``'s current symbols, keyed by
+        ``(name, kind, owner, source-hash)``, read before ``_delete_file_data``
+        deletes them (doc 10 §3, T4).
+
+        The source-hash in the key is what makes carry-over safe: a symbol
+        whose body changed, or was renamed or moved to a different owner,
+        misses the match and is correctly re-enriched rather than keeping a
+        summary describing code that no longer exists.
+        """
+        rows = (await self.session.execute(
+            select(
+                CodeSymbol.id, CodeSymbol.name, CodeSymbol.kind,
+                CodeSymbol.parent_symbol_id, CodeSymbol.source_code,
+                CodeSymbol.summary, CodeSymbol.enrichment_status,
+            ).where(CodeSymbol.file_id == file_id)
+        )).all()
+        id_to_name = {row.id: row.name for row in rows}
+
+        snapshot: dict[tuple[str, str, str | None, str], tuple[str | None, str]] = {}
+        for row in rows:
+            owner = id_to_name.get(row.parent_symbol_id) if row.parent_symbol_id else None
+            key = (row.name, row.kind, owner, _symbol_source_hash(row.source_code))
+            snapshot[key] = (row.summary, row.enrichment_status)
+        return snapshot
+
     async def phase_02_parsing(self) -> None:
         t0 = await self._phase_log("02_parsing")
         work_dir = self._work_dir
@@ -751,7 +779,9 @@ class CodePipeline:
                 self._stats["files_skipped"] += 1
                 continue
 
+            enrichment_snapshot: dict[tuple[str, str, str | None, str], tuple[str | None, str]] = {}
             if existing:
+                enrichment_snapshot = await self._snapshot_symbol_enrichment(existing.id)
                 await self._delete_file_data(repo.id, fp)
             # Either we just removed the old chunks (changed-existing) or the
             # file is brand new and has none; phase 12 need not delete again.
@@ -769,8 +799,26 @@ class CodePipeline:
 
             symbol_count = 0
             symbol_map: dict[str, UUID] = {}
+            created_symbols: list[tuple[CodeSymbol, str | None]] = []
             for sym in pr.symbols:
-                symbol_count += _store_symbol(self.session, code_file, sym, None, symbol_map)
+                symbol_count += _store_symbol(
+                    self.session, code_file, sym, None, symbol_map,
+                    created=created_symbols,
+                )
+
+            # T4 carry-over: a freshly-parsed symbol whose (name, kind, owner,
+            # source-hash) matches the pre-deletion snapshot is byte-identical
+            # to the one it replaces, so it keeps that symbol's summary and
+            # enriched status instead of re-entering the pending backlog.
+            if enrichment_snapshot:
+                for symbol_obj, owner_name in created_symbols:
+                    key = (
+                        symbol_obj.name, symbol_obj.kind, owner_name,
+                        _symbol_source_hash(symbol_obj.source_code),
+                    )
+                    carried = enrichment_snapshot.get(key)
+                    if carried is not None:
+                        symbol_obj.summary, symbol_obj.enrichment_status = carried
 
             await _store_graph(
                 self.session, repo, fp, pr.symbols, pr.imports,
@@ -1714,12 +1762,18 @@ async def _diff_files(
     return changed, deleted
 
 
+def _symbol_source_hash(source_code: str | None) -> str:
+    return hashlib.sha256((source_code or "").encode()).hexdigest()
+
+
 def _store_symbol(
     session: AsyncSession,
     code_file: CodeFile,
     sym: ExtractedSymbol,
     parent_id: UUID | None,
     symbol_map: dict[str, UUID],
+    owner_name: str | None = None,
+    created: list[tuple[CodeSymbol, str | None]] | None = None,
 ) -> int:
     is_exported = sym.visibility not in ("private",) if sym.visibility else True
     if sym.kind in ("class", "struct", "interface", "trait", "enum", "impl"):
@@ -1746,10 +1800,15 @@ def _store_symbol(
     )
     session.add(symbol)
     symbol_map[sym.name] = symbol_id
+    if created is not None:
+        created.append((symbol, owner_name))
 
     count = 1
     for child in sym.children:
-        count += _store_symbol(session, code_file, child, symbol_id, symbol_map)
+        count += _store_symbol(
+            session, code_file, child, symbol_id, symbol_map,
+            owner_name=sym.name, created=created,
+        )
     return count
 
 
