@@ -354,10 +354,14 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. Seven registered jobs (`app/main.py`): `repo_sync`,
-`code_enrichment`, `token_blocklist_cleanup`,
-`pipeline_failure_cleanup`, `graph_orphan_cleanup`,
-`tag_orphan_cleanup`, `expired_memory_cleanup`. Five-field
+expressions. **Nine** registered jobs (`app/main.py`): `repo_sync`,
+`buffer_flush`, `code_enrichment`, `code_reconcile`,
+`token_blocklist_cleanup`, `pipeline_failure_cleanup`,
+`graph_orphan_cleanup`, `tag_orphan_cleanup`,
+`expired_memory_cleanup`. Note `buffer_flush` and `code_reconcile`
+register via the constants `BUFFER_FLUSH_JOB_KEY` and
+`CODE_RECONCILE_JOB_KEY` rather than string literals, so a grep for
+quoted keys undercounts the list. Five-field
 expressions are minute-precision; six-field expressions put the seconds
 field first, Quartz-style. `min_interval_seconds` is a per-job floor
 that protects against runaway expressions; the loop will not fire more
