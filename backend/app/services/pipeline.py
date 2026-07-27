@@ -17,7 +17,7 @@ from app.services.llm import LLMOrchestrator
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
 from app.services.rank_fusion import any_arm_active, rank_fusion_factor
-from app.services.relations import TECH_TYPES, names_distinct
+from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions
 from app.services import prompt
 from app.taxonomy import normalize_memory_type
@@ -654,12 +654,6 @@ class ProcessingPipeline:
                             # a good graph.
                             await graph_repo.delete_by_memory_id(memory_id)
 
-                            # Technologies are denormalised to the memory row so the
-                            # GIN index on `memories.technologies` can answer retrieval
-                            # filters without joining. Store lowercase so case drift in
-                            # canonical_map (e.g., "pgvector" vs "PgVector") does not
-                            # cause the supersession detector or search filter to miss.
-                            tech_names: set[str] = set()
                             # Map each canonical (lower-cased) entity name to the
                             # type it was written with, so relationships resolve
                             # endpoints by (name, entity_type) — entity uniqueness
@@ -698,8 +692,6 @@ class ProcessingPipeline:
                                     await graph_repo.upsert_entity_embedding(
                                         created["id"], emb, fingerprint=entity_fingerprint,
                                     )
-                                if entity.get("type") in TECH_TYPES:
-                                    tech_names.add(canonical_name)
                             for rel in extraction.get("relationships", []):
                                 source_name = (rel["source"] or "").strip().lower()
                                 target_name = (rel["target"] or "").strip().lower()
@@ -713,7 +705,18 @@ class ProcessingPipeline:
                                 )
 
                             if mem_record is not None:
-                                mem_record.technologies = sorted(tech_names)
+                                # Denormalised onto the memory row so the GIN index
+                                # on `memories.technologies` answers the supersession
+                                # overlap test and the retrieval filter without
+                                # joining `entities`. Assigned whole, from the graph
+                                # as it stands after this savepoint's strip and
+                                # write: a partial update would leave a memory whose
+                                # denorm covers some of its entities and not others,
+                                # and supersession would then fire on some REPLACES
+                                # targets and silently not on the rest.
+                                mem_record.technologies = (
+                                    await graph_repo.technologies_for_memory(memory_id)
+                                )
                                 # Trigger on a REPLACES relation, not on this
                                 # memory's own technologies: the detector keys off
                                 # the REPLACES *target* overlapping a candidate's

@@ -58,6 +58,46 @@ def _replacement_is_speculative(text: str | None, target: str) -> bool:
     return any(is_speculative(s) for s in mentioning)
 
 
+def candidate_stmt(
+    *,
+    new_memory_id: UUID,
+    new_memory_created_at: datetime,
+    project: str,
+    replaces_targets: list[str],
+    cutoff: datetime,
+):
+    """The candidate SELECT, extracted so its query plan is checkable.
+
+    ``memories.technologies`` is denormalised and GIN-indexed precisely so the
+    overlap guard below is an index scan rather than a join against
+    ``entities``; a test EXPLAINs this statement to prove the index is reached,
+    which is only meaningful while the tested statement is the executed one.
+    """
+    return (
+        select(Memory.id)
+        .where(Memory.project == project)
+        .where(Memory.status == "active")
+        .where(Memory.created_at >= cutoff)
+        # Strictly-older, with a deterministic id tie-break for equal timestamps.
+        # Same-batch memories share an identical server-side created_at (one
+        # transaction), so a bare `<` never fires within a batch; the id tie-break
+        # lets exactly one of an equal-timestamp pair supersede the other, which
+        # both enables within-batch supersession and preserves the no-mutual-flip
+        # guarantee the strict guard was added for.
+        .where(
+            or_(
+                Memory.created_at < new_memory_created_at,
+                and_(
+                    Memory.created_at == new_memory_created_at,
+                    Memory.id < new_memory_id,
+                ),
+            )
+        )
+        .where(Memory.id != new_memory_id)
+        .where(Memory.technologies.overlap(replaces_targets))
+    )
+
+
 async def detect_supersessions(
     session: AsyncSession,
     *,
@@ -98,28 +138,12 @@ async def detect_supersessions(
     reference = now or datetime.now(timezone.utc)
     cutoff = reference - timedelta(days=SUPERSESSION_WINDOW_DAYS)
 
-    stmt = (
-        select(Memory.id)
-        .where(Memory.project == project)
-        .where(Memory.status == "active")
-        .where(Memory.created_at >= cutoff)
-        # Strictly-older, with a deterministic id tie-break for equal timestamps.
-        # Same-batch memories share an identical server-side created_at (one
-        # transaction), so a bare `<` never fires within a batch; the id tie-break
-        # lets exactly one of an equal-timestamp pair supersede the other, which
-        # both enables within-batch supersession and preserves the no-mutual-flip
-        # guarantee the strict guard was added for.
-        .where(
-            or_(
-                Memory.created_at < new_memory_created_at,
-                and_(
-                    Memory.created_at == new_memory_created_at,
-                    Memory.id < new_memory_id,
-                ),
-            )
-        )
-        .where(Memory.id != new_memory_id)
-        .where(Memory.technologies.overlap(replaces_targets))
+    stmt = candidate_stmt(
+        new_memory_id=new_memory_id,
+        new_memory_created_at=new_memory_created_at,
+        project=project,
+        replaces_targets=replaces_targets,
+        cutoff=cutoff,
     )
     rows = await session.execute(stmt)
     old_ids = [row[0] for row in rows.all()]

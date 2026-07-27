@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.vector import MemoryFilter
 from app.services.embedder_registry import child_table
+from app.services.relations import TECH_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -591,6 +592,29 @@ class PostgresGraphRepository:
             RETURNING e.id
         """))).scalars().all()
         return {"relations_pruned": len(rel_ids), "entities_pruned": len(ent_ids)}
+
+    async def technologies_for_memory(self, memory_id: UUID | str) -> list[str]:
+        """The ``memories.technologies`` denorm for one memory, from the graph.
+
+        Read back from ``entities`` rather than accumulated from the extraction
+        dict, so the value is a projection of the graph as it stands after the
+        strip and the write — never a set built from what the writer *intended*
+        to store. ``lower(name)`` is asserted here rather than assumed of the
+        write path: the supersession detector lowercases its REPLACES targets to
+        match this column, so one upper-case entry stops supersession firing with
+        no error anywhere.
+        """
+        result = await self.session.execute(
+            text("""
+                SELECT DISTINCT lower(name) AS name
+                FROM entities
+                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                  AND entity_type = ANY(CAST(:types AS text[]))
+                ORDER BY 1
+            """),
+            {"mid": str(memory_id), "types": sorted(TECH_TYPES)},
+        )
+        return [row[0] for row in result.all()]
 
     async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
         result = await self.session.execute(
