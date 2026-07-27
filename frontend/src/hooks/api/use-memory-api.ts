@@ -5,6 +5,34 @@ import { apiFetch } from "@/lib/api"
 // separate `is_archived` boolean, not a status.
 export type MemoryStatus = "active" | "superseded" | "deprecated"
 
+// Mirrors backend RetrievalEnvelope / MemoryResultTrace (app/schemas/retrieval_trace.py,
+// T1.33, doc 07 §8). Transient — populated only when a search request sets
+// `with_trace: true`, `undefined` otherwise.
+export interface ChannelStatus {
+  ran: boolean
+  failed?: boolean
+}
+
+export interface RetrievalEnvelope {
+  query: string
+  channels: Record<string, ChannelStatus>
+  reranked: boolean
+  weights: Record<string, number>
+  // Real key set is filter-name-shaped (memory_type, source, technologies,
+  // tags, not_found) — never by_project/by_status, which SQL pushdown moved
+  // out of this code path before it can count them (T1.33 amendment log).
+  excluded: Record<string, number>
+}
+
+export interface MemoryResultTrace {
+  // rrf_score is the sole ordering signal; semantic/keyword/rerank_score are
+  // each channel's own raw contribution and must never be read as "the
+  // score" (doc 07 §3's trap).
+  scores: Record<string, number | null>
+  rank_fusion_factor: number
+  rank_fusion_breakdown: Record<string, number>
+}
+
 export interface Memory {
   id: string
   content: string
@@ -27,6 +55,8 @@ export interface Memory {
   rrf_score?: number
   status?: MemoryStatus
   superseded_by?: string | null
+  // Populated only when the request set `with_trace: true` (T1.33/T1.44).
+  trace?: MemoryResultTrace
 }
 
 export interface Tag {
@@ -135,6 +165,7 @@ export function useTags() {
 
 export interface PaginatedSearchParams {
   query?: string
+  project?: string
   tags_any?: string[]
   source?: string
   memory_type?: string
@@ -144,6 +175,9 @@ export interface PaginatedSearchParams {
   limit?: number
   offset?: number
   semantic_weight?: number
+  // Attaches the retrieval trace envelope and a per-row trace (T1.33/T1.44).
+  // Structurally zero-cost when unset — the caller never pays for it.
+  with_trace?: boolean
 }
 
 export interface PaginatedMemories {
@@ -151,6 +185,8 @@ export interface PaginatedMemories {
   total: number
   limit: number
   offset: number
+  // Present only when the request set `with_trace: true`.
+  envelope?: RetrievalEnvelope
 }
 
 export function usePaginatedSearch(
@@ -165,6 +201,7 @@ export function usePaginatedSearch(
         method: "POST",
         body: JSON.stringify({
           query: params.query || undefined,
+          project: params.project || undefined,
           tags_any: params.tags_any?.length ? params.tags_any : undefined,
           source: params.source || undefined,
           memory_type: params.memory_type || undefined,
@@ -180,6 +217,7 @@ export function usePaginatedSearch(
           limit: params.limit ?? 50,
           offset: params.offset ?? 0,
           semantic_weight: params.semantic_weight,
+          with_trace: params.with_trace ?? false,
         }),
       }),
   })
