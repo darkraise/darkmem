@@ -458,12 +458,44 @@ async def test_keyword_scope_alone_can_use_the_project_index(session):
     assert "Seq Scan on memories" not in plan, plan
 
 
+async def _seed_scope_selective_corpus(session, rows: int = 2000) -> None:
+    """Make ``project = 'alpha'`` a genuinely selective predicate.
+
+    On the walk's own three memories the scope matches nearly the whole table,
+    which leaves the two project-bearing indexes costing the same; the planner
+    then breaks the tie on ``memories``' physical page count, which is set by
+    whichever bulk-inserting test ran earlier in the session and which this
+    test cannot control. Sized like this the ``(id, project)`` unique index is
+    the cheapest path outright, measured stable against a table bloated by up
+    to 50k rolled-back rows.
+    """
+    await session.execute(
+        text(
+            "INSERT INTO memories (id, content, source, project, status, is_archived) "
+            "SELECT gen_random_uuid(), 'scope filler ' || i, 'test', "
+            "CASE WHEN i % 3 = 0 THEN 'alpha' ELSE 'beta' END, "
+            "'active', false FROM generate_series(1, :n) i"
+        ),
+        {"n": rows},
+    )
+
+
+async def _settle_graph_statistics(session) -> None:
+    """The seeded rows are uncommitted, and ANALYZE counts rows its own
+    transaction inserted — so this describes the fixture rather than whatever
+    the table held when the last ANALYZE ran."""
+    for table in ("memories", "entities", "entity_relations"):
+        await session.execute(text(f"ANALYZE {table}"))
+
+
 @pytest.mark.asyncio
 async def test_graph_walk_can_use_indexes_on_every_join(session):
     """Edge expansion, endpoint resolution and the scope predicate must each
     reach an index; a sequential scan on any of them means the walk degrades
     into a full-graph sweep once the corpus grows."""
     ids = await _seed_two_project_graph(session)
+    await _seed_scope_selective_corpus(session)
+    await _settle_graph_statistics(session)
 
     scope = MemoryFilter(project="alpha", statuses=("active",))
     repo = PostgresGraphRepository(session)

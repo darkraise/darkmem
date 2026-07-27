@@ -15,7 +15,7 @@ os.environ["DATABASE_URL"] = os.environ.get(
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.api.auth import create_access_token, hash_password
@@ -67,14 +67,16 @@ async def setup_database():
 async def session(setup_database):
     connection = await test_engine.connect()
     transaction = await connection.begin()
+    # The outer transaction above is the isolation boundary, and SQLAlchemy's
+    # default join_transaction_mode="conditional_savepoint" already runs this
+    # session inside its own SAVEPOINT on it, so a commit() in a test cannot
+    # reach it. The 1.x recipe that reopened that savepoint by hand from an
+    # "after_transaction_end" listener is therefore redundant here, and it was
+    # not harmless: it fired while an application-level session.begin_nested()
+    # was still unwinding, and the InvalidRequestError that raised was caught
+    # and reported by events.record_event as a journal failure on every call
+    # in the suite, masking real ones.
     async_session = AsyncSession(bind=connection, expire_on_commit=False)
-
-    await connection.begin_nested()
-
-    @event.listens_for(async_session.sync_session, "after_transaction_end")
-    def restart_savepoint(session, trans):
-        if trans.nested and not trans._parent.nested:
-            session.begin_nested()
 
     yield async_session
 
