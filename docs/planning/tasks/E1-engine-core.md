@@ -246,6 +246,36 @@ processed twice or stranded.
 
 **Verify.** `cd backend && python -m pytest tests/test_buffer_flush.py -q`
 
+#### T1.13b — `memory_buffer` read surface and poison-row action
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.13` · `Doc: 05 §3.1, 13 §6.1, 12 §2` · `Tag: target-new` · `Gate: G-B`
+
+**What.** The REST surface carrying `memory_buffer` state to the operator. **Added by
+amendment 2026-07-27** — the plan had T1.13 producing poison rows and T1.61 rendering
+them, with nothing between: no route anywhere exposes `memory_buffer`, so T1.61's buffer
+monitor can only bind demo data. That is Principle 10 inverted — a Phase-1 surface with no
+Phase-1 signal to read.
+
+**Done when:**
+- [ ] A read endpoint lists buffer rows with status, attempt count, claim timestamp, and
+      `last_error`, filterable to claimed / stale / poison (`error`), matching
+      `api-rest-conventions.md`
+- [ ] Stale is derived from T1.13's lease (`buffer_claim_visibility_seconds`), reusing the
+      existing `stale_claims()` helper rather than reimplementing the predicate — T1.13
+      shipped it tested and without a production caller, and two definitions of stale will
+      drift
+- [ ] A poison row is **actionable**: a route that requeues it (resetting attempts) or
+      discards it, journalling the action to `events`. T1.61's "actionable, not just
+      visible" box depends on this
+- [ ] Project scoping is pushed into SQL, not filtered after (T1.29a–c)
+- [ ] Retention is unchanged: `done` rows are retained and `error` rows are **never** swept,
+      per T1.13's contract — this surface reads and acts, it does not clean up
+- [ ] REST-single-door is acceptable **with a stated reason** recorded for T1.42d's parity
+      audit, as the `events` read surface already is; if it ships MCP tools instead, they go
+      through the same service layer
+
+**Verify.** `cd backend && python -m pytest tests/test_api/test_buffer.py -q`
+
 #### T1.14 — `wait_process` interactive bypass
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.13` · `Doc: 05 §3` · `Tag: target-new` · `Gate: G-B`
@@ -1442,3 +1472,5 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-27 | T1.24e | 2 | **`_fan_out_coordinated` (Stage 5) iterates a `set` of strings, so `clean_extraction`'s output *order* varies between processes under hash randomisation.** Reproduced on gold `e10` and held-out `h3`. Resulting sets, and every F1 number, are unaffected. One-word fix (`sorted(g)`), routed to T1.24e as Stage 5's owner. | Larger than its size suggests: doc 17 §7 and `CLAUDE.md`'s Reproducibility contract exist so identical input reproduces identical output, and the seed forwarding is built to protect exactly that. A nondeterministic ordering downstream undermines the same property by a different route, and order-sensitive consumers — dedup tie-breaks, `canonical_map` construction — would surface it as a rare flake rather than a clean failure. Found by T1.25's lane, which correctly did not reach into another stage. |
 | 2026-07-27 | T1.55 | 1 | The orphaned `frontend/src/features/pipeline/` directory is **deleted** — dead provider/profile/ml-profile UI wired to endpoints T1.01 removed. Its one live file (`api-kinds.ts`) was **moved** to `features/setup` and its single importer updated. Frontend test count drops **354 → 338**; the 16 removed tests covered the deleted dead code. | Verified by the controller before merge: `StepLLM.tsx`'s `api-kinds` import was the *only* reference into the directory from outside it, so the remainder was unreachable. Doc 13 §7 names a surviving profile picker over a schema with no profiles table as an invariant-23 violation rather than merely dead UI, which puts the deletion inside T1.55's remit even though the file list did not name the directory. Recording the test-count drop explicitly so a later reader does not read it as a regression. |
 | 2026-07-27 | T1.61 | 2 | **No task in the graph exposes `memory_buffer` over REST, and T1.61's Done-when ("buffer monitor shows claimed, stale, and poison rows"; "a poison row is actionable") cannot be met with real data as a result.** T1.10 lands the table and T1.13 lands the flush job plus the read-only `stale_claims()` helper, but neither adds a route, and none of T1.08's three `/events` endpoints touch `memory_buffer` either. T1.61's own file list (frontend-only, `Not backend/`) and ruling 4 ("do not add a backend endpoint yourself") forbid this lane from closing the gap itself. Delivered instead: feed and day views are fully bound to real `/events`/`/events/calendar` (Done-when #1, met); the buffer monitor's demo-mode target design was corrected to the shipped semantics (`attempts` relabelled "claimed N× ", a distinct stale-claims list separate from poison, and working retry/forget actions on poison rows via the demo store) so Done-when #2/#3 are met **in demo mode only**; the real-mode branch (unreachable until T1.58 flips `DEMO`) renders an honest "no REST surface yet" staged state rather than fetching against a guessed contract. A follow-up backend task — a read route over `memory_buffer` (counts + `stale_claims()` + poison rows) plus retry/forget actions on a poison row — is needed before the monitor can go fully live. | T1.13's own amendment row (above, 2026-07-27, tier 2) already flagged that error rows have no triage surface and named T1.61 as the owner, but neither that row nor T1.61's brief anticipated that closing it needs a backend change, which this lane's scope explicitly excludes. Recording as tier 2 because it changes what a future task must still do — add the missing route — not as a tier 3, since no design doc is contradicted: doc 13 §6.1's own invariant-23 language ("a monitor for a table that does not yet write would render an empty panel that reads as either broken or as claiming a shipped capability") is exactly the reasoning applied here to keep the real branch honestly staged rather than fabricating a fetch. |
+| 2026-07-27 | T1.13b | 2 | **New task added — the plan had a signal with no wire.** T1.13 produces buffer state (claimed, stale, poison/`error` with attempt counts) and T1.61 renders it, but **no route anywhere exposes `memory_buffer`** — confirmed by the controller: `backend/app/api/routes/` contains only the capture write path, and the sole `buffer` mentions are two docstrings. T1.61's buffer monitor therefore binds demo data only, and its "poison row is actionable" box cannot be met with live state. Added T1.13b (Sonnet, M) between T1.13 and T1.61's live binding. | Principle 10 inverted: doc 20 forbids a Phase-1 signal with no Phase-1 surface, and this is the mirror case — a committed surface (doc 13 §6.1 names the buffer monitor as *the* place poison rows appear) with no signal to read. Found by T1.61's lane, which correctly reported it rather than adding a backend route from a frontend-scoped lane while four backend lanes were running. The task explicitly requires reusing T1.13's tested-but-uncalled `stale_claims()` helper rather than reimplementing the staleness predicate, because two definitions of stale will drift and the UI's would be the one users believe. |
+| 2026-07-27 | T1.61 | 1 | T1.61's buffer-monitor Done-when boxes are recorded **met in demo mode only**, pending T1.13b. Feed and day-view live binding are fully delivered and unaffected. | Honest scoping rather than a claimed box: the surface, its states and its actions are built and tested, and the moment T1.13b lands they bind to real rows. Recording it so the row does not read as fully live when half of it is waiting on a route that did not exist when the task was written. |
