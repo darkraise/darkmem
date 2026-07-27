@@ -346,7 +346,7 @@ Verbatim output — `run_bench.py --gold gold_heldout.json`, live, 2026-07-26:
 |---|---|---|---|---|---|
 | Extraction F1 parity with the recorded baseline | Within the T0.05 tolerance | — | n/a | — | — |
 | Retrieval eval vs full-context baseline | Reported with twin; no silent regression | — | p95 —, tokens — | — | — |
-| Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | — | n/a | — | — |
+| Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | **10** (2026-07-28, T1.35) | n/a (deterministic, zero model calls) | `backend/scripts/benchlib/run_isolation_probe.py` (output below) | **FAIL — gate stays open** |
 
 **Requirement recorded by T0.05:** the runner producing this gate's live F1
 re-record must capture and record response metadata (the served `model` string
@@ -355,15 +355,89 @@ cache carries none, so model identity is only checkable from the G-B side; a
 shortfall attributed to a vendor-side model update is admissible only with that
 metadata recorded (see the "same model" gap under G-A).
 
-**Isolation probe detail** (T1.35) — a single leaked row fails the gate:
+**Isolation probe detail** (T1.35, measured 2026-07-28) — a single leaked row
+fails the gate. **Measured: 10 violations. This probe row is a FAIL and G-B
+stays open** (rule 3: recorded, not retried away).
 
-| Channel | Cross-project leaks | Superseded leaks | Verdict |
+**The metric, stated before the run** (in code: `benchlib/isolation_rules.py`,
+whose module docstring is the bar's definition). A violation is a returned row
+of memory-derived data (full content, preview, or write-echo) that is either
+**V1** — outside a scope the request carried (explicit project/status
+parameter, a scope derived from the addressed row, repository id, or the
+active-fingerprint constraint); labels never excuse a V1 — or **V2** — a
+cross-project or non-active row on a legitimately wide read (operator-wide
+surface, or a ratified every-project default) that does not itself carry the
+labels naming its true project / lifecycle state (Ruling 5: a labelled
+superseded row is the design; an unlabelled one is the count). Two exposures
+are **reported but deliberately not counted**, with the decision stated per
+Ruling 4: **id-only exposure** (`memory_ids` arrays, crossrefs, relation
+edges — T1.29d/e parked these as an open product question; 15 observed) and
+**retention snapshots** (append-only journal/citation content outliving its
+memory — escalated to the human by T1.29e; 3 observed). The channel inventory
+is `app.services.content_surfaces.CONTENT_SURFACES` (never a doc's list —
+Ruling 1); the probe aborts if any registry surface lacks a driver, and every
+raw response body is sentinel-scanned so a row crossing through an
+unenumerated field is a forced V1, not a pass.
+
+Per-channel result — the five originally tabled channels first, then the
+surfaces the registry adds (rule 4: never collapsed):
+
+| Channel / surface | Cross-project leaks | Superseded leaks | Verdict |
 |---|---|---|---|
-| Semantic | — | — | — |
-| Keyword | — | — | — |
-| Graph | — | — | — |
-| `memory_reason` | — | — | — |
-| Code search | — | — | — |
+| Semantic (search REST+MCP, projection, unified, duplicates) | 0 | 0 | PASS |
+| Keyword (FTS arm + relational fallback arm) | 0 | 0 | PASS |
+| Graph (memory-context neighbours, entity browser) | 0 | 0 | PASS (id-only exposure reported, not counted) |
+| `memory_reason` (REST + MCP doors) | **4** | 0 | **FAIL** |
+| Code search (REST + MCP, both arms, cross-repo + cross-fingerprint) | 0 | 0 | PASS |
+| Chat retrieval (`/chat/completions` sources) | **2** | 0 | **FAIL** |
+| Re-embed backfill queue (`/reembed/obsolete/memories`) | **1** | **1** | **FAIL** |
+| Chat history citations (persisted snippets) | **2** | 0 | **FAIL** |
+| Pipeline-failure triage | 0 | 0 | PASS (wide, labelled) |
+| Analytics recents | 0 | 0 | PASS (wide, labelled) |
+| Capture-buffer triage | 0 | 0 | PASS |
+| Event journal (3 doors) | 0 | 0 | PASS (retention reported, not counted) |
+| Memory by id / write echo | 0 | 0 | PASS |
+| Content-free-route sweep (34 GET doors) | 0 | 0 | PASS |
+
+**The ten leaked rows, named** (full output reproducible via
+`cd backend && BENCH_DATABASE_URL=... python scripts/benchlib/run_isolation_probe.py`):
+
+1–2. `memory_reason` REST, default every-project scope (ratified): two
+   `iso-beta` rows returned as 200-char content previews in `sources` with
+   **no project or status key on the row** — the response shape carries
+   `memory_id/content/score/tags` only.
+3–4. `mcp:memory_reason`, same shape, same two rows.
+5–6. `chat_retrieval`, default context: two `iso-beta` rows land in the
+   `sources` SSE event (full content) with no labels.
+7. `reembed_backfill_queue`: a cross-project row previewed 120 chars with no
+   labels (items carry `memory_id` + `content_preview` only).
+8. `reembed_backfill_queue`: a superseded row, same unlabelled shape.
+9–10. `chat_history_citations`: the two beta rows from leak 5–6 persisted as
+   150-char snippets, re-served unlabelled on every conversation read.
+
+**Registry-honesty finding (Ruling 2).** The registry rows for
+`memory_reason` and `chat_retrieval` declare `labels=("project", "status")`,
+but neither response shape emits those keys on its rows — the label claim
+describes the internal SQL, not what the surface returns. The
+`reembed_backfill_queue` row honestly declares `labels=()`, which under this
+bar is precisely why its wide rows count. Fixing any of this is **not** this
+probe's job (a probe that fixes what it measures cannot be trusted to measure
+it); the fixes need owners before this probe can be re-run for the gate.
+
+**Instrument evidence.** Deterministic: two consecutive full runs produced
+byte-identical reports (10 violations, exit 1). Zero model calls by
+construction — the orchestrator stub has no HTTP client. Sensitivity proven
+by mutation: removing the status clause from `MemoryFilter.where_sql` drove
+the count 10 → **58** with named V1 status-breach rows on every
+semantic-backed channel; restoring it returned exactly 10. Hostile fixtures
+cover: superseded rows with live successors, an entity asserted by memories
+in two projects, archived rows, rows embedded only under an inactive
+fingerprint (never served — verified), rows missing from the active
+partition, the absent-partition degradation (enumeration withheld, count
+exact — verified), and journal/citation content outliving a deleted memory.
+What passed is itself evidence: every T1.29a–e pushdown held under these
+fixtures, including both code-search arms and the graph neighbour status
+predicate.
 
 ---
 
