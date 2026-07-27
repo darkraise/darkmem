@@ -19,29 +19,35 @@ class PostgresGraphRepository:
         self, embedding: list[float], fingerprint: str, threshold: float = 0.85,
         entity_type: str | None = None,
     ) -> dict | None:
+        # An untyped probe is a defect, not a supported mode: a name embedding
+        # alone can't tell a `tool` named "react" from a `concept` named
+        # "react", and canonicalizing one onto the other corrupts the
+        # (name, entity_type) binding that entity uniqueness, the lowercase
+        # `technologies` denorm and relation-endpoint resolution all rest on.
+        # The parameter keeps its position so the argument order stays stable
+        # for existing keyword callers.
+        if entity_type is None:
+            raise ValueError("find_similar_entity requires an entity_type")
         table = child_table("entity_embeddings", fingerprint)
         # The ORDER BY ... <=> uses the HNSW index for ranking; the threshold in
         # WHERE is a cheap post-filter on the single nearest row (LIMIT 1). A
         # similarity threshold cannot be pushed into an HNSW index scan, so this
         # recomputed-distance predicate is inherent, not an oversight.
-        # Constrain the match to the probe's own type: a name embedding alone
-        # can't tell a `tool` named "react" from a `concept` named "react", and
-        # canonicalizing one onto the other corrupts the (name, type) binding.
-        type_cond = "AND e.entity_type = :etype" if entity_type is not None else ""
-        params = {"vec": str(embedding), "threshold": threshold}
-        if entity_type is not None:
-            params["etype"] = entity_type
+        # The type predicate rides the same WHERE rather than filtering the
+        # result afterwards: a post-filter lets a nearer wrong-typed neighbour
+        # consume the LIMIT and hide the right-typed one behind it.
         result = await self.session.execute(
             text(f"""
                 SELECT e.id, e.name, e.entity_type,
                        1 - (ee.embedding <=> CAST(:vec AS vector)) AS score
                 FROM {table} ee
                 JOIN entities e ON e.id = ee.entity_id
-                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) >= :threshold {type_cond}
+                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) >= :threshold
+                  AND e.entity_type = :etype
                 ORDER BY ee.embedding <=> CAST(:vec AS vector)
                 LIMIT 1
             """),
-            params,
+            {"vec": str(embedding), "threshold": threshold, "etype": entity_type},
         )
         row = result.mappings().first()
         if not row:

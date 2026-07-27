@@ -918,7 +918,21 @@ class ProcessingPipeline:
         else:
             logger.info("Phase 3 skipped: no entities to embed")
 
-        # Phase 4: Dedup lookup (one call per unique name).
+        # Phase 4: Dedup lookup (one call per unique (name, entity_type)).
+        #
+        # ``canonical_map`` is the contract with Phase 5:
+        #   key   (name_lower, entity_type) — the extraction's own lowercased
+        #         name and its normalized taxonomy type, which together are the
+        #         entity uniqueness key
+        #   value the surviving entity's name, lowercase (entity names are
+        #         lowercase on disk; the original casing lives in
+        #         properties.display_name)
+        # Only canonicalized names appear; a name that stays distinct is absent
+        # rather than mapped to itself, so ``key in canonical_map`` means
+        # "rewrite this one". Phase 5 must resolve entity names *and* relation
+        # endpoints by that same key — an endpoint resolved by name alone can
+        # bind to a same-named entity of another type.
+        #
         # Probes are independent ANN queries — fan them out concurrently
         # bounded by ``pipeline_concurrency`` so a batch of 20 distinct
         # entity names doesn't serialize 20 round-trips.
@@ -937,12 +951,22 @@ class ProcessingPipeline:
                                 emb, fingerprint=entity_fingerprint, threshold=0.85,
                                 entity_type=etype,
                             )
+                        # An ANN hit is necessary but not sufficient. Cosine at
+                        # 0.85 recalls surface variants (postgres/postgresql,
+                        # ~0.974) and also names that differ only by a
+                        # discriminating token yet embed almost identically
+                        # ("february outage"/"march outage", ~0.885).
+                        # ``names_distinct`` is the precision gate on the second
+                        # class, and it is deliberately the stricter side of the
+                        # trade: a false merge cannot be undone by
+                        # re-extraction, because the graph then records only the
+                        # merged form.
                         if (
                             match
                             and match["name"].lower() != lower_name
                             and not names_distinct(lower_name, match["name"])
                         ):
-                            return (lower_name, etype), match["name"]
+                            return (lower_name, etype), match["name"].lower()
                     except Exception as e:
                         logger.warning("Dedup lookup failed for %s: %s", lower_name, e)
                     return (lower_name, etype), None
