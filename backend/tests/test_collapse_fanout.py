@@ -342,10 +342,12 @@ def test_a_direction_grounded_rescue_outranks_a_heavier_llm_triple():
 
 def test_an_adjacency_rescue_does_not_outrank_a_heavier_llm_triple():
     """The adjacency and subject-tracking passes ground ADJACENCY and infer
-    direction from position, so their subject is a guess. Letting that guess
-    beat the model's on weight re-introduces the subject anchoring this pass
-    exists to correct — measured on gold e14, where it drops the correct
-    ``jwt USES rs256`` for a rescue-guessed ``gateway USES rs256``."""
+    the subject from position, so their direction is a guess. Letting that
+    guess beat the model's on weight re-introduces the subject anchoring
+    this pass exists to correct — measured on gold e14 ("The gateway's JWT
+    auth ... signs tokens with RS256"), where the subject-tracking rescue
+    took the possessive modifier ``gateway`` for the subject head ``JWT
+    auth`` and displaced the correct ``JWT USES RS256``."""
     adjacency = {"properties": {"rescue": True}, "weight": 0.6}
     tracked = {"properties": {"rescue": True, "subject_tracked": True}, "weight": 0.6}
     llm = {"properties": {}, "weight": 0.8}
