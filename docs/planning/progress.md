@@ -104,7 +104,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.20 | Phase 4: type-constrained dedup + `names_distinct` | M | Opus | high | | todo | | | |
 | T1.21 | Phase 5: the two-savepoint write | L | Opus | high | | todo | | | |
 | T1.22 | Mid-batch embedder rotation | M | Opus | high | | todo | | | |
-| T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | high | | todo | | | |
+| T1.23 | Five closed vocabularies + normalisers + `LEGACY_*` maps | M | Opus | high | claude/e1-engine-core | wip | | | |
 | T1.24a | Pass registry, the ordering contract, and the per-pass harness | M | Opus | high | | todo | | | |
 | T1.24b | Stage 1: entity shaping | M | Opus | high | | todo | | | |
 | T1.24c | Stage 2: entity rescue | M | Opus | high | | todo | | | |
