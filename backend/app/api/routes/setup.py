@@ -34,6 +34,7 @@ from app.models.code import Repository
 from app.models.config import Config
 from app.services.events import record_event
 from app.models.llm_config import LLMPurposeConfigRow
+from app.services.llm_quirks import models_probe, quirks_for
 from app.services.repo_manager import validate_local_path
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
@@ -66,15 +67,6 @@ async def setup_status(session: AsyncSession = Depends(get_session)) -> StatusRe
 # ── Probe-models ──────────────────────────────────────────────────────
 
 
-def _ollama_native_root(base_url: str) -> str:
-    base = base_url.rstrip("/")
-    if base.endswith("/v1"):
-        return base[:-3]
-    if base.endswith("/api"):
-        return base[:-4]
-    return base
-
-
 class ProbeModelsRequest(BaseModel):
     api_kind: Literal["openai", "anthropic", "ollama", "google", "deepseek", "zai"]
     base_url: str
@@ -99,24 +91,15 @@ async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
     user can iterate on the API key without persisting anything until
     the final ``POST /api/v1/setup`` call.
     """
-    headers = {"Accept": "application/json"}
-    if body.api_kind == "ollama":
-        url = f"{_ollama_native_root(body.base_url)}/api/tags"
-        kind_label = "ollama_native:/api/tags"
-    else:
-        if not body.api_key:
-            return ProbeModelsResponse(
-                models=[],
-                fetched_via="openai_compat:/v1/models",
-                error=f"API key required for api_kind={body.api_kind!r}",
-            )
-        if body.api_kind == "anthropic":
-            headers["x-api-key"] = body.api_key
-            headers["anthropic-version"] = "2023-06-01"
-        else:
-            headers["Authorization"] = f"Bearer {body.api_key}"
-        url = f"{body.base_url.rstrip('/')}/models"
-        kind_label = "openai_compat:/v1/models"
+    target = models_probe(body.api_kind, body.base_url, body.api_key)
+    url, kind_label = target.url, target.label
+    if quirks_for(body.api_kind).requires_api_key and not body.api_key:
+        return ProbeModelsResponse(
+            models=[],
+            fetched_via=kind_label,
+            error=f"API key required for api_kind={body.api_kind!r}",
+        )
+    headers = {"Accept": "application/json", **target.headers}
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client_:

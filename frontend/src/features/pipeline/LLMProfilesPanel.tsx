@@ -79,6 +79,7 @@ import {
 import { navigateToSettingsTab } from "@/lib/settings-tab"
 import { ignorePortaledOverlayPointerDown } from "@/lib/portal-overlays"
 import { KNOWN_PURPOSES, purposeOf, type KnownPurpose } from "./purpose-of"
+import { apiKindSupportsEmbedding } from "./api-kinds"
 
 type DraftProfile = LlmProfile & { _isNew?: boolean; _paramsText?: string }
 type DraftMap = Record<string, DraftProfile>
@@ -296,8 +297,9 @@ export function LLMProfilesPanel() {
         toast.error(`Profile '${name}' needs a model`)
         return
       }
-      const providerSupportsEmbedding =
-        providersResp?.profiles[p.provider_ref]?.supports_embedding ?? true
+      const providerSupportsEmbedding = apiKindSupportsEmbedding(
+        providersResp?.profiles[p.provider_ref]?.api_kind,
+      )
       if (
         edited &&
         (p.purpose === "embedding" || p.is_embedding) &&
@@ -505,9 +507,9 @@ export function LLMProfilesPanel() {
                   {visible.map((name) => {
                     const profile = merged[name]
                     if (!profile) return null
-                    const providerSupportsEmbedding =
-                      providersResp?.profiles[profile.provider_ref]
-                        ?.supports_embedding ?? true
+                    const providerSupportsEmbedding = apiKindSupportsEmbedding(
+                      providersResp?.profiles[profile.provider_ref]?.api_kind,
+                    )
                     return (
                       <ProfileRow
                         key={name}

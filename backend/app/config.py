@@ -22,74 +22,16 @@ LLMApiKind = Literal[
 _config_logger = logging.getLogger(__name__)
 
 
-class LLMProviderProfile(BaseModel):
-    """Reusable connection profile for an LLM provider.
-
-    A purpose (extraction, reasoning, ...) can reference a profile by name
-    via ``LLMPurposeConfig.provider_ref``; the resolution step in
-    ``get_llm_config`` then overlays this profile's connection fields onto
-    the per-purpose row so callers downstream see a fully populated config.
-    Lets the user rotate the API key in one place instead of six.
-
-    ``api_kind`` selects the wire protocol. ``"openai"`` posts to the
-    standard ``/chat/completions`` and ``/embeddings`` endpoints, working
-    against any vendor's OpenAI-compatible surface. ``"ollama"`` posts to
-    Ollama's native ``/api/chat`` and ``/api/embed`` and adds the
-    ``think: false`` flag to disable qwen3-style internal reasoning that
-    the compat shim cannot turn off. The vendor-specific kinds
-    (``"anthropic"``, ``"google"``, ``"deepseek"``, ``"zai"``) reserve a
-    slot for a future native adapter; today they dispatch through the
-    OpenAI-compatible path so cloud profiles keep working with their
-    vendor's compat endpoint.
-    """
-
-    provider: str = "openai"
-    base_url: str = "http://localhost:11434/v1"
-    api_key: str | None = None
-    api_kind: LLMApiKind = "openai"
-    # Some vendors (Anthropic, DeepSeek today) only expose chat completions
-    # on their OpenAI-compat layer and have no embeddings endpoint. The UI
-    # consults this flag to grey out the embedding purpose's profile picker
-    # so a user can't link an unsupported profile and silently 404 on every
-    # embed call.
-    supports_embedding: bool = True
-
-
-class LLMProfile(BaseModel):
-    """Reusable preset for one purpose's full LLM config.
-
-    A profile bundles a Provider reference with default model + params +
-    purpose-style flags. The UI picks a profile in the LLM purpose card
-    to populate the form fields with sensible starting values; the
-    purpose row stores the resolved values directly so changing a
-    profile after the fact doesn't silently retune already-saved
-    purposes.
-
-    Use ``is_embedding=True`` for embedding-only purposes (the
-    ``reasoning`` flag is meaningless there). Use ``reasoning=True`` to
-    flag chat-style purposes whose model supports internal reasoning
-    (qwen3 family, gpt-5 family, etc.).
-    """
-
-    provider_ref: str
-    model: str
-    params: dict = Field(default_factory=dict)
-    is_embedding: bool = False
-    reasoning: bool = False
-
-
 class LLMPurposeConfig(BaseModel):
     base_url: str = "http://localhost:11434/v1"
     model: str = "nomic-embed-text"
     api_key: str | None = None
     dimensions: int | None = None
     reasoning: bool = False
-    # Which API surface to call. ``openai`` uses the OpenAI-compatible
-    # ``/v1/chat/completions`` and ``/v1/embeddings`` endpoints (works with
-    # OpenAI itself, Anthropic via translation layers, vLLM, and Ollama's
-    # compat mode). ``ollama`` uses Ollama's native ``/api/chat`` and
-    # ``/api/embed`` endpoints, which expose ``think: false`` to disable
-    # qwen3-style internal reasoning that the OpenAI compat shim ignores.
+    # Which API surface to call, and the sole axis a vendor difference is
+    # expressed on: auth scheme, reasoning-disable knob, structured-output
+    # caveat, and missing endpoints all resolve through the quirk table in
+    # ``app/services/llm_quirks.py`` (doc 11 §4).
     api_kind: LLMApiKind = "openai"
     params: dict = Field(default_factory=dict)
     # ``llm`` | ``local`` on the classification purpose: which classifier
