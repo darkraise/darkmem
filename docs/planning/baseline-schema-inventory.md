@@ -52,9 +52,40 @@ freeze tag exists, so nobody can quietly start a chain early.
 
 > **Freeze date: _(deliberately blank — the cutover has not happened)_**
 
-Leaving it blank is correct and load-bearing. T0.15 owns the regeneration protocol and
-E1's cutover task (T1.54) fills the real date; writing a plausible date here would be
-exactly the dishonesty the definition-of-done exists to prevent.
+Leaving it blank is correct and load-bearing. E1's cutover task (T1.54) fills the real
+date; writing a plausible date here would be exactly the dishonesty the definition-of-done
+exists to prevent.
+
+#### The two protocols (T0.15)
+
+**Protocol 1 — how the window ends.** The freeze trigger is an **event, not a date**: the
+homelab production cutover (doc 19 §4), the first deploy whose data outlives the schema. At
+that event the revision is tagged **`schema-frozen`**, the date above is filled in, and
+every change after it is an ordinary additive revision on a linear chain, forever. Nothing
+about the freeze is scheduled; it happens when the cutover happens.
+
+**Protocol 2 — how to change the schema while the window is open.** This is the one every
+E1–E3 schema task needs, because until the freeze the baseline is a *shared mutable file*
+that several lanes will want to edit.
+
+1. **Edit `backend/migrations/versions/0001_baseline.py` in place.** Never append a
+   `0002`. A second revision before the freeze means somebody quietly started the chain
+   early, and it also gives Alembic two heads — which breaks `conftest.py` and
+   `benchlib/bench_db.py`, both of which shell out to `alembic upgrade head`.
+2. **Drop and recreate the database.** The baseline is not re-runnable as a diff; it is
+   re-runnable from empty. Verify by rebuilding a scratch database, never by applying an
+   `ALTER` by hand and assuming the file matches.
+3. **Serialise through one owner per epic.** Concurrent regeneration of a single file
+   conflicts every time. One owner holds the baseline for the epic; other lanes hand
+   their schema needs to that owner rather than editing alongside.
+4. **Reconcile the inventory.** This document is the work order; a divergence between it
+   and the migration is a defect in one of them.
+
+**The assertion that holds it shut.** `./scripts/gate.sh` runs an `alembic single-revision`
+gate: while no `schema-frozen` tag exists it requires `alembic history` to show exactly one
+revision, and fails naming the gate otherwise. Once the tag exists the assertion stands
+down, because a linear chain is then correct. Verified in both directions — green at one
+revision, red with a deliberate second.
 
 ## 1. How to read this inventory
 

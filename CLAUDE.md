@@ -29,6 +29,19 @@ behavior change, not a cleanup.
   is on 5433, so set `DATABASE_URL` explicitly for host-side runs.
   Containers migrate at startup via `entrypoint.sh`;
   docker-compose.dev.yml overrides the command and skips migrations.
+- **The schema is ONE revision — `0001_baseline.py` — and it is not
+  frozen yet.** Until the freeze, a schema change **regenerates that
+  file in place** and you drop/recreate the database; it never appends
+  a `0002`. `./scripts/gate.sh` asserts exactly one revision and fails
+  loudly otherwise. Schema changes **serialise through one owner per
+  epic**: the baseline is a single shared mutable file, so two lanes
+  editing it conflict every time. The freeze is an **event, not a
+  date** — the first deploy whose data must survive (the homelab
+  cutover). At that event the revision is tagged `schema-frozen`, the
+  gate assertion stands down, and every later change is an ordinary
+  additive revision forever. **Freeze date: not yet frozen.** Full
+  protocol and the object inventory the baseline implements:
+  `docs/planning/baseline-schema-inventory.md`.
 - Stacks: dev `docker compose -f docker-compose.dev.yml up -d` (no
   .env needed); prod `docker compose up -d` (host networking; requires
   `DB_PASSWORD` + `JWT_SECRET` ≥ 32 chars in .env, `COOKIE_SECURE=false`
