@@ -13,14 +13,17 @@ import pytest
 from app.services.extraction_clean import (
     ENTITY_TYPES,
     PASS_REGISTRY,
+    CleanState,
     _TYPE_OVERRIDES,
     _apply_type_overrides,
+    _dedup_entities,
     _filter_hallucinated_names,
     _filter_literals,
     _filter_negation_only,
     _filter_noise,
     _normalize_names,
     _snap_hardware_types,
+    run_passes,
 )
 from app.services.extraction_pass_harness import index_of
 
@@ -550,3 +553,114 @@ def test_filter_negation_only_does_not_mutate_its_input():
     given = [{"name": "redis", "type": "database"}]
     _filter_negation_only(given, "we run postgres without redis")
     assert given == [{"name": "redis", "type": "database"}]
+
+
+# ── _dedup_entities ──────────────────────────────────────────────────
+
+
+def test_dedup_entities_collapses_an_acronym_onto_its_expansion():
+    out = _dedup_entities([
+        {"name": "Central Processing Unit", "type": "concept"},
+        {"name": "CPU", "type": "tool"},
+    ])
+    assert _names(out) == ["Central Processing Unit"]
+
+
+def test_dedup_entities_is_whitespace_and_case_insensitive():
+    out = _dedup_entities([
+        {"name": "GitHub Actions", "type": "service"},
+        {"name": "githubactions", "type": "tool"},
+    ])
+    assert _names(out) == ["GitHub Actions"]
+
+
+def test_dedup_entities_keeps_the_longest_name():
+    out = _dedup_entities([
+        {"name": "rrf", "type": "algorithm"},
+        {"name": "R R F", "type": "concept"},
+    ])
+    assert _names(out) == ["R R F"]
+
+
+def test_dedup_entities_does_not_merge_on_substrings():
+    # Deliberately NOT a substring rule: 'cpu' inside 'cpu_fallback' is a
+    # different entity, and the rescue pass downstream depends on that.
+    out = _dedup_entities([
+        {"name": "cpu_fallback", "type": "concept"},
+        {"name": "cpu", "type": "tool"},
+    ])
+    assert sorted(_names(out)) == ["cpu", "cpu_fallback"]
+
+
+def test_dedup_entities_keeps_distinct_names():
+    out = _dedup_entities([
+        {"name": "postgres", "type": "database"},
+        {"name": "qdrant", "type": "database"},
+    ])
+    assert sorted(_names(out)) == ["postgres", "qdrant"]
+
+
+def test_dedup_entities_does_not_mutate_its_input():
+    given = [
+        {"name": "CPU", "type": "tool"},
+        {"name": "Central Processing Unit", "type": "concept"},
+    ]
+    _dedup_entities(given)
+    assert _names(given) == ["CPU", "Central Processing Unit"]
+
+
+# ── The ordered stage ────────────────────────────────────────────────
+
+
+def test_stage_one_runs_the_six_shaping_steps_in_doc_06_s1_order():
+    shaping = [p.name for p in PASS_REGISTRY if p.stage == "entity_shaping"]
+    assert shaping == [
+        "normalize_names",
+        "filter_noise",
+        "filter_literals",
+        "snap_hardware_types",
+        "apply_type_overrides",
+        "filter_hallucinated_names",
+        "filter_negation_only",
+        "dedup_entities",
+    ]
+
+
+def test_stage_one_is_the_first_stage():
+    assert PASS_REGISTRY[0].stage == "entity_shaping"
+
+
+def test_stage_one_shapes_a_realistic_batch_end_to_end():
+    content = (
+        "darkmem runs on the Proxmox host at 192.168.0.195:8000 behind nginx. "
+        "The GPU box embeds with BGE; docs live at https://example.com/guide and "
+        "the config sets client.timeout to 30s. We never use Redis."
+    )
+    state = CleanState(
+        content=content,
+        entities=[
+            {"name": "darkmem", "type": "tool"},
+            {"name": "Proxmox host", "type": "service"},
+            {"name": "192.168.0.195:8000", "type": "concept"},
+            {"name": "nginx", "type": "service"},
+            {"name": "GPU", "type": "artifact"},
+            {"name": "bge", "type": "concept"},
+            {"name": "https://example.com/guide", "type": "artifact"},
+            {"name": "client", "type": "concept"},
+            {"name": "30s", "type": "concept"},
+            {"name": "redis", "type": "database"},
+            {"name": "the config", "type": "concept"},
+            {"name": "march outage", "type": "event"},
+        ],
+    )
+    shaping = tuple(p for p in PASS_REGISTRY if p.stage == "entity_shaping")
+    out = run_passes(shaping, state)
+
+    assert _types(out.entities) == {
+        "darkmem": "project",
+        "Proxmox": "tool",
+        "nginx": "tool",
+        "GPU": "tool",
+        "bge": "tool",
+    }
+    assert out.negated_names == {"redis"}
