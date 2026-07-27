@@ -84,6 +84,26 @@ def _flag_cache_reset() -> None:
     _flag_refresh_task = None
 
 
+# The one local classifier the optional `[ml]` extra loads (doc 03 §3.3);
+# `classifier_kind='local'` no longer references a named `ml_profiles` row
+# (T1.01 dropped that table), so there is exactly one in-process model rather
+# than a user-selectable set.
+_LOCAL_CLASSIFIER_MODEL_REPO = "darkraise/darkmem-classifier-v1"
+_LOCAL_CLASSIFIER_TTL_SECONDS = 0
+
+
+def _ml_extra_available() -> bool:
+    """Whether the optional CPU-only ``[ml]`` extra (torch + transformers) is
+    importable here. Only imports the packages — never loads a model — so
+    this is cheap enough to call on every classifier resolution."""
+    try:
+        import torch  # noqa: F401
+        import transformers  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def _derive_outcome(status: dict) -> str:
     """`completed` / `partial` / `failed` from a memory's per-step statuses.
 
@@ -134,11 +154,14 @@ class ProcessingPipeline:
             self._entity_cache.popitem(last=False)
 
     async def _resolve_classifier(self):
-        """Pick the batch classifier: the in-process MLClassificationService
-        when the classification purpose has an ml_profile_ref, else the
-        LLM-backed ClassificationService. The surface
+        """Pick the batch classifier from the classification purpose's inline
+        ``classifier_kind`` (doc 11 §2): ``local`` selects the in-process
+        ``MLClassificationService`` when the optional ``[ml]`` extra is
+        importable; anything else — ``llm``, an absent row, or ``local``
+        with ``[ml]`` unavailable — uses the LLM-backed
+        ``ClassificationService``. Both share the same surface
         (``classify(content, areas, prompt, mode)`` returning
-        ``{hall, summary, emotions, flags}``) is identical. Resolved once per
+        ``{hall, summary, emotions, flags}``). Resolved once per
         ``_classifier_cache_ttl`` so a settings flip is picked up within that
         window without a per-batch DB round-trip."""
         now = time.monotonic()
@@ -149,24 +172,24 @@ class ProcessingPipeline:
         resolved: object | None = None
         try:
             from app.services.config import get_llm_config as _fetch_cfg
-            from app.models.llm_config import MLProfile as _MLProfile
-            from sqlalchemy import select as _sa_select
             async with self.session_factory() as session:
                 live_cfg = await _fetch_cfg(session)
-                classifier_cfg = live_cfg.get("classification")
-                ml_ref = getattr(classifier_cfg, "ml_profile_ref", None) if classifier_cfg else None
-                if ml_ref:
-                    ml_row = (await session.execute(
-                        _sa_select(_MLProfile).where(_MLProfile.name == ml_ref)
-                    )).scalar_one_or_none()
-                    if ml_row is not None:
-                        from app.services.classification_ml import MLClassificationService
-                        from app.services.ml_runtime import ml_model_manager
-                        resolved = MLClassificationService(
-                            ml_model_manager,
-                            ml_row.model_repo,
-                            ml_row.ttl_seconds,
-                        )
+            classifier_cfg = live_cfg.get("classification")
+            classifier_kind = getattr(classifier_cfg, "classifier_kind", None) if classifier_cfg else None
+            if classifier_kind == "local":
+                if _ml_extra_available():
+                    from app.services.classification_ml import MLClassificationService
+                    from app.services.ml_runtime import ml_model_manager
+                    resolved = MLClassificationService(
+                        ml_model_manager,
+                        _LOCAL_CLASSIFIER_MODEL_REPO,
+                        _LOCAL_CLASSIFIER_TTL_SECONDS,
+                    )
+                else:
+                    logger.info(
+                        "classifier_kind=local but the [ml] extra is not "
+                        "installed; using the LLM-backed classifier"
+                    )
         except Exception:
             logger.exception("Failed to resolve classifier; falling back to LLM service")
             resolved = None
