@@ -199,6 +199,35 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     return run
 
 
+def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Claim one batch of buffered captures and replay them (doc 05 §3).
+
+    The pipeline is read from ``app.state`` on every run rather than captured at
+    construction, because this runner is built before the lifespan wires the
+    pipeline and because a Postgres-only boot leaves it None for the whole
+    process. With no pipeline there is nothing to flush INTO, so the run is a
+    no-op that leaves every buffered row pending — deliberately, since claiming
+    them would spend attempts on work that cannot succeed.
+    """
+    async def run() -> None:
+        from app.services.buffer_flush import flush_once
+
+        pipeline = getattr(app.state, "pipeline", None)
+        if pipeline is None:
+            logger.info("buffer_flush skipped: no pipeline")
+            return
+
+        stats = await flush_once(session_factory, pipeline)
+        if any(stats.values()):
+            logger.info(
+                "Buffer flush: claimed=%s done=%s failed=%s rejected=%s "
+                "reclaimed=%s swept=%s",
+                stats["claimed"], stats["done"], stats["failed"],
+                stats["rejected"], stats["reclaimed"], stats["swept"],
+            )
+    return run
+
+
 def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSession]):
     """Run one batch of code-symbol summarisation through the
     EnrichmentWorker. Replaces the worker's internal run_loop so the
