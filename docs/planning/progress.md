@@ -43,13 +43,13 @@ and the Note says so. That rule is the whole point of this file.
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
-| E1 — Engine core | 75 | 74 | 0 | 0 | 1 | 0 | G-B open |
+| E1 — Engine core | 75 | 73 | 0 | 0 | 2 | 0 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **184** | **0** | **0** | **1** | **20** | |
+| **Total** | **205** | **183** | **0** | **0** | **2** | **20** | |
 
 ---
 
@@ -87,7 +87,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | high | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | high | | todo | | | |
 | T1.05 | Seed `synthesis` and `verification` purposes inert | S | Haiku | high | | todo | | | |
-| T1.06 | `events` table, monthly partitioning, append-only trigger | M | Opus | high | claude/e1-engine-core | wip | | | |
+| T1.06 | `events` table, monthly partitioning, append-only trigger | M | Opus | high | claude/e1-engine-core | review | 0168f98 | — (Fable adversarial review owed: Opus tier + G-B) | Three forbid-triggers, not the one doc 04 §8.1 described: TRUNCATE is statement-level so it cannot share a trigger with the per-row UPDATE/DELETE guard, and (measured on PG 17) a statement TRUNCATE trigger on a partitioned parent does NOT cascade to children — `TRUNCATE events_202607` erased a month of the journal. Every child now carries its own guard, attached by `events_ensure_partition`, the single partition-creating path (baseline + boot reconcile + `pipeline_failure_cleanup` arm). Mutation-checked: removing the guard fails 4 of 13 tests, the other 9 still pass. 3 tests that DELETE-cleaned committed events rows fixed. Verify: 13 passed. Gate GREEN exit 0 — backend 735 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 unchanged (0.925/0.955/0.865/0.892) |
 | T1.07 | `events` writer and the journaling convention | M | Sonnet | high | | todo | | | |
 | T1.08 | `GET /events`, `/events/calendar`, `/events/timeline` | M | Sonnet | high | | todo | | | |
 | T1.09 | Retire `audit_log` reads | S | Sonnet | high | | todo | | | |
