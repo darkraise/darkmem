@@ -829,6 +829,12 @@ export interface DemoRankArm {
   coded_default: number
   source: FlagSource
   step?: number
+  /** Task id that turns this arm on; absent = already live (T1.57 ruling 1,
+   *  read from the backend's own `RankArm.activation`, never guessed here). */
+  activatesWith?: string
+  /** No entry in the gate-ledger's "Arm activation log" yet — flipping this
+   *  arm is possible but its win, if any, is unmeasured (T1.57 ruling 3). */
+  unmeasured?: boolean
 }
 
 export interface DemoGraphFlag {
@@ -848,6 +854,24 @@ export interface DemoCorroborationGate {
   gate_note: string
 }
 
+/** hybrid_search_enabled / reranker_enabled / relation_rescue — plain
+ *  on/off feature_flags rows, distinct from the w_* rank arms above. */
+export interface DemoBehavioralFlag {
+  key: string
+  desc: string
+  enabled: boolean
+  source: FlagSource
+  /** No recorded gate-ledger win — see DemoRankArm.unmeasured. */
+  unmeasured?: boolean
+}
+
+/** The `repo_allowlist` config row (T1.15's SSRF gate input, T1.57
+ *  ruling 2's editing surface). Empty patterns = auto-provision inert. */
+export interface DemoAllowlistState {
+  patterns: string[]
+  error?: string
+}
+
 export interface DemoFlagsState {
   /** rank_fusion_factor arms: w_conf, w_importance, w_heat, w_recency. */
   fusion_arms: DemoRankArm[]
@@ -856,6 +880,9 @@ export interface DemoFlagsState {
   /** w_context_boost — post-fusion multiplier on a MATCH outcome only. */
   context_boost: DemoRankArm
   corroboration: DemoCorroborationGate
+  /** hybrid_search_enabled, reranker_enabled, relation_rescue. */
+  behavioral_flags: DemoBehavioralFlag[]
+  repo_allowlist: DemoAllowlistState
   overrides_written: number
 }
 
@@ -1074,6 +1101,10 @@ export interface DemoStoreState {
   saveArm: (key: string, value: number) => void
   setGraphFlag: (key: string, enabled: boolean) => void
   saveCorroboration: (nBase: number, nDiverse: number) => void
+  setBehavioralFlag: (key: string, enabled: boolean) => void
+  /** Replaces the whole pattern list; validated client-side with the same
+   *  host[/path-prefix] shape T1.15's validator accepts. */
+  saveRepoAllowlist: (patterns: string[]) => void
   /** Saves a purpose row and records the live-reload confirmation trace. */
   saveLLMPurpose: (
     purpose: LLMPurposeName,

@@ -27,7 +27,18 @@ from app.services.config import (
     cfg_to_schema,
 )
 from app.services.config import get_llm_config as fetch_llm_config
-from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict
+from app.services.feature_flags import (
+    FEATURE_FLAGS_KEY,
+    MEASURABLE_FLAGS,
+    get_feature_flags_dict,
+    get_measured_flags,
+)
+from app.services.rank_fusion import RANK_ARMS
+from app.services.repo_allowlist import (
+    REPO_ALLOWLIST_KEY,
+    load_allowlist,
+    validate_pattern,
+)
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
@@ -199,6 +210,19 @@ async def update_llm_config(
     )
 
 
+class RankArmInfo(BaseModel):
+    """One ``rank_fusion_factor`` arm, read straight from ``RANK_ARMS`` so the
+    UI's "inactive, activated by T2.30" label can never drift from the
+    backend's own activation-id bookkeeping (doc 07 §3, T1.31)."""
+
+    name: str
+    flag: str
+    value: float
+    # None means the arm is already live (e.g. confidence) — no activation
+    # task gates it.
+    activation: str | None = None
+
+
 class FeatureFlagsResponse(BaseModel):
     hybrid_search_enabled: bool
     reranker_enabled: bool
@@ -210,6 +234,17 @@ class FeatureFlagsResponse(BaseModel):
     entity_cache_ttl_minutes: int
     relation_rescue: bool = True
     confidence_rank_gamma: float = 0.0
+    # Doc 07 §3 rank_fusion_factor arms wired at zero by T1.31 — present in
+    # FEATURE_FLAGS_DEFAULTS well before this response model carried them.
+    w_importance: float = 0.0
+    w_heat: float = 0.0
+    w_recency: float = 0.0
+    w_context_boost: float = 0.0
+    rank_arms: list[RankArmInfo] = Field(default_factory=list)
+    # Which of these are subject to the gate-ledger's "flip only on a
+    # measured win" rule, and which of those have actually cleared one.
+    measurable_flags: list[str] = Field(default_factory=list)
+    measured_flags: list[str] = Field(default_factory=list)
 
 
 class FeatureFlagsUpdate(BaseModel):
@@ -223,6 +258,10 @@ class FeatureFlagsUpdate(BaseModel):
     entity_cache_ttl_minutes: int | None = Field(default=None, ge=1, le=1440)
     relation_rescue: bool | None = None
     confidence_rank_gamma: float | None = Field(default=None, ge=0, le=5)
+    w_importance: float | None = Field(default=None, ge=0, le=5)
+    w_heat: float | None = Field(default=None, ge=0, le=5)
+    w_recency: float | None = Field(default=None, ge=0, le=5)
+    w_context_boost: float | None = Field(default=None, ge=0, le=5)
 
 
 @router.get("/feature-flags", response_model=FeatureFlagsResponse)
@@ -231,7 +270,22 @@ async def get_feature_flags(
     session: AsyncSession = Depends(get_session),
 ):
     flags = await get_feature_flags_dict(session)
-    return FeatureFlagsResponse(**flags)
+    measured = await get_measured_flags(session)
+    rank_arms = [
+        RankArmInfo(
+            name=arm.name,
+            flag=arm.flag,
+            value=float(flags.get(arm.flag, 0.0) or 0.0),
+            activation=arm.activation,
+        )
+        for arm in RANK_ARMS
+    ]
+    return FeatureFlagsResponse(
+        **flags,
+        rank_arms=rank_arms,
+        measurable_flags=list(MEASURABLE_FLAGS),
+        measured_flags=measured,
+    )
 
 
 @router.put("/feature-flags", response_model=FeatureFlagsResponse)
@@ -267,7 +321,82 @@ async def update_feature_flags(
         session.add(Config(key=FEATURE_FLAGS_KEY, value=stored))
     await session.flush()
 
-    return FeatureFlagsResponse(**stored)
+    measured = await get_measured_flags(session)
+    rank_arms = [
+        RankArmInfo(
+            name=arm.name,
+            flag=arm.flag,
+            value=float(stored.get(arm.flag, 0.0) or 0.0),
+            activation=arm.activation,
+        )
+        for arm in RANK_ARMS
+    ]
+    return FeatureFlagsResponse(
+        **stored,
+        rank_arms=rank_arms,
+        measurable_flags=list(MEASURABLE_FLAGS),
+        measured_flags=measured,
+    )
+
+
+# ── Repo auto-provision allowlist (doc 18 §6, T1.15) ──────────────────
+#
+# T1.15 shipped the SSRF gate itself (evaluate_hint / load_allowlist) with no
+# editing surface: the only way to opt in was writing the `repo_allowlist`
+# config row directly in Postgres. This is that surface. Validation MUST go
+# through `validate_pattern` — the same parse `evaluate_hint` runs a stored
+# pattern through at clone time — never a second, hand-rolled check that
+# could silently define "allowed" differently from the gate it feeds.
+
+
+class RepoAllowlistResponse(BaseModel):
+    patterns: list[str] = Field(default_factory=list)
+
+
+class RepoAllowlistUpdate(BaseModel):
+    patterns: list[str] = Field(default_factory=list)
+
+
+@router.get("/repo-allowlist", response_model=RepoAllowlistResponse)
+async def get_repo_allowlist(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    return RepoAllowlistResponse(patterns=await load_allowlist(session))
+
+
+@router.put("/repo-allowlist", response_model=RepoAllowlistResponse)
+async def update_repo_allowlist(
+    body: RepoAllowlistUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    cleaned: list[str] = []
+    invalid: list[str] = []
+    for pattern in body.patterns:
+        canonical = validate_pattern(pattern)
+        if canonical is None:
+            invalid.append(pattern)
+        elif canonical not in cleaned:
+            cleaned.append(canonical)
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid allowlist patterns (host[/path-prefix] or *.host only): {invalid}",
+        )
+
+    result = await session.execute(
+        select(Config).where(Config.key == REPO_ALLOWLIST_KEY)
+    )
+    config = result.scalar_one_or_none()
+    stored = {"patterns": cleaned}
+    if config:
+        config.value = stored
+    else:
+        session.add(Config(key=REPO_ALLOWLIST_KEY, value=stored))
+    await session.flush()
+
+    return RepoAllowlistResponse(patterns=cleaned)
 
 
 @router.get("/classification-areas")

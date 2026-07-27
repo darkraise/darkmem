@@ -227,6 +227,21 @@ def evaluate_hint(raw: object, patterns: object) -> HintVerdict:
     )
 
 
+def validate_pattern(pattern: object) -> str | None:
+    """Canonical form of one allowlist pattern, or ``None`` if invalid.
+
+    Wraps ``_split_pattern`` — the exact parse `evaluate_hint` runs a stored
+    pattern through at clone time — so the settings editor and the SSRF gate
+    can never define "valid pattern" differently. Do not re-validate a
+    pattern any other way; call this.
+    """
+    split = _split_pattern(pattern)
+    if split is None:
+        return None
+    host_part, path_part = split
+    return f"{host_part}/{path_part}" if path_part else host_part
+
+
 async def load_allowlist(session: AsyncSession) -> list:
     """Read the `repo_allowlist` config row. Absent row means no patterns."""
     row = (

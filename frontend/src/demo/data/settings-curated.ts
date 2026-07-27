@@ -32,6 +32,8 @@ export const CURATED_FLAGS: DemoFlagsState = {
       coded_default: 0,
       source: "default",
       step: 0.05,
+      activatesWith: "T2.30",
+      unmeasured: true,
     },
     {
       key: "w_heat",
@@ -40,6 +42,8 @@ export const CURATED_FLAGS: DemoFlagsState = {
       coded_default: 0,
       source: "default",
       step: 0.05,
+      activatesWith: "T2.31",
+      unmeasured: true,
     },
     {
       key: "w_recency",
@@ -48,6 +52,8 @@ export const CURATED_FLAGS: DemoFlagsState = {
       coded_default: 0,
       source: "default",
       step: 0.05,
+      activatesWith: "T2.31",
+      unmeasured: true,
     },
   ],
   graph_flags: [
@@ -96,6 +102,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     coded_default: 0,
     source: "override",
     step: 0.05,
+    unmeasured: true,
   },
   corroboration: {
     n_base: 3,
@@ -103,6 +110,30 @@ export const CURATED_FLAGS: DemoFlagsState = {
     source: "default",
     gate_note:
       "N drops from 3 to 2 when the origins differ in source-kind (e.g. memory + code beats three memories) or are ≥ 7 days apart across distinct sessions. Source-kind diversity outweighs raw count; derived rows (a fact, an article) never count as an origin, and an origin of unknown identity merges to one — the count undercounts, it never manufactures agreement.",
+  },
+  behavioral_flags: [
+    {
+      key: "hybrid_search_enabled",
+      desc: "RRF fusion of semantic + keyword search, k=60 — the retrieval baseline the G-A gate already measured",
+      enabled: true,
+      source: "default",
+    },
+    {
+      key: "reranker_enabled",
+      desc: "LLM-scores the top-40 RRF rows before serving — flips only on a measured win including its p95 cost (gate-ledger.md standing conditional gate)",
+      enabled: false,
+      source: "default",
+      unmeasured: true,
+    },
+    {
+      key: "relation_rescue",
+      desc: "pattern-based rescue layer for relations the extractor misses (adjacency, subject-tracking, REPLACES)",
+      enabled: true,
+      source: "default",
+    },
+  ],
+  repo_allowlist: {
+    patterns: ["github.com/darkraise/*"],
   },
   overrides_written: 4,
 }
