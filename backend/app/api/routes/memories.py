@@ -1,12 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.api.auth import require_auth
 from app.api.deps import get_memory_service
 from app.api.mcp.client_identity import ORIGIN_HEADER, resolve_origin_key
 from app.models.memory import Memory
-from app.schemas.memory import CaptureAck, MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
+from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.services.memory import MemoryService
 
@@ -39,17 +39,7 @@ def _to_response(memory: Memory) -> MemoryResponse:
     )
 
 
-@router.post("", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
-async def create_memory(
-    body: MemoryCreate,
-    _user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
-):
-    memory = await service.create_memory(body, api_key_id=None)
-    return _to_response(memory)
-
-
-def _resolve_capture_origin_key(entry: MemoryCreate, request: Request) -> str:
+def _resolve_request_origin_key(entry: MemoryCreate, request: Request) -> str:
     # Reuses T1.11's resolution verbatim (doc 05 §2.1) rather than
     # reimplementing the declared-identity/merge-to-one chain: an explicit
     # body field wins, then the X-Darkmem-Origin header, then the coarse
@@ -62,44 +52,33 @@ def _resolve_capture_origin_key(entry: MemoryCreate, request: Request) -> str:
     )
 
 
-@router.post("/capture", response_model=CaptureAck, status_code=status.HTTP_202_ACCEPTED)
-async def capture_memory(
+@router.post("")
+async def create_memory(
     body: MemoryCreate,
     request: Request,
+    response: Response,
+    wait_process: bool = False,
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    """Tier-A synchronous accept (doc 05 §2): durably buffer the capture and
-    hand back its pre-minted memory id. No embedding, extraction, or
-    classification runs on this path. ``POST /memories`` still runs the
-    pipeline inline until the buffer flush (T1.13) and the interactive
-    `wait_process` bypass (T1.14) land behind it."""
+    """Tier-A buffered accept (doc 05 §2): durably buffers the capture and
+    hands back its pre-minted memory id — a 202 accept by default. Pass
+    ``wait_process=true`` to drive that row's flush inline instead, bounded by
+    ``buffer_wait_timeout_seconds`` (doc 05 §2.2, T1.14); on settling in time
+    this returns the fully processed memory (201) rather than the ack, and on
+    timeout it degrades to the plain 202 — the row is already durably
+    buffered either way."""
     project = body.project or "default"
     resolved = body.model_copy(update={
         "project": project,
-        "origin_key": _resolve_capture_origin_key(body, request),
+        "origin_key": _resolve_request_origin_key(body, request),
     })
-    return await service.accept_capture(resolved, api_key_id=None)
-
-
-@router.post("/capture/batch", response_model=list[CaptureAck], status_code=status.HTTP_202_ACCEPTED)
-async def capture_memory_batch(
-    body: MemoryBatchCreate,
-    request: Request,
-    _user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
-):
-    # Resolved per entry but against the SAME request, mirroring
-    # memory_batch_add: an undeclared batch of N collapses to one origin,
-    # never N counterfeit ones (doc 05 §2.1).
-    entries = [
-        entry.model_copy(update={
-            "project": entry.project or "default",
-            "origin_key": _resolve_capture_origin_key(entry, request),
-        })
-        for entry in body.entries
-    ]
-    return await service.accept_capture_batch(entries, api_key_id=None)
+    result = await service.create_memory(resolved, api_key_id=None, wait_process=wait_process)
+    if result.memory is not None:
+        response.status_code = status.HTTP_201_CREATED
+        return _to_response(result.memory)
+    response.status_code = status.HTTP_202_ACCEPTED
+    return result.ack
 
 
 @router.post("/reason", response_model=ReasonResponse)
@@ -197,14 +176,35 @@ async def search_memories_paginated(
     )
 
 
-@router.post("/batch", response_model=list[MemoryResponse], status_code=status.HTTP_201_CREATED)
+@router.post("/batch")
 async def batch_create(
     body: MemoryBatchCreate,
+    request: Request,
+    response: Response,
+    wait_process: bool = False,
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memories = await service.batch_create_memories(body.entries, api_key_id=None)
-    return [_to_response(m) for m in memories]
+    """Batch counterpart of ``POST /memories`` — one 202-buffered accept per
+    entry by default; ``wait_process=true`` drives the whole batch's flush
+    inline as a single ``process_batch`` call (never one per entry)."""
+    entries = [
+        entry.model_copy(update={
+            "project": entry.project or "default",
+            "origin_key": _resolve_request_origin_key(entry, request),
+        })
+        for entry in body.entries
+    ]
+    results = await service.batch_create_memories(entries, api_key_id=None, wait_process=wait_process)
+    response.status_code = (
+        status.HTTP_201_CREATED
+        if wait_process and all(r.memory is not None for r in results)
+        else status.HTTP_202_ACCEPTED
+    )
+    return [
+        _to_response(r.memory) if r.memory is not None else r.ack
+        for r in results
+    ]
 
 
 @router.post("/{memory_id}/merge", response_model=MemoryResponse)
