@@ -25,6 +25,7 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
+from app.services.events import record_event
 from app.services.relations import (
     SPECULATIVE_REPLACES_MARKERS,
     SUPERSESSION_WINDOW_DAYS,
@@ -130,4 +131,21 @@ async def detect_supersessions(
         .where(Memory.id.in_(old_ids))
         .values(status="superseded", superseded_by=new_memory_id)
     )
+
+    # One row per flipped memory, before/after the mutation above. A journal
+    # failure here (record_event never raises) must not undo the supersession
+    # it is describing, so this always runs after the UPDATE, never gates it.
+    for old_id in old_ids:
+        await record_event(
+            session,
+            event_type="superseded",
+            object_type="memory",
+            object_id=old_id,
+            project=project,
+            payload={
+                "before": {"status": "active"},
+                "after": {"status": "superseded", "superseded_by": str(new_memory_id)},
+            },
+        )
+
     return old_ids

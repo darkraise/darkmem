@@ -14,6 +14,7 @@ from app.services.classification_llm import ClassificationService
 from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import estimate_confidence, rank_fusion_factor
+from app.services.events import record_event
 from app.services.relations import TECH_TYPES, names_distinct
 from app.services.supersession import detect_supersessions
 from app.services import prompt
@@ -480,6 +481,28 @@ class ProcessingPipeline:
                 status["vector"] = "skipped"
                 status["graph"] = "skipped"
 
+            steps = [status["embed"], status["extract"], status["vector"], status["graph"]]
+            active_steps = [s for s in steps if s != "skipped" and s != "pending"]
+            if all(s == "ok" for s in active_steps):
+                outcome = "completed"
+            elif any(s == "ok" for s in active_steps):
+                outcome = "partial"
+            else:
+                outcome = "failed"
+
+            # Doc 05 §2.3: the flush's durable twin of the pipeline.completed/
+            # partial/failed broadcast below. record_event never raises, so a
+            # broken journal degrades loudly (its own log line) without
+            # failing extraction or rolling back the writes above it.
+            await record_event(
+                session,
+                event_type="extracted",
+                object_type="memory",
+                object_id=memory_id,
+                project=mem_record.project if mem_record is not None else entry.get("project"),
+                payload={**status, "outcome": outcome},
+            )
+
             await session.commit()
 
         if status["vector"] == "ok":
@@ -494,14 +517,7 @@ class ProcessingPipeline:
             except Exception as e:
                 logger.warning(f"Crossref computation failed for {memory_id}: {e}")
 
-        steps = [status["embed"], status["extract"], status["vector"], status["graph"]]
-        active_steps = [s for s in steps if s != "skipped" and s != "pending"]
-        if all(s == "ok" for s in active_steps):
-            event_type = "pipeline.completed"
-        elif any(s == "ok" for s in active_steps):
-            event_type = "pipeline.partial"
-        else:
-            event_type = "pipeline.failed"
+        event_type = f"pipeline.{outcome}"
 
         if self._broadcast:
             try:
