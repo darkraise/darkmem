@@ -126,3 +126,11 @@ def test_derive_outcome_ignores_skipped_and_pending_steps():
         "embed": "ok", "extract": "pending", "vector": "pending", "graph": "pending",
     }
     assert _derive_outcome(still_running) == "completed"
+
+    # The shape process_batch stamps when a memory's whole write escaped as an
+    # exception: `unknown` is not a skip, so it must not be filtered out of the
+    # active set and quietly leave the outcome reading `completed`.
+    escaped = {
+        "embed": "unknown", "extract": "unknown", "vector": "error", "graph": "error",
+    }
+    assert _derive_outcome(escaped) == "failed"

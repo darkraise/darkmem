@@ -90,7 +90,7 @@ async def test_pipeline_outcome_writes_an_extracted_event_with_payload(setup_dat
 
     ``_write_memory`` opens and commits its own session via
     ``session_factory`` and nests savepoints inside it, so — same as
-    ``test_pipeline_savepoint_decouple.py`` — it cannot run on the conftest
+    ``test_pipeline_savepoints.py`` — it cannot run on the conftest
     ``session`` fixture (which already holds a restarting nested savepoint);
     this drives it against a real committing factory and tears the seeded
     rows down explicitly. ``events`` rows are append-only and are not (and
@@ -143,7 +143,6 @@ async def test_pipeline_outcome_writes_an_extracted_event_with_payload(setup_dat
             llm_classification=None,
             name_to_embedding={},
             canonical_map={},
-            flags={},
         )
         assert status["vector"] == "ok"
         assert status["graph"] == "ok"

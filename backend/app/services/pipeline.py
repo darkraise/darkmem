@@ -310,9 +310,19 @@ class ProcessingPipeline:
         stats.memory_hits = len(hits)
 
         if still_missing:
-            async with self.session_factory() as session:
-                repo = PostgresGraphRepository(session)
-                db_hits = await repo.get_cached_entity_embeddings(still_missing, fingerprint)
+            db_hits: dict[str, list[float]] = {}
+            try:
+                async with self.session_factory() as session:
+                    repo = PostgresGraphRepository(session)
+                    db_hits = await repo.get_cached_entity_embeddings(
+                        still_missing, fingerprint,
+                    )
+            except Exception:
+                # The DB cache is an optimisation. Losing it must cost latency —
+                # every name becomes a miss and gets re-embedded — not the batch.
+                logger.warning(
+                    "Failed to read entity embedding cache from DB", exc_info=True,
+                )
             if db_hits:
                 if use_memory_cache:
                     async with self._entity_cache_lock:
@@ -453,7 +463,6 @@ class ProcessingPipeline:
         llm_classification: dict | None,
         name_to_embedding: dict[str, list[float]],
         canonical_map: dict[tuple[str, str], str],
-        flags: dict,
     ) -> dict:
         memory_id = entry["memory_id"]
         content = entry["content"]
@@ -490,25 +499,48 @@ class ProcessingPipeline:
             # renamed onto a `tool` "react". Relationship endpoints carry no type,
             # so resolve each endpoint's type from this extraction's own entities;
             # if unknown, leave the endpoint untouched.
-            ent_types = {
-                (e.get("name") or "").lower(): e.get("type")
-                for e in extraction.get("entities", [])
-            }
-            for entity in extraction.get("entities", []):
-                low = entity["name"].lower()
-                entity["_orig_lower"] = low
-                key = (low, entity.get("type"))
-                if key in canonical_map:
-                    entity["name"] = canonical_map[key]
-            for rel in extraction.get("relationships", []):
-                src_low = rel.get("source", "").lower()
-                tgt_low = rel.get("target", "").lower()
-                src_key = (src_low, ent_types.get(src_low))
-                tgt_key = (tgt_low, ent_types.get(tgt_low))
-                if src_key in canonical_map:
-                    rel["source"] = canonical_map[src_key]
-                if tgt_key in canonical_map:
-                    rel["target"] = canonical_map[tgt_key]
+            # Built to completion BEFORE the rewrite loop below mutates any
+            # entity["name"]: built afterwards it would look endpoints up under
+            # already-rewritten names and silently resolve nothing.
+            ent_types: dict[str, set[str]] = {}
+            for e in extraction.get("entities", []):
+                etype = e.get("type")
+                if etype:
+                    ent_types.setdefault((e.get("name") or "").lower(), set()).add(etype)
+
+            def _endpoint_type(name_lower: str) -> str | None:
+                # A name emitted under two types in one extraction is a name
+                # whose type cannot be recovered. Picking one of them rewrites
+                # the endpoint under a type it may not have, which is the
+                # cross-type rebinding the (name, type) key exists to prevent.
+                types = ent_types.get(name_lower) or set()
+                return next(iter(types)) if len(types) == 1 else None
+
+            try:
+                for entity in extraction.get("entities", []):
+                    low = entity["name"].lower()
+                    entity["_orig_lower"] = low
+                    key = (low, entity.get("type"))
+                    if key in canonical_map:
+                        entity["name"] = canonical_map[key]
+                for rel in extraction.get("relationships", []):
+                    src_low = (rel.get("source") or "").lower()
+                    tgt_low = (rel.get("target") or "").lower()
+                    src_key = (src_low, _endpoint_type(src_low))
+                    tgt_key = (tgt_low, _endpoint_type(tgt_low))
+                    if src_key in canonical_map:
+                        rel["source"] = canonical_map[src_key]
+                    if tgt_key in canonical_map:
+                        rel["target"] = canonical_map[tgt_key]
+            except (AttributeError, KeyError, TypeError) as e:
+                # A malformed entity dict is the extractor's failure, not the
+                # writer's; attributing it to the vector step would report a
+                # write that was never attempted.
+                status["extract"] = "error"
+                status["error"] = f"Extraction returned a malformed entity: {e}"
+                status["entities_count"] = 0
+                status["relations_count"] = 0
+                extraction = None
         else:
             status["extract"] = "error"
             status["error"] = status["error"] or "Extraction returned invalid data"
@@ -518,25 +550,17 @@ class ProcessingPipeline:
             # Bound here, not inside savepoint A: a failed Phase 1 skips the
             # writes entirely, and the per-memory journal below still reads this.
             mem_record = None
+            # Plain copies of everything read AFTER the savepoints. A savepoint-B
+            # rollback expires ``mem_record`` wholesale, and an expired attribute
+            # read outside an ``await`` triggers a synchronous lazy load that
+            # raises MissingGreenlet — which would escape before session.commit()
+            # and discard savepoint A's already-successful write.
+            mem_project = entry.get("project")
+            mem_created_at = None
             vector_repo = PostgresVectorRepository(session)
             graph_repo = PostgresGraphRepository(session)
 
             if status["embed"] == "ok":
-                # Idempotent re-extraction: strip any prior contributions of
-                # this memory_id from the entity graph before writing the new
-                # set. Otherwise re-running with a different model just
-                # accumulates duplicate-by-type rows on top of the previous
-                # extraction. ``delete_by_memory_id`` only removes entities
-                # whose memory_ids array becomes empty after the strip, so
-                # entities shared with other memories are preserved.
-                try:
-                    await graph_repo.delete_by_memory_id(memory_id)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to strip prior graph contributions for %s: %s",
-                        memory_id, exc,
-                    )
-
                 extracted_type = (
                     extraction.get("memory_type") if isinstance(extraction, dict) else None
                 )
@@ -551,6 +575,18 @@ class ProcessingPipeline:
                 # would leave it unsearchable and misreport the failed step).
                 try:
                     async with session.begin_nested():
+                        # Loaded before the upsert so a vector-write failure
+                        # still leaves the journal below with a real project.
+                        from sqlalchemy import select as sa_select
+                        from app.models.memory import Memory
+                        mem_result = await session.execute(
+                            sa_select(Memory).where(Memory.id == memory_id)
+                        )
+                        mem_record = mem_result.scalar_one_or_none()
+                        if mem_record:
+                            mem_project = mem_record.project
+                            mem_created_at = mem_record.created_at
+
                         payload = {
                             "memory_id": str(memory_id), "content": content,
                             "source": source, "tags": tags,
@@ -569,12 +605,6 @@ class ProcessingPipeline:
                         )
                         status["vector"] = "ok"
 
-                        from sqlalchemy import select as sa_select
-                        from app.models.memory import Memory
-                        mem_result = await session.execute(
-                            sa_select(Memory).where(Memory.id == memory_id)
-                        )
-                        mem_record = mem_result.scalar_one_or_none()
                         if mem_record:
                             if llm_classification:
                                 mem_record.classified_type = llm_classification.get("hall") or None
@@ -602,6 +632,27 @@ class ProcessingPipeline:
                 if status["vector"] == "ok" and status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
                     try:
                         async with session.begin_nested():
+                            # Idempotent re-extraction: strip any prior
+                            # contributions of this memory_id from the entity
+                            # graph before writing the new set. Otherwise
+                            # re-running with a different model just accumulates
+                            # duplicate-by-type rows on top of the previous
+                            # extraction. ``delete_by_memory_id`` only removes
+                            # entities whose memory_ids array becomes empty after
+                            # the strip, so entities shared with other memories
+                            # are preserved.
+                            #
+                            # Inside savepoint B rather than ahead of it, so
+                            # strip-and-write is one atomic replace: a failure
+                            # here rolls the strip back and the memory keeps its
+                            # previous graph, instead of the outer commit making
+                            # the deletion durable and leaving it with no graph
+                            # at all and a technologies denorm matching nothing.
+                            # For the same reason an ordinary extraction failure,
+                            # which never enters this savepoint, no longer empties
+                            # a good graph.
+                            await graph_repo.delete_by_memory_id(memory_id)
+
                             # Technologies are denormalised to the memory row so the
                             # GIN index on `memories.technologies` can answer retrieval
                             # filters without joining. Store lowercase so case drift in
@@ -665,8 +716,8 @@ class ProcessingPipeline:
                                         session,
                                         new_memory_id=memory_id,
                                         new_memory_text=content,
-                                        new_memory_created_at=mem_record.created_at,
-                                        project=mem_record.project,
+                                        new_memory_created_at=mem_created_at,
+                                        project=mem_project,
                                         new_relations=extraction.get("relationships", []),
                                     )
 
@@ -692,7 +743,7 @@ class ProcessingPipeline:
                 event_type="extracted",
                 object_type="memory",
                 object_id=memory_id,
-                project=mem_record.project if mem_record is not None else entry.get("project"),
+                project=mem_project,
                 payload={**status, "outcome": outcome},
             )
 
@@ -705,22 +756,18 @@ class ProcessingPipeline:
                     similar = await xref_repo.find_similar_memories(
                         memory_id, fingerprint=content_fingerprint, top_k=5, min_score=0.4,
                     )
-                    await xref_repo.store_crossrefs(memory_id, similar)
+                    # Normalized here rather than left to the CAST: ids cross
+                    # this boundary as either str or UUID depending on which
+                    # probe answered, and a mismatch drops matches silently.
+                    normalized = [
+                        {"memory_id": UUID(str(ref["memory_id"])),
+                         "score": float(ref["score"])}
+                        for ref in similar
+                    ]
+                    await xref_repo.store_crossrefs(memory_id, normalized)
                     await xref_session.commit()
             except Exception as e:
                 logger.warning(f"Crossref computation failed for {memory_id}: {e}")
-
-        # Derived again here rather than reused from the write block above:
-        # that block is skipped whenever the writes are (a failed Phase 1 marks
-        # every memory embed=error and skips them), which would leave this
-        # reading the PREVIOUS memory's outcome — or nothing at all on the first.
-        event_type = f"pipeline.{_derive_outcome(status)}"
-
-        if self._broadcast:
-            try:
-                await self._broadcast(event_type, status)
-            except Exception as e:
-                logger.warning(f"Pipeline broadcast failed: {e}")
 
         return status
 
@@ -754,10 +801,38 @@ class ProcessingPipeline:
           3. Entity embedding with cache
           4. Dedup lookup (per unique name)
           5. Per-memory writes (concurrent)
+
+        Returns a list the same length as ``entries`` on every path, and every
+        entry gets a ``pipeline_failures`` row (or a resolution) and exactly one
+        ``pipeline.*`` broadcast.
         """
         if not entries:
             return []
 
+        try:
+            normalized = await self._run_phases(entries)
+        except Exception as e:
+            # The backstop that makes "no memory leaves process_batch without a
+            # status" a property rather than a coincidence. Guarding each phase
+            # individually re-opens the hole on the next phase edit, and an
+            # exception escaping here records NO failure row at all — the whole
+            # batch becomes invisible to triage rather than mislabelled.
+            logger.exception("Batch pipeline failed before the write: %s", e)
+            normalized = [
+                {
+                    "memory_id": str(entry.get("memory_id")),
+                    "embed": "unknown", "extract": "unknown",
+                    "vector": "error", "graph": "error",
+                    "entities_count": 0, "relations_count": 0,
+                    "error": str(e),
+                }
+                for entry in entries
+            ]
+
+        await self._record_batch_outcomes(entries, normalized)
+        return normalized
+
+    async def _run_phases(self, entries: list[dict]) -> list[dict]:
         flags = await _get_feature_flags_cached(self.session_factory)
         pipeline_concurrency = flags.get("pipeline_concurrency", 5)
         embed_chunk_size = flags.get("embedding_batch_size", 20)
@@ -1005,7 +1080,7 @@ class ProcessingPipeline:
                 return await self._write_memory(
                     entry, vector, content_write_fingerprint, entity_write_fingerprint,
                     extraction, classification,
-                    name_to_embedding, canonical_map, flags,
+                    name_to_embedding, canonical_map,
                 )
 
         results = await asyncio.gather(
@@ -1032,6 +1107,11 @@ class ProcessingPipeline:
             else:
                 normalized.append(result)
 
+        return normalized
+
+    async def _record_batch_outcomes(
+        self, entries: list[dict], normalized: list[dict],
+    ) -> None:
         # Feature 2: record pipeline failure state for each memory
         try:
             from app.services.pipeline_failures import (
@@ -1054,25 +1134,49 @@ class ProcessingPipeline:
                     except (ValueError, TypeError):
                         continue
                     failed_step = derive_memory_failed_step(result)
-                    if failed_step is not None:
-                        await failure_svc.record(
-                            entity_type="memory",
-                            entity_id=entity_id,
-                            pipeline_name="memory_ingest",
-                            failed_step=failed_step,
-                            error_message=result.get("error") or "Unknown error",
-                        )
-                    else:
-                        await failure_svc.resolve(
-                            entity_type="memory",
-                            entity_id=entity_id,
-                            pipeline_name="memory_ingest",
+                    # Per memory in its own savepoint: one bad row must not
+                    # abort the rest of the batch's failure records, which is
+                    # the batch's only route into triage.
+                    try:
+                        async with failure_session.begin_nested():
+                            if failed_step is not None:
+                                await failure_svc.record(
+                                    entity_type="memory",
+                                    entity_id=entity_id,
+                                    pipeline_name="memory_ingest",
+                                    failed_step=failed_step,
+                                    error_message=result.get("error") or "Unknown error",
+                                )
+                            else:
+                                await failure_svc.resolve(
+                                    entity_type="memory",
+                                    entity_id=entity_id,
+                                    pipeline_name="memory_ingest",
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to record pipeline failure for %s: %s",
+                            mem_id_str, e,
                         )
                 await failure_session.commit()
         except Exception as e:
             logger.warning("Failed to record pipeline failures for batch: %s", e)
 
-        return normalized
+        # Doc 05 §10: exactly one pipeline.{completed,partial,failed} per memory
+        # per batch, on EVERY path. Emitted here rather than from _write_memory,
+        # which cannot fire for a memory whose own write raised — that path
+        # produced a normalised status and no broadcast at all. Emitting after
+        # the pipeline_failures commit also means a UI reacting to
+        # pipeline.failed by fetching the failure list cannot race an unwritten
+        # row.
+        if self._broadcast:
+            for status in normalized:
+                try:
+                    await self._broadcast(
+                        f"pipeline.{_derive_outcome(status)}", status,
+                    )
+                except Exception as e:
+                    logger.warning(f"Pipeline broadcast failed: {e}")
 
     async def delete_memory(self, memory_id: UUID, broadcast: bool = True):
         try:

@@ -471,23 +471,30 @@ class PostgresVectorRepository:
         return out[:top_k]
 
     async def store_crossrefs(self, memory_id: UUID, crossrefs: list[dict]):
+        # DELETE+INSERT, and the DELETE runs unconditionally: an empty
+        # similar-set is a real result — the neighbours were deleted, or an
+        # embedder rotation moved this memory into a sparse partition — and it
+        # has to clear the previous run's rows rather than leave them pointing
+        # at similarities that no longer hold and that nothing else ever clears.
+        mem_id = str(memory_id)
+        await self.session.execute(
+            text("DELETE FROM memory_crossrefs "
+                 "WHERE memory_id = CAST(:memory_id AS uuid)"),
+            {"memory_id": mem_id},
+        )
         if not crossrefs:
             return
-        await self.session.execute(
-            text("DELETE FROM memory_crossrefs WHERE memory_id = :memory_id"),
-            {"memory_id": memory_id},
-        )
         # Single multi-row insert; was N round-trips per memory ingest.
-        related = [ref["memory_id"] for ref in crossrefs]
+        related = [str(ref["memory_id"]) for ref in crossrefs]
         scores = [float(ref["score"]) for ref in crossrefs]
         await self.session.execute(
             text("""
                 INSERT INTO memory_crossrefs (memory_id, related_memory_id, score)
-                SELECT :memory_id, r, s
+                SELECT CAST(:memory_id AS uuid), r, s
                 FROM unnest(CAST(:related AS uuid[]), CAST(:scores AS double precision[])) AS t(r, s)
                 ON CONFLICT (memory_id, related_memory_id) DO UPDATE SET score = EXCLUDED.score
             """),
-            {"memory_id": memory_id, "related": related, "scores": scores},
+            {"memory_id": mem_id, "related": related, "scores": scores},
         )
 
     async def get_crossrefs(self, memory_id: UUID) -> list[dict]:
