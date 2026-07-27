@@ -83,7 +83,7 @@ Three of those five fold cleanly into the four:
 
 **Why first:** it is the only one of the four sources that cannot be misread, and Tasks 3, 4, 6 and 7 all diff against it. It also settles, before any judgement call, three facts that reading the Python would get wrong: how many objects actually exist, that the per-fingerprint child tables are *absent* from a freshly migrated database, and which columns have a real server default versus an ORM-only one.
 
-- [ ] **Step 1: Build a throwaway database from the six revisions**
+- [x] **Step 1: Build a throwaway database from the six revisions**
 
 ```bash
 docker exec darkmem-postgres-1 psql -U darkmem -d postgres \
@@ -96,7 +96,7 @@ DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_inv_pro
 
 Expected: five `Running upgrade` lines ending `0005 -> 0006, drop regex classification columns`. `darkmem_inv_probe` is dedicated to this task and dropped in Step 4 — never point this at `darkmem`, `darkmem_test`, or `darkmem_bench`.
 
-- [ ] **Step 2: Extract the manifest**
+- [x] **Step 2: Extract the manifest**
 
 Run each query with the pipe-separated tuples-only form, and paste the output verbatim into Appendix A under a subheading per query. Define once: `D="docker exec darkmem-postgres-1 psql -U darkmem -d darkmem_inv_probe -tAF|"`.
 
@@ -141,7 +141,7 @@ UNION ALL SELECT 'tags='                || count(*)::text FROM tags
 ORDER BY 1;
 ```
 
-- [ ] **Step 3: Record the headline counts as an assertion block**
+- [x] **Step 3: Record the headline counts as an assertion block**
 
 Write these into Appendix A as a short table headed "Assertions — re-run Step 1 + Step 2 and these must reproduce exactly". They are the manifest's checksum, and Tasks 3 and 4 read them.
 
@@ -158,14 +158,14 @@ Write these into Appendix A as a short table headed "Assertions — re-run Step 
 
 Two of these carry information that later tasks need and no reading of the migration files would surface. **Zero child tables** is the empirical proof of doc 19 §2's claim that the partition DDL is runtime, not migration — Task 5 cites it. **Four seeded `config` rows against seven registered jobs** (`CLAUDE.md`: `repo_sync`, `code_enrichment`, `token_blocklist_cleanup`, `pipeline_failure_cleanup`, `graph_orphan_cleanup`, `tag_orphan_cleanup`, `expired_memory_cleanup`) means three job-state rows are created at runtime, not seeded — a seed-data row for §2 and a finding for §10.
 
-- [ ] **Step 4: Drop the probe database**
+- [x] **Step 4: Drop the probe database**
 
 ```bash
 docker exec darkmem-postgres-1 psql -U darkmem -d postgres -c "DROP DATABASE IF EXISTS darkmem_inv_probe;"
 ```
 Expected: `DROP DATABASE`. Then confirm no residue: `docker exec darkmem-postgres-1 psql -U darkmem -d postgres -tAc "SELECT datname FROM pg_database ORDER BY 1;"` lists exactly `darkmem`, `darkmem_bench`, `darkmem_test`, `postgres`, `template0`, `template1`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Verification is reproduction: re-run Steps 1, 2 and 4 from a clean shell and confirm the assertion block still holds and the pasted output is unchanged. Then:
 
