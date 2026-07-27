@@ -43,13 +43,13 @@ and the Note says so. That rule is the whole point of this file.
 | Epic | Tasks | todo | wip | blocked | review | done | Gate |
 |---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | **G-A CLEARED 2026-07-27** |
-| E1 — Engine core | 75 | 71 | 0 | 0 | 0 | 4 | G-B open |
+| E1 — Engine core | 75 | 68 | 2 | 0 | 0 | 5 | G-B open |
 | E2 — Truth core | 57 | 57 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
-| **Total** | **205** | **181** | **0** | **0** | **0** | **24** | |
+| **Total** | **205** | **178** | **2** | **0** | **0** | **25** | |
 
 ---
 
@@ -86,7 +86,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.02 | One shared `httpx.AsyncClient` with atomic live reload | M | Sonnet | high | | todo | | | |
 | T1.03 | `api_kind` as the sole vendor-quirk home | M | Opus | high | | todo | | | |
 | T1.04 | `classifier_kind` inline on the classification purpose | M | Sonnet | high | | todo | | | |
-| T1.05 | Seed `synthesis` and `verification` purposes inert | S | Haiku | high | claude/e1-lane-a | wip | | | |
+| T1.05 | Seed `synthesis` and `verification` purposes inert | S | Haiku | high | claude/e1-engine-core | done | d61cca9 | — (Haiku tier; no Fable review required) | Both purposes seeded AND swept into `PURPOSES` + the Settings defaults map — doc 11 §6 requires the sweep before any consumer dispatches, and a purpose in `PURPOSES` with no default is a KeyError on a fresh install. Inert = nothing dispatches, not not-configured. 3 guards, each mutation-checked. First writers T2.26 / T3.02. Two tests that hard-coded the six purposes now derive from `PURPOSES`. Verify 13 passed; floor backend 777 passed/1 skipped, frontend 336 + typecheck + build |
 | T1.06 | `events` table, monthly partitioning, append-only trigger | M | Opus | high | claude/e1-engine-core | done | 0168f98, 04ae49f | fable adversarial: spec PASS, 1 Important + 8 Minor; re-review ADDRESSED (04ae49f) | Three forbid-triggers, not doc 04's one; per-child TRUNCATE guard (parent's does not cascade — measured PG 17). Review found `events_ensure_partition` emitted session-timezone-dependent bounds: months created under UTC then +07 silently leave a 7-hour hole, failing journaled requests. Bounds now UTC-pinned; guard matched by OID; mid-month normalised; concurrent duplicate_table caught; arm runs first in its own session. Gate GREEN exit 0 — backend 774 passed/1 skipped, frontend 336 + typecheck + build, benchlib 276, F1 0.925/0.955/0.865/0.892 |
 | T1.07 | `events` writer and the journaling convention | M | Sonnet | high | claude/e1-lane-b | wip | | | |
 | T1.08 | `GET /events`, `/events/calendar`, `/events/timeline` | M | Sonnet | high | | todo | | | |
