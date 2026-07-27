@@ -94,7 +94,14 @@ BUFFER_FLUSH_CONFIG_SCHEMA: list[FieldDescriptor] = [
     FieldDescriptor(
         key="buffer_claim_visibility_seconds", label="Claim Visibility (s)",
         default=BUFFER_FLUSH_DEFAULTS["buffer_claim_visibility_seconds"],
-        min=10, max=86400,
+        # Floored at BUFFER_FLUSH_MAX_RUN_SECONDS, not a smaller round number:
+        # the registry cancels a run at that ceiling and leaves its rows
+        # `claimed` for the next stale sweep, so a visibility window shorter
+        # than the ceiling would let that sweep reclaim a run that is still
+        # legitimately in flight — and, since T1.14, let a concurrent
+        # wait_process claim the same row a second time before the original
+        # runner's own claim even expires (Fable review of T1.13, finding I-2).
+        min=BUFFER_FLUSH_MAX_RUN_SECONDS, max=86400,
         help="A claim older than this is treated as abandoned and retried.",
     ),
     FieldDescriptor(
