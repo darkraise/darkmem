@@ -191,11 +191,18 @@ async def lifespan(app: FastAPI):
         make_repo_sync_runner,
         make_buffer_flush_runner,
         make_code_enrichment_runner,
+        make_code_reconcile_runner,
         make_token_blocklist_cleanup_runner,
         make_pipeline_failure_cleanup_runner,
         make_graph_orphan_cleanup_runner,
         make_tag_orphan_cleanup_runner,
         make_expired_memory_cleanup_runner,
+    )
+    from app.services.code_reconcile import (
+        CODE_RECONCILE_CRON,
+        CODE_RECONCILE_JOB_KEY,
+        CODE_RECONCILE_MAX_RUN_SECONDS,
+        CODE_RECONCILE_MIN_INTERVAL_SECONDS,
     )
 
     job_registry = JobRegistry(async_session_factory)
@@ -242,6 +249,20 @@ async def lifespan(app: FastAPI):
             min=1, max=100,
             help="Code symbols summarised per scheduled run.",
         )],
+    ))
+    job_registry.register(Job(
+        key=CODE_RECONCILE_JOB_KEY,
+        display_name="Code Reconcile",
+        description=(
+            "Hashes every already-indexed repo's working tree and feeds any "
+            "drift through the incremental path, even when HEAD never moved "
+            "(a local repo edited directly, with no commit to diff against). "
+            "An unchanged tree does no work."
+        ),
+        default_cron=CODE_RECONCILE_CRON,
+        min_interval_seconds=CODE_RECONCILE_MIN_INTERVAL_SECONDS,
+        runner=make_code_reconcile_runner(app, async_session_factory),
+        max_run_seconds=CODE_RECONCILE_MAX_RUN_SECONDS,
     ))
     job_registry.register(Job(
         key="token_blocklist_cleanup",
