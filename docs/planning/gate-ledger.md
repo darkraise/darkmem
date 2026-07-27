@@ -826,7 +826,7 @@ relation cells clear by a wide margin, so the one-way cascade valve was not reac
 ### The decomposition, which is the point
 
 - **Pass A − arm C = the merged classification fields**, same day, same schema width, same
-  prompt, same served stack. gold `0.000 / +0.001 / −0.068 / −0.068`; held-out
+  prompt, same served stack. gold `0.000 / 0.000 / −0.068 / −0.068`; held-out
   `+0.019 / +0.018 / +0.130 / +0.130`. Folding classification into the extraction call moves
   relation extraction in **opposite directions on the two gold files** — it costs 0.068 on
   gold and gains 0.130 on held-out. Both stay above the floor, and gold's `rel_pair` retains
