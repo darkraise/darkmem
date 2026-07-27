@@ -517,6 +517,13 @@ class ProcessingPipeline:
             # Bound here, not inside savepoint A: a failed Phase 1 skips the
             # writes entirely, and the per-memory journal below still reads this.
             mem_record = None
+            # Plain copies of everything read AFTER the savepoints. A savepoint-B
+            # rollback expires ``mem_record`` wholesale, and an expired attribute
+            # read outside an ``await`` triggers a synchronous lazy load that
+            # raises MissingGreenlet — which would escape before session.commit()
+            # and discard savepoint A's already-successful write.
+            mem_project = entry.get("project")
+            mem_created_at = None
             vector_repo = PostgresVectorRepository(session)
             graph_repo = PostgresGraphRepository(session)
 
@@ -550,6 +557,18 @@ class ProcessingPipeline:
                 # would leave it unsearchable and misreport the failed step).
                 try:
                     async with session.begin_nested():
+                        # Loaded before the upsert so a vector-write failure
+                        # still leaves the journal below with a real project.
+                        from sqlalchemy import select as sa_select
+                        from app.models.memory import Memory
+                        mem_result = await session.execute(
+                            sa_select(Memory).where(Memory.id == memory_id)
+                        )
+                        mem_record = mem_result.scalar_one_or_none()
+                        if mem_record:
+                            mem_project = mem_record.project
+                            mem_created_at = mem_record.created_at
+
                         payload = {
                             "memory_id": str(memory_id), "content": content,
                             "source": source, "tags": tags,
@@ -568,12 +587,6 @@ class ProcessingPipeline:
                         )
                         status["vector"] = "ok"
 
-                        from sqlalchemy import select as sa_select
-                        from app.models.memory import Memory
-                        mem_result = await session.execute(
-                            sa_select(Memory).where(Memory.id == memory_id)
-                        )
-                        mem_record = mem_result.scalar_one_or_none()
                         if mem_record:
                             if llm_classification:
                                 mem_record.classified_type = llm_classification.get("hall") or None
@@ -664,8 +677,8 @@ class ProcessingPipeline:
                                         session,
                                         new_memory_id=memory_id,
                                         new_memory_text=content,
-                                        new_memory_created_at=mem_record.created_at,
-                                        project=mem_record.project,
+                                        new_memory_created_at=mem_created_at,
+                                        project=mem_project,
                                         new_relations=extraction.get("relationships", []),
                                     )
 
@@ -691,7 +704,7 @@ class ProcessingPipeline:
                 event_type="extracted",
                 object_type="memory",
                 object_id=memory_id,
-                project=mem_record.project if mem_record is not None else entry.get("project"),
+                project=mem_project,
                 payload={**status, "outcome": outcome},
             )
 

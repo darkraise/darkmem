@@ -171,3 +171,72 @@ async def test_graph_failure_keeps_embedding_and_records_graph_step(
         assert status["vector"] == "ok"
         assert status["graph"] == "error"
         assert await bed.embedding_rows() == 1
+
+
+@pytest.mark.asyncio
+async def test_supersession_failure_still_commits_the_vector_write(
+    setup_database, monkeypatch
+):
+    """A savepoint-B rollback must not take the whole transaction down with it.
+
+    ``technologies`` is assigned onto ``mem_record`` inside savepoint B, so a
+    rollback of B expires the ORM object. Every attribute read after the
+    savepoints therefore has to come from a plain local captured before B — an
+    expired attribute read on an ``AsyncSession`` outside an ``await`` triggers a
+    synchronous lazy load, raises ``MissingGreenlet`` *before* ``session.commit()``
+    is reached, and takes the embedding row, the enrichment, the journal row and
+    the broadcast down with it.
+    """
+    import app.services.pipeline as pipeline_module
+
+    async def _boom(*a, **k):
+        raise RuntimeError("supersession boom")
+
+    async with savepoint_bed(["pgvector replaces faiss"], "savepoint-super|4") as bed:
+        monkeypatch.setattr(pipeline_module, "detect_supersessions", _boom)
+
+        results = await bed.pipe.process_batch(
+            [bed.entry(content="pgvector replaces faiss")]
+        )
+
+        assert len(results) == 1
+        status = results[0]
+        assert status["vector"] == "ok"
+        assert status["graph"] == "error"
+        assert await bed.embedding_rows() == 1
+        assert [e for e, _ in bed.broadcasts] == ["pipeline.partial"]
+
+        async with bed.factory() as s:
+            journalled = (await s.execute(
+                text("SELECT payload->>'outcome' FROM events "
+                     "WHERE event_type = 'extracted' "
+                     "AND object_id = CAST(:m AS uuid)"),
+                {"m": str(bed.memory_id)},
+            )).scalars().all()
+        assert journalled == ["partial"]
+
+
+@pytest.mark.asyncio
+async def test_flush_failure_inside_savepoint_b_still_commits_the_vector_write(
+    setup_database, monkeypatch
+):
+    """The other arming point: the flush between the denorm and supersession."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    real_flush = AsyncSession.flush
+
+    async def _flush(self, objects=None):
+        if objects is not None:
+            raise RuntimeError("flush boom")
+        return await real_flush(self, objects)
+
+    async with savepoint_bed(["pgvector replaces faiss"], "savepoint-flush|4") as bed:
+        monkeypatch.setattr(AsyncSession, "flush", _flush)
+
+        results = await bed.pipe.process_batch(
+            [bed.entry(content="pgvector replaces faiss")]
+        )
+
+        assert results[0]["vector"] == "ok"
+        assert results[0]["graph"] == "error"
+        assert await bed.embedding_rows() == 1
