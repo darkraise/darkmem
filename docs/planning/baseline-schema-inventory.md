@@ -1,10 +1,97 @@
 # Baseline schema inventory
 
-_(pending: Task 8 — §0 front matter)_
+**Status:** complete, 2026-07-27. Produced by **T0.11** (`docs/planning/tasks/E0-baseline-and-harness.md`).
+**Consumed by T0.12a, T0.12b and T0.12c**, which write the single baseline migration
+against it, and by **T0.13**, which labels its inert objects.
+
+**Purpose, in T0.11's own words:** "Before writing DDL: reconcile doc 04's target data
+model against the six existing revisions and produce the explicit object inventory the
+baseline must land — what carries over, what changes shape, what is new, and what lands
+inert. **This is the task that prevents the baseline from being an accident of migration
+history.**"
+
+### What this document is not
+
+It is **not** DDL and it does not prescribe SQL text. T0.12a–c own the migration file.
+Where an object's form is genuinely undecided by the design corpus, this inventory records
+the disagreement in §10 and, where it can, a recommendation — it never picks silently.
+
+### Authority order
+
+Four sources were reconciled, and they disagree. Doc 19 §1 fixes the precedence: "where
+this doc and doc 04 §12 overlap, they agree; where they would conflict, **doc 04's table
+shapes win** and **this doc's operational sequencing wins**."
+
+| Source | What it is | Authority |
+|---|---|---|
+| **A** — the live schema built by `alembic upgrade head` on an empty database | What the six revisions **actually** land, after `0003`'s data-only reset and `0006`'s column drops | **Ground truth for current state.** Cannot be misread. Appendix A. |
+| **B** — `docs/design/04-data-model-and-schema.md` | The target data model | **Authoritative for target table shapes** |
+| **C** — `docs/design/19-migration-deployment-and-ops.md` §2–§3 | Single-baseline discipline, boot-time reconciliation, the SQL-first rule, the dormant-object disposition table | **Authoritative for operational sequencing and disposition** |
+| **D** — `backend/app/models/*.py`, `backend/app/services/embedder_registry.py` | The ORM mirror and the partition templates | **No authority.** Doc 19 §2: "SQLAlchemy models mirror the SQL, not the reverse." A construct living only here is a **finding**, not a row (§9). |
+
+Two corroborating, non-authoritative references: `docs/design/erd.md` (its own header
+subordinates it — "key columns only; full column/constraint/index detail lives in doc 04")
+and `docs/design/20-roadmap-and-sequencing.md` §6–§7, which fixes *when* an inert object's
+tag may flip (§7) and makes the SQL-first rule standing across Phases 0–4.
+
+**Source A is extracted mechanically and first**, because it is the only one of the four
+that cannot be misread and because every later section diffs against it. The gap that
+justifies the method: `0001` calls `op.create_table` **nineteen** times but the migrated
+database holds **twenty-six** tables, and calls `op.create_index` **twenty-three** times
+but the database holds **sixty-three** indexes.
+
+### The freeze note
+
+**The baseline is regenerated, not migrated, until the homelab cutover freezes it.** Doc
+19 §2: the greenfield schema ships as one Alembic revision, "regenerated freely (paired
+with drop/recreate) until the first deploy whose data must survive, at which event it is
+tagged `0001` and **frozen**; every change after the freeze is a new linear revision
+forever." The freeze trigger is an **event**, not a date — the homelab production cutover
+(doc 19 §4) — and a CI assertion holds `alembic history` at exactly one revision until the
+freeze tag exists, so nobody can quietly start a chain early.
+
+> **Freeze date: _(deliberately blank — the cutover has not happened)_**
+
+Leaving it blank is correct and load-bearing. T0.15 owns the regeneration protocol and
+E1's cutover task (T1.54) fills the real date; writing a plausible date here would be
+exactly the dishonesty the definition-of-done exists to prevent.
 
 ## 1. How to read this inventory
 
-_(pending: Task 8)_
+### The disposition legend
+
+Four values govern §2–§6 — the objects the baseline **lands**:
+
+| Disposition | Means | Decision rule |
+|---|---|---|
+| `carries-over` | The object exists in Appendix A and the target changes neither its columns, its keys, nor its constraints. | Doc 04 §3.2's "the target keeps them verbatim" is the canonical phrasing. |
+| `reshaped` | The object exists in Appendix A and the target changes something about it. | **The disposition most often under-applied.** A table gaining one column, one index, or one UNIQUE support is `reshaped`, not `carries-over`. |
+| `target-new` | No row in Appendix A — **or** the name survives but every column and semantic is new. | `knowledge_triples` is the latter: doc 04 §8.3 fixes the call, "treated as target-new, NOT as an activation of the dormant demo scaffolding". |
+| `target-new, inert` | `target-new` **and** nothing in the target's own phase writes to it. | Doc 19 §3's disposition table is the **closed list** of what qualifies. Every such object names its first writer in §7. |
+
+Dispositions in §3 and §4 are **per-object, not inherited from the table**: an unchanged
+index on a `reshaped` table is `carries-over`. Those two sections add one value the four
+cannot express, `dropped`, for an object present at HEAD that does not survive — its
+reason lives in §8.
+
+§8 has its own two-value vocabulary, `dropped` and `dropped, optional transform`, because
+none of the four dispositions can express "present today, deliberately absent tomorrow".
+That extension is amendment **A-01** in §10.
+
+Three of doc 19 §3's five disposition labels fold into the four rather than needing their
+own: `(rebuild)` is `target-new` with a note; `(activation)` is `carries-over` with an
+activation note and a first-**reader** task id, because the schema does not change, only a
+later phase's read path; and `(template only)` is `target-new, inert` with a note that the
+template ships and the writer is deferred.
+
+### Reading order
+
+§2 is the spine — one row per target table. §3–§5 hang the fine-grained objects off it
+(indexes, constraints, column changes). §6 is a different kind of row: registry entries the
+baseline must **not** create as DDL. §7 is the inert register. §8 is what does not land. §9
+is the SQL-first audit. §10 is where the sources disagree, **Tier-3 rows first**. Appendix
+A is the machine-extracted current state; Appendix B is every check, re-runnable.
+
 
 ## 2. Tables — the target roll-call
 
@@ -663,35 +750,53 @@ behaves the same as an ORM write.
 
 ## 10. Findings — where the sources disagree
 
-_(pending: Task 8 — consolidation and tiering)_
+Twenty findings and one amendment, each tiered against
+[`agent-runbook.md`](agent-runbook.md) §5. **Tier 1** is task-local. **Tier 2** reaches
+beyond this task — it changes what a later task must do, so it is corrected, logged, and
+*surfaced*. **Tier 3** contradicts the design corpus and **stops execution** rather than
+being resolved here.
 
-Findings accumulate here as each pass locates them. Task 8 assigns every row a runbook §5
-tier and lifts the Tier-3 rows to the top under their own heading.
-
-| # | Sources in conflict | What each says |
+| Tier | Count | Findings |
 |---|---|---|
-| F-01 | Appendix A.1 vs doc 04 | `alembic_version` exists in every migrated database; doc 04 never names it. It is Alembic's own bookkeeping table, so the honest disposition is `carries-over`, `Lands in: n/a (Alembic)`, traced to doc 19 §2 rather than to doc 04. Recorded so a reviewer does not read its absence as an oversight. |
-| F-02 | §2 vs `E0-baseline-and-harness.md` T0.12a–c | **Thirteen target tables are named by no T0.12a–c pass.** T0.12a names `memories`, `entities`, `entity_relations`, tags, `config`, `embedders`; T0.12b names `knowledge_triples`, `fact_sources`, articles and citations, `projects`, `repositories` and the `code_*` tables, job state, and `events`. Neither names `memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`, `memory_buffer`, `project_repositories`, `conversations`, `messages`, `pipeline_failures`, `token_blocklist`, `api_keys`, or `llm_purpose_configs`. **Recommendation (for the controller and T0.12b's executor to ratify, not applied here):** the memory satellites (`memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`) belong to T0.12a's "core memory" pass; the operations, chat, auth and LLM-config tables (`pipeline_failures`, `token_blocklist`, `conversations`, `messages`, `api_keys`, `llm_purpose_configs`) and the ingest/bridge tables (`memory_buffer`, `project_repositories`) belong to T0.12b. Assigning by guess would send work to the wrong pass, and T0.12a–c are floor-exempt and merge as one atomic unit, so the mistake would not surface until T0.12c. |
-| F-03 | `E0-baseline-and-harness.md` T0.12a vs doc 04 §3.2 | T0.12a's text says "tags" where doc 04 §3.2 fixes the pair `tags` + `memory_tags`. The roll-call reads "tags" as the pair, since the join table is undeclarable without both. Recorded because the reading is an inference, not a quotation. |
-| F-04 | `erd.md` vs doc 04 §7/§9 | `erd.md` diagrams no `api_keys` table anywhere, while doc 04 §7 names it among the operations tables and §9 describes its activation, and doc 19 §3 carries an `(activation)` row for it. Doc 04 wins per the authority order: `api_keys` is in the target. `erd.md` reveals the gap; it never decides it. |
-| F-05 | `erd.md` §4 vs doc 04 §5.2 | `erd.md` §4's diagram shows two of the four existing partition parents (`memory_embeddings__slug`, `entity_embeddings__slug`); `code_chunk_embeddings` and `entity_embedding_cache` appear only in its prose notes. This is diagram resolution rather than a table-set disagreement — `erd.md`'s own header says "key columns only" — but it is recorded so §6's eight rows are not read against the diagram's six. |
-| F-06 | Appendix A.8 vs `CLAUDE.md` job registry | The migrations seed **four** `job:<key>` `config` rows against **seven** registered jobs. `graph_orphan_cleanup`, `tag_orphan_cleanup` and `expired_memory_cleanup` have no seeded state row and create theirs at runtime. Whether the baseline should seed all seven (uniform, greppable) or none (state is runtime data) is a decision for T0.12b's job-state work; today's split is neither. |
-| F-07 | `E0-baseline-and-harness.md` T0.12b vs doc 04 §7 | T0.12b's scope names "job state", which is not a table: job state lives in `config` rows keyed `job:<key>` (doc 04 §7), and `config` is T0.12a's. So T0.12b's "job state" is seed data in a table an earlier pass creates, not an object of its own. |
-| F-08 | doc 19 §3 vs Appendix A.2 | Doc 19 §3 drops "`llm_providers`, `llm_profiles`, `ml_profiles` + every `*_ref`". **No column named `*_ref` exists on `llm_purpose_configs`.** A.2 shows the three indirection columns are `provider_id`, `profile_id` and `ml_profile_id` (uuid, each with an `ON DELETE SET NULL` FK). The **only** `*_ref`-named column in the whole schema is `repositories.auth_token_ref`, which doc 04 §6 lists among `repositories`' target columns and which must be **kept**. A T0.12a–c executor following doc 19 §3 literally would drop the one column to keep and keep the three to drop. §8 names the three by their real names; `auth_token_ref` stays. |
-| F-09 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 prints `config` as `(key varchar(255) PK, value jsonb NOT NULL DEFAULT '{}')`. A.2 shows `config.value` as `NOT NULL` with **no server default**. Same class as the `memories` default deltas (§5, §9): the inventory records what A.2 says and dispositions `config` as `reshaped` on the assumption that the baseline authors the printed default. If §9's ORM-default question resolves the other way, `config` is `carries-over` and this row is a doc-04 description error instead. |
-| F-10 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 fixes the flattened `llm_purpose_configs` row as carrying `{model, base_url, api_key, api_kind, params jsonb, dimensions?, reasoning?}` plus `classifier_kind`. A.2 shows a **`provider varchar NOT NULL DEFAULT 'ollama'`** column at HEAD that this list does not mention. Doc 04 §7 also fixes `api_kind` as the sole vendor-quirk home (E1's T1.03 repeats it), which suggests `provider` is redundant and drops — but no doc says so. Whether `provider` is kept or dropped is a decision for T0.12b and E1's T1.01 (flatten `llm_purpose_configs`), not for this inventory. |
+| **3 — escalated, blocks T0.12a** | 1 | F-20 |
+| **2 — changes a later task's work** | 7 findings + 1 amendment | F-02, F-08, F-09, F-13, F-14, F-15, F-17, and A-01 |
+| **1 — task-local, recorded** | 12 | F-01, F-03, F-04, F-05, F-06, F-07, F-10, F-11, F-12, F-16, F-18, F-19 |
 
-| F-11 | This task's own step-level plan, internally | Task 4 Step 1 says rows belonging to a §8-dropped table are "**removed**, not dispositioned"; Task 4 Step 4 then asserts "the count of `carries-over` index rows **plus dropped-with-table index rows** equals 63", which only holds if they are present. §3 and §4 keep every row and disposition it `dropped`, because that makes the set difference against A.3/A.4 total — no "except" clause a reviewer must take on trust. Recorded so the deviation from the plan text is visible rather than silent. |
-| F-12 | Appendix A.3 vs doc 04 §7 | `token_blocklist` carries **two** indexes on `jti`: `token_blocklist_jti_key` (UNIQUE, from the constraint) and `ix_token_blocklist_jti` (a plain btree). The plain btree is fully redundant under the unique. Doc 04 §7 specifies only `jti UNIQUE`. **Recommendation:** the baseline lands the UNIQUE alone. Harmless either way, which is why it is recorded rather than escalated — but a baseline that reproduces it reproduces an accident of migration history, which is the thing T0.11 exists to prevent. |
-| F-13 | doc 04 §6 vs doc 19 §3 vs `E0-baseline-and-harness.md` T0.13 | `repositories.index_debt` is described by doc 04 §6 as landing **inert** ("It lands as an inert column here"), but **doc 19 §3's disposition table carries no row for it** — and doc 19 §3 is the section T0.11 is chartered against for dispositions. T0.13's own object list ("`repo_ids[]` on `entities`/`entity_relations`, the empty `documents`/`blocks` tables, and all four per-fingerprint partition templates") does not name it either, so no task text lands it and no task text labels it inert. §5 dispositions it `target-new, inert` on doc 04 §6's authority and §7 names its first writer; the gap in doc 19 §3's table and in T0.13's list is for the controller to close. |
-| F-14 | doc 04 §10, internally | The `(project, status)` pushdown support has **three stated forms** — bare `(project, status)`, `(project, status, is_archived)`, or partial `WHERE status='active' AND is_archived=false` — and doc 04 §10 does not pick. §3.2 records a recommendation (the partial) with its reasoning and marks the alternatives. T0.12c must write exactly one. If its executor judges this a design decision rather than an inventory one, it is adjudicated here, not chosen silently. |
-| F-15 | doc 04 §8.1 vs doc 19 §9 stance 3 | **Whether the baseline creates `events`' first monthly child partition is unresolved by both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one; doc 19 §9 stance 3 puts the *pre-create* arm on `pipeline_failure_cleanup`'s schedule. Neither says whether the baseline lands month-0. A `RANGE`-partitioned parent with no matching child **rejects every insert**, so a baseline that omits it produces a database whose first `events` write fails — and the first write happens as soon as T1.07's journaling ships. For T0.12b to decide, with the obvious safe answer being that the baseline creates the current month's child and the cleanup arm creates the next. |
+### Tier 3 — not resolved here
 
-| F-16 | `E0-baseline-and-harness.md` T0.12c vs T0.13 | T0.12c says the four target-new templates "land here as **registry entries** … (their inert labelling is T0.13's)"; T0.13's own **What** says it lands "all four per-fingerprint partition templates (block, relation, article, `triple_embeddings`)". Both cannot be the landing task. §6 follows T0.12c, whose statement is the more specific of the two (it names the mechanism, `_TABLE_TEMPLATES`/`_AUX_INDEXES`, and explicitly hands labelling to T0.13). T0.13's wording should be narrowed to labelling and the no-writer assertion. |
-| F-17 | Migration `0001` `downgrade()` vs doc 04 §5.3 | `0001`'s `downgrade()` drops runtime child tables by walking `pg_tables` for **four** `LIKE` patterns. The target has **eight** parents, so the same sweep would strand `block_embeddings__*`, `relation_embeddings__*`, `article_embeddings__*` and `triple_embeddings__*`. Moot for the six revisions the baseline deletes; **not** moot for the baseline's own `downgrade()`, which T0.12c writes. Recorded against T0.12c. |
+> **Runbook §5: "Do not proceed. Write up what you found, what the doc says, and why they
+> cannot both be true, and stop."** T0.11 completes — the inventory is written, and the
+> finding is part of its content — but Lane C's serialisation means **T0.12a should not
+> start until this is answered**.
 
-| F-18 | doc 04 §6 vs Appendix A.2 | `repositories.{provider, default_branch, status, auto_sync}` are `NOT NULL` with **no server default**; doc 04 §6 prints `provider 'local'` and `default_branch 'main'` without saying which side owns them, and says nothing about `status` or `auto_sync`. Same class as F-09 and §9.3. §9.3's action treats the two doc-04-printed ones as DDL defaults and records the reading; `status` and `auto_sync` have no doc-04 default to honour and stay as they are unless T0.12b decides otherwise. |
-| F-19 | `models/*.py` vs Appendix A.2 | `code_graph_nodes.id` and `code_edges.id` carry `default=uuid.uuid4` in the ORM while the DDL gives them `bigserial` sequences (`nextval(...)`), which the database applies and the ORM value never reaches. Dead metadata, cosmetic only — recorded so the audit's "every sweep hit is a row" claim is literally true and a reviewer does not read the omission as an oversight. The baseline should not mirror it. |
+| # | Sources in conflict | What each says | Status |
+|---|---|---|---|
+| **F-20** | doc 04 §3.1 + §9 vs doc 19 §2 + doc 04 §12 | **`updated_at`'s auto-bump has no SQL home.** `backend/app/models/memory.py:48` declares `updated_at … server_default=func.now(), onupdate=func.now()`. SQLAlchemy's `onupdate` is **client-side** — it emits the value in the ORM's own UPDATE and does nothing to the database. Appendix A.2 shows the column with server default `now()`; Appendix A.5 shows the **only** user trigger in the whole schema is `memories_fts_update`. The bump exists solely in Python, and `conversations.updated_at` (`models/chat.py:19`) and `repositories.updated_at` (`models/code.py:28`) carry the identical construct.<br><br>**Reading 1 — the baseline gains a trigger.** Doc 04 §3.1 lists the column's default as `now() (onupdate)`, and **doc 04 §9 reasons *from* the bump as a semantic worth protecting**: it is the entire justification for `memory_access_stats` being a side table — "any ORM-path update would additionally fire `onupdate=now()`, silently corrupting `updated_at`'s 'content changed' meaning." A semantic a design doc reasons from should not live only in ORM metadata.<br><br>**Reading 2 — it stays ORM-only.** Doc 19 §2 enumerates the triggers the baseline authors — the FTS trigger and the `events` forbid-trigger — **with no third**, and doc 04 §12's own enumeration of what the baseline creates names no `updated_at` trigger either. Adding one means the baseline lands an object no doc lists.<br><br>**Why they cannot both be true:** doc 19 §2 and doc 20 §7 state as binding that "no ORM-only construct is load-bearing anywhere in the schema" and that a DbUp replay must never "re-derive behaviour from ORM metadata" — and `onupdate` is precisely SQLAlchemy-specific behaviour a replay would have to re-derive. So either a documented, reasoned-from semantic is load-bearing and ORM-only (violating a binding rule), or the baseline authors a trigger three docs decline to list. | **Not resolved.** Both readings stated; the inventory picks neither. A human adjudicates; the corpus doc wins until then. Worth a Fable-tier analysis before anyone answers. |
+
+### Tier 2 and Tier 1
+
+| # | Tier | Sources in conflict | What each says |
+|---|---|---|---|
+|---|---|---|---|
+| F-02 | **2** | §2 vs `E0-baseline-and-harness.md` T0.12a–c | **Thirteen target tables are named by no T0.12a–c pass.** T0.12a names `memories`, `entities`, `entity_relations`, tags, `config`, `embedders`; T0.12b names `knowledge_triples`, `fact_sources`, articles and citations, `projects`, `repositories` and the `code_*` tables, job state, and `events`. Neither names `memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`, `memory_buffer`, `project_repositories`, `conversations`, `messages`, `pipeline_failures`, `token_blocklist`, `api_keys`, or `llm_purpose_configs`. **Recommendation (for the controller and T0.12b's executor to ratify, not applied here):** the memory satellites (`memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`) belong to T0.12a's "core memory" pass; the operations, chat, auth and LLM-config tables (`pipeline_failures`, `token_blocklist`, `conversations`, `messages`, `api_keys`, `llm_purpose_configs`) and the ingest/bridge tables (`memory_buffer`, `project_repositories`) belong to T0.12b. Assigning by guess would send work to the wrong pass, and T0.12a–c are floor-exempt and merge as one atomic unit, so the mistake would not surface until T0.12c. |
+| F-08 | **2** | doc 19 §3 vs Appendix A.2 | Doc 19 §3 drops "`llm_providers`, `llm_profiles`, `ml_profiles` + every `*_ref`". **No column named `*_ref` exists on `llm_purpose_configs`.** A.2 shows the three indirection columns are `provider_id`, `profile_id` and `ml_profile_id` (uuid, each with an `ON DELETE SET NULL` FK). The **only** `*_ref`-named column in the whole schema is `repositories.auth_token_ref`, which doc 04 §6 lists among `repositories`' target columns and which must be **kept**. A T0.12a–c executor following doc 19 §3 literally would drop the one column to keep and keep the three to drop. §8 names the three by their real names; `auth_token_ref` stays. |
+| F-09 | **2** | doc 04 §7 vs Appendix A.2 | Doc 04 §7 prints `config` as `(key varchar(255) PK, value jsonb NOT NULL DEFAULT '{}')`. A.2 shows `config.value` as `NOT NULL` with **no server default**. Same class as the `memories` default deltas (§5, §9): the inventory records what A.2 says and dispositions `config` as `reshaped` on the assumption that the baseline authors the printed default. If §9's ORM-default question resolves the other way, `config` is `carries-over` and this row is a doc-04 description error instead. |
+| F-13 | **2** | doc 04 §6 vs doc 19 §3 vs `E0-baseline-and-harness.md` T0.13 | `repositories.index_debt` is described by doc 04 §6 as landing **inert** ("It lands as an inert column here"), but **doc 19 §3's disposition table carries no row for it** — and doc 19 §3 is the section T0.11 is chartered against for dispositions. T0.13's own object list ("`repo_ids[]` on `entities`/`entity_relations`, the empty `documents`/`blocks` tables, and all four per-fingerprint partition templates") does not name it either, so no task text lands it and no task text labels it inert. §5 dispositions it `target-new, inert` on doc 04 §6's authority and §7 names its first writer; the gap in doc 19 §3's table and in T0.13's list is for the controller to close. |
+| F-14 | **2** | doc 04 §10, internally | The `(project, status)` pushdown support has **three stated forms** — bare `(project, status)`, `(project, status, is_archived)`, or partial `WHERE status='active' AND is_archived=false` — and doc 04 §10 does not pick. §3.2 records a recommendation (the partial) with its reasoning and marks the alternatives. T0.12c must write exactly one. If its executor judges this a design decision rather than an inventory one, it is adjudicated here, not chosen silently. |
+| F-15 | **2** | doc 04 §8.1 vs doc 19 §9 stance 3 | **Whether the baseline creates `events`' first monthly child partition is unresolved by both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one; doc 19 §9 stance 3 puts the *pre-create* arm on `pipeline_failure_cleanup`'s schedule. Neither says whether the baseline lands month-0. A `RANGE`-partitioned parent with no matching child **rejects every insert**, so a baseline that omits it produces a database whose first `events` write fails — and the first write happens as soon as T1.07's journaling ships. For T0.12b to decide, with the obvious safe answer being that the baseline creates the current month's child and the cleanup arm creates the next. |
+| F-17 | **2** | Migration `0001` `downgrade()` vs doc 04 §5.3 | `0001`'s `downgrade()` drops runtime child tables by walking `pg_tables` for **four** `LIKE` patterns. The target has **eight** parents, so the same sweep would strand `block_embeddings__*`, `relation_embeddings__*`, `article_embeddings__*` and `triple_embeddings__*`. Moot for the six revisions the baseline deletes; **not** moot for the baseline's own `downgrade()`, which T0.12c writes. Recorded against T0.12c. |
+| F-01 | **1** | Appendix A.1 vs doc 04 | `alembic_version` exists in every migrated database; doc 04 never names it. It is Alembic's own bookkeeping table, so the honest disposition is `carries-over`, `Lands in: n/a (Alembic)`, traced to doc 19 §2 rather than to doc 04. Recorded so a reviewer does not read its absence as an oversight. |
+| F-03 | **1** | `E0-baseline-and-harness.md` T0.12a vs doc 04 §3.2 | T0.12a's text says "tags" where doc 04 §3.2 fixes the pair `tags` + `memory_tags`. The roll-call reads "tags" as the pair, since the join table is undeclarable without both. Recorded because the reading is an inference, not a quotation. |
+| F-04 | **1** | `erd.md` vs doc 04 §7/§9 | `erd.md` diagrams no `api_keys` table anywhere, while doc 04 §7 names it among the operations tables and §9 describes its activation, and doc 19 §3 carries an `(activation)` row for it. Doc 04 wins per the authority order: `api_keys` is in the target. `erd.md` reveals the gap; it never decides it. |
+| F-05 | **1** | `erd.md` §4 vs doc 04 §5.2 | `erd.md` §4's diagram shows two of the four existing partition parents (`memory_embeddings__slug`, `entity_embeddings__slug`); `code_chunk_embeddings` and `entity_embedding_cache` appear only in its prose notes. This is diagram resolution rather than a table-set disagreement — `erd.md`'s own header says "key columns only" — but it is recorded so §6's eight rows are not read against the diagram's six. |
+| F-06 | **1** | Appendix A.8 vs `CLAUDE.md` job registry | The migrations seed **four** `job:<key>` `config` rows against **seven** registered jobs. `graph_orphan_cleanup`, `tag_orphan_cleanup` and `expired_memory_cleanup` have no seeded state row and create theirs at runtime. Whether the baseline should seed all seven (uniform, greppable) or none (state is runtime data) is a decision for T0.12b's job-state work; today's split is neither. |
+| F-07 | **1** | `E0-baseline-and-harness.md` T0.12b vs doc 04 §7 | T0.12b's scope names "job state", which is not a table: job state lives in `config` rows keyed `job:<key>` (doc 04 §7), and `config` is T0.12a's. So T0.12b's "job state" is seed data in a table an earlier pass creates, not an object of its own. |
+| F-10 | **1** | doc 04 §7 vs Appendix A.2 | Doc 04 §7 fixes the flattened `llm_purpose_configs` row as carrying `{model, base_url, api_key, api_kind, params jsonb, dimensions?, reasoning?}` plus `classifier_kind`. A.2 shows a **`provider varchar NOT NULL DEFAULT 'ollama'`** column at HEAD that this list does not mention. Doc 04 §7 also fixes `api_kind` as the sole vendor-quirk home (E1's T1.03 repeats it), which suggests `provider` is redundant and drops — but no doc says so. Whether `provider` is kept or dropped is a decision for T0.12b and E1's T1.01 (flatten `llm_purpose_configs`), not for this inventory. |
+| F-11 | **1** | This task's own step-level plan, internally | Task 4 Step 1 says rows belonging to a §8-dropped table are "**removed**, not dispositioned"; Task 4 Step 4 then asserts "the count of `carries-over` index rows **plus dropped-with-table index rows** equals 63", which only holds if they are present. §3 and §4 keep every row and disposition it `dropped`, because that makes the set difference against A.3/A.4 total — no "except" clause a reviewer must take on trust. Recorded so the deviation from the plan text is visible rather than silent. |
+| F-12 | **1** | Appendix A.3 vs doc 04 §7 | `token_blocklist` carries **two** indexes on `jti`: `token_blocklist_jti_key` (UNIQUE, from the constraint) and `ix_token_blocklist_jti` (a plain btree). The plain btree is fully redundant under the unique. Doc 04 §7 specifies only `jti UNIQUE`. **Recommendation:** the baseline lands the UNIQUE alone. Harmless either way, which is why it is recorded rather than escalated — but a baseline that reproduces it reproduces an accident of migration history, which is the thing T0.11 exists to prevent. |
+| F-16 | **1** | `E0-baseline-and-harness.md` T0.12c vs T0.13 | T0.12c says the four target-new templates "land here as **registry entries** … (their inert labelling is T0.13's)"; T0.13's own **What** says it lands "all four per-fingerprint partition templates (block, relation, article, `triple_embeddings`)". Both cannot be the landing task. §6 follows T0.12c, whose statement is the more specific of the two (it names the mechanism, `_TABLE_TEMPLATES`/`_AUX_INDEXES`, and explicitly hands labelling to T0.13). T0.13's wording should be narrowed to labelling and the no-writer assertion. |
+| F-18 | **1** | doc 04 §6 vs Appendix A.2 | `repositories.{provider, default_branch, status, auto_sync}` are `NOT NULL` with **no server default**; doc 04 §6 prints `provider 'local'` and `default_branch 'main'` without saying which side owns them, and says nothing about `status` or `auto_sync`. Same class as F-09 and §9.3. §9.3's action treats the two doc-04-printed ones as DDL defaults and records the reading; `status` and `auto_sync` have no doc-04 default to honour and stay as they are unless T0.12b decides otherwise. |
+| F-19 | **1** | `models/*.py` vs Appendix A.2 | `code_graph_nodes.id` and `code_edges.id` carry `default=uuid.uuid4` in the ORM while the DDL gives them `bigserial` sequences (`nextval(...)`), which the database applies and the ORM value never reaches. Dead metadata, cosmetic only — recorded so the audit's "every sweep hit is a row" claim is literally true and a reviewer does not read the omission as an oversight. The baseline should not mirror it. |
 
 ### Amendments proposed to the task corpus
 
@@ -1181,4 +1286,142 @@ tags=0
 
 ## Appendix B — reproducible checks
 
-_(pending: Task 8)_
+**Every factual claim in §2–§9 that a machine can check is checked here**, grouped by what
+it proves. A reviewer re-runs these rather than trusting the tables. Prerequisites: the
+dev-compose Postgres on `127.0.0.1:5433` (`docker exec darkmem-postgres-1 …`), and
+`backend/.venv/bin/python` — `python` is not on PATH.
+
+**These are the mechanical half only.** The other half — that every row traces to the
+*right* doc section, and that every §7 first-writer id is the *right* id — rests on the
+reviewer's reading. "No unexplained entries" (T0.11's Verify) needs both: no script can
+tell you a citation points at the wrong section, only that it points somewhere.
+
+### Group 1 — the manifest is ground truth (proves Appendix A)
+
+**Check 1 — rebuild and re-extract.** Re-run Appendix A's "How this was produced" block in
+full. The eight assertion-block counts must reproduce exactly: 26 tables, 63 indexes,
+26/19/11/3 constraints, 1 trigger, 1 function, 1 enum, **0** child tables, 4 seeded
+`config` rows. Re-run on 2026-07-27 produced output byte-identical to the pasted listings
+across all eight queries.
+
+**Check 2 — no residue.** After the drop,
+`docker exec darkmem-postgres-1 psql -U darkmem -d postgres -tAc "SELECT datname FROM pg_database ORDER BY 1;"`
+lists exactly `darkmem`, `darkmem_bench`, `darkmem_test`, `postgres`, `template0`,
+`template1`.
+
+### Group 2 — nothing is unaccounted (proves §2, §3, §4, §8)
+
+**Check 3 — every table is dispositioned.** Set difference of Appendix A.1's table list
+against the union of §2's and §8's first columns. Expected: **empty in both directions**.
+Measured: A.1 = 26; §2 = 34 rows (21 shared with A.1 + 13 target-new); §8 = the remaining
+5. `21 + 5 = 26`.
+
+**Check 4 — every index, constraint, trigger, function and enum is dispositioned.** Five
+set differences of A.3–A.7 against §3 and §4. Expected: **five empty differences**.
+Measured: 63 index names all present in §3 (49 `carries-over` + 14 `dropped` = 63); 59
+constraint names all present in §4 (43 + 16 = 59); the one trigger, one function and one
+enum present in §4.2. Every §3/§4 row carries a non-empty `Lands in`.
+
+```python
+# the shape of checks 3 and 4, run against this file
+import re, pathlib
+t = pathlib.Path("docs/planning/baseline-schema-inventory.md").read_text()
+a1 = {l.split("|")[0] for l in t.split("### A.1 —")[1].split("### A.2 —")[0].split("```")[1].strip().splitlines()}
+s2 = set(re.findall(r"^\| `([a-z_]+)` \| ", t.split("## 2. Tables")[1].split("### 2.1")[0], re.M))
+s8 = set(re.findall(r"^\| `([a-z_]+)` \(table\)", t.split("## 8. Not landed")[1].split("## 9.")[0], re.M))
+assert not (a1 - s2 - s8) and not (s8 - a1)
+```
+
+**Check 5 — the partition templates are not migration DDL** (proves §6):
+
+```bash
+cd /root/repositories/darkmem
+rg -n '__[a-z0-9_]+.*(CREATE TABLE|create_table)' backend/migrations/      # expect: no matches
+rg -in 'create (table|index)[^\n]*(embeddings__|entity_embedding_cache__)' backend/migrations/   # expect: no matches
+```
+
+Both come back empty. **A caveat on the second check**, because a naive form of it
+misleads: `rg -c 'embeddings__|entity_embedding_cache__' backend/migrations/` reports
+**nine** hits in `0001_initial_schema.py`. All nine are non-creating — a module docstring,
+an explanatory comment, and the `downgrade()` sweep that walks `pg_tables` for four `LIKE`
+patterns to drop whatever the registry created (which is F-17). The claim §6 makes is that
+no migration **creates** a child table, and the `CREATE`-shaped check above is the one that
+proves it. Paired with Appendix A's zero-child-tables assertion, the evidence is empirical
+rather than asserted.
+
+### Group 3 — every cited task id exists and is the right one (proves §7)
+
+**Check 6 — the linter.** `check_plan.py` globs `*.md` in `docs/planning/` and asserts that
+every `T(?:H1|[0-4])\.\d{2}[a-z]?`-shaped reference resolves to a defined task, so this
+file is linted the moment it lands in that directory:
+
+```bash
+cd /root/repositories/darkmem/docs/planning
+/root/repositories/darkmem/backend/.venv/bin/python scripts/check_plan.py
+```
+
+Expected and measured: `PLAN GREEN — 205 tasks, all structural claims verified`. It earned
+its keep during this task: a first draft referred to the baseline pass family without its
+`a`/`b`/`c` suffix, and the linter failed with `reference to undefined task` in ten
+seconds. Cite `T0.12a`, `T0.12b`, `T0.12c` or the range `T0.12a–c` — never the stem.
+
+**`check_plan.py` proves an id *exists*; only §7's quoted-words column proves it is the
+*right* id.** Both are required, and the second is the reviewer's job. Six of the ten §7
+rows are additionally confirmed by a **reciprocal promise** — T2.27, T2.33, T2.49, T3.23,
+TH1.02 and TH1.05 each name T0.13 as the task that landed the object inert, and T2.49 and
+T3.23 carry an acceptance checkbox that this inventory records them as the writer.
+
+**Check 7 — every inert object has a §7 row.** Set difference of the `target-new, inert`
+rows in §2/§3/§5/§6 against §7's objects. Expected: empty. Measured: 14 inert objects, all
+covered — the three that match by table rather than by name (§3.2's `document identity`,
+`block order` and `block tree` index labels) are covered by §7's `documents` and `blocks`
+rows, which explicitly carry their indexes.
+
+### Group 4 — the SQL-first audit is complete (proves §9)
+
+**Check 8 — the sweeps, and the one bulk kind.**
+
+```bash
+cd /root/repositories/darkmem/backend
+rg -n 'onupdate=|default=|server_default|server_onupdate|__table_args__|CheckConstraint|UniqueConstraint|Index\(|ForeignKey\(|create_type=False|event\.listen|@validates|@hybrid_property' app/models/*.py
+rg -n 'DDL\(|event\.listen|Computed\(|Identity\(' app/
+```
+
+Every construct kind the sweeps return appears in §9: `server_default` (21 declarations),
+`UniqueConstraint` (5), `__table_args__` (5), `onupdate=` (3), `CheckConstraint` (1),
+`Index(` (1), `create_type=False` (1), `event.listen` (1). Six kinds return **zero** hits —
+`server_onupdate`, `@validates`, `@hybrid_property`, `DDL(`, `Computed(`, `Identity(` —
+which is itself a compliance result.
+
+The one bulk kind is dispatched mechanically: cross-referencing every `server_default=`
+declaration against A.2's `column_default` shows **21 of 21 mirrored by a real server
+default, zero ORM-only**. The same cross-reference run against client-side `default=`
+declarations is what produced §9.3's twelve-column table, and it is why the plan's "five
+NOT NULL columns on `memories`" undercounted.
+
+### Group 5 — the work stayed in bounds
+
+**Check 9 — only two files changed.**
+
+```bash
+cd /root/repositories/darkmem
+git diff --name-only master...HEAD -- docs/planning/baseline-schema-inventory.md docs/superpowers/plans/2026-07-27-baseline-schema-inventory.md
+git diff --name-only master...HEAD | grep -E '^(backend|frontend)/' || echo "no code touched"
+```
+
+The second command must print `no code touched`. T0.11 produces an inventory; T0.12a–c
+write the DDL.
+
+**Check 10 — T0.15's grep hits.** `rg -n "freeze" docs/planning/baseline-schema-inventory.md`
+must return the §0 freeze note. T0.15's Verify greps this file by name, so the note is a
+contract with a downstream task, not decoration.
+
+**Check 11 — no pending markers.** `rg -n 'pending:\s+Task' docs/planning/baseline-schema-inventory.md`
+returns nothing. Each section carried such a marker until the pass that filled it, so a
+half-built inventory was never mistakable for a finished one. (The regex is written with
+`\s+` rather than a literal space so this line does not match itself.)
+
+**Check 12 — the repo floor is untouched.** `cd backend && python -m pytest -q` reads the
+same as before this work began. This is a no-op assertion by construction — no code
+changed — and its value is precisely that: a different number means something outside this
+work moved, which is a finding to report, not a result to absorb.

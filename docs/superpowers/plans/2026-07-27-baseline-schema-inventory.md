@@ -573,13 +573,13 @@ Task: T0.11"
 
 **Consumes:** everything above; runbook §5 for the amendment tiers; T0.15's text for the one downstream consumer constraint.
 
-- [ ] **Step 1: §0 front matter and §1 legend**
+- [x] **Step 1: §0 front matter and §1 legend**
 
 §0 states status and date, the purpose in T0.11's own words, the **authority order** (doc 04 wins on table shapes, doc 19 wins on operational sequencing and disposition — doc 19 §1 fixes this; `erd.md` and the ORM have no authority), and the four-source table from this plan's Architecture section. §1 gives the disposition legend and the decision rule from Task 3 Step 1, so a later reader can check a row's disposition rather than accept it.
 
 **One downstream consumer constraint.** T0.15's Verify is `rg -n "freeze" CLAUDE.md docs/planning/baseline-schema-inventory.md`, and E1's cutover task requires that "`CLAUDE.md` and the schema inventory record the freeze date — the real one". So §0 must carry a **freeze note**: that the baseline is regenerated rather than migrated until the homelab cutover freezes it at `0001` (doc 19 §2), that a CI assertion holds `alembic history` at exactly one revision until then, and that the freeze date is **deliberately blank** until the cutover happens. Leaving the placeholder is correct; T0.15 owns the protocol and E1's cutover task fills the date. Writing a fictional date would be the exact dishonesty runbook §4 exists to prevent.
 
-- [ ] **Step 2: §10 — consolidate and tier every finding**
+- [x] **Step 2: §10 — consolidate and tier every finding**
 
 Findings accumulate through Tasks 2–7; this step gathers them into one table and assigns a runbook §5 tier to each.
 
@@ -590,11 +590,11 @@ The tiering rule, applied not assumed: **Tier 1** is task-local (a wrong path, a
 
 Tier-3 rows are set apart at the **top** of §10 under their own heading, not sorted in among the typos. Runbook §7 says stop and do not improvise when a Tier-3 surfaces or when two design docs disagree; the inventory's job is to state the contradiction precisely enough that a human can adjudicate it, and to make it impossible to miss. Each Tier-3 row quotes both sides verbatim, names the file and line where the code sits, and states explicitly that it is **not resolved here**.
 
-- [ ] **Step 3: Appendix B — every check in one place**
+- [x] **Step 3: Appendix B — every check in one place**
 
 Collect the verification commands from Tasks 1–7 into one runnable appendix, grouped by what they prove. A reviewer must be able to re-derive the whole inventory's factual basis without re-reading this plan. Note against the set-difference checks that they are the mechanical half and the doc-section traces are the human half — "no unexplained entries" needs both.
 
-- [ ] **Step 4: Verify — the whole document, and the untouched floor**
+- [x] **Step 4: Verify — the whole document, and the untouched floor**
 
 ```bash
 cd /root/repositories/darkmem
@@ -614,7 +614,7 @@ cd /root/repositories/darkmem/backend && timeout 1500 ./.venv/bin/python -m pyte
 
 Expected: `614 passed, 1 skipped` — identical to the pre-work reading recorded in this plan's Global Constraints. This is a no-op assertion by construction (no code changed), and its value is precisely that: a different number means something outside this work moved, which is a finding to report, not a result to absorb.
 
-- [ ] **Step 5: Commit and hand off**
+- [x] **Step 5: Commit and hand off**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md
