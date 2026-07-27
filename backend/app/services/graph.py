@@ -14,6 +14,13 @@ from app.services import prompt
 
 logger = logging.getLogger(__name__)
 
+# The memory-row arms of the graph service default to the same lifecycle scope
+# the search surface does. The entity and relation arms deliberately do not
+# carry it: an edge asserted only by a superseded memory is still a true
+# statement about what the corpus once claimed, and dropping it would empty the
+# context view of exactly the memory a reader opened it to understand.
+GRAPH_MEMORY_STATUSES: tuple[str, ...] = ("active",)
+
 
 class GraphService:
     def __init__(
@@ -34,6 +41,7 @@ class GraphService:
         similarity_threshold: float = 0.75,
         min_cluster_size: int = 3,
         include_entities: bool = False,
+        project: str | None = None,
     ) -> dict:
         memory_nodes = []
         clusters: dict[int, list[str]] = {}
@@ -47,6 +55,9 @@ class GraphService:
                     min_score=similarity_threshold,
                     min_cluster_size=min_cluster_size,
                     limit=limit,
+                    filters=self._memory_scope(
+                        MemoryFilter(project=project) if project is not None else None
+                    ),
                 )
                 # Fetch importance only for the IDs we actually plot. The
                 # previous implementation did a full-table scan on every
@@ -65,6 +76,8 @@ class GraphService:
                         "memory_type": payload.get("memory_type"),
                         "importance": importance_map.get(mid, 0.5),
                         "cluster": cluster_id,
+                        "project": p.get("project"),
+                        "status": p.get("status"),
                     })
                     if cluster_id >= 0:
                         clusters.setdefault(cluster_id, []).append(mid)
@@ -109,7 +122,7 @@ class GraphService:
                     neighbor_memory_ids.add(mid)
 
         neighbors = await self._fetch_neighbor_memories(
-            list(neighbor_memory_ids)[:20], scope,
+            list(neighbor_memory_ids)[:20], self._memory_scope(scope),
         )
 
         return {
@@ -233,6 +246,17 @@ class GraphService:
             return None
         return MemoryFilter(project=project) if project is not None else None
 
+    @staticmethod
+    def _memory_scope(scope: MemoryFilter | None) -> MemoryFilter:
+        """Widen a structural scope into the one the memory-row arms use.
+
+        A seed whose project could not be resolved still gets the lifecycle
+        predicates, so an unresolvable seed degrades to a narrower answer rather
+        than to an unscoped one.
+        """
+        project = scope.project if scope is not None else None
+        return MemoryFilter(project=project, statuses=GRAPH_MEMORY_STATUSES)
+
     async def _fetch_neighbor_memories(
         self, memory_ids: list[str], scope: MemoryFilter | None = None,
     ) -> list[dict]:
@@ -242,9 +266,7 @@ class GraphService:
             uuids = [UUID(mid) for mid in memory_ids]
             stmt = select(Memory).where(Memory.id.in_(uuids))
             if scope is not None:
-                stmt = stmt.where(Memory.is_archived == False)  # noqa: E712
-                if scope.project is not None:
-                    stmt = stmt.where(Memory.project == scope.project)
+                stmt = stmt.where(*scope.orm_criteria(Memory))
             result = await self.session.execute(stmt)
             return [
                 {
@@ -252,6 +274,8 @@ class GraphService:
                     "content": mem.content[:100],
                     "source": mem.source,
                     "memory_type": mem.memory_type,
+                    "project": mem.project,
+                    "status": mem.status,
                 }
                 for mem in result.scalars().all()
             ]
