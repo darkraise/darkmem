@@ -9,7 +9,7 @@ _(pending: Task 8)_
 ## 2. Tables — the target roll-call
 
 **One row per table in the target.** `Owning doc §` is the *most specific* section of
-doc 04 that fixes the table's shape. `Lands in` is the T0.12 pass (or other task) whose
+doc 04 that fixes the table's shape. `Lands in` is the T0.12a–c pass (or other task) whose
 own text names the table; `—` means **no task text names it**, which is a finding in §10,
 not a guess. Dispositions are filled in §2 by Task 3 against the legend in §1.
 
@@ -418,14 +418,14 @@ fingerprints could collide. The `Aux indexes` column below lists what each paren
 
 | Parent | Child pattern | Key columns / PK | Aux indexes | Disposition | Doc § | Registry entry lands in | First writer |
 |---|---|---|---|---|---|---|---|
-| `memory_embeddings` | `memory_embeddings__<slug>` | `memory_id uuid → memories(id) CASCADE`, `fingerprint text → embedders(fingerprint)`, `embedding vector(N) NOT NULL`, `payload jsonb NOT NULL DEFAULT '{}'`, `created_at`; **PK `(memory_id, fingerprint)`** | `(memory_id)` | `carries-over` | 04 §5.2 | already registered — unchanged by the baseline; reconciled by **T0.14** | _(Task 6)_ |
-| `entity_embeddings` | `entity_embeddings__<slug>` | `entity_id uuid → entities(id) CASCADE`, `fingerprint`, `embedding vector(N) NOT NULL`, `created_at`; **PK `(entity_id, fingerprint)`** | `(entity_id)` | `carries-over` | 04 §5.2 | as above | _(Task 6)_ |
-| `code_chunk_embeddings` | `code_chunk_embeddings__<slug>` | `id uuid DEFAULT gen_random_uuid()`, `fingerprint`, `repo_id uuid → repositories(id) CASCADE`, `file_path varchar(1024) NOT NULL`, `language`, `symbol_name`, `chunk_content`, `line_start`, `line_end`, `embedding vector(N)`, `created_at`; **PK `(id, fingerprint)`** | `(repo_id)`, `(repo_id, file_path)` | `carries-over` | 04 §5.2 | as above | _(Task 6)_ |
-| `entity_embedding_cache` | `entity_embedding_cache__<slug>` | `name_lower varchar(255)`, `fingerprint`, `embedding vector(N)`, `created_at`, `last_used_at`, `hit_count int DEFAULT 1`; **PK `(name_lower, fingerprint)`** | `(last_used_at)` | `carries-over` | 04 §5.2 | as above | _(Task 6)_ |
-| `block_embeddings` | `block_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3; 19 §3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
-| `relation_embeddings` | `relation_embeddings__<slug>` | `relation_id uuid → entity_relations(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(relation_id, fingerprint)`** | HNSW only | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
-| `article_embeddings` | `article_embeddings__<slug>` | `article_id uuid → knowledge_articles(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(article_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
-| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new, inert` — **template only** | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | _(Task 6)_ |
+| `memory_embeddings` | `memory_embeddings__<slug>` | `memory_id uuid → memories(id) CASCADE`, `fingerprint text → embedders(fingerprint)`, `embedding vector(N) NOT NULL`, `payload jsonb NOT NULL DEFAULT '{}'`, `created_at`; **PK `(memory_id, fingerprint)`** | `(memory_id)` | `carries-over` | 04 §5.2 | already registered — unchanged by the baseline; reconciled by **T0.14** | — (no inert row; live today) |
+| `entity_embeddings` | `entity_embeddings__<slug>` | `entity_id uuid → entities(id) CASCADE`, `fingerprint`, `embedding vector(N) NOT NULL`, `created_at`; **PK `(entity_id, fingerprint)`** | `(entity_id)` | `carries-over` | 04 §5.2 | as above | — (no inert row; live today) |
+| `code_chunk_embeddings` | `code_chunk_embeddings__<slug>` | `id uuid DEFAULT gen_random_uuid()`, `fingerprint`, `repo_id uuid → repositories(id) CASCADE`, `file_path varchar(1024) NOT NULL`, `language`, `symbol_name`, `chunk_content`, `line_start`, `line_end`, `embedding vector(N)`, `created_at`; **PK `(id, fingerprint)`** | `(repo_id)`, `(repo_id, file_path)` | `carries-over` | 04 §5.2 | as above | — (no inert row; live today) |
+| `entity_embedding_cache` | `entity_embedding_cache__<slug>` | `name_lower varchar(255)`, `fingerprint`, `embedding vector(N)`, `created_at`, `last_used_at`, `hit_count int DEFAULT 1`; **PK `(name_lower, fingerprint)`** | `(last_used_at)` | `carries-over` | 04 §5.2 | as above | — (no inert row; live today) |
+| `block_embeddings` | `block_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **TH1.05** (§7) |
+| `relation_embeddings` | `relation_embeddings__<slug>` | `relation_id uuid → entity_relations(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(relation_id, fingerprint)`** | HNSW only | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T2.49** (§7) |
+| `article_embeddings` | `article_embeddings__<slug>` | `article_id uuid → knowledge_articles(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(article_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T3.23** (§7) |
+| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new, inert` — **template only** | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **T2.33**, conditional (§7) |
 
 **Three rules in that table are load-bearing and silent when broken.**
 
@@ -463,7 +463,55 @@ deletes) but not for the baseline's own downgrade, which must cover all eight (F
 
 ## 7. Inert objects and their first writers
 
-_(pending: Task 6)_
+**"Every inert object names the phase and the task that will first write to it" is only
+satisfied if the cited task exists and actually writes that object.** A plausible-looking
+id that resolves to a different task is worse than a blank, because it reads as verified.
+Two independent defences back every row below. `check_plan.py` already lints every
+`T…`-shaped reference in `docs/planning/*.md` against the defined task set, so an invented
+id fails mechanically the moment this file lands (Appendix B check 6) — but that proves
+only that an id *exists*. The **task's own words** column proves it is the *right* id, and
+it is quoted so a reviewer can check the pairing without opening the epic file.
+
+The phase comes from doc 20 §6's honesty-tag timeline first, and the id search is then
+scoped to the epic that owns that phase — E1 is Phase 1, E2 is Phase 2, E3 is Phase 3, E4
+is Phase 4, EH1 is the H1 horizon. An id found in the wrong epic for its phase would be a
+finding, not a row; none was.
+
+| Object | Disposition | Phase | First-writer task | The task's own words | Doc § |
+|---|---|---|---|---|---|
+| `entities.repo_ids[]` | `target-new, inert` | **Phase 2** (doc 20 §6: "C4: `repo_ids[]` writer — the deriver, doc 10, after G-C") | **T2.27** — `assert_from_repo` — imports-only, LLM-free | "A narrow deterministic deriver minting Layer-1 assertions from a repo's import edges only, tagged into the inert `entities.repo_ids[]` / `entity_relations.repo_ids[]` landed in T0.13 — **this is their first writer**." | 04 §4.1, §4.2; 19 §3 |
+| `entity_relations.repo_ids[]` | `target-new, inert` | **Phase 2** | **T2.27** | As above — the same task writes both arrays. | 04 §4.2; 19 §3 |
+| `ix_entities_repo_ids`, `ix_entity_relations_repo_ids` | `target-new, inert` | **Phase 2** | **T2.27** | The GIN indexes exist from the baseline; T2.27 is the first task whose writes make them non-empty. | 04 §4.1, §4.2 |
+| `repositories.index_debt` | `target-new, inert` | **Phase 1** | **T1.39** — T2 index-debt drain | "Dependent-caller re-trace overflow past the retrace cap persists to `repositories.index_debt` and drains in continuation batches. **Never dropped** — silent truncation here is a graph that is quietly wrong." | 04 §6 (**not** in doc 19 §3's table — F-13) |
+| `documents` (table + its partial-unique index) | `target-new, inert` | **H1 horizon** | **TH1.02** — `documents` / `blocks` first writer | "First writer to the tables landed inert in T0.13. Document identity is the partial `UNIQUE (project, uri)` with `content_hash` as the re-ingest change gate … the tables lose their inert label." | 04 §8.5; 19 §3 |
+| `blocks` (table + its two indexes) | `target-new, inert` | **H1 horizon** | **TH1.02** | As above — one task writes both tables. | 04 §8.5; 19 §3 |
+| `block_embeddings` template | `target-new, inert` | **H1 horizon** | **TH1.05** — `block_embeddings__<slug>` writer | "First writer to the block partition template landed inert in T0.13." | 04 §5.3; 19 §3 |
+| `relation_embeddings` template | `target-new, inert` | **Phase 2** | **T2.49** — `relation_embeddings` refresh job + writer | "First writer to one of the two inert partition templates that had no named owner … **The template loses its inert label and the schema inventory records this task as its first writer**." | 04 §5.3 |
+| `article_embeddings` template | `target-new, inert` | **Phase 3** | **T3.23** — Articles retrieval channel + `article_embeddings` writer | "The template loses its inert label; **the schema inventory names this as its writer** (it is the last of the four **mainline** templates — `block_embeddings` waits for the EH1 horizon, and `triple_embeddings` may never ship at all)." | 04 §5.3 |
+| `triple_embeddings` template | `target-new, inert` — **template only** | **Phase 2, conditional** | **T2.33** — `triple_embeddings` writer, miss-rate gated | "First writer to the template landed inert in T0.13 — and it ships **only** if T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar … if the bar is not exceeded, the task closes as 'not needed, measured' and **the template stays inert**." | 04 §5.3, §13; 19 §3 |
+
+**Four of these ten rows are confirmed by a reciprocal promise, which is the strongest
+evidence available.** T2.27, T2.49, T3.23, T2.33, TH1.02 and TH1.05 each name T0.13 as the
+task that landed the object inert, and T2.49 and T3.23 go further, carrying an acceptance
+checkbox that this inventory records them as the writer. An object whose future writer's
+own acceptance promises to update this file is a pairing neither side can drift from
+silently.
+
+**`triple_embeddings` is the one row whose writer may never ship, and that is by design.**
+It is `template only`: the template lands, and T2.33 is gated on a measured miss rate it
+may not clear. If it does not, the honest end state is a template that stays inert
+forever — which is why doc 19 §3 gives it its own `(target-new, template only)`
+disposition rather than folding it in with the others.
+
+**Two activations are not inert objects and are recorded separately.** `api_keys` and
+`memories.importance` exist today and their schema does not change; only a later phase's
+*read* path does, so §2 and §5 disposition them `carries-over` with a first-**reader**
+rather than a first-writer. `api_keys`' reader is **T4.01** (Phase 4: "The `api_keys` table
+exists today and is unwired — every write passes `api_key_id=None`. Wire it to
+`dmk_<key_id>_<secret>` with a closed scope set"); `memories.importance`' reader is
+**T2.30** (Phase 2: "The column is populated but unread today. Measure, then activate or
+leave at zero"). `memories.expires_at` is an activation-by-population whose first writer is
+**T2.34** — self-expiring dated facts.
 
 ## 8. Not landed — dropped objects, and why
 
@@ -506,13 +554,13 @@ tier and lifts the Tier-3 rows to the top under their own heading.
 | # | Sources in conflict | What each says |
 |---|---|---|
 | F-01 | Appendix A.1 vs doc 04 | `alembic_version` exists in every migrated database; doc 04 never names it. It is Alembic's own bookkeeping table, so the honest disposition is `carries-over`, `Lands in: n/a (Alembic)`, traced to doc 19 §2 rather than to doc 04. Recorded so a reviewer does not read its absence as an oversight. |
-| F-02 | §2 vs `E0-baseline-and-harness.md` T0.12a–c | **Thirteen target tables are named by no T0.12 pass.** T0.12a names `memories`, `entities`, `entity_relations`, tags, `config`, `embedders`; T0.12b names `knowledge_triples`, `fact_sources`, articles and citations, `projects`, `repositories` and the `code_*` tables, job state, and `events`. Neither names `memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`, `memory_buffer`, `project_repositories`, `conversations`, `messages`, `pipeline_failures`, `token_blocklist`, `api_keys`, or `llm_purpose_configs`. **Recommendation (for the controller and T0.12b's executor to ratify, not applied here):** the memory satellites (`memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`) belong to T0.12a's "core memory" pass; the operations, chat, auth and LLM-config tables (`pipeline_failures`, `token_blocklist`, `conversations`, `messages`, `api_keys`, `llm_purpose_configs`) and the ingest/bridge tables (`memory_buffer`, `project_repositories`) belong to T0.12b. Assigning by guess would send work to the wrong pass, and T0.12a–c are floor-exempt and merge as one atomic unit, so the mistake would not surface until T0.12c. |
+| F-02 | §2 vs `E0-baseline-and-harness.md` T0.12a–c | **Thirteen target tables are named by no T0.12a–c pass.** T0.12a names `memories`, `entities`, `entity_relations`, tags, `config`, `embedders`; T0.12b names `knowledge_triples`, `fact_sources`, articles and citations, `projects`, `repositories` and the `code_*` tables, job state, and `events`. Neither names `memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`, `memory_buffer`, `project_repositories`, `conversations`, `messages`, `pipeline_failures`, `token_blocklist`, `api_keys`, or `llm_purpose_configs`. **Recommendation (for the controller and T0.12b's executor to ratify, not applied here):** the memory satellites (`memory_crossrefs`, `memory_access_stats`, `memory_relations`, `memory_communities`, `memory_community_members`) belong to T0.12a's "core memory" pass; the operations, chat, auth and LLM-config tables (`pipeline_failures`, `token_blocklist`, `conversations`, `messages`, `api_keys`, `llm_purpose_configs`) and the ingest/bridge tables (`memory_buffer`, `project_repositories`) belong to T0.12b. Assigning by guess would send work to the wrong pass, and T0.12a–c are floor-exempt and merge as one atomic unit, so the mistake would not surface until T0.12c. |
 | F-03 | `E0-baseline-and-harness.md` T0.12a vs doc 04 §3.2 | T0.12a's text says "tags" where doc 04 §3.2 fixes the pair `tags` + `memory_tags`. The roll-call reads "tags" as the pair, since the join table is undeclarable without both. Recorded because the reading is an inference, not a quotation. |
 | F-04 | `erd.md` vs doc 04 §7/§9 | `erd.md` diagrams no `api_keys` table anywhere, while doc 04 §7 names it among the operations tables and §9 describes its activation, and doc 19 §3 carries an `(activation)` row for it. Doc 04 wins per the authority order: `api_keys` is in the target. `erd.md` reveals the gap; it never decides it. |
 | F-05 | `erd.md` §4 vs doc 04 §5.2 | `erd.md` §4's diagram shows two of the four existing partition parents (`memory_embeddings__slug`, `entity_embeddings__slug`); `code_chunk_embeddings` and `entity_embedding_cache` appear only in its prose notes. This is diagram resolution rather than a table-set disagreement — `erd.md`'s own header says "key columns only" — but it is recorded so §6's eight rows are not read against the diagram's six. |
 | F-06 | Appendix A.8 vs `CLAUDE.md` job registry | The migrations seed **four** `job:<key>` `config` rows against **seven** registered jobs. `graph_orphan_cleanup`, `tag_orphan_cleanup` and `expired_memory_cleanup` have no seeded state row and create theirs at runtime. Whether the baseline should seed all seven (uniform, greppable) or none (state is runtime data) is a decision for T0.12b's job-state work; today's split is neither. |
 | F-07 | `E0-baseline-and-harness.md` T0.12b vs doc 04 §7 | T0.12b's scope names "job state", which is not a table: job state lives in `config` rows keyed `job:<key>` (doc 04 §7), and `config` is T0.12a's. So T0.12b's "job state" is seed data in a table an earlier pass creates, not an object of its own. |
-| F-08 | doc 19 §3 vs Appendix A.2 | Doc 19 §3 drops "`llm_providers`, `llm_profiles`, `ml_profiles` + every `*_ref`". **No column named `*_ref` exists on `llm_purpose_configs`.** A.2 shows the three indirection columns are `provider_id`, `profile_id` and `ml_profile_id` (uuid, each with an `ON DELETE SET NULL` FK). The **only** `*_ref`-named column in the whole schema is `repositories.auth_token_ref`, which doc 04 §6 lists among `repositories`' target columns and which must be **kept**. A T0.12 executor following doc 19 §3 literally would drop the one column to keep and keep the three to drop. §8 names the three by their real names; `auth_token_ref` stays. |
+| F-08 | doc 19 §3 vs Appendix A.2 | Doc 19 §3 drops "`llm_providers`, `llm_profiles`, `ml_profiles` + every `*_ref`". **No column named `*_ref` exists on `llm_purpose_configs`.** A.2 shows the three indirection columns are `provider_id`, `profile_id` and `ml_profile_id` (uuid, each with an `ON DELETE SET NULL` FK). The **only** `*_ref`-named column in the whole schema is `repositories.auth_token_ref`, which doc 04 §6 lists among `repositories`' target columns and which must be **kept**. A T0.12a–c executor following doc 19 §3 literally would drop the one column to keep and keep the three to drop. §8 names the three by their real names; `auth_token_ref` stays. |
 | F-09 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 prints `config` as `(key varchar(255) PK, value jsonb NOT NULL DEFAULT '{}')`. A.2 shows `config.value` as `NOT NULL` with **no server default**. Same class as the `memories` default deltas (§5, §9): the inventory records what A.2 says and dispositions `config` as `reshaped` on the assumption that the baseline authors the printed default. If §9's ORM-default question resolves the other way, `config` is `carries-over` and this row is a doc-04 description error instead. |
 | F-10 | doc 04 §7 vs Appendix A.2 | Doc 04 §7 fixes the flattened `llm_purpose_configs` row as carrying `{model, base_url, api_key, api_kind, params jsonb, dimensions?, reasoning?}` plus `classifier_kind`. A.2 shows a **`provider varchar NOT NULL DEFAULT 'ollama'`** column at HEAD that this list does not mention. Doc 04 §7 also fixes `api_kind` as the sole vendor-quirk home (E1's T1.03 repeats it), which suggests `provider` is redundant and drops — but no doc says so. Whether `provider` is kept or dropped is a decision for T0.12b and E1's T1.01 (flatten `llm_purpose_configs`), not for this inventory. |
 

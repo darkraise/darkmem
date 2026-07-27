@@ -454,11 +454,11 @@ Task: T0.11"
 
 **This is the task with the sharpest failure mode.** "Every inert object names the phase and the task that will first write to it" is only satisfied if the cited task **exists** and **actually writes that object**. A plausible-looking id that resolves to a different task is worse than a blank, because it reads as verified. Two independent defences are built in below: `check_plan.py` catches ids that do not exist at all, and the quoted-words column catches ids that exist but write something else.
 
-- [ ] **Step 1: Establish the phase from doc 20 §6 before searching for task ids**
+- [x] **Step 1: Establish the phase from doc 20 §6 before searching for task ids**
 
 Doc 20 §6's diagram places each inert family in a phase — `repo_ids[]` and the document/block tables and the embedding templates in Phase 0 (landing), their activations in Phase 2 (`C4: repo_ids[] writer — the deriver, doc 10, after G-C`), Phase 3, Phase 4 and the H1 horizon lane. Fixing the phase first turns the id search from "grep five files for a plausible match" into "grep the one epic that owns that phase" — E1 is Phase 1, E2 is Phase 2, E3 is Phase 3, E4 is Phase 4, EH1 is H1. An id found in the wrong epic for its phase is a finding, not a row.
 
-- [ ] **Step 2: Find each writer and quote it**
+- [x] **Step 2: Find each writer and quote it**
 
 ```bash
 cd /root/repositories/darkmem/docs/planning/tasks
@@ -470,7 +470,7 @@ For each hit, open the enclosing `#### T…` block and quote the clause that est
 
 Fill §6's `First writer` column in the same pass.
 
-- [ ] **Step 3: Verify — `check_plan.py` lints the inventory automatically**
+- [x] **Step 3: Verify — `check_plan.py` lints the inventory automatically**
 
 This is the load-bearing check and it costs nothing, because `check_plan.py` already globs `*.md` in `docs/planning/` and asserts that every `T(?:H1|[0-4])\.\d{2}[a-z]?`-shaped reference resolves to a defined task:
 
@@ -487,7 +487,7 @@ Second check: every §2/§5/§6 row dispositioned `target-new, inert` has a §7 
 
 Then `git status --porcelain` shows only the inventory file.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/planning/baseline-schema-inventory.md
