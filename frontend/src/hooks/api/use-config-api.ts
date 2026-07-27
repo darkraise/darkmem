@@ -2,7 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
 export interface LlmPurposeConfig {
-  provider: string
+  // No `provider`: it duplicated `api_kind` and nothing dispatched on it, so
+  // T1.01 dropped the column and the wire key together (F-10). `api_kind` is
+  // the sole vendor field.
   base_url: string
   model: string
   api_key: string | null

@@ -61,7 +61,6 @@ class PurposeConfigSeed:
     provider_name: str  # references ProviderSeed.name
     model: str
     api_kind: str
-    provider: str
     base_url: str
     dimensions: int | None = None
     reasoning: bool = False
@@ -137,12 +136,12 @@ DEFAULT_PROFILES: list[ProfileSeed] = [
 # pipeline end-to-end. The wizard's finalize handler overlays user
 # choices on top of these for whichever purposes the user filled in.
 DEFAULT_PURPOSE_CONFIGS: list[PurposeConfigSeed] = [
-    PurposeConfigSeed("embedding",      "ollama", "qwen3-embedding:0.6b", "openai", "ollama", "http://localhost:11434/v1", dimensions=1024, params={}),
-    PurposeConfigSeed("extraction",     "ollama", "qwen2.5:3b",           "openai", "ollama", "http://localhost:11434/v1", params={"temperature": 0}),
-    PurposeConfigSeed("classification", "ollama", "qwen2.5:3b",           "openai", "ollama", "http://localhost:11434/v1", params={"temperature": 0}),
-    PurposeConfigSeed("reasoning",      "ollama", "qwen2.5:3b",           "openai", "ollama", "http://localhost:11434/v1", params={"temperature": 0.7}),
-    PurposeConfigSeed("summarization",  "ollama", "qwen2.5:3b",           "openai", "ollama", "http://localhost:11434/v1", params={"temperature": 0.3}),
-    PurposeConfigSeed("reranker",       "ollama", "qwen2.5:3b",           "openai", "ollama", "http://localhost:11434/v1", params={"temperature": 0}),
+    PurposeConfigSeed("embedding",      "ollama", "qwen3-embedding:0.6b", "openai", "http://localhost:11434/v1", dimensions=1024, params={}),
+    PurposeConfigSeed("extraction",     "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
+    PurposeConfigSeed("classification", "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
+    PurposeConfigSeed("reasoning",      "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.7}),
+    PurposeConfigSeed("summarization",  "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.3}),
+    PurposeConfigSeed("reranker",       "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
 ]
 
 

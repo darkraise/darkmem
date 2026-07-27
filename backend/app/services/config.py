@@ -29,7 +29,7 @@ PURPOSES = ["embedding", "extraction", "classification", "reasoning", "summariza
 
 def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeConfigSchema:
     return LLMPurposeConfigSchema(
-        provider=cfg.provider, base_url=cfg.base_url, model=cfg.model,
+        base_url=cfg.base_url, model=cfg.model,
         api_key="***" if (mask_key and cfg.api_key) else cfg.api_key,
         dimensions=cfg.dimensions, reasoning=cfg.reasoning,
         api_kind=getattr(cfg, "api_kind", "openai"),
@@ -62,7 +62,6 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
             merged[purpose] = defaults[purpose]
             continue
         merged[purpose] = LLMPurposeConfig(
-            provider=row.provider,
             base_url=row.base_url,
             model=row.model,
             api_key=row.api_key,

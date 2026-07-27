@@ -845,12 +845,13 @@ def _pass_two() -> None:
             model           VARCHAR(255) NOT NULL,
             dimensions      INTEGER,
             reasoning       BOOLEAN NOT NULL DEFAULT false,
+            -- The sole vendor-quirk home (doc 04 §7, doc 11 §4). The `provider`
+            -- column A.2 showed at HEAD is dropped (F-10, decided by T1.01):
+            -- nothing ever dispatched on it — the wizard wrote it as a verbatim
+            -- copy of api_kind and every read carried it along unused — so a
+            -- second vendor column could only ever drift away from the one that
+            -- decides behaviour.
             api_kind        VARCHAR(32) NOT NULL DEFAULT 'openai',
-            -- Kept, not dropped: doc 04 §7's inline field list omits `provider`
-            -- while A.2 shows it at HEAD, and the inventory records that as an
-            -- open question for T1.01 (F-10). Keeping it leaves the decision
-            -- where the finding put it instead of pre-empting it here.
-            provider        VARCHAR(64) NOT NULL DEFAULT 'ollama',
             base_url        VARCHAR(512) NOT NULL DEFAULT '',
             api_key         VARCHAR(1024),
             params          JSONB NOT NULL DEFAULT '{}'::jsonb,

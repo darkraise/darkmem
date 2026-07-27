@@ -392,7 +392,6 @@ async def setup_finalize(
                         dimensions=pc.dimensions,
                         reasoning=pc.reasoning,
                         api_kind=pc.api_kind,
-                        provider=pc.provider,
                         base_url=pc.base_url,
                         api_key=None,
                         params=dict(pc.params),
@@ -434,7 +433,6 @@ async def setup_finalize(
                     pcfg.dimensions = spec.dimensions if is_embedding else None
                     pcfg.reasoning = False if is_embedding else spec.reasoning
                     pcfg.api_kind = body.llm.api_kind
-                    pcfg.provider = body.llm.api_kind
                     pcfg.base_url = user_base_url
                     pcfg.api_key = body.llm.api_key
                     pcfg.params = seed_params

@@ -105,7 +105,6 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
         {
             "purpose": "embedding",
             "api_kind": "ollama",
-            "provider": "ollama",
             "base_url": OLLAMA_EMBEDDING_BASE_URL,
             "model": OLLAMA_EMBEDDING_MODEL,
             "dimensions": OLLAMA_EMBEDDING_DIMENSIONS,
@@ -115,7 +114,6 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
         {
             "purpose": "extraction",
             "api_kind": "deepseek",
-            "provider": "deepseek",
             "base_url": DEEPSEEK_BASE_URL,
             "model": DEEPSEEK_MODEL,
             "dimensions": None,
@@ -125,7 +123,6 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
         {
             "purpose": "classification",
             "api_kind": "deepseek",
-            "provider": "deepseek",
             "base_url": DEEPSEEK_BASE_URL,
             "model": DEEPSEEK_MODEL,
             "dimensions": None,
@@ -135,7 +132,6 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
         {
             "purpose": "reasoning",
             "api_kind": "deepseek",
-            "provider": "deepseek",
             "base_url": DEEPSEEK_BASE_URL,
             "model": DEEPSEEK_MODEL,
             "dimensions": None,

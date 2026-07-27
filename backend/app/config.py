@@ -79,7 +79,6 @@ class LLMProfile(BaseModel):
 
 
 class LLMPurposeConfig(BaseModel):
-    provider: str = "ollama"
     base_url: str = "http://localhost:11434/v1"
     model: str = "nomic-embed-text"
     api_key: str | None = None
@@ -191,27 +190,27 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     llm_embedding: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen3-embedding:0.6b", dimensions=1024,
     )
     llm_extraction: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
     llm_classification: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
     llm_reasoning: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0.7},
     )
     llm_summarization: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0.3},
     )
     llm_reranker: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
 

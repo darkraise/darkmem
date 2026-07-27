@@ -4,7 +4,6 @@ from app.config import LLMApiKind
 
 
 class LLMPurposeConfigSchema(BaseModel):
-    provider: str
     base_url: str
     model: str
     api_key: str | None = None
@@ -21,7 +20,6 @@ class LLMPurposeConfigSchema(BaseModel):
 
 
 class LLMPurposeConfigUpdate(BaseModel):
-    provider: str | None = None
     base_url: str | None = None
     model: str | None = None
     api_key: str | None = None

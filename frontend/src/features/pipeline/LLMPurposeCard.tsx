@@ -245,7 +245,6 @@ export function LLMPurposeCard({
     // purpose itself. With a profile linked, we leave the stored values
     // alone so a later unlink falls back to whatever was there last.
     if (!linkedToProfile) {
-      payload.provider = draft.provider
       payload.base_url = draft.base_url
       payload.api_kind = draft.api_kind ?? "openai"
       if (draft.api_key && draft.api_key !== "***")
@@ -405,7 +404,7 @@ export function LLMPurposeCard({
         <span className="text-muted-foreground truncate font-mono text-sm">
           {config.model}
           {config.dimensions ? ` · ${config.dimensions}d` : ""} ·{" "}
-          {config.provider}
+          {apiKindLabel(config.api_kind)}
         </span>
       </Button>
       {open && (
@@ -517,7 +516,6 @@ export function LLMPurposeCard({
               </div>
             ) : linkedToProfile ? (
               <div className="bg-muted/40 border-border space-y-1 rounded-md border p-3 text-sm">
-                <SummaryRow label="Provider" value={draft.provider} />
                 <SummaryRow label="Model" value={draft.model} mono />
                 <SummaryRow label="API kind" value={apiKindLabel(draft.api_kind)} />
                 <SummaryRow label="Base URL" value={draft.base_url} mono truncate />
@@ -670,11 +668,6 @@ export function LLMPurposeCard({
                         </div>
                       )}
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Field
-                          label="Provider"
-                          value={draft.provider}
-                          onChange={(v) => patch({ provider: v })}
-                        />
                         <Field
                           label="Model"
                           mono
