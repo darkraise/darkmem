@@ -188,6 +188,11 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     # to evaluate raw recall or when the heuristics over-fire.
     "relation_rescue": True,
     "confidence_rank_gamma": 0.0,
+    # Doc 07 §6: the magnitude of the `applies_when` context boost. Zero is
+    # the today-equivalent no-op — matching still labels every row and still
+    # counts conflicts at zero, only the multiplier goes quiet. Tuned in
+    # Phase 2 against the retrieval harness, never by intuition.
+    "w_context_boost": 0.0,
     # Doc 05 §2.2: how long an interactive `wait_process` capture may hold
     # Tier A driving its own buffer row's flush before degrading to the plain
     # 202 accept.
