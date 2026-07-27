@@ -98,6 +98,8 @@ _LOCAL_CLASSIFIER_TTL_SECONDS = 0
 # so an embedder that hands back a new fingerprint on every call cannot spin.
 _ENTITY_EMBED_ROTATION_ATTEMPTS = 3
 
+DUPLICATE_STATUSES: tuple[str, ...] = ("active",)
+
 
 def _ml_extra_available() -> bool:
     """Whether the optional CPU-only ``[ml]`` extra (torch + transformers) is
@@ -1187,14 +1189,31 @@ class ProcessingPipeline:
 
         Compares within whichever fingerprint already holds an embedding for
         the source memory. If none exist, returns an empty list.
+
+        The scope is derived from the source memory rather than supplied by the
+        caller: a duplicate is only actionable inside the project that owns the
+        supersession and merge decisions, and a superseded near-twin returned as
+        a peer invites a merge into a row the corpus has already replaced.
         """
+        from app.models.memory import Memory
+
         try:
             async with self.session_factory() as session:
                 vector_repo = PostgresVectorRepository(session)
                 fp = await vector_repo.find_fingerprint_for_memory(memory_id)
                 if not fp:
                     return []
-                return await vector_repo.find_similar(memory_id, fingerprint=fp, threshold=threshold)
+                project = (
+                    await session.execute(
+                        select(Memory.project).where(Memory.id == memory_id)
+                    )
+                ).scalar_one_or_none()
+                if project is None:
+                    return []
+                filters = MemoryFilter(project=project, statuses=DUPLICATE_STATUSES)
+                return await vector_repo.find_similar(
+                    memory_id, fingerprint=fp, threshold=threshold, filters=filters,
+                )
         except Exception as e:
             logger.error(f"Duplicate search failed: {e}")
             raise
