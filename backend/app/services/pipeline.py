@@ -84,6 +84,21 @@ def _flag_cache_reset() -> None:
     _flag_refresh_task = None
 
 
+def _derive_outcome(status: dict) -> str:
+    """`completed` / `partial` / `failed` from a memory's per-step statuses.
+
+    Shared by the durable `extracted` event and the `pipeline.*` broadcast so the
+    journal and the websocket can never disagree about the same memory.
+    """
+    steps = [status["embed"], status["extract"], status["vector"], status["graph"]]
+    active = [s for s in steps if s not in ("skipped", "pending")]
+    if all(s == "ok" for s in active):
+        return "completed"
+    if any(s == "ok" for s in active):
+        return "partial"
+    return "failed"
+
+
 class ProcessingPipeline:
     def __init__(self, llm: LLMOrchestrator, session_factory, broadcast=None):
         self.llm = llm
@@ -317,6 +332,9 @@ class ProcessingPipeline:
             extraction = None
 
         async with self.session_factory() as session:
+            # Bound here, not inside savepoint A: a failed Phase 1 skips the
+            # writes entirely, and the per-memory journal below still reads this.
+            mem_record = None
             vector_repo = PostgresVectorRepository(session)
             graph_repo = PostgresGraphRepository(session)
 
@@ -348,7 +366,6 @@ class ProcessingPipeline:
                 # Released independently of the graph write below so a graph
                 # failure can't roll back a successfully embedded memory (which
                 # would leave it unsearchable and misreport the failed step).
-                mem_record = None
                 try:
                     async with session.begin_nested():
                         payload = {
@@ -481,14 +498,7 @@ class ProcessingPipeline:
                 status["vector"] = "skipped"
                 status["graph"] = "skipped"
 
-            steps = [status["embed"], status["extract"], status["vector"], status["graph"]]
-            active_steps = [s for s in steps if s != "skipped" and s != "pending"]
-            if all(s == "ok" for s in active_steps):
-                outcome = "completed"
-            elif any(s == "ok" for s in active_steps):
-                outcome = "partial"
-            else:
-                outcome = "failed"
+            outcome = _derive_outcome(status)
 
             # Doc 05 §2.3: the flush's durable twin of the pipeline.completed/
             # partial/failed broadcast below. record_event never raises, so a
@@ -517,7 +527,11 @@ class ProcessingPipeline:
             except Exception as e:
                 logger.warning(f"Crossref computation failed for {memory_id}: {e}")
 
-        event_type = f"pipeline.{outcome}"
+        # Derived again here rather than reused from the write block above:
+        # that block is skipped whenever the writes are (a failed Phase 1 marks
+        # every memory embed=error and skips them), which would leave this
+        # reading the PREVIOUS memory's outcome — or nothing at all on the first.
+        event_type = f"pipeline.{_derive_outcome(status)}"
 
         if self._broadcast:
             try:

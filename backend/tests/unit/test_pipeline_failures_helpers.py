@@ -90,3 +90,39 @@ class TestRetryLockSet:
         assert locks.is_locked(uid) is False
         locks.try_acquire(uid)
         assert locks.is_locked(uid) is True
+
+
+# ── _derive_outcome: the journal and the broadcast must agree ────────
+
+
+def test_derive_outcome_is_shared_by_the_journal_and_the_broadcast():
+    """T1.07 gave the durable `extracted` event and the `pipeline.*` broadcast
+    one derivation. They were briefly computed separately, and the second copy
+    read a variable bound only on the write path — so a memory whose Phase 1
+    failed took an UnboundLocalError instead of an outcome."""
+    from app.services.pipeline import _derive_outcome
+
+    ok = {"embed": "ok", "extract": "ok", "vector": "ok", "graph": "ok"}
+    assert _derive_outcome(ok) == "completed"
+
+    partial = {"embed": "ok", "extract": "error", "vector": "ok", "graph": "error"}
+    assert _derive_outcome(partial) == "partial"
+
+    failed = {"embed": "error", "extract": "error", "vector": "error", "graph": "error"}
+    assert _derive_outcome(failed) == "failed"
+
+
+def test_derive_outcome_ignores_skipped_and_pending_steps():
+    from app.services.pipeline import _derive_outcome
+
+    # A failed Phase 1 marks embed=error and skips the writes; the skips must
+    # not be read as successes.
+    phase1_failed = {
+        "embed": "error", "extract": "error", "vector": "skipped", "graph": "skipped",
+    }
+    assert _derive_outcome(phase1_failed) == "failed"
+
+    still_running = {
+        "embed": "ok", "extract": "pending", "vector": "pending", "graph": "pending",
+    }
+    assert _derive_outcome(still_running) == "completed"
