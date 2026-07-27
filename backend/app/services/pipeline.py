@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
@@ -104,6 +105,47 @@ def _ml_extra_available() -> bool:
     return True
 
 
+@dataclass
+class EntityCacheStats:
+    """Phase 3's two-level cache outcome, split by which level answered.
+
+    The split is the point: a cache that reports only "hits" cannot tell a warm
+    process from a cold one that is paying a DB round-trip per name, and a cache
+    stuck at a 0% hit rate is functionally correct while paying full embedding
+    cost forever. Recorded per batch and accumulated per pipeline instance.
+    """
+
+    memory_hits: int = 0
+    db_hits: int = 0
+    misses: int = 0
+
+    @property
+    def lookups(self) -> int:
+        return self.memory_hits + self.db_hits + self.misses
+
+    @property
+    def hits(self) -> int:
+        return self.memory_hits + self.db_hits
+
+    @property
+    def hit_rate(self) -> float:
+        return self.hits / self.lookups if self.lookups else 0.0
+
+    def add(self, other: "EntityCacheStats") -> None:
+        self.memory_hits += other.memory_hits
+        self.db_hits += other.db_hits
+        self.misses += other.misses
+
+    def as_dict(self) -> dict:
+        return {
+            "memory_hits": self.memory_hits,
+            "db_hits": self.db_hits,
+            "misses": self.misses,
+            "lookups": self.lookups,
+            "hit_rate": round(self.hit_rate, 4),
+        }
+
+
 def _derive_outcome(status: dict) -> str:
     """`completed` / `partial` / `failed` from a memory's per-step statuses.
 
@@ -134,6 +176,12 @@ class ProcessingPipeline:
         self._entity_cache: "OrderedDict[tuple[str, str], tuple[list[float], float]]" = OrderedDict()
         self._entity_cache_max = 10_000
         self._entity_cache_lock = asyncio.Lock()
+        # Phase 3's whole value is not re-embedding entity names, and a cache
+        # nobody can see the hit rate of is a cache nobody can tell is broken.
+        # ``entity_cache_stats`` accumulates for the life of this pipeline (a
+        # run's aggregate); ``last_entity_cache_stats`` is the latest batch.
+        self.entity_cache_stats = EntityCacheStats()
+        self.last_entity_cache_stats = EntityCacheStats()
         # Short-TTL cache of the per-batch classifier resolution so process_batch
         # doesn't open a session + run two queries on every batch just to learn
         # whether the (rarely-set) ml_profile_ref points it at the in-process ML
@@ -215,17 +263,25 @@ class ProcessingPipeline:
                 ),
             )
 
+    def _record_entity_cache_stats(self, stats: EntityCacheStats) -> None:
+        self.last_entity_cache_stats = stats
+        self.entity_cache_stats.add(stats)
+
     async def _lookup_entity_embeddings(
         self,
         name_lowers: list[str],
         fingerprint: str,
         ttl_seconds: float,
         use_memory_cache: bool,
-    ) -> tuple[dict[str, list[float]], list[str]]:
-        """Return (hits, misses). Hits map name_lower to embedding.
-        Misses are names needing fresh embedding."""
+    ) -> tuple[dict[str, list[float]], list[str], EntityCacheStats]:
+        """Return (hits, misses, stats), all keyed by ``(name_lower, fingerprint)``.
+
+        Hits map name_lower to embedding; misses are names needing a fresh
+        embedding call. ``stats`` reports which level answered each name.
+        """
         hits: dict[str, list[float]] = {}
         still_missing: list[str] = []
+        stats = EntityCacheStats()
         now = time.monotonic()
 
         if use_memory_cache:
@@ -243,6 +299,7 @@ class ProcessingPipeline:
                     still_missing.append(name)
         else:
             still_missing = list(name_lowers)
+        stats.memory_hits = len(hits)
 
         if still_missing:
             async with self.session_factory() as session:
@@ -255,8 +312,10 @@ class ProcessingPipeline:
                             self._cache_put((name, fingerprint), (emb, now))
                 hits.update(db_hits)
                 still_missing = [n for n in still_missing if n not in db_hits]
+                stats.db_hits = len(db_hits)
 
-        return hits, still_missing
+        stats.misses = len(still_missing)
+        return hits, still_missing, stats
 
     async def _store_entity_embeddings(
         self,
@@ -264,7 +323,15 @@ class ProcessingPipeline:
         fingerprint: str,
         use_memory_cache: bool,
     ) -> None:
-        """Write new embeddings to DB cache and (optionally) in-memory cache."""
+        """Write new embeddings to DB cache and (optionally) in-memory cache.
+
+        The DB write is one batched statement for the whole map: a per-entity
+        write loop is just as correct and costs a round-trip per name, which is
+        the cost this phase exists to avoid. A DB failure still populates the
+        in-memory level — the vectors are valid for this fingerprint either way,
+        and letting the persistence failure disable the memory cache too would
+        re-embed the same names on every subsequent batch.
+        """
         if not name_to_embedding:
             return
 
@@ -275,13 +342,77 @@ class ProcessingPipeline:
                 await session.commit()
         except Exception:
             logger.warning("Failed to persist entity embedding cache to DB", exc_info=True)
-            return
 
         if use_memory_cache:
             now = time.monotonic()
             async with self._entity_cache_lock:
                 for name, emb in name_to_embedding.items():
                     self._cache_put((name, fingerprint), (emb, now))
+
+    async def _embed_entity_names(
+        self,
+        name_lowers: list[str],
+        fingerprint: str,
+        ttl_seconds: float,
+        chunk_size: int,
+        concurrency: int,
+    ) -> tuple[dict[str, list[float]], str]:
+        """Phase 3: resolve entity names to vectors under a single fingerprint.
+
+        Memory cache → DB cache → embed the misses, writing anything newly
+        embedded back to both levels. Returns the resolved map and the
+        fingerprint every vector in it belongs to, which is not necessarily the
+        one passed in: the active embedder can rotate between Phase 1 and here,
+        in which case the new one is registered before anything is written into
+        its partition.
+        """
+        hits, misses, stats = await self._lookup_entity_embeddings(
+            name_lowers, fingerprint, ttl_seconds, use_memory_cache=True,
+        )
+        self._record_entity_cache_stats(stats)
+        logger.info(
+            "Phase 3 cache lookup: %d memory hits, %d db hits, %d misses "
+            "(batch hit rate %.1f%%, run hit rate %.1f%%)",
+            stats.memory_hits, stats.db_hits, stats.misses,
+            stats.hit_rate * 100, self.entity_cache_stats.hit_rate * 100,
+        )
+
+        name_to_embedding = dict(hits)
+        if not misses:
+            return name_to_embedding, fingerprint
+
+        try:
+            new_vectors, new_fp = await self.llm.embed_batch_chunked(
+                misses, chunk_size, concurrency,
+            )
+        except Exception as e:
+            logger.warning("Phase 3 entity embedding failed: %s: %s", type(e).__name__, e)
+            return name_to_embedding, fingerprint
+
+        if new_fp != fingerprint:
+            # Active embedder changed between Phase 1 and Phase 3. Register the
+            # new one and use it as the entity-cache key.
+            try:
+                await self._register_fingerprint(new_fp)
+            except Exception as e:
+                logger.warning(
+                    "Phase 3 fingerprint registration failed for %s: %s: %s",
+                    new_fp, type(e).__name__, e,
+                )
+                return name_to_embedding, fingerprint
+            fingerprint = new_fp
+
+        if len(new_vectors) != len(misses):
+            logger.warning(
+                "Phase 3 embedder returned %d vectors for %d names; "
+                "%d entity names will go unembedded this batch",
+                len(new_vectors), len(misses), abs(len(misses) - len(new_vectors)),
+            )
+        new_map = dict(zip(misses, new_vectors))
+        await self._store_entity_embeddings(new_map, fingerprint, use_memory_cache=True)
+        name_to_embedding.update(new_map)
+        logger.info("Phase 3 complete: embedded %d new entity names", len(new_map))
+        return name_to_embedding, fingerprint
 
     async def _write_memory(
         self,
@@ -754,28 +885,10 @@ class ProcessingPipeline:
         entity_fingerprint = embedding_fingerprint
 
         if unique_names_list and entity_fingerprint:
-            hits, misses = await self._lookup_entity_embeddings(
-                unique_names_list, entity_fingerprint, ttl_seconds, use_memory_cache=True,
+            name_to_embedding, entity_fingerprint = await self._embed_entity_names(
+                unique_names_list, entity_fingerprint, ttl_seconds,
+                embed_chunk_size, embed_concurrency,
             )
-            name_to_embedding.update(hits)
-            logger.info("Phase 3 cache lookup: %d hits, %d misses", len(hits), len(misses))
-
-            if misses:
-                try:
-                    new_embeddings_list, new_fp = await self.llm.embed_batch_chunked(
-                        misses, embed_chunk_size, embed_concurrency,
-                    )
-                    if new_fp != entity_fingerprint:
-                        # Active embedder changed between Phase 1 and Phase 3.
-                        # Register the new one and use it as the entity-cache key.
-                        await self._register_fingerprint(new_fp)
-                        entity_fingerprint = new_fp
-                    new_map = dict(zip(misses, new_embeddings_list))
-                    await self._store_entity_embeddings(new_map, entity_fingerprint, use_memory_cache=True)
-                    name_to_embedding.update(new_map)
-                    logger.info("Phase 3 complete: embedded %d new entity names", len(new_map))
-                except Exception as e:
-                    logger.warning("Phase 3 entity embedding failed: %s: %s", type(e).__name__, e)
         else:
             logger.info("Phase 3 skipped: no entities to embed")
 
