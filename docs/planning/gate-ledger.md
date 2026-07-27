@@ -468,3 +468,56 @@ These never "clear" once — they apply per activation, every time.
 | Date | Arm | Slice deltas | p95 latency | Token cost | Decision | Artifact |
 |---|---|---|---|---|---|---|
 | — | — | — | — | — | — | — |
+
+---
+
+## G-B — BLOCKING ENVIRONMENT FINDING (Tier 3, logged 2026-07-27)
+
+**G-B cannot be cleared on this machine, and no amount of further Phase-1 task
+completion changes that.** Recording it here rather than discovering it at T1.50.
+
+**What was measured.** No LLM credential exists in any form: nothing in the
+environment (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` all unset),
+no `.env` (only `.env.example`), no Ollama binary and nothing serving on `:11434`
+or any other local model port, and the real `darkmem` database has no schema, so no
+`llm_purpose_configs` row supplies one either. This machine can make **zero** live
+model calls.
+
+**Why that blocks the gate specifically.** Two of G-B's three required numbers need
+a live model, and this ledger already says so:
+
+1. **Extraction F1 parity.** The stated tolerance above "judges G-B's live
+   re-measurement under the Phase-1 prompt", and "G-B must be measured with the same
+   model" (`deepseek-v4-flash`). The warm `--algo-only` cache cannot stand in: T1.17
+   rewrites the extraction system prompt, and the per-entry cache key is
+   `sha256(content + "\x00" + prompt)`, so **every one of the 36 entries is
+   invalidated the moment T1.17 lands**. There is no path from the current cache to
+   a post-T1.17 number.
+2. **Retrieval eval vs the full-context baseline.** `run_retrieval_eval.py` exits
+   non-zero with "DEEPSEEK_API_KEY is not set" — its smoke ingest runs extraction and
+   classification against the vendor. Measured 2026-07-27: this is the step that
+   turns `./scripts/gate.sh --full` RED today.
+
+The third number, the isolation probe's zero-count (T1.35), is a database-level
+property and is expected to remain reachable.
+
+**Consequent task blockage.** T1.17 is blocked on a credential, which is a runbook §7
+stop condition in its own right. Through it: **T1.18** and **T1.24f** (both depend on
+T1.17), and therefore **T1.50** (depends on T1.24f). T1.52 and T1.54 additionally
+need real data this machine does not hold.
+
+**What is NOT blocked.** Everything else in E1 — roughly fifty remaining tasks —
+neither needs a model nor feeds a number that does. Work continues there; only the
+gate claim and the four tasks above are held.
+
+**What a human needs to decide.** Either provision a `DEEPSEEK_API_KEY` for the same
+`deepseek-v4-flash` alias the T0.05 baseline used, or change how G-B is measured —
+which is a Tier-3 amendment to the gate's definition and explicitly not an agent's
+call. Note the two pre-existing recorded gaps above compound this: there is no
+latency/token twin for the baseline, and "same model" is asserted rather than
+verifiable, so a late-provisioned key should also capture response metadata per this
+ledger's own requirement.
+
+**Do not work around this.** Widening the tolerance, substituting a different model,
+or citing the warm cache as a post-T1.17 measurement would each convert a missing
+number into a false one, which is the failure this ledger exists to prevent.
