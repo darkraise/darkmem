@@ -2010,9 +2010,9 @@ STAGE_COLLAPSE_AND_FANOUT = "collapse_and_fanout"
 PASS_REGISTRY: tuple[Pass, ...] = (
     Pass("normalize_names", STAGE_ENTITY_SHAPING, _normalize_names, ("entities",), ("entities",)),
     Pass("filter_noise", STAGE_ENTITY_SHAPING, _filter_noise, ("entities",), ("entities",)),
+    Pass("filter_literals", STAGE_ENTITY_SHAPING, _filter_literals, ("entities", "content"), ("entities",)),
     Pass("snap_hardware_types", STAGE_ENTITY_SHAPING, _snap_hardware_types, ("entities",), ("entities",)),
     Pass("apply_type_overrides", STAGE_ENTITY_SHAPING, _apply_type_overrides, ("entities",), ("entities",)),
-    Pass("filter_literals", STAGE_ENTITY_SHAPING, _filter_literals, ("entities", "content"), ("entities",)),
     Pass("filter_hallucinated_names", STAGE_ENTITY_SHAPING, _filter_hallucinated_names, ("entities", "content"), ("entities",)),
     Pass("filter_negation_only", STAGE_ENTITY_SHAPING, _filter_negation_only, ("entities", "content"), ("entities", "negated_names")),
     Pass("dedup_entities", STAGE_ENTITY_SHAPING, _dedup_entities, ("entities",), ("entities",)),

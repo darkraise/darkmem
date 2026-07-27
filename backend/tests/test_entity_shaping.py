@@ -11,9 +11,16 @@ sequence itself is pinned at the bottom of the file.
 import pytest
 
 from app.services.extraction_clean import (
+    PASS_REGISTRY,
+    CleanState,
+    _apply_type_overrides,
+    _filter_literals,
     _filter_noise,
     _normalize_names,
+    _snap_hardware_types,
+    run_passes,
 )
+from app.services.extraction_pass_harness import index_of
 
 
 def _names(entities):
@@ -198,3 +205,86 @@ def test_filter_noise_does_not_mutate_its_input():
     given = [{"name": "value", "type": "concept"}, {"name": "postgres", "type": "database"}]
     _filter_noise(given)
     assert len(given) == 2
+
+
+# ── _filter_literals ─────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["192.168.0.195", "192.168.0.195:8000", "127.0.0.1:5433"])
+def test_filter_literals_drops_an_ip_or_ip_port(name):
+    content = f"the api answers on {name} over the lan"
+    assert _filter_literals([{"name": name, "type": "concept"}], content) == []
+
+
+def test_filter_literals_drops_a_curated_config_stem_used_in_dotted_form():
+    content = "set client.timeout to 30s and limits.max_body to 8mb"
+    out = _filter_literals(
+        [
+            {"name": "client", "type": "concept"},
+            {"name": "limits", "type": "concept"},
+            {"name": "postgres", "type": "database"},
+        ],
+        content,
+    )
+    assert _names(out) == ["postgres"]
+
+
+def test_filter_literals_keeps_a_curated_stem_never_written_in_dotted_form():
+    content = "the client team owns the retry policy"
+    out = _filter_literals([{"name": "client", "type": "concept"}], content)
+    assert _names(out) == ["client"]
+
+
+def test_filter_literals_drops_an_uncurated_stem_of_a_deep_dotted_key():
+    content = "we raised producer.linger.ms to 20"
+    out = _filter_literals([{"name": "producer", "type": "concept"}], content)
+    assert out == []
+
+
+def test_filter_literals_keeps_a_stem_that_also_appears_standalone():
+    content = "we raised producer.linger.ms to 20 after the producer stalled"
+    out = _filter_literals([{"name": "producer", "type": "concept"}], content)
+    assert _names(out) == ["producer"]
+
+
+def test_filter_literals_leaves_a_single_dot_module_root_alone():
+    # 'asyncio.create_task' is one dot, so the root the name collapse produced
+    # is a real library, not a config-key stem.
+    content = "we replaced asyncio.create_task with a task group"
+    out = _filter_literals([{"name": "asyncio", "type": "tool"}], content)
+    assert _names(out) == ["asyncio"]
+
+
+def test_filter_literals_does_not_mutate_its_input():
+    given = [{"name": "192.168.0.195", "type": "concept"}]
+    _filter_literals(given, "reachable at 192.168.0.195")
+    assert given == [{"name": "192.168.0.195", "type": "concept"}]
+
+
+def test_filter_literals_is_seated_beside_filter_noise_per_doc_06_s1():
+    names = [p.name for p in PASS_REGISTRY]
+    assert names[index_of(PASS_REGISTRY, "filter_noise") + 1] == "filter_literals"
+    assert index_of(PASS_REGISTRY, "filter_literals") < index_of(
+        PASS_REGISTRY, "snap_hardware_types"
+    )
+
+
+def test_the_literal_drop_commutes_with_the_type_snappers():
+    # The move above is safe only because the two type passes rewrite `type`
+    # and never membership or order, while the filter keys on `name` alone.
+    given = [
+        {"name": "gpu", "type": "artifact"},
+        {"name": "qdrant", "type": "tool"},
+        {"name": "192.168.0.195", "type": "concept"},
+        {"name": "client", "type": "concept"},
+    ]
+    content = "the gpu box at 192.168.0.195 runs qdrant with client.timeout raised"
+
+    literals_first = _apply_type_overrides(
+        _snap_hardware_types(_filter_literals(given, content))
+    )
+    snappers_first = _filter_literals(
+        _apply_type_overrides(_snap_hardware_types(given)), content
+    )
+    assert literals_first == snappers_first
+    assert _types(literals_first) == {"gpu": "tool", "qdrant": "database"}
