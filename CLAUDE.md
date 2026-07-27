@@ -396,9 +396,20 @@ hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 Memory writes resolve `source` per call: explicit arg (the literal `mcp`
 counts as unspecified) > `X-Darkmem-Client` header > User-Agent product
 map > `mcp`; `memory_batch_add` resolves on the raw entry dicts before
-validation, because `MemoryCreate` would stamp its `api` default and
-erase the absent-vs-explicit distinction. `source_agent` defaults to the
-caller's raw User-Agent.
+validation. `source_agent` defaults to the caller's raw User-Agent.
+
+**Why raw-dict resolution still matters after T1.42a** (updated 2026-07-28).
+The original reason — `MemoryCreate` stamping an `api` default that erased
+the absent-vs-explicit distinction — is gone: T1.42a removed that default,
+so `MemoryCreate.source` has no default and the erasure is no longer
+representable. But the discipline is **not** merely historical, and the
+doors differ. Restoring the default and resolving post-hoc still *passes*
+on REST, where `api` is REST's own sentinel so absent and explicit resolve
+identically — and *fails* on MCP with `'api' != 'codex'`, because there
+`api` is a foreign literal that dodges MCP's `mcp` sentinel. So the
+raw-dict rule has a live, demonstrated justification on the MCP door and a
+by-construction one on REST. Do not "simplify" it away on the strength of
+the REST case alone.
 
 ## Setup, auth, runtime config
 
