@@ -13,6 +13,7 @@ from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
 from app.services.rank_fusion import RRF_K, RankedList, normalize_row_id, rrf_fuse
+from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
 logger = logging.getLogger(__name__)
 
@@ -149,20 +150,19 @@ class HybridSearchService:
     ) -> list[dict]:
         table = child_table("memory_embeddings", fingerprint)
         params: dict = {"vec": str(vector), "limit": limit}
-        join_sql = ""
         where_sql = ""
         if filters is not None:
             params.update(filters.params())
-            join_sql = "JOIN memories m ON m.id = e.memory_id"
             where_sql = f"WHERE {filters.where_sql('m')}"
 
         result = await self.session.execute(
             text(f"""
                 SELECT e.memory_id,
                        1 - (e.embedding <=> CAST(:vec AS vector)) AS score,
-                       e.payload
+                       e.payload,
+                       {SCOPE_LABEL_COLUMNS}
                 FROM {table} e
-                {join_sql}
+                {SCOPE_LABEL_JOIN}
                 {where_sql}
                 ORDER BY e.embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
@@ -170,7 +170,13 @@ class HybridSearchService:
             params,
         )
         return [
-            {"memory_id": str(row.memory_id), "score": float(row.score), "payload": row.payload, "source": "semantic"}
+            {
+                "memory_id": str(row.memory_id),
+                "score": float(row.score),
+                "payload": row.payload,
+                "source": "semantic",
+                **scope_labels(row),
+            }
             for row in result
         ]
 
@@ -194,7 +200,8 @@ class HybridSearchService:
         sql = f"""
                 SELECT m.id AS memory_id,
                        ts_rank(m.search_vector, plainto_tsquery('english', :q)) AS rank,
-                       m.content
+                       m.content,
+                       {SCOPE_LABEL_COLUMNS}
                 FROM memories m
                 WHERE m.search_vector @@ plainto_tsquery('english', :q)
                   {scope_sql}
@@ -217,6 +224,7 @@ class HybridSearchService:
                 "score": float(row.rank),
                 "payload": {"content": row.content},
                 "source": "keyword",
+                **scope_labels(row),
             }
             for row in result
         ]

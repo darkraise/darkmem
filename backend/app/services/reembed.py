@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedder_registry import child_table
+from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, scope_labels
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,11 @@ class ReembedService:
         any row out; the count stays exact and the enumeration is withheld
         rather than paging a content preview of the entire table under a filter
         that discriminates nothing.
+
+        The queue stays deployment-wide, and every previewed row names its
+        project and lifecycle state — that label is what an operator reads a
+        foreign or retired row by, and it is the trade the queue makes for
+        staying wide instead of being narrowed into hiding unembedded rows.
         """
         mem_table = child_table("memory_embeddings", fingerprint)
         mem_anti = await self._anti_join(
@@ -175,7 +181,8 @@ class ReembedService:
 
         rows = (await self.session.execute(
             text(f"""
-                SELECT m.id AS memory_id, LEFT(m.content, 120) AS content_preview
+                SELECT m.id AS memory_id, LEFT(m.content, 120) AS content_preview,
+                       {SCOPE_LABEL_COLUMNS}
                 FROM memories m
                 WHERE {mem_anti}
                 ORDER BY m.created_at DESC
@@ -188,6 +195,7 @@ class ReembedService:
             {
                 "memory_id": str(r["memory_id"]),
                 "content_preview": r["content_preview"],
+                **scope_labels(r),
             }
             for r in rows
         ]
