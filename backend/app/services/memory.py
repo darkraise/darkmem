@@ -292,11 +292,9 @@ class MemoryService:
         Mirrors the SQL predicates in `_apply_filters`; used when the semantic
         path has already fetched rows by id.
 
-        Project, status and archived are scoped in SQL on the semantic channel,
-        so for those rows this is a no-op. They stay here because the keyword
-        side of hybrid search is not scoped in SQL yet and fuses its own rows
-        into the same result list; dropping these checks before that lands
-        would let cross-project and superseded rows through the fusion.
+        Project, status and archived are deliberately absent: every retrieval
+        channel that feeds this now renders them into its own SQL, and
+        re-applying them here would hide a channel that stopped doing so.
         """
         if params.memory_type and memory.memory_type != params.memory_type:
             return False
@@ -305,10 +303,6 @@ class MemoryService:
         if params.source and memory.source != params.source:
             return False
         if params.source_any and memory.source not in params.source_any:
-            return False
-        if params.project is not None and memory.project != params.project:
-            return False
-        if params.status and memory.status not in params.status:
             return False
         if params.technologies_any:
             tech = set(memory.technologies or [])
@@ -323,8 +317,8 @@ class MemoryService:
     async def search_memories(self, params: MemorySearchRequest) -> list[Memory]:
         # If we have a query and pipeline, try semantic search first
         if params.query and self.pipeline:
-            # Over-fetch so the in-memory archived/status/type/project/tag filters
-            # can still yield a full ``limit`` page (and honour ``offset``).
+            # Over-fetch so the in-memory type/source/technology/tag filters can
+            # still yield a full ``limit`` page (and honour ``offset``).
             # Fetching exactly ``limit`` silently under-returns whenever a filter
             # drops a row, and ignoring ``offset`` makes MCP pagination a no-op.
             fetch_n = params.limit + params.offset + 50
@@ -337,7 +331,7 @@ class MemoryService:
                 all_memories = await self.memory_repo.get_many(memory_ids)
                 memories = [
                     m for m in all_memories
-                    if not m.is_archived and self._matches_schema_v2_filters(m, params)
+                    if self._matches_schema_v2_filters(m, params)
                 ]
                 return memories[params.offset:params.offset + params.limit]
 
@@ -363,7 +357,7 @@ limit=params.limit,
                 all_memories = await self.memory_repo.get_many(memory_ids)
                 memories = [
                     m for m in all_memories
-                    if not m.is_archived and self._matches_schema_v2_filters(m, params)
+                    if self._matches_schema_v2_filters(m, params)
                 ]
                 total = len(memories)
                 page = memories[params.offset:params.offset + params.limit]
