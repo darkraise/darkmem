@@ -346,7 +346,7 @@ Verbatim output — `run_bench.py --gold gold_heldout.json`, live, 2026-07-26:
 |---|---|---|---|---|---|
 | Extraction F1 parity with the recorded baseline | Within the T0.05 tolerance | — | n/a | — | — |
 | Retrieval eval vs full-context baseline | Reported with twin; no silent regression | — | p95 —, tokens — | — | — |
-| Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | **10** (2026-07-28, T1.35) | n/a (deterministic, zero model calls) | `backend/scripts/benchlib/run_isolation_probe.py` (output below) | **FAIL — gate stays open** |
+| Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | **10** (2026-07-28, T1.35), then **0** (2026-07-28, T1.35a) | n/a (deterministic, zero model calls) | `backend/scripts/benchlib/run_isolation_probe.py` (output below) | **PASS on the re-measurement; the 10 stands recorded** |
 
 **Requirement recorded by T0.05:** the runner producing this gate's live F1
 re-record must capture and record response metadata (the served `model` string
@@ -438,6 +438,33 @@ exact — verified), and journal/citation content outliving a deleted memory.
 What passed is itself evidence: every T1.29a–e pushdown held under these
 fixtures, including both code-search arms and the graph neighbour status
 predicate.
+
+**Re-measurement after T1.35a (2026-07-28): 0 violations, exit 0.** The ten
+above were closed by labelling, not by narrowing — every one of them was a
+`[V2]` unlabelled escape rather than a wrongly returned row, and all four
+surfaces are still exactly as wide as they were. The per-surface row counts in
+the re-run are identical to the failing run (`memory_reason` 16,
+`chat_retrieval` 8, `chat_history_citations` 9, `reembed_backfill_queue` 3);
+only the V2 column moved to zero, which is the evidence that no row was
+removed to make the number. The informational I1/I2 lists are unchanged and
+remain out of scope (T1.60 and the escalated retention question).
+
+The labels are stamped at the point the rows are produced, following T1.29d's
+`get_all_vectors` precedent: `PostgresVectorRepository.search` and both
+`HybridSearchService` arms now join `memories` unconditionally and emit
+`project` + `status` on every row, so a consumer nobody enumerated still gets
+labelled rows; `MemoryService.reason` builds one citation shape for both its
+passes and therefore for both doors; `ChatService` labels the `sources` event
+and the persisted citation snapshot; the re-embed queue labels its previews.
+The registry-honesty finding is closed in the direction the bar requires: the
+false statements were the `memory_reason` and `chat_retrieval` *responses*, and
+those were fixed rather than the classification relaxed. `reembed_backfill_queue`
+and `chat_history_citations` now declare `labels=("project", "status")` because
+they now emit them.
+
+The probe, its fixtures and its predicates were not touched. Guard tests live
+in `backend/tests/test_scope_labels.py` (18); each labelling point was mutated
+in turn and the corresponding tests observed failing before restoration.
 
 ---
 
