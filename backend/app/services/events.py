@@ -55,6 +55,7 @@ EVENT_TYPES: list[str] = [
     "superseded",
     "deprecated",
     "expired",
+    "invalidated",
     "extracted",
     "consolidated",
     "verified",

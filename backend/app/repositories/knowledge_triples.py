@@ -29,6 +29,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.events import record_event
 from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ _COLUMNS = """
     triple_key, verification_status, confidence, applies_when,
     learned_in, review_state, source_file, created_at
 """
+
+
+def _iso(value: Any) -> Any:
+    return value.isoformat() if isinstance(value, datetime) else value
 
 
 def _row_to_dict(row: Any) -> dict:
@@ -153,7 +158,26 @@ class KnowledgeTripleRepository:
         Writes ``invalid_at`` only — ``expired_at`` is untouched, so the row
         remains in the live set as retained history while leaving the scope of
         ``ux_knowledge_triples_open``.
+
+        Journals ``invalidated`` with the before/after ``invalid_at``. The
+        prior value is read with ``FOR UPDATE`` in this same transaction, not
+        a separate round trip, so a concurrent close on the same row cannot
+        make the journalled "before" a lie. This is a window closing, not an
+        expiry — the row stays live (``expired_at`` untouched) — so it is
+        journalled as its own event type rather than reusing ``expired``.
         """
+        prior = await self.session.execute(
+            text(
+                "SELECT invalid_at, project FROM knowledge_triples "
+                "WHERE id = CAST(:id AS uuid) FOR UPDATE"
+            ),
+            {"id": str(triple_id)},
+        )
+        prior_row = prior.mappings().first()
+        if prior_row is None:
+            logger.debug("close_window: no knowledge_triples row for id %s", triple_id)
+            return None
+
         result = await self.session.execute(
             text(f"""
                 UPDATE knowledge_triples
@@ -164,17 +188,43 @@ class KnowledgeTripleRepository:
             {"id": str(triple_id), "invalid_at": invalid_at},
         )
         row = result.mappings().first()
-        if row is None:
-            logger.debug("close_window: no knowledge_triples row for id %s", triple_id)
-            return None
-        return _row_to_dict(row)
+        row_dict = _row_to_dict(row)
+        await record_event(
+            self.session,
+            event_type="invalidated",
+            object_type="fact",
+            object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+            project=prior_row["project"],
+            payload={
+                "before": {"invalid_at": _iso(prior_row["invalid_at"])},
+                "after": {"invalid_at": _iso(row["invalid_at"])},
+            },
+        )
+        return row_dict
 
     async def expire(self, triple_id: UUID | str) -> dict | None:
         """Withdraw belief. A re-save on the retained row, never a delete.
 
         COALESCE keeps the withdrawal time from drifting on a repeated call:
         a fact was disbelieved once, and a second expire must not rewrite when.
+
+        Journals ``expired`` with the before/after ``expired_at``. The prior
+        value is read with ``FOR UPDATE`` in this same transaction, not a
+        separate round trip, so a concurrent expire on the same row cannot
+        make the journalled "before" a lie.
         """
+        prior = await self.session.execute(
+            text(
+                "SELECT expired_at, project FROM knowledge_triples "
+                "WHERE id = CAST(:id AS uuid) FOR UPDATE"
+            ),
+            {"id": str(triple_id)},
+        )
+        prior_row = prior.mappings().first()
+        if prior_row is None:
+            logger.debug("expire: no knowledge_triples row for id %s", triple_id)
+            return None
+
         result = await self.session.execute(
             text(f"""
                 UPDATE knowledge_triples
@@ -185,10 +235,19 @@ class KnowledgeTripleRepository:
             {"id": str(triple_id)},
         )
         row = result.mappings().first()
-        if row is None:
-            logger.debug("expire: no knowledge_triples row for id %s", triple_id)
-            return None
-        return _row_to_dict(row)
+        row_dict = _row_to_dict(row)
+        await record_event(
+            self.session,
+            event_type="expired",
+            object_type="fact",
+            object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+            project=prior_row["project"],
+            payload={
+                "before": {"expired_at": _iso(prior_row["expired_at"])},
+                "after": {"expired_at": _iso(row["expired_at"])},
+            },
+        )
+        return row_dict
 
     async def get_live(
         self,
@@ -236,7 +295,19 @@ class KnowledgeTripleRepository:
         Refuses ``confirmed``: the machine's ceiling is ``corroborated``, and
         only a human reaches ``confirmed``, via the ratification path T2.05
         owns. Raising here — before a producer exists — is the point of this
-        method, not a gap to be filled in later.
+        method, not a gap to be filled in later. A refused call performs no
+        read and no write, so it journals nothing: no transition occurred.
+
+        Journals ``verified`` with the before/after ``verification_status`` on
+        success. The prior value is read with ``FOR UPDATE`` in this same
+        transaction, not a separate round trip, so a concurrent write to the
+        same row cannot make the journalled "before" a lie.
+
+        T2.03's Tier-C verification recompute will become the sole journaller
+        of verification transitions once it lands; from that point this
+        emitter is subordinate to it, so the recompute does not double-count
+        the same transition in G-C's metrics. That hand-off is T2.03's to
+        make, not this method's — no suppression flag exists here.
         """
         if status not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
             if status == "confirmed":
@@ -248,6 +319,21 @@ class KnowledgeTripleRepository:
                 f"invalid verification_status {status!r}; must be one of "
                 f"{sorted(_MACHINE_WRITABLE_VERIFICATION_STATUSES)}"
             )
+
+        prior = await self.session.execute(
+            text(
+                "SELECT verification_status, project FROM knowledge_triples "
+                "WHERE id = CAST(:id AS uuid) FOR UPDATE"
+            ),
+            {"id": str(triple_id)},
+        )
+        prior_row = prior.mappings().first()
+        if prior_row is None:
+            logger.debug(
+                "set_verification_status: no knowledge_triples row for id %s", triple_id
+            )
+            return
+
         await self.session.execute(
             text(
                 "UPDATE knowledge_triples "
@@ -255,6 +341,17 @@ class KnowledgeTripleRepository:
                 "WHERE id = CAST(:id AS uuid)"
             ),
             {"id": str(triple_id), "status": status},
+        )
+        await record_event(
+            self.session,
+            event_type="verified",
+            object_type="fact",
+            object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+            project=prior_row["project"],
+            payload={
+                "before": {"verification_status": prior_row["verification_status"]},
+                "after": {"verification_status": status},
+            },
         )
 
     async def as_of(

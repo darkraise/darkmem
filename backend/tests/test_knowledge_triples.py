@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 
 import app.repositories.knowledge_triples as knowledge_triples_module
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services.events import EVENT_TYPES
 from app.services.triple_key import compute_triple_key
 
 PROJECT = "t201-belief-axis"
@@ -64,6 +65,17 @@ async def _set_status(session, triple_id: str, status: str) -> None:
         ),
         {"s": status, "id": str(triple_id)},
     )
+
+
+async def _events_for(session, triple_id: str) -> list[dict]:
+    result = await session.execute(
+        text(
+            "SELECT event_type, object_type, payload FROM events "
+            "WHERE object_id = CAST(:id AS uuid) ORDER BY created_at, id"
+        ),
+        {"id": str(triple_id)},
+    )
+    return [dict(row) for row in result.mappings().all()]
 
 
 async def _read(session, triple_id: str) -> dict:
@@ -257,6 +269,106 @@ async def test_stale_on_arrival_closes_the_older_row_before_inserting(session):
     assert newer_row["invalid_at"] is None
     assert newer_row["expired_at"] is None
     assert older_row["triple_key"] == newer_row["triple_key"]
+
+
+# ── Journaling (T2.01 step 6) ───────────────────────────────────────
+
+
+async def test_invalidated_is_in_the_closed_vocabulary():
+    assert "invalidated" in EVENT_TYPES
+
+
+async def test_insert_open_journals_nothing(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    assert await _events_for(session, row["id"]) == []
+
+
+async def test_close_window_journals_exactly_one_invalidated_event_with_null_before(session):
+    """The first close on an open row: `invalid_at` starts NULL, so the
+    journalled "before" must be NULL too, not the new value duplicated."""
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    await repo.close_window(row["id"], NOW + timedelta(days=30))
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "invalidated"
+    assert event["object_type"] == "fact"
+    assert event["payload"]["before"]["invalid_at"] is None
+    assert event["payload"]["after"]["invalid_at"] == (NOW + timedelta(days=30)).isoformat()
+
+
+async def test_close_window_journals_the_prior_invalid_at_as_before(session):
+    """A second close on an already-closed row must carry the row's actual
+    prior `invalid_at`, not NULL, as "before"."""
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    first_close = NOW + timedelta(days=30)
+    second_close = NOW + timedelta(days=60)
+    await repo.close_window(row["id"], first_close)
+
+    await repo.close_window(row["id"], second_close)
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 2
+    second_event = events[1]
+    assert second_event["event_type"] == "invalidated"
+    assert second_event["payload"]["before"]["invalid_at"] == first_close.isoformat()
+    assert second_event["payload"]["after"]["invalid_at"] == second_close.isoformat()
+
+
+async def test_expire_journals_exactly_one_expired_event(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    expired = await repo.expire(row["id"])
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "expired"
+    assert event["object_type"] == "fact"
+    assert event["payload"]["before"]["expired_at"] is None
+    assert event["payload"]["after"]["expired_at"] == expired["expired_at"].isoformat()
+
+
+async def test_set_verification_status_journals_exactly_one_verified_event(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    await repo.set_verification_status(row["id"], "corroborated")
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "verified"
+    assert event["object_type"] == "fact"
+    assert event["payload"]["before"]["verification_status"] == "candidate"
+    assert event["payload"]["after"]["verification_status"] == "corroborated"
+
+
+async def test_set_verification_status_refusing_confirmed_journals_nothing(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    with pytest.raises(ValueError, match="T2.05"):
+        await repo.set_verification_status(row["id"], "confirmed")
+
+    assert await _events_for(session, row["id"]) == []
+
+
+async def test_set_verification_status_refusing_unknown_value_journals_nothing(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    with pytest.raises(ValueError):
+        await repo.set_verification_status(row["id"], "bogus")
+
+    assert await _events_for(session, row["id"]) == []
 
 
 # ── Verification-status writer ──────────────────────────────────────
