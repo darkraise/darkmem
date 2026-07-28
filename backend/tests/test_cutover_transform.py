@@ -372,7 +372,17 @@ def test_package_registers_no_asyncpg_type_codec():
     for path in PACKAGE_SOURCES:
         text = path.read_text(encoding="utf-8")
         assert "set_type_codec" not in text, path
+        if path.name in DECODES_THE_SNAPSHOT_ARTIFACT:
+            continue
         assert "json.loads(" not in text, path
+
+
+# backfill.py parses the snapshot JSONL, which is a file rather than a carried
+# value on a connection: each jsonb column sits in it as an already-encoded JSON
+# string and comes back out of json.loads still opaque. The property this grep
+# stands in for is pinned directly for that module by
+# test_cutover_backfill.py::test_a_high_precision_jsonb_value_survives_the_round_trip.
+DECODES_THE_SNAPSHOT_ARTIFACT = {"backfill.py"}
 
 
 def test_package_contains_no_varchar_width_cast():
