@@ -1,12 +1,12 @@
 # Retrieval eval — 2026-07-28
 
-- run id: `031bb661-4a64-4386-bc73-2d93145accf5` (recorded 2026-07-27T17:21:23.607546+00:00)
-- git sha: `dbde0172c546d91145d55b7cba2d090cdb49a399`
+- run id: `6b7b0c0d-dab4-479d-b738-d928eb2780e3` (recorded 2026-07-28T14:00:15.698139+00:00)
+- git sha: `16f8fb061e982952f4b55e2cea78b6394ca1db8c`
 - embedder fingerprint: `qwen3-embedding:0.6b|1024`
 - gate configuration: `classification_mode='simple', classifier_kind=None, relation_rescue=True`
 - corpus: 94 memories, gold v4, 118 pairs authored (102 live)
 - protocol: k=10, min_pairs=10, retrieval retrieval_limit=94, full_context retrieval_limit=10
-- live LLM calls this run: ingest=0, retrieval=0, full_context=0 (total=0)
+- live LLM calls this run: ingest=100, retrieval=0, full_context=0 (total=100)
 
 - **multi-hop hit@10 = 0.0000 on the retrieval arm is the DESIGNED state (T0.06a), not a defect.** Every live multi-hop pair is built so its consequence memory ranks worse than k in the hybrid-only baseline -- this is the headroom a future graph-aware arm exists to close, not a bug for this runner to flag.
 - **full context beats retrieval on pooled accuracy this run** (ΔMRR=+0.0487, Δhit@10=+0.0882, full-context minus retrieval) -- the honest measured result of the T0.09 comparator, stated plainly rather than buried or reframed as a cost-only win. See the cost caveats below for why the two arms' token costs are not directly subtractable.
@@ -35,23 +35,23 @@ AGGREGATE          102   0.8582  0.9069   0.0487    0.8431  0.9314   0.0882
 
 --- retrieval: latency by channel (seconds, nearest-rank, min_samples=20) ---
 embed_query        live   no samples
-embed_query        cache  n= 102  p50=0.00011  p95=0.00014
+embed_query        cache  n= 102  p50=0.00022  p95=0.00030
 end_to_end         live   no samples
-end_to_end         cache  n= 102  p50=0.00172  p95=0.00250
-keyword_search     live   n= 102  p50=0.00026  p95=0.00053
+end_to_end         cache  n= 102  p50=0.00211  p95=0.00303
+keyword_search     live   n= 102  p50=0.00029  p95=0.00056
 keyword_search     cache  no samples
 reranker           live   no samples
 reranker           cache  no samples
-semantic_search    live   n= 102  p50=0.00116  p95=0.00152
+semantic_search    live   n= 102  p50=0.00137  p95=0.00184
 semantic_search    cache  no samples
 --- retrieval: token cost by purpose ---
-  extraction: {'live_calls': 0, 'live_prompt_tokens': 0, 'live_completion_tokens': 0, 'live_cached_prompt_tokens': 0, 'live_unknown_calls': 0, 'cache_known_calls': 94, 'cache_known_prompt_tokens': 939668, 'cache_known_completion_tokens': 12125, 'cache_known_cached_prompt_tokens': 926464, 'cache_unknown_calls': 0}
+  extraction: {'live_calls': 94, 'live_prompt_tokens': 927166, 'live_completion_tokens': 11661, 'live_cached_prompt_tokens': 926080, 'live_unknown_calls': 0, 'cache_known_calls': 0, 'cache_known_prompt_tokens': 0, 'cache_known_completion_tokens': 0, 'cache_known_cached_prompt_tokens': 0, 'cache_unknown_calls': 0}
 
 --- full_context: latency by channel (seconds, nearest-rank, min_samples=20) ---
 end_to_end         live   no samples
-end_to_end         cache  n= 102  p50=0.00007  p95=0.00010
+end_to_end         cache  n= 102  p50=0.00017  p95=0.00023
 full_context_call  live   no samples
-full_context_call  cache  n= 102  p50=0.00007  p95=0.00009
+full_context_call  cache  n= 102  p50=0.00017  p95=0.00022
 --- full_context: token cost by purpose ---
   reasoning: {'live_calls': 0, 'live_prompt_tokens': 0, 'live_completion_tokens': 0, 'live_cached_prompt_tokens': 0, 'live_unknown_calls': 0, 'cache_known_calls': 102, 'cache_known_prompt_tokens': 472558, 'cache_known_completion_tokens': 3899, 'cache_known_cached_prompt_tokens': 452608, 'cache_unknown_calls': 0}
 
@@ -275,15 +275,15 @@ Two consecutive runs on an unchanged tree, against an unchanged warm LLM cache, 
   },
   "retrieval_tokens_by_purpose": {
     "extraction": {
-      "cache_known_cached_prompt_tokens": 926464,
-      "cache_known_calls": 94,
-      "cache_known_completion_tokens": 12125,
-      "cache_known_prompt_tokens": 939668,
+      "cache_known_cached_prompt_tokens": 0,
+      "cache_known_calls": 0,
+      "cache_known_completion_tokens": 0,
+      "cache_known_prompt_tokens": 0,
       "cache_unknown_calls": 0,
-      "live_cached_prompt_tokens": 0,
-      "live_calls": 0,
-      "live_completion_tokens": 0,
-      "live_prompt_tokens": 0,
+      "live_cached_prompt_tokens": 926080,
+      "live_calls": 94,
+      "live_completion_tokens": 11661,
+      "live_prompt_tokens": 927166,
       "live_unknown_calls": 0
     }
   }
