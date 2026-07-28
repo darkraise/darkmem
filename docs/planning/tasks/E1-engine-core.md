@@ -1161,6 +1161,43 @@ frontend work by construction. Schedule for a wave where this is the only lane t
 **Verify.** `cd backend && python -m pytest tests/test_api/test_memories.py tests/test_websocket.py -q`
 and `cd frontend && npm run typecheck && npm test`
 
+#### T1.42f — Converge the `memory_stats` divergence onto one service
+
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T1.42d` · `Doc: 12 §3, invariant 17` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Opened by T1.42d under controller ruling 3 (2026-07-28), from a finding T1.42c
+made and could not close in lane. `memory_stats` is the parity audit's **one recorded
+divergence** (`docs/two-door-parity.md`): the MCP tool and `GET /api/v1/analytics/stats`
+each hand-roll the same three counts, and the two have **already drifted where a caller can
+see it** — the route additionally returns `entities` and `relationships` from
+`PostgresGraphRepository.get_stats()` and the tool returns neither, so an agent asking how
+big the graph is gets nothing where the UI gets a number.
+
+**Why it is not a one-line delegation.** Neither door calls a service: the REST route
+computes its counts inline in `app/api/routes/analytics.py::get_stats`, including the
+`SQLAlchemyError` rollback guard that keeps an aborted graph `COUNT` from poisoning the
+session. There is nothing for the tool to be pointed at, so the fix is an extraction into
+`AnalyticsService` that both doors then call — one `app/services/**` edit plus one
+`app/api/routes/**` edit plus the tool.
+
+**Effort `medium`, argued (runbook §2.1).** The shape is fully determined (three counts
+plus the guarded graph pair) and the target is named; the judgement is confined to keeping
+the rollback guard's semantics intact when it moves off the route.
+
+**Done when:**
+- [ ] The counts live in `AnalyticsService`, and both doors call it — no second
+      implementation on either side
+- [ ] `memory_stats` returns `entities` and `relationships`, so the two doors answer the
+      same question identically
+- [ ] The failed-graph-`COUNT` rollback guard survives the move, proven by a test that
+      fails if it is dropped
+- [ ] `memory.stats` moves from `divergent` to `two-door` in
+      `backend/tests/test_door_parity.py`'s `PARITY_TABLE`, `docs/two-door-parity.md` is
+      regenerated, and the now-obsolete
+      `test_memory_stats_is_still_the_recorded_divergence` guard is deleted
+
+**Verify.** `cd backend && python -m pytest tests/test_door_parity.py tests/test_mcp.py tests/test_api/test_analytics.py -q`
+
 #### T1.43 — Dashboard + contribution calendar
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.08` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
@@ -1808,3 +1845,7 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-28 | T1.58 | 2 | **The step-level plan was reviewed at Fable tier and came back NEEDS_REVISION with three Blocking findings; execution is held.** (1) `npm run lint` still exits 1 after the demo rule is downgraded — **66 non-demo errors remain across ~25 files**, so the task's own Verify is unreachable as written and the plan claims exit 0. (2) Step 3 wires create into `MemoryEditorDialog`, which **real mode never renders** — `RealMemoriesView` has no create action and the only `useCreateMemory` caller is dead code, so the step as written leaves real mode with no way to create a memory. (3) **The flip breaks the unit floor by 21 tests across 4 files** and no step owns it. | The review reproduced every number itself rather than reading the plan's, which is what caught (1) and (3) — both are cases where the plan's *method* was sound and its *conclusion* was not checked against a run. Finding (2) is the more instructive one: the plan's own falsification pass picked Step 3 as its weakest, but aimed at the wrong risk (create-versus-edit scope) while the real defect was that the gated component is unreachable in real mode at all. |
 | 2026-07-28 | T1.58 | 2 | **Controller Ruling 2 was PARTLY WRONG and is corrected: the Knowledge surfaces are NOT unowned.** T2.36 (Facts), T2.37 (Review/Hygiene), T2.39 (Topics) and T3.06 (Articles) own the binding, so the new task the ruling called for would have duplicated E2/E3 scope and written a false record into this log. What is genuinely unowned is the **E1 interim**: nine Knowledge components render fabricated data as real from the flip until E2/E3 land. That wants one small E1 task for an honest staged state, on T1.61's precedent — not a binding task. | Recorded as a ruling error rather than quietly fixed, because the ruling was issued to a reviewer with an explicit invitation to refute it and the refutation is the mechanism working. The original finding came from the plan lane and was taken at face value by the controller; the reviewer checked it against the actual epic files. That is the second time this wave that a number nobody re-ran turned out wrong. |
 | 2026-07-28 | T1.58 | 2 | **Controller Ruling 1 (env-var e2e password, fail-loud, seeding in scope) is upheld in substance and under-specified in two ways the revision must close.** Seeding is only implementable as a **direct DB write after initialization**, which clobbers the owner's real dev admin password on the shared stack — the revision must authorise that explicitly and say how it is scoped. And a fail-loud auth spec makes `gate.sh --full` **structurally red** on any machine without the credential and a running stack, which is a consequence to record in the gate ledger rather than discover at a phase boundary. The login rate limiter (5 failures / 300 s, one bucket through the proxy) is a stated design input, not an afterthought. | Fail-loud remains right: option 2 degrades into a spec that skips, and a skipping spec is green while proving nothing. But "fail loudly" written without naming *where* it fails turns the strongest gate in the corpus red for an environmental reason, which is precisely the failure mode `GATE BLOCKED` (exit 2) exists to distinguish from a real red. |
+| 2026-07-28 | T1.42d | 2 | **Opened `T1.42f` — converge the `memory_stats` divergence onto one service.** The parity audit's one recorded divergence, per controller ruling 3: audit it, do not fix it. `memory_stats` and `GET /analytics/stats` each hand-roll the same three counts and have already drifted where a caller can see it — the route also returns `entities` and `relationships`, the tool returns neither. Recorded in `docs/two-door-parity.md` as a **divergence**, not as a stated single-door exemption. | T1.42c found it and could not close it in lane. The fix is not a one-line delegation: the REST route computes inline, so there is no shared call to point the tool at, and the extraction spans `app/services/**` and `app/api/routes/**`. A divergence is a worse state than a stated exemption because the same question gets two answers with no error anywhere, so it gets an owner rather than a reason. |
+| 2026-07-28 | T1.42d | 2 | **The two-door parity table is committed at `docs/two-door-parity.md`, generated from `backend/tests/test_door_parity.py`'s `PARITY_TABLE` and asserted against it.** 43 surfaces over the whole Phase-1 door surface: 13 two-door, 29 single-door with a stated reason (23 REST-only, 6 MCP-only), 1 divergent. The enumeration is driven off `app.routes` and the live FastMCP tool registry, so a new route or tool nobody classified fails the test. | Ruling 2: a hand-maintained list somebody must remember to extend is the failure mode this task exists to prevent. Generating the markdown from the enforced table and asserting equality means the committed deliverable and the guard cannot disagree. |
+| 2026-07-28 | T1.42d | 3 | **Escalation, not resolved: doc 12 §3 claims six REST twins that do not exist.** The code-family paragraph states all eleven tools ship "each with a REST twin under `/code` or `/repos`", tagged **(exists today)**. `code_context`, `code_dependencies`, `code_changes`, `code_communities`, `code_processes` and `code_rename` have no such route. Five of the six read rows `GET /code/graph/{repo_id}` serves whole, so the claim is true of the *rows* and false of the *query*; `code_changes` is the exception — it shells out to `git` in the working tree and no REST read carries uncommitted state at all. Each of the six carries a stated single-door reason in the parity table; **doc 12 was not edited.** | A design doc asserting a shipped twin that does not exist is invariant 23 (scaffolding-not-substrate), and correcting a design doc is Tier 3 — the corpus doc wins until a human decides otherwise (runbook §5). Recorded here and in `docs/two-door-parity.md` §Findings so the controller can rule on it the way it ruled on T1.42a's two §4/§5 escalations, rather than a lane resolving it in favour of the code by writing reasons and moving on. |
+| 2026-07-28 | T1.42d | 2 | **`code_symbol` and `code_file_symbols` are a latent repeat of the defect T1.42c closed — recorded, not fixed, no owner assigned.** Both are genuinely two-door, but each tool builds its own SQLAlchemy query instead of spending `CodeQueryService.list_symbols`. No row differs today, so it is not a divergence; it is the identical parallel-implementation setup that had *already* drifted on `code_search` and `code_blast_radius`. | Out of this lane's scope: delegating is **not** a behaviour-preserving one-liner, because the service caps at `limit=50` and both tools are uncapped, so the fix changes the wire. Surfaced here rather than taken opportunistically, and noted in the parity table's `code.symbols` row so whoever picks it up does not have to re-derive it. |
