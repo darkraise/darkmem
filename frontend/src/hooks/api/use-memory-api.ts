@@ -57,8 +57,22 @@ export interface Memory {
   rrf_score?: number
   status?: MemoryStatus
   superseded_by?: string | null
+  // Mirrors backend MemoryResponse.predecessors (T1.47) — the reverse of
+  // `superseded_by`: memories this one directly replaced, newest first,
+  // bounded server-side. Populated (possibly `[]`, never `null`) only by
+  // the single-get doors (GET /memories/{id}); every other reader (search,
+  // create, update, batch) leaves this `undefined` — "not computed for
+  // this read," a distinct state from "computed, replaced nothing."
+  predecessors?: MemoryLineageEntry[]
   // Populated only when the request set `with_trace: true` (T1.33/T1.44).
   trace?: MemoryResultTrace
+}
+
+export interface MemoryLineageEntry {
+  id: string
+  content: string
+  created_at: string
+  status: MemoryStatus
 }
 
 export interface Tag {

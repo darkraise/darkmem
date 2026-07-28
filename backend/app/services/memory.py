@@ -226,7 +226,17 @@ class MemoryService:
         )
 
     async def get_memory(self, memory_id: UUID) -> Memory | None:
-        return await self.memory_repo.get(memory_id)
+        memory = await self.memory_repo.get(memory_id)
+        if memory is not None:
+            # Attached as a plain (non-mapped) attribute rather than returned
+            # separately: both REST's `_to_response` and MCP's
+            # `memory_to_dict` derive their own shape off this same `memory`
+            # object, and this is the one call site both single-get doors
+            # share (grep confirms no third caller), so attaching it here is
+            # what reaches both doors without editing either serializer's
+            # entry point.
+            memory.predecessors = await self.memory_repo.get_predecessors(memory_id)
+        return memory
 
     async def update_memory(self, memory_id: UUID, data: MemoryUpdate, api_key_id: UUID | None) -> Memory | None:
         update_fields = data.model_dump(exclude_unset=True, exclude={"tags"})

@@ -15,7 +15,7 @@ from app.api.mcp.client_identity import (
     resolve_source_agent,
 )
 from app.models.memory import Memory
-from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
+from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryLineageEntry, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.schemas.retrieval_trace import MemoryResultTrace
 from app.services.memory import MemoryService
@@ -146,6 +146,19 @@ async def get_memory(
     resp = _to_response(memory)
     crossrefs = await service.get_crossrefs(memory_id)
     resp.related_memories = crossrefs
+    # `service.get_memory` always attaches `predecessors` (possibly `[]`,
+    # never absent) — see MemoryService.get_memory. Building the response
+    # list explicitly here, rather than reusing the attribute as-is, is what
+    # coerces each ORM row into MemoryLineageEntry's declared shape.
+    resp.predecessors = [
+        MemoryLineageEntry(
+            id=predecessor.id,
+            content=predecessor.content,
+            created_at=predecessor.created_at,
+            status=predecessor.status,
+        )
+        for predecessor in memory.predecessors
+    ]
     return resp
 
 
