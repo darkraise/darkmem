@@ -69,10 +69,13 @@ class Settings(BaseSettings):
     environment: str = "development"
     embedding_dimensions: int = 1024
     cors_origins: list[str] = []
-    # The API is always fronted by the bundled nginx, a trusted reverse proxy,
-    # so honoring X-Forwarded-For (for the login rate limiter) is the default.
-    # Set false only if the API is exposed with no trusted proxy in front.
-    trust_proxy_headers: bool = True
+    # The app is the network edge: it serves the SPA, the API and /mcp itself,
+    # with nothing trustworthy in front. So proxy headers are ignored and the
+    # transport peer decides the login rate limiter's bucket — a client that
+    # could name its own IP could rotate buckets per guess and never lock out.
+    # Set true only when a trusted proxy really is in front (the
+    # nginx-in-image fallback, or an operator's TLS proxy).
+    trust_proxy_headers: bool = False
     # Session-cookie Secure flag. None derives it from ``environment`` (Secure
     # in production). Set false to allow login over plain HTTP on a trusted LAN.
     cookie_secure: bool | None = None
