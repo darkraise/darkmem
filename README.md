@@ -7,7 +7,8 @@ repositories** into a navigable symbol/call graph. It exposes a REST API, a
 WebSocket event stream, and an **MCP** tool endpoint for agents, with a React UI.
 
 - **Backend:** FastAPI + SQLAlchemy (async) + Postgres/pgvector
-- **Frontend:** React + TanStack Router/Query (served by nginx)
+- **Frontend:** React + TanStack Router/Query (built into the API image and
+  served by it)
 - **LLM:** pluggable per-purpose providers (OpenAI-compatible, Ollama, Anthropic,
   Google, DeepSeek, z.ai), configured at runtime via the setup wizard
 
@@ -31,13 +32,18 @@ docker compose up -d
 ```
 
 The API boots only after Postgres is healthy, runs database migrations
-automatically, then serves on `:8000` (the MCP endpoint lives here too). The UI
-is on `:3000`. Both are published on the LAN; Postgres stays on loopback.
+automatically, then serves everything on `:8000` — the REST API, the WebSocket
+stream, the MCP endpoint and the UI itself. There is one container and one port;
+nothing binds `:80` or `:3000`. Postgres stays on loopback.
 
-The session cookie is `Secure` (HTTPS-only) by default. To serve over plain HTTP
-on the LAN, set `COOKIE_SECURE=false` — note the cookie then travels in cleartext.
-For real use, front the UI with a **TLS-terminating reverse proxy** (nginx/Caddy/
-Traefik) and keep `COOKIE_SECURE=true`.
+The app is the network edge in this topology: it trusts no proxy headers, and the
+login rate limiter keys on the transport peer. The session cookie is `Secure`
+(HTTPS-only) by default. To serve over plain HTTP on the LAN, set
+`COOKIE_SECURE=false` — note the cookie then travels in cleartext. Putting a
+**TLS-terminating reverse proxy** (nginx/Caddy/Traefik) in front is a different
+posture, not the default one: that proxy becomes the edge, so set
+`TRUST_PROXY_HEADERS=true` as well, or every client will share the proxy's
+rate-limit bucket.
 
 ### First-run setup
 
@@ -70,10 +76,14 @@ production-critical ones:
 | `LOG_LEVEL` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR` (default `INFO`). |
 
 `DATABASE_URL` is derived from `DB_PASSWORD`; set it explicitly only to point at
-an external Postgres. The nginx-fronted defaults for proxy trust and CORS are
-baked into the image, so there are no `TRUST_PROXY_HEADERS`/`CORS_ORIGINS` knobs
-to set. Runtime **LLM configuration is stored in the database** via the setup
-wizard and the Settings → LLM Pipeline UI; there are no `LLM_*` env variables.
+an external Postgres. `TRUST_PROXY_HEADERS` defaults to `false` because the app is
+the edge; set it to `true` only when a trusted proxy really is in front. Runtime
+**LLM configuration is stored in the database** via the setup wizard and the
+Settings → LLM Pipeline UI; there are no `LLM_*` env variables.
+
+Both secrets are read at runtime and are baked into no image layer, so rotating
+`JWT_SECRET` or `DB_PASSWORD` is "edit `.env`, `docker compose up -d`" — a
+container recreate, never an image rebuild.
 
 ---
 
@@ -123,8 +133,8 @@ logged (token counts and scrubbed git URLs only).
 ### Security checklist (before exposing beyond loopback)
 
 - [ ] `ENVIRONMENT=production` (compose default), strong `JWT_SECRET` (≥32 chars), non-default `DB_PASSWORD`. Run `/setup` promptly — it is open until the admin password is set.
-- [ ] UI reached only through your TLS reverse proxy (HTTPS); do not publish port 3000 publicly.
-- [ ] `/mcp` is the **unauthenticated** agent tool endpoint — keep it on loopback (it is not proxied by the bundled UI). Never expose it to untrusted networks.
+- [ ] UI reached only through your TLS reverse proxy (HTTPS); do not publish port 8000 publicly. If you add that proxy, also set `TRUST_PROXY_HEADERS=true` so the rate limiter keys on the client rather than the proxy.
+- [ ] `/mcp` is the **unauthenticated** agent tool endpoint — keep it on loopback. Never expose it to untrusted networks.
 - [ ] FastAPI `/docs`, `/redoc`, `/openapi.json` are served unauthenticated — keep them behind the loopback bind / your proxy's auth.
 - [ ] Provider API keys and git tokens are stored in the database in plaintext (single-operator model) — keep the `postgres_data` volume and backups access-controlled and encrypted at rest.
 

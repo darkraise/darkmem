@@ -54,7 +54,10 @@ behavior change, not a cleanup.
 - Stacks: dev `docker compose -f docker-compose.dev.yml up -d` (no
   .env needed); prod `docker compose up -d` (host networking; requires
   `DB_PASSWORD` + `JWT_SECRET` ≥ 32 chars in .env, `COOKIE_SECURE=false`
-  for plain-HTTP LAN). Rebuild images first: `./scripts/build-push.sh`.
+  for plain-HTTP LAN). Rebuild the image first:
+  `./scripts/build-push.sh` — **one** image now (`darkraise/darkmem-api`),
+  built from the repo-root `Dockerfile`, carrying the API and the built SPA
+  together; the app serves the UI on `:8000` and nothing binds `:80`.
 - Backend lock: regenerate only with
   `uv pip compile --universal pyproject.toml -o requirements.lock` —
   a non-universal Windows resolve leaks pywin32 and drops uvloop.
@@ -431,16 +434,25 @@ the REST case alone.
   `require_uninitialized`, which 403s once the `admin_password_hash`
   config row exists. `SETUP_SECRET` no longer exists; do not
   reintroduce a pre-setup shared secret.
-- Login rate limiting is per-IP with lockout; the client IP comes
-  from `X-Real-IP` (set by the bundled nginx to the direct peer) when
-  `trust_proxy_headers` is on — never the spoofable leftmost
-  `X-Forwarded-For`. Refresh and change-password rotate (blocklist)
-  the presented token; password change revokes all pre-change tokens
-  via the `iat` check.
+- Login rate limiting is per-IP with lockout. The IP source is a posture
+  selector and **both postures are live and tested**: with
+  `trust_proxy_headers` off (the default) the transport peer wins and no
+  request header is read; with it on, `X-Real-IP` wins and the **rightmost**
+  `X-Forwarded-For` hop is the fallback. The spoofable **leftmost**
+  `X-Forwarded-For` is read in neither. Layer 3 is not the whole ladder:
+  uvicorn's own `ProxyHeadersMiddleware` defaults on and would rewrite the
+  peer from `X-Forwarded-For` for any loopback client, so **all three launch
+  paths pass `--no-proxy-headers`** (`entrypoint.sh`,
+  `scripts/start_dev_server.sh`, and `docker-compose.dev.yml`'s `command:`).
+  Dropping it from any one of them re-opens the bucket the flag closes.
+  Refresh and change-password rotate (blocklist) the presented token;
+  password change revokes all pre-change tokens via the `iat` check.
 - `DATABASE_URL` is derived from the `DB_*` vars with percent-encoded
   credentials; an explicit `DATABASE_URL` overrides the derivation.
-  `trust_proxy_headers` defaults to True (the API always sits behind
-  the bundled nginx). `cookie_secure` is tri-state: unset = Secure
+  `trust_proxy_headers` defaults to False — the app is the network edge and
+  serves the SPA itself, so nothing trustworthy sits in front; the prod
+  compose passes it through so a posture change stays a config flip.
+  `cookie_secure` is tri-state: unset = Secure
   only when `environment=production`; explicit false allows login
   over plain-HTTP LAN. There are no `LLM_*` env vars — all LLM config
   lives in the DB via the setup wizard.
