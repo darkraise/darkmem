@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { cronExpressionSchema, reindexSchema, editRepoSchema } from "../schemas"
+import { cronExpressionSchema } from "../schemas"
 
 describe("cronExpressionSchema", () => {
   it("accepts 5-field expressions", () => {
@@ -10,35 +10,5 @@ describe("cronExpressionSchema", () => {
   })
   it("rejects bare strings", () => {
     expect(cronExpressionSchema.safeParse("every 6 hours").success).toBe(false)
-  })
-})
-
-describe("reindexSchema", () => {
-  it("requires at least one action", () => {
-    const r = reindexSchema.safeParse({
-      full: false,
-      enrich_symbols: false,
-      generate_wiki: false,
-    })
-    expect(r.success).toBe(false)
-  })
-  it("accepts a single action", () => {
-    expect(
-      reindexSchema.safeParse({
-        full: false,
-        enrich_symbols: true,
-        generate_wiki: false,
-      }).success,
-    ).toBe(true)
-  })
-})
-
-describe("editRepoSchema", () => {
-  it("defaults branch to main", () => {
-    const r = editRepoSchema.parse({ name: "x", path: "/p" })
-    expect(r.branch).toBe("main")
-  })
-  it("has no sync_cron field (repo sync schedule is governed by the Jobs page)", () => {
-    expect("sync_cron" in editRepoSchema.shape).toBe(false)
   })
 })
