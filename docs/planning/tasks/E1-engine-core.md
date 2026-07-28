@@ -1415,6 +1415,19 @@ tag that ends the regenerate-freely window.
       revisions
 - [ ] `CLAUDE.md` and the schema inventory record the freeze date — the real one
 - [ ] If verification fails, the documented restore runs and the freeze is **not** applied
+- [ ] **The §10.5 snapshot diff runs on the real corpus** (C-11). T1.53 proves the mechanism
+      against a dump copy, but the corpus that matters is only ever loaded here — and a
+      snapshot nobody diffs is an artifact, not a control. This is the only check that can
+      see T1.52's backfill overwriting the eleven carried columns, because every other
+      post-cutover check passes while it happens
+- [ ] **Post-cutover counts are taken before the first `expired_memory_cleanup` tick**, or
+      rows past `expires_at` are excluded from the comparison (C-10). The default cron is
+      `0 * * * *`, so a correct deletion can read as transform loss within minutes of boot
+- [ ] **`JWT_SECRET` is rotated at cutover** (C-09). Dropping `token_blocklist` while reusing
+      it resurrects every unexpired pre-cutover token, including ones the old instance had
+      explicitly revoked. The wizard does **not** close this window: setup writes only
+      `admin_password_hash`, and `admin_password_changed_at` comes solely from the
+      change-password endpoint, so rotation is the only reliable closure
 
 **Verify.** Post-cutover counts + `./scripts/gate.sh --full` on the live instance,
 archived to `gate-ledger.md` alongside the G-B entry.
