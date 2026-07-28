@@ -1659,31 +1659,57 @@ the reverse is a filtered scan.
 
 **Verify.** `cd backend && python -m pytest tests/test_memory_lineage.py -q`
 
-#### T1.67 — Move the real API types out of `src/demo`, then flip the demo rule to error
+#### T1.67 — Retire the dead real-API-type re-export from `src/demo`
 
 `Model: Sonnet 5` · `Effort: low` · `Size: S` · `Depends: T1.64` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
 
-**What.** `frontend/src/demo/types.ts` re-exports **real** API types — `Memory`,
-`MemoryStatus`, `Repo`, `Job` straight from `@/hooks/api` — so **65 files import a demo path
-to obtain types that are not demo data**. That is the dominant reason the
-`no-restricted-imports` demo rule cannot go to error: it counts type-path drift as fixture
-coupling. Move those types to a real module, repoint the importers, then flip the rule.
+**Rewritten 2026-07-28 after execution falsified its own premise.** The task was opened on the
+controller's claim that 65 files import `@/demo/types` to obtain the **real** API types
+`Memory`, `MemoryStatus`, `Repo` and `Job`. Re-verified at execution and again by the
+controller: **zero of the 65 do.** The re-export was dead code with one internal dependent.
+What those files actually import is demo-shaped and shared local types — `ContributionDay`,
+`CodeNodeKind`, `DemoCodeGraph`, `DemoCodeNode`, `FeedCategory`, `DemoRepo`, `DemoMemory`,
+`DemoJob`.
 
-**Why it is not T1.64's.** T1.64 retargets the rule at the fixture paths and lands the error
-flip only where it is honestly achievable today (`src/demo/data/**`). Flipping the whole rule
-also requires this move, which touches 65 files and belongs on its own commit rather than
-buried in the e2e task. Measured 2026-07-28: 90 importers total — `types` 65, `hooks` 30,
-`flag` 27 (9 of them flag-only), `store` 22, `data` 5, `components` 0.
+**What this task therefore did**, honestly scoped to what was true: delete the dead
+re-export, fix its one internal dependent, and add an `importNames`-scoped rule that **errors**
+if those four real API types are ever re-introduced on a demo path. The rule was proven able
+to fail before being trusted.
 
-**Effort `low`, argued (runbook §2.1).** A move plus a repoint that the type checker verifies
-exhaustively; the judgement was already made here.
+**What it did not do, and why that is not a shortfall.** The 65-importer count is unchanged,
+because this task never had a mechanism to change it — the coupling is real shared types, some
+load-bearing for genuinely real components (`real-code-inspector.tsx`,
+`real-code-graph-view.tsx`). Relocating those is judgement-heavy and larger than `S`; it is
+**T1.68's**, not a box this task left unticked.
 
 **Done when:**
-- [ ] The real API types live outside `src/demo` and no file imports them from a demo path
-- [ ] The `no-restricted-imports` rule covers the fixture paths at **error**, and
-      `npm run lint` exits 0 on the demo rule specifically
-- [ ] Demo-variant components remain sanctioned importers of fixtures — the rule must not
-      force demo mode's deletion, which no task calls for
+- [x] The dead re-export is gone and its internal dependent repointed
+- [x] Re-introducing any of the four real API types on a demo path is an **error**
+- [x] The rule is proven able to fail, not merely present
+
+**Verify.** `cd frontend && npm run lint && npm run typecheck && npm test`
+
+#### T1.68 — Relocate the shared frontend types out of `src/demo`
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.67` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** `@/demo/types` has 65 importers and the broad demo rule still reports 150 warnings,
+because genuinely shared types live under a demo path — `CodeNodeKind` and `ContributionDay`
+are consumed by **real** components, not just demo ones. Move what is shared to a real module,
+leave what is genuinely demo-shaped where it is, and widen the lint rule as far as the result
+honestly allows.
+
+**Why it is `M` and not `S`.** The split is a judgement per type, not a rename: some
+`Demo`-prefixed types are load-bearing for real components and some unprefixed ones are demo
+fixtures. T1.67 measured the ground truth; this task acts on it.
+
+**Done when:**
+- [ ] Types consumed by real components live in a real module; demo-only types stay
+- [ ] The demo rule covers the fixture paths at **error**, with the residual count recorded
+      if any path cannot honestly reach it
+- [ ] Demo-variant components remain sanctioned importers — this must not force demo mode's
+      deletion, which no task calls for
+- [ ] The rule is proven able to fail
 
 **Verify.** `cd frontend && npm run lint && npm run typecheck && npm test`
 
@@ -1988,3 +2014,4 @@ exhaustively; the judgement was already made here.
 | 2026-07-28 | T1.53 / T1.54 / T1.66 | 2 | **OWNER DECISION: the project is greenfield and no data is retained. The cutover lane is rewritten accordingly.** T1.53 is **dropped** — with nothing to carry there is no migration to rehearse and no corpus a restore would protect, so every Done-when item answers a question that no longer exists. T1.54 stops being a cutover and becomes **fresh provisioning** on the baseline, and **does not apply the freeze**. T1.66 inverts from "the first additive revision" to the ordinary regenerate-in-place path, which **unblocks it immediately** — it was only ever deferred to avoid taking the schema owner's turn, and that turn is now free. | The freeze is the load-bearing consequence and it is worth stating plainly: `CLAUDE.md` defines it as an *event* — the first deploy whose data must survive — and a disposable database is not that deploy. Freezing anyway would end the regenerate-in-place window and push every E2 schema change (`knowledge_triples`, `fact_sources`, the satellites) through additive revisions for no benefit, so **`T0.15`'s single-revision assertion stays enforcing**. What is deliberately *kept* from the dropped task is the nightly `pg_dump` cadence, moved onto T1.54: it is ordinary hygiene rather than migration work, and it is exactly what makes a future freeze safe. T1.51's transform and T1.52's drainer stay shipped and tested — if data ever becomes worth keeping, the missing piece is precisely the rehearsal that was dropped, so it is resurrected rather than re-invented. |
 | 2026-07-28 | PROCESS | 2 | **`dropped` added to the status vocabulary** (`gen_progress.py`, and the table it generates). The corpus had five statuses and no word for a task resolved without being executed, so a drop could only be recorded as a permanent `todo` — which reads as unfinished work forever — or mislabelled `done`, which claims work that never happened. The definition is deliberately narrow: the premise no longer holds, the Note names who decided and why, and **a drop is not a deferral** (a deferred task stays `todo`). | The amendment protocol has always contemplated drops — Tier 2 explicitly covers "a task that becomes unnecessary because another task subsumed it" — but the status vocabulary never grew the word, so the first real drop had nowhere honest to go. Recorded as a process amendment rather than folded into the task rows, because the gap is in the tracker's own contract and the next epic will hit it again. |
 | 2026-07-28 | T1.67 | 2 | **Re-verified the task's own premise before acting on it, and it did not hold: zero of the 65 `@/demo/types` importers name `Memory`, `MemoryStatus`, `Repo`, or `Job`** — every one imports a `Demo`-prefixed or locally-defined type (`DemoMemory`, `MemoryTrace`, `FactSource`, `DemoCodeGraph`, ...) that merely lives in the same file. The three re-export lines were dead from every external caller's side; the one real dependent was internal (`src/demo/store.ts` importing `Repo` through `./types`), repointed to `@/hooks/api` directly. Fix landed as scoped: the dead re-export removed from `src/demo/types.ts`, and a new `importNames`-scoped `no-restricted-imports` alias (`demo-realtype-import`) makes reintroducing any of the four names from a demo path an `error` from any file under the rule's glob, proven by a throwaway violating import in `src/lib/`, watched to fire on all four names, then reverted. The broader `@/demo/types` warn-level count (65 importers / 150 total, unchanged) is **not** closed by this fix and was never going to be: the real residual is the Demo-prefixed/locally-defined types themselves, several of which (`DemoCodeGraph`, `DemoCodeNode`) are load-bearing for genuinely-real components (`real-code-inspector.tsx`, `real-code-graph-view.tsx`), matching the pattern T1.64's plan flagged but did not scope in. | A task whose own "What" section states a causal claim ("re-exports real API types... so those files reach into a demo path for things that are not demo data") that direct inspection contradicts is worth recording precisely, not silently reinterpreting: the literal four-name fix is real, small, and verified exhaustively by the type checker (one broken internal import, found and fixed); the larger type-relocation the mismeasurement implied is a different, considerably bigger, judgment-heavy task that this Size-S/low-effort dispatch did not have a mandate to invent on its own initiative. Left as a named, uninflated residual for the controller to scope, rather than either gutting the rule to look wider than it is or quietly absorbing a much larger refactor under this task's id. |
+| 2026-07-28 | T1.67 | 2 | **SECOND controller error on the same question, caught by the executing lane and confirmed by re-measurement.** T1.67 was opened on the claim that 65 files import `@/demo/types` for the real API types `Memory`/`MemoryStatus`/`Repo`/`Job`. **Zero of them do** — the re-export was dead code with a single internal dependent. The 65 import demo-shaped and shared local types (`ContributionDay`, `CodeNodeKind`, `DemoCodeGraph`, `DemoCodeNode`, `FeedCategory`, `DemoRepo`, `DemoMemory`, `DemoJob`). T1.67 is rewritten to what it actually did, and the real relocation is opened as **T1.68** at `M`, because the split is a judgement per type rather than a rename. | Worth recording bluntly: this is the **second** wrong number the controller put into this log about this one question. The first inferred "64 flag-only" by subtraction and called it measured; the correction then read `types.ts`'s *source* — it does re-export those four names — and concluded 65 files must therefore consume them, without checking a single import site. Both errors share one shape, and it is the same shape the corpus keeps finding elsewhere: **a fact about a definition was treated as a fact about its use.** The lane's falsification pass is what caught it, which is exactly why the standing instruction is to verify a finding before acting on it — including, and especially, a finding handed down by the controller. |
