@@ -57,8 +57,8 @@ import type {
   DemoJob,
   DemoRankArm,
   MaintenanceOpKey,
-  Repo,
 } from "./types"
+import type { Repo } from "@/hooks/api"
 
 const initialMemories: DemoMemory[] = [
   ...CURATED_MEMORIES,

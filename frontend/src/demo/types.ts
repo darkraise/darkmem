@@ -1,7 +1,3 @@
-export type { Memory, MemoryStatus } from "@/hooks/api"
-export type { Repo } from "@/hooks/api"
-export type { Job } from "@/hooks/api"
-
 import type { Memory, MemoryStatus, Repo } from "@/hooks/api"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
 
