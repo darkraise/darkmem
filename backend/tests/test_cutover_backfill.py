@@ -661,10 +661,16 @@ async def _seed_supersession_pair(bed: Bed) -> tuple[uuid.UUID, uuid.UUID]:
 async def test_a_cross_batch_supersession_victim_is_repaired_by_the_sweep(bed):
     """``detect_supersessions`` writes *other* memories' rows.
 
-    A victim finished and restored in batch 1 has its ``updated_at`` moved back
-    to wall clock by batch 2, long after batch 1's restore ran. The terminal
-    sweep is the only thing that sees it; without the sweep this assertion
-    fails.
+    A victim finished and restored in batch 1 has its ``updated_at`` moved to
+    wall clock by batch 2, long after batch 1's restore ran. What this pins is
+    that the carve-out holds *across* batches: the victim keeps the wall-clock
+    stamp its lineage change earned, and the replacer keeps its carried one.
+
+    It deliberately does **not** claim to prove the terminal sweep. Since the
+    carve-out went onto both scopes, a supersession victim is exactly the row
+    the sweep skips, so removing the sweep leaves this assertion green — the
+    sweep is proven by ``test_the_terminal_sweep_repairs_an_unaccounted_writer``
+    instead.
     """
     victim, replacer = await _seed_supersession_pair(bed)
     snapshot = await bed.snapshot()
@@ -682,6 +688,52 @@ async def test_a_cross_batch_supersession_victim_is_repaired_by_the_sweep(bed):
     replacer_row = await bed.row(replacer)
     assert replacer_row["status"] == "active"
     assert replacer_row["updated_at"] == CARRIED_UPDATED_AT
+
+
+@pytest.mark.asyncio
+async def test_the_terminal_sweep_repairs_an_unaccounted_writer(bed):
+    """§9.1's general hazard rather than its one discovered instance.
+
+    ``detect_supersessions`` moves ``status`` and ``superseded_by`` along with
+    ``updated_at``, so the lineage carve-out leaves its victims at wall clock on
+    purpose and the sweep cannot be demonstrated by them. What the sweep is for
+    is any *other* write reaching an already-restored row mid-drain — a job that
+    boots alongside it, a later enrichment arm, a ``technologies`` recompute
+    that grows a second caller. One is injected here, because the per-batch
+    restore has already run on that row and nothing else would ever look at it
+    again.
+    """
+    ids = [
+        await bed.seed(
+            f"carried memory {i}",
+            memory_id=uuid.UUID(f"{i + 1}{i + 1}{i + 1}{i + 1}1111-1111-4111-8111-111111111111"),
+        )
+        for i in range(2)
+    ]
+    snapshot = await bed.snapshot()
+
+    real_process = bed.pipe.process_batch
+
+    async def _writes_behind_the_drain(entries):
+        result = await real_process(entries)
+        if str(entries[0]["memory_id"]) == str(ids[1]):
+            async with bed.factory() as session:
+                async with session.begin():
+                    await session.execute(
+                        text(
+                            "UPDATE memories SET importance = 0.99 "
+                            "WHERE id = CAST(:i AS uuid)"
+                        ),
+                        {"i": str(ids[0])},
+                    )
+        return result
+
+    bed.pipe.process_batch = _writes_behind_the_drain  # type: ignore[method-assign]
+    await _drain(bed, snapshot, batch_size=1)
+
+    row = await bed.row(ids[0])
+    assert row["importance"] == pytest.approx(0.42)
+    assert row["updated_at"] == CARRIED_UPDATED_AT
 
 
 @pytest.mark.asyncio

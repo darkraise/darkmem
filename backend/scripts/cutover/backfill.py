@@ -694,7 +694,7 @@ def classify_diff(
             violation(mid, "importance", snap_row["importance"], live_row["importance"])
 
         if snap_row["memory_type"] != live_row["memory_type"]:
-            if snapshot.rows[mid]["memory_type"] is None:
+            if snap_row["memory_type"] == _encode(None):
                 memory_type_gained += 1
                 expected["memory_type"] = expected.get("memory_type", 0) + 1
             else:
@@ -708,10 +708,9 @@ def classify_diff(
         for column in ENRICHMENT_COLUMNS:
             if snap_row[column] == live_row[column]:
                 continue
-            if (
-                snapshot.rows[mid][column] is not None
-                and live_row[column] == _encode(None)
-            ):
+            # Compared in the normalised encoding, so a carried jsonb 'null' is
+            # not mistaken for a value that a rebuild then destroyed.
+            if snap_row[column] != _encode(None) and live_row[column] == _encode(None):
                 violation(mid, column, snap_row[column], live_row[column])
             else:
                 expected[column] = expected.get(column, 0) + 1
