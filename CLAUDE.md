@@ -228,8 +228,12 @@ switch, and do not reintroduce a classification on/off flag.
 
 ## Supersession (`detect_supersessions`)
 
-Triggered inside Phase 5 when the new memory carries a `REPLACES`
-relation. A candidate is flipped to `superseded` only if **all** hold:
+Triggered inside Phase 5 when the new memory carries a relation in the
+**`REPLACES` family** — `REPLACES`, `IMPROVES_ON`, or the legacy
+`BUILDS_ON` — not the literal `REPLACES` alone (T1.36, 2026-07-28). The
+predicate lives in both `pipeline.py` and `supersession.py` and they must
+change together; narrowing one is a silent behaviour change, not a
+cleanup. A candidate is flipped to `superseded` only if **all** hold:
 
 1. Same `project` as the new memory.
 2. Candidate `status = 'active'`.
@@ -292,9 +296,17 @@ Default semantic search delegates to `HybridSearchService.search` when
   `(1 + γ·(confidence - 0.75))`; after a rerank it runs with
   `preserve_order=True`, rescaling scores without reordering.
 
-Code search (`search_code`) is semantic-only — the
-`code_chunk_embeddings__<slug>` partitions carry no FTS column, so
-there is nothing to fuse with.
+Code search (`CodeQueryService.search_code`) **does** fuse, contrary to
+what this file said until 2026-07-28: a vector arm over
+`code_chunk_embeddings__<slug>` and an `ILIKE` arm over `CodeSymbol.name`
+/ `source_code`, combined under RRF. What it has no FTS column for is a
+`ts_rank` arm — the partitions carry none — so the keyword side is
+`ILIKE`, not Postgres full-text. `code_query.py` declares its **own**
+`RRF_K = 60` rather than using `app/services/rank_fusion.py`; the two
+constants can drift and **no task owns closing that**. MCP's
+`code_search` and `code_blast_radius` route through this service
+(T1.42c); before that they held parallel implementations and had already
+diverged.
 
 ## Feature flags
 
@@ -499,7 +511,9 @@ and the drain journal a `repo_indexed` `events` row and surface on
 - **`technologies` is lowercase, denormalised, GIN-indexed.** Keep all
   three; dropping any one breaks supersession or retrieval.
 - **REPLACES family.** `REPLACES`, `IMPROVES_ON`, and the legacy
-  `BUILDS_ON` collapse to one bucket via `family_key` for rescue dedup.
+  `BUILDS_ON` collapse to one bucket via `family_key` for rescue dedup
+  **and they are the supersession trigger** — the family scopes both, not
+  rescue dedup alone.
   Adding a new replacement-family relation means editing
   `REPLACES_FAMILY` too.
 - **Async session lifetime.** Never open a fresh session while the
