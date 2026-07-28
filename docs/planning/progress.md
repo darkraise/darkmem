@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 59 | 59 | 0 | 0 | 0 | 0 | 0 | G-C, G-D open |
+| E2 — Truth core | 59 | 58 | 1 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **218** | **114** | **0** | **0** | **0** | **103** | **1** | |
+| **Total** | **218** | **113** | **1** | **0** | **0** | **103** | **1** | |
 
 ---
 
@@ -176,7 +176,7 @@ and the Note says so. That rule is the whole point of this file.
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
-| T2.01 | `knowledge_triples` rebuild: the bi-temporal belief axis | L | Opus | high | | todo | | | |
+| T2.01 | `knowledge_triples` rebuild: the bi-temporal belief axis | L | Opus | high | claude/e2-truth-core | wip | | | Size L — plan-first per runbook §3; step-level plan under review before any code |
 | T2.02 | `fact_sources` and origin-diversity counting | M | Opus | high | | todo | | | |
 | T2.03 | The verification ladder | L | Opus | high | | todo | | | |
 | T2.04 | The contradiction veto is absolute | M | Opus | high | | todo | | | |
