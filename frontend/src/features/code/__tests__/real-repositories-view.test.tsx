@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -150,5 +151,116 @@ describe("RealRepositoriesView", () => {
 
     await screen.findByText("darkmem-backend")
     expect(screen.queryByText(/queued for re-trace/)).not.toBeInTheDocument()
+  })
+
+  it("renders the live phase label from status_message while indexing, not a bare spinner", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      {
+        ...BASE_REPO,
+        status: "indexing",
+        status_message: "Building structure graph...",
+        last_indexed_commit: null,
+        last_indexed_at: null,
+        index_debt: {
+          queued: 0,
+          deferred_total: 0,
+          drained_total: 0,
+          last_defer: null,
+          last_drain: null,
+        },
+      },
+    ])
+
+    render(<RealRepositoriesView />, { wrapper })
+
+    await screen.findByText(/indexing — Building structure graph\.\.\./)
+  })
+
+  it("shows an honest auto-provisioned marker for a queued repo, never fabricating a source", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      {
+        ...BASE_REPO,
+        status: "queued",
+        status_message: "Queued for auto-provision indexing",
+        last_indexed_commit: null,
+        last_indexed_at: null,
+        created_at: "2026-07-22T10:00:00Z",
+        index_debt: {
+          queued: 0,
+          deferred_total: 0,
+          drained_total: 0,
+          last_defer: null,
+          last_drain: null,
+        },
+      },
+    ])
+
+    render(<RealRepositoriesView />, { wrapper })
+
+    await screen.findByText(/auto-provisioned — queued/)
+    expect(
+      screen.getByText(/Queued for auto-provision indexing/),
+    ).toBeInTheDocument()
+  })
+
+  it("submits the reindex options the dialog collected, in POST /repos/{id}/reindex's own shape", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/repos") return Promise.resolve([{ ...BASE_REPO, status: "ready" }])
+      return Promise.resolve({})
+    })
+
+    const user = userEvent.setup()
+    render(<RealRepositoriesView />, { wrapper })
+
+    await screen.findByText("darkmem-backend")
+    await user.click(screen.getByRole("button", { name: "Reindex" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByLabelText("enrich_symbols"))
+    await user.click(within(dialog).getByRole("button", { name: "Run reindex" }))
+
+    const reindexCall = vi
+      .mocked(apiFetch)
+      .mock.calls.find(([path]) => path === "/repos/r1/reindex")
+    expect(reindexCall).toBeTruthy()
+    const [, init] = reindexCall!
+    expect(init?.method).toBe("POST")
+    expect(JSON.parse(String(init?.body))).toEqual({
+      full: true,
+      enrich_symbols: true,
+      generate_wiki: false,
+    })
+  })
+
+  it("issues a POST /repos with the create form's fields on Add repository", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/repos") return Promise.resolve([])
+      return Promise.resolve({ id: "new-repo" })
+    })
+
+    const user = userEvent.setup()
+    render(<RealRepositoriesView />, { wrapper })
+
+    await screen.findByText("No repositories yet.")
+    await user.click(screen.getByRole("button", { name: /Add repository/ }))
+
+    const dialog = await screen.findByRole("dialog")
+    const nameField = within(dialog).getAllByRole("textbox")[0]!
+    await user.type(nameField, "new-service")
+    await user.click(within(dialog).getByRole("button", { name: "Add Repository" }))
+
+    const createCall = vi
+      .mocked(apiFetch)
+      .mock.calls.find(([path]) => path === "/repos")
+    expect(createCall).toBeTruthy()
+    const bodies = vi
+      .mocked(apiFetch)
+      .mock.calls.filter(([path]) => path === "/repos")
+      .map(([, init]) => init)
+    const postCall = bodies.find((init) => init?.method === "POST")
+    expect(postCall).toBeTruthy()
+    expect(JSON.parse(String(postCall?.body))).toMatchObject({
+      name: "new-service",
+    })
   })
 })
