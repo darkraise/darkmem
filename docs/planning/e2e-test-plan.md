@@ -36,12 +36,16 @@ passes.
 Frontend e2e runs against **demo mode** by default (the `DEMO` flag and `src/demo/`
 fixtures) and against a live stack only for the flows marked *live* below.
 
-**Two things must be true before a live-stack browser run works, and neither is true
-today.** `playwright.config.ts`'s `webServer` starts only vite, so a live run needs the
-backend started alongside it; and `DEMO` currently defaults *on*, so a spec asserting
-"reads live backend state" would pass against fixtures. T1.58 flips the default and
-T1.64 documents the live-run invocation (`VITE_DEMO=0` plus a running backend). Until
-then, treat any live-mode assertion as unproven.
+**Two things must be true before a live-stack browser run works — both true now.**
+`playwright.config.ts`'s `webServer` starts only vite, so a live run needs the backend
+started alongside it; and `DEMO` needs to default off so a spec asserting "reads live
+backend state" cannot pass against fixtures instead. T1.58 flipped the default; T1.64
+documents the live-run invocation and gives it a second path that needs no persistent,
+pre-initialized deployment — `backend/scripts/e2e/stack.py --keep-running` boots a
+disposable, migrated, seeded backend on `:8000` and writes `.env-e2e`
+(`E2E_DISPOSABLE_STACK=1` plus the base URL and password) for `VITE_DEMO=0 npx playwright
+test` to source. See `backend/scripts/e2e/README.md` for the full recipe, and
+`scripts/gate.sh --full`'s own "playwright e2e" step for the automated version of it.
 
 **The API e2e suite does not exist yet.** T1.64 builds it with a stated entry point and
 database posture, and records what happens to `docs/e2e/scripts/` — which run against a
@@ -84,6 +88,13 @@ One row per business flow (F1–F11). "Ring" is where the coverage lives.
 | **F9 Observe** | Every phase's surface renders its signal — this is the F9 callout per epic, covered by that epic's UI tasks | Browser | Demo | Per epic |
 | **F10 Inject** | The managed block is rewritten between markers, user text outside survives, and the inject journals | API e2e | Seeded live | T3.12 |
 | **F11 Index code** | An index run produces a graph; a forced failure leaves the last-good graph labelled stale rather than wiping it | API e2e | Seeded live | T1.38 |
+
+**F1 disposition (T1.64):** satisfied in full — `backend/scripts/e2e/tests/test_f1_capture.py`
+covers both doors (REST and MCP) and asserts `origin_key` by querying the `memories` row
+directly, since neither door's response schema echoes the column. Not "proof of life" with
+an orphaned remainder: T1.13 (the owning feature) had already shipped, so T1.64 was the one
+flow this task could honestly write without waiting on a task it doesn't depend on — see
+`backend/scripts/e2e/README.md` for the suite's own description of the four tests.
 
 ---
 

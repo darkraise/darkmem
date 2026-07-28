@@ -1,5 +1,17 @@
 # darkmem End-to-End Test Plan
 
+**`scripts/` is superseded by `backend/scripts/e2e/` for automated runs (T1.64).** That
+suite has one documented entry point (`python scripts/e2e/run_e2e.py`), boots its own
+disposable database and server, and is what `scripts/gate.sh --full` invokes. This
+directory's `scripts/` are retained only as a manual pre-cutover QA reference — their own
+stated precondition ("Fresh darkmem deployment — server running, no admin password set,
+empty database") describes a one-shot runbook against a real, about-to-launch deployment,
+not a repeatable per-merge harness, and `env.sh`'s hardcoded
+`DARKMEM_BACKEND_DIR=/workspace/darkmem/backend` is stale on this machine. Retired, not
+deleted: they are a readable checklist of what a "fresh deployment" smoke pass once
+covered. `test-plan.md` and `ui-test-plan.md` are untouched by this note — they describe a
+broader manual QA superset this disposition does not cover.
+
 This directory contains the comprehensive E2E test plan and reusable scripts for verifying a fresh darkmem deployment. Run against a clean instance to validate all flows, features, APIs, UI pages, components, and catch design/UX/performance issues.
 
 ## Structure
