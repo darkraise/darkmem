@@ -259,6 +259,55 @@ async def test_stale_on_arrival_closes_the_older_row_before_inserting(session):
     assert older_row["triple_key"] == newer_row["triple_key"]
 
 
+# ── Verification-status writer ──────────────────────────────────────
+
+
+async def test_set_verification_status_refuses_confirmed(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    with pytest.raises(ValueError, match="T2.05"):
+        await repo.set_verification_status(row["id"], "confirmed")
+
+    assert (await _read(session, row["id"]))["verification_status"] == "candidate"
+
+
+async def test_set_verification_status_refuses_unknown_value(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    with pytest.raises(ValueError):
+        await repo.set_verification_status(row["id"], "bogus")
+
+    assert (await _read(session, row["id"]))["verification_status"] == "candidate"
+
+
+@pytest.mark.parametrize("status", ["candidate", "corroborated", "disputed"])
+async def test_set_verification_status_round_trips_permitted_values(session, status):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    await repo.set_verification_status(row["id"], status)
+
+    assert (await _read(session, row["id"]))["verification_status"] == status
+
+
+async def test_set_verification_status_leaves_belief_axis_untouched(session):
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    await repo.close_window(row["id"], NOW + timedelta(days=30))
+    await repo.expire(row["id"])
+    before = await _read(session, row["id"])
+
+    await repo.set_verification_status(row["id"], "corroborated")
+
+    after = await _read(session, row["id"])
+    assert after["verification_status"] == "corroborated"
+    assert after["valid_at"] == before["valid_at"]
+    assert after["invalid_at"] == before["invalid_at"]
+    assert after["expired_at"] == before["expired_at"]
+
+
 async def test_a_second_open_row_on_one_key_is_rejected(session):
     """Why the close-then-insert ordering is a contract and not a preference."""
     repo = KnowledgeTripleRepository(session)

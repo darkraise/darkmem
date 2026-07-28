@@ -3,9 +3,10 @@
 A fact runs on two orthogonal axes (doc 08 §3): the **belief** axis
 (``valid_at`` / ``invalid_at`` / ``expired_at``) and the **verification** axis
 (``verification_status``). They are independent — a fact can be expired yet
-confirmed — so no method in this module writes ``verification_status``, and the
-verification writer never touches the three timestamps. Conflating them is the
-modelling error the fact-layer rebuild exists to fix.
+confirmed — so the belief-axis methods below never write ``verification_status``,
+and ``set_verification_status`` never touches the three timestamps. No method in
+this module writes both axes. Conflating them is the modelling error the
+fact-layer rebuild exists to fix.
 
 Invalidation is a re-save on the retained row, never a delete: the retained
 rows are the only thing that can answer "what did we believe as of date X".
@@ -35,6 +36,11 @@ logger = logging.getLogger(__name__)
 # "Live" is exactly this, spelled once. A window-closed row (invalid_at set) is
 # still live history; only belief withdrawal removes a row from the live set.
 LIVE_PREDICATE = "expired_at IS NULL"
+
+# The database CHECK's four values. 'confirmed' is excluded from
+# _MACHINE_WRITABLE_VERIFICATION_STATUSES on purpose: only a human ratifies a
+# fact, via the path T2.05 owns, which does not exist yet.
+_MACHINE_WRITABLE_VERIFICATION_STATUSES = frozenset({"candidate", "corroborated", "disputed"})
 
 _COLUMNS = """
     id, subject_id, object_id, subject_name, object_name, rel_type,
@@ -223,6 +229,33 @@ class KnowledgeTripleRepository:
             params,
         )
         return [_row_to_dict(row) for row in result.mappings().all()]
+
+    async def set_verification_status(self, triple_id: UUID | str, status: str) -> None:
+        """Write the verification axis only. Belief columns are untouched.
+
+        Refuses ``confirmed``: the machine's ceiling is ``corroborated``, and
+        only a human reaches ``confirmed``, via the ratification path T2.05
+        owns. Raising here — before a producer exists — is the point of this
+        method, not a gap to be filled in later.
+        """
+        if status not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
+            if status == "confirmed":
+                raise ValueError(
+                    "set_verification_status cannot write 'confirmed': only a "
+                    "human may ratify a fact, via the path T2.05 owns"
+                )
+            raise ValueError(
+                f"invalid verification_status {status!r}; must be one of "
+                f"{sorted(_MACHINE_WRITABLE_VERIFICATION_STATUSES)}"
+            )
+        await self.session.execute(
+            text(
+                "UPDATE knowledge_triples "
+                "SET verification_status = CAST(:status AS text) "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": str(triple_id), "status": status},
+        )
 
     async def as_of(
         self,
