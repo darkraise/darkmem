@@ -35,6 +35,8 @@ import { DetailLevelToggle } from "@/components/darkmem"
 import {
   AppPageHeader,
   BackToTop,
+  ContextChip,
+  ProjectSwitcher,
   SidebarSearch,
 } from "@/components/app-chrome"
 
@@ -133,6 +135,8 @@ function AuthenticatedLayout() {
       headerSlot={
         <>
           <AppPageHeader />
+          <ProjectSwitcher />
+          <ContextChip />
           <DetailLevelToggle />
         </>
       }
