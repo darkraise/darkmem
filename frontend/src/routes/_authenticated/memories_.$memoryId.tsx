@@ -20,16 +20,29 @@ import {
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
+import { DEMO } from "@/demo/flag"
 import { useDemoMemories } from "@/demo/hooks"
 import { deriveTimeline, distinctProjects } from "@/demo/memories"
 import type { DemoMemory, MemoryTimelineEvent } from "@/demo/types"
 import { VerificationBadge, type VerificationStatus } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
+import { RealMemoryDetailView } from "@/features/memories/components/real-memory-detail-view"
 
+// DEMO is fixed for the process lifetime (import.meta.env, not runtime
+// state), so branching at the component level never violates the rules of
+// hooks — mirrors the /memories list route's DEMO ? demo : real split
+// (real-memories-view.tsx). The demo page keeps its own store-backed
+// lineage rendering untouched; RealMemoryDetailView is the real-backend
+// rebuild this task owns.
 export const Route = createFileRoute("/_authenticated/memories_/$memoryId")({
-  component: MemoryDetailPage,
+  component: () => (DEMO ? <MemoryDetailPage /> : <RealMemoryDetailRoute />),
 })
+
+function RealMemoryDetailRoute() {
+  const { memoryId } = Route.useParams()
+  return <RealMemoryDetailView memoryId={memoryId} />
+}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
