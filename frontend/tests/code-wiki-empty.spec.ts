@@ -24,7 +24,13 @@ test.describe("code wiki — empty state", () => {
           "missing credential.",
       )
     }
-    seedAdminPassword()
+    // See auth.spec.ts's header for why a disposable stack (T1.64 plan §2.2)
+    // must never reach seedAdminPassword()'s hardcoded darkmem target. This
+    // file was not in T1.64's original file list — found during execution,
+    // the same B1 defect class, fixed the same way.
+    if (!process.env.E2E_DISPOSABLE_STACK) {
+      seedAdminPassword()
+    }
   })
 
   test("/code/wiki shows the honest empty state, never implicitly generating", async ({

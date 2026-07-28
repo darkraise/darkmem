@@ -40,6 +40,23 @@ export default defineConfig({
   use: {
     trace: "on-first-retry",
   },
+  // T1.64: against a disposable stack, every "chromium"-project spec that
+  // authenticates (auth.spec.ts, code-real-mode.spec.ts, code-wiki-empty.spec.ts,
+  // setup-wizard-refresh.spec.ts) shares the one live, stateful backend
+  // stack.py boots — concurrent workers race its session/rate-limiter/job-lock
+  // state (measured live this task: login/logout and setup-redirect
+  // assertions flake under the default parallel worker count against a real
+  // backend, never having had one to race against in gate.sh --full before,
+  // since every real-mode spec soft-skipped until this task). Demo-fixture
+  // specs need no such serialization — they never share mutable server state.
+  workers: process.env.E2E_DISPOSABLE_STACK ? 1 : undefined,
+  // One retry against a disposable stack only: even serialized, a handful of
+  // real-mode specs sharing one live backend/vite-proxy pair occasionally hit
+  // a transient WS-proxy reset under this sandboxed environment's load — a
+  // real, deterministic failure (a broken guard, a wrong assertion) still
+  // fails after one retry, but a one-off proxy hiccup does not fail the gate
+  // on a rerun that would have passed.
+  retries: process.env.E2E_DISPOSABLE_STACK ? 1 : 0,
   projects: [
     {
       name: "chromium",

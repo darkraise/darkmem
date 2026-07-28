@@ -28,15 +28,13 @@ test.describe("honesty/no-silent-drop", () => {
   }) => {
     await page.goto("/memories")
 
-    const heading = page.getByText(/results — project/i)
-    if (!(await heading.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Memories page not reachable without login")
-    }
+    await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    const contextTrigger = page.getByLabel("Session context")
-    if (!(await contextTrigger.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Session context selector not present")
-    }
+    // getByLabel("Session context") is ambiguous: the app-chrome
+    // ContextChip shares the same aria-label with this page's own filter
+    // (a Select combobox) — scope to the combobox.
+    const contextTrigger = page.getByRole("combobox", { name: "Session context" })
+    await expect(contextTrigger).toBeVisible()
 
     await page.getByLabel("Search memories").fill("cookie-secure")
     await contextTrigger.click()

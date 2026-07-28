@@ -30,16 +30,16 @@ test.describe("honesty/labels-always-render", () => {
   }) => {
     await page.goto("/memories")
 
-    const heading = page.getByText(/results — project/i)
-    if (!(await heading.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Memories page not reachable without login")
-    }
+    await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    const scopeTrigger = page.getByLabel("Project scope")
+    // getByLabel("Project scope") is ambiguous: the app-chrome
+    // ProjectSwitcher (a popover trigger) shares the same aria-label with
+    // this page's own filter (a Select combobox) — scope to the combobox.
+    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
     await scopeTrigger.click()
     await page.getByRole("option", { name: "darkmem" }).click()
 
-    const contextTrigger = page.getByLabel("Session context")
+    const contextTrigger = page.getByRole("combobox", { name: "Session context" })
     await contextTrigger.click()
     await page.getByRole("option", { name: "env=prod" }).click()
 
@@ -59,12 +59,9 @@ test.describe("honesty/labels-always-render", () => {
   }) => {
     await page.goto("/memories")
 
-    const heading = page.getByText(/results — project/i)
-    if (!(await heading.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Memories page not reachable without login")
-    }
+    await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    const scopeTrigger = page.getByLabel("Project scope")
+    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
     await scopeTrigger.click()
     await page.getByRole("option", { name: "darkmem" }).click()
     // "introduced" appears in exactly one curated memory — the superseded
@@ -88,10 +85,7 @@ test.describe("honesty/labels-always-render", () => {
     // position (it renders before the Citations accordion).
     await page.goto("/knowledge/articles/a7d3b0f2")
 
-    const badge = page.getByText("corroborated").first()
-    if (!(await badge.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Article detail page not reachable without login")
-    }
+    await expect(page.getByText("corroborated").first()).toBeVisible()
 
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)
@@ -113,10 +107,7 @@ test.describe("honesty/labels-always-render", () => {
     // before the successor link in the hero).
     await page.goto("/knowledge/articles/af0b3d9a")
 
-    const badge = page.getByText("superseded").first()
-    if (!(await badge.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Article detail page not reachable without login")
-    }
+    await expect(page.getByText("superseded").first()).toBeVisible()
 
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)

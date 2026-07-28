@@ -1,11 +1,18 @@
 import { test, expect } from "@playwright/test"
 import { seedAdminPassword } from "./helpers/seed-admin"
 
-// Runs against the real dev backend, never seedAuth() — that helper exists
+// Runs against a real, live backend, never seedAuth() — that helper exists
 // specifically to bypass this flow for every other spec. Requires
-// E2E_ADMIN_PASSWORD and a live, already-initialized dev stack; the seed
-// step overwrites the shared stack's real admin password on purpose
-// (T1.58 Ruling 4) so this spec can log in with a password it knows.
+// E2E_ADMIN_PASSWORD and a live, already-initialized backend. Against the
+// shared dev stack (the default), the seed step overwrites its real admin
+// password on purpose (T1.58 Ruling 4) so this spec can log in with a
+// password it knows. Against a disposable stack booted by
+// `backend/scripts/e2e/stack.py --keep-running` (T1.64 plan §2.2),
+// E2E_DISPOSABLE_STACK=1 is set and the seed step is skipped: that stack
+// already seeded itself with this exact password through the real
+// POST /api/v1/setup front door at boot, and seedAdminPassword()'s target
+// (T1.58 Ruling 4's `darkmem`) is never this stack's database, so calling it
+// here would write a password to a database this run never reads.
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD
 
 test.describe("auth", () => {
@@ -17,7 +24,9 @@ test.describe("auth", () => {
           "credential.",
       )
     }
-    seedAdminPassword()
+    if (!process.env.E2E_DISPOSABLE_STACK) {
+      seedAdminPassword()
+    }
   })
 
   test("a fresh, unauthenticated session lands on /login, not /", async ({

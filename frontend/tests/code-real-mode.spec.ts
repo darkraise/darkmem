@@ -49,7 +49,11 @@ test.describe("code section — real mode", () => {
           "missing credential.",
       )
     }
-    seedAdminPassword()
+    // See auth.spec.ts's header for why a disposable stack (T1.64 plan §2.2)
+    // must never reach seedAdminPassword()'s hardcoded darkmem target.
+    if (!process.env.E2E_DISPOSABLE_STACK) {
+      seedAdminPassword()
+    }
   })
 
   test("/code/repositories renders RealRepositoriesView, not the demo fixture", async ({

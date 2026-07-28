@@ -30,15 +30,13 @@ test.describe("honesty/exclusions-on-empty", () => {
   }) => {
     await page.goto("/memories")
 
-    const heading = page.getByText(/results — project/i)
-    if (!(await heading.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Memories page not reachable without login")
-    }
+    await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    const scopeTrigger = page.getByLabel("Project scope")
-    if (!(await scopeTrigger.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Project scope selector not present")
-    }
+    // getByLabel("Project scope") is ambiguous: the app-chrome
+    // ProjectSwitcher (a popover trigger) shares the same aria-label with
+    // this page's own filter (a Select combobox) — scope to the combobox.
+    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
+    await expect(scopeTrigger).toBeVisible()
 
     await page.getByLabel("Search memories").fill("cookie-secure")
     await scopeTrigger.click()

@@ -16,10 +16,7 @@ test.describe("code repositories — stale banner and index-debt indicator", () 
   test("stale banner names the last-good sha and the cause", async ({ page }) => {
     await page.goto("/code/repositories")
 
-    const heading = page.getByRole("heading", { name: "Repositories" })
-    if (!(await heading.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Code Repositories page not reachable without login")
-    }
+    await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible()
 
     await expect(
       page.getByText(
@@ -35,10 +32,7 @@ test.describe("code repositories — stale banner and index-debt indicator", () 
   }) => {
     await page.goto("/code/repositories")
 
-    const heading = page.getByRole("heading", { name: "Repositories" })
-    if (!(await heading.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, "Code Repositories page not reachable without login")
-    }
+    await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible()
 
     await expect(page.getByText(/168.*dependent files queued/)).toBeVisible()
     await expect(page.getByText(/draining via next sync/)).toBeVisible()
