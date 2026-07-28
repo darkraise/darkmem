@@ -14,20 +14,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const HOOKS_API_DIR = join(__dirname, "..", "..", "hooks", "api")
 
 /**
- * Every leading string literal that appears in a `queryKey:` array
- * anywhere under src/hooks/api — discovered by scanning the directory,
- * never hand-listed (Ruling 1). A new hook that adds a `queryKey:
- * ["somethingNew", ...]` without registering "somethingNew" in
- * QUERY_KEY_SCOPE makes this list contain a member QUERY_KEY_SCOPE does
- * not have, and the completeness test below fails on it by name.
+ * Every leading string literal that appears in a `queryKey:` array, or as
+ * an "auto" domain's own hook call (`useProjectScopedKey("domain", ...)` /
+ * `projectScopedKey("domain", ...)`), anywhere under src/hooks/api —
+ * discovered by scanning the directory, never hand-listed (Ruling 1). A
+ * new hook that adds a `queryKey: ["somethingNew", ...]` without
+ * registering "somethingNew" in QUERY_KEY_SCOPE makes this list contain a
+ * member QUERY_KEY_SCOPE does not have, and the completeness test below
+ * fails on it by name.
+ *
+ * The second pattern exists because an "auto" domain's own `useQuery` call
+ * site never spells out `queryKey: [` — it assigns the array-literal-free
+ * result of `useProjectScopedKey(...)` instead (T1.60). Without it, an
+ * "auto" domain with no unrelated `invalidateQueries({queryKey: [...]})`
+ * call elsewhere in the same file (the only way `memories` was ever
+ * discovered before this) reads as a stale registry entry even though its
+ * hook is live and called every render.
  */
 function discoverQueryKeyDomains(): string[] {
   const domains = new Set<string>()
   for (const entry of readdirSync(HOOKS_API_DIR)) {
     if (!entry.endsWith(".ts") || entry.endsWith(".test.ts")) continue
     const source = readFileSync(join(HOOKS_API_DIR, entry), "utf-8")
-    const pattern = /queryKey:\s*\[\s*\n?\s*"([a-zA-Z]+)"/g
-    for (const match of source.matchAll(pattern)) {
+    const arrayPattern = /queryKey:\s*\[\s*\n?\s*"([a-zA-Z]+)"/g
+    for (const match of source.matchAll(arrayPattern)) {
+      const domain = match[1]
+      if (domain) domains.add(domain)
+    }
+    const scopedKeyPattern =
+      /(?:useProjectScopedKey|projectScopedKey)\(\s*\n?\s*"([a-zA-Z]+)"/g
+    for (const match of source.matchAll(scopedKeyPattern)) {
       const domain = match[1]
       if (domain) domains.add(domain)
     }

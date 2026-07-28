@@ -430,6 +430,12 @@ class PostgresGraphRepository:
         )
         entity_rows = entity_result.mappings().all()
         entity_ids = [r["id"] for r in entity_rows]
+        # Boundary check on the row count already fetched — no new query, no
+        # new round trip. `entities` here has no project/status scope and no
+        # ORDER BY, so hitting the limit means an arbitrary slice of the
+        # whole table was returned, not necessarily the "right" rows; this
+        # signal lets a caller say so rather than truncate silently (F10).
+        truncated = len(entity_rows) >= limit
 
         entities = [
             {
@@ -443,7 +449,7 @@ class PostgresGraphRepository:
         ]
 
         if not entity_ids:
-            return {"entities": [], "relations": []}
+            return {"entities": [], "relations": [], "truncated": truncated}
 
         rel_result = await self.session.execute(
             text("""
@@ -464,7 +470,7 @@ class PostgresGraphRepository:
             for r in rel_rows
         ]
 
-        return {"entities": entities, "relations": relations}
+        return {"entities": entities, "relations": relations, "truncated": truncated}
 
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)

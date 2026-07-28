@@ -256,6 +256,7 @@ class ChatService:
             payload = m.get("payload", {})
             formatted_memories.append({
                 "index": i,
+                "id": str(m["memory_id"]),
                 "content": payload.get("content", ""),
                 "source": payload.get("source", ""),
                 "tags": payload.get("tags", []),

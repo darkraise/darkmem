@@ -2,21 +2,27 @@ import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { MessageSquare } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
+import { DEMO } from "@/demo/flag"
 import { useDemoChatThreads } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import { DemoThreadList } from "@/features/chat/components/demo-thread-list"
 import { DemoMessagePane } from "@/features/chat/components/demo-message-pane"
 import { DemoContextPanel } from "@/features/chat/components/demo-context-panel"
+import { RealChatPage } from "@/features/chat/components/real-chat-page"
 
 export const Route = createFileRoute("/_authenticated/chat")({
+  // The ?id= search param must keep working identically in both branches,
+  // matching ChatOverlay's "Open in dedicated page" navigation.
   validateSearch: (search: Record<string, unknown>) => ({
     id: typeof search.id === "string" ? search.id : undefined,
   }),
-  component: ChatPage,
+  component: () => {
+    const { id } = Route.useSearch()
+    return DEMO ? <DemoChatPage initialId={id} /> : <RealChatPage initialId={id} />
+  },
 })
 
-function ChatPage() {
-  const { id: initialId } = Route.useSearch()
+function DemoChatPage({ initialId }: { initialId?: string }) {
   const threads = useDemoChatThreads()
   const sendChatMessage = useDemoStore((s) => s.sendChatMessage)
   const [activeId, setActiveId] = useState<string | null>(initialId ?? null)

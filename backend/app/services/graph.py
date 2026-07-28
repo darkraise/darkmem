@@ -96,9 +96,12 @@ class GraphService:
         }
 
         if include_entities:
-            entities, entity_relations = await self._fetch_entity_overlay(memory_nodes)
+            entities, entity_relations, entities_truncated = await self._fetch_entity_overlay(
+                memory_nodes
+            )
             result["entities"] = entities
             result["entity_relations"] = entity_relations
+            result["entities_truncated"] = entities_truncated
 
         return result
 
@@ -214,9 +217,9 @@ class GraphService:
 
     async def _fetch_entity_overlay(
         self, memory_nodes: list[dict]
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict], list[dict], bool]:
         if not self.graph_repo:
-            return [], []
+            return [], [], False
 
         try:
             memory_id_set = {m["id"] for m in memory_nodes}
@@ -230,10 +233,10 @@ class GraphService:
                 r for r in full_graph["relations"]
                 if r.get("source") in entity_id_set and r.get("target") in entity_id_set
             ]
-            return entities, relations
+            return entities, relations, bool(full_graph.get("truncated", False))
         except Exception:
             logger.exception("Failed to fetch entity data")
-            return [], []
+            return [], [], False
 
     async def _project_scope(self, memory_id: str) -> MemoryFilter | None:
         try:

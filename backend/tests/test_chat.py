@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 import pytest_asyncio
 from app.models.chat import Conversation, Message
@@ -93,3 +95,55 @@ class TestChatServiceCRUD:
         import uuid
         deleted = await chat_service.delete_conversation(uuid.uuid4())
         assert deleted is False
+
+
+class TestChatServiceRetrieveSourcesId:
+    """T1.60 Step 5: the live SSE `sources` event's formatted_memories dicts
+    (`_retrieve`) previously had no `id` key at all — only the persisted
+    snapshot (`send_message`'s assistant_msg.context) did, breaking
+    citation links during a live stream specifically."""
+
+    @pytest_asyncio.fixture
+    async def chat_service(self, session):
+        from unittest.mock import AsyncMock
+        llm = AsyncMock()
+        llm.embed = AsyncMock(return_value=([0.0], "fp"))
+        vector_repo = AsyncMock()
+        return ChatService(session, llm, vector_repo=vector_repo)
+
+    @pytest.mark.asyncio
+    async def test_retrieve_includes_the_memory_id_on_every_formatted_row(
+        self, chat_service
+    ):
+        seeded_id = uuid.uuid4()
+        chat_service.vector_repo.search.return_value = [
+            {
+                "memory_id": seeded_id,
+                "score": 0.9,
+                "payload": {"content": "x", "source": "api", "tags": []},
+                "project": "default",
+                "status": "active",
+            }
+        ]
+
+        result = await chat_service._retrieve("question")
+
+        assert result["memories"][0]["id"] == str(seeded_id)
+
+    @pytest.mark.asyncio
+    async def test_retrieve_fails_loud_when_memory_id_is_absent(self, chat_service):
+        # A row missing memory_id should be structurally impossible from
+        # PostgresVectorRepository.search() — direct indexing (not
+        # `.get(..., "")`) makes that assumption fail loud instead of
+        # degrading into a dead, unclickable citation.
+        chat_service.vector_repo.search.return_value = [
+            {
+                "score": 0.9,
+                "payload": {"content": "x", "source": "api", "tags": []},
+                "project": "default",
+                "status": "active",
+            }
+        ]
+
+        with pytest.raises(KeyError):
+            await chat_service._retrieve("question")
