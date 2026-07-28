@@ -11,13 +11,26 @@ export const CANVAS_W = 640
 export const CANVAS_H = 400
 
 // The same accent-anchored tiering code-graph-theme.ts uses: structural,
-// types, callables, entrypoints, data — all from the --chart ramp.
+// types, callables, entrypoints, data — all from the --chart ramp. Kinds
+// beyond the original demo five (widened for the real backend's vocabulary,
+// T1.59) slot into the nearest existing tier rather than adding new colours
+// the bottom-of-canvas legend does not explain.
 const KIND_CHART: Record<CodeNodeKind, number> = {
   file: 1,
   module: 1,
   class: 2,
+  struct: 2,
+  interface: 2,
+  trait: 2,
+  enum: 2,
+  namespace: 2,
+  impl: 2,
+  type: 2,
+  property: 2,
   method: 3,
   function: 3,
+  route: 3,
+  tool: 3,
 }
 
 export const chartVar = (n: number) => `var(--chart-${n})`

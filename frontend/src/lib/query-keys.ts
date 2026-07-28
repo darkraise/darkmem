@@ -96,6 +96,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   repos: { kind: "global" },
   repoTasks: { kind: "global" },
   codeGraph: { kind: "global" },
+  codeFiles: { kind: "global" },
   codeSymbols: { kind: "global" },
   codeSymbol: { kind: "global" },
   fs: { kind: "global" },

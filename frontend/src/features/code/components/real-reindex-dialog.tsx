@@ -11,23 +11,30 @@ import {
 import { CheckboxField } from "darkraise-ui/forms"
 import { Button } from "darkraise-ui/components/button"
 import { reindexSchema, type ReindexInput } from "../schemas"
+import type { Repo } from "@/hooks/api"
 
-export function ReindexDialog({
+// POST /repos/{id}/reindex accepts exactly {full, enrich_symbols,
+// generate_wiki}, all default false — ported from
+// features/repos/components/reindex-dialog.tsx's validated shape (T1.59).
+export function RealReindexDialog({
+  repo,
   open,
   onOpenChange,
   onConfirm,
+  emphasizeWiki = false,
 }: {
+  repo: Repo | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: (v: ReindexInput) => Promise<void>
+  /** Opened from the Wiki empty state: pre-enable generate_wiki. */
+  emphasizeWiki?: boolean
 }) {
   const form = useForm({
-    // Open actionable: a full reindex is always valid, so the primary button
-    // isn't disabled on open. The user can uncheck it and pick other actions.
     defaultValues: {
-      full: true,
+      full: !emphasizeWiki,
       enrich_symbols: false,
-      generate_wiki: false,
+      generate_wiki: emphasizeWiki,
     },
     onSubmit: async ({ value }) => {
       const parsed = reindexSchema.safeParse(value)
@@ -37,9 +44,6 @@ export function ReindexDialog({
     },
   })
 
-  // The dialog stays mounted at its parent, so react-form keeps the last
-  // selections across reopens. Reset to defaults once it closes so a reopen
-  // starts fresh.
   useEffect(() => {
     if (!open) form.reset()
   }, [open, form])
@@ -50,11 +54,18 @@ export function ReindexDialog({
       ? "Pick at least one reindex action"
       : undefined
 
+  if (!repo) return null
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reindex</DialogTitle>
+          <DialogTitle>Reindex — {repo.name}</DialogTitle>
+          <p className="text-muted-foreground font-mono text-sm">
+            {repo.last_indexed_commit
+              ? `last indexed HEAD ${repo.last_indexed_commit}`
+              : "never indexed"}
+          </p>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -67,8 +78,8 @@ export function ReindexDialog({
             {(field) => (
               <CheckboxField
                 name={field.name}
-                label="Full reindex"
-                description="Rebuild the entire index from scratch — re-parses and re-embeds every file. Pulls the latest commit first."
+                label="full"
+                description="Rebuild the entire repo graph from scratch, ignoring last_indexed_commit. Off runs the incremental diff (changed files only since the last indexed HEAD)."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
@@ -80,8 +91,8 @@ export function ReindexDialog({
             {(field) => (
               <CheckboxField
                 name={field.name}
-                label="Enrich symbols"
-                description="Run LLM summarisation on code symbols."
+                label="enrich_symbols"
+                description="Drain the pending-symbol LLM-summary backlog inline during this run, bounded and scoped to this repo. Off leaves symbols draining lazily via the code_enrichment background job."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
@@ -93,8 +104,8 @@ export function ReindexDialog({
             {(field) => (
               <CheckboxField
                 name={field.name}
-                label="Generate wiki"
-                description="Produce a wiki from indexed files."
+                label="generate_wiki"
+                description="Generate the LLM wiki over the graph after this run completes. GET /code/wiki is read-only and never triggers generation on its own — this toggle is the only way a wiki gets built."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
@@ -104,7 +115,7 @@ export function ReindexDialog({
 
           {wholeFormError && (
             <p
-              id="reindex-form-error"
+              id="real-reindex-form-error"
               role="alert"
               className="text-destructive text-sm"
             >
@@ -117,10 +128,10 @@ export function ReindexDialog({
               type="submit"
               disabled={!!wholeFormError}
               aria-describedby={
-                wholeFormError ? "reindex-form-error" : undefined
+                wholeFormError ? "real-reindex-form-error" : undefined
               }
             >
-              Reindex
+              Run reindex
             </Button>
           </DialogFooter>
         </form>

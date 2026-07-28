@@ -1,10 +1,43 @@
-import { Clock, FolderGit2, Layers } from "lucide-react"
+import { useState } from "react"
+import { useForm } from "@tanstack/react-form"
+import { Clock, FolderGit2, Layers, RefreshCw, X } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
+import { Button } from "darkraise-ui/components/button"
+import { TextField, SwitchField } from "darkraise-ui/forms"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "darkraise-ui/components/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
+import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
 import { ListSurface } from "@/features/knowledge/components/list-surface"
-import { useRepos } from "@/hooks/api"
-import type { Repo } from "@/hooks/api"
+import {
+  useRepos,
+  useUpdateRepo,
+  useDeleteRepo,
+  useReindexRepo,
+  useRepoTasks,
+  useCancelTask,
+} from "@/hooks/api"
+import type { Repo, RepoTask, RepoUpdateParams } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
+import { editRepoSchema, type EditRepoInput, type ReindexInput } from "../schemas"
+import { AddRepoDialog } from "./add-repo-dialog"
+import { RealReindexDialog } from "./real-reindex-dialog"
 
 const STALE_CAUSE_MARKER = "Cause: "
 
@@ -80,7 +113,208 @@ function IndexDebtIndicator({ repo }: { repo: Repo }) {
   )
 }
 
-function RepoRow({ repo }: { repo: Repo }) {
+// The live phase label: the backend broadcasts only the current tick's
+// label (repo.indexing_progress over the websocket), not a forward-looking
+// ticker — this renders what status_message actually carries while
+// indexing, honestly, rather than fabricating a multi-step bar. A full
+// done/current/pending ticker is buildable from code_pipeline.py's fixed
+// 14-phase sequence (phases 2-12 always fire in the same numbered order;
+// 13/14 are opt-in) but this step ships the simpler single-label rendering.
+function LivePhaseLabel({ repo }: { repo: Repo }) {
+  if (repo.status !== "indexing") return null
+  return (
+    <p className="text-info flex items-center gap-1.5 text-sm">
+      <RefreshCw aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
+      indexing — {repo.status_message ?? "starting…"}
+    </p>
+  )
+}
+
+// The real auto-provision signal: repo_provision.py's handoff_capture_hint
+// upserts status="queued" with a fixed status_message when a captured
+// memory's repo_hint clears the SSRF allowlist gate. created_at is an
+// explicitly-labelled proxy for "when" — the REST Repo shape carries no
+// dedicated auto-provision timestamp.
+function AutoProvisionLabel({ repo }: { repo: Repo }) {
+  if (repo.status !== "queued") return null
+  return (
+    <p className="text-muted-foreground text-sm">
+      auto-provisioned — queued {relativeTime(repo.created_at)}
+      {repo.status_message ? ` (${repo.status_message})` : ""}
+    </p>
+  )
+}
+
+function RepoTaskList({ repo }: { repo: Repo }) {
+  const { data: tasks } = useRepoTasks(
+    repo.status === "cloning" || repo.status === "indexing" ? repo.id : null,
+  )
+  const cancelTask = useCancelTask()
+
+  if (!tasks || tasks.length === 0) return null
+
+  return (
+    <div className="space-y-1">
+      {tasks.map((task: RepoTask) => (
+        <div
+          key={task.id}
+          className="text-muted-foreground bg-muted/30 flex items-center gap-2 rounded px-2 py-1 text-sm"
+        >
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-500" />
+          <Badge variant="outline" className="px-1 py-0 text-sm">
+            {task.kind}
+          </Badge>
+          <span className="flex-1 truncate">{task.message}</span>
+          <span className="shrink-0">{relativeTime(task.created_at)}</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-destructive h-7 w-7 shrink-0"
+            aria-label={`Cancel ${task.kind} task`}
+            onClick={() =>
+              cancelTask.mutate(
+                { repoId: repo.id, taskId: task.id },
+                {
+                  onSuccess: () => toast.success(`Task ${task.kind} cancelled`),
+                  onError: () => toast.error("Failed to cancel task"),
+                },
+              )
+            }
+          >
+            <X className="h-3 w-3" aria-hidden="true" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EditRepoDialog({
+  repo,
+  open,
+  onOpenChange,
+}: {
+  repo: Repo | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const updateRepo = useUpdateRepo()
+  const form = useForm({
+    defaultValues: {
+      name: repo?.name ?? "",
+      path: repo?.local_path ?? "",
+      branch: repo?.default_branch ?? "main",
+      auto_sync: repo?.auto_sync ?? true,
+    },
+    onSubmit: async ({ value }) => {
+      if (!repo) return
+      const parsed = editRepoSchema.safeParse(value)
+      if (!parsed.success) return
+      const v: EditRepoInput = parsed.data
+      const data: RepoUpdateParams = {}
+      if (v.name !== repo.name) data.name = v.name
+      if (v.branch !== repo.default_branch) data.default_branch = v.branch
+      if (v.auto_sync !== repo.auto_sync) data.auto_sync = v.auto_sync
+      if (Object.keys(data).length === 0) {
+        toast.info("No changes to save")
+        onOpenChange(false)
+        return
+      }
+      await updateRepo.mutateAsync(
+        { id: repo.id, data },
+        {
+          onSuccess: () => toast.success("Repository updated"),
+          onError: (err) => toast.error(`Failed to update: ${err.message}`),
+        },
+      )
+      onOpenChange(false)
+    },
+  })
+
+  if (!repo) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit repository</DialogTitle>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+          className="space-y-3"
+        >
+          <form.Field name="name">
+            {(field) => (
+              <TextField
+                name={field.name}
+                label="Name"
+                value={field.state.value}
+                onChange={(v) => field.handleChange(v)}
+                onBlur={field.handleBlur}
+              />
+            )}
+          </form.Field>
+          <form.Field name="path">
+            {(field) => (
+              <TextField
+                name={field.name}
+                label="Path"
+                value={field.state.value}
+                onChange={(v) => field.handleChange(v)}
+                onBlur={field.handleBlur}
+              />
+            )}
+          </form.Field>
+          <form.Field name="branch">
+            {(field) => (
+              <TextField
+                name={field.name}
+                label="Branch"
+                value={field.state.value}
+                onChange={(v) => field.handleChange(v)}
+                onBlur={field.handleBlur}
+              />
+            )}
+          </form.Field>
+          <form.Field name="auto_sync">
+            {(field) => (
+              <SwitchField
+                name={field.name}
+                label="Auto-sync"
+                value={field.state.value}
+                onChange={(v) => field.handleChange(v)}
+                onBlur={field.handleBlur}
+              />
+            )}
+          </form.Field>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button type="submit">Save</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RepoRow({
+  repo,
+  onReindex,
+  onEdit,
+  onDelete,
+}: {
+  repo: Repo
+  onReindex: (repo: Repo) => void
+  onEdit: (repo: Repo) => void
+  onDelete: (repo: Repo) => void
+}) {
   return (
     <div
       className={cn(
@@ -114,6 +348,34 @@ function RepoRow({ repo }: { repo: Repo }) {
               ? `HEAD ${repo.last_indexed_commit}`
               : "no HEAD yet"}
         </span>
+        <div className="flex shrink-0 gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2"
+            disabled={repo.status === "cloning" || repo.status === "indexing"}
+            onClick={() => onReindex(repo)}
+          >
+            <RefreshCw aria-hidden className="mr-1 h-3.5 w-3.5" />
+            Reindex
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2"
+            onClick={() => onEdit(repo)}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive h-7 px-2"
+            onClick={() => onDelete(repo)}
+          >
+            Delete
+          </Button>
+        </div>
       </div>
 
       {repo.last_indexed_at && (
@@ -123,6 +385,9 @@ function RepoRow({ repo }: { repo: Repo }) {
         </p>
       )}
 
+      <LivePhaseLabel repo={repo} />
+      <AutoProvisionLabel repo={repo} />
+      <RepoTaskList repo={repo} />
       <IndexDebtIndicator repo={repo} />
       <StaleBanner repo={repo} />
     </div>
@@ -130,11 +395,20 @@ function RepoRow({ repo }: { repo: Repo }) {
 }
 
 // The real-backend counterpart of the demo Code section's RepositoriesTab
-// (component-level DEMO ? demo : real split, per RealMemoriesView). This
-// task binds only the two new signals — stale banner and index-debt — not
-// the reindex dialog or live phase ticker, which is T1.59's.
+// (component-level DEMO ? demo : real split, per RealMemoriesView). T1.46
+// bound the two truth signals (stale banner, index-debt); T1.59 adds the
+// reindex dialog, live phase label, create/edit/delete, auto-provision
+// state, and the task list — the full doc-13 §4.2 Repositories surface.
 export function RealRepositoriesView() {
   const { data: repos, isLoading } = useRepos()
+  const deleteRepo = useDeleteRepo()
+  const reindexRepo = useReindexRepo()
+
+  const [reindexingRepo, setReindexingRepo] = useState<Repo | null>(null)
+  const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
+  const [confirmDeleteRepo, setConfirmDeleteRepo] = useState<Repo | null>(
+    null,
+  )
 
   return (
     <ListSurface
@@ -142,17 +416,83 @@ export function RealRepositoriesView() {
       populated={(repos?.length ?? 0) > 0}
       meta={isLoading ? undefined : `${repos?.length ?? 0} tracked`}
     >
+      <div className="flex justify-end">
+        <AddRepoDialog />
+      </div>
+
       {isLoading ? (
         <p className="text-muted-foreground p-3 text-sm">
           Loading repositories…
         </p>
       ) : repos && repos.length > 0 ? (
-        repos.map((repo) => <RepoRow key={repo.id} repo={repo} />)
+        repos.map((repo) => (
+          <RepoRow
+            key={repo.id}
+            repo={repo}
+            onReindex={setReindexingRepo}
+            onEdit={setEditingRepo}
+            onDelete={setConfirmDeleteRepo}
+          />
+        ))
       ) : (
         <p className="text-muted-foreground p-3 text-sm">
           No repositories yet.
         </p>
       )}
+
+      <RealReindexDialog
+        repo={reindexingRepo}
+        open={!!reindexingRepo}
+        onOpenChange={(o) => !o && setReindexingRepo(null)}
+        onConfirm={async (v: ReindexInput) => {
+          if (!reindexingRepo) return
+          await reindexRepo.mutateAsync(
+            { id: reindexingRepo.id, options: v },
+            {
+              onSuccess: () => toast.success("Reindex triggered"),
+              onError: () => toast.error("Reindex failed"),
+            },
+          )
+        }}
+      />
+
+      <EditRepoDialog
+        repo={editingRepo}
+        open={!!editingRepo}
+        onOpenChange={(o) => !o && setEditingRepo(null)}
+      />
+
+      <AlertDialog
+        open={!!confirmDeleteRepo}
+        onOpenChange={(o) => !o && setConfirmDeleteRepo(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete &ldquo;{confirmDeleteRepo?.name}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the repository and all its indexed data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteRepo) {
+                  deleteRepo.mutate(confirmDeleteRepo.id, {
+                    onSuccess: () => toast.success("Repository deleted"),
+                    onError: () => toast.error("Failed to delete repository"),
+                  })
+                }
+                setConfirmDeleteRepo(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ListSurface>
   )
 }

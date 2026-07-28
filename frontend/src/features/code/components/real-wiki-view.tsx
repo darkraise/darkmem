@@ -1,23 +1,26 @@
 import { useState } from "react"
-import { useRepos } from "@/hooks/api"
-import { apiFetch } from "@/lib/api"
+import { useQuery } from "@tanstack/react-query"
+import { BookOpen, FolderGit2 } from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
+import { Badge } from "darkraise-ui/components/badge"
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
-import { Badge } from "darkraise-ui/components/badge"
-import { Button } from "darkraise-ui/components/button"
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "darkraise-ui/components/select"
 import { EmptyState } from "darkraise-ui/components/empty-state"
-import { useQuery } from "@tanstack/react-query"
+import { apiFetch } from "@/lib/api"
+import { useRepos, useReindexRepo } from "@/hooks/api"
+import type { ReindexInput } from "../schemas"
+import { RealReindexDialog } from "./real-reindex-dialog"
 
 interface WikiData {
   repo_name: string
@@ -42,8 +45,10 @@ interface WikiData {
   total_files: number
 }
 
+// Plain GET, no mutation — GET /code/wiki/{repoId} is read-only by the
+// route's own docstring and must never trigger generation on browse.
 function useWiki(repoId: string | null) {
-  return useQuery<WikiData>({
+  return useQuery<WikiData | null>({
     queryKey: ["wiki", repoId],
     queryFn: () => apiFetch(`/code/wiki/${repoId}`),
     enabled: !!repoId,
@@ -51,38 +56,52 @@ function useWiki(repoId: string | null) {
   })
 }
 
-export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
-  const {
-    data: repos,
-    isLoading: reposLoading,
-    isError: reposError,
-  } = useRepos()
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
-  const { data: wiki, isLoading, isError, refetch } = useWiki(selectedRepoId)
+// The real-backend counterpart of the demo Code section's WikiTab. Ported
+// from features/repos/components/code-wiki-panel.tsx's useWiki hook shape
+// (T1.59) — this view issues no mutation of its own; the only way a wiki
+// gets generated is the reindex dialog's own generate_wiki toggle, opened
+// here but never called directly.
+export function RealWikiView({
+  repoId,
+  onRepoChange,
+}: {
+  repoId: string | undefined
+  onRepoChange: (id: string) => void
+}) {
+  const { data: repos, isLoading: reposLoading } = useRepos()
+  const repo = repos?.find((r) => r.id === repoId) ?? repos?.find(() => true)
+  const { data: wiki, isLoading, isError, refetch } = useWiki(repo?.id ?? null)
   const [expandedModule, setExpandedModule] = useState<string | null>(null)
+  const [reindexOpen, setReindexOpen] = useState(false)
+  const reindexRepo = useReindexRepo()
 
-  const repoSelectPlaceholder = reposError
-    ? "Failed to load repos"
-    : reposLoading
-      ? "Loading repos..."
-      : "Select a repo"
+  if (reposLoading) {
+    return <p className="text-muted-foreground p-3 text-sm">Loading repositories…</p>
+  }
+
+  if (!repo) {
+    return (
+      <EmptyState
+        icon={<FolderGit2 aria-hidden className="h-6 w-6" />}
+        title="No repositories indexed yet"
+        description="Add a repository to get started."
+      />
+    )
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <Select
-          value={selectedRepoId || "__none__"}
-          disabled={reposLoading || reposError}
-          onValueChange={(v) => {
-            setSelectedRepoId(v === "__none__" ? null : v)
-            setExpandedModule(null)
-          }}
-        >
-          <SelectTrigger className="h-9 w-full max-w-full sm:w-48">
-            <SelectValue placeholder={repoSelectPlaceholder} />
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Select value={repo.id} onValueChange={onRepoChange}>
+          <SelectTrigger className="w-56" aria-label="Repository">
+            <SelectValue>
+              <span className="flex items-center gap-2">
+                <FolderGit2 aria-hidden className="h-3.5 w-3.5" />
+                {repo.name}
+              </span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">Select a repo</SelectItem>
             {repos?.map((r) => (
               <SelectItem key={r.id} value={r.id}>
                 {r.name}
@@ -90,10 +109,13 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
             ))}
           </SelectContent>
         </Select>
+        <span className="text-muted-foreground text-sm italic">
+          repo-scoped — not the project switcher
+        </span>
       </div>
 
       {isLoading && (
-        <p className="text-muted-foreground">Generating documentation...</p>
+        <p className="text-muted-foreground text-sm">Loading wiki…</p>
       )}
 
       {isError && (
@@ -163,10 +185,7 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
                             {file.path}
                           </span>
                           {file.language && (
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 text-sm"
-                            >
+                            <Badge variant="outline" className="shrink-0 text-sm">
                               {file.language}
                             </Badge>
                           )}
@@ -208,28 +227,32 @@ export function CodeWikiPanel({ onGoToRepos }: { onGoToRepos: () => void }) {
         </>
       )}
 
-      {selectedRepoId && !isLoading && !isError && !wiki && (
+      {!isLoading && !isError && !wiki && (
         <EmptyState
-          title="No code wiki yet"
-          description="Reindex this repository with “Generate wiki” enabled from the Repositories tab to populate this page."
-          action={<Button onClick={onGoToRepos}>Go to Repositories</Button>}
+          icon={<BookOpen aria-hidden className="h-6 w-6" />}
+          title="No wiki generated yet for this repository"
+          description={
+            repo.last_indexed_at === null
+              ? `${repo.name} has never been indexed, so there is no graph for a wiki to describe. Run a reindex with generate_wiki enabled — browsing this page never triggers generation.`
+              : "This repo has been indexed, but generate_wiki has never been enabled on a reindex, so there is no generated documentation to read yet. GET /code/wiki is read-only — it never spends LLM budget just because a page was opened."
+          }
+          action={
+            <Button onClick={() => setReindexOpen(true)}>
+              Open reindex dialog
+            </Button>
+          }
         />
       )}
 
-      {!selectedRepoId &&
-        !isLoading &&
-        (repos && repos.length === 0 ? (
-          <EmptyState
-            title="No repositories indexed yet"
-            description="Add a repository to get started."
-            action={<Button onClick={onGoToRepos}>Add a repo</Button>}
-          />
-        ) : (
-          <EmptyState
-            title="Select a repository"
-            description="Choose a repository from the dropdown to view its generated documentation."
-          />
-        ))}
+      <RealReindexDialog
+        repo={repo}
+        open={reindexOpen}
+        onOpenChange={setReindexOpen}
+        emphasizeWiki
+        onConfirm={async (v: ReindexInput) => {
+          await reindexRepo.mutateAsync({ id: repo.id, options: v })
+        }}
+      />
     </div>
   )
 }
