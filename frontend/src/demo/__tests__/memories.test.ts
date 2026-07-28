@@ -30,7 +30,7 @@ describe("enrichBulkMemories", () => {
     expect(m.layer).toBe(0)
     expect(m.is_archived).toBe(false)
     expect(m.updated_at).toBe(m.created_at)
-    expect(m.llm_classified_type).toBe("fact")
+    expect(m.classified_type).toBe("fact")
   })
 
   it("spreads created_at deterministically across the last ~12 months", () => {

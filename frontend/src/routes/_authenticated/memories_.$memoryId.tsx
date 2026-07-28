@@ -353,18 +353,18 @@ function MemoryDetailPage() {
           <SectionCard title="Enrichment">
             <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
               <MetaRow label="classified_type">
-                {memory.llm_classified_type ?? "— pending"}
+                {memory.classified_type ?? "— pending"}
               </MetaRow>
-              <MetaRow label="summary">{memory.llm_summary ?? "—"}</MetaRow>
+              <MetaRow label="summary">{memory.summary ?? "—"}</MetaRow>
               <MetaRow label="emotions">
-                {memory.llm_emotions?.length
-                  ? memory.llm_emotions.join(", ")
+                {memory.emotions?.length
+                  ? memory.emotions.join(", ")
                   : "—"}
               </MetaRow>
               <MetaRow label="flags">
-                {memory.llm_flags?.length ? (
+                {memory.flags?.length ? (
                   <span className="flex flex-wrap gap-1.5">
-                    {memory.llm_flags.map((flag) => (
+                    {memory.flags.map((flag) => (
                       <Badge
                         key={flag}
                         variant="outline"

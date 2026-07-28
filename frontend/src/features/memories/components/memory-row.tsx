@@ -23,7 +23,7 @@ export interface MemoryRowData {
   id: string
   content: string
   tags: string[]
-  llm_flags?: string[] | null
+  flags?: string[] | null
   source: string
   created_at: string
   layer: KnowledgeLayer
@@ -71,7 +71,7 @@ export function MemoryRow({
         >
           <span className="line-clamp-2">{memory.content}</span>
           <span className="text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5">
-            {memory.llm_flags?.map((flag) => (
+            {memory.flags?.map((flag) => (
               <Badge
                 key={flag}
                 variant="outline"

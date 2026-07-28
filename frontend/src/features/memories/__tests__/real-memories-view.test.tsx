@@ -103,7 +103,7 @@ describe("RealMemoriesView", () => {
           source: "mcp",
           created_at: new Date().toISOString(),
           status: "active",
-          llm_flags: [],
+          flags: [],
           trace: {
             scores: { semantic: 0.81, keyword: 0.34, rrf_score: 0.0271, rerank_score: null },
             rank_fusion_factor: 1.0,
@@ -145,7 +145,7 @@ describe("RealMemoriesView", () => {
           created_at: new Date().toISOString(),
           status: "superseded",
           superseded_by: "m2",
-          llm_flags: [],
+          flags: [],
         },
       ],
       total: 1,

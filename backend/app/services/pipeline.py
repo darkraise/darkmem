@@ -593,10 +593,10 @@ class ProcessingPipeline:
                             "created_at": created_at,
                         }
                         if llm_classification:
-                            payload["llm_classified_type"] = llm_classification.get("hall", "")
-                            payload["llm_summary"] = llm_classification.get("summary", "")
-                            payload["llm_emotions"] = llm_classification.get("emotions", [])
-                            payload["llm_flags"] = llm_classification.get("flags", [])
+                            payload["classified_type"] = llm_classification.get("hall", "")
+                            payload["summary"] = llm_classification.get("summary", "")
+                            payload["emotions"] = llm_classification.get("emotions", [])
+                            payload["flags"] = llm_classification.get("flags", [])
 
                         await vector_repo.upsert(
                             memory_id=memory_id, vector=vector, payload=payload,

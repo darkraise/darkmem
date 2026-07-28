@@ -100,11 +100,13 @@ A memory carries:
 - `classified_type` / `summary` / `emotions` / `flags` —
   classification/enrichment output, populated on every ingest. The `llm_`
   prefix was dropped in the baseline (doc 04 §3.1) because the classifier
-  may be the local model; the **REST and websocket payload keys still read
-  `llm_*`**, which is a deliberate split — the frontend reads them in 61
-  places and retiring them from the wire is T1.42e's. The regex classifier
-  and its `classified_confidence` column are gone; classification runs
-  through the LLM, or the in-process classifier when the classification
+  may be the local model, and T1.42e (2026-07-28) retired the prefix from
+  every wire surface too: REST (`MemoryResponse`, `app/utils/serialization.py`)
+  and the websocket broadcast payload (`app/services/pipeline.py`) now read
+  `classified_type` / `summary` / `emotions` / `flags`, matching the columns
+  exactly, with no compatibility shim and no dual emission. The regex
+  classifier and its `classified_confidence` column are gone; classification
+  runs through the LLM, or the in-process classifier when the classification
   purpose's inline `classifier_kind` is `local`.
 - `origin_key` (Text, nullable) — capture-session identity, the
   corroboration-independence key facts count `DISTINCT` on. No writer yet.

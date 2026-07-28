@@ -114,10 +114,10 @@ export function MemoryEditorDialog({
         updated_at: now,
         expires_at: null,
         is_archived: false,
-        llm_classified_type: null,
-        llm_summary: null,
-        llm_emotions: [],
-        llm_flags: [],
+        classified_type: null,
+        summary: null,
+        emotions: [],
+        flags: [],
         timeline: [
           {
             at: now,

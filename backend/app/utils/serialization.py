@@ -7,10 +7,6 @@ from app.schemas.memory import MemoryResponse
 # attribute on the Memory row.
 _ORM_ATTRS = {
     "metadata": "metadata_",
-    "llm_classified_type": "classified_type",
-    "llm_summary": "summary",
-    "llm_emotions": "emotions",
-    "llm_flags": "flags",
 }
 
 _COMPUTED = {

@@ -79,7 +79,7 @@ export function RealMemoriesView() {
     id: memory.id,
     content: memory.content,
     tags: memory.tags,
-    llm_flags: memory.llm_flags,
+    flags: memory.flags,
     source: memory.source,
     created_at: memory.created_at,
     layer: 0,

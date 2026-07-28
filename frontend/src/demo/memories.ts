@@ -87,10 +87,10 @@ export function enrichBulkMemories(
       updated_at: created_at,
       expires_at: null,
       is_archived: false,
-      llm_classified_type: row.memory_type,
-      llm_summary: null,
-      llm_emotions: [],
-      llm_flags: [],
+      classified_type: row.memory_type,
+      summary: null,
+      emotions: [],
+      flags: [],
       layer: 0,
       status: superseded ? "superseded" : "active",
       superseded_by: predecessorId ?? null,
@@ -272,7 +272,7 @@ export function deriveTimeline(m: DemoMemory): MemoryTimelineEvent[] {
       at: m.created_at,
       kind: "extracted",
       description: "object: this memory",
-      note: `classified_type set to ${m.llm_classified_type ?? m.memory_type ?? "unknown"}`,
+      note: `classified_type set to ${m.classified_type ?? m.memory_type ?? "unknown"}`,
     },
   ]
   if (m.status === "superseded") {

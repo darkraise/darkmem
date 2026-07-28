@@ -109,10 +109,10 @@ class MemoryResponse(BaseModel):
     updated_at: datetime
     expires_at: datetime | None
     is_archived: bool
-    llm_classified_type: str | None = None
-    llm_summary: str | None = None
-    llm_emotions: list[str] | None = None
-    llm_flags: list[str] | None = None
+    classified_type: str | None = None
+    summary: str | None = None
+    emotions: list[str] | None = None
+    flags: list[str] | None = None
     related_memories: list[dict] | None = None
     project: str = "default"
     status: MemoryStatus = "active"

@@ -20,14 +20,14 @@ from app.utils.serialization import memory_to_dict
 
 
 # The MCP wire keys that predate the reconciliation. Additive only: a rename or
-# a removal here breaks shipped MCP clients. The ``llm_*`` keys in particular
-# are a deliberate split from the ``classified_type``/``summary``/``emotions``/
-# ``flags`` columns, retired by T1.42b and by nothing else.
+# a removal here breaks shipped MCP clients. The ``llm_*`` prefix was retired
+# from this set by T1.42e, which renamed both wire doors' keys to match the
+# ``classified_type``/``summary``/``emotions``/``flags`` columns directly.
 _FROZEN_WIRE_KEYS = frozenset({
     "id", "content", "source", "source_agent", "memory_type", "importance",
     "metadata", "tags", "created_at", "updated_at", "expires_at",
-    "is_archived", "llm_classified_type", "llm_summary", "llm_emotions",
-    "llm_flags",
+    "is_archived", "classified_type", "summary", "emotions",
+    "flags",
 })
 
 
