@@ -1,0 +1,1 @@
+{"entities": [{"name": "Elasticsearch", "type": "service", "properties": {}}, {"name": "Meilisearch", "type": "service", "properties": {}}], "relationships": [{"source": "Meilisearch", "target": "Elasticsearch", "type": "REPLACES", "weight": 0.8}], "memory_type": "decision", "importance": 0.7}

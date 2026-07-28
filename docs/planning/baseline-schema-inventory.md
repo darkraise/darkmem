@@ -157,7 +157,7 @@ they are in §8, with their own vocabulary.
 | `conversations` | 04 §7 | — | `carries-over` | Chat surface; carried verbatim at cutover as user data (F-02). |
 | `messages` | 04 §7 | — | `carries-over` | Chat surface (F-02). |
 | `api_keys` | 04 §7, §9 | — | `carries-over` | Exists, unwired. Doc 19 §3 `(activation)`; schema unchanged in the baseline, first reader **T4.01** (F-02, F-04). |
-| `events` | 04 §8.1 | T0.12b | `target-new` | `RANGE(created_at)` monthly; forbid-trigger is T1.06's. |
+| `events` | 04 §8.1 | T0.12b | `target-new` | `RANGE(created_at)` monthly; forbid-triggers landed by T1.06 (three of them — see §4.3). |
 | `memory_relations` | 04 §8.2 | — | `target-new` | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
 | `knowledge_triples` | 04 §8.3 | T0.12b | `target-new` | Exists at HEAD but `target-new` by doc 04 §8.3 — "treated as target-new, NOT as an activation of the dormant demo scaffolding". |
 | `fact_sources` | 04 §8.3 | T0.12b | `target-new` | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
@@ -453,10 +453,15 @@ behaviour change, not a tidy-up.
 | `memories_touch_updated_at` | trigger | `memories` | `BEFORE UPDATE ON memories FOR EACH ROW EXECUTE FUNCTION touch_updated_at()` — replaces SQLAlchemy's client-side `onupdate`, which no raw-SQL writer honours | `target-new` | **F-20 resolution** (§9.2) | T0.12a |
 | `conversations_touch_updated_at` | trigger | `conversations` | As above on `conversations` | `target-new` | **F-20 resolution** (§9.2) | T0.12b (F-02) |
 | `repositories_touch_updated_at` | trigger | `repositories` | As above on `repositories` | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
+| `documents_touch_updated_at` | trigger | `documents` | As above on `documents`. Omitted from this table when F-20 was written (which named three triggers) but authored by `0001_baseline.py`; the rule is per-table, so every table carrying `updated_at` takes one. | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
 | `knowledge_triples` PK | PK | `knowledge_triples` | `id uuid PRIMARY KEY`, application-generated **UUIDv7** — the rebuild keeps a name, not an object (doc 04 §8.3) | `target-new` | 04 §8.3 | T0.12b |
 | `events` composite PK | PK | `events` | `(id, created_at)` — the partition key must sit in the PK; nothing joins events by id, so folding `created_at` in costs nothing | `target-new` | 04 §8.1 | T0.12b |
 | `events` monthly range partitioning | partitioning | `events` | `PARTITION BY RANGE(created_at)`, monthly, from day one — the **only** declaratively partitioned table in the schema | `target-new` | 04 §8.1, §2 | T0.12b |
-| `events` append-only forbid-trigger | trigger | `events` | `BEFORE UPDATE OR DELETE OR TRUNCATE` … `RAISE`; role-agnostic, so it survives dump/restore. A `REVOKE`-based owner/app split is the recorded multi-user upgrade path. | `target-new` | 04 §8.1, §11; 19 §2 | **T1.06** — T0.12b's own text: "`events` is `RANGE(created_at)` partitioned (the trigger is T1.06's)" |
+| `events_forbid_write` | function | — | `plpgsql`; `RAISE EXCEPTION` with `ERRCODE = restrict_violation`, naming `TG_OP`. Role-agnostic, so it survives dump/restore. A `REVOKE`-based owner/app split is the recorded multi-user upgrade path. | `target-new` | 04 §8.1, §11; 19 §2 | T1.06 |
+| `events_forbid_row` | trigger | `events` | `BEFORE UPDATE OR DELETE ON events FOR EACH ROW`. Row triggers on a partitioned parent **do** cascade to every child, present and future. | `target-new` | 04 §8.1, §11 | T1.06 |
+| `events_forbid_truncate` | trigger | `events` | `BEFORE TRUNCATE ON events FOR EACH STATEMENT`. A separate trigger because TRUNCATE fires only statement-level, so one `BEFORE UPDATE OR DELETE OR TRUNCATE` trigger — the form doc 04 §8.1 writes in prose — is not creatable. | `target-new` | 04 §8.1, §11 | T1.06 |
+| `events_<YYYYMM>_forbid_truncate` | trigger | each `events` child | `BEFORE TRUNCATE … FOR EACH STATEMENT` on **every** monthly child. Measured on PG 17: a statement-level TRUNCATE trigger on the parent does **not** cascade, so `TRUNCATE events_202607` bypasses the parent's guard and erases a month of the journal. Attached by `events_ensure_partition`, never by hand. | `target-new` | 04 §8.1, §11 | T1.06 |
+| `events_ensure_partition` | function | — | `plpgsql`; `CREATE TABLE IF NOT EXISTS <child> PARTITION OF events` plus the per-child TRUNCATE guard when absent, returning the child name. The **single** partition-creating path — the baseline, the boot reconciliation and the `pipeline_failure_cleanup` arm all call it, so the guard cannot be forgotten by one of them. | `target-new` | 04 §8.1 | T1.06 |
 | `verification_status` CHECK | CHECK | `knowledge_triples` | `CHECK (verification_status IN ('candidate','corroborated','disputed','confirmed'))` | `target-new` | 04 §8.3, §10 | T0.12b |
 | `fact_sources` dedupe key | UNIQUE | `fact_sources` | `UNIQUE (fact_id, source_kind, source_ref)` | `target-new` | 04 §8.3, §10 | T0.12b |
 | `fact_sources` parent FK | FK | `fact_sources` | `fact_id → knowledge_triples(id) ON DELETE CASCADE` | `target-new` | 04 §8.3 | T0.12b |
@@ -506,7 +511,7 @@ disagreement rather than reconciling it silently here.
 | `repositories.index_debt` | **ADD** `jsonb` | `target-new, inert` | 04 §6 | Persists the T2 re-trace drain: the 500-caller cap currently drops work silently, so outstanding debt is recorded and drained in continuation batches. **Doc 19 §3's disposition table does not carry a row for it and T0.13's object list does not name it** (F-13). First writer in §7. |
 | `llm_purpose_configs.provider_id`, `.profile_id`, `.ml_profile_id` | **DROP** | `dropped` (§8) | 04 §7; 19 §3 | The indirection columns doc 19 §3 calls "every `*_ref`" — none is actually named `*_ref` (F-08). |
 | `llm_purpose_configs.classifier_kind` | **ADD** `text` on the `classification` purpose row | `target-new` | 04 §7 | `llm \| local` — the in-process classifier re-homed inline, replacing the deleted `ml_profiles` reference. When the `[ml]` extra is absent, classification falls back to the LLM-backed classifier. |
-| `llm_purpose_configs.provider` | **unresolved** — kept or dropped | see F-10 | 04 §7 vs A.2 | A.2 shows `provider varchar NOT NULL DEFAULT 'ollama'` at HEAD; doc 04 §7's inline field list does not mention it, and fixes `api_kind` as the sole vendor-quirk home. Not decided here. |
+| `llm_purpose_configs.provider` | **DROPPED** (T1.01, 2026-07-27) | F-10 resolved | 04 §7 vs A.2 | A.2 showed `provider varchar NOT NULL DEFAULT 'ollama'` at HEAD; doc 04 §7's inline field list omits it and fixes `api_kind` as the sole vendor-quirk home. Decided on evidence: the wizard wrote it as a verbatim copy of `api_kind` (`pcfg.provider = body.llm.api_kind`) and no runtime dispatch read it, so a second vendor column could only drift from the one that decides behaviour. **Correction (2026-07-27, post-review):** the original claim "nothing dispatched on it" was overstated — `scripts/ensure_ollama_models.py` filtered on it in both paths. That does not change the decision: because `provider` mirrored `api_kind`, and the wizard writes `api_kind='openai'` for Ollama's OpenAI-compatible endpoint, that filter already missed genuinely Ollama-served purposes. The script now keys on `api_kind` **and** the base URL's port, which fixes a pre-existing blind spot rather than merely restoring one. Dropped end-to-end: column, ORM field, `LLMPurposeConfig`, both wire schemas, and the frontend interface. |
 | `config.value` | server default `'{}'` | see F-09 | 04 §7 vs A.2 | Doc 04 §7 prints `value jsonb NOT NULL DEFAULT '{}'`; A.2 shows no server default. Same class as the `memories` deltas — adjudicated in §9. |
 | `repositories.{id, provider, default_branch, auto_sync, status}` | server defaults | **see §9** | 04 §6 vs A.2 | A.2 shows all five `NOT NULL` with **no server default**, while doc 04 §6 prints `provider 'local'` and `default_branch 'main'`. The plan for this task located the ORM-default class on `memories` alone; it is wider (§9). |
 
@@ -779,8 +784,14 @@ demote-before-delete paths, which currently leave the column stale on a change t
 enumerate the triggers the baseline authors — the FTS trigger and the `events`
 forbid-trigger — and **neither lists a third**. Adopting Reading 1 means those two
 enumerations are now incomplete. **The controller must amend doc 04 §12 and doc 19 §2 to
-name `touch_updated_at` and its three triggers.** No step of T0.11 edits the design corpus;
+name `touch_updated_at` and its triggers.** No step of T0.11 edits the design corpus;
 the decision is recorded here and the doc edit is surfaced in the completion report.
+
+**Discharged 2026-07-27 (T1.23).** Both enumerations now name three trigger kinds. The
+count of `touch_updated_at` triggers is **four**, not the three this section originally
+wrote: `0001_baseline.py` also authors one on `documents`, which the §4.3 table had
+omitted. The rule is per-table — every table carrying `updated_at` takes one — so the
+baseline was right and this inventory was the incomplete side.
 
 The rows themselves are in §4.3.
 

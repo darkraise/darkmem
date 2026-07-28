@@ -3,17 +3,36 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
+from app.services.rank_fusion import RRF_K, RankedList, normalize_row_id, rrf_fuse
+from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
 logger = logging.getLogger(__name__)
 
-RRF_K = 60
+__all__ = ["RRF_K", "ChannelTrace", "HybridSearchService"]
+
+
+@dataclass(frozen=True)
+class ChannelTrace:
+    """The fused rows plus what each channel contributed before fusion.
+
+    Built only by :meth:`HybridSearchService.search_with_trace` — the plain
+    ``search`` path never constructs one, so a caller that does not ask for a
+    trace never pays for this bookkeeping (doc 07 §8, T1.33).
+    """
+
+    results: list[dict]
+    channel_scores: dict[str, dict[str, float]] = field(default_factory=dict)
+    semantic_failed: bool = False
+    keyword_failed: bool = False
 
 
 class HybridSearchService:
@@ -26,22 +45,69 @@ class HybridSearchService:
         query: str,
         limit: int = 20,
         semantic_weight: float = 0.7,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
-        fetch_n = limit * 3
+        fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
         vector, fingerprint = await self.llm.embed(query)
+        semantic_results, keyword_results, _, _ = await self._run_channels(
+            query, vector, fingerprint, fetch_n, filters,
+        )
+        return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
 
+    async def search_with_trace(
+        self,
+        query: str,
+        limit: int = 20,
+        semantic_weight: float = 0.7,
+        filters: MemoryFilter | None = None,
+    ) -> ChannelTrace:
+        """Same channels and fusion as :meth:`search`, plus what each channel
+        contributed per row — the input the retrieval trace envelope needs
+        (doc 07 §8). Only the caller that wants a trace pays for this; the
+        plain ``search`` path above never builds ``channel_scores``.
+        """
+        fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
+        vector, fingerprint = await self.llm.embed(query)
+        semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
+            query, vector, fingerprint, fetch_n, filters,
+        )
+
+        channel_scores: dict[str, dict[str, float]] = {}
+        for source_name, rows in (("semantic", semantic_results), ("keyword", keyword_results)):
+            for row in rows:
+                key = normalize_row_id(row)
+                if key is None:
+                    continue
+                channel_scores.setdefault(key, {})[source_name] = float(row["score"])
+
+        fused = self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        return ChannelTrace(
+            results=fused,
+            channel_scores=channel_scores,
+            semantic_failed=semantic_failed,
+            keyword_failed=keyword_failed,
+        )
+
+    async def _run_channels(
+        self,
+        query: str,
+        vector: list[float],
+        fingerprint: str,
+        fetch_n: int,
+        filters: MemoryFilter | None,
+    ) -> tuple[list[dict], list[dict], bool, bool]:
         semantic_failed = False
         keyword_failed = False
 
         try:
-            semantic_results = await self._semantic_search(vector, fingerprint, fetch_n)
+            semantic_results = await self._semantic_search(vector, fingerprint, fetch_n, filters)
         except Exception as e:
             logger.error("Semantic search failed: %s", e)
             semantic_results = []
             semantic_failed = True
 
         try:
-            keyword_results = await self._keyword_search(query, fetch_n)
+            keyword_results = await self._keyword_search(query, fetch_n, filters)
         except Exception as e:
             logger.error("Keyword search failed: %s", e)
             keyword_results = []
@@ -53,7 +119,7 @@ class HybridSearchService:
         if semantic_failed and keyword_failed:
             raise RuntimeError("Hybrid search failed on both semantic and keyword sides")
 
-        return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        return semantic_results, keyword_results, semantic_failed, keyword_failed
 
     async def search_code(
         self,
@@ -75,43 +141,90 @@ class HybridSearchService:
             logger.error("Semantic code search failed: %s", e)
             return []
 
-    async def _semantic_search(self, vector: list[float], fingerprint: str, limit: int) -> list[dict]:
+    async def _semantic_search(
+        self,
+        vector: list[float],
+        fingerprint: str,
+        limit: int,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
         table = child_table("memory_embeddings", fingerprint)
+        params: dict = {"vec": str(vector), "limit": limit}
+        where_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
         result = await self.session.execute(
             text(f"""
-                SELECT memory_id,
-                       1 - (embedding <=> CAST(:vec AS vector)) AS score,
-                       payload
-                FROM {table}
-                ORDER BY embedding <=> CAST(:vec AS vector)
+                SELECT e.memory_id,
+                       1 - (e.embedding <=> CAST(:vec AS vector)) AS score,
+                       e.payload,
+                       {SCOPE_LABEL_COLUMNS}
+                FROM {table} e
+                {SCOPE_LABEL_JOIN}
+                {where_sql}
+                ORDER BY e.embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
             """),
-            {"vec": str(vector), "limit": limit},
+            params,
         )
         return [
-            {"memory_id": str(row.memory_id), "score": float(row.score), "payload": row.payload, "source": "semantic"}
+            {
+                "memory_id": str(row.memory_id),
+                "score": float(row.score),
+                "payload": row.payload,
+                "source": "semantic",
+                **scope_labels(row),
+            }
             for row in result
         ]
 
-    async def _keyword_search(self, query: str, limit: int) -> list[dict]:
-        result = await self.session.execute(
-            text("""
+    def keyword_query(
+        self,
+        query: str,
+        limit: int,
+        filters: MemoryFilter | None = None,
+    ) -> tuple[str, dict]:
+        """The keyword statement and its bound parameters.
+
+        Exposed so the query plan can be measured against the statement the
+        channel actually runs, rather than against a transcription of it.
+        """
+        params: dict = {"q": query, "limit": limit}
+        scope_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            scope_sql = f"AND {filters.where_sql('m')}"
+
+        sql = f"""
                 SELECT m.id AS memory_id,
                        ts_rank(m.search_vector, plainto_tsquery('english', :q)) AS rank,
-                       m.content
+                       m.content,
+                       {SCOPE_LABEL_COLUMNS}
                 FROM memories m
                 WHERE m.search_vector @@ plainto_tsquery('english', :q)
+                  {scope_sql}
                 ORDER BY rank DESC
                 LIMIT :limit
-            """),
-            {"q": query, "limit": limit},
-        )
+        """
+        return sql, params
+
+    async def _keyword_search(
+        self,
+        query: str,
+        limit: int,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
+        sql, params = self.keyword_query(query, limit, filters)
+        result = await self.session.execute(text(sql), params)
         return [
             {
                 "memory_id": str(row.memory_id),
                 "score": float(row.rank),
                 "payload": {"content": row.content},
                 "source": "keyword",
+                **scope_labels(row),
             }
             for row in result
         ]
@@ -128,11 +241,13 @@ class HybridSearchService:
         filters = ""
         params: dict = {"vec": str(vector), "limit": limit}
         if repo_id is not None:
-            filters += " AND repo_id = :repo_id"
-            params["repo_id"] = repo_id
+            filters += " AND repo_id = CAST(:repo_id AS uuid)"
+            params["repo_id"] = str(repo_id)
         if language is not None:
             filters += " AND language = :language"
             params["language"] = language
+        if filters:
+            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
 
         result = await self.session.execute(
             text(f"""
@@ -146,7 +261,7 @@ class HybridSearchService:
             """),
             params,
         )
-        return [
+        rows = [
             {
                 "id": str(row.id), "repo_id": str(row.repo_id),
                 "file_path": row.file_path, "symbol_name": row.symbol_name,
@@ -156,6 +271,7 @@ class HybridSearchService:
             }
             for row in result
         ]
+        return rows[:limit]
 
     @staticmethod
     def _rrf_fuse(
@@ -164,34 +280,17 @@ class HybridSearchService:
         semantic_weight: float,
         limit: int,
     ) -> list[dict]:
-        keyword_weight = 1.0 - semantic_weight
-        fused: dict[str, dict] = {}
+        """The memory channel's two ranked lists, joined under their weights.
 
-        for rank, item in enumerate(semantic_results, start=1):
-            item_id = item.get("memory_id") or item.get("id")
-            if item_id is None:
-                continue
-            rrf_score = semantic_weight / (RRF_K + rank)
-            if item_id in fused:
-                fused[item_id]["rrf_score"] += rrf_score
-            else:
-                entry = dict(item)
-                entry["rrf_score"] = rrf_score
-                entry.pop("source", None)
-                fused[item_id] = entry
-
-        for rank, item in enumerate(keyword_results, start=1):
-            item_id = item.get("memory_id") or item.get("id")
-            if item_id is None:
-                continue
-            rrf_score = keyword_weight / (RRF_K + rank)
-            if item_id in fused:
-                fused[item_id]["rrf_score"] += rrf_score
-            else:
-                entry = dict(item)
-                entry["rrf_score"] = rrf_score
-                entry.pop("source", None)
-                fused[item_id] = entry
-
-        sorted_results = sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
-        return sorted_results[:limit]
+        ``semantic_weight`` splits the memory channel's weight between its
+        two sides; it is a list weight inside the fusion and never a
+        per-row multiplier. Additional ranked producers join by appending a
+        ``RankedList`` here, each with its own config-row weight.
+        """
+        return rrf_fuse(
+            [
+                RankedList("semantic", semantic_results, semantic_weight),
+                RankedList("keyword", keyword_results, 1.0 - semantic_weight),
+            ],
+            limit,
+        )

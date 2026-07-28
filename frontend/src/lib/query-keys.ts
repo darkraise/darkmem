@@ -1,0 +1,144 @@
+import { useProjectStore } from "@/stores/project-store"
+
+/**
+ * The query-key layer (doc 13 §2): the one place that decides whether a
+ * TanStack Query domain is scoped by the active project, and the one place
+ * a new domain must be classified before its key can exist.
+ *
+ * Four kinds, deliberately not a two-way "scoped or not" bit:
+ *
+ * - `"auto"` — built exclusively through `projectScopedKey` /
+ *   `useProjectScopedKey` below, which prepend the active project. The key
+ *   is mechanically guaranteed to change when the project changes.
+ * - `"manual"` — the request already carries an explicit `project` field
+ *   the caller supplies (e.g. a page-local filter), so the query key
+ *   already varies with project — just not automatically from the global
+ *   switcher yet. Wiring that up is a follow-on integration for whoever
+ *   owns that surface, not a re-classification here.
+ * - `"global"` — the resource genuinely has no project axis: settings,
+ *   jobs, code repos, chat, or a lookup addressed by an id that already
+ *   uniquely determines its row (a memory or its graph context by id).
+ * - `"deferred"` — a real, named gap: the backend can scope this resource
+ *   by project (or plausibly should) and no frontend caller passes one
+ *   yet. Recorded rather than mislabelled `"global"`, so the gap stays
+ *   visible instead of reading as a deliberate design choice.
+ *
+ * `query-keys.test.ts` scans `src/hooks/api/**` for every `queryKey:`
+ * literal's leading string and fails on any that is not a key of this
+ * map — so a new query key must be classified here before it can exist,
+ * rather than silently inheriting whatever scope its neighbours happened
+ * to have (Ruling 1).
+ */
+export type QueryKeyScope =
+  | { kind: "auto" }
+  | { kind: "manual"; reason: string }
+  | { kind: "global"; reason?: string }
+  | { kind: "deferred"; reason: string }
+
+export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
+  // ── auto: routed through projectScopedKey / useProjectScopedKey ──
+  memories: { kind: "auto" },
+  unifiedGraph: { kind: "auto" },
+
+  // ── manual: already carries an explicit project field, not yet wired
+  //    to the global switcher ──
+  memoriesPaginated: {
+    kind: "manual",
+    reason:
+      "PaginatedSearchParams.project is caller-supplied (the Memories page's own project filter), not yet the global switcher",
+  },
+  events: {
+    kind: "manual",
+    reason: "EventListParams.project is caller-supplied, not yet the global switcher",
+  },
+  eventsCalendar: {
+    kind: "manual",
+    reason: "params.project is caller-supplied, not yet the global switcher",
+  },
+
+  // ── deferred: named gaps ──
+  tags: {
+    kind: "deferred",
+    reason: "GET /tags has no project filter on the backend at all yet",
+  },
+
+  // ── global: addressed by id (already unique) or genuinely project-free ──
+  memory: { kind: "global", reason: "addressed by id, which already determines the row" },
+  memoryContext: {
+    kind: "global",
+    reason: "GET /graph/memory-context/{id} takes no project param; addressed by id",
+  },
+  fullGraph: { kind: "global" },
+  graphEntities: { kind: "global" },
+  vectorProjection: { kind: "global" },
+  knowledgeEntities: { kind: "global" },
+  knowledgeTimeline: { kind: "global" },
+  jobs: { kind: "global" },
+  llmConfig: { kind: "global" },
+  featureFlags: { kind: "global" },
+  repoAllowlist: { kind: "global" },
+  classificationAreas: { kind: "global" },
+  systemPrompts: { kind: "global" },
+  auditLog: { kind: "global" },
+  conversations: { kind: "global" },
+  conversation: { kind: "global" },
+  stats: { kind: "global" },
+  health: { kind: "global" },
+  pipeline: { kind: "global" },
+  pipelineLogs: { kind: "global" },
+  overview: { kind: "global" },
+  pipelineFailures: { kind: "global" },
+  pipelineFailureCounts: { kind: "global" },
+  retryBatchProgress: { kind: "global" },
+  obsoleteCounts: { kind: "global" },
+  reembedBatchProgress: { kind: "global" },
+  repoStats: { kind: "global" },
+  repos: { kind: "global" },
+  repoTasks: { kind: "global" },
+  codeGraph: { kind: "global" },
+  codeFiles: { kind: "global" },
+  codeSymbols: { kind: "global" },
+  codeSymbol: { kind: "global" },
+  fs: { kind: "global" },
+  reposPath: { kind: "global" },
+}
+
+function assertAuto(domain: string): void {
+  const scope = QUERY_KEY_SCOPE[domain]
+  if (!scope || scope.kind !== "auto") {
+    throw new Error(
+      `"${domain}" is not registered as "auto" in QUERY_KEY_SCOPE (src/lib/query-keys.ts) — ` +
+        `classify it there before building a project-scoped key for it`,
+    )
+  }
+}
+
+/**
+ * Build a project-scoped query key outside a component (mutation
+ * `onSuccess` handlers, imperative cache reads). Reads the store's current
+ * snapshot; for a key computed during render, prefer `useProjectScopedKey`
+ * so the component re-renders — and re-keys — when the active project
+ * changes.
+ */
+export function projectScopedKey(
+  domain: string,
+  ...rest: readonly unknown[]
+): readonly unknown[] {
+  assertAuto(domain)
+  return [domain, useProjectStore.getState().activeProject, ...rest]
+}
+
+/**
+ * The reactive form: subscribes to the active project, so a query key
+ * built with this hook changes on the same render the switcher changes it
+ * — the point of Ruling 2, a project switch must never leave a mounted
+ * view reading the old project's cache entry.
+ */
+export function useProjectScopedKey(
+  domain: string,
+  ...rest: readonly unknown[]
+): readonly unknown[] {
+  assertAuto(domain)
+  const project = useProjectStore((s) => s.activeProject)
+  return [domain, project, ...rest]
+}

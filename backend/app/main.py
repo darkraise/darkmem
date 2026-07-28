@@ -2,18 +2,28 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import Headers, MutableHeaders
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.routing import Mount
 
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
-from app.api.routes import analytics, auth, chat, code, config, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
+from app.api.spa import mount_spa
+from app.api.routes import analytics, auth, buffer as buffer_routes, chat, code, config, events as events_routes, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
+from app.schemas.envelope import ErrorDetail, ErrorEnvelope
+from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
+from app.services.llm_quirks import models_probe
 from app.services.pipeline import ProcessingPipeline
 
 logger = logging.getLogger(__name__)
@@ -80,6 +90,17 @@ async def lifespan(app: FastAPI):
                 await embedder_registry.reconcile(session)
         except Exception:
             logger.exception("Boot-time partition reconciliation failed")
+
+        # The events journal keeps its monthly children ahead of need on the
+        # same boot pass. A missing child does not degrade journaling, it stops
+        # it: a RANGE parent rejects any insert with no matching partition.
+        try:
+            async with async_session_factory() as session:
+                children = await reconcile_event_partitions(session)
+                await session.commit()
+            logger.info("events partitions reconciled: %s", ", ".join(children))
+        except Exception:
+            logger.exception("Boot-time events partition reconciliation failed")
 
         llm_fp = llm.llm_fingerprint()
         try:
@@ -166,15 +187,30 @@ async def lifespan(app: FastAPI):
                 await s.commit()
 
     # ── Job registry: replaces the previous four bare asyncio loops ──
+    from app.services.buffer_flush import (
+        BUFFER_FLUSH_CONFIG_SCHEMA,
+        BUFFER_FLUSH_CRON,
+        BUFFER_FLUSH_JOB_KEY,
+        BUFFER_FLUSH_MAX_RUN_SECONDS,
+        BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
+    )
     from app.services.job_registry import FieldDescriptor, Job, JobRegistry
     from app.services.job_runners import (
         make_repo_sync_runner,
+        make_buffer_flush_runner,
         make_code_enrichment_runner,
+        make_code_reconcile_runner,
         make_token_blocklist_cleanup_runner,
         make_pipeline_failure_cleanup_runner,
         make_graph_orphan_cleanup_runner,
         make_tag_orphan_cleanup_runner,
         make_expired_memory_cleanup_runner,
+    )
+    from app.services.code_reconcile import (
+        CODE_RECONCILE_CRON,
+        CODE_RECONCILE_JOB_KEY,
+        CODE_RECONCILE_MAX_RUN_SECONDS,
+        CODE_RECONCILE_MIN_INTERVAL_SECONDS,
     )
 
     job_registry = JobRegistry(async_session_factory)
@@ -190,6 +226,20 @@ async def lifespan(app: FastAPI):
         min_interval_seconds=30,
         runner=make_repo_sync_runner(app, async_session_factory),
         max_run_seconds=1800,
+    ))
+    job_registry.register(Job(
+        key=BUFFER_FLUSH_JOB_KEY,
+        display_name="Buffer Flush",
+        description=(
+            "Claims accepted-but-unprocessed captures from the ingest buffer "
+            "and runs them through the five-phase pipeline. Disabling this "
+            "stops every 202-accepted capture from ever becoming a memory."
+        ),
+        default_cron=BUFFER_FLUSH_CRON,
+        min_interval_seconds=BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
+        runner=make_buffer_flush_runner(app, async_session_factory),
+        max_run_seconds=BUFFER_FLUSH_MAX_RUN_SECONDS,
+        config_schema=BUFFER_FLUSH_CONFIG_SCHEMA,
     ))
     job_registry.register(Job(
         key="code_enrichment",
@@ -209,6 +259,20 @@ async def lifespan(app: FastAPI):
         )],
     ))
     job_registry.register(Job(
+        key=CODE_RECONCILE_JOB_KEY,
+        display_name="Code Reconcile",
+        description=(
+            "Hashes every already-indexed repo's working tree and feeds any "
+            "drift through the incremental path, even when HEAD never moved "
+            "(a local repo edited directly, with no commit to diff against). "
+            "An unchanged tree does no work."
+        ),
+        default_cron=CODE_RECONCILE_CRON,
+        min_interval_seconds=CODE_RECONCILE_MIN_INTERVAL_SECONDS,
+        runner=make_code_reconcile_runner(app, async_session_factory),
+        max_run_seconds=CODE_RECONCILE_MAX_RUN_SECONDS,
+    ))
+    job_registry.register(Job(
         key="token_blocklist_cleanup",
         display_name="Token Blocklist Cleanup",
         description=(
@@ -225,7 +289,11 @@ async def lifespan(app: FastAPI):
         display_name="Pipeline Failure Cleanup",
         description=(
             "Prunes orphaned pipeline-failure rows and resolved entries "
-            "older than 30 days. Safe to leave on."
+            "older than 30 days, AND keeps the events journal's monthly "
+            "partitions ahead of need. Leave this on: with it disabled, a "
+            "process running past the current partition horizon stops "
+            "journaling entirely, because a RANGE parent rejects any row with "
+            "no partition to land in."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,
@@ -327,6 +395,95 @@ async def lifespan(app: FastAPI):
             logger.warning("Failed to close active LLM orchestrator at shutdown", exc_info=True)
 
 
+# The four security headers, the gzip threshold and the body cap below are
+# nginx's own values, moved rather than retuned: the nginx-in-image fallback
+# (doc 03 section 3.2) must present the same policy as the app-as-edge build,
+# and a value that drifts here makes the two postures disagree.
+SECURITY_HEADERS = (
+    ("x-frame-options", "DENY"),
+    ("x-content-type-options", "nosniff"),
+    ("referrer-policy", "strict-origin-when-cross-origin"),
+    (
+        "content-security-policy",
+        "default-src 'self'; script-src 'self'; worker-src 'self' blob:; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; "
+        "frame-ancestors 'none'; base-uri 'self'",
+    ),
+)
+
+GZIP_MINIMUM_SIZE = 1024
+MAX_REQUEST_BODY_BYTES = 25 * 1024 * 1024
+
+
+def is_mcp_path(path: str) -> bool:
+    """Whether a request path belongs to the MCP mount.
+
+    nginx deliberately never fronted /mcp, so none of its response duties nor
+    its body cap ever applied there. Applying them now would widen a contract
+    surface this task does not touch — most sharply the body cap, which would
+    impose a new ceiling on MCP ingestion. One predicate, shared by all three
+    middlewares, because two copies is how the surfaces drift apart.
+    """
+    return path == "/mcp" or path.startswith("/mcp/")
+
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or is_mcp_path(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in SECURITY_HEADERS:
+                    headers.setdefault(name, value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+class ScopedGZipMiddleware:
+    def __init__(self, app, minimum_size: int = GZIP_MINIMUM_SIZE):
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=minimum_size)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and is_mcp_path(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+        await self.gzip(scope, receive, send)
+
+
+class RequestBodyLimitMiddleware:
+    """Re-creates nginx's ``client_max_body_size 25m``, which leaves the
+    shipped topology with it.
+
+    This bounds requests that declare a Content-Length. A chunked request that
+    declares none is NOT bounded here; doing that needs body-stream
+    accounting, which is materially more code and is not this cap's job.
+    """
+
+    def __init__(self, app, max_bytes: int = MAX_REQUEST_BODY_BYTES):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not is_mcp_path(scope.get("path", "")):
+            declared = Headers(scope=scope).get("content-length")
+            if declared and declared.isdigit() and int(declared) > self.max_bytes:
+                response = _error_response(
+                    413, "payload_too_large", "Request body is too large"
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(title="darkmem", version="0.2.0", description="Centralized memory system for AI agents", lifespan=lifespan)
 
 app.add_middleware(
@@ -336,6 +493,68 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# add_middleware applies in reverse, so the last added is outermost: gzip
+# compresses a body whose security headers are already set, and the body cap
+# rejects before either does any work.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ScopedGZipMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware)
+
+_HTTP_ERROR_CODES = {
+    400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
+    405: "method_not_allowed", 409: "conflict", 413: "payload_too_large",
+    422: "validation_error", 429: "rate_limited", 502: "upstream_error",
+    503: "unavailable", 504: "upstream_timeout",
+}
+
+
+def _error_response(status_code: int, code: str, message: str, details=None, headers=None):
+    from starlette.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorEnvelope(
+            error=ErrorDetail(code=code, message=message, details=details),
+            # `detail` is a string mirror of error.message on EVERY shape,
+            # including the 422 that FastAPI answers with a list today.
+            # frontend/src/lib/api.ts interpolates this field straight into an
+            # Error, so a list here renders a stringified array to the user.
+            # T1.42b retires the mirror once the frontend reads error.message.
+            detail=message,
+        ).model_dump(),
+        headers=headers,
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(_request, exc: StarletteHTTPException):
+    detail = exc.detail
+    message = detail if isinstance(detail, str) else "Request failed"
+    details = detail if isinstance(detail, list) else None
+    code = _HTTP_ERROR_CODES.get(exc.status_code, f"http_{exc.status_code}")
+    return _error_response(exc.status_code, code, message, details, getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(_request, exc: RequestValidationError):
+    errors = jsonable_encoder(exc.errors())
+    first = errors[0] if errors else {}
+    location = ".".join(str(part) for part in first.get("loc", ())[1:])
+    message = first.get("msg", "Request validation failed")
+    if location:
+        message = f"{location}: {message}"
+    return _error_response(422, "validation_error", message, errors)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(_request, exc: Exception):
+    # Logged with the traceback, answered without one: an internal message can
+    # carry a connection string or a row's contents, and this is the one
+    # response shape a caller reaches by accident rather than by asking.
+    logger.exception("unhandled exception on the request path", exc_info=exc)
+    return _error_response(500, "internal_error", "Internal server error")
+
 
 app.include_router(auth.router)
 app.include_router(memories.router)
@@ -349,6 +568,8 @@ app.include_router(chat.router)
 app.include_router(repos.router)
 app.include_router(code.router)
 app.include_router(pipeline_failures.router)
+app.include_router(events_routes.router)
+app.include_router(buffer_routes.router)
 app.include_router(reembed.router)
 app.include_router(setup.router)
 app.include_router(system.router)
@@ -385,35 +606,25 @@ async def health():
     async def check_llm() -> bool:
         """Light-weight reachability probe for the configured embedding provider.
 
-        Branches on the provider's ``api_kind`` instead of assuming Ollama —
-        the previous implementation hard-coded ``/api/tags`` and stripped
-        ``/v1`` with ``rstrip`` (which removes a character set, not a suffix),
-        so it returned False for every cloud provider and surfaced as a
-        permanent 503 even when the configured LLM was perfectly reachable.
+        Resolves the probe endpoint and auth through the ``api_kind`` quirk
+        table instead of assuming Ollama — the original implementation
+        hard-coded ``/api/tags`` and stripped ``/v1`` with ``rstrip`` (which
+        removes a character set, not a suffix), so it returned False for every
+        cloud provider and surfaced as a permanent 503 even when the
+        configured LLM was perfectly reachable.
         """
         try:
             embedding_cfg = llm.config.get("embedding") if llm else None
             if embedding_cfg is None or not embedding_cfg.base_url:
                 return False
-            api_kind = getattr(embedding_cfg, "api_kind", "openai")
-            base = embedding_cfg.base_url.rstrip("/")
-            api_key = getattr(embedding_cfg, "api_key", None)
-
-            if api_kind == "ollama":
-                root = base.removesuffix("/v1").removesuffix("/api")
-                url = f"{root}/api/tags"
-                headers: dict[str, str] = {}
-            else:
-                url = f"{base}/models"
-                headers = {}
-                if api_kind == "anthropic" and api_key:
-                    headers["x-api-key"] = api_key
-                    headers["anthropic-version"] = "2023-06-01"
-                elif api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
+            target = models_probe(
+                getattr(embedding_cfg, "api_kind", None),
+                embedding_cfg.base_url,
+                getattr(embedding_cfg, "api_key", None),
+            )
 
             async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(url, headers=headers)
+                resp = await client.get(target.url, headers=target.headers)
             return resp.is_success
         except Exception:
             return False
@@ -447,3 +658,14 @@ async def health():
         },
         status_code=status_code,
     )
+
+
+def _resolve_spa_dir() -> Path:
+    if settings.spa_dir:
+        return Path(settings.spa_dir)
+    return Path(__file__).resolve().parent.parent / "web"
+
+
+# Registered last, after every router, the /ws route and the /mcp mount, so
+# the catch-all mount shadows nothing.
+mount_spa(app, _resolve_spa_dir())

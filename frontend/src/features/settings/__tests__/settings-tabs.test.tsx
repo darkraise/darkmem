@@ -1,106 +1,38 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
+import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
-import { FlagsTab } from "../components/flags-tab"
-import { LLMTab } from "../components/llm-tab"
 import { SecurityTab } from "../components/security-tab"
 import { MaintenanceTab } from "../components/maintenance-tab"
 import { DistributionTab } from "../components/distribution-tab"
 import { ConfirmGate } from "../components/confirm-gate"
+
+// This exercises the fixture-backed path deliberately (pins SecurityTab's
+// and MaintenanceTab's demo rendering), so it is frozen at DEMO: true rather
+// than relying on the real default (T1.58) — see settings-security.real
+// .test.tsx / settings-maintenance.real.test.tsx for the real-mode bindings.
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 
 // MaintenanceTab links into /activity; stub the router Link.
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
 }))
 
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+}
+
 afterEach(() => {
   useDemoStore.getState().resetSettings()
 })
 
-describe("FlagsTab — invariant 23 honesty", () => {
-  it("renders every dormant arm as inactive, never omitted", () => {
-    render(<FlagsTab />)
-    // 4 dormant (w_importance, w_heat, w_recency, w_ppr) vs 3 active.
-    expect(screen.getAllByText("inactive")).toHaveLength(4)
-    expect(screen.getAllByText("active")).toHaveLength(3)
-  })
-
-  it("labels coded defaults distinctly from written overrides", () => {
-    render(<FlagsTab />)
-    expect(screen.getAllByText("(coded default)").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("(override)").length).toBeGreaterThan(0)
-  })
-
-  it("shows the no-weight note for community injection", () => {
-    render(<FlagsTab />)
-    expect(
-      screen.getByText(/no paired RRF weight/),
-    ).toBeInTheDocument()
-  })
-
-  it("summarises all seven job cadences with a pointer to the Jobs tab", () => {
-    render(<FlagsTab />)
-    expect(screen.getByText("expired_memory_cleanup")).toBeInTheDocument()
-    expect(
-      screen.getByText(/edited in the dedicated Settings → Jobs tab/),
-    ).toBeInTheDocument()
-  })
-})
-
-describe("LLMTab", () => {
-  it("renders the six purpose cards and no provider/profile chrome", () => {
-    render(<LLMTab />)
-    for (const purpose of [
-      "embedding",
-      "extraction",
-      "classification",
-      "summarization",
-      "reranker",
-      "reasoning",
-    ]) {
-      expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
-    }
-    // The removed chrome is shown struck-through, not silently omitted.
-    expect(screen.getByText("llm-providers tab")).toBeInTheDocument()
-    expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
-  })
-
-  it("carries dimensions only on embedding", () => {
-    render(<LLMTab />)
-    expect(screen.getAllByText("dimensions")).toHaveLength(1)
-  })
-
-  it("save shows the live-reload confirmation with the trace", () => {
-    render(<LLMTab />)
-    const input = screen.getByLabelText("reasoning base_url")
-    fireEvent.change(input, { target: { value: "api.openai.com/v2" } })
-    const saves = screen.getAllByRole("button", { name: "Save" })
-    const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
-    expect(enabled).toBeDefined()
-    fireEvent.click(enabled!)
-    expect(
-      screen.getByText(/Saved — reasoning purpose updated/),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/no redeploy needed/i)).toBeInTheDocument()
-  })
-
-  it("rejects malformed params JSON before save", () => {
-    render(<LLMTab />)
-    const params = screen.getByLabelText("extraction params")
-    fireEvent.change(params, { target: { value: "{broken" } })
-    expect(screen.getByText("invalid JSON")).toBeInTheDocument()
-  })
-
-  it("carries the classifier_kind toggle on the classification card", () => {
-    render(<LLMTab />)
-    expect(screen.getByText("classifier_kind")).toBeInTheDocument()
-    expect(screen.getByText("local")).toBeInTheDocument()
-  })
-})
+// FlagsTab's own tests live in settings-flags.test.tsx / .real.test.tsx.
 
 describe("SecurityTab — dormant ApiKey honesty", () => {
   it("renders the Phase-4 card with every control disabled", () => {
-    render(<SecurityTab />)
+    render(<SecurityTab />, { wrapper })
     expect(screen.getByText(/Phase-4 · designed, not wired/)).toBeInTheDocument()
     expect(screen.getByLabelText("Key label")).toBeDisabled()
     expect(
@@ -112,7 +44,7 @@ describe("SecurityTab — dormant ApiKey honesty", () => {
   })
 
   it("renders the three LAN doors and the TOFU claim", () => {
-    render(<SecurityTab />)
+    render(<SecurityTab />, { wrapper })
     expect(screen.getByText("/mcp")).toBeInTheDocument()
     expect(screen.getByText("/api/v1 + /ws")).toBeInTheDocument()
     expect(screen.getByText("/setup")).toBeInTheDocument()
@@ -122,7 +54,7 @@ describe("SecurityTab — dormant ApiKey honesty", () => {
 
 describe("MaintenanceTab — confirmation gates", () => {
   it("never runs a destructive op from a bare click", () => {
-    render(<MaintenanceTab />)
+    render(<MaintenanceTab />, { wrapper })
     fireEvent.click(screen.getByRole("button", { name: /Run sweep now/ }))
     // Armed, not run: the count is untouched until Confirm.
     expect(
@@ -133,7 +65,7 @@ describe("MaintenanceTab — confirmation gates", () => {
   })
 
   it("marks endpoint-less DB ops as illustrative, not shipped", () => {
-    render(<MaintenanceTab />)
+    render(<MaintenanceTab />, { wrapper })
     expect(screen.getAllByText("no dedicated endpoint yet")).toHaveLength(2)
     expect(screen.getByText(/use Repositories → Reindex/)).toBeInTheDocument()
   })

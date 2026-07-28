@@ -22,75 +22,16 @@ LLMApiKind = Literal[
 _config_logger = logging.getLogger(__name__)
 
 
-class LLMProviderProfile(BaseModel):
-    """Reusable connection profile for an LLM provider.
-
-    A purpose (extraction, reasoning, ...) can reference a profile by name
-    via ``LLMPurposeConfig.provider_ref``; the resolution step in
-    ``get_llm_config`` then overlays this profile's connection fields onto
-    the per-purpose row so callers downstream see a fully populated config.
-    Lets the user rotate the API key in one place instead of six.
-
-    ``api_kind`` selects the wire protocol. ``"openai"`` posts to the
-    standard ``/chat/completions`` and ``/embeddings`` endpoints, working
-    against any vendor's OpenAI-compatible surface. ``"ollama"`` posts to
-    Ollama's native ``/api/chat`` and ``/api/embed`` and adds the
-    ``think: false`` flag to disable qwen3-style internal reasoning that
-    the compat shim cannot turn off. The vendor-specific kinds
-    (``"anthropic"``, ``"google"``, ``"deepseek"``, ``"zai"``) reserve a
-    slot for a future native adapter; today they dispatch through the
-    OpenAI-compatible path so cloud profiles keep working with their
-    vendor's compat endpoint.
-    """
-
-    provider: str = "openai"
-    base_url: str = "http://localhost:11434/v1"
-    api_key: str | None = None
-    api_kind: LLMApiKind = "openai"
-    # Some vendors (Anthropic, DeepSeek today) only expose chat completions
-    # on their OpenAI-compat layer and have no embeddings endpoint. The UI
-    # consults this flag to grey out the embedding purpose's profile picker
-    # so a user can't link an unsupported profile and silently 404 on every
-    # embed call.
-    supports_embedding: bool = True
-
-
-class LLMProfile(BaseModel):
-    """Reusable preset for one purpose's full LLM config.
-
-    A profile bundles a Provider reference with default model + params +
-    purpose-style flags. The UI picks a profile in the LLM purpose card
-    to populate the form fields with sensible starting values; the
-    purpose row stores the resolved values directly so changing a
-    profile after the fact doesn't silently retune already-saved
-    purposes.
-
-    Use ``is_embedding=True`` for embedding-only purposes (the
-    ``reasoning`` flag is meaningless there). Use ``reasoning=True`` to
-    flag chat-style purposes whose model supports internal reasoning
-    (qwen3 family, gpt-5 family, etc.).
-    """
-
-    provider_ref: str
-    model: str
-    params: dict = Field(default_factory=dict)
-    is_embedding: bool = False
-    reasoning: bool = False
-
-
 class LLMPurposeConfig(BaseModel):
-    provider: str = "ollama"
     base_url: str = "http://localhost:11434/v1"
     model: str = "nomic-embed-text"
     api_key: str | None = None
     dimensions: int | None = None
     reasoning: bool = False
-    # Which API surface to call. ``openai`` uses the OpenAI-compatible
-    # ``/v1/chat/completions`` and ``/v1/embeddings`` endpoints (works with
-    # OpenAI itself, Anthropic via translation layers, vLLM, and Ollama's
-    # compat mode). ``ollama`` uses Ollama's native ``/api/chat`` and
-    # ``/api/embed`` endpoints, which expose ``think: false`` to disable
-    # qwen3-style internal reasoning that the OpenAI compat shim ignores.
+    # Which API surface to call, and the sole axis a vendor difference is
+    # expressed on: auth scheme, reasoning-disable knob, structured-output
+    # caveat, and missing endpoints all resolve through the quirk table in
+    # ``app/services/llm_quirks.py`` (doc 11 §4).
     api_kind: LLMApiKind = "openai"
     params: dict = Field(default_factory=dict)
     # ``llm`` | ``local`` on the classification purpose: which classifier
@@ -128,10 +69,13 @@ class Settings(BaseSettings):
     environment: str = "development"
     embedding_dimensions: int = 1024
     cors_origins: list[str] = []
-    # The API is always fronted by the bundled nginx, a trusted reverse proxy,
-    # so honoring X-Forwarded-For (for the login rate limiter) is the default.
-    # Set false only if the API is exposed with no trusted proxy in front.
-    trust_proxy_headers: bool = True
+    # The app is the network edge: it serves the SPA, the API and /mcp itself,
+    # with nothing trustworthy in front. So proxy headers are ignored and the
+    # transport peer decides the login rate limiter's bucket — a client that
+    # could name its own IP could rotate buckets per guess and never lock out.
+    # Set true only when a trusted proxy really is in front (the
+    # nginx-in-image fallback, or an operator's TLS proxy).
+    trust_proxy_headers: bool = False
     # Session-cookie Secure flag. None derives it from ``environment`` (Secure
     # in production). Set false to allow login over plain HTTP on a trusted LAN.
     cookie_secure: bool | None = None
@@ -142,6 +86,10 @@ class Settings(BaseSettings):
     # protection). Empty → localhost only; LAN agents must be added, e.g.
     # "192.168.0.195:8000" or "192.168.0.195:*". Set to "*" to disable the check.
     mcp_allowed_hosts: str = ""
+    # Directory holding the built SPA. Unset resolves the packaged location
+    # (``web/`` beside the app package, i.e. /app/web in the image); set it to
+    # frontend/dist to serve a host-side build.
+    spa_dir: str | None = None
 
     @model_validator(mode="after")
     def _check_jwt_secret(self):
@@ -191,27 +139,42 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     llm_embedding: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen3-embedding:0.6b", dimensions=1024,
     )
     llm_extraction: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
     llm_classification: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
     llm_reasoning: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0.7},
     )
     llm_summarization: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0.3},
     )
     llm_reranker: LLMPurposeConfig = LLMPurposeConfig(
-        provider="ollama", base_url="http://localhost:11434/v1",
+        base_url="http://localhost:11434/v1",
+        model="qwen2.5:3b", params={"temperature": 0},
+    )
+    # Tier-C purposes, seeded inert (doc 11 §6). No consumer dispatches on
+    # either yet: `synthesis` gets its first writer in T3.02 (Layer-3 article
+    # write-ups), `verification` in T2.26 (the contradiction check behind the
+    # dispute veto, and article claim-level entailment). They are resolvable
+    # from day one because doc 11 §6 requires the seed and the PURPOSES sweep to
+    # land BEFORE any consumer dispatches — a consumer reaching an unseeded
+    # purpose is the same class of bug as a feature emitting an untabled type.
+    llm_synthesis: LLMPurposeConfig = LLMPurposeConfig(
+        base_url="http://localhost:11434/v1",
+        model="qwen2.5:3b", params={"temperature": 0.3},
+    )
+    llm_verification: LLMPurposeConfig = LLMPurposeConfig(
+        base_url="http://localhost:11434/v1",
         model="qwen2.5:3b", params={"temperature": 0},
     )
 
@@ -232,4 +195,20 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     # to evaluate raw recall or when the heuristics over-fire.
     "relation_rescue": True,
     "confidence_rank_gamma": 0.0,
+    # Doc 07 §3: importance/heat/recency arms of rank_fusion_factor. Each is a
+    # no-op at 0 (see app/services/rank_fusion.py RANK_ARMS); T2.30 activates
+    # w_importance, T2.31 activates w_heat and w_recency once their signals
+    # are wired.
+    "w_importance": 0.0,
+    "w_heat": 0.0,
+    "w_recency": 0.0,
+    # Doc 07 §6: the magnitude of the `applies_when` context boost. Zero is
+    # the today-equivalent no-op — matching still labels every row and still
+    # counts conflicts at zero, only the multiplier goes quiet. Tuned in
+    # Phase 2 against the retrieval harness, never by intuition.
+    "w_context_boost": 0.0,
+    # Doc 05 §2.2: how long an interactive `wait_process` capture may hold
+    # Tier A driving its own buffer row's flush before degrading to the plain
+    # 202 accept.
+    "buffer_wait_timeout_seconds": 10,
 }

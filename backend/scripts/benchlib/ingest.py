@@ -106,7 +106,6 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
                 dimensions=defaults.dimensions,
                 reasoning=defaults.reasoning,
                 api_kind=defaults.api_kind,
-                provider=defaults.provider,
                 base_url=defaults.base_url,
                 api_key=defaults.api_key,
                 params=defaults.params,

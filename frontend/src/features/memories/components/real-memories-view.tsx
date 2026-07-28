@@ -1,0 +1,277 @@
+import { useEffect, useRef, useState } from "react"
+import { Brain, Inbox, Loader2, Plus, Search, SearchX, X } from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
+import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Input } from "darkraise-ui/components/input"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import { cn } from "darkraise-ui/lib"
+import { PageChrome } from "@/components/app-chrome"
+import { ExclusionStrip } from "@/components/darkmem"
+import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
+import { EXCLUSION_CAVEAT, useMemorySearchPage } from "../use-memory-search"
+import { CreateMemoryDialog } from "./create-memory-dialog"
+import { MemoryRow, type MemoryRowData } from "./memory-row"
+
+const PAGE = 50
+const ROW_GAP = 8
+const ROW_ESTIMATE = 84
+
+/**
+ * The real-backend counterpart of the demo Memories page (Ruling 5's
+ * DEMO ? demo : real split, at the component level rather than inside one
+ * hook — `DEMO` is fixed for the process lifetime, so the branch never
+ * toggles mid-session and never violates the rules of hooks). Every real
+ * `Memory` row is L0 (the fact/article layers do not exist yet), so its
+ * layer chip is always "memory" and it never carries a verification badge
+ * — that ladder belongs to Facts, not raw memories, until T2.x.
+ */
+export function RealMemoriesView() {
+  const [query, setQuery] = useState("")
+  const [project, setProject] = useState("")
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [limit, setLimit] = useState(PAGE)
+  const [createOpen, setCreateOpen] = useState(false)
+  const loadingRef = useRef(false)
+
+  const { rows, total, exclusions, isLoading, isError, isFetching } =
+    useMemorySearchPage({
+      query,
+      project: project.trim() || "all",
+      status: ["active", "superseded"],
+      limit,
+    })
+
+  const hasMore = rows.length < total
+  const virtualCount = rows.length + 1
+
+  const { listRef, virtualizer, scrollMargin } = useMainVirtualizer({
+    count: virtualCount,
+    estimateSize: () => ROW_ESTIMATE,
+    gap: ROW_GAP,
+    getItemKey: (index) => rows[index]?.memory.id ?? "list-footer",
+  })
+
+  const virtualItems = virtualizer.getVirtualItems()
+  const lastRenderedIndex = virtualItems[virtualItems.length - 1]?.index ?? -1
+
+  // Infinite scroll: reaching the last windowed row grows the page size,
+  // which re-runs the real paginated query (offset stays 0 — a bigger
+  // `limit` is simplest against a route that already returns `total`).
+  useEffect(() => {
+    if (!hasMore || isFetching || loadingRef.current) return
+    if (lastRenderedIndex < rows.length - 1) return
+    loadingRef.current = true
+    setLimit((n) => n + PAGE)
+  }, [hasMore, isFetching, lastRenderedIndex, rows.length])
+
+  useEffect(() => {
+    loadingRef.current = false
+  }, [rows.length])
+
+  const searching = query.trim().length > 0
+  const scopeLabel = project.trim() || "all projects"
+
+  const clearSearch = () => {
+    setQuery("")
+    setExpandedId(null)
+    setLimit(PAGE)
+  }
+
+  const toRowData = (memory: (typeof rows)[number]["memory"]): MemoryRowData => ({
+    id: memory.id,
+    content: memory.content,
+    tags: memory.tags,
+    flags: memory.flags,
+    source: memory.source,
+    created_at: memory.created_at,
+    layer: 0,
+    status: memory.status,
+  })
+
+  return (
+    <div className="space-y-4">
+      <PageChrome
+        icon={Brain}
+        title="Memories"
+        description="The L0 capture-and-search surface"
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 size-4" />
+            Create memory
+          </Button>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Input
+          prefix={<Search aria-hidden className="h-4 w-4" />}
+          placeholder="Search your memories…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setExpandedId(null)
+            setLimit(PAGE)
+          }}
+          trailingAction={
+            query ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Clear search"
+                onClick={clearSearch}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : undefined
+          }
+          groupClassName="min-w-64 flex-1"
+          aria-label="Search memories"
+        />
+        <Input
+          placeholder="project (blank = all)"
+          value={project}
+          onChange={(e) => {
+            setProject(e.target.value)
+            setLimit(PAGE)
+          }}
+          groupClassName="w-56"
+          aria-label="Project scope"
+        />
+      </div>
+
+      <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
+        <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
+          <span className="text-sm font-semibold">
+            Results — project: {scopeLabel}
+          </span>
+          <span
+            className={cn(
+              "font-mono text-sm",
+              rows.length > 0 ? "text-success" : "text-muted-foreground",
+            )}
+          >
+            {rows.length > 0 ? "populated" : "empty"}
+          </span>
+          <span className="text-muted-foreground ml-auto font-mono text-sm">
+            {rows.length} of {total} shown
+          </span>
+        </div>
+
+        <div className="space-y-3 p-4">
+          {/* Ruling 1: this caveat and the strip below it render
+              unconditionally — including with zero exclusions — because an
+              absent count is never proof that project or status scoping
+              removed nothing (they run in SQL, before this envelope can
+              see, let alone count, the rows they drop). */}
+          <p className="text-muted-foreground text-sm italic">
+            {EXCLUSION_CAVEAT}
+          </p>
+          <ExclusionStrip items={exclusions} />
+
+          {isLoading ? (
+            <div className="space-y-2" role="status" aria-label="Loading memories">
+              <Skeleton className="h-[84px] w-full rounded-md" />
+              <Skeleton className="h-[84px] w-full rounded-md" />
+              <Skeleton className="h-[84px] w-full rounded-md" />
+            </div>
+          ) : isError ? (
+            <EmptyState
+              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              title="Search failed"
+              description="Both the semantic and keyword channels failed for this request — an outage, never an empty list masquerading as no-match."
+            />
+          ) : rows.length > 0 ? (
+            <div
+              ref={listRef}
+              className="relative w-full"
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+              {virtualItems.map((item) => {
+                const row = rows[item.index]
+                return (
+                  <div
+                    key={item.key}
+                    data-index={item.index}
+                    ref={virtualizer.measureElement}
+                    className="absolute top-0 left-0 w-full"
+                    style={{
+                      transform: `translateY(${item.start - scrollMargin}px)`,
+                    }}
+                  >
+                    {row ? (
+                      <MemoryRow
+                        memory={toRowData(row.memory)}
+                        trace={row.trace}
+                        expanded={expandedId === row.memory.id}
+                        onToggleTrace={
+                          row.trace
+                            ? () =>
+                                setExpandedId((prev) =>
+                                  prev === row.memory.id ? null : row.memory.id,
+                                )
+                            : undefined
+                        }
+                      />
+                    ) : isFetching ? (
+                      <div
+                        role="status"
+                        className="text-muted-foreground flex items-center justify-center gap-2 py-2.5 text-sm"
+                      >
+                        <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                        loading more…
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground py-1 text-center font-mono text-sm">
+                        {hasMore
+                          ? `${rows.length} of ${total} loaded`
+                          : `all ${total} shown`}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : searching ? (
+            <EmptyState
+              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              title="No matches"
+              description={`No memories match "${query.trim()}"${
+                project.trim() ? ` in project ${project.trim()}` : ""
+              } — clear the search or widen the scope.`}
+              action={
+                <Button variant="outline" onClick={clearSearch}>
+                  Clear search
+                </Button>
+              }
+            />
+          ) : project.trim() ? (
+            <EmptyState
+              icon={<Inbox aria-hidden className="h-6 w-6" />}
+              title={`No memories in project ${project.trim()}`}
+              description="This project has no memories yet — other projects might."
+              action={
+                <Button variant="outline" onClick={() => setProject("")}>
+                  Show all projects
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<Inbox aria-hidden className="h-6 w-6" />}
+              title="No memories captured yet"
+              description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
+              action={
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus className="mr-2 size-4" />
+                  Capture your first memory
+                </Button>
+              }
+            />
+          )}
+        </div>
+      </div>
+
+      <CreateMemoryDialog open={createOpen} onOpenChange={setCreateOpen} />
+    </div>
+  )
+}

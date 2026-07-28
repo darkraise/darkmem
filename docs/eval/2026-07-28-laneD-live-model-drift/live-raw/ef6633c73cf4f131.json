@@ -1,0 +1,1 @@
+{"entities": [{"name": "Auth0", "type": "service", "properties": {}}, {"name": "Datadog", "type": "service", "properties": {}}], "relationships": [], "memory_type": "fact", "importance": 0.5}

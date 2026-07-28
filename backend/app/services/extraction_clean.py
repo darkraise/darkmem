@@ -2,9 +2,21 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Collection
+from typing import NamedTuple
 
+from app.services.extraction_pass_harness import (
+    CleanState,
+    OrderingConstraint,
+    Pass,
+    RunsBefore,
+    StraddlesPivot,
+    run_passes,
+    validate_registry,
+)
 from app.taxonomy import (
     ENTITY_TYPES,
+    MEMORY_TYPES,
     RELATIONSHIP_TYPES,
     normalize_entity_type,
     normalize_relation_type,
@@ -102,9 +114,10 @@ def _loads_extraction(response: str) -> dict:
 def _build_extraction_schema(with_classification: bool = False) -> str:
     entity_types = "|".join(ENTITY_TYPES)
     rel_types = "|".join(RELATIONSHIP_TYPES)
+    memory_types = "|".join(MEMORY_TYPES)
     # When merged with classification, the same call also returns the
     # enrichment fields the standalone classifier would. ``memory_type`` already
-    # carries the type label (the simple-7 vocabulary), so no separate type
+    # carries the type label (the MEMORY_TYPES vocabulary), so no separate type
     # field is needed — only summary/emotions/flags ride along.
     classification_fields = (
         ',\n'
@@ -116,7 +129,7 @@ def _build_extraction_schema(with_classification: bool = False) -> str:
         "{\n"
         f'  "entities": [{{"name": "string", "type": "{entity_types}", "properties": {{}}}}],\n'
         f'  "relationships": [{{"source": "entity_name", "target": "entity_name", "type": "{rel_types}", "properties": {{}}, "weight": 0.8}}],\n'
-        '  "memory_type": "fact|decision|preference|problem|reference|architecture|milestone",\n'
+        f'  "memory_type": "{memory_types}",\n'
         f'  "importance": 0.7{classification_fields}\n'
         "}"
     )
@@ -137,6 +150,12 @@ _NOISE_NAMES: frozenset[str] = frozenset({
     # "auth", "filesystem", "process_batch") and bare directory parts.
     "auth", "filesystem", "process_batch", "config",
     "request", "response", "session", "context", "scope",
+    # 'kafka source connector' loses its descriptor suffix and leaves the bare
+    # stem behind; the stem is a generic noun either way.
+    "source",
+    # Host stem left behind when the dotted-name collapse eats a bare
+    # hostname ('www.example.com' -> 'www').
+    "www",
 })
 
 _TRAILING_SUFFIXES = re.compile(
@@ -162,6 +181,13 @@ _FILENAME_PATTERN = re.compile(
 
 # URL paths starting with a slash.
 _URL_PATH_PATTERN = re.compile(r"^/[\w/\.\-_]*(?:\?[\w&=\.\-]*)?$")
+
+# Absolute URLs. Matched on the scheme prefix rather than the whole string so a
+# query string or fragment cannot smuggle one past. Without this the chain drops
+# them only by accident, when ``_filter_hallucinated_names`` happens to find a
+# dot-stripped token absent from the source; a dotless authority
+# (``http://localhost:8000/api``) survives that check and reaches the graph.
+_URL_ABSOLUTE_PATTERN = re.compile(r"^[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
 
 # Environment variable names: all-caps with at least one underscore and 4+ chars.
 _ENV_VAR_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*_[A-Z0-9_]+$")
@@ -276,6 +302,10 @@ _NEGATION_WINDOW = re.compile(
     # 'instead of' is a comparative/selection cue ("chose X instead of Y"), not a
     # use-negation; the selection gate keeps both endpoints as X IMPROVES_ON Y, so
     # dropping Y here would orphan that edge.
+    # 'never use X' needs its own alternative: the bare 'never' branch requires
+    # the marker to sit immediately before the mention, so the intervening verb
+    # hides it.
+    r"|never\s+(?:to\s+)?us(?:e|ed|ing)"
     r"|never"
     r"|avoid(?:s|ing|ed)?"
     r"|skip(?:ped|ping)?"
@@ -360,6 +390,8 @@ def _filter_noise(entities: list[dict]) -> list[dict]:
         if _FILENAME_PATTERN.match(name):
             continue
         if _URL_PATH_PATTERN.match(name_stripped):
+            continue
+        if _URL_ABSOLUTE_PATTERN.match(name_stripped):
             continue
         if _ENV_VAR_PATTERN.match(name_stripped):
             continue
@@ -547,8 +579,10 @@ def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
         if name in have:
             continue
         # Whole-word, case-insensitive match. Use a manual word boundary that
-        # accepts adjacent ``.``/``-``/``_`` as separators so ``CPU.``,
-        # ``CPU-bound``, and ``CPU_count`` all surface the bare token.
+        # accepts adjacent ``.`` and ``-`` as separators so ``CPU.`` and
+        # ``CPU-bound`` surface the bare token. ``_`` stays inside the class:
+        # it binds an identifier rather than separating words, so ``CPU_count``
+        # must not yield ``cpu``.
         pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", re.IGNORECASE)
         any_positive = False
         for m in pattern.finditer(content):
@@ -584,6 +618,95 @@ def _rescue_known_entities(entities: list[dict], content: str) -> list[dict]:
                 ]
                 have = {(e.get("name") or "").strip().lower() for e in rescued}
     return rescued
+
+
+def _mentioned_whole_word(name: str, content: str) -> bool:
+    """True when ``name`` appears in ``content`` as a whole word."""
+    if not name:
+        return False
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])"
+    return re.search(pattern, content, re.IGNORECASE) is not None
+
+
+# Head nouns the extraction system prompt already declares to be `artifact`:
+# rule 7b's named app components and surfaces, and rule 9j's first-class
+# documents. Transcribed from the prompt rather than invented here, because
+# the model under-complies with both rules and doc 06 §4's standing remedy is
+# the pass chain, never another prompt round. Any head noun outside these two
+# sets keeps the taxonomy's default for an absent type — the prompt types
+# 'savepoint' `concept` for exactly that reason.
+_ARTIFACT_HEAD_NOUNS: frozenset[str] = frozenset({
+    # rule 7b — named app components and surfaces
+    "app", "frontend", "backend", "cli", "api", "gateway", "worker",
+    "daemon", "scheduler", "dashboard", "console", "panel", "portal",
+    "modal", "tab", "widget",
+    # rule 9j — first-class documents
+    "postmortem", "rfc", "doc", "report", "spec",
+})
+
+
+def _endpoint_entity_type(name: str) -> str:
+    head = re.split(r"[\s\-_/]+", name.strip().lower())[-1] if name.strip() else ""
+    head = head.rstrip("s") if head.rstrip("s") in _ARTIFACT_HEAD_NOUNS else head
+    return "artifact" if head in _ARTIFACT_HEAD_NOUNS else normalize_entity_type("")
+
+
+def _rescue_relation_endpoints(
+    entities: list[dict], relationships: list[dict], content: str,
+) -> list[dict]:
+    """Reinstate a name the model asserted in one of its own edges but left
+    out of its own entity list.
+
+    The extraction model's ``entities`` array is biased towards proper nouns.
+    It reliably lists ``Auth0``, ``RFC 7519`` and ``Datadog`` while dropping
+    the common-noun component the sentence is actually about — ``the design
+    doc``, ``the web app``, ``the CLI`` — even when its ``relationships``
+    array names that component as an endpoint of the same response.
+    ``_remap_to_valid_entities`` then deletes every edge anchored to the
+    missing name, so one omission costs the entity *and* all of its
+    relations. An edge is an assertion that both of its endpoints exist, so
+    the model's own output already carries the evidence and no curated list
+    of names is needed to act on it.
+
+    A candidate is admitted only if it clears the same bar a model-listed
+    entity clears: it must be grounded in the source text as a whole word,
+    and it is run through the entity-shaping stage itself, so the noise,
+    literal, fidelity and negation filters apply to it exactly as they
+    applied to the model's own list and cannot drift apart from it.
+    """
+    if not content or not relationships:
+        return entities
+    have = {(e.get("name") or "").strip().lower() for e in entities}
+    candidates: list[dict] = []
+    seen: set[str] = set()
+    for r in relationships:
+        for side in ("source", "target"):
+            name = (r.get(side) or "").strip()
+            key = name.lower()
+            if not name or key in have or key in seen:
+                continue
+            if not _mentioned_whole_word(name, content):
+                continue
+            seen.add(key)
+            candidates.append({
+                "name": name,
+                "type": _endpoint_entity_type(name),
+                "properties": {},
+            })
+    if not candidates:
+        return entities
+
+    shaping = tuple(p for p in PASS_REGISTRY if p.stage == STAGE_ENTITY_SHAPING)
+    shaped = run_passes(shaping, CleanState(content=content, entities=candidates))
+
+    out = list(entities)
+    for e in shaped.entities:
+        key = (e.get("name") or "").strip().lower()
+        if not key or key in have:
+            continue
+        have.add(key)
+        out.append(e)
+    return out
 
 
 # Connector phrases that imply a relation when sandwiched between two
@@ -779,10 +902,67 @@ def _clause_subject(
     return None
 
 
+# Dedup key for the rescue layer: source, target, and the relation's
+# REPLACES-family bucket rather than its raw type, so an LLM-emitted
+# IMPROVES_ON suppresses a rescue-emitted REPLACES for the same pair.
+def _rescue_key(r: dict) -> tuple[str, str, str]:
+    return (
+        (r.get("source") or "").strip().lower(),
+        (r.get("target") or "").strip().lower(),
+        _family_key(r.get("type") or ""),
+    )
+
+
+class _RescueContext(NamedTuple):
+    text_lower: str
+    name_to_entity: dict[str, dict]
+    occurrences: list[tuple[str, int, int]]
+    existing: set[tuple[str, str, str]]
+    clauses: list[tuple[int, int]]
+
+
+def _rescue_context(
+    entities: list[dict], relations: list[dict], content: str,
+) -> _RescueContext | None:
+    """The span index the three Stage-3 synthesis passes share.
+
+    Rebuilt per pass rather than threaded between them: each pass reads
+    only ``(entities, relationships, content)`` from the registry state,
+    and ``existing`` recomputed from the incoming relations equals the
+    set the previous pass left behind, since every emitted triple is
+    appended under exactly the key that was added.
+    """
+    if not entities or not content:
+        return None
+
+    text_lower = content.lower()
+    name_to_entity: dict[str, dict] = {}
+    for e in entities:
+        n = (e.get("name") or "").strip().lower()
+        if n:
+            name_to_entity[n] = e
+
+    occurrences: list[tuple[str, int, int]] = []
+    for name in name_to_entity:
+        for m in re.finditer(
+            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text_lower,
+        ):
+            occurrences.append((name, m.start(), m.end()))
+    occurrences.sort(key=lambda x: x[1])
+
+    return _RescueContext(
+        text_lower=text_lower,
+        name_to_entity=name_to_entity,
+        occurrences=occurrences,
+        existing={_rescue_key(r) for r in relations},
+        clauses=_split_clauses(text_lower),
+    )
+
+
 def _rescue_relations(
     entities: list[dict], relations: list[dict], content: str,
 ) -> list[dict]:
-    """Pattern-based relation synthesis from text.
+    """Pattern-based relation synthesis from text — the adjacency pass.
 
     For each pair of entities in close text proximity, emit an inferred
     triple if a connector phrase (``on``, ``with``, ``uses``, ``runs on``,
@@ -807,41 +987,14 @@ def _rescue_relations(
     Skips any pair whose between-text contains a negation marker so we
     don't infer ``X USES Y`` from ``X with no Y``.
     """
-    if not entities or not content:
+    ctx = _rescue_context(entities, relations, content)
+    if ctx is None:
         return relations
-
-    text_lower = content.lower()
-    name_to_entity: dict[str, dict] = {}
-    for e in entities:
-        n = (e.get("name") or "").strip().lower()
-        if n:
-            name_to_entity[n] = e
-
-    occurrences: list[tuple[str, int, int]] = []
-    for name in name_to_entity:
-        for m in re.finditer(
-            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text_lower,
-        ):
-            occurrences.append((name, m.start(), m.end()))
-    occurrences.sort(key=lambda x: x[1])
-
-    # Use 5-type-collapsed labels for dedup so that an existing IMPROVES_ON
-    # blocks a rescue candidate of REPLACES (they collapse to the same 5-type
-    # label downstream). Without this the rescue can produce a near-duplicate
-    # ``X REPLACES Y`` alongside an existing ``X IMPROVES_ON Y``.
-    def _key(r: dict) -> tuple[str, str, str]:
-        return (
-            (r.get("source") or "").strip().lower(),
-            (r.get("target") or "").strip().lower(),
-            _family_key(r.get("type") or ""),
-        )
-    existing = {_key(r) for r in relations}
+    text_lower, name_to_entity, occurrences, existing, clauses = ctx
     out = list(relations)
 
     MAX_HEAD_GAP = 15  # src_end -> connector_start
     MAX_TAIL_GAP = 15  # connector_end -> tgt_start
-
-    clauses = _split_clauses(text_lower)
 
     for i, (src_name, src_start, src_end) in enumerate(occurrences):
         for j in range(i + 1, len(occurrences)):
@@ -941,33 +1094,11 @@ def _rescue_relations(
                 "weight": weight,
             })
 
-    # Second pass: subject-tracking. For each clause, identify the clause
-    # subject (first entity mentioned) and pair it with entities that follow
-    # an "implicit subject" connector like ``via``, ``with``, ``using``,
-    # ``to``. This catches ``Promtail ships logs to Loki via gRPC`` as
-    # ``promtail USES grpc`` + ``promtail USES loki`` instead of the
-    # adjacency-only misreads (``loki USES grpc``).
-    out = _rescue_relations_subject_tracking(
-        text_lower, name_to_entity, occurrences, out, existing, clauses,
-    )
-
-    # Third pass: generic REPLACES from transition-verb patterns. Catches
-    # "switched/migrated/moved ... from X to Y", "replaced X with Y",
-    # "swapped X for Y", "Y supersedes X", etc. without case-by-case
-    # connector phrases for every English verb form.
-    out = _rescue_relations_replaces(
-        text_lower, name_to_entity, occurrences, out, existing, clauses,
-    )
     return out
 
 
 def _rescue_relations_replaces(
-    text_lower: str,
-    name_to_entity: dict,
-    occurrences: list[tuple[str, int, int]],
-    current: list[dict],
-    existing: set,
-    clauses: list | None = None,
+    entities: list[dict], relations: list[dict], content: str,
 ) -> list[dict]:
     """Generic REPLACES extractor for transition-verb patterns.
 
@@ -982,7 +1113,11 @@ def _rescue_relations_replaces(
 
     Negation between the verb and the entities suppresses the rescue.
     """
-    out = list(current)
+    ctx = _rescue_context(entities, relations, content)
+    if ctx is None:
+        return relations
+    text_lower, name_to_entity, occurrences, existing, clauses = ctx
+    out = list(relations)
 
     def _emit(src_name: str, tgt_name: str, weight: float, label: str) -> None:
         if src_name == tgt_name:
@@ -1008,7 +1143,7 @@ def _rescue_relations_replaces(
                 return occ
         return None
 
-    for clause_start, clause_end in (clauses if clauses is not None else _split_clauses(text_lower)):
+    for clause_start, clause_end in clauses:
         clause = text_lower[clause_start:clause_end]
         if re.search(r"\b(?:no|not|without|never)\b", clause):
             # Skip outright; cheap negation guard at clause level.
@@ -1160,12 +1295,7 @@ def _rescue_relations_replaces(
 
 
 def _rescue_relations_subject_tracking(
-    text_lower: str,
-    name_to_entity: dict,
-    occurrences: list[tuple[str, int, int]],
-    current: list[dict],
-    existing: set,
-    clauses: list | None = None,
+    entities: list[dict], relations: list[dict], content: str,
 ) -> list[dict]:
     """Emit triples keyed on the clause's grammatical subject, not nearest entity.
 
@@ -1177,9 +1307,16 @@ def _rescue_relations_subject_tracking(
       triple is not already present.
 
     Negation between the subject and the connector still suppresses.
+
+    Catches ``Promtail ships logs to Loki via gRPC`` as ``promtail USES
+    grpc`` + ``promtail USES loki`` instead of the adjacency pass's
+    nearest-entity misread (``loki USES grpc``).
     """
-    clauses = clauses if clauses is not None else _split_clauses(text_lower)
-    out = list(current)
+    ctx = _rescue_context(entities, relations, content)
+    if ctx is None:
+        return relations
+    text_lower, name_to_entity, occurrences, existing, clauses = ctx
+    out = list(relations)
     MAX_TAIL_GAP = 15
 
     # Group occurrences by clause index for fast lookup.
@@ -1424,25 +1561,24 @@ def _dedup_by_target_predicate(relationships: list[dict]) -> list[dict]:
     1. **Subject anchoring** — the LLM emits both the correct
        ``darkmem USES rrf`` (subject = project) and a spurious
        ``qwen3-embedding USES rrf`` (subject = neighbouring tool the
-       model anchored to). Neither carries ``properties.rescue``, so
-       the tie-break falls through to weight and picks whichever the
-       model was more confident in. This is the original motivation
-       for the dedup; behaviour preserved.
+       model anchored to). Neither claims a pattern-grounded
+       direction, so the tie-break falls through to weight and picks
+       whichever the model was more confident in. This is the
+       original motivation for the dedup.
     2. **Wrong-direction REPLACES** — the LLM emits
        ``darkmem REPLACES qdrant`` while the rescue layer's pattern
        extractor (``_rescue_relations_replaces``) emits
        ``pgvector REPLACES qdrant`` from the literal "from X to Y"
-       phrasing. The rescue triple is regex-grounded against the
-       source text, so its directional claim is more reliable than
-       the LLM's free-form interpretation. This handler now picks
-       the rescue-tagged triple over the LLM emission regardless of
-       weight.
+       phrasing, at a lower weight. ``_prefer_relation`` picks the
+       pattern-grounded triple regardless of weight.
 
     The same logic applies generically to any direction-sensitive
-    predicate where a rescue layer pattern-matches the text and the
-    LLM emits a conflicting subject (IMPLEMENTS, EXTENDS,
-    DEPLOYED_ON, etc.) — the rescue layer's structural grounding is
-    a stronger signal than the LLM's confidence weight.
+    predicate where a rescue pass matches a *directional* pattern and
+    the LLM emits a conflicting subject (IMPLEMENTS, EXTENDS,
+    DEPLOYED_ON, etc.). It deliberately does not extend to the
+    adjacency and subject-tracking rescues, whose subject is inferred
+    from position and is the same guess failure mode 1 exists to
+    correct.
 
     Self-loops are ignored (already dropped earlier). Entries missing
     source/target/type pass through unchanged.
@@ -1462,24 +1598,44 @@ def _dedup_by_target_predicate(relationships: list[dict]) -> list[dict]:
     return list(by_key.values()) + untouchable
 
 
+def _is_direction_grounded(relation: dict) -> bool:
+    """True for a rescue triple whose DIRECTION came from a pattern.
+
+    The three rescue emitters are not equally trustworthy about which
+    endpoint is the source. ``_rescue_relations`` (adjacency) and
+    ``_rescue_relations_subject_tracking`` ground *adjacency* and then
+    infer the subject from position, so their direction is a guess.
+    Only ``_rescue_relations_replaces`` matches a directional pattern
+    ("from X to Y", "Y supersedes X") and stamps its label, and it is
+    that pattern — not the rescue tag — that makes the triple's
+    direction more reliable than the model's.
+    """
+    props = relation.get("properties") or {}
+    return bool(props.get("rescue")) and bool(props.get("pattern"))
+
+
 def _prefer_relation(candidate: dict, current: dict) -> bool:
     """Tie-break ordering for ``_dedup_by_target_predicate``.
 
     Order:
 
-    1. Rescue-tagged beats non-tagged. The rescue layer stamps
-       ``properties.rescue=True`` on every triple it emits; those are
-       regex-grounded against the source text so their direction is
-       structurally more trustworthy than the LLM's free-form
-       interpretation.
-    2. When both have the same rescue status, the higher-weight
-       triple wins. Preserves the original subject-anchoring fix
-       where two LLM emissions disagree on the subject.
+    1. A direction-grounded rescue triple beats one that is not. This is
+       the wrong-direction-REPLACES fix: the LLM reads the sentence
+       subject as the replacer and emits ``darkmem REPLACES qdrant``
+       from "we migrated from qdrant to pgvector", while the pattern
+       extractor reads the phrasing itself and emits
+       ``pgvector REPLACES qdrant`` at a *lower* weight — so weight
+       alone keeps the backwards edge, and a backwards ``REPLACES`` is
+       what ``detect_supersessions`` acts on.
+    2. Otherwise the higher-weight triple wins. Preserves the original
+       subject-anchoring fix where two emissions disagree on the
+       subject, including the case where one of them is an adjacency
+       rescue whose subject is itself a guess.
     """
-    cand_rescue = bool((candidate.get("properties") or {}).get("rescue"))
-    curr_rescue = bool((current.get("properties") or {}).get("rescue"))
-    if cand_rescue != curr_rescue:
-        return cand_rescue and not curr_rescue
+    cand_grounded = _is_direction_grounded(candidate)
+    curr_grounded = _is_direction_grounded(current)
+    if cand_grounded != curr_grounded:
+        return cand_grounded and not curr_grounded
     return float(candidate.get("weight") or 0) > float(current.get("weight") or 0)
 
 
@@ -1581,7 +1737,6 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
             out.append(r)
             continue
 
-        swapped = False
         for pattern, first_role, second_role in patterns:
             match = pattern.search(content)
             if not match:
@@ -1610,7 +1765,6 @@ def _validate_directions(relationships: list[dict], content: str) -> list[dict]:
                 and not tgt_matches_expected
             ):
                 r["source"], r["target"] = tgt, src
-                swapped = True
                 break
 
         out.append(r)
@@ -1894,7 +2048,12 @@ def _fan_out_coordinated(
         s, t = (r.get("source") or "").lower(), (r.get("target") or "").lower()
         for g in groups:
             if s in g and t not in g:
-                for member in g:
+                # sorted, not the set's own iteration order: string hash
+                # randomisation would otherwise make the emission ORDER of a
+                # coordinated group differ between processes, which breaks
+                # the reproducibility contract from the opposite end to the
+                # one the LLM seed protects.
+                for member in sorted(g):
                     if member == s or _DATE_ONLY_RE.fullmatch(member):
                         continue
                     key = (member, r.get("type"), t)
@@ -1952,6 +2111,185 @@ def _filter_event_edges(relationships: list[dict], entities: list[dict]) -> list
     return out
 
 
+def _remap_to_valid_entities(
+    relationships: list[dict], entities: list[dict], raw_entities: list[dict],
+) -> list[dict]:
+    """Rewrite every edge endpoint onto a surviving entity, dropping the rest."""
+    valid_names = {e["name"] for e in entities}
+    name_remap = _build_name_remap(raw_entities, valid_names)
+    return _remap_relationships(relationships, name_remap, valid_names)
+
+
+def _drop_edges_to_negated(
+    relationships: list[dict], negated_names: Collection[str],
+) -> list[dict]:
+    """Drop relations that reference an entity removed for being negation-only."""
+    if not negated_names:
+        return relationships
+    return [
+        r for r in relationships
+        if r.get("source") not in negated_names and r.get("target") not in negated_names
+    ]
+
+
+STAGE_ENTITY_SHAPING = "entity_shaping"
+STAGE_ENTITY_RESCUE = "entity_rescue"
+STAGE_RELATION_SYNTHESIS = "relation_synthesis"
+STAGE_RELATION_GATING = "relation_gating"
+STAGE_COLLAPSE_AND_FANOUT = "collapse_and_fanout"
+
+
+# The post-processor, as an explicit ordered sequence. One line per pass;
+# reordering, dropping, or inserting a pass is a one-line edit whose effect
+# the F1 bench measures. Every entry is a pure function with no hidden state.
+PASS_REGISTRY: tuple[Pass, ...] = (
+    Pass("normalize_names", STAGE_ENTITY_SHAPING, _normalize_names, ("entities",), ("entities",)),
+    Pass("filter_noise", STAGE_ENTITY_SHAPING, _filter_noise, ("entities",), ("entities",)),
+    Pass("filter_literals", STAGE_ENTITY_SHAPING, _filter_literals, ("entities", "content"), ("entities",)),
+    Pass("snap_hardware_types", STAGE_ENTITY_SHAPING, _snap_hardware_types, ("entities",), ("entities",)),
+    Pass("apply_type_overrides", STAGE_ENTITY_SHAPING, _apply_type_overrides, ("entities",), ("entities",)),
+    Pass("filter_hallucinated_names", STAGE_ENTITY_SHAPING, _filter_hallucinated_names, ("entities", "content"), ("entities",)),
+    Pass("filter_negation_only", STAGE_ENTITY_SHAPING, _filter_negation_only, ("entities", "content"), ("entities", "negated_names")),
+    Pass("dedup_entities", STAGE_ENTITY_SHAPING, _dedup_entities, ("entities",), ("entities",)),
+    # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
+    # not dropped as substrings of longer model proposals (``cpu_fallback``).
+    #
+    # Endpoint rescue leads the stage: it reinstates names the model itself
+    # asserted, so the passes after it see the model's complete claim set —
+    # ``rescue_known_entities`` builds its span guard from the entity list and
+    # ``rescue_happened_on`` picks its date anchor from it.
+    Pass("rescue_relation_endpoints", STAGE_ENTITY_RESCUE, _rescue_relation_endpoints, ("entities", "relationships", "content"), ("entities",)),
+    Pass("rescue_known_entities", STAGE_ENTITY_RESCUE, _rescue_known_entities, ("entities", "content"), ("entities",)),
+    # File-path rescue: scans for ``a/b/c.py``-style tokens the LLM
+    # dropped and adds them as ``artifact`` entities. Closes the
+    # round-10 recall gap that broke Pattern D's B-zone selection on
+    # relocation memories. Plain dotted forms (``classA.method1()``)
+    # are intentionally NOT matched — see ``_FILE_PATH_RE`` docstring.
+    Pass("rescue_file_path_entities", STAGE_ENTITY_RESCUE, _rescue_file_path_entities, ("entities", "content"), ("entities",)),
+    # Attach ISO dates to their event/release entity (HAPPENED_ON) before
+    # ``valid_names`` is computed, so the date node + edge survive remap.
+    Pass("rescue_happened_on", STAGE_ENTITY_RESCUE, _rescue_happened_on, ("entities", "relationships", "content"), ("entities", "relationships")),
+    # Pattern-based relation synthesis, doc 06 §4's Stage 3 — three passes
+    # in the order the doc declares them. They add DEPLOYED_ON / USES /
+    # REPLACES triples the LLM missed, and run before remap/direction/
+    # collapse so the synthetic triples go through the same downstream
+    # cleanup as LLM-emitted ones. Each is skipped when ``relation_rescue``
+    # is False; the model's raw triples still go through the cleanup below.
+    #
+    # The adjacency pass leads: it and the subject-tracking pass can both
+    # reach the same (source, target, USES) key, and the first emitter of a
+    # key wins it — so the order decides which weight and which properties
+    # the surviving triple carries into ``dedup_by_target_predicate``.
+    Pass("rescue_relations", STAGE_RELATION_SYNTHESIS, _rescue_relations, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
+    Pass("rescue_relations_subject_tracking", STAGE_RELATION_SYNTHESIS, _rescue_relations_subject_tracking, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
+    Pass("rescue_relations_replaces", STAGE_RELATION_SYNTHESIS, _rescue_relations_replaces, ("entities", "relationships", "content"), ("relationships",), gate="relation_rescue"),
+    Pass("remap_to_valid_entities", STAGE_RELATION_GATING, _remap_to_valid_entities, ("relationships", "entities", "raw_entities"), ("relationships",)),
+    Pass("drop_edges_to_negated", STAGE_RELATION_GATING, _drop_edges_to_negated, ("relationships", "negated_names"), ("relationships",)),
+    # Reserve REPLACES for real migrations; a selection ('chose X over Y') is
+    # IMPROVES_ON. Drop edges joined only by a temporal connector. Future/planned
+    # references are MENTIONS, not USES.
+    Pass("gate_replaces_selection", STAGE_RELATION_GATING, _gate_replaces_selection, ("relationships", "content"), ("relationships",)),
+    Pass("gate_replaces_requires_verb", STAGE_RELATION_GATING, _gate_replaces_requires_verb, ("relationships", "content"), ("relationships",)),
+    Pass("suppress_temporal_edges", STAGE_RELATION_GATING, _suppress_temporal_edges, ("relationships", "content"), ("relationships",)),
+    Pass("downgrade_future_to_mentions", STAGE_RELATION_GATING, _downgrade_future_to_mentions, ("relationships", "content"), ("relationships",)),
+    Pass("drop_date_misuse", STAGE_RELATION_GATING, _drop_date_misuse, ("relationships",), ("relationships",)),
+    Pass("validate_directions", STAGE_RELATION_GATING, _validate_directions, ("relationships", "content"), ("relationships",)),
+    Pass("validate_hosting_direction", STAGE_RELATION_GATING, _validate_hosting_direction, ("relationships",), ("relationships",)),
+    # Events are passive temporal nodes: strip any non-temporal/causal edge the
+    # model hung off an incident/outage/release (rule 16a; model under-complies).
+    Pass("filter_event_edges", STAGE_RELATION_GATING, _filter_event_edges, ("relationships", "entities"), ("relationships",)),
+    # Suppress USES between a pair already covered by REPLACES (any
+    # direction). Runs after the direction validators so the REPLACES
+    # is in the right shape, and before the 10->5 collapse so we still
+    # see IMPROVES_ON as part of the REPLACES family.
+    Pass("drop_uses_when_replaces_exists", STAGE_COLLAPSE_AND_FANOUT, _drop_uses_when_replaces_exists, ("relationships",), ("relationships",)),
+    # Same idea for hosting: when a pair already has DEPLOYED_ON, the
+    # parallel USES edge is redundant (DEPLOYED_ON ⊂ USES semantically).
+    Pass("drop_uses_when_deployed_on_exists", STAGE_COLLAPSE_AND_FANOUT, _drop_uses_when_deployed_on_exists, ("relationships",), ("relationships",)),
+    # Cross-source dedup: when a (target, predicate) appears with two
+    # different sources, keep the highest-weight one. Catches the
+    # subject-tracking failure where the extractor anchors a relation
+    # to the most-recent technology entity in addition to (or instead
+    # of) the correct project subject.
+    Pass("dedup_by_target_predicate", STAGE_COLLAPSE_AND_FANOUT, _dedup_by_target_predicate, ("relationships",), ("relationships",)),
+    Pass("fan_out_coordinated", STAGE_COLLAPSE_AND_FANOUT, _fan_out_coordinated, ("relationships", "entities", "content"), ("relationships",)),
+    Pass("filter_event_edges", STAGE_COLLAPSE_AND_FANOUT, _filter_event_edges, ("relationships", "entities"), ("relationships",)),
+    # Drop any date entity left without a HAPPENED_ON edge (dangling value node).
+    Pass("drop_unlinked_dates", STAGE_COLLAPSE_AND_FANOUT, _drop_unlinked_dates, ("entities", "relationships"), ("entities",)),
+)
+
+
+# The three orderings doc 06 §4 calls load-bearing. Declared as data and
+# checked at import time so a reorder fails loudly instead of silently
+# costing F1.
+ORDERING_CONSTRAINTS: tuple[OrderingConstraint, ...] = (
+    RunsBefore(
+        "dedup_entities", "rescue_known_entities",
+        why=(
+            "rescue after dedup keeps canonical short names ('cpu', 'rg') that "
+            "dedup would otherwise drop against a longer model proposal"
+        ),
+    ),
+    RunsBefore(
+        "dedup_entities", "rescue_relation_endpoints",
+        why=(
+            "the same whitespace-collapse equality that would drop a rescued "
+            "short name would drop a rescued edge endpoint ('web app' against "
+            "a model-listed 'webapp')"
+        ),
+    ),
+    RunsBefore(
+        "rescue_relation_endpoints", "remap_to_valid_entities",
+        why=(
+            "the remap deletes every edge whose endpoint is not a valid "
+            "entity, which is the loss the endpoint rescue exists to prevent"
+        ),
+    ),
+    RunsBefore(
+        "dedup_by_target_predicate", "fan_out_coordinated",
+        why=(
+            "fan-out deliberately mints a multi-source set for one "
+            "(target, predicate) that the dedup would collapse back to one edge"
+        ),
+    ),
+    RunsBefore(
+        "remap_to_valid_entities", "drop_edges_to_negated",
+        why=(
+            "``negated_names`` holds SHAPED names while an edge endpoint is "
+            "still the model's raw string until the remap rewrites it, so a "
+            "pre-remap negation check compares two vocabularies that only "
+            "coincide by luck and lets an edge to a denied entity through"
+        ),
+    ),
+    RunsBefore(
+        "remap_to_valid_entities", "suppress_temporal_edges",
+        why=(
+            "every gate from here on keys on endpoint NAMES against the "
+            "content; before the remap those names are the model's raw "
+            "strings, so the span search finds no mention and the gate "
+            "silently declines to fire"
+        ),
+    ),
+    RunsBefore(
+        "gate_replaces_selection", "gate_replaces_requires_verb",
+        why=(
+            "a selection ('chose X over Y') carries no replacement verb, so "
+            "the verb gate would collapse it to RELATED_TO before the "
+            "selection gate ever sees a REPLACES to reclassify as IMPROVES_ON"
+        ),
+    ),
+    StraddlesPivot(
+        "filter_event_edges", "fan_out_coordinated",
+        why=(
+            "fan-out can mint an edge with an event-typed endpoint that the "
+            "first event-legality pass never saw"
+        ),
+    ),
+)
+
+validate_registry(PASS_REGISTRY, ORDERING_CONSTRAINTS)
+
+
 def clean_extraction(
     result: dict,
     content: str = "",
@@ -1960,95 +2298,30 @@ def clean_extraction(
 ) -> dict:
     """Normalize and post-process raw extraction output.
 
+    Runs ``PASS_REGISTRY`` in order; every pass is deterministic and
+    in-process, so the whole chain makes zero model calls.
+
     ``relation_rescue`` toggles the pattern-based relation synthesis pass
     (adjacency + subject-tracking + REPLACES). Defaults to ``True`` so
     existing call sites and tests behave unchanged. Pipeline call sites
     pass the live ``relation_rescue`` feature flag.
     """
-    entities = result.get("entities", [])
-    relationships = result.get("relationships", [])
-
-    entities = _normalize_names(entities)
-    entities = _filter_noise(entities)
-    entities = _snap_hardware_types(entities)
-    entities = _apply_type_overrides(entities)
-    entities = _filter_literals(entities, content)
-    entities = _filter_hallucinated_names(entities, content)
-    entities, negated_names = _filter_negation_only(entities, content)
-    entities = _dedup_entities(entities)
-    # Rescue runs AFTER dedup so canonical short names (``cpu``, ``rg``) are
-    # not dropped as substrings of longer model proposals (``cpu_fallback``).
-    entities = _rescue_known_entities(entities, content)
-    # File-path rescue: scans for ``a/b/c.py``-style tokens the LLM
-    # dropped and adds them as ``artifact`` entities. Closes the
-    # round-10 recall gap that broke Pattern D's B-zone selection on
-    # relocation memories. Plain dotted forms (``classA.method1()``)
-    # are intentionally NOT matched — see ``_FILE_PATH_RE`` docstring.
-    entities = _rescue_file_path_entities(entities, content)
-    # Attach ISO dates to their event/release entity (HAPPENED_ON) before
-    # ``valid_names`` is computed, so the date node + edge survive remap.
-    entities, relationships = _rescue_happened_on(entities, relationships, content)
-    # Pattern-based relation synthesis. Adds DEPLOYED_ON / USES / REPLACES
-    # triples for adjacent entity pairs joined by a connector phrase the
-    # LLM misses (``X on Y``, ``X with Y``, ``X via Y``, ``X uses Y``,
-    # etc.). Runs before remap/direction/collapse so the synthetic triples
-    # go through the same downstream cleanup as LLM-emitted ones. The
-    # entire pass is skipped when ``relation_rescue`` is False; the
-    # model's raw triples still go through direction/collapse cleanup below.
-    if relation_rescue:
-        relationships = _rescue_relations(entities, relationships, content)
-
-    valid_names = {e["name"] for e in entities}
-    name_remap = _build_name_remap(result.get("entities", []), valid_names)
-    relationships = _remap_relationships(relationships, name_remap, valid_names)
-    # Drop relations that reference an entity we removed for being negation-only.
-    if negated_names:
-        relationships = [
-            r for r in relationships
-            if r.get("source") not in negated_names and r.get("target") not in negated_names
-        ]
-    # Reserve REPLACES for real migrations; a selection ('chose X over Y') is
-    # IMPROVES_ON. Drop edges joined only by a temporal connector. Future/planned
-    # references are MENTIONS, not USES.
-    relationships = _gate_replaces_selection(relationships, content)
-    relationships = _gate_replaces_requires_verb(relationships, content)
-    relationships = _suppress_temporal_edges(relationships, content)
-    relationships = _downgrade_future_to_mentions(relationships, content)
-    relationships = _drop_date_misuse(relationships)
-    relationships = _validate_directions(relationships, content)
-    relationships = _validate_hosting_direction(relationships)
-    # Events are passive temporal nodes: strip any non-temporal/causal edge the
-    # model hung off an incident/outage/release (rule 16a; model under-complies).
-    relationships = _filter_event_edges(relationships, entities)
-    # Suppress USES between a pair already covered by REPLACES (any
-    # direction). Runs after the direction validators so the REPLACES
-    # is in the right shape, and before the 10->5 collapse so we still
-    # see IMPROVES_ON as part of the REPLACES family.
-    relationships = _drop_uses_when_replaces_exists(relationships)
-    # Same idea for hosting: when a pair already has DEPLOYED_ON, the
-    # parallel USES edge is redundant (DEPLOYED_ON ⊂ USES semantically).
-    relationships = _drop_uses_when_deployed_on_exists(relationships)
-    # Cross-source dedup: when a (target, predicate) appears with two
-    # different sources, keep the highest-weight one. Catches the
-    # subject-tracking failure where the extractor anchors a relation
-    # to the most-recent technology entity in addition to (or instead
-    # of) the correct project subject.
-    relationships = _dedup_by_target_predicate(relationships)
-    # Fan-out runs LAST: replicating a predicate across coordinated subjects
-    # ('A, B and C all use X') must happen after _dedup_by_target_predicate,
-    # which would otherwise collapse the multi-source set back to one edge.
-    relationships = _fan_out_coordinated(relationships, entities, content)
-    # Re-apply the event-legality guard: fan-out can mint edges with an
-    # event-typed entity as an endpoint for a relation type the guard forbids,
-    # and the earlier pass already ran before these edges existed.
-    relationships = _filter_event_edges(relationships, entities)
-    # Drop any date entity left without a HAPPENED_ON edge (dangling value node).
-    entities = _drop_unlinked_dates(entities, relationships)
+    raw_entities = result.get("entities", [])
+    state = run_passes(
+        PASS_REGISTRY,
+        CleanState(
+            content=content,
+            entities=raw_entities,
+            relationships=result.get("relationships", []),
+            raw_entities=raw_entities,
+            relation_rescue=relation_rescue,
+        ),
+    )
 
     return {
         **result,
-        "entities": entities,
-        "relationships": relationships,
+        "entities": state.entities,
+        "relationships": state.relationships,
     }
 
 
@@ -2067,6 +2340,7 @@ __all__ = [
     "_DOTTED_METHOD",
     "_FILENAME_PATTERN",
     "_URL_PATH_PATTERN",
+    "_URL_ABSOLUTE_PATTERN",
     "_ENV_VAR_PATTERN",
     "_VALUE_PATTERN",
     "_HARDWARE_TOKENS",
@@ -2084,6 +2358,10 @@ __all__ = [
     "_FILE_PATH_RE",
     "_rescue_file_path_entities",
     "_rescue_known_entities",
+    "_mentioned_whole_word",
+    "_ARTIFACT_HEAD_NOUNS",
+    "_endpoint_entity_type",
+    "_rescue_relation_endpoints",
     "_RESCUE_CONNECTORS",
     "_SUBJECT_TRACKED_CONNECTORS",
     "_TRANSITION_VERBS_RE",
@@ -2095,6 +2373,8 @@ __all__ = [
     "_is_object_of_preposition",
     "_clause_for_position",
     "_clause_subject",
+    "_rescue_key",
+    "_rescue_context",
     "_rescue_relations",
     "_rescue_relations_replaces",
     "_rescue_relations_subject_tracking",
@@ -2108,6 +2388,7 @@ __all__ = [
     "_IMPROVES_PATTERNS",
     "_entity_matches",
     "_dedup_by_target_predicate",
+    "_is_direction_grounded",
     "_prefer_relation",
     "_drop_uses_when_deployed_on_exists",
     "_drop_uses_when_replaces_exists",
@@ -2136,6 +2417,22 @@ __all__ = [
     "_EVENT_ALLOWED_RELS",
     "_drop_unlinked_dates",
     "_filter_event_edges",
+    "_remap_to_valid_entities",
+    "_drop_edges_to_negated",
+    "CleanState",
+    "Pass",
+    "RunsBefore",
+    "StraddlesPivot",
+    "OrderingConstraint",
+    "run_passes",
+    "validate_registry",
+    "STAGE_ENTITY_SHAPING",
+    "STAGE_ENTITY_RESCUE",
+    "STAGE_RELATION_SYNTHESIS",
+    "STAGE_RELATION_GATING",
+    "STAGE_COLLAPSE_AND_FANOUT",
+    "PASS_REGISTRY",
+    "ORDERING_CONSTRAINTS",
     "clean_extraction",
     "ENTITY_TYPES",
     "RELATIONSHIP_TYPES",

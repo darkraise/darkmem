@@ -196,16 +196,16 @@ def test_dedup_prefers_rescue_tagged_over_non_tagged_replaces():
     """The exact bug from the glm-4.5-flash extraction memo: LLM emits
     ``darkmem REPLACES qdrant`` (wrong subject, weight 0.9) while the
     rescue layer's pattern A emits ``pgvector REPLACES qdrant`` (correct
-    subject, weight 0.85, properties.rescue=True). The prior dedup kept
+    subject, weight 0.85, carrying its pattern label). The prior dedup kept
     the higher-weight LLM emission and silently dropped the correct one.
-    The rescue-prefer tie-break flips this so the regex-grounded triple
-    wins regardless of weight."""
+    The tie-break flips this so the pattern-grounded triple wins regardless
+    of weight."""
     from app.services.extraction import _dedup_by_target_predicate
 
     rels = [
         {"source": "darkmem", "target": "qdrant", "type": "REPLACES", "weight": 0.9},
         {"source": "pgvector", "target": "qdrant", "type": "REPLACES", "weight": 0.85,
-         "properties": {"rescue": True}},
+         "properties": {"rescue": True, "pattern": "from-to"}},
     ]
     out = _dedup_by_target_predicate(rels)
     assert len(out) == 1
@@ -254,10 +254,11 @@ import pytest
 )
 def test_dedup_rescue_preference_generic_across_direction_sensitive_predicates(predicate):
     """Direction-sensitive predicates carry their semantic in the
-    source. When a rescue layer pattern-matches one and the LLM emits
-    a wrong-direction sibling, the rescue triple must win regardless
-    of weight. Parametrized to cover the whole class — even if a given
-    rescue path doesn't exist today, the policy is uniform.
+    source. When a rescue pass matches a *directional* pattern and the
+    LLM emits a wrong-direction sibling, the pattern-grounded triple
+    must win regardless of weight. Parametrized to cover the whole class
+    — even if a given rescue path doesn't exist today, the policy is
+    uniform.
     """
     from app.services.extraction import _dedup_by_target_predicate
 
@@ -268,13 +269,39 @@ def test_dedup_rescue_preference_generic_across_direction_sensitive_predicates(p
         # Rescue emission with correct subject, lower weight.
         {"source": "correct-source", "target": "shared-target",
          "type": predicate, "weight": 0.7,
-         "properties": {"rescue": True}},
+         "properties": {"rescue": True, "pattern": "from-to"}},
     ]
     out = _dedup_by_target_predicate(rels)
     assert len(out) == 1
     assert out[0]["source"] == "correct-source", (
-        f"rescue-tagged triple should win for {predicate} regardless of weight"
+        f"pattern-grounded triple should win for {predicate} regardless of weight"
     )
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    ["REPLACES", "IMPLEMENTS", "EXTENDS", "DEPLOYED_ON", "AUTHORED_BY",
+     "CAUSES", "HAS_PART", "DEPENDS_ON", "INSPIRED_BY"],
+)
+def test_dedup_does_not_prefer_a_rescue_whose_subject_is_only_inferred(predicate):
+    """The boundary of the rule above. The adjacency and subject-tracking
+    passes locate a connector and then infer the subject from position, so
+    a bare ``rescue`` tag carries no directional claim. Letting it outrank
+    the model re-introduces the subject anchoring this dedup exists to
+    correct — which is what it did on gold e14 before T1.24e narrowed it.
+    """
+    from app.services.extraction import _dedup_by_target_predicate
+
+    rels = [
+        {"source": "model-subject", "target": "shared-target",
+         "type": predicate, "weight": 0.8},
+        {"source": "inferred-subject", "target": "shared-target",
+         "type": predicate, "weight": 0.6,
+         "properties": {"rescue": True, "subject_tracked": True}},
+    ]
+    out = _dedup_by_target_predicate(rels)
+    assert len(out) == 1
+    assert out[0]["source"] == "model-subject"
 
 
 def test_strip_json_fences_handles_anthropic_markdown_wrapping():

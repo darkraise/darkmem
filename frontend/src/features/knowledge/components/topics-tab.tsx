@@ -9,7 +9,7 @@ import {
   useDemoPinSuggestions,
 } from "@/demo/hooks"
 import type { DemoCommunity, DemoPinSuggestion } from "@/demo/types"
-import { PRIOR_DISMISSED_NOTE } from "@/demo/data/knowledge-curated"
+import { PRIOR_DISMISSED_NOTE } from "@/demo/data-exports"
 import { ListSurface } from "./list-surface"
 
 // This tab renders NO verification badge and NO layer chip: a community

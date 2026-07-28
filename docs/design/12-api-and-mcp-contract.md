@@ -123,7 +123,33 @@ The memory family, unchanged in shape (exists today; some gain honest labels as 
 
 The code family, unchanged (exists today; mechanics doc 10):
 
-`list_repos`, `code_search`, `code_symbol`, `code_file_symbols`, `code_context`, `code_blast_radius`, `code_dependencies`, `code_changes`, `code_communities`, `code_processes`, `code_rename` — each with a REST twin under `/code` or `/repos`, gated by **repository, not project** (doc 01 §8's deliberate exception to the project-isolation invariant). This doc fixes the family's contract shape; doc 10 owns the traversal mechanics.
+`list_repos`, `code_search`, `code_symbol`, `code_file_symbols`, `code_context`, `code_blast_radius`, `code_dependencies`, `code_changes`, `code_communities`, `code_processes`, `code_rename` — gated by **repository, not project** (doc 01 §8's deliberate exception to the project-isolation invariant). This doc fixes the family's contract shape; doc 10 owns the traversal mechanics.
+
+**Amendment, 2026-07-28 (T1.42d Tier-3, decided on measurement).** This sentence read "each
+with a REST twin under `/code` or `/repos`" and was tagged *(exists today)*. **Six of the
+eleven have no such route** — `code_context`, `code_dependencies`, `code_communities`,
+`code_processes`, `code_rename` and `code_changes`. Verified twice: by T1.42d's audit of all
+101 REST routes and all 21 MCP tools, and independently by the controller against
+`app/api/routes/code.py` (which exposes `POST /search`, `GET /symbols`, `/symbols/lookup`,
+`/symbols/{id}`, `/files/{repo_id}`, `/graph/{repo_id}`, `/wiki/{repo_id}`, `POST
+/blast-radius`) and `repos.py`.
+
+They are recorded as **MCP single-door with a stated reason** in `docs/two-door-parity.md`,
+which invariant 17 permits, and the distinction that makes it defensible is between a
+*capability* and a *query*: five of the six are server-side projections of rows the REST door
+already serves whole through `GET /code/graph/{repo_id}`, so nothing is REST-unreachable —
+what is single-door is the filtered question. The UI's consumer is a canvas that wants the
+graph; the agent's is a prompt that wants the answer.
+
+**`code_changes` is the one genuine capability asymmetry.** It shells out to git and reports
+the uncommitted working tree against the indexed symbols. Every REST read and the whole
+indexed graph are commit-based, so that state is not REST-reachable at all and the UI has no
+working-tree view.
+
+**This is a controller decision, not an owner ratification, and it is reversible.** The
+alternative — building six REST routes so the original sentence becomes true — is new scope
+no task calls for. If the owner wants the twins built instead, this amendment is what to
+revert.
 
 The new vault & review tools (target-new):
 
@@ -237,9 +263,29 @@ stateDiagram-v2
 | `channels` | object | which channels ran, with `semantic_failed` / `keyword_failed` one-sided-failure flags (doc 07 §2) |
 | `partial` | bool | true if any channel degraded — the client must render the result as partial, never as complete |
 | `weights` | object | the RRF input-list weights and `w_*` arm values in effect — a config snapshot (doc 07 §3) |
-| `excluded` | object | `{by_project, by_status, by_context_conflict}` counts — **surfaced, never silent** (invariant 14) |
+| `excluded` | object | an **open map of reason name → count**, carrying only reasons that actually fired — **surfaced, never silent** (invariant 14). `by_project`, `by_status` and `by_context_conflict` are **reserved names**: when a reason becomes constructible it must use the reserved name, so an SDK can rely on the name where it appears. Amended 2026-07-28, see the note below. |
 | `trace` | object \| null | the row-trace array when the caller requests it (`include_trace=true`); null otherwise |
 | `page` | object | `{limit, offset, total?, next_offset?}` — REST paginated reads and MCP `limit`/`offset` share it |
+
+**Amendment, 2026-07-28 (T1.42a Tier-3, resolved on measurement).** This table originally
+fixed `excluded` as exactly `{by_project, by_status, by_context_conflict}`. The
+implementation ships an open reason-keyed map instead, and the divergence was verified in
+the tree before the doc was changed rather than the code:
+
+- **`by_project` and `by_status` are not constructible at this layer, by design.** Doc 07 §7's
+  pushdown renders both into every channel's SQL — measured on the keyword channel, whose
+  statement carries `AND m.is_archived = FALSE AND m.project = … AND m.status::text = ANY(…)`.
+  A control run of the same statement *without* the filter returns the foreign-project and
+  superseded rows that the scoped run does not, which is the point: those rows are never
+  fetched, so counting them would mean re-fetching exactly what the pushdown exists to avoid.
+- **`by_context_conflict` has a counting primitive that nothing calls yet.**
+  `rank_fusion.partition_by_context` computes it and is tested, but a grep of `app/` finds
+  **zero production call sites** — the four-layer composition that would wire it is E2's.
+- **An always-zero honesty counter is worse than an absent one**, because it reads as evidence
+  that a check ran. That is invariant 14 applied to the counter itself.
+
+The reserved-name rule is what preserves this table's real intent: the *names* are contract,
+the *presence* of a key is evidence that its reason fired.
 
 **Every returned row carries `layer` + `verification_status` and, for L2/L3, the badge; a memory row carries its lifecycle label and a null verification (contract 2, doc 07 §5).** The row shape is the doc-07 §8 per-row trace fields promoted to first-class result fields (so a caller that does *not* request the full trace still gets the honest labels):
 
@@ -292,7 +338,7 @@ flowchart TD
     BADGE -->|no, L0| L["lifecycle label; badge = null"]
     B --> ENV["envelope: sections / items"]
     L --> ENV
-    ENV --> EXC["excluded: by_project, by_status, by_context_conflict (surfaced, inv 14)"]
+    ENV --> EXC["excluded: open reason -> count map; by_project, by_status, by_context_conflict reserved (surfaced, inv 14)"]
     EXC --> TR{"include_trace?"}
     TR -->|yes| T["attach doc-07 section-8 trace: scores, context, grouping"]
     TR -->|no| SKIP["omit trace — token-budget path"]
@@ -307,9 +353,30 @@ flowchart TD
 
 ## 5. Source & context resolution
 
-**Decision. `source` resolution keeps the live precedence — explicit arg (literal `mcp` counts as unspecified) > `X-Darkmem-Client` header > User-Agent product map > `mcp` — and context resolution mirrors it exactly with a new `X-Darkmem-Context` header: per-call `context` arg > `X-Darkmem-Context` header > project-registry default > nothing; there is no stateful session tool, because the MCP server is stateless by design (settle: framing open question).** Reusing the `source` precedence's shape for context is deliberate — it is already understood, already header-driven, and already survives the stateless server. The one genuinely new decision is *where* per-session context lives on a server that holds no session, and the honest answer is: **in a header the client sends on every call**, exactly as `X-Darkmem-Client` already carries the client identity. A stateful `context_declare` tool would be a lie on a `stateless_http=True` server — there is no session to store it in — so it is rejected, and the header is the "declare once, configured at the transport" mechanism.
+**Decision. `source` resolution keeps the live precedence — explicit arg (the door's *own* literal counts as unspecified) > `X-Darkmem-Client` header > User-Agent product map > the door's own literal (`api` on REST, `mcp` on MCP; amended 2026-07-28, below) — and context resolution mirrors it exactly with a new `X-Darkmem-Context` header: per-call `context` arg > `X-Darkmem-Context` header > project-registry default > nothing; there is no stateful session tool, because the MCP server is stateless by design (settle: framing open question).** Reusing the `source` precedence's shape for context is deliberate — it is already understood, already header-driven, and already survives the stateless server. The one genuinely new decision is *where* per-session context lives on a server that holds no session, and the honest answer is: **in a header the client sends on every call**, exactly as `X-Darkmem-Client` already carries the client identity. A stateful `context_declare` tool would be a lie on a `stateless_http=True` server — there is no session to store it in — so it is rejected, and the header is the "declare once, configured at the transport" mechanism.
 
-**Source resolution is verbatim the live `client_identity` logic, and it never fails a write (exists today).** The rules, unchanged: an explicit `source` argument wins as-is (lowercased; the literal `"mcp"` is treated as *unspecified* so an agent copying the old default cannot mask detection); else the `X-Darkmem-Client` header (sanitised to a slug); else the first User-Agent product token, dropping generic runtime tokens (`node`, `python-httpx`, `curl`, …) and mapping known ones (`claude-code`); else the `mcp` fallback. `source_agent` is the explicit arg or the raw User-Agent. `memory_batch_add` resolves on the **raw entry dicts** before `MemoryCreate` validation, because the schema stamps its `api` default during validation and erases the absent-vs-explicit distinction (CLAUDE.md, doc 05). Resolution never raises — attribution must not fail a capture.
+**Source resolution is verbatim the live `client_identity` logic, and it never fails a write (exists today).** The rules: an explicit `source` argument wins as-is (lowercased; **the door's own literal is treated as *unspecified*** so an agent copying that door's default cannot mask detection); else the `X-Darkmem-Client` header (sanitised to a slug); else the first User-Agent product token, dropping generic runtime tokens (`node`, `python-httpx`, `curl`, …) and mapping known ones (`claude-code`); else **the door's own literal** — `api` on REST, `mcp` on MCP. `source_agent` is the explicit arg or the raw User-Agent. Both batch doors resolve on the **raw entry dicts** before `MemoryCreate` validation, and every entry in a batch resolves from the *same* request context, so a batch of 100 from one undeclared agent is one origin rather than 100 (doc 05 §2.1). Resolution never raises — attribution must not fail a capture.
+
+**Amendment, 2026-07-28 (T1.42a Tier-3, resolved on measurement).** This section originally
+described one chain terminating in `mcp` for **every** door, and stated that `MemoryCreate`
+"stamps its `api` default during validation". Both were checked against the tree before the
+doc was changed rather than the code:
+
+- **`MemoryCreate.source` has no default at all** — it was removed by T1.42a, so the erasure
+  the old sentence described is no longer representable.
+- **A single `mcp` terminal would mislabel every REST capture.** With the per-door fallback,
+  an absent `source` resolves to `api` on REST and `mcp` on MCP, which is what actually
+  happened. Under the doc's original wording a browser write would be attributed to MCP.
+- **The sentinel must be per-door for the same reason the fallback is.** The rule masks *the
+  door's own default*, so on REST an explicit `api` falls through to the header (measured:
+  `api` + `X-Darkmem-Client: cursor` → `cursor`) while on MCP that same explicit `api` is a
+  foreign, deliberate value and wins over the header. The asymmetry is the rule working, not
+  a leak: `source` is self-declared attribution, never an authorisation input.
+- **The raw-dict discipline has a live justification on the MCP door**, not merely a
+  historical one. Simulating a reintroduced `api` default resolved after validation still
+  yields `codex` on REST — where `api` is REST's own sentinel — and yields `api` on MCP,
+  losing the caller's real identity. Do not "simplify" it away on the strength of the REST
+  case alone.
 
 **Context resolution is the new wire format this doc owns (contract 3, target-new); doc 07 owns the matching those values feed.** The declared caller context is a structured value `{env, version, situation}`; `env` and `situation` are **closed vocabularies normalised before store under doc 06's taxonomy discipline** (invariant 5 — matching rots on `prod`/`production`/`prd` drift otherwise), and `version` is a free string compared app-side (doc 07 §6, never a jsonb predicate). The precedence:
 
@@ -456,7 +523,7 @@ The invariants that bind this layer, restated in this doc's own terms against th
 - **Two front doors, one service layer (inv. 17).** Every read tool has a REST twin calling the same service; the deliberate single-door surfaces are of two kinds — the confirmed-power writes (ratify, review-resolve) and the human-observability reads (review queue, events) — each recorded with its reason (§3, §7). A behaviour never exists on one door and not the other by accident.
 - **MCP Host-allowlist trust model (inv. 20).** `/mcp` is stateless, unauthenticated, and gated only by the Host allowlist; a foreign Host is `421`, fixed by extending the allowlist, never by disabling protection; browser Origins are allowlisted to the same hosts; the batch cap is mirrored 1–100 (§3, §6). The confirmed-power writes are kept off this door precisely because it is unauthenticated (§3).
 - **Trust-on-first-use, no pre-shared secret (inv. 21).** Setup is gated only by `require_uninitialized`; `SETUP_SECRET` is gone; the login rate-limiter reads `X-Real-IP` under a trusted proxy and the transport peer under app-as-edge (§6).
-- **Honest partial results, surfaced counts, filter-pushdown prerequisite (inv. 14).** Every list envelope surfaces `excluded.{by_project, by_status, by_context_conflict}` and a `partial` flag; a degraded channel is flagged, never silently dropped; the badge under-claims and never says "true"/"verified" (§4). The pushdown (doc 07 §7) is what lets the search reads scope in SQL rather than leak.
+- **Honest partial results, surfaced counts, filter-pushdown prerequisite (inv. 14).** Every list envelope surfaces an `excluded` map naming every reason that fired — with `by_project`, `by_status` and `by_context_conflict` reserved names rather than mandatory keys (§4's 2026-07-28 amendment) — and a `partial` flag; a degraded channel is flagged, never silently dropped; the badge under-claims and never says "true"/"verified" (§4). The pushdown (doc 07 §7) is what lets the search reads scope in SQL rather than leak.
 - **`memory_id` str/UUID drift normalised at the boundary (inv. 9).** Every id is serialised as a string with an `id_kind` discriminator (`memory`/`fact`/`article`) at the JSON boundary, so a consumer round-tripping ids never drops a match on a type mismatch (§3, §4).
 - **Reconciliation off the hot path (inv. 15).** The API serialises the labels, badge, and trace that docs 07/08/09 computed; it recomputes no `verification_status`, no ranking, no grounding — the read surface never triggers an LLM reconciliation (§4).
 - **Closed taxonomy for the context axes (inv. 5).** The `env`/`situation` axes of the `applies_when` wire format are closed vocabularies normalised under doc 06's discipline; `version` is app-side compared; `context_validate` surfaces unknown axes (§5).

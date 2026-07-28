@@ -1,0 +1,1 @@
+{"entities": [{"name": "Ruff", "type": "tool", "properties": {}}, {"name": "mypy", "type": "tool", "properties": {}}], "relationships": [{"source": "Ruff", "target": "mypy", "type": "RELATED_TO", "properties": {}, "weight": 0.5}], "memory_type": "preference", "importance": 0.5}

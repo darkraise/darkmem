@@ -34,6 +34,7 @@ from app.models.code import Repository
 from app.models.config import Config
 from app.services.events import record_event
 from app.models.llm_config import LLMPurposeConfigRow
+from app.services.llm_quirks import models_probe, quirks_for
 from app.services.repo_manager import validate_local_path
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
@@ -66,15 +67,6 @@ async def setup_status(session: AsyncSession = Depends(get_session)) -> StatusRe
 # ── Probe-models ──────────────────────────────────────────────────────
 
 
-def _ollama_native_root(base_url: str) -> str:
-    base = base_url.rstrip("/")
-    if base.endswith("/v1"):
-        return base[:-3]
-    if base.endswith("/api"):
-        return base[:-4]
-    return base
-
-
 class ProbeModelsRequest(BaseModel):
     api_kind: Literal["openai", "anthropic", "ollama", "google", "deepseek", "zai"]
     base_url: str
@@ -99,24 +91,15 @@ async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
     user can iterate on the API key without persisting anything until
     the final ``POST /api/v1/setup`` call.
     """
-    headers = {"Accept": "application/json"}
-    if body.api_kind == "ollama":
-        url = f"{_ollama_native_root(body.base_url)}/api/tags"
-        kind_label = "ollama_native:/api/tags"
-    else:
-        if not body.api_key:
-            return ProbeModelsResponse(
-                models=[],
-                fetched_via="openai_compat:/v1/models",
-                error=f"API key required for api_kind={body.api_kind!r}",
-            )
-        if body.api_kind == "anthropic":
-            headers["x-api-key"] = body.api_key
-            headers["anthropic-version"] = "2023-06-01"
-        else:
-            headers["Authorization"] = f"Bearer {body.api_key}"
-        url = f"{body.base_url.rstrip('/')}/models"
-        kind_label = "openai_compat:/v1/models"
+    target = models_probe(body.api_kind, body.base_url, body.api_key)
+    url, kind_label = target.url, target.label
+    if quirks_for(body.api_kind).requires_api_key and not body.api_key:
+        return ProbeModelsResponse(
+            models=[],
+            fetched_via=kind_label,
+            error=f"API key required for api_kind={body.api_kind!r}",
+        )
+    headers = {"Accept": "application/json", **target.headers}
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client_:
@@ -362,43 +345,48 @@ async def setup_finalize(
         )
         await session.commit()
 
-        # 2. LLM block — optional. Inserts the full default seed
-        # (DEFAULT_PROVIDERS + DEFAULT_PROFILES + DEFAULT_PURPOSE_CONFIGS)
-        # so the user finishes setup with a fully populated menu of
-        # vendors and preset profiles. The user's api_key is applied
-        # to the matching api_kind row; their per-purpose model
-        # selections override the default purpose-config rows. This
-        # replaces the pre-refactor "single provider, six profiles"
-        # path AND removes the dependency on migration-seeded rows
-        # that the pre-refactor handler upserted into.
+        # 2. LLM block — optional. Writes DEFAULT_PURPOSE_CONFIGS as inline
+        # `llm_purpose_configs` rows (there are no provider/profile tables
+        # left to seed — doc 04 §7) so the user finishes setup with every
+        # purpose resolvable, including the two Tier-C purposes (synthesis,
+        # verification) T1.05 seeded inert. The user's per-purpose model
+        # selections then overlay the matching rows; DEFAULT_PROVIDERS and
+        # DEFAULT_PROFILES stay pure-Python lookups used only to fill in a
+        # default base_url and a matching params preset for the user's
+        # chosen vendor+model, never written to the database themselves.
+        #
+        # Upsert, not insert: `purpose` is the primary key, and re-running
+        # the wizard against an instance whose purpose rows already exist
+        # (T1.01 made the wizard re-run the supported upgrade path, doc 20
+        # §10) must overlay the same rows rather than fail on a duplicate
+        # key. See doc 11 §9.4 / T1.56.
         if body.llm is not None:
             try:
                 from app.services.llm_seed import (
-                    DEFAULT_PROVIDERS,
                     DEFAULT_PROFILES,
                     DEFAULT_PURPOSE_CONFIGS,
                     provider_seed_by_kind,
                 )
 
-                # Six inline purpose rows. The provider/profile
-                # indirection is gone (doc 04 §7), so the seed writes the
-                # connection details straight onto each purpose row and the
-                # user's choices overlay the same row -- no FK to resolve.
-                purpose_rows: dict[str, LLMPurposeConfigRow] = {}
+                existing_rows = (
+                    await session.execute(select(LLMPurposeConfigRow))
+                ).scalars().all()
+                purpose_rows: dict[str, LLMPurposeConfigRow] = {
+                    r.purpose: r for r in existing_rows
+                }
                 for pc in DEFAULT_PURPOSE_CONFIGS:
-                    row = LLMPurposeConfigRow(
-                        purpose=pc.purpose,
-                        model=pc.model,
-                        dimensions=pc.dimensions,
-                        reasoning=pc.reasoning,
-                        api_kind=pc.api_kind,
-                        provider=pc.provider,
-                        base_url=pc.base_url,
-                        api_key=None,
-                        params=dict(pc.params),
-                    )
-                    session.add(row)
-                    purpose_rows[pc.purpose] = row
+                    row = purpose_rows.get(pc.purpose)
+                    if row is None:
+                        row = LLMPurposeConfigRow(purpose=pc.purpose)
+                        session.add(row)
+                        purpose_rows[pc.purpose] = row
+                    row.model = pc.model
+                    row.dimensions = pc.dimensions
+                    row.reasoning = pc.reasoning
+                    row.api_kind = pc.api_kind
+                    row.base_url = pc.base_url
+                    row.api_key = None
+                    row.params = dict(pc.params)
                 await session.flush()
 
                 user_provider_seed = provider_seed_by_kind(body.llm.api_kind)
@@ -434,7 +422,6 @@ async def setup_finalize(
                     pcfg.dimensions = spec.dimensions if is_embedding else None
                     pcfg.reasoning = False if is_embedding else spec.reasoning
                     pcfg.api_kind = body.llm.api_kind
-                    pcfg.provider = body.llm.api_kind
                     pcfg.base_url = user_base_url
                     pcfg.api_key = body.llm.api_key
                     pcfg.params = seed_params

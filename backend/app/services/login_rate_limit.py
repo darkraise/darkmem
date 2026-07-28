@@ -18,8 +18,10 @@ class LoginRateLimiter:
     # Scope is one process: the failure map lives in this instance's memory and
     # is not shared across workers or replicas (a multi-process / HA deployment
     # would back it with Redis). The ``ip`` key is supplied by the caller —
-    # auth.py's ``_client_ip`` derives it proxy-aware (honoring a trusted
-    # X-Forwarded-For) — so this class never inspects the request itself.
+    # auth.py's ``_client_ip`` derives it from whichever posture is configured
+    # (the transport peer by default, or a trusted proxy's own view when
+    # ``trust_proxy_headers`` is on) — so this class never inspects the
+    # request itself.
     # Cap on tracked IPs. The key space is hostile (every spoofable
     # X-Forwarded-For value), so sweep expired entries once the map grows past
     # this rather than letting it accumulate one permanent entry per IP that

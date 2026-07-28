@@ -49,7 +49,10 @@ async def test_llm_config_exposes_classification_purpose(client, auth_headers):
     body = resp.json()
     assert "classification" in body, f"classification purpose missing: {list(body.keys())}"
     # Default comes from Settings.llm_classification (ollama/qwen2.5:3b).
-    assert body["classification"]["provider"] == "ollama"
+    # `api_kind` is the only vendor field — the duplicate `provider` column and
+    # wire key were dropped by T1.01 (F-10).
+    assert "provider" not in body["classification"]
+    assert body["classification"]["api_kind"] == "openai"
     assert body["classification"]["model"] == "qwen2.5:3b"
 
 
@@ -57,7 +60,6 @@ async def test_llm_config_exposes_classification_purpose(client, auth_headers):
 async def test_llm_config_update_roundtrips_classification(client, auth_headers):
     payload = {
         "classification": {
-            "provider": "ollama",
             "base_url": "http://localhost:11434/v1",
             "model": "qwen2.5:1.5b",
             "params": {"temperature": 0.1},
@@ -207,8 +209,7 @@ async def test_provider_save_closes_previous_orchestrator(client, auth_headers, 
         "/api/v1/config/llm",
         headers=auth_headers,
         json={"extraction": {
-            "provider": "openai",
-            "base_url": "https://api.openai.com/v1",
+                        "base_url": "https://api.openai.com/v1",
             "model": "gpt-4o-mini",
             "api_kind": "openai",
         }},

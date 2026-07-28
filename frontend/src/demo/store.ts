@@ -2,7 +2,6 @@ import { create } from "zustand"
 import memoriesData from "./data/memories.json"
 import reposData from "./data/repos.json"
 import jobsData from "./data/jobs.json"
-import llmProfilesData from "./data/llm-profiles.json"
 import { CURATED_MEMORIES } from "./data/memories-curated"
 import {
   CURATED_ARTICLES,
@@ -59,7 +58,6 @@ import type {
   DemoRankArm,
   MaintenanceOpKey,
   Repo,
-  LlmProfile,
 } from "./types"
 
 const initialMemories: DemoMemory[] = [
@@ -147,7 +145,7 @@ const initialActivity = () => ({
     ...j,
     config_schema: j.config_schema.map((f) => ({ ...f })),
   })),
-  bufferMonitor: CURATED_BUFFER_MONITOR,
+  bufferMonitor: structuredClone(CURATED_BUFFER_MONITOR),
   dreamMonitor: CURATED_DREAM_MONITOR,
   dreamCycle: CURATED_DREAM_CYCLE,
   dreamActions: CURATED_DREAM_ACTIONS.map((a) => ({ ...a })),
@@ -180,9 +178,13 @@ const countOverrides = (flags: DemoFlagsState): number => {
   const flagOverrides = flags.graph_flags.filter(
     (f) => f.source === "override",
   ).length
+  const behavioralOverrides = flags.behavioral_flags.filter(
+    (f) => f.source === "override",
+  ).length
   return (
     armOverrides +
     flagOverrides +
+    behavioralOverrides +
     (flags.corroboration.source === "override" ? 1 : 0)
   )
 }
@@ -193,7 +195,6 @@ const writeArm = (arm: DemoRankArm, key: string, value: number): DemoRankArm =>
 export const useDemoStore = create<DemoStoreState>((set, get) => ({
   memories: initialMemories,
   repos: reposData as unknown as Repo[],
-  llmProfiles: llmProfilesData as unknown as LlmProfile[],
   ...initialActivity(),
   ...initialSettings(),
   stats: initialStats,
@@ -362,6 +363,33 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
     set((s) => ({
       pipelineFailures: s.pipelineFailures.filter((f) => f.id !== id),
     })),
+  retryBufferRow: (id) =>
+    set((s) => ({
+      bufferMonitor: {
+        ...s.bufferMonitor,
+        target: {
+          ...s.bufferMonitor.target,
+          error: Math.max(0, s.bufferMonitor.target.error - 1),
+          pending: s.bufferMonitor.target.pending + 1,
+          poisonRows: s.bufferMonitor.target.poisonRows.filter(
+            (r) => r.id !== id,
+          ),
+        },
+      },
+    })),
+  forgetBufferRow: (id) =>
+    set((s) => ({
+      bufferMonitor: {
+        ...s.bufferMonitor,
+        target: {
+          ...s.bufferMonitor.target,
+          error: Math.max(0, s.bufferMonitor.target.error - 1),
+          poisonRows: s.bufferMonitor.target.poisonRows.filter(
+            (r) => r.id !== id,
+          ),
+        },
+      },
+    })),
   triggerJob: (key) => {
     const job = get().jobs.find((j) => j.key === key)
     if (!job) return { ok: false, status: 409, lock_held_since: "unknown" }
@@ -455,6 +483,20 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
       }
       return { flags: { ...flags, overrides_written: countOverrides(flags) } }
     }),
+  setBehavioralFlag: (key, enabled) =>
+    set((s) => {
+      const flags: DemoFlagsState = {
+        ...s.flags,
+        behavioral_flags: s.flags.behavioral_flags.map((f) =>
+          f.key === key ? { ...f, enabled, source: "override" } : f,
+        ),
+      }
+      return { flags: { ...flags, overrides_written: countOverrides(flags) } }
+    }),
+  saveRepoAllowlist: (patterns) =>
+    set((s) => ({
+      flags: { ...s.flags, repo_allowlist: { patterns } },
+    })),
   saveLLMPurpose: (purpose, patch) =>
     set((s) => ({
       llm: {

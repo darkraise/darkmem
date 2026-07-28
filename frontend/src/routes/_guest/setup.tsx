@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { DemoSetupWizard } from "@/features/setup/components/demo-setup-wizard"
 import { SetupWizard } from "@/features/setup/components/SetupWizard"
 

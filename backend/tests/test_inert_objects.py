@@ -22,10 +22,11 @@ BACKEND = Path(__file__).resolve().parent.parent
 
 # The inert objects, with the task that will first write to each.
 INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
+# repositories.index_debt is no longer here: T1.39, its declared first writer
+# (schema inventory §7), landed the re-trace drain that writes it.
 INERT_COLUMNS = {
     ("entities", "repo_ids"): "T2.27",
     ("entity_relations", "repo_ids"): "T2.27",
-    ("repositories", "index_debt"): "T1.39",
 }
 INERT_TEMPLATES = {
     "block_embeddings": "TH1.05",
@@ -83,11 +84,6 @@ async def test_inert_columns_hold_only_their_empty_default(session):
         )).scalar()
         assert non_empty == 0, f"{table}.repo_ids has a writer — it must stay inert"
 
-    debt = (await session.execute(
-        text("SELECT count(*) FROM repositories WHERE index_debt IS NOT NULL")
-    )).scalar()
-    assert debt == 0, "repositories.index_debt has a writer — it must stay inert"
-
 
 # ── no code path writes to them ──────────────────────────────────────────
 
@@ -108,7 +104,7 @@ def test_no_app_code_writes_the_inert_columns():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for column in ("repo_ids", "index_debt"):
+            for column in ("repo_ids",):
                 writes = (
                     f".{column} =" in line
                     or f"{column}=" in line.replace("==", "")
@@ -234,3 +230,61 @@ async def test_live_repo_predicate_spares_a_repo_asserted_row(session):
     assert survived == 1, "a row a live repo asserts must survive the sweep"
     assert reaped == 0, "a row nothing asserts must still be reaped"
     assert result["entities_pruned"] >= 1
+
+
+# ── The two Tier-C LLM purposes seeded inert (T1.05, doc 11 §6) ──────
+
+
+def test_inert_purposes_are_seeded_and_resolvable():
+    """Doc 11 §6: the rows, their seeds, and the PURPOSES sweep land BEFORE any
+    consumer dispatches. A consumer reaching an unseeded purpose is the same
+    class of bug as a feature emitting an untabled entity type — so `inert` here
+    means *nothing dispatches*, not *not configured*."""
+    from app.services.config import PURPOSES
+    from app.services.llm_seed import DEFAULT_PURPOSE_CONFIGS
+
+    seeded = {p.purpose for p in DEFAULT_PURPOSE_CONFIGS}
+    for purpose in ("synthesis", "verification"):
+        assert purpose in seeded, f"{purpose} is not seeded"
+        assert purpose in PURPOSES, f"{purpose} missing from the PURPOSES sweep"
+
+
+@pytest.mark.asyncio
+async def test_inert_purposes_resolve_without_a_row(session):
+    """A fresh install has no `llm_purpose_configs` rows until the wizard
+    finalizes. Resolution must still return both purposes rather than raising —
+    adding a purpose to PURPOSES without a Settings default is a KeyError at the
+    first call, and the first call would be a Tier-C consumer in E2/E3."""
+    from app.services.config import get_llm_config
+
+    config = await get_llm_config(session)
+    for purpose in ("synthesis", "verification"):
+        assert purpose in config
+        assert config[purpose].model
+
+
+def test_no_app_code_dispatches_the_inert_purposes():
+    """The inertness itself. Their first writers are T2.26 (`verification`) and
+    T3.02 (`synthesis`); until then no call site may name either purpose."""
+    allowed = {
+        "app/config.py",              # the Settings defaults
+        "app/services/config.py",     # PURPOSES + the defaults map
+        "app/services/llm_seed.py",   # the seed rows
+    }
+    offenders: list[str] = []
+    for path in _app_sources():
+        rel = str(path.relative_to(BACKEND))
+        if rel in allowed:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            for purpose in ("synthesis", "verification"):
+                if f'"{purpose}"' in line or f"'{purpose}'" in line:
+                    offenders.append(f"{rel}:{lineno}: {stripped}")
+    assert not offenders, (
+        "an inert LLM purpose gained a dispatcher:\n" + "\n".join(offenders)
+        + "\nIf this is the intended first writer (T2.26 / T3.02), remove the "
+          "purpose from this test and update the schema inventory."
+    )

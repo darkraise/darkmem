@@ -3,6 +3,13 @@
 After the per-fingerprint redesign these endpoints are a missing-fingerprint
 backfill: they look for memories/entities/code chunks whose vector for the
 active embedder partition does not yet exist, and produce one.
+
+The obsolete listings are deliberately deployment-wide — every project and every
+lifecycle state needs a vector under the active embedder, exactly as the write
+path does — and `partition_missing` is what keeps that honest: when the active
+partition is absent no row can be singled out, so the count stays exact and the
+enumeration is withheld rather than paging the whole table. The decision and its
+reasoning live in `app.services.content_surfaces`.
 """
 
 from __future__ import annotations
@@ -12,7 +19,6 @@ import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -70,8 +76,13 @@ async def list_obsolete_memories(
 ):
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_memories(fingerprint, limit=limit, offset=offset)
-    return {"items": items, "total": total}
+    items, total, partition_missing = await svc.list_obsolete_memories(
+        fingerprint, limit=limit, offset=offset,
+    )
+    return {
+        "items": items, "total": total, "limit": limit, "offset": offset,
+        "partition_missing": partition_missing,
+    }
 
 
 @router.get("/obsolete/code-chunks")
@@ -84,8 +95,13 @@ async def list_obsolete_code_chunks(
 ):
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_code_chunks(fingerprint, limit=limit, offset=offset)
-    return {"items": items, "total": total}
+    items, total, partition_missing = await svc.list_obsolete_code_chunks(
+        fingerprint, limit=limit, offset=offset,
+    )
+    return {
+        "items": items, "total": total, "limit": limit, "offset": offset,
+        "partition_missing": partition_missing,
+    }
 
 
 @router.get("/obsolete/entities")
@@ -98,8 +114,13 @@ async def list_obsolete_entities(
 ):
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    items, total = await svc.list_obsolete_entities(fingerprint, limit=limit, offset=offset)
-    return {"items": items, "total": total}
+    items, total, partition_missing = await svc.list_obsolete_entities(
+        fingerprint, limit=limit, offset=offset,
+    )
+    return {
+        "items": items, "total": total, "limit": limit, "offset": offset,
+        "partition_missing": partition_missing,
+    }
 
 
 async def _dispatch_single_category(
@@ -114,10 +135,7 @@ async def _dispatch_single_category(
         raise HTTPException(503, "Pipeline not initialized")
 
     if not reembed_locks.try_acquire(category):
-        return JSONResponse(
-            status_code=409,
-            content={"accepted": False, "reason": "already_running"},
-        )
+        raise HTTPException(status_code=409, detail=f"Re-embed of {category!r} is already running")
 
     try:
         snapshot_fingerprint = pipeline.llm.llm_fingerprint()
@@ -136,20 +154,30 @@ async def _dispatch_single_category(
         method_name = method_name_map[category]
 
         async def _run():
+            from app.services.events import record_maintenance_run
             try:
                 flags = await _get_flags()
                 async with async_session_factory() as bg_session:
                     bg_svc = ReembedService(bg_session)
                     method = getattr(bg_svc, method_name)
-                    await method(
+                    result = await method(
                         current_fingerprint=snapshot_fingerprint,
                         llm=snapshot_llm,
                         batch_id=batch_id,
                         broadcast=event_manager.broadcast,
                         flags=flags,
                     )
+                await record_maintenance_run(
+                    async_session_factory,
+                    operation=f"reembed_{category}",
+                    outcome="ok" if not result.get("errors") else "error",
+                    detail=result,
+                )
             except Exception:
                 logger.exception("Re-embed %s background task failed", category)
+                await record_maintenance_run(
+                    async_session_factory, operation=f"reembed_{category}", outcome="error",
+                )
             finally:
                 reembed_locks.release(category)
 
@@ -214,12 +242,9 @@ async def reembed_all(
         else:
             for released in acquired:
                 reembed_locks.release(released)
-            return JSONResponse(
+            raise HTTPException(
                 status_code=409,
-                content={
-                    "accepted": False, "reason": "already_running",
-                    "conflict_category": cat,
-                },
+                detail=f"Re-embed of {cat!r} is already running",
             )
 
     try:
@@ -231,6 +256,7 @@ async def reembed_all(
         totals = await svc.count_missing(snapshot_fingerprint)
 
         async def _run_all():
+            from app.services.events import record_maintenance_run
             try:
                 flags = await _get_flags()
                 async with async_session_factory() as bg_session:
@@ -242,16 +268,28 @@ async def reembed_all(
                     ]
                     for category, method in sequence:
                         try:
-                            await method(
+                            result = await method(
                                 current_fingerprint=snapshot_fingerprint,
                                 llm=snapshot_llm,
                                 batch_id=batch_id,
                                 broadcast=event_manager.broadcast,
                                 flags=flags,
                             )
+                            await record_maintenance_run(
+                                async_session_factory,
+                                operation=f"reembed_{category}",
+                                outcome="ok" if not result.get("errors") else "error",
+                                detail={**result, "batch_id": batch_id},
+                            )
                         except Exception:
                             logger.exception(
                                 "Re-embed %s failed under batch %s", category, batch_id,
+                            )
+                            await record_maintenance_run(
+                                async_session_factory,
+                                operation=f"reembed_{category}",
+                                outcome="error",
+                                detail={"batch_id": batch_id},
                             )
             finally:
                 for cat in ("memories", "entities", "code_chunks"):
@@ -272,7 +310,23 @@ async def prune_cache(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
+    from app.services.events import record_event
+
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
     deleted = await svc.prune_obsolete_cache_entries(fingerprint)
+    # prune_obsolete_cache_entries already committed its own DROP TABLEs, so
+    # this journal write rides its own transaction on the same session,
+    # committed explicitly here rather than left to the request teardown.
+    await record_event(
+        session,
+        event_type="maintenance_run",
+        object_type="system",
+        payload={
+            "operation": "prune_caches",
+            "outcome": "ok",
+            "detail": {"deleted": deleted, "fingerprint": fingerprint},
+        },
+    )
+    await session.commit()
     return {"deleted": deleted}

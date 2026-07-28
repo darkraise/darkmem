@@ -18,6 +18,7 @@ from app.services.code_parser import (
     ExtractedCall, ExtractedHeritage, ExtractedImport, ExtractedProperty,
     ExtractedRoute, ExtractedSymbol, detect_language, parse_file,
 )
+from app.services import index_debt
 from app.services.community_detector import CommunityDetector
 from app.services.heritage_resolver import AccessResolver, HeritageResolver
 from app.services.llm import LLMOrchestrator
@@ -126,18 +127,40 @@ class CodePipeline:
 
         self._stats: dict = {}
 
+        # Set by phase_01 when this run must reprocess every file even where
+        # content_hash is unchanged (a genuine first index, a forced `full`
+        # reindex, or a diff failure falling back to one). Phase 03 reads this
+        # to bypass its unchanged-file skip so a `full` reindex actually
+        # rebuilds everything instead of silently no-op'ing on matching hashes.
+        self._force_full: bool = False
+
+        # Re-trace overflow this run deferred, and the debt batch it claimed.
+        # The batch is only removed from the queue once the run succeeds.
+        self._debt_deferred: list[str] = []
+        self._debt_batch: list[str] = []
+        self._debt_vanished: list[str] = []
+
     async def run(
         self,
         repo_id: UUID,
         full: bool = False,
         enrich_symbols: bool = False,
         generate_wiki: bool = False,
+        forced_files: tuple[list[str], list[str]] | None = None,
     ) -> dict:
         from app.api.websocket import event_manager
 
         self._repo = await self.repo_manager.get(repo_id)
         if not self._repo:
             raise ValueError(f"Repository {repo_id} not found")
+
+        # A working-tree hash mismatch that HEAD never moved for (T1.40's
+        # code_reconcile job): the caller already knows exactly which paths
+        # drifted, so the empty-diff/no-op case below must not swallow them.
+        # `not any(...)` also normalises an accidentally-empty pair back to
+        # "nothing forced" instead of taking the bypass for no reason.
+        if forced_files is not None and not any(forced_files):
+            forced_files = None
 
         repo = self._repo
         new_sha = await self.repo_manager.pull_repo(repo)
@@ -150,12 +173,22 @@ class CodePipeline:
 
         old_sha = repo.last_indexed_commit
 
-        if old_sha == new_sha and not full:
-            if repo.status != "ready":
-                repo.status = "ready"
-                repo.status_message = None
-                await self.session.flush()
-            return {"status": "up_to_date", "commit": new_sha}
+        if old_sha == new_sha and not full and forced_files is None:
+            # Outstanding debt is work this repo owes at the *current* sha, so an
+            # unchanged HEAD must not short-circuit it: without this the queue
+            # only ever drains when someone happens to push, which is the same
+            # unbounded staleness the debt exists to end.
+            debt = await index_debt.load(self.session, repo.id)
+            if not index_debt.queued_files(debt):
+                if repo.status != "ready":
+                    repo.status = "ready"
+                    repo.status_message = None
+                    await self.session.flush()
+                return {
+                    "status": "up_to_date",
+                    "commit": new_sha,
+                    "index_debt_queued": 0,
+                }
 
         self._work_dir = self.repo_manager.repo_working_dir(repo)
         self._repo_id_str = str(repo.id)
@@ -169,6 +202,8 @@ class CodePipeline:
             "symbols_indexed": 0,
             "chunks_stored": 0,
             "calls_resolved": 0,
+            "index_debt_drained": 0,
+            "index_debt_queued": 0,
             "errors": [],
         }
 
@@ -177,7 +212,7 @@ class CodePipeline:
         await self.session.commit()
 
         try:
-            await self.phase_01_file_discovery(old_sha, new_sha, full)
+            await self.phase_01_file_discovery(old_sha, new_sha, full, forced_files)
             total = len(self._changed_files)
 
             await event_manager.broadcast("repo.indexing_started", {
@@ -259,10 +294,22 @@ class CodePipeline:
             repo.status_message = None
             await self.session.commit()
 
+            try:
+                await self._settle_index_debt(new_sha)
+            except Exception as exc:
+                # The index itself is committed and correct at this point. A
+                # bookkeeping failure must not send a successful run down the
+                # failure path and label the graph stale; the batch simply stays
+                # queued and the next run re-traces it again.
+                logger.warning("Failed to settle index debt for repo %s: %s", repo.id, exc)
+                await self.session.rollback()
+
             await event_manager.broadcast("repo.indexing_completed", {
                 "repo_id": self._repo_id_str,
                 "files_changed": self._stats["files_changed"],
                 "symbols_indexed": self._stats["symbols_indexed"],
+                "index_debt_drained": self._stats["index_debt_drained"],
+                "index_debt_queued": self._stats["index_debt_queued"],
             })
 
             logger.info(
@@ -311,12 +358,34 @@ class CodePipeline:
             # exception. Roll back so the cleanup runs in a clean transaction.
             await self.session.rollback()
             repo = await self.repo_manager.get(repo_id) or repo
-            repo.status = "error"
-            repo.status_message = str(exc)[:500]
-            try:
-                await self._delete_all_repo_data(repo.id)
-            except Exception:
-                logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
+            cause = f"{type(exc).__name__}: {exc}"[:400]
+
+            # last_indexed_commit is only ever advanced on a full success
+            # (below), so it still names the last graph this repo successfully
+            # built. If one exists, a mid-run failure must never destroy it —
+            # the user's symptom for a wiped graph is "my code search went
+            # empty" with no visible error, and it is unrecoverable short of a
+            # full re-index. Keep serving that graph and label it stale instead.
+            # Only a repo that never finished a first index (nothing to lose)
+            # still gets the destructive cleanup.
+            if repo.last_indexed_commit:
+                repo.status = "stale"
+                repo.status_message = (
+                    f"Indexing failed; still serving the graph from commit "
+                    f"{repo.last_indexed_commit}. Cause: {cause}"
+                )
+                logger.warning(
+                    "Repo %s indexing failed after commit %s; keeping prior "
+                    "graph and marking stale instead of wiping: %s",
+                    repo.name, repo.last_indexed_commit, exc,
+                )
+            else:
+                repo.status = "error"
+                repo.status_message = str(exc)[:500]
+                try:
+                    await self._delete_all_repo_data(repo.id)
+                except Exception:
+                    logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
             await self.session.commit()
 
             # Feature 2: record the exception as an unresolved failure
@@ -353,36 +422,82 @@ class CodePipeline:
         logger.info("[pipeline] phase %s done in %.2fs", name, elapsed)
 
     async def phase_01_file_discovery(
-        self, old_sha: str | None, new_sha: str, full: bool
+        self,
+        old_sha: str | None,
+        new_sha: str,
+        full: bool,
+        forced_files: tuple[list[str], list[str]] | None = None,
     ) -> None:
         t0 = await self._phase_log("01_file_discovery")
         work_dir = self._work_dir
 
-        if full or not old_sha:
+        if not old_sha:
+            # A genuine first index: there is no prior graph to protect, so the
+            # eager wipe here is safe (it clears only leftover junk from an
+            # earlier, never-completed attempt).
+            self._force_full = True
             self._changed_files = _list_all_files(work_dir)
             self._deleted_files = []
             await self._delete_all_repo_data(self._repo.id)
         else:
-            self._changed_files, self._deleted_files = await _diff_files(work_dir, old_sha, new_sha)
-            # Re-trace callers of changed/deleted files so a renamed or removed
-            # target doesn't leave an unchanged caller's edge missing until the
-            # next full reindex. Computed BEFORE the deleted-file delete loop
-            # below (which drops those edges). Added dependents hit phase_03's
-            # content-hash skip — no structure rewrite, only their calls are
-            # re-resolved in phase_06.
-            targets = self._changed_files + self._deleted_files
-            if targets:
-                deps, total = await _find_dependent_caller_files(
-                    self.session, self._repo.id, targets,
-                )
-                if total > len(deps):
-                    logger.info(
-                        "Incremental reindex: %d dependent caller files exceed cap "
-                        "%d; re-tracing %d (run a full reindex to refresh the rest)",
-                        total, DEPENDENT_RETRACE_CAP, len(deps),
+            used_full = full
+            if not full:
+                if forced_files is not None:
+                    # code_reconcile already found the exact drift by hashing
+                    # the working tree against CodeFile.content_hash — HEAD
+                    # didn't move, so there is no commit range for _diff_files
+                    # to compare, and re-deriving the same answer from git
+                    # would just repeat that hashing for nothing.
+                    self._changed_files, self._deleted_files = (
+                        list(forced_files[0]), list(forced_files[1]),
                     )
-                already = set(targets)
-                self._changed_files.extend(d for d in deps if d not in already)
+                else:
+                    try:
+                        self._changed_files, self._deleted_files = await _diff_files(
+                            work_dir, old_sha, new_sha
+                        )
+                    except Exception as exc:
+                        # A failed diff must not degrade into wiping the graph.
+                        # Fall back to a full pass instead: every file is
+                        # reprocessed in place (phase_03's per-file delete+insert,
+                        # not a repo-wide wipe), so a transient git failure costs
+                        # extra work, never data.
+                        logger.warning(
+                            "git diff failed for repo %s (%s -> %s); falling back "
+                            "to a full index instead of wiping the graph: %s",
+                            self._repo.name, old_sha, new_sha, exc,
+                        )
+                        used_full = True
+
+            if used_full:
+                self._force_full = True
+                all_files = _list_all_files(work_dir)
+                self._changed_files = all_files
+                self._deleted_files = await self._find_removed_files(all_files)
+            else:
+                # Re-trace callers of changed/deleted files so a renamed or
+                # removed target doesn't leave an unchanged caller's edge
+                # missing until the next full reindex. Computed BEFORE the
+                # deleted-file delete loop below (which drops those edges).
+                # Added dependents hit phase_03's content-hash skip — no
+                # structure rewrite, only their calls are re-resolved in
+                # phase_06.
+                targets = self._changed_files + self._deleted_files
+                if targets:
+                    deps, overflow = await _find_dependent_caller_files(
+                        self.session, self._repo.id, targets,
+                        cap=DEPENDENT_RETRACE_CAP,
+                    )
+                    already = set(targets)
+                    self._changed_files.extend(d for d in deps if d not in already)
+                    self._debt_deferred = [f for f in overflow if f not in already]
+                    if self._debt_deferred:
+                        logger.info(
+                            "Incremental reindex: %d dependent caller files exceed cap "
+                            "%d; re-tracing %d and queueing %d as index debt",
+                            len(deps) + len(self._debt_deferred), DEPENDENT_RETRACE_CAP,
+                            len(deps), len(self._debt_deferred),
+                        )
 
         for rel_path in self._deleted_files:
             try:
@@ -392,7 +507,128 @@ class CodePipeline:
                 logger.error("Error deleting data for %s: %s", rel_path, exc)
                 self._stats["errors"].append(f"delete:{rel_path}:{exc}")
 
+        await self._fold_index_debt(new_sha)
+
         self._phase_done("01_file_discovery", t0)
+
+    async def _fold_index_debt(self, new_sha: str) -> None:
+        """Persist this run's re-trace overflow and claim a batch to drain.
+
+        The deferral is committed here, before any later phase can fail, because
+        those callers are already missing edges whether or not this run finishes
+        — losing the record of that is the truncation this exists to prevent.
+        The claimed batch stays in the queue until the run succeeds
+        (``_settle_index_debt``), so a failure re-offers it rather than eating it.
+
+        Debt files are only ever *added* to the changed set. Their content hash
+        is unchanged, so phase 03 takes its skip path and no graph rows are
+        deleted for them: the drain restores edges, it never removes any.
+        """
+        debt = await index_debt.load(self.session, self._repo.id)
+        deferred = self._debt_deferred
+        # Only debt carried in from earlier runs is drainable here. Folding back
+        # what this run just deferred would spend the budget the cap withheld.
+        carried = index_debt.queued_files(debt)
+
+        if deferred:
+            debt = index_debt.record_overflow(debt, deferred, new_sha)
+
+        if self._force_full:
+            # Every file is re-traced by this pass, so the whole queue is settled
+            # by it — there is nothing left for a continuation batch to do.
+            batch = index_debt.queued_files(debt)
+        elif carried:
+            size = await index_debt.drain_batch_size(self.session, DEPENDENT_RETRACE_CAP)
+            batch = carried[:size]
+        else:
+            batch = []
+
+        if deferred:
+            await index_debt.save(self.session, self._repo.id, debt)
+            await index_debt.journal(
+                self.session, repo_id=self._repo.id, action="deferred",
+                count=len(deferred), debt=debt, commit=new_sha,
+            )
+            await self.session.commit()
+
+        self._debt_batch = batch
+        self._debt_vanished = []
+        if not batch or self._force_full:
+            return
+
+        work_dir = self._work_dir
+        present: list[str] = []
+        for rel_path in batch:
+            if (work_dir / rel_path).is_file():
+                present.append(rel_path)
+            else:
+                # The file left the working tree, so there is no caller left to
+                # re-trace. Settling it is a resolution, not a dropped re-trace.
+                self._debt_vanished.append(rel_path)
+
+        already = set(self._changed_files) | set(self._deleted_files)
+        self._changed_files.extend(f for f in present if f not in already)
+
+    async def _settle_index_debt(self, new_sha: str) -> None:
+        """Remove the claimed batch now that the run that re-traced it succeeded."""
+        drained = self._debt_batch
+        debt = await index_debt.load(self.session, self._repo.id)
+        if drained:
+            debt = index_debt.record_drain(
+                debt, drained, new_sha, vanished=len(self._debt_vanished),
+            )
+            await index_debt.save(self.session, self._repo.id, debt)
+            await index_debt.journal(
+                self.session, repo_id=self._repo.id, action="drained",
+                count=len(drained), debt=debt, commit=new_sha,
+                vanished=len(self._debt_vanished),
+            )
+            await self.session.commit()
+        self._stats["index_debt_drained"] = len(drained)
+        self._stats["index_debt_queued"] = debt["queued"]
+
+    async def _find_removed_files(self, current_files: list[str]) -> list[str]:
+        """Files this repo has an indexed ``CodeFile`` row for that are no
+        longer present in ``current_files``.
+
+        Used by the full/forced-full path in place of the git-diff deleted
+        list, so a forced full reindex (or a diff-failure fallback) still
+        removes graph data for files that genuinely no longer exist, without
+        needing the old sha at all.
+        """
+        current_set = set(current_files)
+        rows = (await self.session.execute(
+            select(CodeFile.file_path).where(CodeFile.repo_id == self._repo.id)
+        )).scalars().all()
+        return [fp for fp in rows if fp not in current_set]
+
+    async def _snapshot_symbol_enrichment(
+        self, file_id: UUID,
+    ) -> dict[tuple[str, str, str | None, str], tuple[str | None, str]]:
+        """Enrichment state of ``file_id``'s current symbols, keyed by
+        ``(name, kind, owner, source-hash)``, read before ``_delete_file_data``
+        deletes them (doc 10 §3, T4).
+
+        The source-hash in the key is what makes carry-over safe: a symbol
+        whose body changed, or was renamed or moved to a different owner,
+        misses the match and is correctly re-enriched rather than keeping a
+        summary describing code that no longer exists.
+        """
+        rows = (await self.session.execute(
+            select(
+                CodeSymbol.id, CodeSymbol.name, CodeSymbol.kind,
+                CodeSymbol.parent_symbol_id, CodeSymbol.source_code,
+                CodeSymbol.summary, CodeSymbol.enrichment_status,
+            ).where(CodeSymbol.file_id == file_id)
+        )).all()
+        id_to_name = {row.id: row.name for row in rows}
+
+        snapshot: dict[tuple[str, str, str | None, str], tuple[str | None, str]] = {}
+        for row in rows:
+            owner = id_to_name.get(row.parent_symbol_id) if row.parent_symbol_id else None
+            key = (row.name, row.kind, owner, _symbol_source_hash(row.source_code))
+            snapshot[key] = (row.summary, row.enrichment_status)
+        return snapshot
 
     async def phase_02_parsing(self) -> None:
         t0 = await self._phase_log("02_parsing")
@@ -529,7 +765,11 @@ class CodePipeline:
                 )
             ).scalar_one_or_none()
 
-            if existing and existing.content_hash == parsed["content_hash"]:
+            if (
+                existing
+                and existing.content_hash == parsed["content_hash"]
+                and not self._force_full
+            ):
                 self._all_file_paths.append(fp)
                 if pr.calls:
                     self._all_calls[fp] = pr.calls
@@ -539,7 +779,9 @@ class CodePipeline:
                 self._stats["files_skipped"] += 1
                 continue
 
+            enrichment_snapshot: dict[tuple[str, str, str | None, str], tuple[str | None, str]] = {}
             if existing:
+                enrichment_snapshot = await self._snapshot_symbol_enrichment(existing.id)
                 await self._delete_file_data(repo.id, fp)
             # Either we just removed the old chunks (changed-existing) or the
             # file is brand new and has none; phase 12 need not delete again.
@@ -557,8 +799,26 @@ class CodePipeline:
 
             symbol_count = 0
             symbol_map: dict[str, UUID] = {}
+            created_symbols: list[tuple[CodeSymbol, str | None]] = []
             for sym in pr.symbols:
-                symbol_count += _store_symbol(self.session, code_file, sym, None, symbol_map)
+                symbol_count += _store_symbol(
+                    self.session, code_file, sym, None, symbol_map,
+                    created=created_symbols,
+                )
+
+            # T4 carry-over: a freshly-parsed symbol whose (name, kind, owner,
+            # source-hash) matches the pre-deletion snapshot is byte-identical
+            # to the one it replaces, so it keeps that symbol's summary and
+            # enriched status instead of re-entering the pending backlog.
+            if enrichment_snapshot:
+                for symbol_obj, owner_name in created_symbols:
+                    key = (
+                        symbol_obj.name, symbol_obj.kind, owner_name,
+                        _symbol_source_hash(symbol_obj.source_code),
+                    )
+                    carried = enrichment_snapshot.get(key)
+                    if carried is not None:
+                        symbol_obj.summary, symbol_obj.enrichment_status = carried
 
             await _store_graph(
                 self.session, repo, fp, pr.symbols, pr.imports,
@@ -1438,7 +1698,7 @@ async def _find_dependent_caller_files(
     repo_id,
     changed_files: list[str],
     cap: int = DEPENDENT_RETRACE_CAP,
-) -> tuple[list[str], int]:
+) -> tuple[list[str], list[str]]:
     """Files (outside ``changed_files``) whose ``calls`` edges target a symbol
     in a changed file, so their call edges must be re-traced.
 
@@ -1446,15 +1706,17 @@ async def _find_dependent_caller_files(
     that targets a renamed/moved symbol in a changed file loses its edge
     (``_delete_file_data`` drops it when the changed file is re-indexed) and
     never regains it until a full reindex. Re-tracing these dependents recreates
-    the edge. Returns ``(files, total)`` where ``total`` is the pre-cap count so
-    the caller can log any truncation rather than silently dropping work.
+    the edge. Returns ``(kept, overflow)``: ``kept`` is re-traced by this run and
+    ``overflow`` is the work past the cap, which the caller persists as index
+    debt. The overflow is named rather than counted precisely because it must be
+    drained later, never dropped.
 
     Symbol keys are ``name::file_path`` or ``name::file_path::owner``, so the
     file is always segment 2 of ``::`` — matched here with ``split_part`` rather
     than a ``%::<file>`` suffix so owner-qualified method keys still match.
     """
     if not changed_files:
-        return [], 0
+        return [], []
     changed_set = set(changed_files)
     rows = (await session.execute(
         text("""
@@ -1467,7 +1729,7 @@ async def _find_dependent_caller_files(
         {"rid": str(repo_id), "files": changed_files},
     )).scalars().all()
     deps = sorted({f for f in rows if f and f not in changed_set})
-    return deps[:cap], len(deps)
+    return deps[:cap], deps[cap:]
 
 
 async def _diff_files(
@@ -1500,12 +1762,18 @@ async def _diff_files(
     return changed, deleted
 
 
+def _symbol_source_hash(source_code: str | None) -> str:
+    return hashlib.sha256((source_code or "").encode()).hexdigest()
+
+
 def _store_symbol(
     session: AsyncSession,
     code_file: CodeFile,
     sym: ExtractedSymbol,
     parent_id: UUID | None,
     symbol_map: dict[str, UUID],
+    owner_name: str | None = None,
+    created: list[tuple[CodeSymbol, str | None]] | None = None,
 ) -> int:
     is_exported = sym.visibility not in ("private",) if sym.visibility else True
     if sym.kind in ("class", "struct", "interface", "trait", "enum", "impl"):
@@ -1532,10 +1800,15 @@ def _store_symbol(
     )
     session.add(symbol)
     symbol_map[sym.name] = symbol_id
+    if created is not None:
+        created.append((symbol, owner_name))
 
     count = 1
     for child in sym.children:
-        count += _store_symbol(session, code_file, child, symbol_id, symbol_map)
+        count += _store_symbol(
+            session, code_file, child, symbol_id, symbol_map,
+            owner_name=sym.name, created=created,
+        )
     return count
 
 

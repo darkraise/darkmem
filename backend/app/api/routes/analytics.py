@@ -3,15 +3,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select, text as sa_text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import get_analytics_service
 from app.database import get_session
-from app.models.memory import Memory, Tag
-from app.repositories.graph import PostgresGraphRepository
 from app.schemas.config import StatsResponse
 from app.services.analytics import AnalyticsService
 
@@ -23,31 +20,10 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    service: AnalyticsService = Depends(get_analytics_service),
 ):
-    memory_count = (await session.execute(select(func.count()).select_from(Memory))).scalar()
-    tag_count = (await session.execute(select(func.count()).select_from(Tag))).scalar()
-    sources_result = await session.execute(select(Memory.source).distinct())
-    sources = [r[0] for r in sources_result.all()]
-
-    entity_count = None
-    rel_count = None
-    try:
-        graph_repo = PostgresGraphRepository(session)
-        stats = await graph_repo.get_stats()
-        entity_count = stats["entity_count"]
-        rel_count = stats["relationship_count"]
-    except SQLAlchemyError:
-        # An aborted graph COUNT leaves the session in a failed-transaction
-        # state; roll back so the response (and any later reuse of this
-        # session) doesn't inherit the poison.
-        logger.warning("Graph stats unavailable", exc_info=True)
-        await session.rollback()
-
-    return StatsResponse(
-        memories=memory_count, tags=tag_count,
-        entities=entity_count, relationships=rel_count, sources=sources,
-    )
+    stats = await service.get_stats()
+    return StatsResponse(**stats)
 
 
 @router.post("/reprocess")
@@ -86,12 +62,16 @@ async def get_pipeline_logs(
     session: AsyncSession = Depends(get_session),
 ):
     # audit_log was dropped by the baseline; events is the audit substrate
-    # (doc 04 §8.1). The response shape is preserved: event_type 'pipeline'
-    # rows carry the same object_id and payload the old columns did.
+    # (doc 04 §8.1). This used to query event_type='pipeline', a value
+    # outside EVENT_TYPES that nothing ever wrote, so the endpoint returned
+    # empty forever. 'extracted' is what process_batch actually journals
+    # per memory (pipeline.py), one row per memory per batch with the same
+    # status dict the pipeline.* broadcast carries, plus 'outcome'
+    # (completed/partial/failed) folded in.
     rows = (await session.execute(
         sa_text(
             "SELECT id, object_id, payload, created_at FROM events "
-            "WHERE event_type = 'pipeline' ORDER BY created_at DESC LIMIT :limit"
+            "WHERE event_type = 'extracted' ORDER BY created_at DESC LIMIT :limit"
         ),
         {"limit": limit},
     )).all()

@@ -21,6 +21,7 @@ class Repository(Base):
     auth_token_ref: Mapped[str | None] = mapped_column(String(255))
     last_indexed_commit: Mapped[str | None] = mapped_column(String(64))
     last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    index_debt: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     status_message: Mapped[str | None] = mapped_column(String(500))
     auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)

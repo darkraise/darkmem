@@ -202,6 +202,50 @@ async def auth_me(payload: TokenPayload = Depends(require_auth)):
     return {"authenticated": True, "sub": payload.sub}
 
 
+class SecurityPostureResponse(BaseModel):
+    trust_proxy_headers: bool
+    cookie_secure: bool
+    cookie_secure_explicit: bool
+    environment: str
+    mcp_allowed_hosts: list[str]
+    rate_limit_max_failures: int
+    rate_limit_window_seconds: float
+    rate_limit_lockout_seconds: float
+
+
+def _parse_mcp_allowed_hosts(raw: str) -> list[str]:
+    return [h.strip() for h in raw.split(",") if h.strip()]
+
+
+@router.get("/security-posture", response_model=SecurityPostureResponse)
+async def auth_security_posture(
+    _payload: TokenPayload = Depends(require_auth),
+) -> SecurityPostureResponse:
+    """The live security posture, read off ``settings`` and the shared
+    ``login_rate_limiter`` at call time — never a hardcoded assumption.
+
+    T1.62 is about to flip ``trust_proxy_headers``'s default and move the
+    limiter onto the transport peer; this endpoint is how an operator sees
+    which strategy is actually in effect once that lands, so every field
+    here is a live read, not a default echoed back.
+
+    Enumerates fields rather than serialising ``settings`` wholesale: no
+    credential (``jwt_secret``, ``db_password``, any provider ``api_key``)
+    can appear on this response, by construction rather than by filtering
+    one out after the fact.
+    """
+    return SecurityPostureResponse(
+        trust_proxy_headers=settings.trust_proxy_headers,
+        cookie_secure=settings.session_cookie_secure,
+        cookie_secure_explicit=settings.cookie_secure is not None,
+        environment=settings.environment,
+        mcp_allowed_hosts=_parse_mcp_allowed_hosts(settings.mcp_allowed_hosts),
+        rate_limit_max_failures=login_rate_limiter.max_failures,
+        rate_limit_window_seconds=login_rate_limiter.window_seconds,
+        rate_limit_lockout_seconds=login_rate_limiter.lockout_seconds,
+    )
+
+
 @router.get("/audit")
 async def auth_audit(
     limit: int = Query(50, ge=1, le=500),

@@ -42,8 +42,13 @@ for f in EPIC_FILES:
     src = read(f)
     lines = src.split("\n")
     idx = [i for i, l in enumerate(lines) if HEAD.match(l + "\n")]
+    # A block ends at the next heading of ANY level, not just the next task.
+    # Without this the final task in a file absorbs the amendment log, and every
+    # task another row happens to mention becomes a phantom prerequisite of it.
+    stops = sorted(i for i, l in enumerate(lines) if l.startswith("#"))
     for k, i in enumerate(idx):
-        end = idx[k + 1] if k + 1 < len(idx) else len(lines)
+        nxt = [s for s in stops if s > i]
+        end = nxt[0] if nxt else len(lines)
         block = "\n".join(lines[i:end])
         m = HEAD.match(lines[i] + "\n")
         tid, title = m.group(1), m.group(2)
@@ -76,6 +81,10 @@ for f in EPIC_FILES + glob.glob("*.md"):
         continue
     allrefs |= set(re.findall(TID, read(f)))
 for r in sorted(allrefs - set(tasks)):
+    # `T1.24` is a legitimate way to name the T1.24a-f family in prose. Only an
+    # id that names neither a task nor a family of them is a broken reference.
+    if sum(1 for t in tasks if t.startswith(r)) >= 2:
+        continue
     fail("refs", "reference to undefined task %s" % r)
 
 # ------------------------------------------------------------- 2. no cycles

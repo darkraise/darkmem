@@ -3,6 +3,29 @@ import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "darkraise-ui/components/sonner"
 import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
 
+/**
+ * Every query key any pipeline/memory/repo WebSocket event keeps fresh while
+ * the socket is open. A dropped connection means broadcasts fired during the
+ * gap were never delivered, so `onopen` after a reconnect invalidates this
+ * whole set rather than only the keys a live event happens to name — without
+ * it, a UI that reconnects silently keeps rendering pre-drop state with no
+ * signal anything was missed.
+ */
+const RECONCILE_QUERY_KEYS: string[] = [
+  "memories",
+  "memory",
+  "memoriesPaginated",
+  "stats",
+  "overview",
+  "tags",
+  "pipelineLogs",
+  "pipelineFailures",
+  "pipelineFailureCounts",
+  "repos",
+  "repoTasks",
+  "repoStats",
+]
+
 function showPipelineToast(event: string, data: PipelineStatus) {
   const id = data.memory_id.slice(0, 8)
 
@@ -34,6 +57,7 @@ export function useWebSocket() {
   const retryCount = useRef<number>(0)
   const closedByCaller = useRef<boolean>(false)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasConnectedBefore = useRef<boolean>(false)
   const qc = useQueryClient()
 
   const connect = useCallback(() => {
@@ -165,6 +189,12 @@ export function useWebSocket() {
     }
 
     ws.current.onopen = () => {
+      if (hasConnectedBefore.current) {
+        for (const key of RECONCILE_QUERY_KEYS) {
+          void qc.invalidateQueries({ queryKey: [key] })
+        }
+      }
+      hasConnectedBefore.current = true
       retryCount.current = 0
     }
 

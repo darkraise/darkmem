@@ -135,10 +135,11 @@ flowchart TD
     end
 
     subgraph S2["Stage 2 — entity rescue (add what the LLM dropped)"]
-      B1["_rescue_known_entities — curated short/hardware names, negation-aware, span-guarded"]
-      B2["_rescue_file_path_entities — a/b/c.py tokens as artifact"]
-      B3["_rescue_happened_on — keep ISO dates alive for HAPPENED_ON"]
-      B1 --> B2 --> B3
+      B1["_rescue_relation_endpoints — endpoints the model asserted in relationships but omitted from entities"]
+      B2["_rescue_known_entities — curated short/hardware names, negation-aware, span-guarded"]
+      B3["_rescue_file_path_entities — a/b/c.py tokens as artifact"]
+      B4["_rescue_happened_on — keep ISO dates alive for HAPPENED_ON"]
+      B1 --> B2 --> B3 --> B4
     end
 
     subgraph S3["Stage 3 — relation synthesis (rescue, flag-gated)"]
@@ -168,7 +169,7 @@ flowchart TD
     Raw --> S1 --> S2 --> S3 --> S4 --> S5 --> Clean["Clean candidate set -> Phase 3/4"]
 ```
 
-**Three ordering constraints are load-bearing and must survive the rebuild.** First, **entity rescue runs after entity dedup** so canonical short names (`cpu`, `rg`) are not dropped as substrings of longer model proposals, and the rescue is span-guarded so `darkraise` is not re-added inside `darkraise-ui` nor `github` inside `GitHub Actions`. Second, **`_fan_out_coordinated` runs last**, after `_dedup_by_target_predicate`, because fan-out deliberately mints a multi-source set ("A, B, and C all use X" → three edges) that the target-predicate dedup would otherwise collapse back to one. Third, **`_filter_event_edges` runs twice** — once in the gating stage and again after fan-out — because fan-out can mint a fresh edge with an event-typed endpoint that the first pass never saw. These are not incidental; they are why the inventory must be treated as an *ordered* contract, not a bag of filters (see the open-question stance on freezing the inventory, §10).
+**Three ordering constraints are load-bearing and must survive the rebuild.** First, **entity rescue runs after entity dedup** so canonical short names (`cpu`, `rg`) are not dropped against longer model proposals, and the rescue is span-guarded so `darkraise` is not re-added inside `darkraise-ui` nor `github` inside `GitHub Actions`. Second, **`_fan_out_coordinated` runs last**, after `_dedup_by_target_predicate`, because fan-out deliberately mints a multi-source set ("A, B, and C all use X" → three edges) that the target-predicate dedup would otherwise collapse back to one. Third, **`_filter_event_edges` runs twice** — once in the gating stage and again after fan-out — because fan-out can mint a fresh edge with an event-typed endpoint that the first pass never saw. These are not incidental; they are why the inventory must be treated as an *ordered* contract, not a bag of filters (see the open-question stance on freezing the inventory, §10). **Mechanism correction (2026-07-27, T1.24a).** This paragraph previously said rescue-after-dedup protects short names from being dropped "as substrings". `_dedup_entities` has no substring rule: it keys on `name.upper().replace(" ", "")` — case- and whitespace-insensitive equality — plus acronym containment, and `_is_acronym_of` requires the short side to be uppercase while the rescue only ever inserts lowercase curated names, so the acronym path cannot drop a rescued name either. The constraint is still load-bearing; it bites through the **whitespace-collapse equality** path, not a substring one. The ordering is unchanged — only the stated reason was wrong.
 
 **The rescue layer is the only surviving ingestion-side behavioural flag (`relation_rescue`).** When on (default), the three synthesis passes run; when off, the model's raw triples still go through the gating/direction/collapse stages. Every rescue-emitted triple carries `properties.rescue = True`, which the cross-source dedup (`_dedup_by_target_predicate`) uses as the top tie-break: a regex-grounded rescue triple beats the LLM's free-form interpretation on a direction-sensitive predicate, because the rescue's directional claim is structurally anchored to the source text. This is the mechanism behind the "wrong-direction REPLACES" fix — `pgvector REPLACES qdrant` from the literal "from X to Y" phrasing wins over a mis-anchored LLM `darkmem REPLACES qdrant`.
 

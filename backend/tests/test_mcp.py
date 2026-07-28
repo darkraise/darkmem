@@ -23,8 +23,15 @@ async def test_mcp_tools_registered():
 
 async def test_code_search_clamps_limit(session, monkeypatch):
     """code_search must clamp `limit` to [1, _MAX_LIMIT] before it reaches the
-    raw SQL LIMIT, like every other limit-bearing tool. An unclamped negative
-    value raises a Postgres error; a huge value defeats the result-set cap."""
+    shared query service, like every other limit-bearing tool. An unclamped
+    negative value raises a Postgres error; a huge value defeats the result-set
+    cap.
+
+    The assertion sits on the tool-to-service boundary rather than on the
+    vector repository, because the clamp is the tool's and the service is free
+    to fan the bound out across its own channels (it asks each arm for
+    ``limit * 2`` before fusing).
+    """
     @asynccontextmanager
     async def _fake_ctx():
         yield session
@@ -41,13 +48,13 @@ async def test_code_search_clamps_limit(session, monkeypatch):
     monkeypatch.setattr(mcp_module, "_pipeline", _FakePipeline())
 
     captured = {}
-    from app.repositories import vector as vector_mod
+    from app.services import code_query as code_query_mod
 
-    async def _fake_search(self, query_vector, *, fingerprint, limit, repo_id=None, language=None):
+    async def _fake_search(self, query, limit=20, repo_id=None, language=None):
         captured["limit"] = limit
         return []
 
-    monkeypatch.setattr(vector_mod.PostgresVectorRepository, "search_code_chunks", _fake_search)
+    monkeypatch.setattr(code_query_mod.CodeQueryService, "search_code", _fake_search)
 
     await code_search("hello", limit=-5)
     assert captured["limit"] == 1
@@ -83,7 +90,7 @@ async def _get_memory(session, content: str) -> Memory:
 
 async def test_memory_add_source_from_header(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "header attribution probe"},
+                     {"content": "header attribution probe", "wait_process": True},
                      headers={"X-Darkmem-Client": "Codex!"})
     memory = await _get_memory(session, "header attribution probe")
     assert memory.source == "codex"
@@ -91,7 +98,7 @@ async def test_memory_add_source_from_header(mcp_http_client, session):
 
 async def test_memory_add_source_from_claude_code_user_agent(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "ua attribution probe"},
+                     {"content": "ua attribution probe", "wait_process": True},
                      headers={"User-Agent": "claude-code/2.1.172 (cli)"})
     memory = await _get_memory(session, "ua attribution probe")
     assert memory.source == "claude-code"
@@ -101,7 +108,7 @@ async def test_memory_add_source_from_claude_code_user_agent(mcp_http_client, se
 async def test_memory_add_generic_ua_falls_back_to_mcp(mcp_http_client, session):
     # httpx's default python-httpx/<ver> UA must stay on the denylist: every
     # in-process test and raw-httpx harness rides on that entry.
-    await _post_tool(mcp_http_client, "memory_add", {"content": "generic ua probe"})
+    await _post_tool(mcp_http_client, "memory_add", {"content": "generic ua probe", "wait_process": True})
     memory = await _get_memory(session, "generic ua probe")
     assert memory.source == "mcp"
     assert memory.source_agent.startswith("python-httpx/")
@@ -109,7 +116,7 @@ async def test_memory_add_generic_ua_falls_back_to_mcp(mcp_http_client, session)
 
 async def test_memory_add_no_ua_leaves_source_agent_null(mcp_http_client, session):
     del mcp_http_client.headers["user-agent"]
-    await _post_tool(mcp_http_client, "memory_add", {"content": "no ua probe"})
+    await _post_tool(mcp_http_client, "memory_add", {"content": "no ua probe", "wait_process": True})
     memory = await _get_memory(session, "no ua probe")
     assert memory.source == "mcp"
     assert memory.source_agent is None
@@ -117,7 +124,7 @@ async def test_memory_add_no_ua_leaves_source_agent_null(mcp_http_client, sessio
 
 async def test_memory_add_explicit_source_beats_header(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "explicit override probe", "source": "my-orchestrator"},
+                     {"content": "explicit override probe", "source": "my-orchestrator", "wait_process": True},
                      headers={"X-Darkmem-Client": "codex"})
     memory = await _get_memory(session, "explicit override probe")
     assert memory.source == "my-orchestrator"
@@ -129,7 +136,7 @@ async def test_memory_update_tags_only_preserves_content(mcp_http_client, sessio
     # exclude_unset guard and clobbering the NOT NULL content column (which also
     # aborted before tags were applied).
     await _post_tool(mcp_http_client, "memory_add",
-                     {"content": "update tags-only probe", "tags": ["keep/a"]})
+                     {"content": "update tags-only probe", "tags": ["keep/a"], "wait_process": True})
     mem = await _get_memory(session, "update tags-only probe")
 
     await _post_tool(mcp_http_client, "memory_update",
@@ -144,7 +151,7 @@ async def test_memory_update_tags_only_preserves_content(mcp_http_client, sessio
 async def test_memory_update_type_only_preserves_content_and_tags(mcp_http_client, session):
     await _post_tool(mcp_http_client, "memory_add",
                      {"content": "update type-only probe", "tags": ["keep/c"],
-                      "memory_type": "fact"})
+                      "memory_type": "fact", "wait_process": True})
     mem = await _get_memory(session, "update type-only probe")
 
     await _post_tool(mcp_http_client, "memory_update",
@@ -158,11 +165,14 @@ async def test_memory_update_type_only_preserves_content_and_tags(mcp_http_clien
 
 
 async def test_memory_batch_add_resolves_per_entry(mcp_http_client, session):
-    await _post_tool(mcp_http_client, "memory_batch_add", {"entries": [
-        {"content": "batch omitted source"},
-        {"content": "batch explicit api", "source": "api"},
-        {"content": "batch explicit mcp", "source": "mcp", "source_agent": "eval-r3"},
-    ]}, headers={"X-Darkmem-Client": "codex"})
+    await _post_tool(mcp_http_client, "memory_batch_add", {
+        "wait_process": True,
+        "entries": [
+            {"content": "batch omitted source"},
+            {"content": "batch explicit api", "source": "api"},
+            {"content": "batch explicit mcp", "source": "mcp", "source_agent": "eval-r3"},
+        ],
+    }, headers={"X-Darkmem-Client": "codex"})
     omitted = await _get_memory(session, "batch omitted source")
     assert omitted.source == "codex"
     assert omitted.source_agent.startswith("python-httpx/")
@@ -170,3 +180,120 @@ async def test_memory_batch_add_resolves_per_entry(mcp_http_client, session):
     explicit = await _get_memory(session, "batch explicit mcp")
     assert explicit.source == "codex"
     assert explicit.source_agent == "eval-r3"
+
+
+import json
+import uuid
+
+
+def _tool_payload(body: dict) -> dict:
+    return json.loads(body["result"]["content"][0]["text"])
+
+
+async def test_memory_get_reports_supersession(mcp_http_client, session):
+    """An MCP reader must be able to tell a superseded memory from a live one.
+
+    Doc 07 §7 requires a superseded row to be labelled and reachable through
+    its successor. The MCP row carried neither field, so an autonomous agent
+    read a retired memory as current with no badge and no human in the loop.
+    """
+    replacement = Memory(
+        id=uuid.uuid4(), content="mcp supersession replacement",
+        source="test", metadata_={}, project="lane-f",
+    )
+    session.add(replacement)
+    await session.flush()
+
+    retired = Memory(
+        id=uuid.uuid4(), content="mcp supersession probe", source="test",
+        metadata_={}, project="lane-f", status="superseded",
+        superseded_by=replacement.id, technologies=["postgres"],
+    )
+    session.add(retired)
+    await session.flush()
+
+    row = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(retired.id)})
+    )
+    assert row["status"] == "superseded"
+    assert row["superseded_by"] == str(replacement.id)
+    assert row["project"] == "lane-f"
+    assert row["technologies"] == ["postgres"]
+
+    live = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(replacement.id)})
+    )
+    assert live["status"] == "active"
+    assert live["superseded_by"] is None
+
+
+async def test_memory_get_reports_the_reverse_lineage_too(mcp_http_client, session):
+    """T1.47: the MCP door must carry `predecessors`, not only `superseded_by`.
+
+    `memory_get` and REST's `GET /memories/{id}` share one call site
+    (`MemoryService.get_memory`), so this proves the field reaches MCP
+    without `app/api/mcp/server.py` needing its own edit. The pair is
+    produced by the real detector, not hand-set, so a future change to what
+    `detect_supersessions` writes breaks this test rather than drifting
+    silently past it.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.supersession import detect_supersessions
+
+    now = datetime(2026, 7, 28, 12, 0, tzinfo=timezone.utc)
+    old = Memory(
+        id=uuid.uuid4(), content="mcp lineage: promtail for logs",
+        source="test", metadata_={}, project="lane-f",
+        technologies=["promtail"], created_at=now - timedelta(days=1),
+    )
+    new = Memory(
+        id=uuid.uuid4(), content="mcp lineage: switched to alloy",
+        source="test", metadata_={}, project="lane-f",
+        technologies=["alloy"], created_at=now,
+    )
+    session.add_all([old, new])
+    await session.flush()
+
+    flipped = await detect_supersessions(
+        session,
+        new_memory_id=new.id,
+        new_memory_text=new.content,
+        new_memory_created_at=new.created_at,
+        project=new.project,
+        new_relations=[{"type": "REPLACES", "source": "alloy", "target": "promtail"}],
+        now=now,
+    )
+    assert flipped == [old.id]
+    await session.flush()
+
+    row = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(new.id)})
+    )
+    assert len(row["predecessors"]) == 1
+    assert row["predecessors"][0]["id"] == str(old.id)
+    assert row["predecessors"][0]["content"] == "mcp lineage: promtail for logs"
+    assert row["predecessors"][0]["status"] == "superseded"
+
+    childless = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(old.id)})
+    )
+    assert childless["predecessors"] == []
+
+
+async def test_memory_search_rows_carry_the_lifecycle_label(mcp_http_client, session):
+    memory = Memory(
+        id=uuid.uuid4(), content="mcp search label probe", source="test",
+        metadata_={}, project="lane-f",
+    )
+    session.add(memory)
+    await session.flush()
+
+    rows = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_search", {"query": "label probe"})
+    )
+    assert rows, "search returned nothing to inspect"
+    for row in rows:
+        assert row["status"] in {"active", "superseded", "deprecated"}
+        assert "superseded_by" in row
+        assert "project" in row

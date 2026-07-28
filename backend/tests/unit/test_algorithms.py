@@ -500,11 +500,11 @@ class TestRRFFusion:
 class TestClassificationMode:
     """Test simple vs expanded classification mode."""
 
-    def test_simple_mode_returns_7_types(self):
+    def test_simple_mode_returns_the_closed_memory_type_vocabulary(self):
         from app.services.classification_areas import get_merged_llm_types
+        from app.taxonomy import MEMORY_TYPES
         types = get_merged_llm_types(["general", "technical", "debugging"], mode="simple")
-        assert len(types) == 7
-        assert set(types.keys()) == {"fact", "decision", "preference", "problem", "reference", "architecture", "milestone"}
+        assert set(types.keys()) == set(MEMORY_TYPES)
 
     def test_expanded_mode_returns_area_types(self):
         from app.services.classification_areas import get_merged_llm_types
@@ -512,12 +512,17 @@ class TestClassificationMode:
         assert "decision" in types
         assert "reference" in types
         assert "architecture" in types
-        assert len(types) > 7
+        # Expanded is a per-area label space, not a superset of MEMORY_TYPES:
+        # it carries area-specific labels (`emotional`, `root_cause`, ...) that
+        # SIMPLE_NORMALIZATION folds back into the closed vocabulary.
+        from app.taxonomy import MEMORY_TYPES
+        assert set(types) - set(MEMORY_TYPES)
 
     def test_default_mode_is_simple(self):
         from app.services.classification_areas import get_merged_llm_types
+        from app.taxonomy import MEMORY_TYPES
         types = get_merged_llm_types(["general", "technical"])
-        assert len(types) == 7
+        assert set(types.keys()) == set(MEMORY_TYPES)
 
     def test_simple_normalization_remaps_invalid_types(self):
         from app.services.classification_areas import SIMPLE_NORMALIZATION, SIMPLE_TYPES

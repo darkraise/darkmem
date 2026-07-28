@@ -1,5 +1,6 @@
 import { useState } from "react"
 import {
+  CircleAlert,
   Lock,
   RefreshCw,
   Settings2,
@@ -18,13 +19,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
+import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
 import { validateJobConfig } from "@/demo/activity"
-import { useDemoJobs } from "@/demo/hooks"
-import { useDemoStore } from "@/demo/store"
 import type { DemoJob } from "@/demo/types"
+import { useJobBoard } from "../use-job-board"
 import { ModuleSurface } from "./module-surface"
 
 type JobRowStatus = "idle" | "running" | "last-run-failed"
@@ -58,7 +60,7 @@ const STATUS_STYLES: Record<
 
 interface BusyOutcome {
   key: string
-  lock_held_since: string
+  lock_held_since: string | null
 }
 
 function ReadOnlyField({
@@ -89,11 +91,12 @@ function ReadOnlyField({
 function JobConfigDialog({
   job,
   onClose,
+  saveConfig,
 }: {
   job: DemoJob
   onClose: () => void
+  saveConfig: (key: string, config: Record<string, number>) => void
 }) {
-  const saveConfig = useDemoStore((s) => s.saveJobConfig)
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(job.config_schema.map((f) => [f.key, String(f.value)])),
   )
@@ -124,12 +127,14 @@ function JobConfigDialog({
             value={String(job.min_interval_seconds)}
             desc="The loop will not fire more often than this floor, no matter how aggressive the cron computes. A registration-time constant — not editable via config."
           />
-          <ReadOnlyField
-            label="max_run_seconds"
-            role="ceiling · read-only"
-            value={String(job.max_run_seconds)}
-            desc="A run still executing past this ceiling is treated as overrun. Also a registration-time constant, not editable via config."
-          />
+          {job.max_run_seconds !== null && (
+            <ReadOnlyField
+              label="max_run_seconds"
+              role="ceiling · read-only"
+              value={String(job.max_run_seconds)}
+              desc="A run still executing past this ceiling is treated as overrun. Also a registration-time constant, not editable via config."
+            />
+          )}
           <p className="text-muted-foreground pt-2 font-mono text-[10px] uppercase tracking-wide">
             config_schema — job-specific, editable fields
           </p>
@@ -222,7 +227,7 @@ function JobRow({
 }: {
   job: DemoJob
   busy: BusyOutcome | null
-  onTrigger: (key: string) => void
+  onTrigger: (key: string) => Promise<boolean>
   onConfigure: (key: string) => void
   onDismissBusy: () => void
 }) {
@@ -288,11 +293,15 @@ function JobRow({
             job.last_status === "error" && "border-warning/60 text-warning",
           )}
           onClick={() => {
-            onTrigger(job.key)
-            if (!job.running) {
-              setTriggered(true)
-              window.setTimeout(() => setTriggered(false), 2500)
-            }
+            // The success message only fires once the request actually
+            // resolves as not-busy (ruling 4) — never optimistically, since
+            // a real trigger is async and could come back 409.
+            void onTrigger(job.key).then((ok) => {
+              if (ok) {
+                setTriggered(true)
+                window.setTimeout(() => setTriggered(false), 2500)
+              }
+            })
           }}
         >
           <Zap className="mr-1.5 size-3.5" />
@@ -314,9 +323,11 @@ function JobRow({
               busy — {job.key} is already running
             </span>
             <span className="text-muted-foreground text-sm">
-              The lock acquired at {busy.lock_held_since} is still held. This
-              trigger request was not queued; try again once the current run
-              finishes.
+              {busy.lock_held_since
+                ? `The lock acquired at ${busy.lock_held_since} is still held. `
+                : "The job's lock is still held by an earlier run. "}
+              This trigger request was not queued; try again once the current
+              run finishes.
             </span>
             <span className="text-warning font-mono text-sm">
               HTTP 409 · POST /api/v1/jobs/{job.key}/trigger
@@ -337,8 +348,7 @@ function JobRow({
 }
 
 export function JobsTab() {
-  const jobs = useDemoJobs()
-  const trigger = useDemoStore((s) => s.triggerJob)
+  const { jobs, isLoading, isError, trigger, saveConfig } = useJobBoard()
   const [busy, setBusy] = useState<BusyOutcome | null>(null)
   const [configKey, setConfigKey] = useState<string | null>(null)
   const configJob = jobs.find((j) => j.key === configKey)
@@ -359,29 +369,51 @@ export function JobsTab() {
       </p>
       <ModuleSurface
         title="Jobs"
-        state="populated"
+        state={isLoading ? "empty" : jobs.length > 0 ? "populated" : "empty"}
         meta={`${jobs.length} registered · ${running} running · ${failed} last-run failed`}
       >
-        {jobs.map((job) => (
-          <JobRow
-            key={job.key}
-            job={job}
-            busy={busy}
-            onTrigger={(key) => {
-              const result = trigger(key)
-              setBusy(
-                result.ok
-                  ? null
-                  : { key, lock_held_since: result.lock_held_since },
-              )
-            }}
-            onConfigure={setConfigKey}
-            onDismissBusy={() => setBusy(null)}
+        {isError ? (
+          <EmptyState
+            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            title="Couldn't load the job board"
+            description="The /jobs request failed — this is an error state, not an empty registry."
           />
-        ))}
+        ) : (
+          jobs.map((job) => (
+            <JobRow
+              key={job.key}
+              job={job}
+              busy={busy}
+              onTrigger={async (key) => {
+                let result: Awaited<ReturnType<typeof trigger>>
+                try {
+                  result = await trigger(key)
+                } catch (err) {
+                  toast.error(
+                    `Trigger failed for ${key}`,
+                    { description: err instanceof Error ? err.message : undefined },
+                  )
+                  return false
+                }
+                if (result.ok) {
+                  setBusy(null)
+                  return true
+                }
+                setBusy({ key, lock_held_since: result.lock_held_since })
+                return false
+              }}
+              onConfigure={setConfigKey}
+              onDismissBusy={() => setBusy(null)}
+            />
+          ))
+        )}
       </ModuleSurface>
       {configJob && (
-        <JobConfigDialog job={configJob} onClose={() => setConfigKey(null)} />
+        <JobConfigDialog
+          job={configJob}
+          onClose={() => setConfigKey(null)}
+          saveConfig={saveConfig}
+        />
       )}
     </div>
   )

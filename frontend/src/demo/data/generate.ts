@@ -1,6 +1,8 @@
 // Run with: tsx src/demo/data/generate.ts > src/demo/data/memories.json
 import { randomUUID } from "node:crypto"
 
+import { MEMORY_TYPES } from "../../lib/taxonomy"
+
 const SOURCES = [
   "claude-code",
   "mcp-test",
@@ -8,13 +10,7 @@ const SOURCES = [
   "rest-test",
   "dashboard",
 ] as const
-const TYPES = [
-  "fact",
-  "decision",
-  "preference",
-  "reference",
-  "context",
-] as const
+const TYPES = MEMORY_TYPES
 const TECHS = [
   "python",
   "fastapi",

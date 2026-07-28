@@ -1,9 +1,39 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { useProjectScopedKey } from "@/lib/query-keys"
+import { useProjectStore } from "@/stores/project-store"
 
 // Mirrors backend MEMORY_STATUS_VALUES (app/models/memory.py). Archival is a
 // separate `is_archived` boolean, not a status.
 export type MemoryStatus = "active" | "superseded" | "deprecated"
+
+// Mirrors backend RetrievalEnvelope / MemoryResultTrace (app/schemas/retrieval_trace.py,
+// T1.33, doc 07 §8). Transient — populated only when a search request sets
+// `with_trace: true`, `undefined` otherwise.
+export interface ChannelStatus {
+  ran: boolean
+  failed?: boolean
+}
+
+export interface RetrievalEnvelope {
+  query: string
+  channels: Record<string, ChannelStatus>
+  reranked: boolean
+  weights: Record<string, number>
+  // Real key set is filter-name-shaped (memory_type, source, technologies,
+  // tags, not_found) — never by_project/by_status, which SQL pushdown moved
+  // out of this code path before it can count them (T1.33 amendment log).
+  excluded: Record<string, number>
+}
+
+export interface MemoryResultTrace {
+  // rrf_score is the sole ordering signal; semantic/keyword/rerank_score are
+  // each channel's own raw contribution and must never be read as "the
+  // score" (doc 07 §3's trap).
+  scores: Record<string, number | null>
+  rank_fusion_factor: number
+  rank_fusion_breakdown: Record<string, number>
+}
 
 export interface Memory {
   id: string
@@ -19,14 +49,30 @@ export interface Memory {
   updated_at: string
   expires_at: string | null
   is_archived: boolean
-  llm_classified_type?: string | null
-  llm_summary?: string | null
-  llm_emotions?: string[]
-  llm_flags?: string[]
+  classified_type?: string | null
+  summary?: string | null
+  emotions?: string[]
+  flags?: string[]
   related_memories?: { memory_id: string; score: number }[]
   rrf_score?: number
   status?: MemoryStatus
   superseded_by?: string | null
+  // Mirrors backend MemoryResponse.predecessors (T1.47) — the reverse of
+  // `superseded_by`: memories this one directly replaced, newest first,
+  // bounded server-side. Populated (possibly `[]`, never `null`) only by
+  // the single-get doors (GET /memories/{id}); every other reader (search,
+  // create, update, batch) leaves this `undefined` — "not computed for
+  // this read," a distinct state from "computed, replaced nothing."
+  predecessors?: MemoryLineageEntry[]
+  // Populated only when the request set `with_trace: true` (T1.33/T1.44).
+  trace?: MemoryResultTrace
+}
+
+export interface MemoryLineageEntry {
+  id: string
+  content: string
+  created_at: string
+  status: MemoryStatus
 }
 
 export interface Tag {
@@ -36,13 +82,20 @@ export interface Tag {
   memory_count: number
 }
 
+// Project-scoped via the query-key layer (src/lib/query-keys.ts, Ruling 1):
+// the active project rides both the query key and the request body, so
+// switching projects addresses a fresh cache entry instead of continuing
+// to show the previous project's rows while the new project's fetch is
+// in flight.
 export function useMemories() {
+  const queryKey = useProjectScopedKey("memories")
+  const project = useProjectStore((s) => s.activeProject)
   return useQuery<Memory[]>({
-    queryKey: ["memories"],
+    queryKey,
     queryFn: () =>
       apiFetch("/memories/search", {
         method: "POST",
-        body: JSON.stringify({ limit: 50 }),
+        body: JSON.stringify({ limit: 50, project }),
       }),
   })
 }
@@ -55,6 +108,20 @@ export function useMemory(id: string) {
   })
 }
 
+// Mirrors backend CaptureAck (app/schemas/memory.py) — the default 202
+// response. `id` is the pre-minted memory id, resolvable once the buffer
+// flush lands it; the row is durably buffered whether or not the caller
+// waited for it.
+export interface CaptureAck {
+  schema_version: number
+  id: string
+  status: "accepted"
+}
+
+// POST /memories returns CaptureAck (202) by default, or a full Memory
+// (201) when wait_process=true settles inline within the server's
+// buffer_wait_timeout_seconds — otherwise it degrades to the plain ack,
+// so the row is never lost even when this union resolves to CaptureAck.
 export function useCreateMemory() {
   const qc = useQueryClient()
   return useMutation({
@@ -63,11 +130,15 @@ export function useCreateMemory() {
       tags?: string[]
       source?: string
       memory_type?: string
-    }) =>
-      apiFetch<Memory>("/memories", {
+      waitProcess?: boolean
+    }) => {
+      const { waitProcess, ...body } = data
+      const query = waitProcess ? "?wait_process=true" : ""
+      return apiFetch<CaptureAck | Memory>(`/memories${query}`, {
         method: "POST",
-        body: JSON.stringify(data),
-      }),
+        body: JSON.stringify(body),
+      })
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
@@ -135,6 +206,7 @@ export function useTags() {
 
 export interface PaginatedSearchParams {
   query?: string
+  project?: string
   tags_any?: string[]
   source?: string
   memory_type?: string
@@ -144,6 +216,9 @@ export interface PaginatedSearchParams {
   limit?: number
   offset?: number
   semantic_weight?: number
+  // Attaches the retrieval trace envelope and a per-row trace (T1.33/T1.44).
+  // Structurally zero-cost when unset — the caller never pays for it.
+  with_trace?: boolean
 }
 
 export interface PaginatedMemories {
@@ -151,6 +226,8 @@ export interface PaginatedMemories {
   total: number
   limit: number
   offset: number
+  // Present only when the request set `with_trace: true`.
+  envelope?: RetrievalEnvelope
 }
 
 export function usePaginatedSearch(
@@ -165,6 +242,7 @@ export function usePaginatedSearch(
         method: "POST",
         body: JSON.stringify({
           query: params.query || undefined,
+          project: params.project || undefined,
           tags_any: params.tags_any?.length ? params.tags_any : undefined,
           source: params.source || undefined,
           memory_type: params.memory_type || undefined,
@@ -180,6 +258,7 @@ export function usePaginatedSearch(
           limit: params.limit ?? 50,
           offset: params.offset ?? 0,
           semantic_weight: params.semantic_weight,
+          with_trace: params.with_trace ?? false,
         }),
       }),
   })

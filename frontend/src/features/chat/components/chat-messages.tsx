@@ -6,13 +6,16 @@ import { Button } from "darkraise-ui/components/button"
 import { Spinner } from "darkraise-ui/components/spinner"
 import { SourceBadges } from "./source-badges"
 import { findEntityMatches } from "../lib/entity-match"
-import type { ChatMessage } from "@/hooks/api"
+import { LifecycleDot } from "@/features/memories/components/lifecycle-badge"
+import type { ChatMessage, MemoryStatus } from "@/hooks/api"
 
 interface MemoryRef {
   index: number
   id?: string
   content?: string
   source?: string
+  project?: string
+  status?: MemoryStatus
 }
 
 interface EntityRef {
@@ -32,6 +35,8 @@ interface ChatMessagesProps {
       tags?: string[]
       score?: number
       id?: string
+      project?: string
+      status?: MemoryStatus
     }[]
     entities: { id?: string; name?: string; entity_type?: string }[]
   } | null
@@ -82,15 +87,23 @@ function MemoryBadge({
   const label = mem.content
     ? truncateContent(mem.content)
     : `Memory ${mem.id?.slice(0, 8) ?? mem.index}`
+  // Invariant 14: no citation chip may render with zero lifecycle signal.
+  // LifecycleDot is always present (unlike LifecycleBadge, which renders
+  // nothing for "active") — muted when there is nothing to flag, colored
+  // when there is. The tooltip carries the same words for anyone who
+  // can't see color.
+  const lifecycleWords = `L0 · memory — status: ${mem.status ?? "active"}`
+  const title = mem.content ? `${mem.content} (${lifecycleWords})` : lifecycleWords
   return (
     <Button
       variant="secondary"
       className="mx-0.5 inline-flex h-auto items-center gap-1 px-1.5 py-0.5 align-baseline"
       onClick={onClick}
-      title={mem.content || undefined}
+      title={title}
     >
       <FileText className="h-3 w-3 shrink-0" />
       <span className="max-w-48 truncate">{label}</span>
+      <LifecycleDot status={mem.status} />
     </Button>
   )
 }
@@ -329,6 +342,8 @@ function AssistantMessage({
         id: m.id,
         content: m.content,
         source: m.source,
+        status: m.status,
+        project: m.project,
       })),
     [msg.context?.memories],
   )
@@ -382,6 +397,8 @@ function StreamingMessage({
       tags?: string[]
       score?: number
       id?: string
+      project?: string
+      status?: MemoryStatus
     }[]
     entities: { id?: string; name?: string; entity_type?: string }[]
   } | null
@@ -394,6 +411,8 @@ function StreamingMessage({
         id: m.id,
         content: m.content,
         source: m.source,
+        status: m.status,
+        project: m.project,
       })),
     [sources?.memories],
   )

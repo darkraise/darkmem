@@ -236,6 +236,8 @@ typing-inspection==0.4.2
     #   mcp
     #   pydantic
     #   pydantic-settings
+uuid6==2025.0.1
+    # via darkmem (pyproject.toml)
 uvicorn==0.49.0
     # via
     #   darkmem (pyproject.toml)

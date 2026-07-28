@@ -21,4 +21,4 @@ python -m alembic upgrade head
 echo "Starting darkmem API server..."
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
     --reload-include "*.py" --reload-dir app \
-    --timeout-keep-alive 75
+    --timeout-keep-alive 75 --no-proxy-headers

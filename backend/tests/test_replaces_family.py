@@ -7,10 +7,11 @@ LLM-emitted ``IMPROVES_ON`` and a rescue-emitted ``REPLACES`` for the same
 pair as duplicates.
 
 Boundary note (asserted explicitly below): the collapse is a dedup/equivalence
-mechanism, NOT a type rewrite. ``detect_supersessions`` matches on the literal
-``"REPLACES"`` type, so a raw ``IMPROVES_ON`` relation does not by itself
-trigger supersession — the family collapse only governs equivalence in the
-extraction-layer dedup keys and ``_drop_uses_when_replaces_exists``.
+mechanism, NOT a type rewrite. The stored ``rel_type`` stays whatever the
+extractor emitted; the family only governs which relations are *equivalent* —
+in the extraction-layer dedup keys, in ``_drop_uses_when_replaces_exists``, and
+in the supersession trigger, which fires for any family member because they all
+assert "X supersedes Y" (doc 08 §2.1).
 """
 from __future__ import annotations
 
@@ -82,7 +83,7 @@ def test_builds_on_blocks_uses_dedup_like_replaces():
     assert out[0]["type"] == "BUILDS_ON"
 
 
-# ── supersession boundary: only literal REPLACES triggers a flip ──────
+# ── supersession trigger: every family member flips a candidate ───────
 
 
 def _minimal_memory_kwargs(**overrides):
@@ -131,31 +132,38 @@ async def test_detect_supersessions_triggers_on_literal_replaces(session):
 
 
 @pytest.mark.asyncio
-async def test_detect_supersessions_ignores_raw_improves_on(session):
-    """The supersession detector matches the literal ``REPLACES`` type only.
+async def test_detect_supersessions_triggers_on_raw_improves_on(session):
+    """A raw ``IMPROVES_ON`` supersedes exactly as a ``REPLACES`` does.
 
-    A raw ``IMPROVES_ON`` relation is part of the REPLACES *family* for
-    extraction-layer dedup, but ``detect_supersessions`` does not collapse the
-    stored type, so an IMPROVES_ON that never became a REPLACES does not flip a
-    candidate. This documents the boundary so a future change that wants
-    IMPROVES_ON to supersede must edit the detector deliberately.
+    The detector matches the family bucket, not the literal type: the three
+    members all assert "X supersedes Y", so an extraction that emitted
+    ``IMPROVES_ON`` must not leave the predecessor standing as active while an
+    otherwise identical ``REPLACES`` retires it.
     """
     project = "replaces-family-test"
+    new_id = uuid.uuid4()
     old = Memory(
         **_minimal_memory_kwargs(content="we use promtail for log shipping"),
         project=project,
         technologies=["promtail"],
         status="active",
     )
-    session.add(old)
+    new = Memory(
+        id=new_id,
+        **_minimal_memory_kwargs(content="alloy improves on promtail"),
+        project=project,
+        technologies=["alloy"],
+        status="active",
+    )
+    session.add_all([old, new])
     await session.flush()
 
     flipped = await detect_supersessions(
         session,
-        new_memory_id=uuid.uuid4(),
+        new_memory_id=new_id,
         new_memory_text="alloy improves on promtail",
         new_memory_created_at=datetime.now(timezone.utc) + timedelta(seconds=1),
         project=project,
         new_relations=[{"type": "IMPROVES_ON", "source": "alloy", "target": "promtail"}],
     )
-    assert flipped == []
+    assert flipped == [old.id]

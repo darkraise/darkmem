@@ -70,13 +70,3 @@ def estimate_confidence(text: str | None, memory_type: str | None) -> float:
     if memory_type in _AUTHORITATIVE_TYPES:
         return CONFIDENCE_AUTH_TYPES
     return CONFIDENCE_DEFAULT
-
-
-def rank_fusion_factor(confidence: float, gamma: float) -> float:
-    """Multiplicative confidence weighting for retrieval rank fusion.
-
-    ``final = base * rank_fusion_factor(confidence, gamma)``. Clamped to
-    [0, inf) so a pathological gamma cannot invert the sort order by making
-    a positive base score negative.
-    """
-    return max(0.0, 1.0 + gamma * (confidence - CONFIDENCE_DEFAULT))

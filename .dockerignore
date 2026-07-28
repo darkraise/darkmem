@@ -1,0 +1,46 @@
+# The build context is the repo root, so this is the ONLY .dockerignore Docker
+# reads -- backend/.dockerignore and frontend/.dockerignore stopped applying
+# when the context moved up, and their contents are merged here. Patterns are
+# relative to the context root, so a bare `node_modules` would only match a
+# top-level one; the leaked tree can also shadow `npm ci`'s platform-correct
+# install inside the web stage.
+.git
+.gitignore
+.gitattributes
+.worktrees
+.claude
+.venv
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+**/htmlcov
+**/*.log
+**/*.tsbuildinfo
+.env
+.env.*
+**/.env
+**/.env.*
+backend/tests
+backend/scripts
+scripts
+docs
+frontend/dist
+frontend/coverage
+frontend/test-results
+frontend/playwright-report
+frontend/storybook-static
+frontend/.storybook
+frontend/.husky
+frontend/.tanstack
+frontend/tests
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.dev.yml

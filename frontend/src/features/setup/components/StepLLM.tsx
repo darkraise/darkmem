@@ -29,8 +29,9 @@ import {
 } from "darkraise-ui/components/combobox"
 import {
   API_KIND_OPTIONS,
+  apiKindSupportsEmbedding,
   type LlmApiKind,
-} from "@/features/pipeline/api-kinds"
+} from "@/features/setup/api-kinds"
 import {
   PURPOSES,
   REQUIRED_PURPOSES_NON_EMBEDDING,
@@ -47,20 +48,6 @@ const BASE_URL_DEFAULTS: Record<LlmApiKind, string> = {
   google: "https://generativelanguage.googleapis.com/v1beta/openai",
   deepseek: "https://api.deepseek.com/v1",
   zai: "https://api.z.ai/api/paas/v4",
-}
-
-// Which api_kinds expose an embeddings endpoint at all. Anthropic and
-// DeepSeek do not — picking those should auto-clear the supports_embedding
-// toggle so step 2 doesn't sit there demanding an embedding model that the
-// vendor cannot serve. The user can still flip it back on for custom
-// proxies that route embeddings through an OpenAI-compat endpoint.
-const KIND_SUPPORTS_EMBEDDING: Record<LlmApiKind, boolean> = {
-  openai: true,
-  ollama: true,
-  google: true,
-  zai: true,
-  anthropic: false,
-  deepseek: false,
 }
 
 const PURPOSE_HINT: Record<Purpose, string> = {
@@ -87,7 +74,7 @@ export function StepLLM() {
     ) {
       setLlmField("base_url", BASE_URL_DEFAULTS[api_kind])
     }
-    setLlmField("supports_embedding", KIND_SUPPORTS_EMBEDDING[api_kind])
+    setLlmField("supports_embedding", apiKindSupportsEmbedding(api_kind))
   }
 
   const handleFetchModels = async () => {

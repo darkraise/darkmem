@@ -11,7 +11,10 @@ from app.api.auth import require_auth
 from app.api.deps import get_code_pipeline, get_repo_manager
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
-from app.schemas.code import ReindexRequest, RepoCreate, RepoResponse, RepoUpdate
+from app.schemas.code import (
+    IndexDebtStatus, ReindexRequest, RepoCreate, RepoResponse, RepoUpdate,
+)
+from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
 from app.services.repo_manager import RepoManager
 
@@ -32,6 +35,7 @@ def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -
         status=repo.status,
         status_message=repo.status_message,
         auto_sync=repo.auto_sync,
+        index_debt=IndexDebtStatus(**index_debt.summarize(repo.index_debt)),
         file_count=file_count,
         symbol_count=symbol_count,
         created_at=repo.created_at,
@@ -198,7 +202,10 @@ async def reindex_repo(
                     r = (await session.execute(
                         select(Repository).where(Repository.id == repo_id)
                     )).scalar_one_or_none()
-                    if r:
+                    # CodePipeline.run() already set and committed its own
+                    # terminal status (including "stale" when it kept a prior
+                    # graph); don't stomp that back to a bare "error" here.
+                    if r and r.status != "stale":
                         r.status = "error"
                         r.status_message = str(e)[:500]
                         await session.commit()

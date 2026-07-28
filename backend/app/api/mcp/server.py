@@ -9,9 +9,16 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
 
-from app.api.mcp.client_identity import resolve_client_source, resolve_source_agent
+from app.api.mcp.client_identity import (
+    FALLBACK_SOURCE,
+    resolve_client_source,
+    resolve_entry_identity,
+    resolve_origin_key,
+    resolve_source_agent,
+)
 from app.config import settings
 from app.database import async_session_factory
+from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.services.memory import MemoryService
 from app.utils.graph_keys import compose_key, decompose_key
@@ -99,6 +106,30 @@ def _validate_uuid(value: str) -> UUID:
 _MAX_LIMIT = 500
 
 
+def _ack_to_dict(ack) -> dict:
+    """The buffered accept, serialised from ``CaptureAck`` rather than by hand.
+
+    Hand-building it here is how the two doors' ack shapes drifted before:
+    a field added to the schema reached REST and stopped at the MCP door.
+    """
+    return json.loads(ack.model_dump_json())
+
+
+def _degraded(reason: str, **extra) -> dict:
+    """Doc 12 §3's recoverable-unavailability shape.
+
+    A caller error still **raises** — a bad UUID or a missing id is the
+    caller's mistake, not a degradation, and returning one as a typed result
+    would teach an agent to treat its own error as the server being down.
+    """
+    return {
+        "schema_version": ENVELOPE_SCHEMA_VERSION,
+        "status": "unavailable",
+        "reason": reason,
+        **extra,
+    }
+
+
 def _clamp_limit(limit: int, default: int) -> int:
     try:
         limit = int(limit)
@@ -108,7 +139,7 @@ def _clamp_limit(limit: int, default: int) -> int:
 
 
 @mcp.tool(
-    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. The origin tool is auto-detected and recorded in 'source'."
+    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. The origin tool is auto-detected and recorded in 'source'. Buffered by default (Tier-A accept, doc 05 §2): returns immediately with the memory's final id while extraction/classification runs asynchronously. Pass wait_process=true to drive that processing inline instead, bounded by buffer_wait_timeout_seconds — the fully processed memory is returned when it settles in time, otherwise the same buffered ack."
 )
 async def memory_add(
     content: str,
@@ -119,6 +150,7 @@ async def memory_add(
     source_agent: str | None = None,
     memory_type: str | None = None,
     project: str | None = None,
+    wait_process: bool = False,
     ctx: Context | None = None,
 ) -> str:
     """
@@ -127,18 +159,26 @@ async def memory_add(
         tags: Categorization tags using slash notation (e.g., "project/darkmem", "debug/root-cause", "infra/services").
         source: Origin tool. Auto-detected per request (X-Darkmem-Client header, then User-Agent); pass a value only to override. Falls back to "mcp".
         source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
-        memory_type: One of fact, decision, preference, problem, architecture, reference, milestone. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
+        memory_type: One of fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
         project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
+        wait_process: If true, drive this capture's flush inline (bounded by buffer_wait_timeout_seconds) instead of only buffering it. Use when you need the memory queryable immediately; the default leaves extraction to run asynchronously.
     """
     async with _memory_service_context() as service:
+        resolved_source = resolve_client_source(source, ctx)
+        resolved_project = project or "default"
         data = MemoryCreate(
             content=content, tags=tags or [],
-            source=resolve_client_source(source, ctx),
+            source=resolved_source,
             source_agent=resolve_source_agent(source_agent, ctx),
-            memory_type=memory_type, project=project,
+            origin_key=resolve_origin_key(
+                None, ctx, source=resolved_source, project=resolved_project,
+            ),
+            memory_type=memory_type, project=resolved_project,
         )
-        memory = await service.create_memory(data, api_key_id=None)
-        return json.dumps(_memory_to_dict(memory))
+        result = await service.create_memory(data, api_key_id=None, wait_process=wait_process)
+        if result.memory is not None:
+            return json.dumps(_memory_to_dict(result.memory))
+        return json.dumps(_ack_to_dict(result.ack))
 
 
 @mcp.tool(
@@ -152,6 +192,9 @@ async def memory_search(
     source: Annotated[str | None, Field(
         description='Filter by origin tool, e.g. "claude-code", "codex", "dashboard", "api", "mcp". "mcp"/"api" also cover all writes from before attribution landed (2026-06).'
     )] = None,
+    project: Annotated[str | None, Field(
+        description="Restrict results to one project. Omit to search every project."
+    )] = None,
     limit: int = 20,
     offset: int = 0,
     semantic_weight: float = 0.7,
@@ -161,8 +204,9 @@ async def memory_search(
         query: Natural language search query. Uses semantic search if available, falls back to text matching.
         tags_any: Return memories matching ANY of these tags.
         tags_all: Return memories matching ALL of these tags.
-        memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone.
+        memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural.
         source: Filter by origin tool (e.g., "claude-code", "codex", "dashboard", "api", "mcp"). "mcp"/"api" also cover all writes from before attribution landed (2026-06).
+        project: Restrict results to one project (the same isolation key memory_add writes). Omit to search every project.
         limit: Maximum number of results (default: 20).
         offset: Pagination offset (default: 0).
         semantic_weight: Balance between semantic (1.0) and keyword (0.0) search (default: 0.7).
@@ -173,7 +217,7 @@ async def memory_search(
     async with _memory_service_context() as service:
         params = MemorySearchRequest(
             query=query, tags_any=tags_any, tags_all=tags_all,
-            memory_type=memory_type, source=source,
+            memory_type=memory_type, source=source, project=project,
             limit=limit, offset=offset, semantic_weight=semantic_weight,
         )
         memories = await service.search_memories(params)
@@ -250,30 +294,22 @@ async def memory_delete(memory_id: str) -> str:
 
 
 @mcp.tool(
-    description="Create multiple memories in a single operation with parallel pipeline processing. Each entry follows the same format as memory_add; entries without 'source' get the auto-detected origin tool. Concurrency is controlled by the pipeline_concurrency setting."
+    description="Create multiple memories in a single operation. Each entry follows the same format as memory_add; entries without 'source' get the auto-detected origin tool. Buffered by default (one 202-style accept per entry, doc 05 §2); pass wait_process=true to drive the whole batch's flush inline as a single pipeline pass, bounded by buffer_wait_timeout_seconds."
 )
-async def memory_batch_add(entries: list[dict], ctx: Context | None = None) -> str:
+async def memory_batch_add(
+    entries: list[dict], wait_process: bool = False, ctx: Context | None = None,
+) -> str:
     """
     Args:
         entries: List of memory objects (1-100), each with 'content' (required), and optional 'tags', 'source' (auto-detected when omitted), 'source_agent' (defaults to the caller's User-Agent), 'memory_type', 'project' (supersession scope).
+        wait_process: If true, drive the whole batch's flush inline instead of only buffering it. Use when you need every memory queryable immediately.
     """
-    # Resolve on the raw dicts: MemoryCreate stamps its "api" default during
-    # validation, erasing the absent-vs-explicit distinction afterwards. The
-    # resolver additionally treats a literal "mcp" as unspecified (agents
-    # copying the old default must not mask detection). Non-dict entries and
-    # non-string source/source_agent values are left untouched so validation
-    # still rejects them.
-    resolved = []
-    for entry in entries:
-        if isinstance(entry, dict):
-            entry = dict(entry)
-            raw_source = entry.get("source")
-            if raw_source is None or isinstance(raw_source, str):
-                entry["source"] = resolve_client_source(raw_source, ctx)
-            raw_agent = entry.get("source_agent")
-            if raw_agent is None or isinstance(raw_agent, str):
-                entry["source_agent"] = resolve_source_agent(raw_agent, ctx)
-        resolved.append(entry)
+    # Resolve on the raw dicts, through the same helper the REST batch door
+    # uses, so the two can never drift.
+    resolved = [
+        resolve_entry_identity(entry, ctx=ctx, fallback=FALLBACK_SOURCE)
+        for entry in entries
+    ]
 
     # Mirror the HTTP /memories/batch cap (MemoryBatchCreate: 1-100 entries)
     # so the MCP path cannot enqueue an unbounded batch.
@@ -284,22 +320,31 @@ async def memory_batch_add(entries: list[dict], ctx: Context | None = None) -> s
     # once. Re-implementing creation here previously dropped ``project``,
     # landing every batch-added memory in 'default'.
     async with _memory_service_context() as service:
-        memories = await service.batch_create_memories(validated.entries, api_key_id=None)
-        return json.dumps([_memory_to_dict(m) for m in memories])
+        results = await service.batch_create_memories(
+            validated.entries, api_key_id=None, wait_process=wait_process,
+        )
+        return json.dumps([
+            _memory_to_dict(r.memory) if r.memory is not None
+            else _ack_to_dict(r.ack)
+            for r in results
+        ])
 
 
 @mcp.tool(
     description="Ask a question and get an answer based on stored memories (RAG). Searches semantically for relevant memories, then uses an LLM to synthesize an answer with source citations."
 )
-async def memory_reason(question: str, limit: int = 10) -> str:
+async def memory_reason(
+    question: str, limit: int = 10, project: str | None = None,
+) -> str:
     """
     Args:
         question: The question to answer using stored knowledge.
         limit: Maximum number of source memories to consider (default: 10).
+        project: Optional project to restrict the reasoning context to.
     """
     limit = _clamp_limit(limit, default=10)
     async with _memory_service_context() as service:
-        result = await service.reason(question, limit=limit)
+        result = await service.reason(question, limit=limit, project=project)
         return json.dumps(result)
 
 
@@ -319,20 +364,16 @@ async def memory_find_duplicates(memory_id: str, threshold: float = 0.9) -> str:
 
 
 @mcp.tool(
-    description="Get statistics about the memory system: total memories, tags, active sources."
+    description="Get statistics about the memory system: total memories, tags, active sources, plus entity and relationship counts from the knowledge graph."
 )
 async def memory_stats() -> str:
-    from sqlalchemy import func
+    from app.repositories.graph import PostgresGraphRepository
+    from app.services.analytics import AnalyticsService
 
-    from app.models.memory import Memory, Tag
-
-    async with _memory_service_context() as service:
-        session = service.session
-        memory_count = (await session.execute(select(func.count()).select_from(Memory))).scalar()
-        tag_count = (await session.execute(select(func.count()).select_from(Tag))).scalar()
-        sources_result = await session.execute(select(Memory.source).distinct())
-        sources = [r[0] for r in sources_result.all()]
-        return json.dumps({"memories": memory_count, "tags": tag_count, "sources": sources})
+    async with _code_service_context() as session:
+        service = AnalyticsService(session, graph_repo=PostgresGraphRepository(session))
+        stats = await service.get_stats()
+        return json.dumps(stats)
 
 
 @mcp.tool(
@@ -407,16 +448,10 @@ async def code_search(
         # Return a typed, machine-readable result rather than raising a tool
         # error so the MCP client can degrade gracefully (e.g. fall back to a
         # text search) instead of treating an unconfigured embedder as a crash.
-        return json.dumps({
-            "status": "unavailable",
-            "reason": "embedder not configured",
-            "results": [],
-        })
+        return json.dumps(_degraded("embedder not configured", results=[]))
 
     from app.models.code import Repository
-    from app.repositories.vector import PostgresVectorRepository
-
-    query_vector, query_fingerprint = await _pipeline.llm.embed(query)
+    from app.services.code_query import CodeQueryService
 
     repo_id: UUID | None = None
     if repo_name:
@@ -429,13 +464,8 @@ async def code_search(
             repo_id = repo.id
 
     async with _code_service_context() as session:
-        vector_repo = PostgresVectorRepository(session)
-        results = await vector_repo.search_code_chunks(
-            query_vector,
-            fingerprint=query_fingerprint,
-            limit=limit,
-            repo_id=repo_id,
-            language=language,
+        results = await CodeQueryService(session, llm=_pipeline.llm).search_code(
+            query, limit, repo_id, language,
         )
 
     return json.dumps([
@@ -444,9 +474,14 @@ async def code_search(
             "symbol_name": r["symbol_name"],
             "chunk_content": r["chunk_content"],
             "language": r["language"],
+            "repo_id": r["repo_id"],
             "line_start": r["line_start"],
             "line_end": r["line_end"],
-            "score": r["score"],
+            # The REST twin serialises the same fused value under the same key
+            # (CodeSearchResult.score = rrf_score); emitting the raw semantic
+            # distance here is what let the two doors rank the same query
+            # differently.
+            "score": r["rrf_score"],
         }
         for r in results
     ])
@@ -548,89 +583,28 @@ async def code_blast_radius(
         max_depth: Maximum call-chain depth to traverse (default: 10).
     """
     from app.models.code import CodeFile, CodeSymbol, Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        query = select(CodeSymbol, CodeFile).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+        # Only the name-to-id resolution lives here; the traversal itself is the
+        # REST twin's. Keeping a second copy of the recursive CTE is how this
+        # tool silently lost the owner-qualified `key` the graph nodes are
+        # addressed by while the REST door kept emitting it.
+        query = select(CodeSymbol.id).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
         if repo_name:
             query = query.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
         query = query.where(CodeSymbol.name == symbol_name)
-        row = (await session.execute(query)).first()
-
-        if not row:
+        symbol_id = (await session.execute(query)).scalars().first()
+        if symbol_id is None:
             raise ValueError(f"Symbol not found: {symbol_name}")
 
-        sym, file = row
-        repo_id_str = str(file.repo_id)
-        owner = None
-        if sym.parent_symbol_id:
-            owner = (await session.execute(
-                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
-            )).scalar_one_or_none()
-        symbol_key = compose_key("symbol", sym.name, file.file_path, owner=owner)
-        depth = max(1, min(int(max_depth), 50))
+        result = await CodeQueryService(session).calculate_blast_radius(
+            str(symbol_id), max_depth,
+        )
 
-        rows = (await session.execute(
-            text("""
-                WITH RECURSIVE callers AS (
-                    SELECT source_key AS name, source_kind AS kind, 1 AS distance
-                    FROM code_edges
-                    WHERE repo_id = :repo_id
-                      AND target_key = :symbol_key
-                      AND edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
-                    UNION
-                    SELECT e.source_key, e.source_kind, c.distance + 1
-                    FROM callers c
-                    JOIN code_edges e
-                        ON e.target_key = c.name
-                        AND e.repo_id = :repo_id
-                        AND e.edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
-                    WHERE c.distance < :max_depth
-                )
-                SELECT DISTINCT name, kind, MIN(distance) AS distance
-                FROM callers
-                GROUP BY name, kind
-                ORDER BY distance
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key, "max_depth": depth},
-        )).mappings().all()
-
-    by_depth: dict[str, list] = {"1": [], "2": [], "3+": []}
-    affected = []
-    for r in rows:
-        name_val = r["name"]
-        dist = r["distance"]
-        file_path_val = None
-        if "::" in (name_val or ""):
-            name_val, file_path_val = decompose_key("symbol", name_val)
-        entry = {"name": name_val, "kind": r["kind"], "file_path": file_path_val, "distance": dist}
-        affected.append(entry)
-        if dist == 1:
-            by_depth["1"].append(entry)
-        elif dist == 2:
-            by_depth["2"].append(entry)
-        else:
-            by_depth["3+"].append(entry)
-
-    direct_callers = len(by_depth["1"])
-    risk = "LOW"
-    if direct_callers > 10:
-        risk = "CRITICAL"
-    elif direct_callers > 5:
-        risk = "HIGH"
-    elif direct_callers > 2:
-        risk = "MEDIUM"
-
-    return json.dumps({
-        "symbol": {
-            "id": str(sym.id),
-            "name": sym.name,
-            "file_path": file.file_path,
-        },
-        "affected": affected,
-        "by_depth": by_depth,
-        "risk": risk,
-        "total": len(affected),
-    })
+    if result is None:
+        raise ValueError(f"Symbol not found: {symbol_name}")
+    return json.dumps(result)
 
 
 @mcp.tool(

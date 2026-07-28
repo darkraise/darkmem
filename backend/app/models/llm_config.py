@@ -39,9 +39,6 @@ class LLMPurposeConfigRow(Base):
     dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reasoning: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     api_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="openai")
-    # Kept pending T1.01's call (schema inventory F-10): doc 04 §7's inline
-    # field list omits it, but it exists at HEAD and the read path uses it.
-    provider: Mapped[str] = mapped_column(String(64), nullable=False, default="ollama")
     base_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     api_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

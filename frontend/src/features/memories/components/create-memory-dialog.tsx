@@ -20,19 +20,10 @@ import {
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
+import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 import { createMemorySchema, type CreateMemoryInput } from "../schemas"
 
 type MemoryTypeValue = CreateMemoryInput["memory_type"]
-
-const MEMORY_TYPE_OPTIONS = [
-  { value: "fact", label: "Fact" },
-  { value: "decision", label: "Decision" },
-  { value: "preference", label: "Preference" },
-  { value: "problem", label: "Problem" },
-  { value: "reference", label: "Reference" },
-  { value: "architecture", label: "Architecture" },
-  { value: "milestone", label: "Milestone" },
-]
 
 interface CreateMemoryDialogProps {
   open: boolean
@@ -53,11 +44,16 @@ export function CreateMemoryDialog({
       tags: [] as string[],
     },
     onSubmit: async ({ value }) => {
+      // Bounded by the server's buffer_wait_timeout_seconds and degrades to
+      // the plain 202 ack on timeout — never hangs, only changes whether
+      // this interactive create sees its own row land before the dialog
+      // closes (T1.58 §4.3's M1 resolution).
       await createMemory.mutateAsync({
         content: value.content,
         memory_type: value.memory_type,
         tags: value.tags.length > 0 ? value.tags : undefined,
         source: "dashboard",
+        waitProcess: true,
       })
       toast.success("Memory created")
       form.reset()

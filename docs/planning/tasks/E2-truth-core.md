@@ -936,6 +936,38 @@ two doors.
 
 **Verify.** `cd backend && python -m pytest tests/test_chat_retrieval_parity.py -q`
 
+#### T2.59 — Content retention on delete: decide the policy, then implement it
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.07` · `Doc: 04 §8.1, 08 §2.3, invariant 14` · `Tag: target-new` · `Gate: G-C`
+
+**What.** **"Delete my memory" does not today remove that memory's content from the system.**
+It survives in **two** stores, not one: `events` rows carry a 500-char
+`payload.content_preview` (a `buffer_discarded` row outlives the memory it came from), and
+`messages.context` persists a ~150-char snippet of every cited memory that nothing prunes on
+delete. `events` is **append-only by design** — T1.06's three forbid-triggers — so this is not
+a missing `DELETE`; it is a collision between two deliberate properties.
+
+**The policy is the owner's call, not this task's.** Raised as a Tier-3 escalation by T1.29e
+on 2026-07-27 and carried unowned through G-B; the G-B evidence run (T1.50, 2026-07-28)
+cleared on the three measured probes and named this as a condition for the controller to
+discharge, which is what opening this task does. **This task implements whichever policy the
+owner states; it does not choose one.** The plausible answers are genuinely different systems:
+redact the preview in place (breaks append-only), stop writing content into events at all
+(loses triage value for poison rows), tombstone-and-exclude at read time (content still on
+disk), or accept and document the retention (honest, and possibly correct for a
+single-operator homelab).
+
+**Done when:**
+- [ ] The owner's stated policy is recorded verbatim in the task before any code is written
+- [ ] Both stores are covered — a policy applied to `events` alone is a half-measure by the
+      escalation's own finding
+- [ ] Whatever the policy, the **user-visible claim matches the behaviour**: if content is
+      retained after delete, the UI and the docs say so rather than implying erasure
+- [ ] If append-only is preserved, the mechanism that satisfies the policy without violating
+      it is stated and tested
+
+**Verify.** `cd backend && python -m pytest tests/test_content_retention.py -q`
+
 ---
 
 ## Amendment log

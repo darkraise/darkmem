@@ -1,0 +1,1 @@
+{"entities": [{"name": "Redis", "type": "database", "properties": {}}, {"name": "C", "type": "language", "properties": {}}], "relationships": [{"source": "Redis", "target": "C", "type": "USES", "properties": {}, "weight": 0.8}], "memory_type": "fact", "importance": 0.5}

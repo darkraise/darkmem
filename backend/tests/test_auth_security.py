@@ -89,12 +89,11 @@ async def test_failed_login_persists_audit_row(client, session, monkeypatch):
         )).all()
         assert len(rows) >= 1
 
-        # The committed row lives outside the fixture's rollback boundary;
-        # delete it so it does not leak into other tests.
-        await verify_session.execute(
-            text("DELETE FROM events WHERE event_type = 'auth_login_failed'")
-        )
-        await verify_session.commit()
+    # The committed row outlives the fixture's rollback boundary and cannot be
+    # cleaned up: `events` is append-only (T1.06), so a DELETE here would be
+    # refused by the forbid-trigger. Assertions elsewhere must therefore be
+    # written to tolerate rows this test leaves behind — which is the right
+    # shape anyway, since production rows accumulate the same way.
 
 
 # ── password-change session revocation ────────────────────────────────

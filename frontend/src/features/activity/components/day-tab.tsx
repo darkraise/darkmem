@@ -5,22 +5,22 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  CircleAlert,
   Clock,
   Link2,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { VerificationBadge } from "@/components/darkmem"
-import { dayBucket, shiftDay } from "@/demo/activity"
-import { useDemoDayBuckets } from "@/demo/hooks"
-import type { DemoDayEvent } from "@/demo/types"
+import { shiftDay } from "@/demo/activity"
 import { SurfaceStateChip } from "./module-surface"
+import { useDayEvents, type DayRowData } from "../use-day-events"
 
-function DayEventRow({ event }: { event: DemoDayEvent }) {
+function DayEventRow({ event }: { event: DayRowData }) {
   return (
     <div className="border-border flex flex-wrap items-start gap-2.5 border-t border-dashed py-2.5 first:border-t-0 first:pt-0">
       <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-sm whitespace-nowrap">
-        {event.time_label}
+        {event.timeLabel}
       </span>
       <span className="border-border bg-muted text-muted-foreground inline-flex shrink-0 items-center gap-1 rounded-sm border px-2 py-0.5 font-mono text-sm whitespace-nowrap">
         <Circle aria-hidden className="h-2 w-2" />
@@ -32,10 +32,8 @@ function DayEventRow({ event }: { event: DemoDayEvent }) {
             aria-hidden
             className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0"
           />
-          {event.link_label}
+          {event.linkLabel}
         </span>
-        {/* The from→to rung pair — only for verification transitions,
-            never for a plain lifecycle event. */}
         {event.transition && (
           <span className="inline-flex flex-wrap items-center gap-2">
             <VerificationBadge status={event.transition.from} />
@@ -45,18 +43,11 @@ function DayEventRow({ event }: { event: DemoDayEvent }) {
             />
             <VerificationBadge
               status={event.transition.to}
-              label={event.transition.to_label}
+              label={event.transition.toLabel}
             />
           </span>
         )}
         {event.badge && <VerificationBadge status={event.badge} />}
-        {event.inject_detail && (
-          <span className="text-muted-foreground flex flex-wrap gap-3 font-mono text-sm">
-            {event.inject_detail.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
-          </span>
-        )}
         {event.note && (
           <span className="text-muted-foreground text-sm">{event.note}</span>
         )}
@@ -72,16 +63,14 @@ export function DayTab({
   day: string
   onDayChange: (day: string) => void
 }) {
-  const buckets = useDemoDayBuckets()
-  const bucket = dayBucket(buckets, day)
+  const { events, total, isLoading, isError, truncated } = useDayEvents(day)
 
   return (
     <div className="space-y-4">
       <p className="text-muted-foreground max-w-4xl text-sm">
         A calendar-day drill into that UTC day-bucket's slice of the durable
         events substrate — the same event-row component the per-object timeline
-        renders, with the from→to rung pair reserved for genuine verification
-        transitions.
+        renders.
       </p>
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-2.5">
         <Button size="sm" variant="ghost" asChild>
@@ -93,7 +82,11 @@ export function DayTab({
         <span className="border-border bg-muted rounded-sm border px-2.5 py-1 font-mono text-sm">
           /activity · day {day}
         </span>
-        <SurfaceStateChip state={bucket ? "populated" : "empty"} />
+        <SurfaceStateChip
+          state={
+            isLoading ? "empty" : events && events.length > 0 ? "populated" : "empty"
+          }
+        />
         <div className="ml-auto flex items-center gap-1.5">
           <Button
             size="sm"
@@ -120,11 +113,23 @@ export function DayTab({
           </span>
         </span>
       </div>
-      {bucket ? (
+      {isError ? (
+        <EmptyState
+          icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+          title="Couldn't load this day"
+          description="The /events request for this UTC window failed — this is an error state, not an empty day."
+        />
+      ) : events && events.length > 0 ? (
         <div className="flex flex-col">
-          {bucket.events.map((event, i) => (
-            <DayEventRow key={`${event.time_label}-${i}`} event={event} />
+          {events.map((event) => (
+            <DayEventRow key={event.id} event={event} />
           ))}
+          {truncated && (
+            <p className="text-muted-foreground pt-2.5 text-sm">
+              Showing {events.length} of {total} events for this day — narrow
+              by project to see the rest.
+            </p>
+          )}
         </div>
       ) : (
         // Honest empty: names the UTC bucket it checked; a quiet day is an

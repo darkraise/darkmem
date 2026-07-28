@@ -11,7 +11,7 @@ class _StubPipeline:
     def __init__(self):
         self.llm = _StubLLM()
 
-    async def semantic_search(self, question, limit=10):
+    async def semantic_search(self, question, limit=10, semantic_weight=0.7, filters=None):
         # Simulate the bug: semantic search returns unrelated memories
         # (it never returns the decision memories naturally).
         return []
@@ -32,7 +32,7 @@ async def test_reason_does_not_boost_on_substring_false_positive(session):
             memory_type="fact",
             source="test",
         ),
-        api_key_id=None,
+        api_key_id=None, wait_process=True,
     )
 
     result = await svc.reason("List the artifacts we shipped this week", limit=5)
@@ -58,7 +58,7 @@ async def test_reason_finds_decision_memories_for_decisions_query(session):
             memory_type="decision",
             source="test",
         ),
-        api_key_id=None,
+        api_key_id=None, wait_process=True,
     )
     await svc.create_memory(
         MemoryCreate(
@@ -67,7 +67,7 @@ async def test_reason_finds_decision_memories_for_decisions_query(session):
             memory_type="decision",
             source="test",
         ),
-        api_key_id=None,
+        api_key_id=None, wait_process=True,
     )
     # Decoy memory that should NOT be cited
     await svc.create_memory(
@@ -77,7 +77,7 @@ async def test_reason_finds_decision_memories_for_decisions_query(session):
             memory_type="fact",
             source="test",
         ),
-        api_key_id=None,
+        api_key_id=None, wait_process=True,
     )
 
     result = await svc.reason("Summarize recent decisions", limit=5)

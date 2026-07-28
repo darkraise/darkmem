@@ -1,0 +1,119 @@
+import { test, expect, type Page } from "@playwright/test"
+
+// honesty/labels-always-render (T1.48). Simple/Advanced ships with the
+// first advanced surface, and simple never hides an honesty signal
+// (invariant 14): verification badges, layer labels, superseded/stale
+// labels, and exclusion counts must render in BOTH detail modes. Only the
+// technical breakdown (per-modality/fused scores, arm breakdown,
+// fingerprints, raw config keys) collapses in simple mode — proven
+// separately by src/components/darkmem/__tests__/darkmem-components.test.tsx
+// and src/features/memories/__tests__/real-memories-view.test.tsx.
+//
+// Exercised against the demo store (DEMO defaults on until T1.58), which
+// shares the exact components (MemoryRow, VerificationBadge, LayerChip,
+// StaleBadge) the real surfaces bind to — the same honesty guard applies
+// whichever data source populated the row.
+
+const LABEL: Record<"simple" | "advanced", string> = {
+  simple: "Simple",
+  advanced: "Advanced",
+}
+
+async function setDetailLevel(page: Page, level: "simple" | "advanced") {
+  const toggle = page.getByRole("radio", { name: LABEL[level] })
+  await toggle.click()
+}
+
+test.describe("honesty/labels-always-render", () => {
+  test("memory list: layer chip, lifecycle badge, and exclusion count render in both modes", async ({
+    page,
+  }) => {
+    await page.goto("/memories")
+
+    await expect(page.getByText(/results — project/i)).toBeVisible()
+
+    // getByLabel("Project scope") is ambiguous: the app-chrome
+    // ProjectSwitcher (a popover trigger) shares the same aria-label with
+    // this page's own filter (a Select combobox) — scope to the combobox.
+    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
+    await scopeTrigger.click()
+    await page.getByRole("option", { name: "darkmem" }).click()
+
+    const contextTrigger = page.getByRole("combobox", { name: "Session context" })
+    await contextTrigger.click()
+    await page.getByRole("option", { name: "env=prod" }).click()
+
+    await page.getByLabel("Search memories").fill("cookie-secure")
+
+    for (const level of ["simple", "advanced"] as const) {
+      await setDetailLevel(page, level)
+
+      await expect(page.getByText("1 memory excluded")).toBeVisible()
+      await expect(page.getByText("by_context_conflict")).toBeVisible()
+      await expect(page.getByText("L0 · memory").first()).toBeVisible()
+    }
+  })
+
+  test("memory list: superseded badge renders in both modes, never filtered out", async ({
+    page,
+  }) => {
+    await page.goto("/memories")
+
+    await expect(page.getByText(/results — project/i)).toBeVisible()
+
+    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
+    await scopeTrigger.click()
+    await page.getByRole("option", { name: "darkmem" }).click()
+    // "introduced" appears in exactly one curated memory — the superseded
+    // reranker row — so this isolates it without relying on ranking order.
+    await page.getByLabel("Search memories").fill("introduced")
+
+    for (const level of ["simple", "advanced"] as const) {
+      await setDetailLevel(page, level)
+      await expect(page.getByText("superseded")).toBeVisible()
+    }
+  })
+
+  test("article detail: verification badge and stale label render in both modes", async ({
+    page,
+  }) => {
+    // ARTICLE_IDS.degradedChannel — corroborated but stale (a new
+    // corroborated fact changed its fact_set_hash since synthesis). The
+    // hero badge is not the only "corroborated" text on the page — the
+    // open-by-default Citations section cites two corroborated facts too
+    // — so every match here is scoped with .first(), the hero's DOM
+    // position (it renders before the Citations accordion).
+    await page.goto("/knowledge/articles/a7d3b0f2")
+
+    await expect(page.getByText("corroborated").first()).toBeVisible()
+
+    for (const level of ["simple", "advanced"] as const) {
+      await setDetailLevel(page, level)
+      await expect(page.getByText("L3 · article")).toBeVisible()
+      await expect(page.getByText("corroborated").first()).toBeVisible()
+      await expect(page.getByText("stale", { exact: true })).toBeVisible()
+      await expect(
+        page.getByText(/synthesised before the latest verified change/),
+      ).toBeVisible()
+    }
+  })
+
+  test("article detail: superseded badge and successor link render in both modes", async ({
+    page,
+  }) => {
+    // ARTICLE_IDS.retrievalFusionV1 — superseded_by ARTICLE_IDS.retrievalFusion.
+    // "superseded" also matches inside the successor link's "superseded_by"
+    // text, so the badge check is scoped with .first() (the badge renders
+    // before the successor link in the hero).
+    await page.goto("/knowledge/articles/af0b3d9a")
+
+    await expect(page.getByText("superseded").first()).toBeVisible()
+
+    for (const level of ["simple", "advanced"] as const) {
+      await setDetailLevel(page, level)
+      await expect(page.getByText("L3 · article")).toBeVisible()
+      await expect(page.getByText("superseded").first()).toBeVisible()
+      await expect(page.getByText(/superseded_by → article a4c9a7e2/)).toBeVisible()
+    }
+  })
+})

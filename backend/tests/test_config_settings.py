@@ -6,8 +6,10 @@ needs only the three per-deploy secrets in its environment:
 1. ``DATABASE_URL`` is derived from ``DB_PASSWORD`` (and the constant
    host/port/db/user) when not given explicitly; an explicit value still
    wins (external Postgres, bare-host runs).
-2. ``trust_proxy_headers`` defaults to True — the API is always fronted by
-   the bundled nginx, so the flag never varies in deployment.
+2. ``trust_proxy_headers`` defaults to False — the app is the network edge,
+   so the transport peer decides the rate-limit bucket and no request header
+   can move it. Flipping it on is how a deployment with a genuinely trusted
+   proxy in front opts back into the header strategy.
 3. ``cookie_secure`` decouples the session-cookie Secure flag from
    ``environment`` so the stack can run production validators while still
    serving login over plain HTTP on a trusted LAN.
@@ -82,10 +84,10 @@ def test_database_url_components_are_overridable(monkeypatch):
 # ── trust_proxy_headers default ───────────────────────────────────────
 
 
-def test_trust_proxy_headers_defaults_true(monkeypatch):
+def test_trust_proxy_headers_defaults_false(monkeypatch):
     _clear(monkeypatch, "TRUST_PROXY_HEADERS")
     s = Settings(_env_file=None)
-    assert s.trust_proxy_headers is True
+    assert s.trust_proxy_headers is False
 
 
 # ── cookie_secure resolution ──────────────────────────────────────────

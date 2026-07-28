@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+// This file is a demo-fixture test by design (asserts against the demo
+// store), so it is frozen at DEMO: true rather than relying on the
+// about-to-change default (T1.58) — same idiom Step 3 applies elsewhere.
+// The real-mode edit-disable branch has its own file, memory-editor-dialog
+// .real.test.tsx, mocked the other way.
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))

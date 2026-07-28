@@ -57,6 +57,11 @@ dependencies = [
     "leidenalg>=0.10.0",
     "scikit-learn>=1.5.0",
     "croniter>=2.0.0",
+    # UUIDv7 (doc 04 §2). stdlib uuid.uuid7 is 3.14+, and requires-python is
+    # >=3.12 — raising that floor is a toolchain migration (image, universal
+    # lock, every wheel), not this dependency's worth of change. app/utils/ids.py
+    # is the single call site, so a later floor raise is a one-line swap.
+    "uuid6>=2024.7.10",
 ]
 
 [project.optional-dependencies]

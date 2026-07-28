@@ -1,0 +1,1 @@
+{"entities": [{"name": "Qdrant", "type": "database", "properties": {}}, {"name": "Milvus", "type": "database", "properties": {}}], "relationships": [], "memory_type": "fact", "importance": 0.5}

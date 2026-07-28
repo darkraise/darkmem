@@ -23,8 +23,8 @@ its artifact path, and a verdict — not when someone believes the work is done.
 
 | Gate | Guards | Status | Cleared on | Evidence |
 |---|---|---|---|---|
-| G-A | Phase 0 → 1 | **open** | — | — |
-| G-B | Phase 1 → 2 | **open** | — | — |
+| G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
+| G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** | — | — |
 | G-D | L2 → L3 | **open** | — | — |
 | G-E | L3 → F7 | **open** | — | — |
@@ -344,9 +344,9 @@ Verbatim output — `run_bench.py --gold gold_heldout.json`, live, 2026-07-26:
 
 | Probe | Bar | Measured | Twin | Artifact | Verdict |
 |---|---|---|---|---|---|
-| Extraction F1 parity with the recorded baseline | Within the T0.05 tolerance | — | n/a | — | — |
-| Retrieval eval vs full-context baseline | Reported with twin; no silent regression | — | p95 —, tokens — | — | — |
-| Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | — | n/a | — | — |
+| Extraction F1 parity with the recorded baseline | Within the T0.05 tolerance | gold **0.912 / 0.971 / 0.883 / 0.883** (floors 0.881 / 0.910 / 0.784 / 0.811); held-out **0.967 / 0.967 / 0.950 / 0.950** (floors 0.786 / 0.821 / 0.485 / 0.485) — all 8 cells clear, cascade valve not engaged. Reported as the T1.24f decomposition, never a headline (verdict section below) | recorded gap stands: the T0.05 baseline itself has no latency/token twin; the live re-record's usage is in the Pass-B cache entries | `--algo-only` at `16f8fb0` over `docs/eval/2026-07-28-T1.17-merged-prompt-cache/`; arithmetic in `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; verbatim output in the T1.50 report | **PASS** (2026-07-28, T1.50) |
+| Retrieval eval vs full-context baseline | Reported with twin; no silent regression | Per-slice accuracy byte-identical to G-A on all 7 slices; pooled retrieval MRR 0.8582 / hit@10 0.8431 vs full-context 0.9069 / 0.9314. Post-T1.17 baseline re-established: 94 live merged-prompt extraction calls paid this run | p95 end-to-end 0.00303 s retrieval / 0.00023 s FC (cache-served, caveat recorded); tokens: retrieval indexing **927,166 prompt / 11,661 completion, live-measured**; FC 472,558 / 3,899 per query set — different kinds, never subtracted | `docs/eval/2026-07-28-retrieval-eval.md` (run `6b7b0c0d`, git `16f8fb0`) | **PASS** (2026-07-28, T1.50) |
+| Isolation probe: unlabelled cross-project or superseded rows, **every** channel | **Exactly 0** | **10** (2026-07-28, T1.35), then **0** (2026-07-28, T1.35a), re-measured **0** at `16f8fb0` (2026-07-28, T1.50, `darkmem_bench_1`) with per-surface row widths identical to the failing run | n/a (deterministic, zero model calls) | `backend/scripts/benchlib/run_isolation_probe.py` (output below and in the T1.50 report) | **PASS; the 10 stands recorded** |
 
 **Requirement recorded by T0.05:** the runner producing this gate's live F1
 re-record must capture and record response metadata (the served `model` string
@@ -355,15 +355,116 @@ cache carries none, so model identity is only checkable from the G-B side; a
 shortfall attributed to a vendor-side model update is admissible only with that
 metadata recorded (see the "same model" gap under G-A).
 
-**Isolation probe detail** (T1.35) — a single leaked row fails the gate:
+**Isolation probe detail** (T1.35, measured 2026-07-28) — a single leaked row
+fails the gate. **Measured: 10 violations. This probe row is a FAIL and G-B
+stays open** (rule 3: recorded, not retried away).
 
-| Channel | Cross-project leaks | Superseded leaks | Verdict |
+**The metric, stated before the run** (in code: `benchlib/isolation_rules.py`,
+whose module docstring is the bar's definition). A violation is a returned row
+of memory-derived data (full content, preview, or write-echo) that is either
+**V1** — outside a scope the request carried (explicit project/status
+parameter, a scope derived from the addressed row, repository id, or the
+active-fingerprint constraint); labels never excuse a V1 — or **V2** — a
+cross-project or non-active row on a legitimately wide read (operator-wide
+surface, or a ratified every-project default) that does not itself carry the
+labels naming its true project / lifecycle state (Ruling 5: a labelled
+superseded row is the design; an unlabelled one is the count). Two exposures
+are **reported but deliberately not counted**, with the decision stated per
+Ruling 4: **id-only exposure** (`memory_ids` arrays, crossrefs, relation
+edges — T1.29d/e parked these as an open product question; 15 observed) and
+**retention snapshots** (append-only journal/citation content outliving its
+memory — escalated to the human by T1.29e; 3 observed). The channel inventory
+is `app.services.content_surfaces.CONTENT_SURFACES` (never a doc's list —
+Ruling 1); the probe aborts if any registry surface lacks a driver, and every
+raw response body is sentinel-scanned so a row crossing through an
+unenumerated field is a forced V1, not a pass.
+
+Per-channel result — the five originally tabled channels first, then the
+surfaces the registry adds (rule 4: never collapsed):
+
+| Channel / surface | Cross-project leaks | Superseded leaks | Verdict |
 |---|---|---|---|
-| Semantic | — | — | — |
-| Keyword | — | — | — |
-| Graph | — | — | — |
-| `memory_reason` | — | — | — |
-| Code search | — | — | — |
+| Semantic (search REST+MCP, projection, unified, duplicates) | 0 | 0 | PASS |
+| Keyword (FTS arm + relational fallback arm) | 0 | 0 | PASS |
+| Graph (memory-context neighbours, entity browser) | 0 | 0 | PASS (id-only exposure reported, not counted) |
+| `memory_reason` (REST + MCP doors) | **4** | 0 | **FAIL** |
+| Code search (REST + MCP, both arms, cross-repo + cross-fingerprint) | 0 | 0 | PASS |
+| Chat retrieval (`/chat/completions` sources) | **2** | 0 | **FAIL** |
+| Re-embed backfill queue (`/reembed/obsolete/memories`) | **1** | **1** | **FAIL** |
+| Chat history citations (persisted snippets) | **2** | 0 | **FAIL** |
+| Pipeline-failure triage | 0 | 0 | PASS (wide, labelled) |
+| Analytics recents | 0 | 0 | PASS (wide, labelled) |
+| Capture-buffer triage | 0 | 0 | PASS |
+| Event journal (3 doors) | 0 | 0 | PASS (retention reported, not counted) |
+| Memory by id / write echo | 0 | 0 | PASS |
+| Content-free-route sweep (34 GET doors) | 0 | 0 | PASS |
+
+**The ten leaked rows, named** (full output reproducible via
+`cd backend && BENCH_DATABASE_URL=... python scripts/benchlib/run_isolation_probe.py`):
+
+1–2. `memory_reason` REST, default every-project scope (ratified): two
+   `iso-beta` rows returned as 200-char content previews in `sources` with
+   **no project or status key on the row** — the response shape carries
+   `memory_id/content/score/tags` only.
+3–4. `mcp:memory_reason`, same shape, same two rows.
+5–6. `chat_retrieval`, default context: two `iso-beta` rows land in the
+   `sources` SSE event (full content) with no labels.
+7. `reembed_backfill_queue`: a cross-project row previewed 120 chars with no
+   labels (items carry `memory_id` + `content_preview` only).
+8. `reembed_backfill_queue`: a superseded row, same unlabelled shape.
+9–10. `chat_history_citations`: the two beta rows from leak 5–6 persisted as
+   150-char snippets, re-served unlabelled on every conversation read.
+
+**Registry-honesty finding (Ruling 2).** The registry rows for
+`memory_reason` and `chat_retrieval` declare `labels=("project", "status")`,
+but neither response shape emits those keys on its rows — the label claim
+describes the internal SQL, not what the surface returns. The
+`reembed_backfill_queue` row honestly declares `labels=()`, which under this
+bar is precisely why its wide rows count. Fixing any of this is **not** this
+probe's job (a probe that fixes what it measures cannot be trusted to measure
+it); the fixes need owners before this probe can be re-run for the gate.
+
+**Instrument evidence.** Deterministic: two consecutive full runs produced
+byte-identical reports (10 violations, exit 1). Zero model calls by
+construction — the orchestrator stub has no HTTP client. Sensitivity proven
+by mutation: removing the status clause from `MemoryFilter.where_sql` drove
+the count 10 → **58** with named V1 status-breach rows on every
+semantic-backed channel; restoring it returned exactly 10. Hostile fixtures
+cover: superseded rows with live successors, an entity asserted by memories
+in two projects, archived rows, rows embedded only under an inactive
+fingerprint (never served — verified), rows missing from the active
+partition, the absent-partition degradation (enumeration withheld, count
+exact — verified), and journal/citation content outliving a deleted memory.
+What passed is itself evidence: every T1.29a–e pushdown held under these
+fixtures, including both code-search arms and the graph neighbour status
+predicate.
+
+**Re-measurement after T1.35a (2026-07-28): 0 violations, exit 0.** The ten
+above were closed by labelling, not by narrowing — every one of them was a
+`[V2]` unlabelled escape rather than a wrongly returned row, and all four
+surfaces are still exactly as wide as they were. The per-surface row counts in
+the re-run are identical to the failing run (`memory_reason` 16,
+`chat_retrieval` 8, `chat_history_citations` 9, `reembed_backfill_queue` 3);
+only the V2 column moved to zero, which is the evidence that no row was
+removed to make the number. The informational I1/I2 lists are unchanged and
+remain out of scope (T1.60 and the escalated retention question).
+
+The labels are stamped at the point the rows are produced, following T1.29d's
+`get_all_vectors` precedent: `PostgresVectorRepository.search` and both
+`HybridSearchService` arms now join `memories` unconditionally and emit
+`project` + `status` on every row, so a consumer nobody enumerated still gets
+labelled rows; `MemoryService.reason` builds one citation shape for both its
+passes and therefore for both doors; `ChatService` labels the `sources` event
+and the persisted citation snapshot; the re-embed queue labels its previews.
+The registry-honesty finding is closed in the direction the bar requires: the
+false statements were the `memory_reason` and `chat_retrieval` *responses*, and
+those were fixed rather than the classification relaxed. `reembed_backfill_queue`
+and `chat_history_citations` now declare `labels=("project", "status")` because
+they now emit them.
+
+The probe, its fixtures and its predicates were not touched. Guard tests live
+in `backend/tests/test_scope_labels.py` (18); each labelling point was mutated
+in turn and the corresponding tests observed failing before restoration.
 
 ---
 
@@ -468,3 +569,604 @@ These never "clear" once — they apply per activation, every time.
 | Date | Arm | Slice deltas | p95 latency | Token cost | Decision | Artifact |
 |---|---|---|---|---|---|---|
 | — | — | — | — | — | — | — |
+
+---
+
+## G-B — BLOCKING ENVIRONMENT FINDING (Tier 3, logged 2026-07-27)
+
+**G-B cannot be cleared on this machine, and no amount of further Phase-1 task
+completion changes that.** Recording it here rather than discovering it at T1.50.
+
+**What was measured.** No LLM credential exists in any form: nothing in the
+environment (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` all unset),
+no `.env` (only `.env.example`), no Ollama binary and nothing serving on `:11434`
+or any other local model port, and the real `darkmem` database has no schema, so no
+`llm_purpose_configs` row supplies one either. This machine can make **zero** live
+model calls.
+
+**Why that blocks the gate specifically.** Two of G-B's three required numbers need
+a live model, and this ledger already says so:
+
+1. **Extraction F1 parity.** The stated tolerance above "judges G-B's live
+   re-measurement under the Phase-1 prompt", and "G-B must be measured with the same
+   model" (`deepseek-v4-flash`). The warm `--algo-only` cache cannot stand in: T1.17
+   rewrites the extraction system prompt, and the per-entry cache key is
+   `sha256(content + "\x00" + prompt)`, so **every one of the 36 entries is
+   invalidated the moment T1.17 lands**. There is no path from the current cache to
+   a post-T1.17 number.
+2. **Retrieval eval vs the full-context baseline.** `run_retrieval_eval.py` exits
+   non-zero with "DEEPSEEK_API_KEY is not set" — its smoke ingest runs extraction and
+   classification against the vendor. Measured 2026-07-27: this is the step that
+   turns `./scripts/gate.sh --full` RED today.
+
+The third number, the isolation probe's zero-count (T1.35), is a database-level
+property and is expected to remain reachable.
+
+**Consequent task blockage.** T1.17 is blocked on a credential, which is a runbook §7
+stop condition in its own right. Through it: **T1.18** and **T1.24f** (both depend on
+T1.17), and therefore **T1.50** (depends on T1.24f). T1.52 and T1.54 additionally
+need real data this machine does not hold.
+
+**What is NOT blocked.** Everything else in E1 — roughly fifty remaining tasks —
+neither needs a model nor feeds a number that does. Work continues there; only the
+gate claim and the four tasks above are held.
+
+**What a human needs to decide.** Either provision a `DEEPSEEK_API_KEY` for the same
+`deepseek-v4-flash` alias the T0.05 baseline used, or change how G-B is measured —
+which is a Tier-3 amendment to the gate's definition and explicitly not an agent's
+call. Note the two pre-existing recorded gaps above compound this: there is no
+latency/token twin for the baseline, and "same model" is asserted rather than
+verifiable, so a late-provisioned key should also capture response metadata per this
+ledger's own requirement.
+
+**Do not work around this.** Widening the tolerance, substituting a different model,
+or citing the warm cache as a post-T1.17 measurement would each convert a missing
+number into a false one, which is the failure this ledger exists to prevent.
+
+---
+
+## G-B — WHAT THE F1 NUMBER CAN AND CANNOT EVIDENCE (measured, 2026-07-28)
+
+**G-B's extraction-F1 parity number is real evidence of the model's extraction quality and
+weak evidence of the pass chain's correctness.** Three independent measurements now show the
+36-memory gold corpus cannot see large parts of the chain it is being used to guard. Recorded
+here because T1.50 must word its claim against this, not around it.
+
+**Measurement 1 — Stage 3 (`relation_rescue`) is invisible.** T1.25 ablated it four ways
+(flag off, each of three passes dropped): **0.000 delta on all eight dimensions**, output
+bit-identical across all 36 memories. The layer alters **one** memory and contributes **one**
+surviving triple, which duplicates one the model already emitted. Independently re-measured
+by the controller.
+
+**Measurement 2 — seven of Stage 4's ten passes are invisible.** T1.24d's planning pass ran a
+per-pass ablation over all 36 memories using the harness's own `without()` primitive, with
+baselines reproducing exactly. Only three passes move anything at all:
+
+| Pass | gold Δ rel_full | gold changed | held-out Δ rel_full | held-out changed |
+|---|---|---|---|---|
+| `remap_to_valid_entities` | −0.045 | 3/26 | −0.022 | 1/10 |
+| `downgrade_future_to_mentions` | −0.012 | 1/26 | 0.000 | 0/10 |
+| `drop_date_misuse` | −0.012 | 1/26 | 0.000 | 0/10 |
+| the other **seven** | 0.000 | **0/26** | 0.000 | **0/10** |
+
+So **"relation F1 does not regress" is satisfiable by deleting 70% of Stage 4.** And the
+blind passes are the worst possible ones to be blind to: `gate_replaces_selection`,
+`gate_replaces_requires_verb`, `drop_edges_to_negated` and the direction validators — whose
+shared failure mode is **a false `REPLACES` reaching supersession**. Supersession flips a
+memory out of the default view; a false one silently removes a live memory, which is the
+exact failure `chk_superseded_has_pointer` and the six-rule gate exist to prevent.
+
+**Measurement 3 — the vocabulary widening was never measured at all.** T1.23 widened
+`MEMORY_TYPES` 7 → 9 and recorded that the F1-green did not cover it: the bench cache key is
+`sha256(content + "\0" + system_prompt)`, while the widened schema string rides the **user**
+message. It has been carried on an unmeasured assumption since it landed. T1.17's live
+re-record is its first real measurement.
+
+### What this means for T1.50
+
+- **Do not cite F1 as evidence for Stage 3 or for the seven blind Stage-4 passes.** A flat
+  delta across an ablation is evidence of *nothing measured*, not of *no regression*.
+- **T1.24f's "per-pass contribution recorded" box must record these passes as
+  `unmeasurable on this corpus`, not as `zero contribution`.** Those are different claims and
+  only one is true.
+- The substitute evidence is behavioural: per-gate tests, named mutation proofs, and
+  order-insensitive whole-chain diffs. T1.24d's plan builds that guard; it is what should be
+  cited where F1 cannot reach.
+- **The honest form of the G-B claim** is parity of *model extraction quality* against the
+  T0.05 baseline, plus behavioural coverage of the pass chain — not "the extraction chain is
+  verified by F1".
+
+### The underlying cause, and who could fix it
+
+The corpus is 36 memories chosen to exercise the model, not the pass chain. Closing this is
+**gold-set authoring**, which the runbook routes to Fable tier and which no current task
+owns. It is deliberately **not** being added as a task now: it does not block G-B provided
+G-B's claim is worded to match what was actually measured, and inventing gold cases to make
+a guard light up is the fitted-evidence failure the `phoenix v2` ruling already rejected.
+
+### Sharpening of Measurement 3, and a controller correction (2026-07-28)
+
+T1.17's planning pass established the precise form, and the controller confirmed it: the
+bench cache key is `sha256(content + "\0" + system_prompt)`, `EXTRACTION_SCHEMA` rides the
+**user** message, and `MEMORY_TYPES` is **already 9**. So the 36 outputs cached on 2026-07-26
+under the **7-type** schema are still being served on every `--algo-only` run.
+
+**The F1 merge gate has therefore been green over a configuration nobody runs since T1.23
+landed.** Two things follow, and they are different:
+
+- The **wave-to-wave comparisons remain valid.** Every run this session replayed the same
+  cache, so a change in the number was a real change in the pass chain. Nothing reported as
+  a delta was wrong.
+- The **absolute number describes a stale configuration.** It is not the F1 of the shipping
+  extractor and must not be presented as such at G-B.
+
+T1.17's re-record is what closes this — and its Done-when box asking `run_bench.py` to
+exercise the merged shipping path with its gate state pinned is precisely the fix, which is
+why that box matters more than it reads.
+
+**Controller correction:** T1.17's brief described capturing response metadata (model string,
+token counts) as *an opportunity*. That was wrong. This ledger already records it as a
+**requirement** — "'silent vendor update' must not be accepted as an explanation for a
+shortfall unless the G-B runner captured response metadata showing what was actually served".
+The re-record is the measurement G-B cites, so it must capture that metadata. The plan is to
+treat it as required.
+
+**Blast radius, recorded for T1.50:** the prompt edit invalidates more than the 36 extraction
+entries. `benchlib` keys its cache on the whole `messages` list, so T1.50's retrieval
+baseline — roughly 94 cached extraction calls plus the ingested graph itself — dies with it.
+T1.17's task text does not warn about this, and T1.50's brief must budget for re-establishing
+that baseline after the prompt change rather than before.
+
+---
+
+## G-B — THE BASELINE NO LONGER REPRODUCES. Measured 2026-07-28, decision recorded.
+
+The gate ledger's own recorded gap — *"'same model' is asserted, not verifiable"* — has now
+been tested against a live model and **the baseline does not reproduce**. 159 live calls,
+evidence committed at `docs/eval/2026-07-28-laneD-live-model-drift/`.
+
+**32 of 36 raw outputs differ; 15 of 36 (42%) differ semantically after `clean_extraction`.**
+Two controls rule out the innocent explanations: the same content at the same seed run three
+times is byte-identical and differs from the cache *the same way each time*, and a
+`temperature=0` control still leaves 4 of 5 differing. This is vendor-side drift, not
+sampling noise and not a config mismatch. The cache was **not** re-recorded.
+
+### The three-arm decomposition — the part that matters
+
+| Arm | Algorithm | Raw source | gold | held-out |
+|---|---|---|---|---|
+| **A** — recorded T0.05 / G-A | 2026-07-26 | cache | 0.925 / 0.955 / 0.865 / 0.892 | 0.893 / 0.929 / 0.667 / 0.667 |
+| **B** — today's algo, cached raw | `dbde017` | cache | 0.940 / 0.970 / 0.895 / 0.921 | 0.949 / 0.983 / 0.872 / 0.872 |
+| **C** — today's algo, **live** raw | `dbde017` | live | 0.925 / 0.970 / 0.921 / 0.921 | 0.862 / 0.931 / 0.765 / 0.765 |
+
+**B − A is the deterministic passes' gain. C − B is the isolated model drift**, which is
+roughly neutral on gold and **materially negative on held-out across all four dimensions**
+(`−0.087 / −0.052 / −0.107 / −0.107`).
+
+**All eight cells still clear the G-B floors.** But two facts qualify that pass:
+
+1. Held-out entity name+type declines against A, `0.893 → 0.862`. At that cell's flip cost of
+   `2/56 = 0.0357`, **drift alone has consumed 0.87 of the tolerance's 1.0-flip "silent
+   vendor-side model update" allowance** — it lands just inside a budget written for exactly
+   this event, and it is 87% spent on the first measurement.
+2. **The deterministic passes are masking the drift.** On held-out relations the algorithm
+   gained `+0.205` while the model lost `−0.107`, netting `+0.098`. A parity check comparing
+   Phase-1 against A passes *partly because T1.24's algorithm gains are paying for model
+   regression*, and the comparison cannot show that.
+
+### Controller decision (the human delegated this; recorded rather than asked)
+
+**The bar is not moved and the baseline is not re-recorded.** Arm A stays the reference.
+Runbook §7 forbids widening a bar to fit a result, and re-baselining onto a model that has
+already drifted once would make "parity" a comparison against a moving target.
+
+**Instead, T1.50 must report the three-arm decomposition, not a single parity number.** The
+honest claim is: parity against A holds, *and here is how much of that is algorithm and how
+much is model*. A headline number that hides a −0.107 model regression under a +0.205
+algorithm gain is technically true and materially misleading, which is the failure this
+corpus exists to prevent.
+
+**The verifiability gap is now closable.** The run captured
+`system_fingerprint = fp_8b330d02d0_prod0820_fp8_kvcache_20260402`, stable across all 159
+calls. Every future live run must record it. That converts "same model is asserted" into
+"same model is checkable", which is what the recorded gap asked for — and it means the *next*
+drift will be detectable at the moment it happens rather than two days later by accident.
+
+**If drift widens before G-B, the subsidy is already spent** and the comparison against A will
+fail rather than merely mislead. That is the gate working; report it and leave G-B open.
+
+### Two other results from the same run
+
+- **The retrieval eval works and its twin exists.** MRR `0.8582` / hit@10 `0.8431` against
+  full-context `0.9069` / `0.9314`, reproducing G-A byte-identically despite 100 live ingest
+  calls — hybrid search never touches the entity graph, so extraction drift cannot reach it.
+  Token cost recorded (939,668 prompt / 12,125 completion), which **retires G-A's
+  `cost-unmeasured` caveat** with real numbers.
+- **The five-phase pipeline ran end to end against live models for the first time**: 94
+  memories, 131 entities, 63 relations, **0 pipeline failures**, exactly one fingerprint
+  (`qwen3-embedding:0.6b|1024`, no rotation), 0 non-lowercase entity names.
+
+---
+
+## G-B — T1.17 live re-record. Evidence, not a verdict. Measured 2026-07-28.
+
+T1.50 owns the G-B verdict and the probe rows. What follows is the measurement T1.17 was
+scheduled to produce: the F1 bench moved onto the shipping request, the cache re-recorded
+live, and the prompt strip measured as its own arm.
+
+**72 live calls** against `deepseek-v4-flash` — two passes of 36 (26 `gold.json` + 10
+`gold_heldout.json`). The 36-call control arm the T1.17 plan budgeted was **dropped**: lane D
+already ran it, and run through current code it could not have isolated drift anyway, because
+the 9-type `EXTRACTION_SCHEMA` rides the user message. Budget spent: 2 passes of the 2
+expected, 0 prompt revisions of the 1 allowed.
+
+`system_fingerprint = fp_8b330d02d0_prod0820_fp8_kvcache_20260402` on **all 72 calls**, equal
+to lane D's. The bench now pins that string and **exits non-zero mid-run** if the served stack
+rotates, so a vendor swap can no longer fold fresh drift into a measured delta unnoticed.
+Model string `deepseek-v4-flash` and the usage envelope are captured per cache entry.
+
+### The five arms
+
+Cells are `entity name+type / entity name only / relation full triple / relation pair`.
+
+| Arm | Algorithm | Prompt | Gate | Raw | gold | held-out |
+|---|---|---|---|---|---|---|
+| **A** — recorded T0.05 / G-A | 2026-07-26 | `775ca7c4` | extract-only | cache | 0.925 / 0.955 / 0.865 / 0.892 | 0.893 / 0.929 / 0.667 / 0.667 |
+| **B** — today's algo, cached raw | `dbde017` | `775ca7c4` | extract-only | cache | 0.940 / 0.970 / 0.895 / 0.921 | 0.949 / 0.983 / 0.872 / 0.872 |
+| **C** — today's algo, live raw | `dbde017` | `775ca7c4` | extract-only | live | 0.925 / 0.970 / 0.921 / 0.921 | 0.862 / 0.931 / 0.765 / 0.765 |
+| **Pass A** — T1.17, prompt unchanged | `48d3c0d` | `775ca7c4` | **merged** | live | 0.925 / 0.970 / 0.853 / 0.853 | 0.881 / 0.949 / 0.895 / 0.895 |
+| **Pass B** — T1.17, prompt stripped | `48d3c0d` | `f59a62d1` | **merged** | live | 0.912 / 0.971 / 0.857 / 0.857 | 0.967 / 0.967 / 0.950 / 0.950 |
+
+Floors: gold `0.881 / 0.910 / 0.784 / 0.811`; held-out `0.786 / 0.821 / 0.485 / 0.485`.
+
+**All eight Pass B cells clear their floor.** So do all eight Pass A cells. The held-out
+relation cells clear by a wide margin, so the one-way cascade valve was not reached and no
+`--diffs` triage was owed.
+
+### The decomposition, which is the point
+
+- **Pass A − arm C = the merged classification fields**, same day, same schema width, same
+  prompt, same served stack. gold `0.000 / 0.000 / −0.068 / −0.068`; held-out
+  `+0.019 / +0.018 / +0.130 / +0.130`. Folding classification into the extraction call moves
+  relation extraction in **opposite directions on the two gold files** — it costs 0.068 on
+  gold and gains 0.130 on held-out. Both stay above the floor, and gold's `rel_pair` retains
+  ~1.6 flips of headroom, but the sign flip is worth naming rather than netting: this is one
+  measurement of a change that alters what the model is asked to produce in a single response.
+- **Pass B − Pass A = the prompt strip.** gold `−0.013 / +0.001 / +0.004 / +0.004`; held-out
+  `+0.086 / +0.018 / +0.055 / +0.055`. The strip is close to neutral on gold and positive on
+  held-out — consistent with a strip that removed only rules the schema string or a
+  deterministic pass already carries (audit below). It is **not** evidence that a larger strip
+  would be neutral.
+- **Arm C − arm B** remains lane D's drift arm, and per the T1.17 review it is honestly
+  labelled **"drift + the 7→9 schema widening, not separable"**: arm B's raws were recorded
+  under the 7-type user message, so part of the held-out `−0.087 / −0.052 / −0.107 / −0.107`
+  is T1.23's request change rather than vendor weights.
+
+### What changed in the harness, and why the absolute number now means something
+
+The bench previously keyed its cache on `sha256(content + "\0" + system_prompt)` and assembled
+its own request. Both are fixed:
+
+- The request comes from `ExtractionService.build_extraction_request` — the same function the
+  pipeline calls. The bench keeps its own `clean_extraction` call so the cache still stores
+  **raw** output and `--algo-only` re-scores the deterministic passes for free.
+- The key now covers the whole assembled request, so the schema string, the taxonomy width and
+  the merge gate all key. This closes the staleness recorded above: between T1.23 landing and
+  today, `--algo-only` replayed outputs produced by a request the code no longer sent.
+- `.cache/manifest.json` records the prompt and schema fingerprints, the gate, the model, the
+  git sha and the served fingerprints. `--algo-only` **exits non-zero naming the mismatching
+  field** rather than silently replaying a stale generation.
+- The bench asserts the configured extraction model equals `deepseek-v4-flash` and fails loud
+  otherwise, since the ledger fixes the model for parity.
+
+### The prompt strip was small, and that is the finding
+
+`775ca7c45ed9a06a` → `f59a62d1be7273a8`; 35,665 → 35,188 characters. **4 rules stripped, 1
+stale statement corrected, ~44 kept.** Doc 05 §6's "strip every rule the passes already
+enforce" assumes deterministic twins that mostly do not exist yet: rule 2a's 28-builtin filter
+is carried by `_NOISE_NAMES` for **10 of 28**; nothing at all covers rule 2b (config values and
+CSS tokens) or rule 9h-dir (`CAUSES` root→symptom, the largest uncovered recall surface); and
+`weight` (rule 14) has no downstream enforcement while `_prefer_relation` still consumes it.
+Evidence per rule, and the six pass gaps handed to T1.24b–e, are in
+`docs/eval/2026-07-28-T1.17-prompt-rule-audit.md`.
+
+### Artefacts
+
+- `docs/eval/2026-07-28-T1.17-merged-prompt-cache/` — Pass B's 36 raws + manifest. The
+  generation `--algo-only` replays; the README carries the cross-worktree restore.
+- `docs/eval/2026-07-28-T1.17-passA-cache/` — Pass A's 36 raws + manifest, the other arm.
+- `docs/eval/2026-07-26-T0.05-extraction-baseline-cache/` — untouched, and now replayable
+  **only at a commit before T1.17**: both the key definition and the prompt changed.
+
+### Still open for T1.50
+
+The `benchlib` retrieval cache — roughly 94 cached extraction calls **and the ingested graph
+the accuracy numbers were computed over** — is invalidated by this prompt change, as recorded
+above. T1.17 did not pay it and did not re-run the retrieval eval.
+
+---
+
+## G-B — T1.24f whole-chain F1 parity. Evidence, not a verdict. Measured 2026-07-28.
+
+T1.50 owns the G-B verdict. This section records the whole-chain parity measurement at
+`f4eac77`, `--algo-only` over T1.17's Pass-B cache, zero live calls. Full method,
+arithmetic and per-memory traces: `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`.
+
+**Baseline cited: arm A** (T0.05 recorded), per the standing controller decision — the
+bar did not move, the tolerance was not widened, no live calls were made.
+
+### The eight cells (`ent_nt / ent_n / rel_full / rel_pair`)
+
+| Set | Arm A | Floor | Measured | Δ vs A | Flips spent | Verdict |
+|---|---|---|---|---|---|---|
+| gold | 0.925 / 0.955 / 0.865 / 0.892 | 0.881 / 0.910 / 0.784 / 0.811 | **0.912 / 0.971 / 0.883 / 0.883** | −0.013 / +0.016 / +0.018 / −0.009 | 0.87 / 0 / 0 / 0.33 | all pass |
+| held-out | 0.893 / 0.929 / 0.667 / 0.667 | 0.786 / 0.821 / 0.485 / 0.485 | **0.967 / 0.967 / 0.950 / 0.950** | +0.074 / +0.038 / +0.283 / +0.283 | 0 / 0 / 0 / 0 | all pass |
+
+**All eight cells clear their floors; the cascade valve was not engaged.** Stated plainly
+per ruling: parity against arm A holds. The two cells below A are gold ent_nt (0.87 of 3
+flips) and gold rel_pair (0.33 of 3 flips).
+
+### The decomposition, which T1.50 must report instead of a headline
+
+Algorithm total (deterministic-pass legs B−A plus T1.24e's +0.026 gold-relation
+narrowing) vs model-side total (drift+widening, merge, strip — everything that changed
+what the model was asked or served):
+
+| Cell | Algorithm | Model-side | Net vs A |
+|---|---|---|---|
+| gold ent_nt | +0.015 | −0.028 | −0.013 |
+| gold ent_n | +0.015 | +0.001 | +0.016 |
+| gold rel_full | +0.056 | −0.038 | +0.018 |
+| gold rel_pair | +0.055 | −0.064 | −0.009 |
+| held-out ent_nt | +0.056 | +0.018 | +0.074 |
+| held-out ent_n | +0.054 | −0.016 | +0.038 |
+| held-out rel_full | +0.205 | +0.078 | +0.283 |
+| held-out rel_pair | +0.205 | +0.078 | +0.283 |
+
+**The deterministic passes are subsidising drift.** The raw drift(+widening) leg is
+−0.087/−0.052/−0.107/−0.107 on held-out; parity there holds because the algorithm's
++0.205 and the request-change gains outweigh it. On gold the dominant model-side cost is
+the merge (−0.068 on both relation cells), partially paid back by T1.24e's +0.026. Leg
+values are path-dependent (measured at `dbde017` / `48d3c0d` respectively) and C−B
+remains "drift + 7→9 widening, not separable".
+
+### Per-pass contribution — recorded, with the blind set named
+
+All 31 registry entries re-ablated at **one** generation (`f4eac77` over the Pass-B
+raws), superseding the split-generation stage tables for current use. Census: **18 of 31
+entries are bit-identical on removal across all 36 memories** — 5/8 of Stage 1, 2/4 of
+Stage 2, 2/3 of Stage 3, 6/10 of Stage 4, 3/6 of Stage 5 — and are recorded as
+**unmeasurable on this corpus, not zero contribution**. One more (`normalize_names`) is
+score-invisible while changing one memory. Twelve move a score; the largest is
+`rescue_relation_endpoints` (−0.200 held-out rel_full on removal — most of the held-out
+relation gain is this one pass), then `fan_out_coordinated` (−0.094 gold / −0.117
+held-out). **G-B may not cite F1 as evidence for any bit-identical pass**; the guards
+there are the behavioural suites and mutation proofs.
+
+Two additions to the standing rulings:
+
+- **The blind set's membership is generation-relative.** `suppress_temporal_edges`
+  (blind for T1.24d) is now visible on both sets; `remap_to_valid_entities`' held-out
+  leg vanished and its gold effect went mixed-sign; T1.24b's measured `filter_noise`
+  gain is now invisible. The prior stage counts stay true of their generations; this
+  table is the current one.
+- **`rescue_relations_subject_tracking` is a measured net negative on this generation**
+  (+0.012 gold relations on removal; spurious `search USES meilisearch` on e1; zero
+  productive firings in 36 memories). Reported, not fixed — Stage 3 is T1.25's surface.
+
+### Findings and provenance
+
+- **The `gateway` gold/prompt disagreement now costs a number.** The model obeys prompt
+  rule 7b (`gateway :artifact`); gold e14 says `service`; the substitution is exactly one
+  flip and is the **entire** gold ent_nt shortfall vs A (fixing that one key yields
+  0.926 ≥ 0.925). The 2026-07-27 amendment's "no number moves on it today" no longer
+  holds. Re-adjudication stays with the gold-set owner; the key was not changed
+  mid-parity.
+- **Prompt-in-disguise audit: clean.** No pass added by T1.24b–e re-implements a
+  surviving prompt rule; the two deliberate rule/pass overlaps (rule 7b ↔
+  `rescue_relation_endpoints`, rule 10 ↔ `filter_negation_only`) are backstops, the
+  first measured as heavily load-bearing. The six T1.17 pass gaps remain open, so the
+  corresponding rules stay unstrippable.
+- **Provenance:** cache = Pass-B generation, manifest `prompt f59a62d1 / schema 34e62626 /
+  gate merged / model deepseek-v4-flash`, fingerprint
+  `fp_8b330d02d0_prod0820_fp8_kvcache_20260402`; the manifest guard was **proven** (a
+  corrupted `prompt_sha16` fails exit-1 naming the field, restore replays identically);
+  exactly 36 of the 72 cache entries are reachable by the current assembly; both gold
+  files untouched since `ef12ff1`. Residual trust: cached raw entries carry no per-entry
+  checksum.
+- Floors green at expected counts: backend `2225 passed`, benchlib `284 passed`.
+
+---
+
+## G-B — VERDICT: CLEARED. Measured 2026-07-28, T1.50.
+
+Owning task T1.50, chartered adversarially: the run was executed to find the reason
+this gate should not clear, and what follows is what survived. Lane `feat/e1-lane-a`
+at `16f8fb0` (identical to the epic head — base proof in the T1.50 report). Databases
+`darkmem_test_1` / `darkmem_bench_1` throughout; the real `darkmem` database was never
+named, opened, or read. Verify commands actually run, real output in the T1.50 report:
+`./scripts/gate.sh --full` → **GATE GREEN, exit 0** (alembic single-revision; backend
+**2478 passed**; frontend typecheck + **523 tests** + build; benchlib **284 passed**;
+F1 `--algo-only`; retrieval eval; API e2e **3 passed / 1 skipped**; playwright
+**26 passed / 1 skipped**; port hygiene clean), plus the standalone
+`run_isolation_probe.py` → **0 violations, exit 0**, and a held-out `--algo-only`
+replay (the gate's F1 step covers `gold.json` only).
+
+### Probe 1 — extraction F1 parity: PASS, reported as the decomposition
+
+`--algo-only` at `16f8fb0` over the Pass-B cache (manifest `prompt f59a62d1 /
+schema 34e62626 / gate merged / model deepseek-v4-flash /
+fp_8b330d02d0_prod0820_fp8_kvcache_20260402`) reproduces T1.24f's eight cells exactly:
+gold `0.912 / 0.971 / 0.883 / 0.883` against floors `0.881 / 0.910 / 0.784 / 0.811`
+(flips spent vs arm A: 0.87 / 0 / 0 / 0.33); held-out `0.967 / 0.967 / 0.950 / 0.950`
+against floors `0.786 / 0.821 / 0.485 / 0.485` (0 flips; the cascade valve was not
+reached, so no `--diffs` triage is owed). The extraction surface is untouched between
+`f4eac77` (T1.24f's measurement) and this head — verified by git diff, not assumed.
+
+**The claim is the decomposition, never the headline** (standing controller decision,
+2026-07-28): per cell, algorithm vs model-side legs are the T1.24f table
+(`docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`). The deterministic passes are
+subsidising vendor drift — the raw drift(+widening) leg is
+`−0.087 / −0.052 / −0.107 / −0.107` on held-out, and parity holds because the
+algorithm's `+0.205` on held-out relations (most of it one pass,
+`rescue_relation_endpoints`) and the request-change gains outweigh it. A bare "parity
+holds" hiding that is technically true and materially misleading; this verdict does
+not make it. The honest form: **whole-chain output parity against arm A holds, decomposed
+as stated; it is not evidence that the vendor's extraction quality is unchanged.**
+
+What this number may and may not evidence:
+
+- It evidences merged-path extraction quality at the Pass-B generation and the twelve
+  score-visible passes. It may **not** be cited for Stage 3 (all three passes), the
+  seven blind Stage-4 passes, or the three blind Stage-5 passes — **18 of 31 registry
+  entries are bit-identical on removal: unmeasurable on this corpus, NOT zero
+  contribution.** The guards there are the behavioural suites and their recorded
+  mutation proofs (`test_relation_rescue.py`, `test_relation_gating.py`,
+  `test_collapse_fanout.py`). F1 also cannot distinguish T1.24e's tie-break narrowing
+  from a full revert; `test_weight_alone_would_have_kept_the_backwards_edge` is the
+  only separating artifact.
+- gold ent_nt `0.912` — the one cell below A, at 0.87 of 3 flips — is **not** read as
+  chain regression: the entire shortfall is the one `gateway` answer-key/prompt
+  adjudication conflict (the model obeys prompt rule 7b's `artifact`; gold `e14` says
+  `service`; adjudicating that single key restores 0.926 ≥ A's 0.925). The key was not
+  changed mid-parity; re-adjudication stays with the gold-set owner.
+
+**The baseline-drift qualification.** The recorded baseline no longer reproduces
+against the live vendor (42% of outputs differ semantically, measured 2026-07-28 with
+controls ruling out sampling noise and config mismatch). Arm A stays the reference by
+controller decision; the bar did not move. Two consequences carried, not buried:
+drift alone has already consumed **0.87 of the 1.0-flip vendor-update allowance** on
+held-out ent_nt at its first measurement, so **the subsidy is spent** — if drift widens
+before the next live re-measurement, the comparison against A fails rather than
+misleads, and that will be the gate working; and the verifiability gap is closed only
+on the F1 bench side (manifest pins the served fingerprint and aborts mid-run on
+rotation) — see the residual under probe 2.
+
+### Probe 2 — retrieval eval vs full-context, WITH its twin: PASS, no regression, none silent
+
+Artifact `docs/eval/2026-07-28-retrieval-eval.md` (run `6b7b0c0d`, git `16f8fb0`;
+lane D's same-day cache replay is preserved at
+`docs/eval/2026-07-28-retrieval-eval-laneD-replay.md`). This run **paid the
+re-establishment the ledger charged to T1.50**: T1.17's prompt change had invalidated
+the ~94 cached ingest extraction calls, and the gate run re-recorded them live under
+the merged prompt (ingest 100 live calls total: 94 extraction + content/entity embed
+chunks against the LAN Ollama; retrieval and full-context arms 0 live).
+
+- **Accuracy, per slice (rule 4), byte-identical to G-A's recorded numbers on all
+  seven slices.** Pooled: retrieval MRR 0.8582 / hit@10 0.8431 vs full-context 0.9069 /
+  0.9314 (Δ +0.0487 / +0.0882, full-context minus retrieval) — the inherited headroom
+  E2's graph arms exist to close, stated plainly, not a failure of this gate.
+  `multi-hop` retrieval hit@10 = 0.0000 remains the DESIGNED state (T0.06a).
+  `temporal` remains the one slice where retrieval beats full context on hit@10
+  (1.0000 vs 0.6667). No cell moved: nothing regressed, so nothing regressed silently.
+  That extraction re-sampling cannot move these numbers is itself measured (three
+  generations now score identically), because hybrid retrieval never reads the graph.
+- **Twin.** Token cost: the retrieval arm's indexing work is now **live-measured** —
+  94 extraction calls, **927,166 prompt / 11,661 completion** (926,080 vendor-cache-hit
+  prompt); the full-context arm is 102 cache-served calls at **472,558 / 3,899**,
+  recurring per query set. Per the recorded caveat the two are different kinds of
+  quantity and are never subtracted or ratioed. p95 latency: end-to-end 0.00303 s
+  retrieval / 0.00023 s full-context, both cache-served populations — the
+  `latency-no-live-samples` caveat is present and honest, the same treatment G-A's
+  PASS used; the live-population channels are semantic_search p95 0.00184 s and
+  keyword_search p95 0.00056 s per query against the bench database.
+- **Reproducibility exercised, not asserted:** a second run replayed everything from
+  the now-warm cache (0 live calls) with identical magnitudes reclassified live→cache,
+  and a third run reproduced the second's canonical JSON block **byte-for-byte** — the
+  runner's contract holds on the exact pair it covers.
+- The exclusion envelope is **not** cited as evidence that isolation removed nothing
+  (standing T1.44 ruling); that evidence is probe 3.
+- **Residual, recorded:** benchlib's live ingest entries capture the full usage
+  envelope but **no served-model string or system fingerprint**, so the ingest-side
+  cost twin is attributable to "what DeepSeek served on 2026-07-28" by assertion. It is
+  non-load-bearing for the accuracy claim (see above), but the capture should be
+  extended before any gate leans on ingest-side cost comparisons.
+
+### Probe 3 — isolation probe: PASS, exactly 0
+
+`run_isolation_probe.py` against `darkmem_bench_1` at `16f8fb0`: **0 violations,
+exit 0** across all 17 registry surfaces, with per-surface row widths identical to the
+recorded 10-violation run (`memory_reason` 16, `chat_retrieval` 8,
+`chat_history_citations` 9, `reembed_backfill_queue` 3) — the zero was made by
+labelling, never by narrowing. The informational lists are unchanged and remain
+reported-not-counted per Rulings 4/5: I1 id-only exposure (13 sightings; closed by
+decision at T1.60 — entities are deliberately not memory-scoped) and I2 retention
+snapshots (3 sightings; the escalated Tier-3 question below).
+
+### Cited alongside the parity audit, so this verdict says it too
+
+The two-door parity table (`docs/two-door-parity.md`: 43 surfaces, 13 two-door, 29
+single-door with stated reasons, 0 divergent after T1.42f) is cited **with** its
+recorded amendment: doc 12 §3's claim that all eleven code tools ship with a REST twin
+was false — six (`code_context`, `code_dependencies`, `code_changes`,
+`code_communities`, `code_processes`, `code_rename`) have no REST route and are
+recorded MCP single-door with stated reasons, which invariant 17 permits. That
+decision is recorded **REVERSIBLE** (building the six twins is the alternative the
+owner may still take). Five of the six are filtered projections of rows
+`GET /code/graph/{repo_id}` serves whole; **`code_changes` is the one genuine
+capability asymmetry** — it reads the uncommitted working tree and no REST read
+carries uncommitted state.
+
+### The dead-guard audit this verdict ran on itself
+
+This session recorded **twelve guards that could not fail** — tests importing the
+constant they defend, checks reading the artifact the fix writes, specs asserting DOM
+attributes nothing writes — several in code this gate now measures. Considered
+explicitly per number: the **isolation zero** rests on an instrument with proven
+discriminating power (mutation drove 10 → 58 → 10; two byte-identical runs; the
+registry-completeness guard fails the build on an unclassified door; and the recorded
+10-violation FAIL is itself proof the probe can say no). The **F1 cells** rest on the
+manifest guard (mutation-proven: a corrupted `prompt_sha16` exits 1 naming the field)
+and a scorer that reproduced T0.05 byte-for-byte at G-A; where F1 is blind, the
+substitute behavioural guards carry recorded mutation proofs — one (the fan-out
+ordering guard) needed strengthening twice before it could fail, which is recorded,
+and the stated residual stands: cached raw entries carry no per-entry checksum. The
+**retrieval numbers** rest on the runner's reproducibility contract (exercised twice
+today, byte-identical) and the no-twin-no-accuracy guard at the `ledger.record`
+boundary. **No number certified here rests on a guard from the recorded dead set** —
+each of the twelve was fixed, replaced, honestly re-scoped, or deleted before this
+run, with its episode in the amendment log.
+
+### e2e evidence status — the 2026-07-27 "vacuous `--full`" caveat is discharged by measurement
+
+That ruling said a green `--full` was not e2e evidence while all 7 playwright specs
+soft-skipped. T1.64 rebuilt the suite; this run executed real assertions: API e2e
+3 passed / 1 skipped, playwright 26 passed / 1 skipped. Both skips are named and
+environmental, not soft-skip rot: the API e2e **search leg skips loudly** because this
+sandbox has no reachable embedder for the disposable stack (the skip message names the
+`pipeline_failures` row), and `setup-wizard-refresh` skips on an already-initialized
+stack via the T1.64-narrowed guard. Search-over-ingested-content is separately proven
+in the same gate run by the retrieval eval's 102 scored pairs. Relatedly, the
+2026-07-27 hold "G-B may not claim doc 05 §2 until T1.14 lands" is discharged: T1.14
+landed the front-door cutover and this run's e2e capture test exercises the buffered
+202 contract on the shipped doors.
+
+### Standing obligations this verdict does NOT discharge
+
+Named here so the phase advance cannot silently absorb them; none is one of G-B's
+three probes, and the numbers above pass regardless.
+
+1. **The Tier-3 content-retention escalation still has no owner.** The 2026-07-27
+   ESCALATION row records "needs an owner before G-B": deleted-memory content survives
+   in the `events` journal and in `messages.context` citation snapshots, pinned by
+   test, options written up in T1.29e's report, decision human-only. It sits outside
+   the isolation bar by ratified Ruling 4 (I2 reported-not-counted), so it cannot move
+   probe 3 — but the controller must assign the owner at merge time or overrule this
+   verdict.
+2. **The drift subsidy is spent.** The next live F1 re-measurement inherits ~0.13
+   flips of vendor allowance on held-out ent_nt; a further drift event fails parity
+   against A outright.
+3. **Ingest-side served-model metadata is not captured** by benchlib's cache (probe 2
+   residual).
+4. The `gateway` gold-key adjudication remains with the gold-set owner; until then
+   gold ent_nt carries a one-flip spend that is an answer-key conflict, not a chain
+   regression.
+
+### Verdict
+
+All three numbers hold at their stated bars, none silently, none by a widened bar, and
+none by a re-run-until-green. **G-B: CLEARED, 2026-07-28.** Phase 2 may be entered.
+Carried forward as G-C's inheritance: the four standing obligations above, the
+18-of-31 F1-blindness census (behavioural suites are the guard where F1 cannot see),
+and the full-context-beats-retrieval headroom (+0.0487 MRR pooled) that E2's graph
+arms exist to close.

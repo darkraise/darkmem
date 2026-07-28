@@ -1,10 +1,23 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 import { useDemoStore } from "@/demo/store"
 import { PipelineTab } from "../components/pipeline-tab"
 import { TriageTab } from "../components/triage-tab"
 import { DreamTab } from "../components/dream-tab"
 import { CheckpointsTab } from "../components/checkpoints-tab"
+
+// This file pins the fixture-backed rendering deliberately (T1.45 is
+// done), so it is frozen at DEMO: true rather than relying on the
+// about-to-change default (T1.58) — neither tab's real branch ever fires
+// here, but useQuery is called unconditionally (rules of hooks) and
+// throws without a QueryClient in the tree regardless of `enabled`.
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
+function withQuery(children: ReactNode) {
+  const qc = new QueryClient()
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+}
 
 afterEach(() => {
   useDemoStore.getState().resetActivity()
@@ -12,14 +25,14 @@ afterEach(() => {
 
 describe("PipelineTab honesty", () => {
   it("names the failed step on every partial/failed row — never a bare fail", () => {
-    render(<PipelineTab />)
+    render(withQuery(<PipelineTab />))
     expect(screen.getByText("graph_write")).toBeInTheDocument()
     expect(screen.getByText("extraction_partial")).toBeInTheDocument()
     expect(screen.getByText("content_embedding")).toBeInTheDocument()
   })
 
   it("renders the honest terminal chips", () => {
-    render(<PipelineTab />)
+    render(withQuery(<PipelineTab />))
     expect(screen.getByText("running")).toBeInTheDocument()
     expect(screen.getByText("completed")).toBeInTheDocument()
     expect(screen.getAllByText("partial").length).toBeGreaterThan(0)
@@ -29,7 +42,7 @@ describe("PipelineTab honesty", () => {
 
 describe("TriageTab", () => {
   it("surfaces the poison row with its reason and a deliberate retry", () => {
-    render(<TriageTab />)
+    render(withQuery(<TriageTab />))
     expect(screen.getByText("poison")).toBeInTheDocument()
     expect(screen.getByText("Retry anyway")).toBeInTheDocument()
   })
@@ -37,7 +50,7 @@ describe("TriageTab", () => {
   it("shows the healthy empty state once every row is forgotten", () => {
     const store = useDemoStore.getState()
     for (const f of store.pipelineFailures) store.forgetFailure(f.id)
-    render(<TriageTab />)
+    render(withQuery(<TriageTab />))
     expect(screen.getByText("No failures to triage")).toBeInTheDocument()
   })
 })

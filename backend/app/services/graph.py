@@ -8,11 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
-from app.repositories.vector import PostgresVectorRepository
+from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
 from app.services import prompt
 
 logger = logging.getLogger(__name__)
+
+# The memory-row arms of the graph service default to the same lifecycle scope
+# the search surface does. The entity and relation arms deliberately do not
+# carry it: an edge asserted only by a superseded memory is still a true
+# statement about what the corpus once claimed, and dropping it would empty the
+# context view of exactly the memory a reader opened it to understand.
+GRAPH_MEMORY_STATUSES: tuple[str, ...] = ("active",)
 
 
 class GraphService:
@@ -34,6 +41,7 @@ class GraphService:
         similarity_threshold: float = 0.75,
         min_cluster_size: int = 3,
         include_entities: bool = False,
+        project: str | None = None,
     ) -> dict:
         memory_nodes = []
         clusters: dict[int, list[str]] = {}
@@ -47,6 +55,9 @@ class GraphService:
                     min_score=similarity_threshold,
                     min_cluster_size=min_cluster_size,
                     limit=limit,
+                    filters=self._memory_scope(
+                        MemoryFilter(project=project) if project is not None else None
+                    ),
                 )
                 # Fetch importance only for the IDs we actually plot. The
                 # previous implementation did a full-table scan on every
@@ -65,6 +76,8 @@ class GraphService:
                         "memory_type": payload.get("memory_type"),
                         "importance": importance_map.get(mid, 0.5),
                         "cluster": cluster_id,
+                        "project": p.get("project"),
+                        "status": p.get("status"),
                     })
                     if cluster_id >= 0:
                         clusters.setdefault(cluster_id, []).append(mid)
@@ -83,9 +96,12 @@ class GraphService:
         }
 
         if include_entities:
-            entities, entity_relations = await self._fetch_entity_overlay(memory_nodes)
+            entities, entity_relations, entities_truncated = await self._fetch_entity_overlay(
+                memory_nodes
+            )
             result["entities"] = entities
             result["entity_relations"] = entity_relations
+            result["entities_truncated"] = entities_truncated
 
         return result
 
@@ -93,9 +109,14 @@ class GraphService:
         if not self.graph_repo:
             return {"entities": [], "relations": [], "neighbors": []}
 
+        # Entities are not memory-scoped, so their memory_ids reach into every
+        # project that asserts them. Scope the expansion by the seed memory's
+        # own project or the walk hands back foreign rows.
+        scope = await self._project_scope(memory_id)
+
         entities = await self.graph_repo.get_entities_by_memory_id(memory_id)
         entity_names = [e["name"] for e in entities]
-        relations = await self.graph_repo.get_relations_between(entity_names)
+        relations = await self.graph_repo.get_relations_between(entity_names, scope=scope)
 
         neighbor_memory_ids = set()
         for entity in entities:
@@ -103,7 +124,9 @@ class GraphService:
                 if mid != memory_id:
                     neighbor_memory_ids.add(mid)
 
-        neighbors = await self._fetch_neighbor_memories(list(neighbor_memory_ids)[:20])
+        neighbors = await self._fetch_neighbor_memories(
+            list(neighbor_memory_ids)[:20], self._memory_scope(scope),
+        )
 
         return {
             "entities": entities,
@@ -194,9 +217,9 @@ class GraphService:
 
     async def _fetch_entity_overlay(
         self, memory_nodes: list[dict]
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict], list[dict], bool]:
         if not self.graph_repo:
-            return [], []
+            return [], [], False
 
         try:
             memory_id_set = {m["id"] for m in memory_nodes}
@@ -210,25 +233,52 @@ class GraphService:
                 r for r in full_graph["relations"]
                 if r.get("source") in entity_id_set and r.get("target") in entity_id_set
             ]
-            return entities, relations
+            return entities, relations, bool(full_graph.get("truncated", False))
         except Exception:
             logger.exception("Failed to fetch entity data")
-            return [], []
+            return [], [], False
 
-    async def _fetch_neighbor_memories(self, memory_ids: list[str]) -> list[dict]:
+    async def _project_scope(self, memory_id: str) -> MemoryFilter | None:
+        try:
+            project = (
+                await self.session.execute(
+                    select(Memory.project).where(Memory.id == UUID(memory_id))
+                )
+            ).scalar_one_or_none()
+        except ValueError:
+            return None
+        return MemoryFilter(project=project) if project is not None else None
+
+    @staticmethod
+    def _memory_scope(scope: MemoryFilter | None) -> MemoryFilter:
+        """Widen a structural scope into the one the memory-row arms use.
+
+        A seed whose project could not be resolved still gets the lifecycle
+        predicates, so an unresolvable seed degrades to a narrower answer rather
+        than to an unscoped one.
+        """
+        project = scope.project if scope is not None else None
+        return MemoryFilter(project=project, statuses=GRAPH_MEMORY_STATUSES)
+
+    async def _fetch_neighbor_memories(
+        self, memory_ids: list[str], scope: MemoryFilter | None = None,
+    ) -> list[dict]:
         if not memory_ids:
             return []
         try:
             uuids = [UUID(mid) for mid in memory_ids]
-            result = await self.session.execute(
-                select(Memory).where(Memory.id.in_(uuids))
-            )
+            stmt = select(Memory).where(Memory.id.in_(uuids))
+            if scope is not None:
+                stmt = stmt.where(*scope.orm_criteria(Memory))
+            result = await self.session.execute(stmt)
             return [
                 {
                     "id": str(mem.id),
                     "content": mem.content[:100],
                     "source": mem.source,
                     "memory_type": mem.memory_type,
+                    "project": mem.project,
+                    "status": mem.status,
                 }
                 for mem in result.scalars().all()
             ]

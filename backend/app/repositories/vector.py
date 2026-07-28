@@ -1,13 +1,89 @@
 import json
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import numpy as np
-from sqlalchemy import text
+from sqlalchemy import Text, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedder_registry import child_table
+from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
 _COMMUNITY_SAMPLE_CAP = 10_000
+
+# An HNSW scan applies a WHERE as a post-scan filter over the candidate stream
+# it produces; it cannot seek on the predicate. Over-fetching by this factor is
+# what stops a selective scope from silently under-returning.
+SEMANTIC_FETCH_MULTIPLIER = 3
+
+
+@dataclass(frozen=True)
+class MemoryFilter:
+    """Project / status / archived scope for the semantic retrieval channel.
+
+    Rendered into the channel's SQL as a join against ``memories`` rather than
+    re-applied in Python: an over-fetch-then-drop filter under-returns whenever
+    the scope is selective, and any consumer that forgets the drop leaks
+    foreign rows into its results.
+
+    ``None`` (rather than an instance) means no scoping at all — the crossref
+    probe wants every candidate regardless of lifecycle, because its output is
+    ids and scores rather than content.
+    """
+
+    project: str | None = None
+    statuses: tuple[str, ...] | None = None
+    include_archived: bool = False
+
+    def where_sql(self, alias: str) -> str:
+        clauses: list[str] = []
+        if not self.include_archived:
+            clauses.append(f"{alias}.is_archived = FALSE")
+        if self.project is not None:
+            clauses.append(f"{alias}.project = CAST(:flt_project AS text)")
+        if self.statuses:
+            # memories.status is a Postgres enum; comparing as text keeps an
+            # unrecognised status a no-match instead of a query-aborting
+            # InvalidTextRepresentation.
+            clauses.append(f"{alias}.status::text = ANY(CAST(:flt_statuses AS text[]))")
+        return " AND ".join(clauses) if clauses else "TRUE"
+
+    def asserted_by_sql(self, memory_ids_expr: str) -> str:
+        """Scope a row that carries ``memory_ids`` instead of a ``project``.
+
+        ``entities`` and ``entity_relations`` are not memory-scoped — the only
+        project a graph row has is the one its asserting memories carry. A walk
+        that scopes its seed but expands through an unscoped predicate steps
+        straight over the boundary, so every hop renders this.
+        """
+        return (
+            "EXISTS (SELECT 1 FROM memories flt_m "
+            f"WHERE flt_m.id = ANY({memory_ids_expr}) AND {self.where_sql('flt_m')})"
+        )
+
+    def orm_criteria(self, model) -> list:
+        """The same scope as ``where_sql``, for a caller building a Core/ORM select.
+
+        Kept on the filter rather than open-coded at the call site: a second
+        rendering of these predicates is how one arm silently stops applying a
+        field the other one gained.
+        """
+        criteria: list = []
+        if not self.include_archived:
+            criteria.append(model.is_archived.is_(False))
+        if self.project is not None:
+            criteria.append(model.project == self.project)
+        if self.statuses:
+            criteria.append(cast(model.status, Text).in_(list(self.statuses)))
+        return criteria
+
+    def params(self) -> dict:
+        out: dict = {}
+        if self.project is not None:
+            out["flt_project"] = self.project
+        if self.statuses:
+            out["flt_statuses"] = list(self.statuses)
+        return out
 
 
 class PostgresVectorRepository:
@@ -48,23 +124,53 @@ class PostgresVectorRepository:
             },
         )
 
-    async def search(self, vector: list[float], fingerprint: str, limit: int = 20) -> list[dict]:
+    async def search(
+        self,
+        vector: list[float],
+        fingerprint: str,
+        limit: int = 20,
+        filters: MemoryFilter | None = None,
+    ) -> list[dict]:
+        """One partition's ANN probe, every row labelled with the scope it came from.
+
+        The join to ``memories`` is unconditional even when nothing is being
+        scoped — the same shape :meth:`get_all_vectors` uses, and for the same
+        reason: the FK makes it lossless, and it is what puts ``project`` and
+        ``status`` on every row, so a row reaching a consumer nobody enumerated
+        still names where it came from.
+        """
         table = child_table("memory_embeddings", fingerprint)
+        params: dict = {"vec": str(vector), "limit": limit}
+        where_sql = ""
+        if filters is not None:
+            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
+            params.update(filters.params())
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
         result = await self.session.execute(
             text(f"""
-                SELECT memory_id,
-                       1 - (embedding <=> CAST(:vec AS vector)) AS score,
-                       payload
-                FROM {table}
-                ORDER BY embedding <=> CAST(:vec AS vector)
+                SELECT e.memory_id,
+                       1 - (e.embedding <=> CAST(:vec AS vector)) AS score,
+                       e.payload,
+                       {SCOPE_LABEL_COLUMNS}
+                FROM {table} e
+                {SCOPE_LABEL_JOIN}
+                {where_sql}
+                ORDER BY e.embedding <=> CAST(:vec AS vector)
                 LIMIT :limit
             """),
-            {"vec": str(vector), "limit": limit},
+            params,
         )
-        return [
-            {"memory_id": UUID(str(row.memory_id)), "score": float(row.score), "payload": row.payload}
+        rows = [
+            {
+                "memory_id": UUID(str(row.memory_id)),
+                "score": float(row.score),
+                "payload": row.payload,
+                **scope_labels(row),
+            }
             for row in result
         ]
+        return rows[:limit]
 
     async def delete(self, memory_id: UUID):
         """Delete the memory's embedding from every registered fingerprint table.
@@ -92,31 +198,57 @@ class PostgresVectorRepository:
             return [float(x) for x in raw.strip("[]").split(",")]
         return [float(x) for x in raw]
 
-    async def get_all_vectors(self, fingerprint: str, limit: int = 500) -> list[dict]:
+    async def get_all_vectors(
+        self, fingerprint: str, limit: int = 500, filters: MemoryFilter | None = None,
+    ) -> list[dict]:
+        """Bulk read of one partition, for the projection and clustering views.
+
+        The join to ``memories`` is unconditional even when nothing is being
+        scoped: the FK makes it lossless, and it is what puts ``project`` and
+        ``status`` on every point, so an unscoped caller still hands back
+        labelled rows rather than anonymous content snippets.
+        """
         table = child_table("memory_embeddings", fingerprint)
+        params: dict = {"limit": limit}
+        where_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
         result = await self.session.execute(
             text(f"""
-                SELECT memory_id, embedding::text AS embedding_text, payload
-                FROM {table}
+                SELECT e.memory_id,
+                       e.embedding::text AS embedding_text,
+                       e.payload,
+                       {SCOPE_LABEL_COLUMNS}
+                FROM {table} e
+                {SCOPE_LABEL_JOIN}
+                {where_sql}
                 LIMIT :limit
             """),
-            {"limit": limit},
+            params,
         )
         return [
             {
                 "memory_id": UUID(str(row.memory_id)),
                 "vector": self._parse_vector(row.embedding_text),
                 "payload": row.payload,
+                **scope_labels(row),
             }
             for row in result
         ]
 
     async def get_clustered_vectors(
-        self, fingerprint: str, eps: float = 0.5, min_samples: int = 2, limit: int = 300,
+        self,
+        fingerprint: str,
+        eps: float = 0.5,
+        min_samples: int = 2,
+        limit: int = 300,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
         from sklearn.cluster import DBSCAN
 
-        points = await self.get_all_vectors(fingerprint, limit=limit)
+        points = await self.get_all_vectors(fingerprint, limit=limit, filters=filters)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
@@ -136,10 +268,11 @@ class PostgresVectorRepository:
         min_score: float = 0.5,
         min_cluster_size: int = 3,
         limit: int = 500,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
         import igraph  # noqa: F401
 
-        points = await self.get_all_vectors(fingerprint, limit=limit)
+        points = await self.get_all_vectors(fingerprint, limit=limit, filters=filters)
         if len(points) < 2:
             for p in points:
                 p["cluster"] = 0
@@ -284,7 +417,12 @@ class PostgresVectorRepository:
         return None
 
     async def find_similar(
-        self, memory_id: UUID, fingerprint: str, threshold: float = 0.9, limit: int = 10,
+        self,
+        memory_id: UUID,
+        fingerprint: str,
+        threshold: float = 0.9,
+        limit: int = 10,
+        filters: MemoryFilter | None = None,
     ) -> list[dict]:
         table = child_table("memory_embeddings", fingerprint)
         result = await self.session.execute(
@@ -299,7 +437,9 @@ class PostgresVectorRepository:
         if row is None:
             return []
         vector = self._parse_vector(row["embedding_text"])
-        results = await self.search(vector, fingerprint=fingerprint, limit=limit + 1)
+        results = await self.search(
+            vector, fingerprint=fingerprint, limit=limit + 1, filters=filters,
+        )
         # Slice back to ``limit``: the +1 over-fetch only leaves room to drop the
         # source row, but when the source isn't in the ANN result nothing is
         # dropped and up to limit+1 rows would be returned.
@@ -331,23 +471,30 @@ class PostgresVectorRepository:
         return out[:top_k]
 
     async def store_crossrefs(self, memory_id: UUID, crossrefs: list[dict]):
+        # DELETE+INSERT, and the DELETE runs unconditionally: an empty
+        # similar-set is a real result — the neighbours were deleted, or an
+        # embedder rotation moved this memory into a sparse partition — and it
+        # has to clear the previous run's rows rather than leave them pointing
+        # at similarities that no longer hold and that nothing else ever clears.
+        mem_id = str(memory_id)
+        await self.session.execute(
+            text("DELETE FROM memory_crossrefs "
+                 "WHERE memory_id = CAST(:memory_id AS uuid)"),
+            {"memory_id": mem_id},
+        )
         if not crossrefs:
             return
-        await self.session.execute(
-            text("DELETE FROM memory_crossrefs WHERE memory_id = :memory_id"),
-            {"memory_id": memory_id},
-        )
         # Single multi-row insert; was N round-trips per memory ingest.
-        related = [ref["memory_id"] for ref in crossrefs]
+        related = [str(ref["memory_id"]) for ref in crossrefs]
         scores = [float(ref["score"]) for ref in crossrefs]
         await self.session.execute(
             text("""
                 INSERT INTO memory_crossrefs (memory_id, related_memory_id, score)
-                SELECT :memory_id, r, s
+                SELECT CAST(:memory_id AS uuid), r, s
                 FROM unnest(CAST(:related AS uuid[]), CAST(:scores AS double precision[])) AS t(r, s)
                 ON CONFLICT (memory_id, related_memory_id) DO UPDATE SET score = EXCLUDED.score
             """),
-            {"memory_id": memory_id, "related": related, "scores": scores},
+            {"memory_id": mem_id, "related": related, "scores": scores},
         )
 
     async def get_crossrefs(self, memory_id: UUID) -> list[dict]:
@@ -425,11 +572,13 @@ class PostgresVectorRepository:
         filters = ""
         params: dict = {"vec": str(vector), "limit": limit}
         if repo_id is not None:
-            filters += " AND repo_id = :repo_id"
-            params["repo_id"] = repo_id
+            filters += " AND repo_id = CAST(:repo_id AS uuid)"
+            params["repo_id"] = str(repo_id)
         if language is not None:
             filters += " AND language = :language"
             params["language"] = language
+        if filters:
+            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
 
         result = await self.session.execute(
             text(f"""
@@ -449,7 +598,7 @@ class PostgresVectorRepository:
             """),
             params,
         )
-        return [
+        rows = [
             {
                 "id": UUID(str(row.id)),
                 "repo_id": UUID(str(row.repo_id)),
@@ -463,6 +612,7 @@ class PostgresVectorRepository:
             }
             for row in result
         ]
+        return rows[:limit]
 
     async def delete_code_chunks_by_repo(self, repo_id: UUID):
         rows = (

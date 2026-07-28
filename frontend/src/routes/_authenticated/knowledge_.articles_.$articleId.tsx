@@ -131,6 +131,7 @@ function ArticleDetailPage() {
   const { articleId } = Route.useParams()
   const article = useDemoArticle(articleId)
   const facts = useDemoFacts()
+  const level = useDetailLevel((s) => s.level)
   // Citations start disclosed so every #cite-K anchor resolves; a cite-pill
   // click re-opens the section if the reader collapsed it.
   const [openSections, setOpenSections] = useState<string[]>(["citations"])
@@ -324,10 +325,16 @@ function ArticleDetailPage() {
               {article.stale.reason} The stale overlay is surfaced wherever
               this article is served — it is a label, never a suppression.
             </p>
-            <p className="text-warning font-mono text-sm">
-              fact_set_hash at synthesis {article.fact_set_hash} → current{" "}
-              {article.current_fact_set_hash} (changed → stale)
-            </p>
+            {/* The stale label + reason above are the honesty signal and
+                render in every mode; the raw hash comparison is a
+                fingerprint, which simple mode hides (invariant 14 only
+                protects the label, never the technical proof behind it). */}
+            {level === "advanced" && (
+              <p className="text-warning font-mono text-sm">
+                fact_set_hash at synthesis {article.fact_set_hash} → current{" "}
+                {article.current_fact_set_hash} (changed → stale)
+              </p>
+            )}
           </DetailSection>
         )}
 
@@ -339,16 +346,21 @@ function ArticleDetailPage() {
             </MetaRow>
             <MetaRow label="project">{article.project}</MetaRow>
             <MetaRow label="synthesised">{article.synthesized_at}</MetaRow>
-            <MetaRow label="fact_set_hash">
-              {article.stale ? (
-                <span className="text-warning">
-                  at synthesis {article.fact_set_hash} → current{" "}
-                  {article.current_fact_set_hash} (changed → stale)
-                </span>
-              ) : (
-                <span className="font-mono">{article.fact_set_hash}</span>
-              )}
-            </MetaRow>
+            {/* fact_set_hash is a fingerprint, not an honesty label — the
+                stale overlay above already carries that signal in every
+                mode, so the raw hash itself is advanced-only detail. */}
+            {level === "advanced" && (
+              <MetaRow label="fact_set_hash">
+                {article.stale ? (
+                  <span className="text-warning">
+                    at synthesis {article.fact_set_hash} → current{" "}
+                    {article.current_fact_set_hash} (changed → stale)
+                  </span>
+                ) : (
+                  <span className="font-mono">{article.fact_set_hash}</span>
+                )}
+              </MetaRow>
+            )}
             <MetaRow label="applies_when">{article.applies_when_label}</MetaRow>
           </dl>
           {superseded && article.last_rung_note && (

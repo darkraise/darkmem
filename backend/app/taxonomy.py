@@ -1,9 +1,25 @@
-"""Consolidated 10-type entity and relation taxonomy.
+"""The closed vocabularies and their pure normalisers (doc 06 §3).
 
-The LLM extraction path emits values from these lists. Values pre-dating
-the taxonomy consolidation are mapped in via the LEGACY_* tables (both at
-DB-migration time and at runtime by :func:`normalize_entity_type` /
-:func:`normalize_relation_type`).
+Five vocabularies govern the model. Four live here — ``ENTITY_TYPES``,
+``RELATIONSHIP_TYPES``, ``MEMORY_TYPES``, ``MEMORY_RELATION_TYPES`` — and
+``TECH_TYPES`` (the ``ENTITY_TYPES`` subset feeding the ``memories.technologies``
+denorm) lives in ``app.services.relations`` beside the graph code that reads it.
+
+Every value the LLM or a caller emits passes through a normaliser before it is
+stored. Each normaliser is a **three-step fallthrough**: exact match against the
+closed set, then a ``LEGACY_*_TYPE_MAP`` rewrite of a historical name, then a
+safe default (``concept`` / ``RELATED_TO`` / ``fact`` / ``RELATES_TO``).
+
+The normalisers are **pure functions of a single raw string**. That purity is
+load-bearing for idempotent re-extraction: the same content must normalise the
+same way on every reprocess, so a normaliser must never take a classifier
+verdict, an area, or any other context as a parameter, and must never touch the
+database.
+
+Widening a vocabulary is **taxonomy-first**: the value lands here and every
+hard-coded copy of the vocabulary is swept before any feature emits it, because
+a widened set changes the extraction schema string and re-extraction is then no
+longer bit-identical.
 """
 
 from __future__ import annotations
@@ -172,6 +188,11 @@ MEMORY_TYPES: list[str] = [
     "reference",
     "architecture",
     "milestone",
+    # Layer-0 recall kinds. `insight` and `profile` deliberately do NOT join:
+    # synthesised knowledge moved out of the memory table into the vault, so
+    # they are no longer memory kinds at all.
+    "episodic",
+    "procedural",
 ]
 
 _MEMORY_TYPE_SET = set(MEMORY_TYPES)
@@ -208,6 +229,20 @@ LEGACY_MEMORY_TYPE_MAP: dict[str, str] = {
     "citation": "reference",
     # architecture family
     "design": "architecture",
+    # episodic family (what happened, in sequence)
+    "episode": "episodic",
+    "experience": "episodic",
+    "narrative": "episodic",
+    # `session` and `workflow` were previously named as forbidden emissions and
+    # fell through to `fact`; the two new kinds give them a real home.
+    "session": "episodic",
+    # procedural family (how to carry something out)
+    "procedure": "procedural",
+    "howto": "procedural",
+    "how-to": "procedural",
+    "runbook": "procedural",
+    "playbook": "procedural",
+    "workflow": "procedural",
 }
 
 
@@ -224,3 +259,78 @@ def normalize_memory_type(raw_type: str | None) -> str:
     if mapped:
         return mapped
     return "fact"
+
+
+# ── Memory-relation types (doc 06 §3.1) ─────────────────────────────
+# Memory relations connect *statements* (this decision CONTRADICTS that earlier
+# one); entity relations connect *concepts* (postgres DEPLOYED_ON linux). The two
+# sets stay apart because a shared set would let `normalize_relation_type` accept
+# `ELABORATES` on an entity-to-entity edge, where it is meaningless.
+#
+# This vocabulary is landed taxonomy-first and has no writer yet: the
+# `memory_relations` table is inert, and doc 08's consolidation passes are the
+# first writers.
+
+MEMORY_RELATION_TYPES: list[str] = [
+    "CONTRADICTS",
+    "ELABORATES",
+    "DEPENDS_ON",
+    "FOLLOWS",
+    "RELATES_TO",
+]
+
+# `SUPERSEDES` is projected at read time from ``memories.superseded_by`` and is
+# never stored as a `memory_relations` row, so it is never a normaliser output
+# either — the write-side vocabulary is exactly the five above.
+PROJECTED_MEMORY_RELATION_TYPES: tuple[str, ...] = ("SUPERSEDES",)
+
+_MEMORY_RELATION_TYPE_SET: frozenset[str] = frozenset(MEMORY_RELATION_TYPES)
+
+
+LEGACY_MEMORY_RELATION_TYPE_MAP: dict[str, str] = {
+    # The entity-relation catch-all spelling, for callers that reach for the
+    # name they know from `RELATIONSHIP_TYPES`.
+    "RELATED_TO": "RELATES_TO",
+    "SUPPORTS": "ELABORATES",
+    "EXPANDS_ON": "ELABORATES",
+    "REFINES": "ELABORATES",
+    "CLARIFIES": "ELABORATES",
+    "CONFLICTS_WITH": "CONTRADICTS",
+    "DISAGREES_WITH": "CONTRADICTS",
+    # NOTE: no `PRECEDES` alias. "A PRECEDES B" asserts A is EARLIER; a pure
+    # type-string normaliser cannot swap endpoints, so rewriting the type
+    # alone would store "A FOLLOWS B" and silently invert the temporal
+    # order. Unknowns fall to RELATES_TO, which loses the direction claim
+    # instead of reversing it. A writer that needs PRECEDES must invert the
+    # endpoints itself, before normalising.
+    "REQUIRES": "DEPENDS_ON",
+    # `DERIVED_FROM` is cut for v1 — the reshape removed its only writer when
+    # knowledge left the memory table. Reintroducing it as a first-class type
+    # means deleting this alias in the same change, or the normaliser will keep
+    # rewriting the new type away.
+    "DERIVED_FROM": "RELATES_TO",
+}
+
+
+def normalize_memory_relation_type(raw_type: str | None) -> str:
+    """Return one of the five stored ``MEMORY_RELATION_TYPES``.
+
+    Unknown values — including the projected ``SUPERSEDES``, which no writer may
+    store — fall back to ``RELATES_TO``.
+    """
+    if not raw_type:
+        return "RELATES_TO"
+    t = raw_type.strip().upper()
+    if t in _MEMORY_RELATION_TYPE_SET:
+        return t
+    mapped = LEGACY_MEMORY_RELATION_TYPE_MAP.get(t)
+    if mapped:
+        return mapped
+    return "RELATES_TO"
+
+
+def is_projected_memory_relation_type(raw_type: str | None) -> bool:
+    """True for a memory-relation type that is derived at read time rather than
+    stored. A writer that reaches one of these is asking for a row that must not
+    exist, and the normaliser will not produce it."""
+    return (raw_type or "").strip().upper() in PROJECTED_MEMORY_RELATION_TYPES

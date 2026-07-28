@@ -2,7 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
 export interface LlmPurposeConfig {
-  provider: string
+  // No `provider`: it duplicated `api_kind` and nothing dispatched on it, so
+  // T1.01 dropped the column and the wire key together (F-10). `api_kind` is
+  // the sole vendor field.
   base_url: string
   model: string
   api_key: string | null
@@ -10,179 +12,11 @@ export interface LlmPurposeConfig {
   reasoning: boolean
   api_kind: string
   params: Record<string, unknown>
-  // Optional reference to a stored LLM provider profile. When set, the
-  // purpose inherits provider/base_url/api_key/api_kind from that profile.
-  provider_ref?: string | null
-  // Optional reference to a stored LLM profile (preset). When set, the
-  // dropdown shows this profile as the active selection.
-  profile_ref?: string | null
-  // Optional reference to a stored ML profile. When set, the classifier
-  // purpose dispatches to the in-process MLClassificationService.
-  ml_profile_ref?: string | null
-}
-
-export interface MlProfile {
-  model_repo: string
-  ttl_seconds: number
-}
-
-export interface MlProfilesResponse {
-  profiles: Record<string, MlProfile>
-}
-
-export interface LlmProviderProfile {
-  provider: string
-  base_url: string
-  api_key: string | null
-  api_kind: string
-  supports_embedding: boolean
-}
-
-export interface LlmProvidersResponse {
-  profiles: Record<string, LlmProviderProfile>
-}
-
-export interface LlmProviderTestRequest {
-  mode?: "chat" | "embedding"
-  model?: string
-}
-
-export interface LlmProviderTestResponse {
-  ok: boolean
-  status_code: number | null
-  latency_ms: number
-  url: string
-  message: string
-}
-
-export function useLlmProviders() {
-  return useQuery<LlmProvidersResponse>({
-    queryKey: ["llmProviders"],
-    queryFn: () => apiFetch<LlmProvidersResponse>("/config/llm-providers"),
-  })
-}
-
-export function useUpdateLlmProviders() {
-  const qc = useQueryClient()
-  return useMutation<LlmProvidersResponse, Error, LlmProvidersResponse>({
-    mutationFn: (body) =>
-      apiFetch<LlmProvidersResponse>("/config/llm-providers", {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["llmProviders"] })
-      qc.invalidateQueries({ queryKey: ["llmConfig"] })
-      qc.invalidateQueries({ queryKey: ["pipeline"] })
-    },
-  })
-}
-
-export function useDeleteLlmProvider() {
-  const qc = useQueryClient()
-  return useMutation<LlmProvidersResponse, Error, { name: string }>({
-    mutationFn: ({ name }) =>
-      apiFetch<LlmProvidersResponse>(
-        `/config/llm-providers/${encodeURIComponent(name)}`,
-        {
-          method: "DELETE",
-        },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["llmProviders"] })
-      qc.invalidateQueries({ queryKey: ["llmConfig"] })
-      qc.invalidateQueries({ queryKey: ["pipeline"] })
-    },
-  })
-}
-
-export function useTestLlmProvider() {
-  return useMutation<
-    LlmProviderTestResponse,
-    Error,
-    { name: string; body?: LlmProviderTestRequest }
-  >({
-    mutationFn: ({ name, body }) =>
-      apiFetch<LlmProviderTestResponse>(
-        `/config/llm-providers/${encodeURIComponent(name)}/test`,
-        { method: "POST", body: JSON.stringify(body ?? { mode: "chat" }) },
-      ),
-  })
-}
-
-// -- LLM Provider models-fetch ---------------------------------------------
-
-export interface LlmProviderModelsResponse {
-  models: string[]
-  fetched_via: string
-  error: string | null
-}
-
-export function useProviderModels(
-  providerName: string | null,
-  enabled: boolean = true,
-) {
-  return useQuery<LlmProviderModelsResponse>({
-    queryKey: ["llmProviderModels", providerName],
-    queryFn: () =>
-      apiFetch<LlmProviderModelsResponse>(
-        `/config/llm-providers/${encodeURIComponent(providerName!)}/models`,
-      ),
-    enabled: enabled && !!providerName,
-    staleTime: 60_000,
-  })
-}
-
-// -- LLM Profiles ----------------------------------------------------------
-
-export interface LlmProfile {
-  provider_ref: string
-  model: string
-  params: Record<string, unknown>
-  is_embedding: boolean
-  reasoning: boolean
-  purpose?: string | null
-}
-
-export interface LlmProfilesResponse {
-  profiles: Record<string, LlmProfile>
-}
-
-export function useLlmProfiles() {
-  return useQuery<LlmProfilesResponse>({
-    queryKey: ["llmProfiles"],
-    queryFn: () => apiFetch<LlmProfilesResponse>("/config/llm-profiles"),
-  })
-}
-
-export function useUpdateLlmProfiles() {
-  const qc = useQueryClient()
-  return useMutation<LlmProfilesResponse, Error, LlmProfilesResponse>({
-    mutationFn: (body) =>
-      apiFetch<LlmProfilesResponse>("/config/llm-profiles", {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["llmProfiles"] })
-    },
-  })
-}
-
-export function useDeleteLlmProfile() {
-  const qc = useQueryClient()
-  return useMutation<LlmProfilesResponse, Error, { name: string }>({
-    mutationFn: ({ name }) =>
-      apiFetch<LlmProfilesResponse>(
-        `/config/llm-profiles/${encodeURIComponent(name)}`,
-        {
-          method: "DELETE",
-        },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["llmProfiles"] })
-    },
-  })
+  // Present only on the classification purpose; absent means the LLM-backed
+  // classifier (T1.04). Not yet declared on the backend's
+  // LLMPurposeConfigUpdate wire schema, so a write of this field is a no-op
+  // until that schema catches up (owned outside this surface).
+  classifier_kind?: "llm" | "local" | null
 }
 
 export interface LlmConfigResponse {
@@ -194,10 +28,11 @@ export interface LlmConfigResponse {
   reranker?: LlmPurposeConfig
 }
 
-export function useLlmConfig() {
+export function useLlmConfig(enabled: boolean = true) {
   return useQuery<LlmConfigResponse>({
     queryKey: ["llmConfig"],
     queryFn: () => apiFetch<LlmConfigResponse>("/config/llm"),
+    enabled,
   })
 }
 
@@ -225,6 +60,17 @@ export function useUpdateLlmConfig() {
   })
 }
 
+/** One rank_fusion_factor arm (doc 07 §3), read straight from the backend's
+ *  `RANK_ARMS` — `activation` is the task id that turns it on, or null if
+ *  it is already live. T1.57 ruling 1: the single source both the "inactive,
+ *  activated by T2.30" label and this type must agree with. */
+export interface RankArmInfo {
+  name: string
+  flag: string
+  value: number
+  activation: string | null
+}
+
 export interface FeatureFlags {
   hybrid_search_enabled: boolean
   reranker_enabled: boolean
@@ -240,13 +86,24 @@ export interface FeatureFlags {
   entity_cache_ttl_minutes: number
   relation_rescue: boolean
   confidence_rank_gamma: number
+  // Doc 07 §3 rank_fusion_factor arms wired at zero by T1.31.
+  w_importance: number
+  w_heat: number
+  w_recency: number
+  w_context_boost: number
+  rank_arms: RankArmInfo[]
+  // Which flags are subject to the gate-ledger's "flip on a measured win"
+  // rule, and which of those have actually cleared one (T1.57 ruling 3).
+  measurable_flags: string[]
+  measured_flags: string[]
 }
 
-export function useFeatureFlags() {
+export function useFeatureFlags(enabled: boolean = true) {
   return useQuery<FeatureFlags>({
     queryKey: ["featureFlags"],
     queryFn: () => apiFetch<FeatureFlags>("/config/feature-flags"),
     staleTime: 30_000,
+    enabled,
   })
 }
 
@@ -262,6 +119,31 @@ export function useUpdateFeatureFlags() {
       qc.invalidateQueries({ queryKey: ["featureFlags"] })
       qc.invalidateQueries({ queryKey: ["pipeline"] })
     },
+  })
+}
+
+export interface RepoAllowlist {
+  patterns: string[]
+}
+
+export function useRepoAllowlist(enabled: boolean = true) {
+  return useQuery<RepoAllowlist>({
+    queryKey: ["repoAllowlist"],
+    queryFn: () => apiFetch<RepoAllowlist>("/config/repo-allowlist"),
+    staleTime: 30_000,
+    enabled,
+  })
+}
+
+export function useUpdateRepoAllowlist() {
+  const qc = useQueryClient()
+  return useMutation<RepoAllowlist, Error, string[]>({
+    mutationFn: (patterns) =>
+      apiFetch<RepoAllowlist>("/config/repo-allowlist", {
+        method: "PUT",
+        body: JSON.stringify({ patterns }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["repoAllowlist"] }),
   })
 }
 
@@ -311,47 +193,6 @@ export function useUpdateSystemPrompts() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["systemPrompts"] })
       qc.invalidateQueries({ queryKey: ["pipeline"] })
-    },
-  })
-}
-
-// -- ML Profiles -----------------------------------------------------------
-
-export function useMlProfiles() {
-  return useQuery<MlProfilesResponse>({
-    queryKey: ["mlProfiles"],
-    queryFn: () => apiFetch<MlProfilesResponse>("/config/ml-profiles"),
-  })
-}
-
-export function useUpdateMlProfiles() {
-  const qc = useQueryClient()
-  return useMutation<MlProfilesResponse, Error, MlProfilesResponse>({
-    mutationFn: (body) =>
-      apiFetch<MlProfilesResponse>("/config/ml-profiles", {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["mlProfiles"] })
-      qc.invalidateQueries({ queryKey: ["llmConfig"] })
-    },
-  })
-}
-
-export function useDeleteMlProfile() {
-  const qc = useQueryClient()
-  return useMutation<MlProfilesResponse, Error, { name: string }>({
-    mutationFn: ({ name }) =>
-      apiFetch<MlProfilesResponse>(
-        `/config/ml-profiles/${encodeURIComponent(name)}`,
-        {
-          method: "DELETE",
-        },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["mlProfiles"] })
-      qc.invalidateQueries({ queryKey: ["llmConfig"] })
     },
   })
 }

@@ -72,6 +72,72 @@ def make_repo_sync_runner(
     return run
 
 
+def make_code_reconcile_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Hash every previously-indexed repo's working tree and reconcile drift.
+
+    Catches what `repo_sync`'s HEAD-sha comparison cannot see at all: a working
+    tree edited directly (a `local_path` repo with no fetchable remote, or a
+    write straight into a clone directory) never moves HEAD, so
+    `CodePipeline.run`'s own short-circuit treats it as up to date forever.
+    This job hashes the tree independently of HEAD (`compute_working_tree_drift`)
+    and, only when that finds a mismatch, feeds it through the same incremental
+    path via `CodePipeline.run(..., forced_files=...)`.
+
+    Deliberately runs with `llm=None`: reconcile rebuilds the code graph
+    (files, symbols, calls) from a hash mismatch, never the LLM-backed
+    embedding or enrichment phases, so it stays deterministic and free even
+    though live model credentials exist. A real commit still gets its
+    embeddings refreshed via `repo_sync`, which does carry the LLM.
+    """
+    async def run() -> None:
+        from app.models.code import Repository
+        from app.services.code_pipeline import CodePipeline
+        from app.services.code_reconcile import compute_working_tree_drift
+        from app.services.repo_manager import RepoManager
+
+        async with session_factory() as list_session:
+            repos = (await list_session.execute(
+                select(Repository).where(Repository.last_indexed_commit.isnot(None))
+            )).scalars().all()
+            repos_to_check = list(repos)
+
+        for repo in repos_to_check:
+            async with session_factory() as repo_session:
+                try:
+                    manager = RepoManager(repo_session)
+                    repo_row = await manager.get(repo.id)
+                    if repo_row is None:
+                        continue
+                    work_dir = manager.repo_working_dir(repo_row)
+                    if not work_dir.exists():
+                        continue
+
+                    changed, deleted = await compute_working_tree_drift(
+                        repo_session, repo_row, work_dir,
+                    )
+                    if not changed and not deleted:
+                        continue
+
+                    pipeline = CodePipeline(
+                        session=repo_session, llm=None, vector_repo=None,
+                        repo_manager=manager,
+                    )
+                    await pipeline.run(repo_row.id, forced_files=(changed, deleted))
+                    await repo_session.commit()
+                    logger.info(
+                        "Code reconcile: repo=%s changed=%d deleted=%d",
+                        repo_row.name, len(changed), len(deleted),
+                    )
+                except ValueError as e:
+                    # repo_working_dir's local_path revalidation rejects a row
+                    # whose path moved into a blocked tree since it was created.
+                    logger.warning("Code reconcile skipped repo %s: %s", repo.name, e)
+                except Exception as e:
+                    await repo_session.rollback()
+                    logger.error("Code reconcile failed for %s: %s", repo.name, e)
+    return run
+
+
 def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
     """Delete expired entries from the token blocklist."""
     async def run() -> None:
@@ -87,17 +153,33 @@ def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[Asyn
 
 
 def make_pipeline_failure_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
-    """Prune orphaned pipeline-failure rows and old resolved entries."""
+    """Prune pipeline-failure rows, and keep the `events` partitions ahead.
+
+    The partition-maintenance arm rides here rather than as its own registered
+    job (doc 04 §8.1). Boot-time reconciliation alone is not enough: a process
+    that boots in January and runs into March outlives the children the baseline
+    created, and a RANGE parent rejects every insert that has no partition to
+    land in — so the journal would stop, taking the journaled write with it.
+    """
     async def run() -> None:
+        from app.services.events import reconcile_event_partitions
         from app.services.pipeline_failures import PipelineFailureService
+        async with session_factory() as session:
+            # Partition maintenance runs FIRST and commits on its own. Sharing a
+            # session with the prunes would let a pruning failure roll back the
+            # partition that the next month's journaling depends on — and a
+            # missing partition stops journaling rather than degrading it.
+            children = await reconcile_event_partitions(session)
+            await session.commit()
+
         async with session_factory() as session:
             svc = PipelineFailureService(session)
             orphaned = await svc.prune_orphans()
             resolved_pruned = await svc.prune_resolved_older_than(days=30)
             await session.commit()
         logger.info(
-            "Pipeline failure cleanup: orphaned=%s resolved_pruned=%s",
-            orphaned, resolved_pruned,
+            "Pipeline failure cleanup: orphaned=%s resolved_pruned=%s events_partitions=%s",
+            orphaned, resolved_pruned, ",".join(children),
         )
     return run
 
@@ -110,15 +192,29 @@ def make_graph_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSe
     stale ghost left by an earlier deleted memory."""
     async def run() -> None:
         from app.repositories.graph import PostgresGraphRepository
-        async with session_factory() as session:
-            repo = PostgresGraphRepository(session)
-            stats = await repo.prune_orphan_entities()
-            await session.commit()
+        from app.services.events import record_maintenance_run
+        try:
+            async with session_factory() as session:
+                repo = PostgresGraphRepository(session)
+                stats = await repo.prune_orphan_entities()
+                await session.commit()
+        except Exception:
+            await record_maintenance_run(
+                session_factory, operation="graph_orphan_cleanup", outcome="error",
+            )
+            raise
         if stats["entities_pruned"] or stats["relations_pruned"]:
             logger.info(
                 "Graph orphan cleanup: entities=%s relations=%s",
                 stats["entities_pruned"], stats["relations_pruned"],
             )
+        await record_maintenance_run(
+            session_factory, operation="graph_orphan_cleanup", outcome="ok",
+            detail={
+                "entities_pruned": stats["entities_pruned"],
+                "relations_pruned": stats["relations_pruned"],
+            },
+        )
     return run
 
 
@@ -133,12 +229,23 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
     tag count and the tag filter never show tags nothing uses."""
     async def run() -> None:
         from app.repositories.relational import PostgresTagRepository
-        async with session_factory() as session:
-            repo = PostgresTagRepository(session)
-            removed = await repo.prune_orphans()
-            await session.commit()
+        from app.services.events import record_maintenance_run
+        try:
+            async with session_factory() as session:
+                repo = PostgresTagRepository(session)
+                removed = await repo.prune_orphans()
+                await session.commit()
+        except Exception:
+            await record_maintenance_run(
+                session_factory, operation="tag_orphan_cleanup", outcome="error",
+            )
+            raise
         if removed:
             logger.info("Tag orphan cleanup: tags=%s", removed)
+        await record_maintenance_run(
+            session_factory, operation="tag_orphan_cleanup", outcome="ok",
+            detail={"tags_removed": removed},
+        )
     return run
 
 
@@ -150,36 +257,70 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     memory via ON DELETE CASCADE; orphaned graph entities and tags left behind
     are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup."""
     from sqlalchemy import text
+    from app.services.supersession import demote_dependents
     async def run() -> None:
-        async with session_factory() as session:
-            expired = (await session.execute(text(
-                "SELECT id FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW()"
-            ))).scalars().all()
-            if not expired:
-                return
-            ids = list(expired)
-            # Demote any memory still pointing at an expiring superseder before
-            # the delete. fk_memories_superseded_by is ON DELETE SET NULL, so
-            # deleting a superseding memory would null a dependent's
-            # superseded_by while its status stays 'superseded' — violating
-            # chk_superseded_has_pointer and aborting the whole sweep batch
-            # (TTL'd memories would then never be reclaimed). MemoryService.
-            # delete_memory does the same demotion for the interactive path.
-            await session.execute(
-                text(
-                    "UPDATE memories SET status='deprecated', superseded_by=NULL "
-                    "WHERE superseded_by = ANY(CAST(:ids AS uuid[]))"
-                ),
-                {"ids": ids},
+        from app.services.events import record_maintenance_run
+        deleted = 0
+        try:
+            async with session_factory() as session:
+                expired = (await session.execute(text(
+                    "SELECT id FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW()"
+                ))).scalars().all()
+                if expired:
+                    ids = list(expired)
+                    # Demote before deleting, never after: the demotion is what
+                    # keeps the SET-NULL FK from stranding a dependent on
+                    # 'superseded' with a null pointer, and one such row aborts
+                    # the whole batch so no TTL'd memory is ever reclaimed.
+                    # Shared with the interactive delete path
+                    # (MemoryService.delete_memory) so the two cannot drift.
+                    await demote_dependents(session, ids)
+                    result = await session.execute(
+                        text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
+                        {"ids": ids},
+                    )
+                    deleted = len(result.scalars().all())
+                    await session.commit()
+        except Exception:
+            await record_maintenance_run(
+                session_factory, operation="expired_memory_cleanup", outcome="error",
             )
-            result = await session.execute(
-                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
-                {"ids": ids},
-            )
-            deleted = len(result.scalars().all())
-            await session.commit()
+            raise
         if deleted:
             logger.info("Expired memory cleanup: deleted=%s", deleted)
+        await record_maintenance_run(
+            session_factory, operation="expired_memory_cleanup", outcome="ok",
+            detail={"deleted": deleted},
+        )
+    return run
+
+
+def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Claim one batch of buffered captures and replay them (doc 05 §3).
+
+    The pipeline is read from ``app.state`` on every run rather than captured at
+    construction, because this runner is built before the lifespan wires the
+    pipeline and because a Postgres-only boot leaves it None for the whole
+    process. With no pipeline there is nothing to flush INTO, so the run is a
+    no-op that leaves every buffered row pending — deliberately, since claiming
+    them would spend attempts on work that cannot succeed.
+    """
+    async def run() -> None:
+        from app.services.buffer_flush import flush_once
+
+        pipeline = getattr(app.state, "pipeline", None)
+        if pipeline is None:
+            logger.info("buffer_flush skipped: no pipeline")
+            return
+
+        stats = await flush_once(session_factory, pipeline)
+        if any(stats.values()):
+            logger.info(
+                "Buffer flush: claimed=%s done=%s failed=%s rejected=%s "
+                "reclaimed=%s swept=%s",
+                stats["claimed"], stats["done"], stats["failed"],
+                stats["rejected"], stats["reclaimed"], stats["swept"],
+            )
     return run
 
 

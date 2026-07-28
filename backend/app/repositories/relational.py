@@ -5,17 +5,23 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.memory import Memory, Tag, memory_tags
+from app.models.memory import Memory, Tag, memory_tags, tag_category
 from app.services.events import record_event
 
 from .base import AuditRepositoryBase, MemoryRepositoryBase, TagRepositoryBase
+
+# One supersession write can flip many same-project candidates at once
+# (`detect_supersessions` has no per-write cap), and the memory-detail page
+# renders predecessors inline, never paginated — so the reverse lookup is
+# bounded rather than open-ended.
+MEMORY_PREDECESSORS_LIMIT = 20
 
 
 class PostgresMemoryRepository(MemoryRepositoryBase):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, content, source, source_agent, memory_type, importance, metadata, expires_at=None, project=None):
+    async def create(self, content, source, source_agent, memory_type, importance, metadata, expires_at=None, project=None, origin_key=None):
         kwargs = dict(
             content=content,
             source=source,
@@ -24,6 +30,7 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
             importance=importance,
             metadata_=metadata,
             expires_at=expires_at,
+            origin_key=origin_key,
         )
         if project is not None:
             kwargs["project"] = project
@@ -37,6 +44,24 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.id == memory_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_predecessors(self, memory_id, limit: int = MEMORY_PREDECESSORS_LIMIT) -> list[Memory]:
+        """Memories this one directly superseded — the reverse of `superseded_by`.
+
+        `superseded_by` carries no index (the baseline schema is a
+        single-owner-per-epic file; adding one is out of this change's
+        scope), so this is a filtered scan on one column. Acceptable while
+        superseded rows stay a small fraction of the table; a future
+        schema-owning task can index it if that stops holding.
+        """
+        stmt = (
+            select(Memory)
+            .where(Memory.superseded_by == memory_id)
+            .order_by(Memory.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_many(self, memory_ids: list) -> list[Memory]:
         if not memory_ids:
@@ -174,7 +199,7 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         # model), so this assignment writes only the ``memory_tags`` link rows and
         # never triggers a back-populate load of every memory carrying each tag.
         for name in tag_names:
-            category = name.split("/")[0] if "/" in name else None
+            category = tag_category(name)
             await self.session.execute(
                 insert(Tag)
                 .values(name=name, category=category)
@@ -191,8 +216,8 @@ class PostgresTagRepository(TagRepositoryBase):
         self.session = session
 
     async def get_or_create(self, name, category=None):
-        if category is None and "/" in name:
-            category = name.split("/")[0]
+        if category is None:
+            category = tag_category(name)
 
         await self.session.execute(
             insert(Tag)
@@ -239,13 +264,24 @@ class PostgresTagRepository(TagRepositoryBase):
 
 
 class PostgresAuditRepository(AuditRepositoryBase):
+    # Only the two actions T1.07 names (capture, pipeline outcome) are
+    # remapped onto doc 04 §8.1's closed vocabulary. "update"/"delete"/
+    # "merge" are unchanged: they are not among the four subsystems T1.07
+    # scopes (capture, extraction, supersession, pipeline outcomes), and
+    # ``test_audit_endpoint.py`` already asserts the exact strings the
+    # audit endpoint's action filter excludes.
+    _ACTION_EVENT_TYPE = {
+        "create": "created",
+        "pipeline": "extracted",
+    }
+
     def __init__(self, session: AsyncSession):
         self.session = session
 
     async def log(self, action, memory_id=None, api_key_id=None, details=None):
         await record_event(
             self.session,
-            event_type=action,
+            event_type=self._ACTION_EVENT_TYPE.get(action, action),
             object_type="memory" if memory_id else "system",
             object_id=memory_id,
             api_key_id=api_key_id,

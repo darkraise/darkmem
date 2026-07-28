@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 from app.models.chat import Conversation, Message
 from app.services.llm import LLMOrchestrator
 from app.services import prompt
-from app.repositories.vector import PostgresVectorRepository
+from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.repositories.graph import PostgresGraphRepository
+from app.utils.scope_labels import scope_labels
 
 MENTION_RE = re.compile(r"@([\w./-]+)")
 CLUSTER_RE = re.compile(r"@cluster:(\d+)")
@@ -166,6 +167,7 @@ class ChatService:
                         "source": m.get("payload", {}).get("source", ""),
                         "tags": m.get("payload", {}).get("tags", []),
                         "created_at": m.get("payload", {}).get("created_at", ""),
+                        **scope_labels(m),
                     }
                     for m in retrieval["raw_memories"]
                 ],
@@ -214,8 +216,18 @@ class ChatService:
 
         entity_names = [m for m in mentions if not m.startswith("cluster:")]
 
+        # Everything retrieved here lands in the chat model's context verbatim,
+        # so the scope is rendered into each channel's SQL rather than trimmed
+        # afterwards: an archived, superseded or foreign-project row that
+        # reaches this point has already reached the answer.
+        scope = MemoryFilter(
+            project=context.get("project"),
+            statuses=("active",),
+            include_archived=False,
+        )
+
         try:
-            raw_memories = await self._search_memories(question)
+            raw_memories = await self._search_memories(question, filters=scope)
         except Exception as e:
             logger.warning("Memory search failed during retrieval: %s", e)
             raw_memories = []
@@ -225,6 +237,7 @@ class ChatService:
                 entity_names,
                 context.get("selected_entity_id"),
                 context.get("selected_node_id"),
+                scope=scope,
             )
         except Exception as e:
             logger.warning("Graph lookup failed during retrieval: %s", e)
@@ -234,15 +247,21 @@ class ChatService:
         if not entities and self.graph_repo and raw_memories:
             entities = await self._entities_from_memories(raw_memories[:5])
 
+        # The project axis defaults to every project, so each retrieved row
+        # carries the project and lifecycle state it came from: this list is
+        # emitted verbatim as the ``sources`` event, and a reader cannot
+        # otherwise tell a foreign or retired row from a local live one.
         formatted_memories = []
         for i, m in enumerate(raw_memories, 1):
             payload = m.get("payload", {})
             formatted_memories.append({
                 "index": i,
+                "id": str(m["memory_id"]),
                 "content": payload.get("content", ""),
                 "source": payload.get("source", ""),
                 "tags": payload.get("tags", []),
                 "score": round(m.get("score", 0), 3),
+                **scope_labels(m),
             })
 
         return {
@@ -251,17 +270,22 @@ class ChatService:
             "raw_memories": raw_memories,
         }
 
-    async def _search_memories(self, query: str, limit: int = 10) -> list[dict]:
+    async def _search_memories(
+        self, query: str, limit: int = 10, filters: MemoryFilter | None = None,
+    ) -> list[dict]:
         if not self.vector_repo:
             return []
         vector, fingerprint = await self.llm.embed(query)
-        return await self.vector_repo.search(vector, fingerprint=fingerprint, limit=limit)
+        return await self.vector_repo.search(
+            vector, fingerprint=fingerprint, limit=limit, filters=filters,
+        )
 
     async def _lookup_entities(
         self,
         entity_names: list[str],
         selected_entity_id: str | None = None,
         selected_node_id: str | None = None,
+        scope: MemoryFilter | None = None,
     ) -> list[dict]:
         if not self.graph_repo:
             return []
@@ -269,17 +293,17 @@ class ChatService:
         entities = []
 
         if selected_entity_id:
-            result = await self.graph_repo.get_neighbors_by_id(selected_entity_id)
+            result = await self.graph_repo.get_neighbors_by_id(selected_entity_id, scope=scope)
             if result.get("entity"):
                 entities.append(result["entity"])
                 entities.extend(result.get("neighbors", [])[:5])
 
         for name in entity_names[:5]:
-            found = await self.graph_repo.get_entities(name_query=name, limit=1)
+            found = await self.graph_repo.get_entities(name_query=name, limit=1, scope=scope)
             for e in found:
                 if not any(ex.get("name") == e["name"] for ex in entities):
                     entities.append(e)
-                    neighbors = await self.graph_repo.get_neighbors_by_id(e["id"])
+                    neighbors = await self.graph_repo.get_neighbors_by_id(e["id"], scope=scope)
                     for rel in neighbors.get("relations", [])[:5]:
                         entities.append({"_relation": True, **rel})
 

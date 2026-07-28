@@ -1,9 +1,8 @@
 export type { Memory, MemoryStatus } from "@/hooks/api"
 export type { Repo } from "@/hooks/api"
 export type { Job } from "@/hooks/api"
-export type { LlmProfile } from "@/hooks/api"
 
-import type { Memory, MemoryStatus, Repo, LlmProfile } from "@/hooks/api"
+import type { Memory, MemoryStatus, Repo } from "@/hooks/api"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
 
 export interface DashboardStats {
@@ -407,7 +406,30 @@ export interface DemoRepo {
   files: string[]
 }
 
-export type CodeNodeKind = "file" | "class" | "method" | "function" | "module"
+// The demo fixture only ever emits the original five (file/class/method/
+// function/module). The real backend's GET /code/graph/{repo_id} response
+// merges two vocabularies into this one field: file/symbol nodes carry the
+// CodeSymbol.kind value (KIND_MAP in code_parser.py), aux code_graph_nodes
+// rows carry their own top-level kind column — T1.59 widened this union to
+// the full real union so neither vocabulary gets silently narrowed. See
+// KIND_CHART in code-canvas.tsx / code-explorer.tsx / code-filters.tsx,
+// which must stay exhaustive over every value added here.
+export type CodeNodeKind =
+  | "file"
+  | "module"
+  | "class"
+  | "method"
+  | "function"
+  | "struct"
+  | "interface"
+  | "trait"
+  | "enum"
+  | "namespace"
+  | "impl"
+  | "type"
+  | "property"
+  | "route"
+  | "tool"
 
 export interface DemoCodeNode {
   id: string
@@ -623,11 +645,15 @@ export interface DemoJob {
   cron_label: string
   /** Floor: the loop never fires more often than this. Registration constant. */
   min_interval_seconds: number
-  /** Ceiling: a run past this duration counts as overrun. Registration constant. */
-  max_run_seconds: number
+  /** Ceiling: a run past this duration counts as overrun. Registration
+   *  constant. Null in real mode — JobItem does not expose it over the
+   *  wire, and this is never fabricated to fill the demo's read-only field. */
+  max_run_seconds: number | null
   running: boolean
   lock_held_since: string | null
-  next_run_label: string
+  /** Null in real mode: no cron-next calculator exists client-side and the
+   *  API does not return a computed next-fire time — never fabricated. */
+  next_run_label: string | null
   /** null = never ran (fresh install honesty — the list can never be empty). */
   last_run_label: string | null
   last_status: "ok" | "error" | null
@@ -637,10 +663,24 @@ export interface DemoJob {
 
 export type JobTriggerResult =
   | { ok: true }
-  | { ok: false; status: 409; lock_held_since: string }
+  | { ok: false; status: 409; lock_held_since: string | null }
+
+/** One `memory_buffer` row as the monitor renders it. `attempts` is a
+ *  claim count, not a failure count — it increments when a row is claimed,
+ *  so it means "times claimed", never "times failed" (T1.13, T1.61
+ *  ruling 1). */
+export interface DemoBufferRow {
+  id: string
+  project: string
+  attempts: number
+  maxAttempts: number
+  lastError: string | null
+  claimedAt?: string
+}
 
 export interface DemoBufferMonitor {
-  /** false — the memory_buffer backend does not exist yet (invariant 23). */
+  /** false — no REST surface reads memory_buffer yet, even though the
+   *  table and the buffer_flush job are live (invariant 23; T1.61 ruling). */
   live: false
   staged_phase: string
   staged_reason: string
@@ -649,7 +689,15 @@ export interface DemoBufferMonitor {
     claimed: number
     done: number
     error: number
-    poison: { headline: string; detail: string } | null
+    /** Still `status='claimed'` but past `buffer_claim_visibility_seconds`
+     *  — the `stale_claims()` read helper's subject. Self-healing (the
+     *  `buffer_flush` job's reclaim arm resolves these automatically), so
+     *  this list is observational only, never actionable. */
+    staleClaims: DemoBufferRow[]
+    /** `status='error'` — attempts exhausted, retained for triage forever
+     *  (the retention sweep only ever deletes `done`). Actionable: retry
+     *  re-queues to pending, forget deletes permanently. */
+    poisonRows: DemoBufferRow[]
     wait_process_note: string
   }
 }
@@ -808,6 +856,12 @@ export interface DemoRankArm {
   coded_default: number
   source: FlagSource
   step?: number
+  /** Task id that turns this arm on; absent = already live (T1.57 ruling 1,
+   *  read from the backend's own `RankArm.activation`, never guessed here). */
+  activatesWith?: string
+  /** No entry in the gate-ledger's "Arm activation log" yet — flipping this
+   *  arm is possible but its win, if any, is unmeasured (T1.57 ruling 3). */
+  unmeasured?: boolean
 }
 
 export interface DemoGraphFlag {
@@ -827,6 +881,24 @@ export interface DemoCorroborationGate {
   gate_note: string
 }
 
+/** hybrid_search_enabled / reranker_enabled / relation_rescue — plain
+ *  on/off feature_flags rows, distinct from the w_* rank arms above. */
+export interface DemoBehavioralFlag {
+  key: string
+  desc: string
+  enabled: boolean
+  source: FlagSource
+  /** No recorded gate-ledger win — see DemoRankArm.unmeasured. */
+  unmeasured?: boolean
+}
+
+/** The `repo_allowlist` config row (T1.15's SSRF gate input, T1.57
+ *  ruling 2's editing surface). Empty patterns = auto-provision inert. */
+export interface DemoAllowlistState {
+  patterns: string[]
+  error?: string
+}
+
 export interface DemoFlagsState {
   /** rank_fusion_factor arms: w_conf, w_importance, w_heat, w_recency. */
   fusion_arms: DemoRankArm[]
@@ -835,6 +907,9 @@ export interface DemoFlagsState {
   /** w_context_boost — post-fusion multiplier on a MATCH outcome only. */
   context_boost: DemoRankArm
   corroboration: DemoCorroborationGate
+  /** hybrid_search_enabled, reranker_enabled, relation_rescue. */
+  behavioral_flags: DemoBehavioralFlag[]
+  repo_allowlist: DemoAllowlistState
   overrides_written: number
 }
 
@@ -990,7 +1065,6 @@ export interface DemoStoreState {
   memories: DemoMemory[]
   repos: Repo[]
   jobs: DemoJob[]
-  llmProfiles: LlmProfile[]
   stats: DashboardStats
   events: ActivityEvent[]
   contributions: ContributionDay[]
@@ -1039,6 +1113,10 @@ export interface DemoStoreState {
   retryFailure: (id: string) => void
   retryAllFailures: () => void
   forgetFailure: (id: string) => void
+  /** Re-buffers a poison row: back to pending, attempts untouched. */
+  retryBufferRow: (id: string) => void
+  /** Explicitly forgets a poison row: removed from triage permanently. */
+  forgetBufferRow: (id: string) => void
   /** Busy honesty: a trigger on a held lock returns 409 — never queued. */
   triggerJob: (key: string) => JobTriggerResult
   saveJobConfig: (key: string, values: Record<string, number>) => void
@@ -1050,6 +1128,10 @@ export interface DemoStoreState {
   saveArm: (key: string, value: number) => void
   setGraphFlag: (key: string, enabled: boolean) => void
   saveCorroboration: (nBase: number, nDiverse: number) => void
+  setBehavioralFlag: (key: string, enabled: boolean) => void
+  /** Replaces the whole pattern list; validated client-side with the same
+   *  host[/path-prefix] shape T1.15's validator accepts. */
+  saveRepoAllowlist: (patterns: string[]) => void
   /** Saves a purpose row and records the live-reload confirmation trace. */
   saveLLMPurpose: (
     purpose: LLMPurposeName,

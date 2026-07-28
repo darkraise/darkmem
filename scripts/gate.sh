@@ -168,11 +168,52 @@ run_gate "extraction F1 bench (--algo-only)" 900 "$BACKEND" \
 
 # ── --full: the measured gates ───────────────────────────────────────────
 if [ "$FULL" -eq 1 ]; then
+    # Snapshot-and-diff, not a bare listener check (T1.64, Important I3). A
+    # bare `ss | grep` false-REDs on any normal dev machine: a developer's own
+    # vite on :3636 (`reuseExistingServer: !process.env.CI`) or backend on
+    # :8000 legitimately survive a local `--full` run, and a bare check
+    # cannot tell "leaked by this run" from "was already there." A port
+    # present in both snapshots is left alone, silently; a port present only
+    # after is a genuine leak from this run and fails the gate loudly.
+    PORTS_BEFORE="$(ss -ltn 2>/dev/null | grep -E ':8000|:3636|:3637' | sort || true)"
+
     run_gate "retrieval eval" 3600 "$BACKEND" \
         env -C "$BACKEND" "$PY" scripts/benchlib/run_retrieval_eval.py
 
-    run_gate "playwright e2e" 1800 "$FRONTEND" \
-        env -C "$FRONTEND" npm run test:e2e
+    # The API e2e suite (T1.64): boots and tears down its own disposable
+    # stack, so it never runs concurrently against :8000 with the playwright
+    # step below. Exit 2 means every collected test skipped this run (BLOCKED
+    # — no API-level assertion executed) and is treated as a failure here
+    # like any other nonzero exit, never silently green.
+    run_gate "API e2e suite" 900 "$BACKEND" \
+        env -C "$BACKEND" \
+            TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
+            "$PY" scripts/e2e/run_e2e.py
+
+    # Boots its own disposable stack on :8000 (matching vite.config.ts's
+    # hardcoded proxy target), sets E2E_DISPOSABLE_STACK=1 so auth.spec.ts,
+    # code-real-mode.spec.ts and code-wiki-empty.spec.ts skip
+    # seedAdminPassword() (T1.58 Ruling 4's darkmem target is never this
+    # run's database), runs `npm run test:e2e`, tears the stack down — one
+    # command so run_gate's own process-group teardown wraps the whole
+    # sequence.
+    run_gate "playwright e2e" 1800 "$BACKEND" \
+        env -C "$BACKEND" "$PY" scripts/e2e/run_playwright_e2e.py
+
+    printf '\n\033[1m── %s ──\033[0m\n' "port hygiene"
+    if [ -n "$FAILED_GATE" ]; then
+        echo "skipped (a previous gate failed)"
+    else
+        PORTS_AFTER="$(ss -ltn 2>/dev/null | grep -E ':8000|:3636|:3637' | sort || true)"
+        LEAKED_PORTS="$(comm -13 <(printf '%s\n' "$PORTS_BEFORE") <(printf '%s\n' "$PORTS_AFTER"))"
+        if [ -n "$LEAKED_PORTS" ]; then
+            FAILED_GATE="port hygiene"
+            echo "gate 'port hygiene' FAILED — listener(s) on :8000/:3636/:3637 leaked by this run:" >&2
+            echo "$LEAKED_PORTS" >&2
+        else
+            echo "no listener on :8000/:3636/:3637 leaked by this run"
+        fi
+    fi
 fi
 
 # ── verdict ──────────────────────────────────────────────────────────────

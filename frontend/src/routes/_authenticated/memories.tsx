@@ -1,16 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { createFileRoute, Link } from "@tanstack/react-router"
-import {
-  Brain,
-  ChevronDown,
-  Inbox,
-  Loader2,
-  Plus,
-  Search,
-  SearchX,
-  X,
-} from "lucide-react"
-import { Badge } from "darkraise-ui/components/badge"
+import { createFileRoute } from "@tanstack/react-router"
+import { Brain, Inbox, Loader2, Plus, Search, SearchX, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Input } from "darkraise-ui/components/input"
@@ -23,20 +13,18 @@ import {
 } from "darkraise-ui/components/select"
 import { PageChrome } from "@/components/app-chrome"
 import { cn } from "darkraise-ui/lib"
-import { dayKeyToMs, localDayKey, relativeTime } from "@/lib/format"
+import { dayKeyToMs, localDayKey } from "@/lib/format"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
 import { isValidDay } from "@/demo/activity"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoMemories } from "@/demo/hooks"
 import { distinctProjects, searchDemoMemories } from "@/demo/memories"
 import type { DemoMemory, MemoryTrace } from "@/demo/types"
-import {
-  ExclusionStrip,
-  LayerChip,
-  VerificationBadge,
-  WhyRetrievedTrace,
-} from "@/components/darkmem"
-import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
+import { ExclusionStrip } from "@/components/darkmem"
+import { demoTraceToView } from "@/features/memories/use-memory-search"
+import { MemoryRow } from "@/features/memories/components/memory-row"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
+import { RealMemoriesView } from "@/features/memories/components/real-memories-view"
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 
@@ -46,7 +34,12 @@ export const Route = createFileRoute("/_authenticated/memories")({
   validateSearch: (search: Record<string, unknown>): { date?: string } => ({
     date: isValidDay(search.date) ? search.date : undefined,
   }),
-  component: MemoriesPage,
+  // DEMO is fixed for the process lifetime (import.meta.env, not runtime
+  // state), so branching at the component level never violates the rules
+  // of hooks — the demo view keeps its own store-backed browse/scrub/seek
+  // affordances untouched, and the real view is the T1.44 rebuild against
+  // `/search/paginated?with_trace=true` (Ruling 5).
+  component: () => (DEMO ? <DemoMemoriesPage /> : <RealMemoriesView />),
 })
 
 const BROWSE_PAGE = 50
@@ -61,99 +54,7 @@ interface MemoryListRow {
   trace?: MemoryTrace
 }
 
-function MemoryRow({
-  memory,
-  trace,
-  expanded,
-  focused,
-  onToggleTrace,
-}: {
-  memory: DemoMemory
-  trace?: MemoryTrace
-  expanded?: boolean
-  focused?: boolean
-  onToggleTrace?: () => void
-}) {
-  return (
-    <div
-      id={`memory-row-${memory.id}`}
-      className={cn(
-        "border-border rounded-md border p-2.5 transition-shadow",
-        focused && "ring-primary/60 ring-1",
-      )}
-    >
-      <div className="flex items-start gap-2.5">
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 pt-0.5">
-          <LayerChip layer={memory.layer} />
-          <LifecycleBadge status={memory.status} />
-          {memory.verification_status && (
-            <VerificationBadge
-              status={memory.verification_status}
-              detail={memory.verification_detail}
-            />
-          )}
-        </div>
-        <Link
-          to="/memories/$memoryId"
-          params={{ memoryId: memory.id }}
-          className="hover:text-primary min-w-0 flex-1 text-sm break-words transition-colors"
-        >
-          <span className="line-clamp-2">{memory.content}</span>
-          <span className="text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5">
-            {memory.llm_flags?.map((flag) => (
-              <Badge
-                key={flag}
-                variant="outline"
-                size="sm"
-                className="border-warning/40 text-warning"
-              >
-                {flag}
-              </Badge>
-            ))}
-            {memory.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" size="sm">
-                {tag}
-              </Badge>
-            ))}
-          </span>
-        </Link>
-        <span className="text-muted-foreground shrink-0 pt-0.5 text-right font-mono text-sm">
-          {relativeTime(memory.created_at)}
-          <span className="block">{memory.source}</span>
-        </span>
-        {trace && onToggleTrace && (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-expanded={expanded}
-            aria-label={expanded ? "Hide why retrieved" : "Show why retrieved"}
-            className="text-muted-foreground shrink-0"
-            onClick={onToggleTrace}
-          >
-            why?
-            <ChevronDown
-              aria-hidden
-              className={cn(
-                "ml-1 h-3.5 w-3.5 transition-transform",
-                expanded && "rotate-180",
-              )}
-            />
-          </Button>
-        )}
-      </div>
-      {trace && expanded && (
-        <WhyRetrievedTrace
-          channels={trace.channels}
-          rrfScore={trace.rrf_score}
-          summary={trace.summary}
-          className="border-border mt-2.5 border-t pt-2.5"
-        />
-      )}
-    </div>
-  )
-}
-
-function MemoriesPage() {
+function DemoMemoriesPage() {
   const memories = useDemoMemories()
   const { date: dateParam } = Route.useSearch()
 
@@ -461,7 +362,7 @@ function MemoriesPage() {
                       {row ? (
                         <MemoryRow
                           memory={row.memory}
-                          trace={row.trace}
+                          trace={row.trace ? demoTraceToView(row.trace) : undefined}
                           expanded={expandedId === row.memory.id}
                           focused={focusedId === row.memory.id}
                           onToggleTrace={

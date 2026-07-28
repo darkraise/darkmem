@@ -6,9 +6,15 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.vector import MemoryFilter
 from app.services.embedder_registry import child_table
+from app.services.relations import TECH_TYPES
 
 logger = logging.getLogger(__name__)
+
+# Ceiling on a scoped walk. Every extra hop multiplies the frontier, and the
+# read paths that traverse the graph want a neighbourhood, not a component.
+MAX_TRAVERSAL_DEPTH = 5
 
 
 class PostgresGraphRepository:
@@ -19,29 +25,35 @@ class PostgresGraphRepository:
         self, embedding: list[float], fingerprint: str, threshold: float = 0.85,
         entity_type: str | None = None,
     ) -> dict | None:
+        # An untyped probe is a defect, not a supported mode: a name embedding
+        # alone can't tell a `tool` named "react" from a `concept` named
+        # "react", and canonicalizing one onto the other corrupts the
+        # (name, entity_type) binding that entity uniqueness, the lowercase
+        # `technologies` denorm and relation-endpoint resolution all rest on.
+        # The parameter keeps its position so the argument order stays stable
+        # for existing keyword callers.
+        if entity_type is None:
+            raise ValueError("find_similar_entity requires an entity_type")
         table = child_table("entity_embeddings", fingerprint)
         # The ORDER BY ... <=> uses the HNSW index for ranking; the threshold in
         # WHERE is a cheap post-filter on the single nearest row (LIMIT 1). A
         # similarity threshold cannot be pushed into an HNSW index scan, so this
         # recomputed-distance predicate is inherent, not an oversight.
-        # Constrain the match to the probe's own type: a name embedding alone
-        # can't tell a `tool` named "react" from a `concept` named "react", and
-        # canonicalizing one onto the other corrupts the (name, type) binding.
-        type_cond = "AND e.entity_type = :etype" if entity_type is not None else ""
-        params = {"vec": str(embedding), "threshold": threshold}
-        if entity_type is not None:
-            params["etype"] = entity_type
+        # The type predicate rides the same WHERE rather than filtering the
+        # result afterwards: a post-filter lets a nearer wrong-typed neighbour
+        # consume the LIMIT and hide the right-typed one behind it.
         result = await self.session.execute(
             text(f"""
                 SELECT e.id, e.name, e.entity_type,
                        1 - (ee.embedding <=> CAST(:vec AS vector)) AS score
                 FROM {table} ee
                 JOIN entities e ON e.id = ee.entity_id
-                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) >= :threshold {type_cond}
+                WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) >= :threshold
+                  AND e.entity_type = :etype
                 ORDER BY ee.embedding <=> CAST(:vec AS vector)
                 LIMIT 1
             """),
-            params,
+            {"vec": str(embedding), "threshold": threshold, "etype": entity_type},
         )
         row = result.mappings().first()
         if not row:
@@ -225,6 +237,7 @@ class PostgresGraphRepository:
         entity_type: str | None = None,
         name_query: str | None = None,
         limit: int = 50,
+        scope: MemoryFilter | None = None,
     ) -> list[dict]:
         conditions = []
         params: dict = {"limit": limit}
@@ -236,6 +249,9 @@ class PostgresGraphRepository:
             conditions.append("name ILIKE :name_query ESCAPE '\\'")
             escaped = name_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             params["name_query"] = f"%{escaped}%"
+        if scope is not None:
+            params.update(scope.params())
+            conditions.append(scope.asserted_by_sql("memory_ids"))
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         result = await self.session.execute(
@@ -254,7 +270,78 @@ class PostgresGraphRepository:
             for r in rows
         ]
 
-    async def _build_neighbors(self, entity_row) -> dict:
+    def neighbors_query(
+        self,
+        entity_id,
+        max_depth: int = 1,
+        scope: MemoryFilter | None = None,
+    ) -> tuple[str, dict]:
+        """The traversal statement and its bound parameters.
+
+        Exposed so the query plan can be measured against the statement the
+        read path actually runs, rather than against a transcription of it.
+        """
+        depth = max(1, min(int(max_depth), MAX_TRAVERSAL_DEPTH))
+        params: dict = {"entity_id": str(entity_id), "max_depth": depth}
+        entity_scope = "TRUE"
+        relation_scope = "TRUE"
+        if scope is not None:
+            params.update(scope.params())
+            entity_scope = scope.asserted_by_sql("n.memory_ids")
+            relation_scope = scope.asserted_by_sql("r.memory_ids")
+
+        # The scope predicates sit inside the recursive term, not on its
+        # output: a walk that admits an out-of-scope entity has already
+        # crossed the boundary even if that row is dropped afterwards,
+        # because the next hop expands from it.
+        sql = f"""
+                WITH RECURSIVE walk(entity_id, depth) AS (
+                    SELECT CAST(:entity_id AS uuid), 0
+                    UNION
+                    SELECT n.id, w.depth + 1
+                    FROM walk w
+                    JOIN entity_relations r
+                        ON r.source_entity_id = w.entity_id
+                        OR r.target_entity_id = w.entity_id
+                    JOIN entities n ON n.id = CASE
+                        WHEN r.source_entity_id = w.entity_id THEN r.target_entity_id
+                        ELSE r.source_entity_id
+                    END
+                    WHERE w.depth < :max_depth
+                      AND {relation_scope}
+                      AND {entity_scope}
+                ),
+                reached AS (
+                    SELECT entity_id, MIN(depth) AS depth FROM walk GROUP BY entity_id
+                )
+                SELECT
+                    r.rel_type,
+                    r.weight,
+                    src.id AS source_id,
+                    src.name AS source_name,
+                    src.entity_type AS source_type,
+                    src.properties AS source_properties,
+                    tgt.id AS target_id,
+                    tgt.name AS target_name,
+                    tgt.entity_type AS target_type,
+                    tgt.properties AS target_properties
+                FROM entity_relations r
+                JOIN reached ra ON ra.entity_id = r.source_entity_id
+                JOIN reached rb ON rb.entity_id = r.target_entity_id
+                JOIN entities src ON src.id = r.source_entity_id
+                JOIN entities tgt ON tgt.id = r.target_entity_id
+                WHERE LEAST(ra.depth, rb.depth) < :max_depth
+                  AND {relation_scope}
+                ORDER BY LEAST(ra.depth, rb.depth), src.name, tgt.name, r.rel_type
+        """
+        return sql, params
+
+    async def _build_neighbors(
+        self,
+        entity_row,
+        max_depth: int = 1,
+        scope: MemoryFilter | None = None,
+    ) -> dict:
         if not entity_row:
             return {"entity": None, "neighbors": [], "relations": []}
 
@@ -266,43 +353,26 @@ class PostgresGraphRepository:
             "properties": entity_row["properties"] or {},
         }
 
-        rel_result = await self.session.execute(
-            text("""
-                SELECT
-                    r.rel_type,
-                    r.weight,
-                    src.name AS source_name,
-                    tgt.name AS target_name,
-                    n.id AS neighbor_id,
-                    n.name AS neighbor_name,
-                    n.entity_type AS neighbor_type,
-                    n.properties AS neighbor_properties
-                FROM entity_relations r
-                JOIN entities src ON src.id = r.source_entity_id
-                JOIN entities tgt ON tgt.id = r.target_entity_id
-                JOIN entities n ON n.id = CASE
-                    WHEN r.source_entity_id = :entity_id THEN r.target_entity_id
-                    ELSE r.source_entity_id
-                END
-                WHERE r.source_entity_id = :entity_id OR r.target_entity_id = :entity_id
-            """),
-            {"entity_id": entity_id},
-        )
+        sql, params = self.neighbors_query(entity_id, max_depth, scope)
+        rel_result = await self.session.execute(text(sql), params)
         rel_rows = rel_result.mappings().all()
 
+        seed_id = str(entity_id)
         seen_neighbor_ids: set = set()
         neighbors = []
         relations = []
 
         for r in rel_rows:
-            nid = str(r["neighbor_id"])
-            if nid not in seen_neighbor_ids:
+            for side in ("source", "target"):
+                nid = str(r[f"{side}_id"])
+                if nid == seed_id or nid in seen_neighbor_ids:
+                    continue
                 seen_neighbor_ids.add(nid)
                 neighbors.append({
                     "id": nid,
-                    "name": r["neighbor_name"],
-                    "entity_type": r["neighbor_type"],
-                    "properties": r["neighbor_properties"] or {},
+                    "name": r[f"{side}_name"],
+                    "entity_type": r[f"{side}_type"],
+                    "properties": r[f"{side}_properties"] or {},
                 })
             relations.append({
                 "type": r["rel_type"],
@@ -313,27 +383,45 @@ class PostgresGraphRepository:
 
         return {"entity": entity_dict, "neighbors": neighbors, "relations": relations}
 
-    async def get_neighbors_by_name(self, name: str) -> dict:
+    async def get_neighbors_by_name(
+        self, name: str, max_depth: int = 1, scope: MemoryFilter | None = None,
+    ) -> dict:
         # Entity uniqueness is (name, entity_type), so a bare name can match
         # several types. This by-name read path can't disambiguate type, so it
         # picks the most-referenced one deterministically (callers that know the
         # type should use get_neighbors_by_id).
+        params: dict = {"name": name}
+        seed_scope = ""
+        if scope is not None:
+            params.update(scope.params())
+            seed_scope = f"AND {scope.asserted_by_sql('e.memory_ids')}"
         result = await self.session.execute(
             text(
-                "SELECT id, name, entity_type, properties, memory_ids FROM entities "
-                "WHERE name = :name "
-                "ORDER BY COALESCE(array_length(memory_ids, 1), 0) DESC, id LIMIT 1"
+                "SELECT e.id, e.name, e.entity_type, e.properties, e.memory_ids "
+                "FROM entities e "
+                f"WHERE e.name = :name {seed_scope} "
+                "ORDER BY COALESCE(array_length(e.memory_ids, 1), 0) DESC, e.id LIMIT 1"
             ),
-            {"name": name},
+            params,
         )
-        return await self._build_neighbors(result.mappings().first())
+        return await self._build_neighbors(result.mappings().first(), max_depth, scope)
 
-    async def get_neighbors_by_id(self, entity_id: str) -> dict:
+    async def get_neighbors_by_id(
+        self, entity_id: str, max_depth: int = 1, scope: MemoryFilter | None = None,
+    ) -> dict:
+        params: dict = {"id": entity_id}
+        seed_scope = ""
+        if scope is not None:
+            params.update(scope.params())
+            seed_scope = f"AND {scope.asserted_by_sql('e.memory_ids')}"
         result = await self.session.execute(
-            text("SELECT id, name, entity_type, properties, memory_ids FROM entities WHERE id = :id LIMIT 1"),
-            {"id": entity_id},
+            text(
+                "SELECT e.id, e.name, e.entity_type, e.properties, e.memory_ids "
+                f"FROM entities e WHERE e.id = CAST(:id AS uuid) {seed_scope} LIMIT 1"
+            ),
+            params,
         )
-        return await self._build_neighbors(result.mappings().first())
+        return await self._build_neighbors(result.mappings().first(), max_depth, scope)
 
     async def get_full_graph(self, limit: int = 200) -> dict:
         entity_result = await self.session.execute(
@@ -342,6 +430,12 @@ class PostgresGraphRepository:
         )
         entity_rows = entity_result.mappings().all()
         entity_ids = [r["id"] for r in entity_rows]
+        # Boundary check on the row count already fetched — no new query, no
+        # new round trip. `entities` here has no project/status scope and no
+        # ORDER BY, so hitting the limit means an arbitrary slice of the
+        # whole table was returned, not necessarily the "right" rows; this
+        # signal lets a caller say so rather than truncate silently (F10).
+        truncated = len(entity_rows) >= limit
 
         entities = [
             {
@@ -355,7 +449,7 @@ class PostgresGraphRepository:
         ]
 
         if not entity_ids:
-            return {"entities": [], "relations": []}
+            return {"entities": [], "relations": [], "truncated": truncated}
 
         rel_result = await self.session.execute(
             text("""
@@ -376,7 +470,7 @@ class PostgresGraphRepository:
             for r in rel_rows
         ]
 
-        return {"entities": entities, "relations": relations}
+        return {"entities": entities, "relations": relations, "truncated": truncated}
 
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)
@@ -414,8 +508,9 @@ class PostgresGraphRepository:
         # self-heals dangling memory_ids — ids left pointing at memories that
         # were deleted without graph cleanup. Do this BEFORE deleting orphaned
         # entities so the entity guard below sees only relations that survive.
+        freed_endpoints: set[str] = set()
         if rel_ids:
-            await self.session.execute(
+            endpoint_rows = (await self.session.execute(
                 text("""
                     DELETE FROM entity_relations
                     WHERE id = ANY(CAST(:ids AS uuid[]))
@@ -427,9 +522,13 @@ class PostgresGraphRepository:
                           SELECT 1 FROM repositories rp
                           WHERE rp.id = ANY(entity_relations.repo_ids)
                       )
+                    RETURNING source_entity_id, target_entity_id
                 """),
                 {"ids": rel_ids},
-            )
+            )).all()
+            freed_endpoints = {
+                str(endpoint) for row in endpoint_rows for endpoint in row
+            }
 
         # Delete an entity no live memory asserts, but only when no surviving
         # relation still references it. The FK is ON DELETE CASCADE, so deleting
@@ -438,7 +537,14 @@ class PostgresGraphRepository:
         # re-extraction. The "no live memory" predicate also drops an entity
         # kept alive only by dangling memory_ids (ghost), which is what the
         # Phase-4 dedup would otherwise collapse fresh entities onto.
-        if ent_ids:
+        #
+        # The candidates are the entities this memory asserted PLUS the endpoints
+        # of the relations just deleted above. An endpoint this memory never
+        # asserted can be protected from the guard solely by that relation, so
+        # deleting it is what orphans the endpoint; considering only the asserted
+        # set leaves a ghost behind that the strip itself created.
+        candidate_ids = list(set(ent_ids) | freed_endpoints)
+        if candidate_ids:
             await self.session.execute(
                 text("""
                     DELETE FROM entities e
@@ -454,7 +560,7 @@ class PostgresGraphRepository:
                           WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
                       )
                 """),
-                {"ids": ent_ids},
+                {"ids": candidate_ids},
             )
 
     async def prune_orphan_entities(self) -> dict:
@@ -493,6 +599,29 @@ class PostgresGraphRepository:
         """))).scalars().all()
         return {"relations_pruned": len(rel_ids), "entities_pruned": len(ent_ids)}
 
+    async def technologies_for_memory(self, memory_id: UUID | str) -> list[str]:
+        """The ``memories.technologies`` denorm for one memory, from the graph.
+
+        Read back from ``entities`` rather than accumulated from the extraction
+        dict, so the value is a projection of the graph as it stands after the
+        strip and the write — never a set built from what the writer *intended*
+        to store. ``lower(name)`` is asserted here rather than assumed of the
+        write path: the supersession detector lowercases its REPLACES targets to
+        match this column, so one upper-case entry stops supersession firing with
+        no error anywhere.
+        """
+        result = await self.session.execute(
+            text("""
+                SELECT DISTINCT lower(name) AS name
+                FROM entities
+                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                  AND entity_type = ANY(CAST(:types AS text[]))
+                ORDER BY 1
+            """),
+            {"mid": str(memory_id), "types": sorted(TECH_TYPES)},
+        )
+        return [row[0] for row in result.all()]
+
     async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
         result = await self.session.execute(
             text("""
@@ -514,19 +643,29 @@ class PostgresGraphRepository:
             for r in rows
         ]
 
-    async def get_relations_between(self, entity_names: list[str]) -> list[dict]:
+    async def get_relations_between(
+        self, entity_names: list[str], scope: MemoryFilter | None = None,
+    ) -> list[dict]:
         if not entity_names:
             return []
 
+        params: dict = {"names": entity_names}
+        scope_sql = ""
+        if scope is not None:
+            params.update(scope.params())
+            scope_sql = f"AND {scope.asserted_by_sql('r.memory_ids')}"
+
         result = await self.session.execute(
-            text("""
+            text(f"""
                 SELECT src.name AS source, tgt.name AS target, r.rel_type AS type, r.weight
                 FROM entity_relations r
                 JOIN entities src ON src.id = r.source_entity_id
                 JOIN entities tgt ON tgt.id = r.target_entity_id
-                WHERE src.name = ANY(:names) AND tgt.name = ANY(:names)
+                WHERE src.name = ANY(CAST(:names AS varchar[]))
+                  AND tgt.name = ANY(CAST(:names AS varchar[]))
+                  {scope_sql}
             """),
-            {"names": entity_names},
+            params,
         )
         rows = result.mappings().all()
         return [

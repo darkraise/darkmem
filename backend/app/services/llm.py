@@ -5,20 +5,22 @@ import logging
 import httpx
 
 from app.config import LLMPurposeConfig
+from app.services.llm_quirks import (
+    assert_can_embed,
+    assert_reasoning_effort,
+    auth_headers,
+    chat_url,
+    embeddings_url,
+    output_cap_keys,
+    quirks_for,
+)
 
 logger = logging.getLogger(__name__)
 
-# The same "max output tokens" concept goes by a different param key per
-# vendor: ``max_tokens`` (z.ai/DeepSeek/Anthropic/Google compat),
-# ``max_completion_tokens`` (OpenAI's gpt-5 family, which rejects the legacy
-# ``max_tokens``), and ``num_predict`` (Ollama native). Truncation reporting
-# and the Settings UI both resolve through this order.
-_OUTPUT_CAP_KEYS = ("max_tokens", "max_completion_tokens", "num_predict")
 
-
-def _output_cap(params: dict) -> int | None:
+def _output_cap(params: dict, api_kind: str | None = None) -> int | None:
     """Return the configured output-token cap, whichever key carries it."""
-    for key in _OUTPUT_CAP_KEYS:
+    for key in output_cap_keys(api_kind):
         value = params.get(key)
         if isinstance(value, int):
             return value
@@ -41,15 +43,14 @@ class LLMOrchestrator:
     """Routes purpose-specific calls to the right wire protocol.
 
     Dispatch contract for ``api_kind`` — every chat / embed / tool method
-    here follows the same shape: when ``cfg.api_kind == "ollama"`` we go
-    through the native Ollama path (``/api/chat`` etc., with
-    ``think: false`` support). Every other kind — ``"openai"`` and the
-    vendor-specific kinds ``"anthropic"``, ``"google"``, ``"deepseek"``,
-    ``"zai"`` — currently shares the OpenAI-compatible path
-    (``/chat/completions``, ``/embeddings``). To plug in a native adapter
-    for one of those vendors, add a ``cfg.api_kind == "<vendor>"`` branch
-    above the OpenAI fallback in each public method. The enum lives on
-    ``LLMApiKind`` in ``app/config.py``.
+    here asks ``app.services.llm_quirks`` what the configured vendor needs
+    and never names a vendor itself. Kinds whose ``native_protocol`` is set
+    take their own wire surface (Ollama's ``/api/chat``, ``/api/embed``);
+    every other kind shares the OpenAI-compatible path
+    (``/chat/completions``, ``/embeddings``) with its quirks patched from
+    the same table. To plug in a native adapter for a vendor, give its row a
+    native protocol and branch here on the capability, not on the name. The
+    enum lives on ``LLMApiKind`` in ``app/config.py``.
     """
 
     # Conservative transport-level retries for idempotent connection/transient
@@ -75,26 +76,13 @@ class LLMOrchestrator:
             transport=httpx.AsyncHTTPTransport(retries=self._TRANSPORT_RETRIES),
         )
 
-    # Vendors that have no embeddings endpoint on their OpenAI-compat layer.
-    # An embed call against one of these would 404 on every request; fail loud
-    # naming the vendor instead. The ``supports_embedding`` flag on the provider
-    # profile is the UI-side guard for the same fact; this is the runtime guard
-    # for the case where a config slips past it. (``openai``/``google``/``zai``
-    # do expose embeddings via the compat path, so they are not listed.)
-    _NO_EMBEDDING_VENDORS: frozenset[str] = frozenset({"anthropic", "deepseek"})
-
     @staticmethod
     def _fingerprint(model: str, dims: int) -> str:
         return f"{model}|{dims}"
 
-    @classmethod
-    def _assert_can_embed(cls, cfg) -> None:
-        if cfg.api_kind in cls._NO_EMBEDDING_VENDORS:
-            raise RuntimeError(
-                f"Vendor {cfg.api_kind!r} has no embeddings endpoint; the "
-                f"embedding purpose cannot use this provider (model={cfg.model!r}). "
-                f"Point the embedding purpose at a provider that supports embeddings."
-            )
+    @staticmethod
+    def _assert_can_embed(cfg) -> None:
+        assert_can_embed(cfg.api_kind, cfg.model)
 
     @staticmethod
     def _check_dims(cfg, actual: int) -> None:
@@ -133,8 +121,8 @@ class LLMOrchestrator:
         """
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
-        if cfg.api_kind == "ollama":
-            url = self._ollama_url(cfg, "/api/embed")
+        if quirks_for(cfg.api_kind).native_protocol:
+            url = embeddings_url(cfg.api_kind, cfg.base_url)
             response = await self._client.post(
                 url, headers=headers, json={"model": cfg.model, "input": text},
             )
@@ -148,7 +136,7 @@ class LLMOrchestrator:
         else:
             self._assert_can_embed(cfg)
             response = await self._client.post(
-                f"{cfg.base_url}/embeddings",
+                embeddings_url(cfg.api_kind, cfg.base_url),
                 headers=headers,
                 json={"input": text, "model": cfg.model},
             )
@@ -167,8 +155,8 @@ class LLMOrchestrator:
             return [], self.llm_fingerprint()
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
-        if cfg.api_kind == "ollama":
-            url = self._ollama_url(cfg, "/api/embed")
+        if quirks_for(cfg.api_kind).native_protocol:
+            url = embeddings_url(cfg.api_kind, cfg.base_url)
             response = await self._client.post(
                 url, headers=headers, json={"model": cfg.model, "input": texts},
             )
@@ -182,7 +170,7 @@ class LLMOrchestrator:
         else:
             self._assert_can_embed(cfg)
             response = await self._client.post(
-                f"{cfg.base_url}/embeddings",
+                embeddings_url(cfg.api_kind, cfg.base_url),
                 headers=headers,
                 json={"input": texts, "model": cfg.model},
             )
@@ -248,8 +236,15 @@ class LLMOrchestrator:
         response_format: dict | None = None,
         seed: int | None = None,
         raise_on_truncation: bool = False,
-    ) -> str:
+        return_meta: bool = False,
+    ) -> str | tuple[str, dict]:
         """Send a chat-completion request to the configured LLM.
+
+        ``return_meta`` opts into ``(content, meta)`` where ``meta`` carries
+        the served ``model``, the usage envelope and ``system_fingerprint``.
+        Additive by design: the ~30 call sites that read a ``str`` keep it.
+        A gate re-measurement must record what was actually served, and the
+        response body is the only place that exists.
 
         ``seed`` (when set) is forwarded to the vendor as a top-level
         ``seed`` parameter in the request body. OpenAI, DeepSeek, z.ai,
@@ -265,10 +260,10 @@ class LLMOrchestrator:
         cfg = self.config[purpose]
         headers = self._headers(cfg)
 
-        if cfg.api_kind == "ollama":
-            return await self._chat_completion_ollama(
+        if quirks_for(cfg.api_kind).native_protocol:
+            return await self._chat_completion_native(
                 cfg, purpose, messages, response_format, headers, seed=seed,
-                raise_on_truncation=raise_on_truncation,
+                raise_on_truncation=raise_on_truncation, return_meta=return_meta,
             )
 
         body = self._build_openai_chat_body(
@@ -277,7 +272,7 @@ class LLMOrchestrator:
 
         try:
             response = await self._client.post(
-                f"{cfg.base_url}/chat/completions",
+                chat_url(cfg.api_kind, cfg.base_url),
                 headers=headers,
                 json=body,
             )
@@ -306,9 +301,15 @@ class LLMOrchestrator:
             raise RuntimeError(f"LLM {purpose} unexpected response: {str(data)[:200]}") from e
         if raise_on_truncation and choice.get("finish_reason") == "length":
             raise LLMTruncationError(self._truncation_message(purpose, cfg))
+        if return_meta:
+            return content, {
+                "model": data.get("model"),
+                "usage": data.get("usage"),
+                "system_fingerprint": data.get("system_fingerprint"),
+            }
         return content
 
-    async def _chat_completion_ollama(
+    async def _chat_completion_native(
         self,
         cfg: LLMPurposeConfig,
         purpose: str,
@@ -317,14 +318,15 @@ class LLMOrchestrator:
         headers: dict,
         seed: int | None = None,
         raise_on_truncation: bool = False,
-    ) -> str:
-        """Native Ollama ``/api/chat`` call.
+        return_meta: bool = False,
+    ) -> str | tuple[str, dict]:
+        """Native (Ollama protocol) ``/api/chat`` call.
 
         Sends ``"think": false`` when ``cfg.reasoning`` is False — this
         actually disables qwen3-style reasoning, unlike the ``/no_think``
         directive that the OpenAI compat shim ignores.
         """
-        url = self._ollama_url(cfg, "/api/chat")
+        url = chat_url(cfg.api_kind, cfg.base_url)
         body: dict = {
             "model": cfg.model,
             "messages": messages,
@@ -388,11 +390,20 @@ class LLMOrchestrator:
             ) from e
         if raise_on_truncation and data.get("done_reason") == "length":
             raise LLMTruncationError(self._truncation_message(purpose, cfg))
+        if return_meta:
+            return content, {
+                "model": data.get("model"),
+                "usage": {
+                    "prompt_tokens": data.get("prompt_eval_count"),
+                    "completion_tokens": data.get("eval_count"),
+                },
+                "system_fingerprint": None,
+            }
         return content
 
     @staticmethod
     def _truncation_message(purpose: str, cfg: LLMPurposeConfig) -> str:
-        cap = _output_cap(cfg.params)
+        cap = _output_cap(cfg.params, cfg.api_kind)
         cap_phrase = f"its {cap}-token output cap" if cap is not None else "its output-token cap"
         return (
             f"LLM {purpose} response was truncated at {cap_phrase} "
@@ -448,21 +459,6 @@ class LLMOrchestrator:
                 purpose, model, prompt_tokens, completion_tokens,
             )
 
-    @staticmethod
-    def _ollama_url(cfg: LLMPurposeConfig, path: str) -> str:
-        """Build a native-Ollama URL by stripping the OpenAI-compat suffix.
-
-        Lets users keep one ``base_url`` (``http://host:11434/v1``) and have
-        both api_kinds work. ``/api/...`` paths replace the compat ``/v1``
-        suffix when present.
-        """
-        base = cfg.base_url.rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
-        elif base.endswith("/api"):
-            base = base[:-4]
-        return f"{base}{path}"
-
     def _build_openai_chat_body(
         self,
         cfg: LLMPurposeConfig,
@@ -475,12 +471,13 @@ class LLMOrchestrator:
         """Assemble the OpenAI-compat ``/chat/completions`` request body.
 
         Shared by ``chat_completion`` and ``chat_completion_stream`` so both
-        paths apply the same params merge, ``extra_body`` overlay, Anthropic
-        ``response_format`` drop, the zai/deepseek hidden-reasoning disable, and
-        the per-call ``seed``. Mutates a local copy of ``messages`` only.
+        paths apply the same params merge, ``extra_body`` overlay, and per-call
+        ``seed``, and resolve the same vendor quirks out of
+        ``llm_quirks.quirks_for``. Mutates a local copy of ``messages`` only.
         """
+        quirks = quirks_for(cfg.api_kind)
         # ``/no_think`` is a soft directive — works for some qwen variants but
-        # is silently ignored by others. The ``ollama`` path uses
+        # is silently ignored by others. The native path uses
         # ``"think": false`` instead.
         if not cfg.reasoning:
             messages = self._append_no_think(messages)
@@ -495,41 +492,31 @@ class LLMOrchestrator:
         # Apply extra_body params (provider-specific).
         if "extra_body" in cfg.params:
             body.update(cfg.params["extra_body"])
-        if response_format:
-            # Anthropic's OpenAI-compat shim only accepts
-            # ``response_format.type == "json_schema"`` with strict=True
-            # and a fully-defined schema. The loose ``json_object`` form
-            # that OpenAI/DeepSeek/z.ai accept is rejected with HTTP 400.
-            # Our extraction path encodes the schema in the prompt rather
-            # than a structured Pydantic schema, so we cannot supply a
-            # strict json_schema. Drop the field entirely for Anthropic
-            # and rely on the in-prompt schema instructions; the parser
-            # in extraction.py strips the markdown fences Anthropic
-            # sometimes wraps JSON in.
-            if cfg.api_kind != "anthropic":
-                body["response_format"] = response_format
-        # Reasoning-by-default models (z.ai's GLM-4.5/5 family,
-        # DeepSeek v4) silently consume the entire ``max_tokens`` budget
-        # on a hidden chain-of-thought before emitting any visible
-        # output. With a small max_tokens budget and a long extraction prompt
-        # the reasoning trace pegs the cap, ``finish_reason`` is ``length``,
-        # and ``content`` comes back empty — the parser then fails with
-        # "Invalid JSON: Expecting value: line 1 column 1". Inject the
-        # thinking flag so non-reasoning purposes get a real response.
-        # Both vendors accept the same ``thinking`` field shape; for
-        # DeepSeek v4 this is the only flag empirically observed to
-        # zero out ``reasoning_tokens`` (the documented
-        # ``reasoning_effort=low|high`` and ``enable_thinking=false``
-        # only reduce, not eliminate, the hidden trace).
-        if cfg.api_kind in {"zai", "deepseek"} and "thinking" not in body:
+        if response_format and quirks.accepts_response_format:
+            body["response_format"] = response_format
+        assert_reasoning_effort(cfg.api_kind, body.get("reasoning_effort"))
+        # Reasoning-by-default vendors silently consume the entire
+        # ``max_tokens`` budget on a hidden chain-of-thought before emitting any
+        # visible output. With a small budget and a long extraction prompt the
+        # trace pegs the cap, ``finish_reason`` is ``length``, and ``content``
+        # comes back empty — the parser then fails with "Invalid JSON:
+        # Expecting value: line 1 column 1". Inject whichever disable knob the
+        # vendor actually honours so non-reasoning purposes get a real response.
+        if quirks.thinking_flag and "thinking" not in body:
             body["thinking"] = {
                 "type": "enabled" if cfg.reasoning else "disabled",
             }
+        if (
+            quirks.reasoning_disable_effort is not None
+            and not cfg.reasoning
+            and "reasoning_effort" not in body
+        ):
+            body["reasoning_effort"] = quirks.reasoning_disable_effort
 
-        # Per-call seed override (Anthropic ignores; everyone else honours).
-        # The cfg.params.seed value, if present, can also pin the seed —
-        # this overrides it so callers can supply per-content seeds.
-        if seed is not None and cfg.api_kind != "anthropic":
+        # Per-call seed override. The cfg.params.seed value, if present, can
+        # also pin the seed — this overrides it so callers can supply
+        # per-content seeds.
+        if seed is not None and quirks.honours_seed:
             body["seed"] = int(seed)
         return body
 
@@ -542,8 +529,8 @@ class LLMOrchestrator:
         cfg = self.config[purpose]
         headers = self._headers(cfg)
 
-        if cfg.api_kind == "ollama":
-            url = self._ollama_url(cfg, "/api/chat")
+        if quirks_for(cfg.api_kind).native_protocol:
+            url = chat_url(cfg.api_kind, cfg.base_url)
             body: dict = {
                 "model": cfg.model,
                 "messages": messages,
@@ -581,7 +568,7 @@ class LLMOrchestrator:
 
         async with self._client.stream(
             "POST",
-            f"{cfg.base_url}/chat/completions",
+            chat_url(cfg.api_kind, cfg.base_url),
             headers=headers,
             json=body,
         ) as response:
@@ -612,14 +599,7 @@ class LLMOrchestrator:
 
     @staticmethod
     def _headers(cfg: LLMPurposeConfig) -> dict:
-        headers = {"Content-Type": "application/json"}
-        if cfg.api_key:
-            if cfg.api_kind == "anthropic":
-                # Anthropic authenticates via x-api-key (not Bearer) and
-                # requires the anthropic-version header. The OpenAI-compat
-                # vendors all take Authorization: Bearer.
-                headers["x-api-key"] = cfg.api_key
-                headers["anthropic-version"] = "2023-06-01"
-            else:
-                headers["Authorization"] = f"Bearer {cfg.api_key}"
-        return headers
+        return {
+            "Content-Type": "application/json",
+            **auth_headers(cfg.api_kind, cfg.api_key),
+        }
