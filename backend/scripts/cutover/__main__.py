@@ -102,14 +102,21 @@ async def run_cutover(
     report.raise_if_failed()
 
     async with target.transaction():
-        result.staged = await stage.stage_all(source, target, batch_size)
+        # One REPEATABLE READ snapshot spans the streaming and the source-side
+        # aggregate, so the two see the same rows. Under READ COMMITTED they
+        # would be separate snapshots and a source that moved between them
+        # would read as a parity failure.
+        async with source.transaction(isolation="repeatable_read"):
+            result.staged = await stage.stage_all(source, target, batch_size)
 
-        # Leg one, before the first carried-table write. The source-to-staging
-        # hop is the only place a carried value passes through Python, and a
-        # defect there lands identically in staging and in the target, so every
-        # later check would agree with itself and pass. Failing here means
-        # nothing was written to a carried table at all.
-        source_side = await verify.aggregate_side(source, target_names=False)
+            # Leg one, before the first carried-table write. The
+            # source-to-staging hop is the only place a carried value passes
+            # through Python, and a defect there lands identically in staging
+            # and in the target, so every later check would agree with itself
+            # and pass. Failing here means nothing was written to a carried
+            # table at all.
+            source_side = await verify.aggregate_side(source, target_names=False)
+
         staging_side = await verify.aggregate_side(
             target, staging=True, target_names=False
         )

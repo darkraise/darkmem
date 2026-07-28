@@ -130,8 +130,9 @@ async def assert_distinct_live_databases(
     ``127.0.0.1``, a default port left implicit — so the identity is compared
     again once both connections are open.
     """
-    if await live_identity(source) == await live_identity(target):
-        db, addr, port = await live_identity(source)
+    identity = await live_identity(source)
+    if identity == await live_identity(target):
+        db, addr, port = identity
         raise CutoverError(
             f"source and target are the same live database ({addr}:{port}/{db})"
         )
