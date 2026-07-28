@@ -5,7 +5,7 @@ import {
   type GraphLayoutMode,
   type Point,
 } from "@/demo/explore"
-import type { CodeNodeKind, DemoCodeGraph } from "@/demo/types"
+import type { CodeNodeKind, DemoCodeGraph } from "@/features/code/types"
 
 export const CANVAS_W = 640
 export const CANVAS_H = 400

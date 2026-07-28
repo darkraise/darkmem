@@ -513,6 +513,39 @@ clear, not to confirm it.
 
 **Verify.** `./scripts/gate.sh --full` with output archived under `docs/eval/`.
 
+#### T0.18 — `--full` must not overwrite ledger-cited gate evidence
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T0.10, T0.16` · `Doc: 17 §9` · `Tag: target-new` · `Gate: none (harness integrity)`
+
+**What.** `run_retrieval_eval.py` writes its report to a path derived from the run date,
+so a second run on the same day rewrites the first in place. That file is not scratch
+output: `gate-ledger.md` cites `docs/eval/2026-07-28-retrieval-eval.md` as G-B's evidence
+by run id (`6b7b0c0d`) and git sha (`16f8fb0`). Measured 2026-07-28 — a routine
+`./scripts/gate.sh --full` on the epic branch rewrote both fields, detaching a cleared
+gate's verdict from the artifact it names. Nothing warned, and the accuracy block was
+byte-identical, so the damage is invisible in a diff skimmed for numbers.
+
+The failure mode is procedural, not numerical: anyone running the full gate before a
+merge dirties that file, and a routine `git add -A` commits the detachment. Every future
+gate (G-C, G-D onward) inherits it.
+
+**Done when:**
+- [ ] A full-gate run cannot silently overwrite an artifact a `gate-ledger.md` entry
+      cites — either the report path carries the run id, or the runner refuses to
+      overwrite a cited file and says which ledger row cites it
+- [ ] The rule holds for two runs on the same calendar day, which is the case that
+      broke
+- [ ] `gate-ledger.md`'s existing citations still resolve after the change; if report
+      paths move, the cited paths are updated in the same commit
+- [ ] The G-A and G-B artifacts are verified byte-identical to their cited state
+
+**Verify.** Run `./scripts/gate.sh --full` twice in one day on a clean tree; confirm
+`git status` reports no modification to any ledger-cited artifact, and that both runs'
+reports survive independently.
+
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
 ---
 
 ## Amendment log
@@ -542,3 +575,4 @@ clear, not to confirm it.
 | 2026-07-27 | T0.06a, T0.08–T0.10 | 2 | Recorded the post-T0.06a corpus state in the Lane B header: 94 memories, `retrieval_limit=94`, gold version 4, and the re-measured seven-slice baseline | T0.06a appended 22 memories to desaturate the multi-hop slice, so the 72 T0.06/T0.07 measured against is stale. A downstream task still passing `retrieval_limit=72` would silently truncate the rank space it claims to measure, and the twin, comparator and runner tasks all read their numbers off this corpus |
 | 2026-07-27 | T0.06a | 1 | Recorded that a text-only bridge satisfied the original acceptance criteria, and that the authoring rule now requires the bridge verified present in the *extracted graph* of both memories | T0.06a's first pass produced two pairs whose bridge existed only in the corpus prose: `n2a-calendar-oauth` and `n8b-arcstore-lifecycle` extract **zero entities**, so no graph-aware arm could ever traverse them. They were permanent misses masquerading as designed ones, capping the slice's achievable hit@10 at 12/14 and understating every arm measured after. The acceptance criteria as written checked only that the hybrid baseline *cannot* reach the consequence memory, never that the graph *can* — one-sided by construction |
 | 2026-07-26 | all epics | 2 | Added an `Effort` field to every task's meta line, documented the rule in runbook §2.1, and made `check_plan.py` require and validate it | `Model` tracks consequence and `Size` tracks how long the work takes, but neither told a dispatcher what reasoning-effort level to spawn the sub-agent at, so effort was inherited from whatever the controller session happened to carry. Effort is **independent of the model tier** — every model runs at all five levels, so the tier must never be used to derive it. The default is `high`; review and adversarial verification run at `xhigh`, which is why the six gate evidence runs carry it; any other level has to be argued in the task's own text rather than inferred from a convention |
+| 2026-07-29 | T0.16, T0.18 | 2 | Two harness gaps found running `--full` on `feat/e1-engine-core`. **(a)** A missing `DEEPSEEK_API_KEY` surfaced as `GATE RED` at the retrieval eval rather than `GATE BLOCKED` at preflight — fixed in T0.16's script, guarded on `--full` since the floor never dispatches. **(b)** New task **T0.18**: `--full` rewrote `docs/eval/2026-07-28-retrieval-eval.md` in place, the artifact `gate-ledger.md` cites as G-B's evidence | (a) The gate's own preflight comment defines a missing environment prerequisite as "an environment problem, not a failing gate", but `preflight_fail` had only two callers (venv, `node_modules`); a clean tree read as broken after seven minutes of green suites. (b) The report path is date-derived, so a second run the same day overwrites the first. The run id and git sha both changed while the accuracy block stayed byte-identical, so a cleared gate's verdict silently detached from the artifact it names, invisible to a diff skimmed for numbers. Reverted by hand this time; every future gate inherits the trap |

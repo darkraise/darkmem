@@ -1,4 +1,4 @@
-import type { DemoCodeGraph } from "@/demo/types"
+import type { DemoCodeGraph } from "@/features/code/types"
 
 export interface WikiCodeTarget {
   /** Display text as it appeared in the prose. */

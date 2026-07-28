@@ -27,7 +27,7 @@ import {
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import { API_KINDS, embeddingKindWarning, validateParamsJson } from "@/demo/settings"
-import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/demo/types"
+import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
 import { INERT_LLM_PURPOSES } from "../llm-inert-purposes"
 import { useLLMTabBinding, type LLMTabBinding } from "../use-llm-tab-binding"
 

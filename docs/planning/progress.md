@@ -45,18 +45,18 @@ and the Note says so. That rule is the whole point of this file.
 
 | Epic | Tasks | todo | wip | blocked | review | done | dropped | Gate |
 |---|---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
+| E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
 | E2 — Truth core | 59 | 59 | 0 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **217** | **113** | **0** | **0** | **0** | **103** | **1** | |
+| **Total** | **218** | **114** | **0** | **0** | **0** | **103** | **1** | |
 
 ---
 
-## E0 — Baseline & harness (20 tasks)
+## E0 — Baseline & harness (21 tasks)
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
@@ -80,6 +80,7 @@ and the Note says so. That rule is the whole point of this file.
 | T0.15 | Freeze event + regeneration protocol | S | Haiku | high | | done | 4e44655 | — | Both protocols: the freeze EVENT (tag schema-frozen) and the during-window rule (regenerate in place, never append 0002; serialise through one owner per epic). Assertion wired into gate.sh; verified red on a deliberate 0002. Freeze date deliberately blank |
 | T0.16 | Scripted merge-gate runner | M | Sonnet | high | | done | aada376 | — | scripts/gate.sh: alembic single-revision, backend pytest, frontend typecheck/test/build, benchlib, F1 --algo-only; --full adds retrieval eval + e2e. Reaps every process group it starts. Verified green, and red naming the gate on a deliberate failure |
 | T0.17 | G-A evidence run and ledger entry | M | Fable | xhigh | | done | d99d470 | — | G-A CLEARED, all three probes. F1 reproduced all 8 cells byte-for-byte (0 live calls); retrieval eval MRR 0.8582/hit@10 0.8431, p95 2.43ms, full-context 472,558 prompt tokens (0 live calls, 2 caveats recorded); clean boot + idempotent reconciliation. Found and fixed the benchlib MLProfile break the floor could not see |
+| T0.18 | `--full` must not overwrite ledger-cited gate evidence | S | Sonnet | high | | todo | | | |
 
 ## E1 — Engine core (85 tasks)
 

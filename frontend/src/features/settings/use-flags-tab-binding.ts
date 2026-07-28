@@ -7,7 +7,7 @@ import type {
   DemoCorroborationGate,
   DemoGraphFlag,
   DemoRankArm,
-} from "@/demo/types"
+} from "@/features/settings/types"
 import {
   useFeatureFlags,
   useJobs,

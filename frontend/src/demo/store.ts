@@ -47,18 +47,11 @@ import {
   buildContributions,
   buildDashboardStats,
 } from "./dashboard"
-import type {
-  DemoStoreState,
-  DemoMemory,
-  DemoFact,
-  DemoArticle,
-  DemoChatThread,
-  DemoFlagsState,
-  DemoJob,
-  DemoRankArm,
-  MaintenanceOpKey,
-  Repo,
-} from "./types"
+import type { DemoStoreState, DemoFact, DemoArticle, DemoChatThread, DemoFlagsState } from "./types"
+import type { DemoMemory } from "@/features/memories/types"
+import type { DemoJob } from "@/features/activity/types"
+import type { DemoRankArm, MaintenanceOpKey } from "@/features/settings/types"
+import type { Repo } from "@/hooks/api"
 
 const initialMemories: DemoMemory[] = [
   ...CURATED_MEMORIES,

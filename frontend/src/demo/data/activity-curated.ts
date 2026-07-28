@@ -1,3 +1,4 @@
+import type { DemoPipelineFailure, DemoPipelineRun } from "@/features/activity/types"
 import type {
   DemoBufferMonitor,
   DemoDayBucket,
@@ -5,8 +6,6 @@ import type {
   DemoDreamCycle,
   DemoDreamMonitor,
   DemoFeedEvent,
-  DemoPipelineFailure,
-  DemoPipelineRun,
   DemoSessionRun,
 } from "../types"
 

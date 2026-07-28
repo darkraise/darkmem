@@ -30,7 +30,7 @@ import {
 import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
-import type { DemoMemory } from "@/demo/types"
+import type { DemoMemory } from "@/features/memories/types"
 import type { Memory } from "@/hooks/api/use-memory-api"
 import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 

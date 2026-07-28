@@ -1,4 +1,4 @@
-import type { ContributionDay } from "@/demo/types"
+import type { ContributionDay } from "@/features/dashboard/types"
 import { dayKeyToMs } from "@/lib/format"
 
 export interface HeatmapWeek {

@@ -1,9 +1,8 @@
+import type { DemoMemory, MemoryTimelineEvent } from "@/features/memories/types"
 import type {
-  DemoMemory,
   MemoryExclusion,
   MemorySearchOutcome,
   MemorySearchQuery,
-  MemoryTimelineEvent,
   MemoryTrace,
   MemoryTraceChannel,
 } from "./types"

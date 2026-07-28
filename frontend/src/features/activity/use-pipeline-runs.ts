@@ -1,6 +1,6 @@
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoPipelineRuns } from "@/demo/hooks"
-import type { DemoPipelineRun, PipelineStepState } from "@/demo/types"
+import type { DemoPipelineRun, PipelineStepState } from "@/features/activity/types"
 import { relativeTime } from "@/lib/format"
 import { usePipelineLogs, type PipelineLog } from "@/hooks/api"
 

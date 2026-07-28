@@ -1,10 +1,5 @@
-import type {
-  DemoCodeGraph,
-  DemoCodeProcess,
-  DemoIndexPhase,
-  DemoMemoryGraph,
-  ReindexOptions,
-} from "./types"
+import type { DemoCodeGraph, DemoCodeProcess } from "@/features/code/types"
+import type { DemoIndexPhase, DemoMemoryGraph, ReindexOptions } from "./types"
 import { INDEX_PHASE_LABELS } from "./data/code-curated"
 
 // ---------------------------------------------------------------------------

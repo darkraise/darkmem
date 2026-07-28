@@ -7,7 +7,7 @@ import type {
   DemoLLMPurpose,
   DemoLLMSaveTrace,
   LLMPurposeName,
-} from "@/demo/types"
+} from "@/features/settings/types"
 import {
   useLlmConfig,
   useUpdateLlmConfig,

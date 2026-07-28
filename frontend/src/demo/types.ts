@@ -1,9 +1,26 @@
-export type { Memory, MemoryStatus } from "@/hooks/api"
-export type { Repo } from "@/hooks/api"
-export type { Job } from "@/hooks/api"
-
-import type { Memory, MemoryStatus, Repo } from "@/hooks/api"
+import type { Repo } from "@/hooks/api"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
+import type { ContributionDay } from "@/features/dashboard/types"
+import type { DemoCodeGraph } from "@/features/code/types"
+import type { DemoMemory } from "@/features/memories/types"
+import type {
+  DemoJob,
+  DemoPipelineFailure,
+  DemoPipelineRun,
+  FeedCategory,
+  JobTriggerResult,
+} from "@/features/activity/types"
+import type {
+  DemoBehavioralFlag,
+  DemoCodeBucket,
+  DemoCorroborationGate,
+  DemoGraphFlag,
+  DemoLLMPurpose,
+  DemoLLMSaveTrace,
+  DemoRankArm,
+  LLMPurposeName,
+  MaintenanceOpKey,
+} from "@/features/settings/types"
 
 export interface DashboardStats {
   totalMemories: number
@@ -31,52 +48,6 @@ export interface ActivityEvent {
   at: string
 }
 
-export interface ContributionTypeCount {
-  label: string
-  count: number
-}
-
-export interface ContributionDay {
-  /** Local calendar day, YYYY-MM-DD. */
-  date: string
-  count: number
-  /** Per-memory_type breakdown, count desc — popover detail. */
-  types: ContributionTypeCount[]
-  /** Rows carrying a corroborated/confirmed verification badge. */
-  verified: number
-}
-
-export type MemoryRelationType =
-  | "CONTRADICTS"
-  | "ELABORATES"
-  | "DEPENDS_ON"
-  | "FOLLOWS"
-  | "RELATES_TO"
-
-export interface MemoryRelation {
-  rel_type: MemoryRelationType
-  memory_id: string
-  excerpt: string
-}
-
-export type MemoryTimelineEventKind =
-  | "created"
-  | "extracted"
-  | "verified"
-  | "superseded"
-  | "deprecated"
-  | "updated"
-
-export interface MemoryTimelineEvent {
-  at: string
-  kind: MemoryTimelineEventKind
-  description: string
-  note?: string
-  /** Rung/lifecycle transition rendered as the from→to badge pair.
-   *  `from: null` renders the plain "active (no badge)" label. */
-  transition?: { from: string | null; to: string }
-}
-
 export interface MemoryTraceChannel {
   name: string
   /** 0–1 bar fraction; null = the channel did not score this row. */
@@ -96,20 +67,6 @@ export interface MemoryExclusion {
   unit?: string
   reason: string
   tag: string
-}
-
-export interface DemoMemory extends Memory {
-  project: string
-  confidence: number
-  status: MemoryStatus
-  layer: KnowledgeLayer
-  verification_status?: VerificationStatus | null
-  /** The full honest badge claim, e.g. "supports a fact asserted by…". */
-  verification_detail?: string
-  /** Optional applies_when declaration, e.g. "env=prod". */
-  applies_when?: string | null
-  relations?: MemoryRelation[]
-  timeline?: MemoryTimelineEvent[]
 }
 
 export interface MemorySearchQuery {
@@ -406,68 +363,6 @@ export interface DemoRepo {
   files: string[]
 }
 
-// The demo fixture only ever emits the original five (file/class/method/
-// function/module). The real backend's GET /code/graph/{repo_id} response
-// merges two vocabularies into this one field: file/symbol nodes carry the
-// CodeSymbol.kind value (KIND_MAP in code_parser.py), aux code_graph_nodes
-// rows carry their own top-level kind column — T1.59 widened this union to
-// the full real union so neither vocabulary gets silently narrowed. See
-// KIND_CHART in code-canvas.tsx / code-explorer.tsx / code-filters.tsx,
-// which must stay exhaustive over every value added here.
-export type CodeNodeKind =
-  | "file"
-  | "module"
-  | "class"
-  | "method"
-  | "function"
-  | "struct"
-  | "interface"
-  | "trait"
-  | "enum"
-  | "namespace"
-  | "impl"
-  | "type"
-  | "property"
-  | "route"
-  | "tool"
-
-export interface DemoCodeNode {
-  id: string
-  name: string
-  kind: CodeNodeKind
-  file: string
-  community: string
-}
-
-export interface DemoCodeEdge {
-  /** Caller/container side — blast radius walks these in reverse. */
-  source: string
-  target: string
-  type: string
-}
-
-export interface DemoCodeCommunity {
-  id: string
-  label: string
-  /** Index into the --chart-N ramp. */
-  chart: 1 | 2 | 3 | 4 | 5
-}
-
-export interface DemoCodeProcess {
-  id: string
-  label: string
-  /** Ordered node ids. */
-  steps: string[]
-}
-
-export interface DemoCodeGraph {
-  repo_id: string
-  nodes: DemoCodeNode[]
-  edges: DemoCodeEdge[]
-  communities: DemoCodeCommunity[]
-  processes: DemoCodeProcess[]
-}
-
 export type MemoryEntityType = "tool" | "database" | "concept" | "algorithm"
 
 export interface DemoMemoryEntity {
@@ -546,20 +441,6 @@ export interface ReindexOptions {
 // dream digest, day drill, session checkpoints
 // ---------------------------------------------------------------------------
 
-export type PipelineStepState =
-  | "ok"
-  | "pending"
-  | "error"
-  | "degraded"
-  | "skipped"
-
-export interface PipelineWriteSubsteps {
-  vector: "ok" | "error" | "skipped"
-  graph: "ok" | "error" | "skipped"
-}
-
-export type PipelineTerminal = "running" | "completed" | "partial" | "failed"
-
 /** derive_memory_failed_step's durable named-step vocabulary. Phases 3–4
  *  (entity embed, dedup) degrade batch-wide instead of failing one memory,
  *  so they never appear here. */
@@ -569,33 +450,6 @@ export type PipelineFailedStep =
   | "extraction_partial"
   | "vector_write"
   | "graph_write"
-
-export interface DemoPipelineRun {
-  id: string
-  content: string
-  time_label: string
-  /** The five phases in fixed order: content embed → extract & classify →
-   *  entity embed → dedup → write. */
-  steps: [
-    PipelineStepState,
-    PipelineStepState,
-    PipelineStepState,
-    PipelineStepState,
-    PipelineStepState,
-  ]
-  /** Phase 5's two savepoints — non-null once write was attempted. */
-  substeps: PipelineWriteSubsteps | null
-  terminal: PipelineTerminal
-  counts: { entities: number; relations: number } | null
-  note: string | null
-}
-
-export type FeedCategory =
-  | "capture"
-  | "pipeline"
-  | "verification"
-  | "consolidation"
-  | "code"
 
 export interface DemoFeedEvent {
   id: string
@@ -610,60 +464,6 @@ export interface DemoFeedEvent {
   /** The one event whose toast carries honesty content (fact.verified dispute). */
   toast?: boolean
 }
-
-export interface DemoPipelineFailure {
-  id: string
-  target_kind: "memory" | "code_repo"
-  target_label: string
-  pipeline: "memory_ingest" | "code_index"
-  failed_step: string
-  /** The raw error_message, shown verbatim — never summarised to "failed". */
-  reason: string
-  attempts: number
-  first_failed: string
-  last_attempt: string
-  retry_queued: boolean
-}
-
-export interface DemoJobField {
-  key: string
-  type: "int"
-  label: string
-  value: number
-  min?: number
-  max?: number
-  help?: string
-}
-
-export interface DemoJob {
-  key: string
-  name: string
-  description: string
-  /** Disabling stops the scheduled loop from restarting; fields stay editable. */
-  enabled: boolean
-  cron: string
-  cron_label: string
-  /** Floor: the loop never fires more often than this. Registration constant. */
-  min_interval_seconds: number
-  /** Ceiling: a run past this duration counts as overrun. Registration
-   *  constant. Null in real mode — JobItem does not expose it over the
-   *  wire, and this is never fabricated to fill the demo's read-only field. */
-  max_run_seconds: number | null
-  running: boolean
-  lock_held_since: string | null
-  /** Null in real mode: no cron-next calculator exists client-side and the
-   *  API does not return a computed next-fire time — never fabricated. */
-  next_run_label: string | null
-  /** null = never ran (fresh install honesty — the list can never be empty). */
-  last_run_label: string | null
-  last_status: "ok" | "error" | null
-  last_summary: string | null
-  config_schema: DemoJobField[]
-}
-
-export type JobTriggerResult =
-  | { ok: true }
-  | { ok: false; status: 409; lock_held_since: string | null }
 
 /** One `memory_buffer` row as the monitor renders it. `attempts` is a
  *  claim count, not a failure count — it increments when a row is claimed,
@@ -843,55 +643,6 @@ export interface DemoSessionRun {
 // Wave 5 — Settings (S25–S30) + Auth (S31/S32).
 // ---------------------------------------------------------------------------
 
-/** Coded default merged under DB overrides (get_feature_flags_dict). */
-export type FlagSource = "default" | "override"
-
-export interface DemoRankArm {
-  /** The w_* key, e.g. "w_conf". */
-  key: string
-  /** Legacy alias still carried on the row (e.g. confidence_rank_gamma). */
-  alias?: string
-  desc: string
-  value: number
-  coded_default: number
-  source: FlagSource
-  step?: number
-  /** Task id that turns this arm on; absent = already live (T1.57 ruling 1,
-   *  read from the backend's own `RankArm.activation`, never guessed here). */
-  activatesWith?: string
-  /** No entry in the gate-ledger's "Arm activation log" yet — flipping this
-   *  arm is possible but its win, if any, is unmeasured (T1.57 ruling 3). */
-  unmeasured?: boolean
-}
-
-export interface DemoGraphFlag {
-  key: string
-  desc: string
-  enabled: boolean
-  source: FlagSource
-  /** The paired RRF list weight; null = context augmentation, no weight. */
-  paired_arm: DemoRankArm | null
-  no_weight_note?: string
-}
-
-export interface DemoCorroborationGate {
-  n_base: number
-  n_diverse: number
-  source: FlagSource
-  gate_note: string
-}
-
-/** hybrid_search_enabled / reranker_enabled / relation_rescue — plain
- *  on/off feature_flags rows, distinct from the w_* rank arms above. */
-export interface DemoBehavioralFlag {
-  key: string
-  desc: string
-  enabled: boolean
-  source: FlagSource
-  /** No recorded gate-ledger win — see DemoRankArm.unmeasured. */
-  unmeasured?: boolean
-}
-
 /** The `repo_allowlist` config row (T1.15's SSRF gate input, T1.57
  *  ruling 2's editing surface). Empty patterns = auto-provision inert. */
 export interface DemoAllowlistState {
@@ -911,51 +662,6 @@ export interface DemoFlagsState {
   behavioral_flags: DemoBehavioralFlag[]
   repo_allowlist: DemoAllowlistState
   overrides_written: number
-}
-
-export type ApiKind =
-  | "openai"
-  | "ollama"
-  | "anthropic"
-  | "google"
-  | "deepseek"
-  | "zai"
-
-export type LLMPurposeName =
-  | "embedding"
-  | "extraction"
-  | "classification"
-  | "reasoning"
-  | "summarization"
-  | "reranker"
-
-export interface DemoLLMPurpose {
-  purpose: LLMPurposeName
-  tier: string
-  role: string
-  model: string
-  api_kind: ApiKind
-  base_url: string
-  /** "" = not set (ollama needs none); stored unmasked, displayed masked. */
-  api_key: string
-  /** params (jsonb) as JSON text. */
-  params: string
-  /** Only the embedding purpose carries dimensions. */
-  dimensions?: number
-  /** Absent on embedding — it has no reasoning mode to disable. */
-  reasoning?: boolean
-  hint?: { tone: "info" | "caution"; text: string }
-}
-
-export interface DemoCodeBucket {
-  key: "symbol" | "module" | "overview"
-  model: string
-  note: string
-}
-
-export interface DemoLLMSaveTrace {
-  purpose: LLMPurposeName
-  fields: string[]
 }
 
 export interface DemoLLMState {
@@ -985,14 +691,6 @@ export interface DemoSecurityState {
   /** Dormant Phase-4 ApiKey card — designed, not wired (invariant 23). */
   api_key_scopes: { label: string; never?: boolean }[]
 }
-
-export type MaintenanceOpKey =
-  | "reembed_memories"
-  | "reembed_entities"
-  | "expired_memory_cleanup"
-  | "graph_orphan_cleanup"
-  | "tag_orphan_cleanup"
-  | "prune_caches"
 
 export interface DemoMaintenanceState {
   fingerprint: string

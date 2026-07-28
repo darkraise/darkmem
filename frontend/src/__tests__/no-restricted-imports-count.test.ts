@@ -61,11 +61,34 @@ describe("no-restricted-imports: src/demo/*", () => {
     expect(countByRule(results, "demo-data-import/no-restricted-imports")).toBe(0)
   })
 
+  it("the real-API-type-scoped rule (Memory/MemoryStatus/Repo/Job) is a real error-level gate: zero violations", () => {
+    // T1.67: the dead re-export in src/demo/types.ts is gone, so this is
+    // currently unreachable through normal code — see this file's own
+    // falsification proof (T1.67's report) for how it was shown to fire.
+    expect(countByRule(results, "demo-realtype-import/no-restricted-imports")).toBe(0)
+  })
+
+  it("the T1.68-relocated-types rule is a real error-level gate: zero violations", () => {
+    // T1.68 moved 33 names (ContributionDay, CodeNodeKind, DemoCodeGraph,
+    // DemoMemory, DemoJob, FeedCategory, DemoRankArm, ...) out of
+    // src/demo/types.ts into features/{dashboard,code,memories,activity,
+    // settings}/types.ts because real code is genuinely load-bearing on
+    // them. Falsification proof is in the task's report: a throwaway
+    // `DemoMemory` import from `@/demo/types` in src/lib/, watched to fire
+    // at error, then reverted.
+    expect(countByRule(results, "demo-relocated-types-import/no-restricted-imports")).toBe(0)
+  })
+
   it("the broader src/demo/* rule's warn-level count matches the measured floor", () => {
     // Two-sided on purpose: fails if a new file starts importing a covered
     // src/demo/* path (ceiling) and fails if the count silently drops
     // without this literal being updated (floor) — measured 2026-07-28,
-    // after T1.64's flag relocation and in-lane data/** fixes.
-    expect(countByRule(results, "no-restricted-imports")).toBe(150)
+    // after T1.68 relocated 33 real-consumed types out of src/demo/types.ts
+    // (down from 150/80 files at T1.64's last measurement; the residual is
+    // recorded in the task's report — genuinely demo-fixture-only types,
+    // plus a handful of real, non-demo-exclusive files that legitimately
+    // still need a demo-shaped type for their `if (DEMO)` branch, e.g.
+    // use-feed.ts's DemoFeedEvent).
+    expect(countByRule(results, "no-restricted-imports")).toBe(116)
   })
 })

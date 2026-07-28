@@ -1,4 +1,4 @@
-import type { ContributionDay } from "@/demo/types"
+import type { ContributionDay } from "@/features/dashboard/types"
 import type { CalendarBucket } from "@/hooks/api"
 
 const DAY_MS = 86_400_000

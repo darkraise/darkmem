@@ -1,5 +1,6 @@
 import { embeddingKindWarning as sharedEmbeddingKindWarning } from "@/features/setup/api-kinds"
-import type { ApiKind, DemoFlagsState, DemoRankArm } from "./types"
+import type { ApiKind, DemoRankArm } from "@/features/settings/types"
+import type { DemoFlagsState } from "./types"
 
 // ---------------------------------------------------------------------------
 // S25 — invariant 23: a w_* arm at 0 is INACTIVE (built-but-unspent), never

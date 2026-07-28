@@ -4,7 +4,7 @@ import type {
   DemoPipelineRun,
   PipelineStepState,
   PipelineWriteSubsteps,
-} from "@/demo/types"
+} from "@/features/activity/types"
 
 const PHASE_LABELS = [
   "Content embed",
