@@ -196,6 +196,31 @@ async def test_module_issues_no_delete_statement(session):
     assert re.search(r"\bDELETE\s+FROM\b", source, re.IGNORECASE) is None
 
 
+async def test_as_of_window_is_half_open_at_the_boundary_instant(session):
+    """Two adjacent windows must match at the shared instant exactly once.
+
+    The boundary is the only place both comparison operators are load-bearing.
+    An upper bound of `invalid_at >= t` would return both stints here, and a
+    lower bound of `valid_at < t` would return neither, so the single-element
+    assertion below fails under either inversion. Away from the boundary both
+    regressions are invisible.
+    """
+    repo = KnowledgeTripleRepository(session)
+    boundary = NOW + timedelta(days=365)
+    first_stint = await _open(repo, valid_at=NOW)
+    await repo.close_window(first_stint["id"], boundary)
+    second_stint = await _open(repo, valid_at=boundary)
+
+    at_boundary = [r["id"] for r in await repo.as_of(boundary, project=PROJECT)]
+    assert at_boundary == [second_stint["id"]]
+
+    just_before = [
+        r["id"]
+        for r in await repo.as_of(boundary - timedelta(microseconds=1), project=PROJECT)
+    ]
+    assert just_before == [first_stint["id"]]
+
+
 # ── The partial-unique and the ordering that satisfies it ───────────
 
 
