@@ -2,17 +2,21 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.routing import Mount
 
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
+from app.api.spa import mount_spa
 from app.api.routes import analytics, auth, buffer as buffer_routes, chat, code, config, events as events_routes, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
@@ -391,6 +395,95 @@ async def lifespan(app: FastAPI):
             logger.warning("Failed to close active LLM orchestrator at shutdown", exc_info=True)
 
 
+# The four security headers, the gzip threshold and the body cap below are
+# nginx's own values, moved rather than retuned: the nginx-in-image fallback
+# (doc 03 section 3.2) must present the same policy as the app-as-edge build,
+# and a value that drifts here makes the two postures disagree.
+SECURITY_HEADERS = (
+    ("x-frame-options", "DENY"),
+    ("x-content-type-options", "nosniff"),
+    ("referrer-policy", "strict-origin-when-cross-origin"),
+    (
+        "content-security-policy",
+        "default-src 'self'; script-src 'self'; worker-src 'self' blob:; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; "
+        "frame-ancestors 'none'; base-uri 'self'",
+    ),
+)
+
+GZIP_MINIMUM_SIZE = 1024
+MAX_REQUEST_BODY_BYTES = 25 * 1024 * 1024
+
+
+def is_mcp_path(path: str) -> bool:
+    """Whether a request path belongs to the MCP mount.
+
+    nginx deliberately never fronted /mcp, so none of its response duties nor
+    its body cap ever applied there. Applying them now would widen a contract
+    surface this task does not touch — most sharply the body cap, which would
+    impose a new ceiling on MCP ingestion. One predicate, shared by all three
+    middlewares, because two copies is how the surfaces drift apart.
+    """
+    return path == "/mcp" or path.startswith("/mcp/")
+
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or is_mcp_path(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in SECURITY_HEADERS:
+                    headers.setdefault(name, value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+class ScopedGZipMiddleware:
+    def __init__(self, app, minimum_size: int = GZIP_MINIMUM_SIZE):
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=minimum_size)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and is_mcp_path(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+        await self.gzip(scope, receive, send)
+
+
+class RequestBodyLimitMiddleware:
+    """Re-creates nginx's ``client_max_body_size 25m``, which leaves the
+    shipped topology with it.
+
+    This bounds requests that declare a Content-Length. A chunked request that
+    declares none is NOT bounded here; doing that needs body-stream
+    accounting, which is materially more code and is not this cap's job.
+    """
+
+    def __init__(self, app, max_bytes: int = MAX_REQUEST_BODY_BYTES):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not is_mcp_path(scope.get("path", "")):
+            declared = Headers(scope=scope).get("content-length")
+            if declared and declared.isdigit() and int(declared) > self.max_bytes:
+                response = _error_response(
+                    413, "payload_too_large", "Request body is too large"
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(title="darkmem", version="0.2.0", description="Centralized memory system for AI agents", lifespan=lifespan)
 
 app.add_middleware(
@@ -400,6 +493,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# add_middleware applies in reverse, so the last added is outermost: gzip
+# compresses a body whose security headers are already set, and the body cap
+# rejects before either does any work.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ScopedGZipMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware)
 
 _HTTP_ERROR_CODES = {
     400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
@@ -558,3 +658,14 @@ async def health():
         },
         status_code=status_code,
     )
+
+
+def _resolve_spa_dir() -> Path:
+    if settings.spa_dir:
+        return Path(settings.spa_dir)
+    return Path(__file__).resolve().parent.parent / "web"
+
+
+# Registered last, after every router, the /ws route and the /mcp mount, so
+# the catch-all mount shadows nothing.
+mount_spa(app, _resolve_spa_dir())
