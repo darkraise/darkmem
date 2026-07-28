@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useDemoStore } from "@/demo/store"
@@ -8,9 +8,12 @@ import { TriageTab } from "../components/triage-tab"
 import { DreamTab } from "../components/dream-tab"
 import { CheckpointsTab } from "../components/checkpoints-tab"
 
-// DEMO stays on (default) for this file, so neither tab's real branch ever
-// fires — but useQuery is called unconditionally (rules of hooks) and
+// This file pins the fixture-backed rendering deliberately (T1.45 is
+// done), so it is frozen at DEMO: true rather than relying on the
+// about-to-change default (T1.58) — neither tab's real branch ever fires
+// here, but useQuery is called unconditionally (rules of hooks) and
 // throws without a QueryClient in the tree regardless of `enabled`.
+vi.mock("@/demo/flag", () => ({ DEMO: true }))
 function withQuery(children: ReactNode) {
   const qc = new QueryClient()
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>

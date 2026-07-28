@@ -5,7 +5,8 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
 // The API adapter is tested directly: the default `themePersistence` export
-// resolves to the demo no-op whenever VITE_DEMO isn't "0" (as under vitest).
+// resolves to the demo no-op only when VITE_DEMO is explicitly "1" (real
+// mode is the default since T1.58; unset, as under vitest, now means real).
 import { apiThemePersistence as themePersistence } from "@/lib/theme-persistence"
 import { themeConfig } from "@/theme.config"
 

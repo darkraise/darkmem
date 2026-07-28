@@ -28,10 +28,21 @@ export default tseslint.config(
   },
   prettier,
   {
-    files: ["src/routes/**/*.tsx", "src/features/**/*.{ts,tsx}", "src/hooks/**/*.ts", "src/lib/**/*.ts"],
+    // Downgraded error -> warn by T1.58 (retire demo mode as the default):
+    // 82 files still import src/demo/ (70 production, 12 test), and each
+    // binding task (T1.59, T1.60, T1.63, ...) removes its own surface's
+    // imports rather than this task absorbing all of them at once. T1.64
+    // is expected to flip this back to error once the last binding task lands.
+    files: [
+      "src/routes/**/*.tsx",
+      "src/features/**/*.{ts,tsx}",
+      "src/hooks/**/*.ts",
+      "src/lib/**/*.ts",
+      "src/components/**/*.{ts,tsx}",
+    ],
     rules: {
       "no-restricted-imports": [
-        "error",
+        "warn",
         {
           patterns: [
             { group: ["@/demo/*", "../demo/*", "../../demo/*"], message: "Production code may not import from src/demo/ — that path is for Storybook and demo-mode Playwright specs only." },

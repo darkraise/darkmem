@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 vi.mock("@/demo/flag", () => ({ DEMO: false }))
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 // Link needs a router context this test never sets up; a plain anchor
 // keeps the row's honesty labels and trace toggle testable in isolation.
@@ -23,6 +27,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }))
 
 import { apiFetch } from "@/lib/api"
+import { AppPageHeader } from "@/components/app-chrome"
 import { RealMemoriesView } from "../components/real-memories-view"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -177,5 +182,49 @@ describe("RealMemoriesView", () => {
     render(<RealMemoriesView />, { wrapper })
     await screen.findByText(/search failed/i)
     expect(screen.queryByText(/no matches/i)).not.toBeInTheDocument()
+  })
+
+  it("the create action opens CreateMemoryDialog and submits a real, wait_process=true mutation", async () => {
+    const user = userEvent.setup()
+    const captured: { call: { path: string; body: Record<string, unknown> } | null } = {
+      call: null,
+    }
+    vi.mocked(apiFetch).mockImplementation((path: unknown, options?: unknown) => {
+      const p = path as string
+      if (p === "/memories/search/paginated") {
+        return Promise.resolve({ items: [], total: 0, limit: 50, offset: 0 })
+      }
+      if (p.startsWith("/memories?")) {
+        captured.call = {
+          path: p,
+          body: JSON.parse((options as RequestInit).body as string),
+        }
+        return Promise.resolve({ schema_version: 1, id: "new-id", status: "accepted" })
+      }
+      return Promise.reject(new Error(`unmocked path: ${p}`))
+    })
+
+    render(
+      <>
+        <AppPageHeader />
+        <RealMemoriesView />
+      </>,
+      { wrapper },
+    )
+
+    await user.click(screen.getByRole("button", { name: /create memory/i }))
+    expect(screen.getByRole("dialog", { name: /new memory/i })).toBeInTheDocument()
+
+    await user.type(
+      screen.getByLabelText("Content"),
+      "captured from the real create dialog",
+    )
+    await user.click(screen.getByRole("button", { name: "Create Memory" }))
+
+    await waitFor(() => expect(captured.call).not.toBeNull())
+    expect(captured.call?.path).toBe("/memories?wait_process=true")
+    expect(captured.call?.body.content).toBe(
+      "captured from the real create dialog",
+    )
   })
 })
