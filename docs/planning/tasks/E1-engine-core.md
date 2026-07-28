@@ -1397,6 +1397,19 @@ frozen baseline turns out wrong.
 - [ ] The restore path is proven, timed, and written down — this is the rollback
 - [ ] A nightly `pg_dump` cadence is documented (doc 19 §9.2)
 - [ ] The rehearsal never touches the real database
+- [ ] **The stack is stopped before the drain and restarted after it**, and the transcript
+      records it. T1.52's drainer requires a quiesced target and ships a
+      `--target-is-quiesced` flag; without this step that flag is an assertion nobody was
+      ever told how to make true. Doc 19's flowchart boots the app for the wizard and never
+      shows it stopping, which is where the gap came from — the sequence is boot → wizard →
+      **stop** → drain → restart
+- [ ] **The snapshot path is passed explicitly and only one snapshot file exists in the
+      report directory.** The drainer's control and its corrective action read the same
+      file, so a wrong one makes them agree
+- [ ] **The diff partitions by whether `status` moved before judging an `updated_at`
+      delta.** `detect_supersessions` writes *across* batches, so a supersession victim
+      legitimately carries both the lineage change and a moved timestamp; treating a
+      non-zero delta as failure would red-flag correct rows
 
 **Verify.** Rehearsal transcript archived under `docs/e2e/`, with the restore timing.
 
@@ -1428,6 +1441,8 @@ tag that ends the regenerate-freely window.
       explicitly revoked. The wizard does **not** close this window: setup writes only
       `admin_password_hash`, and `admin_password_changed_at` comes solely from the
       change-password endpoint, so rotation is the only reliable closure
+- [ ] **The stack is stopped before the backfill drain and restarted after**, mirroring
+      T1.53's rehearsal step. The runbook carries it; the drainer only asserts it
 
 **Verify.** Post-cutover counts + `./scripts/gate.sh --full` on the live instance,
 archived to `gate-ledger.md` alongside the G-B entry.
@@ -1926,3 +1941,4 @@ plan uses it. Nothing about it branches.
 | 2026-07-28 | T1.63 | 1 | **Correction to the row directly above: `POST /reembed/code-chunks` is NOT implemented server-side, and the demo fixture's disabled state and its copy were right all along.** The route exists and returns 202, but `ReembedService.reembed_code_chunks`'s body is a stub — it counts the obsolete chunks, sets `last_error` to a "not yet implemented; run a full repository reindex" message whenever that count is non-zero, and returns `{"processed": 0, "errors": total, ...}` without embedding anything. The prior row read "the route exists and calls the service method" as "the capability exists" without reading the method body — a real error, not a semantic quibble: the shipped frontend change had wired a button that looks like it works and cannot succeed. Reverted: `codeChunksReembedAvailable` is `false` again in real mode too, with help text that states the actual stub behaviour. | Caught on a closer re-read triggered by the controller's request to also journal these operations to `events` — writing the journaling code required understanding what each operation actually does, which is what surfaced the stub. Recorded per runbook §5's "an agent that discovers the plan is wrong is required to fix it, not quietly work around it" — this was closer to a self-introduced defect than a plan defect, and the same duty applies. |
 | 2026-07-28 | T1.63 | 2 | **Controller extended T1.63's lane to `backend/**` after reviewing the two "not fixable from this lane" rows above, on the grounds that the task's own Done-when boxes ("journal to `events`", "reflects the real posture ... IP strategy") were unmet, not merely under-scoped.** Both gaps are now closed: `GET /api/v1/auth/security-posture` (new, authenticated, REST single-door — `security.posture` row added to `PARITY_TABLE`) reads `trust_proxy_headers`, the resolved `cookie_secure` (tri-state, explicit-vs-default), `mcp_allowed_hosts`, and the login rate limiter's live thresholds off `settings`/`login_rate_limiter` directly, enumerating named fields rather than serialising `settings` so no credential can appear on it; `record_maintenance_run` (new, `app/services/events.py`, one writer shared by both call sites) journals a `maintenance_run` event (new `EVENT_TYPES` entry) from `job_runners.py`'s three cleanup runners and every `reembed.py` trigger including `prune-cache`, on both the success and the exception path. | Recorded so the two rows above read as closed rather than left as an open, permanent boundary — the earlier "outside this frontend-only lane's boundary" framing was correct for the wave as originally scoped and is superseded by the controller's own extension, not by a discovery that it was wrong. |
 | 2026-07-28 | T1.63 | 1 | The Security tab's remaining honest gaps after the posture endpoint landed: the token-blocklist row count, `lockouts_30d`, and the session's issue time/jti (`GET /auth/me` returns only `{authenticated, sub}`) still have no backend read surface and still render "not exposed via the API". | Recorded so a future reader of the binding's `T \| null` fields does not assume the posture endpoint closed every gap ruling 4 named — three genuinely remain, distinct from the five `GET /auth/security-posture` now answers. |
+| 2026-07-28 | T1.53 / T1.54 | 2 | **The operational ordering that makes the backfill safe was unowned, and is now on both tasks' Done-when.** Doc 19's flowchart boots the app for the setup wizard before `LOAD --> BACKFILL` and never shows it stopping, so the natural reading runs the drainer against a live target with nine jobs ticking and `/mcp` open. The needed sequence is **boot → wizard → stop the stack → drain → restart**. T1.52 ships the constraint and four layered detectors; the runbook step that stops and restarts belongs to the rehearsal and the cutover. Also landed on T1.53: pass the snapshot path explicitly with only one snapshot in the directory, and partition the diff by whether `status` moved before judging an `updated_at` delta. | Found by T1.52's Fable review and confirmed by its revision. The shape is worth naming: **a precondition that no task owns is a precondition that is asserted rather than met** — the drainer's `--target-is-quiesced` flag would otherwise have been a question nobody was told how to answer truthfully. It is also the third time this pair of tasks has had a boundary corrected by the lane downstream of it, which says the T1.51→T1.54 chain was specified from the transform outward rather than from the operation inward. |
