@@ -16,11 +16,16 @@ import { defineConfig, devices } from "@playwright/test"
 // count. labels-always-render.spec.ts's own header even says so outright:
 // "Exercised against the demo store ... DEMO defaults on until T1.58."
 // Found live (Ruling 5's "if you find a ninth, handle it the same way").
+// code-wiki-empty.spec.ts left DEMO_FIXTURE_SPECS in T1.59: it used to
+// target the legacy /repos page's demo-mode Code Wiki tab, but that page is
+// deleted and its replacement, /code/wiki, needs the real, authenticated
+// backend (RealWikiView) to exercise anything meaningful — see
+// code-real-mode.spec.ts's header for why a real-mode spec must never move
+// into this array.
 const DEMO_FIXTURE_SPECS = [
   "activity.spec.ts",
   "activity-pipeline.spec.ts",
   "code-index-debt.spec.ts",
-  "code-wiki-empty.spec.ts",
   "dashboard.spec.ts",
   "memories-command-palette.spec.ts",
   "layout-switcher.spec.ts",

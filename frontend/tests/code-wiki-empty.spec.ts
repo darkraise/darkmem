@@ -1,15 +1,48 @@
 import { test, expect } from "@playwright/test"
+import { seedAdminPassword } from "./helpers/seed-admin"
 
-test("code wiki tab on /repos shows empty state", async ({ page }) => {
-  await page.goto("/repos")
-  // Code Wiki is now a tab on the Repositories page, not a standalone route.
-  const tab = page.getByRole("tab", { name: /code wiki/i })
-  if (!(await tab.isVisible({ timeout: 5000 }).catch(() => false))) {
-    test.skip(true, "Repositories page not reachable without login")
-  }
-  await tab.click()
-  const cta = page.getByRole("button", {
-    name: /select a repo|add a repo|go to repositories/i,
+// T1.59 rewrite: this spec used to target the legacy /repos page's demo-mode
+// Code Wiki tab, in DEMO_FIXTURE_SPECS. That page is deleted (T1.59 Step 6)
+// and its replacement, /code/wiki, needs the real backend — RealWikiView is
+// gated in behind DEMO?WikiTab:RealWikiView, so this spec moved to the real
+// chromium project and now authenticates the same way code-real-mode.spec.ts
+// and auth.spec.ts do. The old isVisible({ timeout }).catch(() => false))
+// soft-skip idiom is gone on purpose: that idiom is deprecated in the
+// installed Playwright version (the timeout it passes is silently ignored,
+// so the guard never actually waited) and reusing it here — in a spec this
+// very revision is rewriting to fix a different instance of the same
+// silent-skip failure class — would hand T1.64 a fresh instance of the
+// defect it exists to retire. Every assertion below runs against a
+// deterministically-reachable element once login succeeds.
+const PASSWORD = process.env.E2E_ADMIN_PASSWORD
+
+test.describe("code wiki — empty state", () => {
+  test.beforeAll(() => {
+    if (!PASSWORD) {
+      throw new Error(
+        "E2E_ADMIN_PASSWORD must be set — this spec never soft-skips for a " +
+          "missing credential.",
+      )
+    }
+    seedAdminPassword()
   })
-  await expect(cta.first()).toBeVisible()
+
+  test("/code/wiki shows the honest empty state, never implicitly generating", async ({
+    page,
+  }) => {
+    await page.goto("/login")
+    await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD!)
+    await page.getByRole("button", { name: /sign in/i }).click()
+    await expect(page).toHaveURL("/")
+
+    await page.goto("/code/wiki")
+
+    // Matched against real-wiki-view.tsx's own rendered copy: with no repos
+    // configured, "No repositories indexed yet"; with a repo but no
+    // generated wiki, "No wiki generated yet for this repository" plus the
+    // reindex-dialog CTA — never a fabricated "select a repo" placeholder.
+    await expect(
+      page.getByText(/No repositories indexed yet|No wiki generated yet for this repository/),
+    ).toBeVisible()
+  })
 })

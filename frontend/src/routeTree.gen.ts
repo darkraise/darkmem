@@ -16,7 +16,6 @@ import { Route as GuestSetupRouteImport } from './routes/_guest/setup'
 import { Route as GuestLoginRouteImport } from './routes/_guest/login'
 import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authenticated/unified-graph'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedReposRouteImport } from './routes/_authenticated/repos'
 import { Route as AuthenticatedMemoryGraphRouteImport } from './routes/_authenticated/memory-graph'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
@@ -66,11 +65,6 @@ const AuthenticatedUnifiedGraphRoute =
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedReposRoute = AuthenticatedReposRouteImport.update({
-  id: '/repos',
-  path: '/repos',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedMemoryGraphRoute =
@@ -171,7 +165,6 @@ export interface FileRoutesByFullPath {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
-  '/repos': typeof AuthenticatedReposRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/login': typeof GuestLoginRoute
@@ -195,7 +188,6 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
-  '/repos': typeof AuthenticatedReposRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/login': typeof GuestLoginRoute
@@ -221,7 +213,6 @@ export interface FileRoutesById {
   '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/memory-graph': typeof AuthenticatedMemoryGraphRoute
-  '/_authenticated/repos': typeof AuthenticatedReposRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/_guest/login': typeof GuestLoginRoute
@@ -248,7 +239,6 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
-    | '/repos'
     | '/settings'
     | '/unified-graph'
     | '/login'
@@ -272,7 +262,6 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
-    | '/repos'
     | '/settings'
     | '/unified-graph'
     | '/login'
@@ -297,7 +286,6 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge'
     | '/_authenticated/memories'
     | '/_authenticated/memory-graph'
-    | '/_authenticated/repos'
     | '/_authenticated/settings'
     | '/_authenticated/unified-graph'
     | '/_guest/login'
@@ -369,13 +357,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/repos': {
-      id: '/_authenticated/repos'
-      path: '/repos'
-      fullPath: '/repos'
-      preLoaderRoute: typeof AuthenticatedReposRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/memory-graph': {
@@ -500,7 +481,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedMemoryGraphRoute: typeof AuthenticatedMemoryGraphRoute
-  AuthenticatedReposRoute: typeof AuthenticatedReposRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -523,7 +503,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedMemoryGraphRoute: AuthenticatedMemoryGraphRoute,
-  AuthenticatedReposRoute: AuthenticatedReposRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
