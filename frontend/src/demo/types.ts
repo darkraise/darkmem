@@ -406,7 +406,30 @@ export interface DemoRepo {
   files: string[]
 }
 
-export type CodeNodeKind = "file" | "class" | "method" | "function" | "module"
+// The demo fixture only ever emits the original five (file/class/method/
+// function/module). The real backend's GET /code/graph/{repo_id} response
+// merges two vocabularies into this one field: file/symbol nodes carry the
+// CodeSymbol.kind value (KIND_MAP in code_parser.py), aux code_graph_nodes
+// rows carry their own top-level kind column — T1.59 widened this union to
+// the full real union so neither vocabulary gets silently narrowed. See
+// KIND_CHART in code-canvas.tsx / code-explorer.tsx / code-filters.tsx,
+// which must stay exhaustive over every value added here.
+export type CodeNodeKind =
+  | "file"
+  | "module"
+  | "class"
+  | "method"
+  | "function"
+  | "struct"
+  | "interface"
+  | "trait"
+  | "enum"
+  | "namespace"
+  | "impl"
+  | "type"
+  | "property"
+  | "route"
+  | "tool"
 
 export interface DemoCodeNode {
   id: string

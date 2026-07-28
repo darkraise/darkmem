@@ -269,6 +269,22 @@ export function useCodeGraph(repoId: string | null) {
   })
 }
 
+export interface CodeFile {
+  id: string
+  file_path: string
+  language: string | null
+  last_commit_sha: string | null
+  indexed_at: string
+}
+
+export function useCodeFiles(repoId: string | null) {
+  return useQuery<CodeFile[]>({
+    queryKey: ["codeFiles", repoId],
+    queryFn: () => apiFetch(`/code/files/${repoId}`),
+    enabled: !!repoId,
+  })
+}
+
 export function useCodeSymbols({
   repoId,
   q,

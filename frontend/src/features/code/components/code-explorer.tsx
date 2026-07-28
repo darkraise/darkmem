@@ -15,8 +15,18 @@ const KIND_CHART: Record<CodeNodeKind, number> = {
   file: 1,
   module: 1,
   class: 2,
+  struct: 2,
+  interface: 2,
+  trait: 2,
+  enum: 2,
+  namespace: 2,
+  impl: 2,
+  type: 2,
+  property: 2,
   method: 3,
   function: 3,
+  route: 3,
+  tool: 3,
 }
 
 const ROW_HEIGHT = 24
