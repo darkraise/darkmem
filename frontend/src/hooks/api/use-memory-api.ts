@@ -108,6 +108,20 @@ export function useMemory(id: string) {
   })
 }
 
+// Mirrors backend CaptureAck (app/schemas/memory.py) — the default 202
+// response. `id` is the pre-minted memory id, resolvable once the buffer
+// flush lands it; the row is durably buffered whether or not the caller
+// waited for it.
+export interface CaptureAck {
+  schema_version: number
+  id: string
+  status: "accepted"
+}
+
+// POST /memories returns CaptureAck (202) by default, or a full Memory
+// (201) when wait_process=true settles inline within the server's
+// buffer_wait_timeout_seconds — otherwise it degrades to the plain ack,
+// so the row is never lost even when this union resolves to CaptureAck.
 export function useCreateMemory() {
   const qc = useQueryClient()
   return useMutation({
@@ -116,11 +130,15 @@ export function useCreateMemory() {
       tags?: string[]
       source?: string
       memory_type?: string
-    }) =>
-      apiFetch<Memory>("/memories", {
+      waitProcess?: boolean
+    }) => {
+      const { waitProcess, ...body } = data
+      const query = waitProcess ? "?wait_process=true" : ""
+      return apiFetch<CaptureAck | Memory>(`/memories${query}`, {
         method: "POST",
-        body: JSON.stringify(data),
-      }),
+        body: JSON.stringify(body),
+      })
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })

@@ -44,11 +44,16 @@ export function CreateMemoryDialog({
       tags: [] as string[],
     },
     onSubmit: async ({ value }) => {
+      // Bounded by the server's buffer_wait_timeout_seconds and degrades to
+      // the plain 202 ack on timeout — never hangs, only changes whether
+      // this interactive create sees its own row land before the dialog
+      // closes (T1.58 §4.3's M1 resolution).
       await createMemory.mutateAsync({
         content: value.content,
         memory_type: value.memory_type,
         tags: value.tags.length > 0 ? value.tags : undefined,
         source: "dashboard",
+        waitProcess: true,
       })
       toast.success("Memory created")
       form.reset()

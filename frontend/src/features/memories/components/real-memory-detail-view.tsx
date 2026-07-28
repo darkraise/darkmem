@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { Brain, FileQuestion, Link2 } from "lucide-react"
+import { Brain, FileQuestion, Link2, Pencil } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
+import { Button } from "darkraise-ui/components/button"
 import {
   Card,
   CardContent,
@@ -16,6 +18,7 @@ import {
   type MemoryLineageEntry,
 } from "@/hooks/api/use-memory-api"
 import { LifecycleBadge } from "./lifecycle-badge"
+import { MemoryEditorDialog } from "./memory-editor-dialog"
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -141,6 +144,7 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
 
 export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
   const { data: memory, isLoading, isError } = useMemory(memoryId)
+  const [editOpen, setEditOpen] = useState(false)
 
   if (isLoading) {
     return (
@@ -172,6 +176,12 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
         title="Memory detail"
         description="One memory, its enrichment, and its supersession lineage."
         parent={{ label: "Memories", href: "/memories" }}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="mr-2 size-4" />
+            Edit
+          </Button>
+        }
       />
       <Card elevation="low">
         <CardHeader className="space-y-3 pb-3">
@@ -221,6 +231,13 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
           <SupersessionLineage memory={memory} />
         </CardContent>
       </Card>
+
+      <MemoryEditorDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        memory={memory}
+        projects={[]}
+      />
     </div>
   )
 }

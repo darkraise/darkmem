@@ -28,15 +28,27 @@ import {
   TagsInputItemText,
 } from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
+import { DEMO } from "@/demo/flag"
 import { useDemoStore } from "@/demo/store"
 import type { DemoMemory } from "@/demo/types"
+import type { Memory } from "@/hooks/api/use-memory-api"
 import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
+
+// A DemoMemory carries the fields this form edits directly (project,
+// applies_when); a real Memory does not expose them over the wire, which is
+// fine because the real-mode edit branch below never submits — it only
+// prefills what the real row does carry. Real create never reaches this
+// component at all (RealMemoriesView routes create through
+// CreateMemoryDialog), so `memory` unset always means the demo create path.
+function isDemoMemory(memory: DemoMemory | Memory): memory is DemoMemory {
+  return "project" in memory
+}
 
 export interface MemoryEditorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** When set the dialog edits this memory; otherwise it creates one. */
-  memory?: DemoMemory
+  memory?: DemoMemory | Memory
   projects: string[]
   defaultProject?: string
 }
@@ -58,17 +70,32 @@ export function MemoryEditorDialog({
   const [context, setContext] = useState("")
   const [contentError, setContentError] = useState(false)
 
+  // Real mode never opens this dialog for create (RealMemoriesView routes
+  // create through CreateMemoryDialog); the only real-mode entry is the
+  // detail route's Edit action, which always passes a fetched Memory.
+  const editingRealMemory = !DEMO && memory !== undefined
+
   useEffect(() => {
     if (!open) return
     setContent(memory?.content ?? "")
     setMemoryType(memory?.memory_type ?? "fact")
-    setProject(memory?.project ?? defaultProject ?? "default")
+    setProject(
+      (memory && isDemoMemory(memory) ? memory.project : undefined) ??
+        defaultProject ??
+        "default",
+    )
     setTags(memory?.tags ?? [])
-    setContext(memory?.applies_when ?? "")
+    setContext(
+      (memory && isDemoMemory(memory) ? memory.applies_when : undefined) ?? "",
+    )
     setContentError(false)
   }, [open, memory, defaultProject])
 
   const handleSubmit = () => {
+    // Belt-and-braces alongside the disabled Save button below — editing a
+    // real memory isn't wired to the backend yet, and the demo store's
+    // `updateMemory` only knows how to write a DemoMemory shape anyway.
+    if (editingRealMemory) return
     if (content.trim().length === 0) {
       setContentError(true)
       return
@@ -84,7 +111,7 @@ export function MemoryEditorDialog({
         applies_when: appliesWhen,
         updated_at: now,
         timeline: [
-          ...(memory.timeline ?? []),
+          ...((isDemoMemory(memory) ? memory.timeline : undefined) ?? []),
           {
             at: now,
             kind: "updated",
@@ -253,7 +280,9 @@ export function MemoryEditorDialog({
 
           <DialogFooter className="items-center">
             <span className="text-muted-foreground mr-auto text-sm">
-              submit → 202 Accepted (mock)
+              {editingRealMemory
+                ? "editing isn't wired to the backend yet"
+                : "submit → 202 Accepted (mock)"}
             </span>
             <Button
               type="button"
@@ -262,7 +291,15 @@ export function MemoryEditorDialog({
             >
               Cancel
             </Button>
-            <Button type="submit">
+            <Button
+              type="submit"
+              disabled={editingRealMemory}
+              title={
+                editingRealMemory
+                  ? "Editing isn't wired to the backend yet"
+                  : undefined
+              }
+            >
               {memory ? "Save changes" : "Create memory"}
             </Button>
           </DialogFooter>

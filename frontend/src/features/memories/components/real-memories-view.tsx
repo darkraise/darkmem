@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Brain, Inbox, Loader2, Search, SearchX, X } from "lucide-react"
+import { Brain, Inbox, Loader2, Plus, Search, SearchX, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Input } from "darkraise-ui/components/input"
@@ -9,6 +9,7 @@ import { PageChrome } from "@/components/app-chrome"
 import { ExclusionStrip } from "@/components/darkmem"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
 import { EXCLUSION_CAVEAT, useMemorySearchPage } from "../use-memory-search"
+import { CreateMemoryDialog } from "./create-memory-dialog"
 import { MemoryRow, type MemoryRowData } from "./memory-row"
 
 const PAGE = 50
@@ -29,6 +30,7 @@ export function RealMemoriesView() {
   const [project, setProject] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [limit, setLimit] = useState(PAGE)
+  const [createOpen, setCreateOpen] = useState(false)
   const loadingRef = useRef(false)
 
   const { rows, total, exclusions, isLoading, isError, isFetching } =
@@ -92,6 +94,12 @@ export function RealMemoriesView() {
         icon={Brain}
         title="Memories"
         description="The L0 capture-and-search surface"
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 size-4" />
+            Create memory
+          </Button>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-2.5">
@@ -252,10 +260,18 @@ export function RealMemoriesView() {
               icon={<Inbox aria-hidden className="h-6 w-6" />}
               title="No memories captured yet"
               description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
+              action={
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus className="mr-2 size-4" />
+                  Capture your first memory
+                </Button>
+              }
             />
           )}
         </div>
       </div>
+
+      <CreateMemoryDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   )
 }
