@@ -16,7 +16,6 @@ import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -71,7 +70,7 @@ async def list_failures(
         entity_type=entity_type, pipeline_name=pipeline_name,
         limit=limit, offset=offset,
     )
-    return {"items": items, "total": total}
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/counts")
@@ -111,20 +110,13 @@ async def retry_failure(
 
     handler = RETRY_HANDLERS.get(failure["pipeline_name"])
     if not handler:
-        return JSONResponse(
+        raise HTTPException(
             status_code=503,
-            content={
-                "accepted": False,
-                "reason": "no_handler",
-                "pipeline_name": failure["pipeline_name"],
-            },
+            detail=f"No retry handler registered for pipeline {failure['pipeline_name']!r}",
         )
 
     if not retry_locks.try_acquire(failure_id):
-        return JSONResponse(
-            status_code=409,
-            content={"accepted": False, "reason": "already_retrying"},
-        )
+        raise HTTPException(status_code=409, detail="Failure is already retrying")
 
     async def _run():
         try:
