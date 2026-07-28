@@ -17,6 +17,18 @@ from .base import AuditRepositoryBase, MemoryRepositoryBase, TagRepositoryBase
 MEMORY_PREDECESSORS_LIMIT = 20
 
 
+def predecessors_stmt(memory_id, limit: int = MEMORY_PREDECESSORS_LIMIT):
+    """The reverse-lineage query, factored out so the EXPLAIN test in
+    `tests/test_memory_lineage_index.py` proves the plan of the statement
+    that actually runs rather than a hand-copied lookalike."""
+    return (
+        select(Memory)
+        .where(Memory.superseded_by == memory_id)
+        .order_by(Memory.created_at.desc())
+        .limit(limit)
+    )
+
+
 class PostgresMemoryRepository(MemoryRepositoryBase):
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -48,19 +60,11 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
     async def get_predecessors(self, memory_id, limit: int = MEMORY_PREDECESSORS_LIMIT) -> list[Memory]:
         """Memories this one directly superseded — the reverse of `superseded_by`.
 
-        `superseded_by` carries no index (the baseline schema is a
-        single-owner-per-epic file; adding one is out of this change's
-        scope), so this is a filtered scan on one column. Acceptable while
-        superseded rows stay a small fraction of the table; a future
-        schema-owning task can index it if that stops holding.
+        Backed by `ix_memories_superseded_by` (T1.66); see
+        `tests/test_memory_lineage_index.py` for the EXPLAIN proof that the
+        planner actually uses it.
         """
-        stmt = (
-            select(Memory)
-            .where(Memory.superseded_by == memory_id)
-            .order_by(Memory.created_at.desc())
-            .limit(limit)
-        )
-        result = await self.session.execute(stmt)
+        result = await self.session.execute(predecessors_stmt(memory_id, limit))
         return list(result.scalars().all())
 
     async def get_many(self, memory_ids: list) -> list[Memory]:

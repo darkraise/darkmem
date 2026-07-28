@@ -179,6 +179,10 @@ def upgrade() -> None:
     )
     op.execute("CREATE INDEX ix_memories_project ON memories (project)")
     op.execute("CREATE INDEX ix_memories_status ON memories (status)")
+    # The reverse lineage query (`get_predecessors`) filters on this column;
+    # the forward direction is a plain column read on the row already in
+    # hand and needs no index of its own (T1.66).
+    op.execute("CREATE INDEX ix_memories_superseded_by ON memories (superseded_by)")
     op.execute("CREATE INDEX ix_memories_technologies ON memories USING gin (technologies)")
     op.execute("CREATE INDEX ix_memories_fts ON memories USING gin (search_vector)")
 
