@@ -73,6 +73,10 @@ beforeAll(() => {
     disconnect() {}
   } as unknown as typeof ResizeObserver
 
+  // jsdom ships no scrollIntoView (T1.60) — ChatMessages calls it in an
+  // effect on every render, which throws under jsdom without this stub.
+  Element.prototype.scrollIntoView = vi.fn()
+
   // react-virtual sizes its scroll container from offsetWidth/offsetHeight.
   for (const [prop, value] of [
     ["offsetWidth", 1024],
