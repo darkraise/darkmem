@@ -43,15 +43,15 @@ and the Note says so. That rule is the whole point of this file.
 
 ## Rollup
 
-| Epic | Tasks | todo | wip | blocked | review | done | Gate |
-|---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | 0 | G-A open |
-| E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | G-B open |
+| Epic | Tasks | todo | wip | blocked | review | done | dropped | Gate |
+|---|---|---|---|---|---|---|---|---|
+| E0 — Baseline & harness | 20 | 0 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
+| E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
 | E2 — Truth core | 59 | 59 | 0 | 0 | 0 | 0 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |
+| EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
 | **Total** | **217** | **113** | **0** | **0** | **0** | **103** | **1** | |
 
 ---
