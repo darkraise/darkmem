@@ -1,0 +1,169 @@
+# Two-door parity — every Phase-1 surface, REST and MCP
+
+**Audit date:** 2026-07-28 · **Task:** T1.42d · **Contract:** doc 12 (`docs/design/12-api-and-mcp-contract.md`), invariant 17.
+
+Invariant 17 is *two front doors, one service layer*: an MCP tool and its REST
+twin call the same service and never drift into two engines, and **every
+capability lands on both doors or is explicitly single-door with a stated
+reason**. This file is the audit that makes that checkable instead of
+aspirational. It is exhaustive over the Phase-1 surface — every REST route on
+`app.routes` and every tool in the live FastMCP registry appears in exactly one
+row.
+
+**43 surfaces: 13 two-door, 29 single-door with a stated reason (23 REST-only, 6 MCP-only), 1 divergent.**
+
+## How to read a row, and what each status costs
+
+- **two-door** — the capability is reachable from both doors. Where the two
+  doors deliberately differ in *wire shape* (never in ranking, filtering or
+  scope) the difference is recorded in the row.
+- **single-door** — reachable from one door, with a reason. A schedule is not a
+  reason: *"not yet built"*, *"planned"*, *"TBD"* are precisely the sequencing
+  invariant 17 forbids, and `tests/test_door_parity.py` rejects them.
+- **divergent** — the worst state, and deliberately not filed as an exemption.
+  Both doors implement the same capability separately and the two have already
+  drifted, so the same question gets two answers with no error anywhere. A
+  divergence must name an owning task, and the test asserts that task exists.
+
+## The table is generated, not maintained
+
+`backend/tests/test_door_parity.py`'s `PARITY_TABLE` is the single source of
+truth; the block below is rendered from it and `test_the_committed_table_is_the_enforced_table`
+fails if the two disagree. Do not edit the markdown by hand — change the table
+and regenerate:
+
+```bash
+cd backend && .venv/bin/python -c \
+  "from tests.test_door_parity import render_markdown; print(render_markdown())"
+```
+
+The enumeration itself is driven off the router and the tool registry, never
+off a literal, so a new REST route or a new tool that nobody classified fails
+the test rather than quietly joining the surface.
+
+## The parity table
+
+<!-- BEGIN GENERATED PARITY TABLE -->
+| Surface | REST | MCP | Status | Reason / note |
+|---|---|---|---|---|
+| `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |
+| `memory.capture_batch` | `POST /api/v1/memories/batch` | `memory_batch_add` | two-door | Both doors resolve identity on the raw entry dicts before MemoryCreate validation, and both mirror the 1-100 cap. |
+| `memory.search` | `POST /api/v1/memories/search`<br>`POST /api/v1/memories/search/paginated` | `memory_search` | two-door | Stated wire asymmetry, settled by T1.42a and T1.42c: the tool answers a bare JSON array, which has nowhere to carry the envelope's ContextEcho or excluded counts. Giving it one is a breaking change that doc 12 section 3 says ships as a new tool name, never as a silent mutation of this one. The ranking, the filters and the SQL pushdown are the same service call. |
+| `memory.read` | `GET /api/v1/memories/{memory_id}` | `memory_get` | two-door | — |
+| `memory.update` | `PUT /api/v1/memories/{memory_id}` | `memory_update` | two-door | — |
+| `memory.delete` | `DELETE /api/v1/memories/{memory_id}` | `memory_delete` | two-door | — |
+| `memory.reason` | `POST /api/v1/memories/reason` | `memory_reason` | two-door | — |
+| `memory.duplicates` | `GET /api/v1/memories/{memory_id}/duplicates` | `memory_find_duplicates` | two-door | — |
+| `tag.histogram` | `GET /api/v1/tags` | `memory_tags` | two-door | — |
+| `repo.list` | `GET /api/v1/repos` | `list_repos` | two-door | — |
+| `code.search` | `POST /api/v1/code/search` | `code_search` | two-door | Both doors fuse through CodeQueryService.search_code and publish the same rrf_score under the same score key (T1.42c). With no embedder configured the doors answer differently on purpose: the tool returns doc 12 section 3's typed degradation envelope, the route degrades to the keyword arm. |
+| `code.blast_radius` | `POST /api/v1/code/blast-radius` | `code_blast_radius` | two-door | Only the name-to-id resolution is the tool's; the recursive traversal is the service's (T1.42c). |
+| `code.symbols` | `GET /api/v1/code/symbols`<br>`GET /api/v1/code/symbols/lookup`<br>`GET /api/v1/code/symbols/{symbol_id}` | `code_symbol`<br>`code_file_symbols` | two-door | Two doors, two implementations: both tools build their own SQLAlchemy query instead of spending CodeQueryService.list_symbols. Not yet observably divergent -- the tools emit a subset of the service's keys and no row differs -- but it is the same latent drift T1.42c found already realised on code_search and code_blast_radius. Delegating is not a no-behaviour-change edit (the service caps at limit=50 and the tools are uncapped), so it needs an owner, not a one-liner. |
+| `memory.stats` | `GET /api/v1/analytics/stats` | `memory_stats` | **divergent** | **Owner: T1.42f.** Both doors hand-roll the same three counts and have already drifted in a user-visible way: the route also returns entities and relationships from PostgresGraphRepository.get_stats(), and the tool returns neither, so an agent asking how big the graph is gets nothing where the UI gets a number. Neither door calls a service -- the route computes inline -- so there is nothing to point the tool at, and closing it means lifting the computation into AnalyticsService and moving both doors onto it. |
+| `auth.session` | `POST /api/v1/auth/login`<br>`POST /api/v1/auth/logout`<br>`POST /api/v1/auth/refresh`<br>`POST /api/v1/auth/change-password`<br>`GET /api/v1/auth/me` | — | REST single-door | The MCP door is unauthenticated by design (invariant 20, doc 12 section 6), so a session surface on it is a contradiction in terms: there is no session to establish, and a change-password twin would let any LAN peer seize the admin account. |
+| `auth.audit` | `GET /api/v1/auth/audit` | — | REST single-door | A human security-review read of the doc 12 section 7 observability class: it enumerates login attempts and token events, which is precisely the material an unauthenticated caller must not be able to page through. |
+| `setup.tofu` | `POST /api/v1/setup`<br>`GET /api/v1/setup/status`<br>`GET /api/v1/setup/fs/list`<br>`GET /api/v1/setup/fs/roots`<br>`POST /api/v1/setup/probe-models` | — | REST single-door | Trust-on-first-use admin provisioning (invariant 21). It writes the admin password hash and the provider credentials and browses the host filesystem to choose a repo root; a twin would make the TOFU window seizable by any LAN peer, which is the one thing the no-pre-shared-secret design depends on not happening. |
+| `system.fs_browse` | `GET /api/v1/system/fs/list`<br>`GET /api/v1/system/fs/roots` | — | REST single-door | Authenticated host-filesystem browse behind the repo-path picker. Directory listing over an unauthenticated door is a disclosure primitive with no offsetting agent benefit (invariant 20). |
+| `config.runtime` | `GET /api/v1/config/classification-areas`<br>`GET /api/v1/config/feature-flags`<br>`PUT /api/v1/config/feature-flags`<br>`GET /api/v1/config/llm`<br>`POST /api/v1/config/llm`<br>`GET /api/v1/config/repo-allowlist`<br>`PUT /api/v1/config/repo-allowlist`<br>`GET /api/v1/config/repos-path`<br>`PUT /api/v1/config/repos-path`<br>`GET /api/v1/config/system-prompts`<br>`PUT /api/v1/config/system-prompts`<br>`GET /api/v1/config/theme`<br>`PUT /api/v1/config/theme` | — | REST single-door | Operator configuration -- provider credentials, feature flags, the repo allowlist, the repos path, the system prompts. Doc 12 section 3's confirmed-power rule generalises: the unauthenticated LAN door must never carry a power the REST door reserves for an authenticated human, and the read half alone would hand out the provider API key. |
+| `analytics.observability` | `GET /api/v1/analytics/overview`<br>`GET /api/v1/analytics/pipeline-logs` | — | REST single-door | Human-observability reads behind the dashboard (doc 12 section 7's sanctioned class): aggregate activity over a date window and the raw ingest log, which is a view of how the box is running rather than knowledge an agent retrieves. |
+| `analytics.reprocess` | `POST /api/v1/analytics/reprocess`<br>`POST /api/v1/analytics/reprocess/stream` | — | REST single-door | A whole-corpus reprocess is unbounded operator maintenance that spends the configured provider budget and rewrites every memory's graph. The reasoning that keeps ratification off the MCP door (doc 12 section 3) keeps this off it: an unauthenticated caller must not be able to spend the operator's money or churn the whole corpus. |
+| `events.read` | `GET /api/v1/events`<br>`GET /api/v1/events/calendar`<br>`GET /api/v1/events/timeline` | — | REST single-door | Stated in doc 12 section 7 verbatim, and the canonical example of the sanctioned exception: an observability and curation surface a human consumes to reconstruct history, not an agent capability, and the raw stream would leak cross-project operational detail with no isolation benefit. |
+| `graph.candidate_read` | `GET /api/v1/graph/full`<br>`GET /api/v1/graph/unified`<br>`GET /api/v1/graph/entities`<br>`GET /api/v1/graph/entities/{entity_id}/neighbors`<br>`GET /api/v1/graph/memory-context/{memory_id}` | — | REST single-door | The L1 candidate graph, served as node-and-edge payloads the UI canvas lays out client-side. Doc 12 section 4 fixes L1 as never directly served on a retrieval surface; the agent-facing path to the same knowledge is memory_search at L0 and, target-new, the vault family at L2/L3. |
+| `jobs.control` | `GET /api/v1/jobs`<br>`PUT /api/v1/jobs/{key}`<br>`PUT /api/v1/jobs/{key}/config`<br>`POST /api/v1/jobs/{key}/trigger` | — | REST single-door | Scheduler control. Triggering or reconfiguring a job is remote control of the box's background work -- expired_memory_cleanup deletes rows and graph_orphan_cleanup prunes the graph -- so it stays behind the authenticated door. |
+| `pipeline.observability` | `GET /api/v1/pipeline`<br>`GET /api/v1/pipeline/metrics` | — | REST single-door | Human-observability read behind the pipeline dashboard: configuration echo and per-phase metrics, an operator's view of the box's health rather than knowledge an agent retrieves. |
+| `pipeline_failures.triage` | `GET /api/v1/pipeline-failures`<br>`GET /api/v1/pipeline-failures/counts`<br>`GET /api/v1/pipeline-failures/{failure_id}`<br>`DELETE /api/v1/pipeline-failures/{failure_id}`<br>`POST /api/v1/pipeline-failures/{failure_id}/retry`<br>`POST /api/v1/pipeline-failures/retry-all` | — | REST single-door | Operator triage and remediation: the retry doors re-run extraction and spend the provider budget, and the listing is a health view for the human. An agent learns its own capture's fate from the pipeline websocket and its ack, not from another caller's failure queue. |
+| `buffer.triage` | `GET /api/v1/memory-buffer`<br>`GET /api/v1/memory-buffer/stats`<br>`DELETE /api/v1/memory-buffer/{buffer_id}`<br>`POST /api/v1/memory-buffer/{buffer_id}/requeue` | — | REST single-door | The operator's view of the Tier-A capture buffer plus poison-row remediation. An agent already learns its own capture's fate from memory_add's ack (doc 05 section 2); another caller's buffered rows, and the power to drop or requeue them, are not its business. |
+| `reembed.maintenance` | `POST /api/v1/reembed/all`<br>`POST /api/v1/reembed/memories`<br>`POST /api/v1/reembed/entities`<br>`POST /api/v1/reembed/code-chunks`<br>`POST /api/v1/reembed/prune-cache`<br>`GET /api/v1/reembed/obsolete-counts`<br>`GET /api/v1/reembed/obsolete/memories`<br>`GET /api/v1/reembed/obsolete/entities`<br>`GET /api/v1/reembed/obsolete/code-chunks` | — | REST single-door | Expensive, destructive maintenance around an embedder rotation: it re-embeds the whole corpus into a new fingerprint partition and prunes the entity cache. Operator power, authenticated door only; the obsolete-listings exist to let the human decide whether to pay for it. |
+| `vectors.projection` | `GET /api/v1/vectors/projection` | — | REST single-door | A 2-D projection computed purely for the UI's scatter plot. It is a rendering aid over embeddings an agent already reaches as ranked results through memory_search, so a twin would ship coordinates no agent has a use for. |
+| `chat.console` | `POST /api/v1/chat/completions`<br>`GET /api/v1/chat/conversations`<br>`POST /api/v1/chat/conversations`<br>`GET /api/v1/chat/conversations/{conversation_id}`<br>`PATCH /api/v1/chat/conversations/{conversation_id}`<br>`DELETE /api/v1/chat/conversations/{conversation_id}` | — | REST single-door | The UI's chat console runs on the box's own configured LLM. An MCP client brings its own model, and a twin would turn the unauthenticated door into an open proxy spending the operator's provider credit. |
+| `memory.bulk_delete` | `POST /api/v1/memories/delete` | — | REST single-door | The UI's multi-select delete. An agent removes the rows it knows by id through memory_delete; a mass-erasure primitive on an unauthenticated door is exactly the power doc 12 section 3 keeps behind authentication. |
+| `memory.merge` | `POST /api/v1/memories/{memory_id}/merge` | — | REST single-door | A human curation decision that collapses two memories and discards content -- the same conflict of interest doc 12 section 3 declines for the review queue. The agent gets the read (memory_find_duplicates) and the human makes the call. |
+| `repo.manage` | `POST /api/v1/repos`<br>`GET /api/v1/repos/stats`<br>`GET /api/v1/repos/{repo_id}`<br>`PUT /api/v1/repos/{repo_id}`<br>`DELETE /api/v1/repos/{repo_id}`<br>`POST /api/v1/repos/{repo_id}/reindex`<br>`GET /api/v1/repos/{repo_id}/tasks`<br>`DELETE /api/v1/repos/{repo_id}/tasks/{task_id}` | — | REST single-door | Registration and indexing control: creating a repo makes the box clone and index an arbitrary URL or path under the operator's allowlist, and reindex spends the provider budget. The reads carry indexing-operations detail -- index debt, the task queue, the HEAD sha -- that belongs to the operator dashboard, while list_repos already gives an agent the id, name and counts it needs to scope a code query. |
+| `code.files` | `GET /api/v1/code/files/{repo_id}` | — | REST single-door | A file-tree browse for the code explorer. The agent-facing equivalent is code_file_symbols, which answers 'what is in this file' directly, so a twin would add a browse round-trip and no capability. |
+| `code.repo_graph` | `GET /api/v1/code/graph/{repo_id}` | — | REST single-door | The whole-repo node-and-edge dump the UI canvas lays out client-side. The agent-facing projections of the very same rows are the six code_* graph tools below, which answer a question instead of shipping a graph; a tool twin would hand an agent a repo-sized payload to traverse itself. |
+| `code.wiki` | `GET /api/v1/code/wiki/{repo_id}` | — | REST single-door | Generated repo prose rendered by the UI. It is strictly read-only -- generation is an explicit POST /repos/{id}/reindex?generate_wiki=true, never a GET side effect -- and an agent reads the code graph and the symbols themselves rather than a summary written for a human. |
+| `health.liveness` | `GET /health` | — | REST single-door | An unauthenticated liveness probe for the container runtime. A tool twin is meaningless by construction: reaching the tool already proves the server is up. |
+| `code.context` | — | `code_context` | MCP single-door | An agent-shaped projection -- callers, callees, heritage, community, processes for one symbol -- of rows the REST door serves whole through GET /code/graph/{repo_id}. No knowledge is REST-unreachable; what is single-door is the filtered query, because the UI's consumer is a canvas that wants the graph and the agent's consumer is a prompt that wants the answer. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
+| `code.dependencies` | — | `code_dependencies` | MCP single-door | The imports edges for one repo or one file, filtered server-side out of the same code_edges rows GET /code/graph/{repo_id} ships whole to the canvas. Single-door in shape, not in capability. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
+| `code.communities` | — | `code_communities` | MCP single-door | The Leiden community nodes for one repo, filtered out of the same code_graph_nodes rows GET /code/graph/{repo_id} ships whole. The UI renders communities as clusters on the canvas; the agent wants them as a list. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
+| `code.processes` | — | `code_processes` | MCP single-door | The traced execution flows for one repo with their ordered steps, filtered out of the same code_graph_nodes and code_edges rows GET /code/graph/{repo_id} ships whole. Single-door in shape, not in capability. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
+| `code.rename` | — | `code_rename` | MCP single-door | A cross-file reference sweep with a per-reference confidence, assembled from the definition rows and the call, heritage and import edges the REST door serves whole. It exists to drive an agent's edit; the UI has no rename view for a twin to feed. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
+| `code.changes` | — | `code_changes` | MCP single-door | The only genuinely single-door capability in the code family: it shells out to git in the repo working directory and reports the uncommitted diff against the indexed symbols. Every REST read and the whole indexed graph are commit-based, so no route carries this state and the UI has no working-tree view. It serves the agent editing the tree right now. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. It has none, and unlike its five siblings the underlying state is not REST-reachable either. Escalated by T1.42d, not resolved. |
+<!-- END GENERATED PARITY TABLE -->
+
+## Findings this audit raises
+
+### 1. `memory_stats` is a live divergence — owner **T1.42f**
+
+The one row marked divergent. `GET /api/v1/analytics/stats` and the
+`memory_stats` tool each hand-roll the same three counts, and they have already
+drifted where a caller can see it: the route also returns `entities` and
+`relationships` from `PostgresGraphRepository.get_stats()`, the tool returns
+neither. Neither door calls a service — the route computes inline — so there is
+nothing to point the tool at. Closing it means lifting the computation into
+`AnalyticsService` and moving both doors onto it, which spans
+`app/services/**` and `app/api/routes/**`. Found by T1.42c, opened as T1.42f by
+this audit.
+
+### 2. Doc 12 §3 claims six REST twins that do not exist — escalated, not resolved
+
+Doc 12 §3 lists the code family and states that each of the eleven tools comes
+"with a REST twin under `/code` or `/repos`", tagged **(exists today)**. Six of
+them have no such route: `code_context`, `code_dependencies`, `code_changes`,
+`code_communities`, `code_processes`, `code_rename`.
+
+The claim is true of the *rows* and false of the *query*. Five of the six read
+`code_edges` / `code_graph_nodes`, which `GET /code/graph/{repo_id}` serves
+whole to the UI canvas, so no knowledge is REST-unreachable — what is
+single-door is the filtered projection. `code_changes` is the exception: it
+shells out to `git` in the repo working directory, and no REST read carries
+uncommitted state at all.
+
+Each of the six therefore carries a stated single-door reason above. But a
+design doc asserting a shipped twin that does not exist is an invariant-23
+(scaffolding-not-substrate) problem, and correcting a design doc is a Tier-3
+amendment. **This audit records the divergence and does not edit doc 12.**
+
+### 3. `code_symbol` / `code_file_symbols` are a latent repeat of the T1.42c defect
+
+Marked two-door, and genuinely reachable from both doors — but each tool builds
+its own SQLAlchemy query instead of spending `CodeQueryService.list_symbols`.
+No row differs today, so this is not yet a divergence; it is the same
+parallel-implementation setup T1.42c found *already realised* on `code_search`
+and `code_blast_radius`. Delegating is not a behaviour-preserving one-liner
+(the service caps at `limit=50`; the tools are uncapped), so it needs an owner
+rather than an opportunistic edit.
+
+### 4. No capability was found sequenced MCP-behind-REST
+
+The direction invariant 17 most fears — a capability shipped on REST with the
+MCP twin "planned" — did not appear. Every REST-single-door row above is
+single-door for a trust, curation, operator-power or rendering reason, not
+because the tool has not been written yet. The asymmetries that do exist run
+the other way: six code tools ahead of their routes.
+
+## The two kinds of sanctioned single door, and a third this audit names
+
+Doc 12 §1 names two sanctioned kinds: the **confirmed-power writes** (ratify,
+review-resolve — target-new, not on the Phase-1 surface yet) and the
+**human-observability reads** (the review queue, the events stream). The audit
+finds the shipped surface uses three, and the third is not new — it is the same
+reasoning applied to a different noun:
+
+1. **Trust boundary.** `/mcp` is unauthenticated on the LAN behind only the Host
+   allowlist (invariant 20), so auth, setup, config, filesystem browse, chat
+   completions, bulk delete and merge stay on the authenticated door. The rule
+   is doc 12 §3's own: the unauthenticated door must never carry a power the
+   REST door reserves for an authenticated human.
+2. **Human observability and curation.** Events, analytics, the pipeline and
+   buffer views, the failure queue, the audit log, the vector projection, the
+   L1 graph canvas — a human reconstructing what the box did, not an agent
+   retrieving knowledge.
+3. **Operator power over cost and state.** Reprocess, reindex, reembed, job
+   trigger and job config all spend the operator's provider budget or churn the
+   corpus. This is the trust boundary argument applied to money and durability
+   rather than to secrets, and it is why these are called out separately here.
+
+The mirrored kind — **agent-shaped projections** of rows the REST door serves
+whole — covers the six MCP-single-door code tools, and it is the kind doc 12 §3
+does not currently name.
