@@ -1610,6 +1610,12 @@ discipline — decide whether to port or replace them, and say which.
       in warn while the binding sweep ran)
 - [ ] `scripts/gate.sh --full` invokes it
 - [ ] The disposition of `docs/e2e/scripts/` is recorded — ported, replaced, or retired
+- [ ] **The dead soft-skip guards are fixed or retired** (found by T1.58, 2026-07-28):
+      `locator.isVisible({timeout})` is deprecated and **ignored** by the installed Playwright,
+      so at least 11 pre-existing guards across the suite never actually wait. A spec that
+      soft-skips on a guard that cannot wait is green while proving nothing — the same
+      green-but-empty class this session found five times, and the reason this suite needs an
+      owner rather than a patch
 
 **Verify.** `./scripts/gate.sh --full`
 
