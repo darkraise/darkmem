@@ -101,6 +101,12 @@ preflight_fail() {
 [ -d "$FRONTEND/node_modules" ] || preflight_fail \
     "frontend dependencies not installed — run 'cd frontend && npm ci' first"
 
+# Only --full needs a key: the floor runs the F1 bench with --algo-only and
+# never dispatches. Checked here rather than left to the retrieval eval,
+# which reaches it after the whole floor has already run.
+[ "$FULL" -eq 0 ] || [ -n "${DEEPSEEK_API_KEY:-}" ] || preflight_fail \
+    "DEEPSEEK_API_KEY not set — the retrieval eval under --full dispatches against DeepSeek"
+
 
 # ── the floor ────────────────────────────────────────────────────────────
 
