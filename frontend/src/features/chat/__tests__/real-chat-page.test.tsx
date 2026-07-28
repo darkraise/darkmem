@@ -65,7 +65,8 @@ describe("RealChatPage", () => {
     expect(
       screen.getByPlaceholderText(/Ask about your memories/),
     ).toBeInTheDocument()
-    expect(screen.getByText(/context panel/)).toBeInTheDocument()
+    expect(screen.getByText("Context used for this turn")).toBeInTheDocument()
+    expect(screen.getByText("No context yet")).toBeInTheDocument()
   })
 
   it("selecting a different conversation re-fetches via useConversation with the new id, not stale", async () => {

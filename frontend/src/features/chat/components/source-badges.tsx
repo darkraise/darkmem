@@ -7,6 +7,9 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "darkraise-ui/components/collapsible"
+import { LayerChip } from "@/components/darkmem"
+import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
+import type { MemoryStatus } from "@/hooks/api"
 
 interface SourceBadgesProps {
   memories: {
@@ -17,6 +20,8 @@ interface SourceBadgesProps {
     score?: number
     id?: string
     created_at?: string
+    project?: string
+    status?: MemoryStatus
   }[]
   entities: { id?: string; name?: string; entity_type?: string }[]
 }
@@ -77,6 +82,10 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                   key={m.id ?? i}
                   className="border-border bg-card rounded-lg border p-2.5"
                 >
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <LayerChip layer={0} />
+                    <LifecycleBadge status={m.status} />
+                  </div>
                   <div className="text-foreground/90 line-clamp-2 leading-relaxed">
                     {m.content || `Memory ${m.id?.slice(0, 8)}`}
                   </div>

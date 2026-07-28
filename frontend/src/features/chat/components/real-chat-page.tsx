@@ -11,6 +11,7 @@ import { useChatStream } from "../hooks/use-chat-stream"
 import { ChatSidebar } from "./chat-sidebar"
 import { ChatMessages } from "./chat-messages"
 import { ChatInput } from "./chat-input"
+import { ChatContextPanel, type ChatContextRow } from "./chat-context-panel"
 
 /**
  * The real-backend counterpart of the demo Chat page (Ruling 5's DEMO ?
@@ -48,6 +49,15 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
   useEffect(() => {
     setSelectedTurnId(null)
   }, [activeId])
+
+  // The live-streaming turn while one is in flight, else the selected
+  // historical turn's persisted snapshot, else no context yet (§6.4).
+  const contextRows: ChatContextRow[] | null =
+    stream.isStreaming && stream.sources
+      ? stream.sources.memories
+      : contextTurn
+        ? (contextTurn.context?.memories ?? [])
+        : null
 
   const handleSend = async (content: string) => {
     const resultId = await stream.sendMessage(activeId, content)
@@ -95,10 +105,7 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
           />
         </div>
 
-        {/* Step 8 replaces this with ChatContextPanel. */}
-        <div className="border-border bg-card text-muted-foreground rounded-md border p-3 text-sm">
-          context panel: not yet wired{contextTurn ? ` (turn ${contextTurn.id})` : ""}
-        </div>
+        <ChatContextPanel rows={contextRows} />
       </div>
     </div>
   )

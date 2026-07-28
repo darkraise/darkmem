@@ -27,3 +27,33 @@ export function LifecycleBadge({
     </Badge>
   )
 }
+
+/**
+ * The compact counterpart for a prose-embedded citation chip (chat's inline
+ * MemoryBadge, T1.60): where LifecycleBadge renders nothing on `active` (a
+ * caller with room for the full badge already shows a stated absence
+ * elsewhere), a chip with no room for that has no way to distinguish "known
+ * active" from "no lifecycle signal at all" if this also rendered nothing.
+ * So this dot is always present — muted for active/unset, the same warning
+ * color LifecycleBadge uses otherwise — reusing its status→visual mapping
+ * rather than a second, chat-local color scheme.
+ */
+export function LifecycleDot({
+  status,
+  className,
+}: {
+  status?: MemoryStatus
+  className?: string
+}) {
+  const isCaution = !!status && status !== "active"
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+        isCaution ? "bg-warning" : "bg-muted-foreground/40",
+        className,
+      )}
+    />
+  )
+}
