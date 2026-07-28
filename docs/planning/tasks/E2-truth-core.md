@@ -904,6 +904,38 @@ overlapping and non-overlapping validity windows.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_contradiction_gold.py -q`
 
+#### T2.58 — Converge Chat onto the one ranking path
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.43` · `Doc: 07 §9, 13 §4.1, invariant 17` · `Tag: rebuild` · `Gate: G-D`
+
+**What.** `ChatService._search_memories` calls `vector_repo.search` **directly** —
+semantic-only, no keyword arm, no RRF, no rank-fusion factor, no trace. Memories goes through
+`HybridSearchService`. So a chat answer and the search surface can rank the same corpus
+differently, and Chat's context panel has no trace or exclusion counts to render because
+nothing computes them on that path. Found by T1.60's planning pass (2026-07-28) and confirmed
+in code by the controller; doc 13 §4.1 was amended to describe the tree rather than the intent.
+
+**Why it is here and not in E1.** Rewiring Chat's retrieval is fusion surgery on an
+invariant-bearing path, and it belongs beside the four-layer composition (T2.43) that decides
+what a composed result *is* — converging Chat onto today's fusion only to re-converge it after
+T2.43 would be two rewrites. T1.60 correctly satisfied its own Done-when (per-row honesty
+labels, which come from the row rather than from ranking) and escalated rather than building
+this silently.
+
+**This is the third ranking implementation, and the count is the point.** `rank_fusion.py` is
+canonical; `code_query.py` declares its own `RRF_K = 60` beside it; `ChatService` has none.
+A task that converges Chat and leaves `code_query`'s constant free to drift has closed one of
+two doors.
+
+**Done when:**
+- [ ] Chat retrieval runs through the same service and the same fusion as Memories
+- [ ] Chat's context panel renders the trace and exclusion counts it can now actually receive
+- [ ] A test fails if a second RRF constant is declared outside `rank_fusion.py`
+- [ ] The ranking a chat turn used and the ranking the search surface would give are
+      **demonstrably the same** for one fixed query — asserted, not assumed
+
+**Verify.** `cd backend && python -m pytest tests/test_chat_retrieval_parity.py -q`
+
 ---
 
 ## Amendment log
@@ -911,3 +943,4 @@ overlapping and non-overlapping validity windows.
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
 | 2026-07-27 | T2.50 | 2 | Added a precondition: the arm's entity-linking semantics must be stated before any multi-hop activation verdict is read off the retrieval slice | T0.06a's adversarial review measured the ingested graph pair by pair and found the multi-hop bridges are not uniform. Six of the fourteen live pairs bridge through one shared entity row; eight bridge through same-name nodes of *different* `entity_type`, which are disjoint under the domain model's `(name, entity_type)` identity because Phase-4 dedup is type-constrained. The slice's achievable ceiling is therefore 6/14 under strict node-identity traversal and 14/14 under name or name-embedding linking. That is a property of the arm, not of the gold, so the gold records both ceilings and defers rather than guessing; without the semantics stated, an activation number measures the gold's undocumented shape rather than the arm |
+| 2026-07-28 | T2.58 | 3 | **New task, opened from a Tier-3 doc/code conflict found by T1.60's planning pass and confirmed in code by the controller: Chat runs a THIRD retrieval implementation.** Doc 13 §4.1 asserted "Chat's reads ride the same one ranking path as Memories (doc 07 §9, invariant 17)". `ChatService._search_memories` calls `vector_repo.search` directly — semantic-only, no keyword arm, no RRF, no rank-fusion factor, no trace. Doc 13 §4.1 amended to describe the tree; the convergence is T2.58, placed in E2 beside T2.43. | Routed to E2 rather than E1 deliberately: converging Chat onto today's fusion only to re-converge it after the four-layer composition lands would be two rewrites of an invariant-bearing path. The escalation itself is the part worth recording — a Sonnet-tier planning lane hit retrieval-fusion surgery, recognised it as above its tier, and stopped instead of building it silently, which is runbook §2's escalate-on-discovery rule working in the direction it is hardest to follow. The count is also the finding: three ranking implementations now exist (`rank_fusion.py`, `code_query.py`'s own `RRF_K`, and Chat's none), so a task that fixes only one has closed one of two doors. |
