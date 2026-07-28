@@ -19,10 +19,11 @@ Guards that must all pass before a candidate is flipped (doc 08 §2.1):
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
@@ -108,6 +109,31 @@ def candidate_stmt(
         )
         .where(Memory.id != new_memory_id)
         .where(Memory.technologies.overlap(replaces_targets))
+    )
+
+
+async def demote_dependents(
+    session: AsyncSession, memory_ids: Sequence[UUID | str]
+) -> None:
+    """Clear the supersession pointer of everything pointing at ``memory_ids``.
+
+    ``fk_memories_superseded_by`` is ON DELETE SET NULL, so deleting a
+    superseding memory nulls its dependents' ``superseded_by`` while their
+    status stays 'superseded' — violating ``chk_superseded_has_pointer`` and
+    aborting the whole statement, which in the TTL sweep means no expired row
+    is ever reclaimed. Every delete path must call this FIRST, in the same
+    transaction. It is one function rather than a copy per caller so the two
+    orders can never drift apart (doc 08 §2.3).
+    """
+    ids = [str(m) for m in memory_ids]
+    if not ids:
+        return
+    await session.execute(
+        text(
+            "UPDATE memories SET status='deprecated', superseded_by=NULL "
+            "WHERE superseded_by = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": ids},
     )
 
 

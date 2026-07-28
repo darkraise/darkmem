@@ -232,6 +232,7 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     memory via ON DELETE CASCADE; orphaned graph entities and tags left behind
     are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup."""
     from sqlalchemy import text
+    from app.services.supersession import demote_dependents
     async def run() -> None:
         async with session_factory() as session:
             expired = (await session.execute(text(
@@ -240,20 +241,12 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
             if not expired:
                 return
             ids = list(expired)
-            # Demote any memory still pointing at an expiring superseder before
-            # the delete. fk_memories_superseded_by is ON DELETE SET NULL, so
-            # deleting a superseding memory would null a dependent's
-            # superseded_by while its status stays 'superseded' — violating
-            # chk_superseded_has_pointer and aborting the whole sweep batch
-            # (TTL'd memories would then never be reclaimed). MemoryService.
-            # delete_memory does the same demotion for the interactive path.
-            await session.execute(
-                text(
-                    "UPDATE memories SET status='deprecated', superseded_by=NULL "
-                    "WHERE superseded_by = ANY(CAST(:ids AS uuid[]))"
-                ),
-                {"ids": ids},
-            )
+            # Demote before deleting, never after: the demotion is what keeps
+            # the SET-NULL FK from stranding a dependent on 'superseded' with a
+            # null pointer, and one such row aborts the whole batch so no TTL'd
+            # memory is ever reclaimed. Shared with the interactive delete path
+            # (MemoryService.delete_memory) so the two cannot drift.
+            await demote_dependents(session, ids)
             result = await session.execute(
                 text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
                 {"ids": ids},
