@@ -23,7 +23,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 
 | Gate | Guards | Status | Cleared on | Evidence |
 |---|---|---|---|---|
-| G-A | Phase 0 → 1 | **open** | — | — |
+| G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** | — | — |
 | G-D | L2 → L3 | **open** | — | — |
