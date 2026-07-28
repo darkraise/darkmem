@@ -966,16 +966,29 @@ async def test_get_stats_survives_a_failing_graph_count(session):
     """Ruling 2: the SQLAlchemyError rollback guard must survive the move
     off the route intact. A failing graph COUNT must not poison the session
     or 500 the whole surface -- it must degrade honestly (null graph counts,
-    the memory/tag/source counts still present)."""
-    from sqlalchemy.exc import SQLAlchemyError
+    the memory/tag/source counts still present).
+
+    The failure must be a real aborted statement, not a Python-raised
+    stand-in: a synthetic `raise SQLAlchemyError(...)` never actually touches
+    Postgres, so the session was never poisoned and a test built on it cannot
+    tell a present rollback from a deleted one. Querying a table that does
+    not exist gets a real ProgrammingError from asyncpg and leaves the
+    session's transaction genuinely aborted until something rolls it back.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.services.analytics import AnalyticsService
 
     class _ExplodingGraphRepo:
-        async def get_stats(self):
-            raise SQLAlchemyError("simulated aborted graph COUNT")
+        def __init__(self, session: AsyncSession):
+            self.session = session
 
-    service = AnalyticsService(session, graph_repo=_ExplodingGraphRepo())
+        async def get_stats(self):
+            await self.session.execute(text("SELECT 1 FROM this_table_does_not_exist"))
+            return {"entity_count": 0, "relationship_count": 0}
+
+    service = AnalyticsService(session, graph_repo=_ExplodingGraphRepo(session))
     stats = await service.get_stats()
 
     assert stats["entities"] is None
@@ -984,7 +997,8 @@ async def test_get_stats_survives_a_failing_graph_count(session):
     assert stats["tags"] is not None
 
     # The session must still be usable after the rollback -- a poisoned
-    # session would raise InFailedSqlTransactionError on the next query.
+    # session raises InFailedSqlTransactionError (wrapped in
+    # PendingRollbackError by SQLAlchemy) on the next query instead.
     still_usable = (await session.execute(select(func.count()).select_from(Memory))).scalar()
     assert still_usable is not None
 
