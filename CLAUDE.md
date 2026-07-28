@@ -10,7 +10,9 @@ behavior change, not a cleanup.
 - **Merge gate (from the repo root): `./scripts/gate.sh`** — one command for
   the whole floor: the alembic single-revision assertion, backend pytest,
   frontend typecheck/test/build, the benchlib harness suite, and the F1 bench
-  in `--algo-only` mode. `--full` adds the retrieval eval and Playwright e2e.
+  in `--algo-only` mode. `--full` adds the retrieval eval, the API e2e
+  suite (`backend/scripts/e2e/`, boots its own disposable stack), the
+  Playwright e2e run, and a port-hygiene diff.
   Exits non-zero naming the failing gate; `GATE BLOCKED` (exit 2) means a
   missing toolchain, not a red gate. **`pyproject.toml` sets
   `testpaths = ["tests"]`, so plain `pytest -q` does NOT collect
@@ -144,6 +146,33 @@ back to `RELATED_TO`. `LEGACY_*_TYPE_MAP` rewrites historical names
 (e.g. `framework → tool`, `RUNS_ON → DEPLOYED_ON`) at runtime so old
 rows keep matching new code. Adding a type means editing those tables;
 relying on a free-form value will silently get rewritten.
+
+## Capture is buffered (`memory_buffer`, doc 05 §2)
+
+All four capture doors — REST `POST /memories` (+`/batch`) and MCP
+`memory_add` / `memory_batch_add` — validate, resolve `source` and
+`origin_key`, enqueue a `memory_buffer` row and return **202** with a
+`CaptureAck`. The ack's id is the **pre-minted memory id**, which rides
+the buffer row's `metadata_`; the buffer row's own id is a separate
+tracking handle — never conflate the two. `wait_process=true` is the
+opt-in synchronous escape: it drives that row's flush inline through the
+same `FOR UPDATE SKIP LOCKED` claim the scheduled job uses and returns
+the processed memory (201), bounded by `buffer_wait_timeout_seconds`
+before degrading to the plain ack. The `buffer_flush` job drains the
+queue; its four thresholds (`buffer_claim_batch`, `buffer_max_attempts`,
+`buffer_claim_visibility_seconds`, `buffer_done_retention_hours`) are the
+job's `config_schema`, persisted in the `config` row `job:buffer_flush`.
+A batch that fails to materialize retries row-at-a-time so the poisonous
+row settles alone into `error` with a `last_error` naming the real
+failure; a flush overrunning its deadline returns the batch to `pending`
+with the attempt refunded and shrinks the next claim. `error` rows are
+retained until resolved (the sweep deletes only `done`) and are triaged
+over `GET /api/v1/memory-buffer` (REST single-door; requeue resets
+attempts and journals `buffer_requeued`, discard journals
+`buffer_discarded`). The claim SQL bounds its batch with a
+`WITH ... AS MATERIALIZED` CTE — a plain sub-select lets the planner
+re-execute it per outer row and claim the entire backlog, ignoring the
+`LIMIT`; do not "simplify" it.
 
 ## Pipeline phases (`ProcessingPipeline.process_batch`)
 
@@ -331,20 +360,27 @@ share one task. `_flag_cache_reset` is a test hook only.
 
 Current behavioral flags (the rest govern concurrency or thresholds):
 `hybrid_search_enabled`, `reranker_enabled`, `relation_rescue`,
-`confidence_rank_gamma`.
+`confidence_rank_gamma`. The ranking arms `w_importance` / `w_heat` /
+`w_recency` / `w_context_boost` exist at weight 0 and are provably inert
+there (`rank_fusion.RANK_ARMS`); each flips only on a measured retrieval
+win reported with its latency/cost twin, recorded in the gate ledger's
+arm activation log — never by intuition.
 
 ## LLM configuration
 
-Six purposes: `embedding`, `extraction`, `classification`, `reasoning`,
-`summarization`, `reranker`. Each is **one inline `llm_purpose_configs`
+Eight purposes: six live — `embedding`, `extraction`, `classification`,
+`reasoning`, `summarization`, `reranker` — plus two Tier-C rows seeded
+**inert** (`synthesis`, first consumer T3.02; `verification`, T2.26):
+resolvable from day one per doc 11 §6, but nothing dispatches on them
+yet. Each is **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
 `llm_providers` / `llm_profiles` / `ml_profiles` indirection tables and
 their `*_id` columns were **dropped in the baseline** (doc 04 §7); the
 classification purpose carries an inline `classifier_kind` (`llm` |
-`local`) where it used to reference a profile. The six rows are written by
-the setup wizard's finalize step from `app/services/llm_seed.py`, never by
-a migration. T1.01 owns asserting the one-query property with a
+`local`) where it used to reference a profile. The eight rows are written
+by the setup wizard's finalize step from `app/services/llm_seed.py`, never
+by a migration. T1.01 owns asserting the one-query property with a
 query-counting test.
 
 `api_kind` selects the wire protocol and is the only place vendor
@@ -368,7 +404,7 @@ honours only `reasoning_effort=none`; and `minimal` is no longer in
 OpenAI's effort set, so a config carrying it fails loud instead of 400ing
 at the vendor.
 
-LLM seeds for the six purposes live in `app/services/llm_seed.py`, not
+LLM seeds for the eight purposes live in `app/services/llm_seed.py`, not
 in any migration. The setup wizard finalize step writes seed-plus-overlay
 into the `llm_*` config rows.
 
@@ -404,6 +440,32 @@ declare a `config_schema` (FieldDescriptor list); `set_config`
 validates partial updates against it (type + min/max, unknown keys
 rejected) and writes under that same lock
 (`PUT /api/v1/jobs/{key}/config`).
+
+## Events journal (`events` — `audit_log` is gone)
+
+`events` is the sole, append-only audit substrate; `audit_log` was
+dropped at the baseline's genesis and no such table, model or query
+exists. Every subsystem journals through one writer, `record_event`
+(`app/services/events.py`), which degrades loudly but never raises into
+its caller. `EVENT_TYPES` / `OBJECT_TYPES` are closed vocabularies living
+beside the writer, deliberately NOT in `app.taxonomy`: event types are
+never LLM output, so an unknown value logs a warning instead of being
+rewritten to a fallback. Widening is taxonomy-first — land the value in
+the vocabulary before its emitter ships. The table is RANGE-partitioned
+by month; every partition-creating path goes through the SQL function
+`events_ensure_partition` (boot reconciliation plus a maintenance arm on
+`pipeline_failure_cleanup`), and append-only is enforced by three trigger
+kinds — a row-level UPDATE/DELETE guard on the parent, a statement-level
+TRUNCATE guard on the parent, and a per-child TRUNCATE guard stamped by
+`events_ensure_partition`, because statement triggers do not cascade to
+children. Readers: `GET /events`, `/events/timeline`, `/events/calendar`
+(the calendar bucket expression must match `ix_events_day`'s immutable
+UTC expression verbatim), and `GET /auth/audit`, which filters
+`auth_*`/`setup_*` rows from the same table. Journal payloads may carry
+content previews that **outlive deletion of their memory** — append-only
+by design; the retention policy is an escalated, unresolved Tier-3
+question (it spans `events` and chat's `messages.context` citation
+snapshots), not an oversight to fix silently.
 
 ## MCP endpoint
 
