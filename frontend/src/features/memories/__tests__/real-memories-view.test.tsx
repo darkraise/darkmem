@@ -186,14 +186,16 @@ describe("RealMemoriesView", () => {
 
   it("the create action opens CreateMemoryDialog and submits a real, wait_process=true mutation", async () => {
     const user = userEvent.setup()
-    let createCall: { path: string; body: Record<string, unknown> } | null = null
+    const captured: { call: { path: string; body: Record<string, unknown> } | null } = {
+      call: null,
+    }
     vi.mocked(apiFetch).mockImplementation((path: unknown, options?: unknown) => {
       const p = path as string
       if (p === "/memories/search/paginated") {
         return Promise.resolve({ items: [], total: 0, limit: 50, offset: 0 })
       }
       if (p.startsWith("/memories?")) {
-        createCall = {
+        captured.call = {
           path: p,
           body: JSON.parse((options as RequestInit).body as string),
         }
@@ -219,9 +221,9 @@ describe("RealMemoriesView", () => {
     )
     await user.click(screen.getByRole("button", { name: "Create Memory" }))
 
-    await waitFor(() => expect(createCall).not.toBeNull())
-    expect(createCall?.path).toBe("/memories?wait_process=true")
-    expect(createCall?.body.content).toBe(
+    await waitFor(() => expect(captured.call).not.toBeNull())
+    expect(captured.call?.path).toBe("/memories?wait_process=true")
+    expect(captured.call?.body.content).toBe(
       "captured from the real create dialog",
     )
   })
