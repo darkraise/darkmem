@@ -897,7 +897,9 @@ async def test_memory_stats_is_still_the_recorded_divergence(
     assert shared <= set(rest)
     assert shared <= set(tool)
 
-    assert {"entities", "relationships"} <= set(rest), (
+    # Key presence is not enough: StatsResponse defaults both fields, so a
+    # route that stopped computing them still serialises them as null.
+    assert rest.get("entities") is not None and rest.get("relationships") is not None, (
         "GET /analytics/stats stopped returning the graph counts -- the doors "
         "must converge by giving the tool the counts, not by taking them off "
         "the route"
