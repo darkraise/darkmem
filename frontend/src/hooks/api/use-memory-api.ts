@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { useProjectScopedKey } from "@/lib/query-keys"
+import { useProjectStore } from "@/stores/project-store"
 
 // Mirrors backend MEMORY_STATUS_VALUES (app/models/memory.py). Archival is a
 // separate `is_archived` boolean, not a status.
@@ -66,13 +68,20 @@ export interface Tag {
   memory_count: number
 }
 
+// Project-scoped via the query-key layer (src/lib/query-keys.ts, Ruling 1):
+// the active project rides both the query key and the request body, so
+// switching projects addresses a fresh cache entry instead of continuing
+// to show the previous project's rows while the new project's fetch is
+// in flight.
 export function useMemories() {
+  const queryKey = useProjectScopedKey("memories")
+  const project = useProjectStore((s) => s.activeProject)
   return useQuery<Memory[]>({
-    queryKey: ["memories"],
+    queryKey,
     queryFn: () =>
       apiFetch("/memories/search", {
         method: "POST",
-        body: JSON.stringify({ limit: 50 }),
+        body: JSON.stringify({ limit: 50, project }),
       }),
   })
 }
