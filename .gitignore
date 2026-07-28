@@ -18,3 +18,8 @@ backend/scripts/benchlib/runs/
 backend/scripts/benchlib/smoke/cache/
 backend/scripts/benchlib/retrieval/cache/
 .worktrees/
+backend/scripts/cutover/reports/
+cutover-preflight-*.json
+cutover-verification-*.json
+cutover-aborted-*.json
+cutover-snapshot-*.jsonl
