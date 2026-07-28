@@ -883,3 +883,95 @@ Evidence per rule, and the six pass gaps handed to T1.24b–e, are in
 The `benchlib` retrieval cache — roughly 94 cached extraction calls **and the ingested graph
 the accuracy numbers were computed over** — is invalidated by this prompt change, as recorded
 above. T1.17 did not pay it and did not re-run the retrieval eval.
+
+---
+
+## G-B — T1.24f whole-chain F1 parity. Evidence, not a verdict. Measured 2026-07-28.
+
+T1.50 owns the G-B verdict. This section records the whole-chain parity measurement at
+`f4eac77`, `--algo-only` over T1.17's Pass-B cache, zero live calls. Full method,
+arithmetic and per-memory traces: `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`.
+
+**Baseline cited: arm A** (T0.05 recorded), per the standing controller decision — the
+bar did not move, the tolerance was not widened, no live calls were made.
+
+### The eight cells (`ent_nt / ent_n / rel_full / rel_pair`)
+
+| Set | Arm A | Floor | Measured | Δ vs A | Flips spent | Verdict |
+|---|---|---|---|---|---|---|
+| gold | 0.925 / 0.955 / 0.865 / 0.892 | 0.881 / 0.910 / 0.784 / 0.811 | **0.912 / 0.971 / 0.883 / 0.883** | −0.013 / +0.016 / +0.018 / −0.009 | 0.87 / 0 / 0 / 0.33 | all pass |
+| held-out | 0.893 / 0.929 / 0.667 / 0.667 | 0.786 / 0.821 / 0.485 / 0.485 | **0.967 / 0.967 / 0.950 / 0.950** | +0.074 / +0.038 / +0.283 / +0.283 | 0 / 0 / 0 / 0 | all pass |
+
+**All eight cells clear their floors; the cascade valve was not engaged.** Stated plainly
+per ruling: parity against arm A holds. The two cells below A are gold ent_nt (0.87 of 3
+flips) and gold rel_pair (0.33 of 3 flips).
+
+### The decomposition, which T1.50 must report instead of a headline
+
+Algorithm total (deterministic-pass legs B−A plus T1.24e's +0.026 gold-relation
+narrowing) vs model-side total (drift+widening, merge, strip — everything that changed
+what the model was asked or served):
+
+| Cell | Algorithm | Model-side | Net vs A |
+|---|---|---|---|
+| gold ent_nt | +0.015 | −0.028 | −0.013 |
+| gold ent_n | +0.015 | +0.001 | +0.016 |
+| gold rel_full | +0.056 | −0.038 | +0.018 |
+| gold rel_pair | +0.055 | −0.064 | −0.009 |
+| held-out ent_nt | +0.056 | +0.018 | +0.074 |
+| held-out ent_n | +0.054 | −0.016 | +0.038 |
+| held-out rel_full | +0.205 | +0.078 | +0.283 |
+| held-out rel_pair | +0.205 | +0.078 | +0.283 |
+
+**The deterministic passes are subsidising drift.** The raw drift(+widening) leg is
+−0.087/−0.052/−0.107/−0.107 on held-out; parity there holds because the algorithm's
++0.205 and the request-change gains outweigh it. On gold the dominant model-side cost is
+the merge (−0.068 on both relation cells), partially paid back by T1.24e's +0.026. Leg
+values are path-dependent (measured at `dbde017` / `48d3c0d` respectively) and C−B
+remains "drift + 7→9 widening, not separable".
+
+### Per-pass contribution — recorded, with the blind set named
+
+All 31 registry entries re-ablated at **one** generation (`f4eac77` over the Pass-B
+raws), superseding the split-generation stage tables for current use. Census: **18 of 31
+entries are bit-identical on removal across all 36 memories** — 5/8 of Stage 1, 2/4 of
+Stage 2, 2/3 of Stage 3, 6/10 of Stage 4, 3/6 of Stage 5 — and are recorded as
+**unmeasurable on this corpus, not zero contribution**. One more (`normalize_names`) is
+score-invisible while changing one memory. Twelve move a score; the largest is
+`rescue_relation_endpoints` (−0.200 held-out rel_full on removal — most of the held-out
+relation gain is this one pass), then `fan_out_coordinated` (−0.094 gold / −0.117
+held-out). **G-B may not cite F1 as evidence for any bit-identical pass**; the guards
+there are the behavioural suites and mutation proofs.
+
+Two additions to the standing rulings:
+
+- **The blind set's membership is generation-relative.** `suppress_temporal_edges`
+  (blind for T1.24d) is now visible on both sets; `remap_to_valid_entities`' held-out
+  leg vanished and its gold effect went mixed-sign; T1.24b's measured `filter_noise`
+  gain is now invisible. The prior stage counts stay true of their generations; this
+  table is the current one.
+- **`rescue_relations_subject_tracking` is a measured net negative on this generation**
+  (+0.012 gold relations on removal; spurious `search USES meilisearch` on e1; zero
+  productive firings in 36 memories). Reported, not fixed — Stage 3 is T1.25's surface.
+
+### Findings and provenance
+
+- **The `gateway` gold/prompt disagreement now costs a number.** The model obeys prompt
+  rule 7b (`gateway :artifact`); gold e14 says `service`; the substitution is exactly one
+  flip and is the **entire** gold ent_nt shortfall vs A (fixing that one key yields
+  0.926 ≥ 0.925). The 2026-07-27 amendment's "no number moves on it today" no longer
+  holds. Re-adjudication stays with the gold-set owner; the key was not changed
+  mid-parity.
+- **Prompt-in-disguise audit: clean.** No pass added by T1.24b–e re-implements a
+  surviving prompt rule; the two deliberate rule/pass overlaps (rule 7b ↔
+  `rescue_relation_endpoints`, rule 10 ↔ `filter_negation_only`) are backstops, the
+  first measured as heavily load-bearing. The six T1.17 pass gaps remain open, so the
+  corresponding rules stay unstrippable.
+- **Provenance:** cache = Pass-B generation, manifest `prompt f59a62d1 / schema 34e62626 /
+  gate merged / model deepseek-v4-flash`, fingerprint
+  `fp_8b330d02d0_prod0820_fp8_kvcache_20260402`; the manifest guard was **proven** (a
+  corrupted `prompt_sha16` fails exit-1 naming the field, restore replays identically);
+  exactly 36 of the 72 cache entries are reachable by the current assembly; both gold
+  files untouched since `ef12ff1`. Residual trust: cached raw entries carry no per-entry
+  checksum.
+- Floors green at expected counts: backend `2225 passed`, benchlib `284 passed`.
