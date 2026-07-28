@@ -220,7 +220,7 @@ export function MaintenanceTab() {
             <Op
               name="code_chunks"
               meta={`${m.reembed.codeChunks} missing`}
-              help="Cross-fingerprint code-chunk backfill is not wired on this surface yet; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success."
+              help="Cross-fingerprint code-chunk backfill is not implemented server-side — POST /reembed/code-chunks returns 202 but ReembedService.reembed_code_chunks never embeds anything and reports every row as an error. The button is disabled and points at a full repository reindex instead, rather than wiring a trigger that structurally cannot succeed."
               last
             >
               <div className="flex flex-wrap items-center gap-2">

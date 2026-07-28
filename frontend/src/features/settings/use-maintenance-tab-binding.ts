@@ -13,10 +13,13 @@ export interface MaintenanceTabBinding {
   isLoading: boolean
   fingerprint: string
   reembed: { memories: number; entities: number; codeChunks: number }
-  /** True in real mode: `POST /reembed/code-chunks` exists and works
-   *  (verified against `app/api/routes/reembed.py`) — false in demo, where
-   *  the fixture never claimed otherwise. Never widen the demo fixture to
-   *  match; that is out of this task's lane (`src/demo/**`). */
+  /** Always false: `POST /reembed/code-chunks` exists and returns 202, but
+   *  `ReembedService.reembed_code_chunks` is a stub — it never embeds
+   *  anything and reports every row as an error with a "not yet
+   *  implemented" message (verified by reading the method body, not just
+   *  the route). Triggering it would be an honest-looking button wired to
+   *  a call that structurally cannot succeed, which is worse than not
+   *  offering it. Matches the demo fixture's own disabled state. */
   codeChunksReembedAvailable: boolean
   cleanup: {
     expired: number | null
@@ -32,11 +35,11 @@ export interface MaintenanceTabBinding {
     reindexNote: string
   }
   lastOpNote: string | null
-  /** False in real mode: verified against `job_runners.py` and
-   *  `reembed.py` that none of these operations call `record_event` —
-   *  ruling 2's "journal to events" half has no backend implementation to
-   *  bind to yet. Rendered as an honest caveat rather than silently
-   *  claimed true. */
+  /** True in real mode: every trigger this tab exposes journals a
+   *  `maintenance_run` event via `record_maintenance_run` (job_runners.py's
+   *  three cleanup runners, reembed.py's background tasks and
+   *  POST /reembed/prune-cache) — verified with a mutation-proof backend
+   *  test per operation (tests/test_maintenance_journaling.py). */
   eventsJournaled: boolean
   run: (op: MaintenanceOp) => void
 }
@@ -90,13 +93,6 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
     mutationFn: () => apiFetch("/reembed/entities", { method: "POST" }),
     onSuccess: () => {
       setRealLastOpNote("re-embed entities started (POST returned 202)")
-      invalidate()
-    },
-  })
-  const reembedCodeChunks = useMutation({
-    mutationFn: () => apiFetch("/reembed/code-chunks", { method: "POST" }),
-    onSuccess: () => {
-      setRealLastOpNote("re-embed code chunks started (POST returned 202)")
       invalidate()
     },
   })
@@ -165,7 +161,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
       entities: countsQuery.data?.entities ?? 0,
       codeChunks: countsQuery.data?.code_chunks ?? 0,
     },
-    codeChunksReembedAvailable: true,
+    codeChunksReembedAvailable: false,
     cleanup: {
       expired: null,
       expiredDependents: null,
@@ -182,7 +178,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
         "The GIN index supersession and retrieval filtering both consult (memories.technologies).",
     },
     lastOpNote: realLastOpNote,
-    eventsJournaled: false,
+    eventsJournaled: true,
     run: (op) => {
       switch (op) {
         case "reembed_memories":
@@ -192,7 +188,8 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
           reembedEntities.mutate()
           return
         case "reembed_code_chunks":
-          reembedCodeChunks.mutate()
+          // codeChunksReembedAvailable is always false — see its doc
+          // comment. The UI never reaches this arm; kept exhaustive.
           return
         case "prune_caches":
           pruneCaches.mutate()

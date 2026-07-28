@@ -57,14 +57,14 @@ describe("MaintenanceTab (real)", () => {
     expect(screen.getByText("3 missing")).toBeInTheDocument()
   })
 
-  it("code_chunks re-embed is enabled in real mode — the endpoint exists (POST /reembed/code-chunks)", async () => {
+  it("code_chunks re-embed stays disabled in real mode — ReembedService.reembed_code_chunks is a stub that never embeds anything", async () => {
     mockHappy()
     render(<MaintenanceTab />, { wrapper })
     await waitFor(() => expect(screen.getByText("40 missing")).toBeInTheDocument())
     expect(
       screen.getByRole("button", { name: "Re-embed code chunks" }),
-    ).not.toBeDisabled()
-    expect(screen.queryByText("use Repositories → Reindex")).not.toBeInTheDocument()
+    ).toBeDisabled()
+    expect(screen.getByText("use Repositories → Reindex")).toBeInTheDocument()
   })
 
   it("triggering re-embed memories POSTs /reembed/memories after confirm", async () => {
@@ -149,14 +149,13 @@ describe("MaintenanceTab (real)", () => {
     )
   })
 
-  it("ruling 2 gap, honestly surfaced: no backend trigger here journals to events yet", async () => {
+  it("ruling 2: every trigger now journals to events, so the honest gap banner is gone", async () => {
     mockHappy()
     render(<MaintenanceTab />, { wrapper })
-    await waitFor(() =>
-      expect(
-        screen.getByText(/None of these triggers are journaled to the events timeline today/),
-      ).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText("count not exposed via the API")).toBeInTheDocument())
+    expect(
+      screen.queryByText(/None of these triggers are journaled to the events timeline today/),
+    ).not.toBeInTheDocument()
   })
 
   it("failure counts come from GET /pipeline-failures/counts, keyed memory_ingest/code_index", async () => {
