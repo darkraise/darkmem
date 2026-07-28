@@ -5,34 +5,27 @@ REGISTRY="darkraise"
 VERSION="${1:-latest}"
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-echo "Building darkmem images..."
+echo "Building darkmem image..."
 echo "  Version: $VERSION"
 echo "  Git SHA: $GIT_SHA"
 
-# Build API
+# One image, built from the repo root: it carries the Python runtime AND the
+# built SPA, so the context has to see both trees. The name is historical --
+# it predates the SPA moving in -- and is kept so pinned DARKMEM_VERSION tags
+# keep resolving.
 echo "Building darkmem-api..."
 docker build -t "${REGISTRY}/darkmem-api:${VERSION}" \
              -t "${REGISTRY}/darkmem-api:${GIT_SHA}" \
              -t "${REGISTRY}/darkmem-api:latest" \
-             ./backend
-
-# Build UI
-echo "Building darkmem-ui..."
-docker build -t "${REGISTRY}/darkmem-ui:${VERSION}" \
-             -t "${REGISTRY}/darkmem-ui:${GIT_SHA}" \
-             -t "${REGISTRY}/darkmem-ui:latest" \
-             ./frontend
+             "$(dirname "$0")/.."
 
 # Push
-echo "Pushing images..."
-for img in darkmem-api darkmem-ui; do
-  docker push "${REGISTRY}/${img}:latest"
-  docker push "${REGISTRY}/${img}:${GIT_SHA}"
-  if [ "$VERSION" != "latest" ]; then
-    docker push "${REGISTRY}/${img}:${VERSION}"
-  fi
-done
+echo "Pushing image..."
+docker push "${REGISTRY}/darkmem-api:latest"
+docker push "${REGISTRY}/darkmem-api:${GIT_SHA}"
+if [ "$VERSION" != "latest" ]; then
+  docker push "${REGISTRY}/darkmem-api:${VERSION}"
+fi
 
-echo "Done! Images pushed:"
+echo "Done! Image pushed:"
 echo "  ${REGISTRY}/darkmem-api:${VERSION} (${GIT_SHA})"
-echo "  ${REGISTRY}/darkmem-ui:${VERSION} (${GIT_SHA})"

@@ -1,6 +1,8 @@
 services:
   darkmem-api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -15,14 +17,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-keep-alive 75
+    # Overrides the entrypoint, so it must repeat --no-proxy-headers: the flag
+    # is independent of --reload, and dev disagreeing with prod about which
+    # layer decides the peer address is how the posture drifts.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-keep-alive 75 --no-proxy-headers
 
-  darkmem-ui:
-    build: ./frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - darkmem-api
+  # No darkmem-ui service: dev serves the UI from vite on :3636
+  # (cd frontend && npm run dev), which proxies /api, /health and /ws to :8000.
 
   postgres:
     image: pgvector/pgvector:0.8.2-pg17

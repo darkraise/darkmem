@@ -1,9 +1,22 @@
 services:
+  # One image, and it is the network edge: it serves the REST API, /mcp, /ws
+  # and the built SPA on :8000. Nothing binds :80 any more. The name is
+  # historical -- it predates the SPA moving in -- and is kept because
+  # renaming would orphan every pinned DARKMEM_VERSION an operator deployed.
   darkmem-api:
     image: darkraise/darkmem-api:${DARKMEM_VERSION:-latest}
     init: true
-    # Host networking: the API binds directly to the host's :8000 (LAN + MCP
-    # /mcp). No Docker service-name DNS, so DB_HOST below points at localhost.
+    # Host networking: the API binds directly to the host's :8000 (LAN + UI +
+    # MCP /mcp). No Docker service-name DNS, so DB_HOST below points at
+    # localhost.
+    #
+    # The login rate limiter keys on the transport peer (trust_proxy_headers
+    # defaults off, and the entrypoint passes --no-proxy-headers), which is
+    # only the real LAN client BECAUSE of host networking. Moving to bridge
+    # networking changes where the peer address comes from and must be
+    # measured before, not after: with a non-loopback peer in front, uvicorn
+    # stops trusting it, request.client.host becomes the proxy's own address
+    # for every request, and five failures from any client lock out the LAN.
     network_mode: host
     # Port mappings are ignored under host networking; kept for bridge reference:
     # ports:
@@ -24,6 +37,12 @@ services:
       # The session cookie is HTTPS-only by default; set COOKIE_SECURE=false in
       # .env to allow login over plain HTTP on a trusted LAN.
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      # Which layer decides the login rate limiter's bucket. Off = the
+      # transport peer, which is right when this app is the edge. Set true
+      # only when a trusted proxy really is in front, or every client shares
+      # that proxy's bucket. Passed through so changing posture stays a
+      # config flip rather than an edit to this file.
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Hosts allowed to reach /mcp (DNS-rebinding allowlist). Empty = localhost
       # only; set your LAN host:port (e.g. 192.168.0.195:8000) so agents can
@@ -49,26 +68,6 @@ services:
           # 512m OOM-killed large-repo reindexes. Tune to your largest repo.
           memory: 1g
           cpus: "1.5"
-
-  darkmem-ui:
-    image: darkraise/darkmem-ui:${DARKMEM_VERSION:-latest}
-    init: true
-    # Host networking: nginx binds the host's :80 directly. (To serve on :3000,
-    # change `listen 80` to `listen 3000` in frontend/nginx.conf and rebuild.)
-    # The session cookie is Secure-only unless COOKIE_SECURE=false.
-    network_mode: host
-    # Port mapping is ignored under host networking; kept for bridge reference:
-    # ports:
-    #   - "3000:80"
-    depends_on:
-      darkmem-api:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-          cpus: "0.5"
 
   postgres:
     image: pgvector/pgvector:0.8.2-pg17
