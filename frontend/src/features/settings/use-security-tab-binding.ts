@@ -10,12 +10,12 @@ export interface ChangePasswordInput {
 
 /**
  * `T | null` fields have no real-mode source at all — no endpoint returns
- * them (verified against every route under `app/api/routes/`: `auth.py`,
- * `setup.py`, `config.py`, `system.py`). Rendered null and skipped by the
- * component (T1.45's precedent), never approximated (ruling 4). This is
- * true even for `trustProxyHeaders` (ruling 3's own example) and
- * `mcpAllowedHosts` — both are `app/config.py` settings with zero REST
- * read surface today.
+ * them. `GET /auth/security-posture` (added to close this gap) covers
+ * `trustProxyHeaders`, `cookieSecureValue`, `mcpHosts` and the rate-limit
+ * thresholds; the remainder (session issue time/jti, the blocklist count,
+ * the auth_lockout journal count) still have no backend read surface —
+ * rendered null and skipped by the component (T1.45's precedent), never
+ * approximated (ruling 4).
  */
 export interface SecurityTabBinding {
   isLoading: boolean
@@ -52,6 +52,22 @@ interface AuthMeResponse {
   sub: string
 }
 
+interface SecurityPostureResponse {
+  trust_proxy_headers: boolean
+  cookie_secure: boolean
+  cookie_secure_explicit: boolean
+  environment: string
+  mcp_allowed_hosts: string[]
+  rate_limit_max_failures: number
+  rate_limit_window_seconds: number
+  rate_limit_lockout_seconds: number
+}
+
+function formatSeconds(seconds: number): string {
+  if (seconds % 60 === 0 && seconds > 0) return `${seconds / 60} minutes`
+  return `${seconds}s`
+}
+
 export function useSecurityTabBinding(): SecurityTabBinding {
   const demoSec = useDemoSecurity()
 
@@ -63,6 +79,11 @@ export function useSecurityTabBinding(): SecurityTabBinding {
   const meQuery = useQuery<AuthMeResponse>({
     queryKey: ["authMe"],
     queryFn: () => apiFetch<AuthMeResponse>("/auth/me"),
+    enabled: !DEMO,
+  })
+  const postureQuery = useQuery<SecurityPostureResponse>({
+    queryKey: ["securityPosture"],
+    queryFn: () => apiFetch<SecurityPostureResponse>("/auth/security-posture"),
     enabled: !DEMO,
   })
   const changePasswordMutation = useMutation<
@@ -106,19 +127,30 @@ export function useSecurityTabBinding(): SecurityTabBinding {
     }
   }
 
+  const posture = postureQuery.data
+
   return {
-    isLoading: statusQuery.isLoading || meQuery.isLoading,
+    isLoading: statusQuery.isLoading || meQuery.isLoading || postureQuery.isLoading,
     blocklisted: null,
     lockouts30d: null,
     sessionSub: meQuery.data?.sub ?? null,
     sessionIssuedLabel: null,
     sessionJti: null,
-    rateLimitIpSource:
-      "X-Real-IP when trust_proxy_headers is on (the bundled-nginx posture) — the leftmost X-Forwarded-For is never trusted",
-    rateLimitAttemptThreshold: null,
-    rateLimitLockoutWindow: null,
+    rateLimitIpSource: posture
+      ? posture.trust_proxy_headers
+        ? "X-Real-IP (trust_proxy_headers is on) — the leftmost X-Forwarded-For is never trusted"
+        : "the raw transport-socket peer (trust_proxy_headers is off)"
+      : "X-Real-IP when trust_proxy_headers is on (the bundled-nginx posture) — the leftmost X-Forwarded-For is never trusted",
+    rateLimitAttemptThreshold: posture?.rate_limit_max_failures ?? null,
+    rateLimitLockoutWindow: posture ? formatSeconds(posture.rate_limit_lockout_seconds) : null,
     rateLimitJournaled: null,
-    cookieSecureValue: null,
+    cookieSecureValue: posture
+      ? `${posture.cookie_secure} — ${
+          posture.cookie_secure_explicit
+            ? "explicit"
+            : `default for environment=${posture.environment}`
+        }`
+      : null,
     cookieSecureNote:
       "Unset means Secure-only when environment=production; explicit false permits login over plain-HTTP LAN.",
     tofuClaimed: statusQuery.data?.initialized ?? null,
@@ -128,8 +160,12 @@ export function useSecurityTabBinding(): SecurityTabBinding {
         : "not yet claimed"
       : null,
     tofuJournaled: null,
-    trustProxyHeaders: null,
-    mcpHosts: null,
+    trustProxyHeaders: posture?.trust_proxy_headers ?? null,
+    mcpHosts: posture
+      ? posture.mcp_allowed_hosts.length > 0
+        ? posture.mcp_allowed_hosts.map((host) => ({ host, wild: host === "*" }))
+        : [{ host: "localhost only (mcp_allowed_hosts is empty — the default)" }]
+      : null,
     changePassword: (input) => changePasswordMutation.mutate(input),
     changePasswordPending: changePasswordMutation.isPending,
     changePasswordError:

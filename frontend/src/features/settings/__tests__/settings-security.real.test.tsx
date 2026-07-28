@@ -25,10 +25,22 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
+const POSTURE_FIXTURE = {
+  trust_proxy_headers: true,
+  cookie_secure: false,
+  cookie_secure_explicit: true,
+  environment: "development",
+  mcp_allowed_hosts: ["192.168.0.195:8000"],
+  rate_limit_max_failures: 5,
+  rate_limit_window_seconds: 300,
+  rate_limit_lockout_seconds: 300,
+}
+
 function mockHappy() {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path === "/setup/status") return Promise.resolve({ initialized: true })
     if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
+    if (path === "/auth/security-posture") return Promise.resolve(POSTURE_FIXTURE)
     return Promise.reject(new Error(`unexpected apiFetch(${path})`))
   })
 }
@@ -56,19 +68,70 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     expect(screen.queryByText("claimed")).not.toBeInTheDocument()
   })
 
-  it("ruling 4: fields with no backend source render as an honest gap, never a fabricated number", async () => {
+  it("ruling 3: renders the live trust_proxy_headers / cookie_secure / mcp_allowed_hosts / rate-limit posture from GET /auth/security-posture", async () => {
+    mockHappy()
+    render(<SecurityTab />, { wrapper })
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/auth/security-posture"))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/X-Real-IP \(trusted proxy — trust_proxy_headers on\)/),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.getByText("192.168.0.195:8000")).toBeInTheDocument()
+    expect(screen.getByText(/5 failed attempts/)).toBeInTheDocument()
+    expect(screen.getByText("5 minutes")).toBeInTheDocument()
+    expect(screen.getByText(/false — explicit/)).toBeInTheDocument()
+  })
+
+  it("mutation proof: flipping trust_proxy_headers in the response flips the rendered IP strategy", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/setup/status") return Promise.resolve({ initialized: true })
+      if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
+      if (path === "/auth/security-posture") {
+        return Promise.resolve({ ...POSTURE_FIXTURE, trust_proxy_headers: false })
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<SecurityTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByText(/raw socket peer \(trust_proxy_headers off\)/)).toBeInTheDocument(),
+    )
+    expect(
+      screen.queryByText(/X-Real-IP \(trusted proxy — trust_proxy_headers on\)/),
+    ).not.toBeInTheDocument()
+  })
+
+  it("mcp_allowed_hosts renders the localhost-only default honestly when the list is empty, never fabricating a chip", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/setup/status") return Promise.resolve({ initialized: true })
+      if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
+      if (path === "/auth/security-posture") {
+        return Promise.resolve({ ...POSTURE_FIXTURE, mcp_allowed_hosts: [] })
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<SecurityTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByText(/localhost only \(mcp_allowed_hosts is empty/)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText("192.168.0.195:8000")).not.toBeInTheDocument()
+  })
+
+  it("ruling 4: fields with genuinely no backend source still render as an honest gap, never a fabricated number", async () => {
     mockHappy()
     render(<SecurityTab />, { wrapper })
     await waitFor(() => expect(screen.getAllByText("claimed").length).toBeGreaterThan(0))
 
-    // trust_proxy_headers, the token blocklist count, cookie_secure's actual
-    // value, and the mcp_allowed_hosts list all have zero GET surface today
-    // (verified against auth.py/setup.py/config.py/system.py) — every one
-    // must render the honest-gap copy, never a guessed value.
+    // The blocklist count, lockouts_30d, the session issue time/jti, and
+    // the two journaled-count rows still have zero GET surface — every one
+    // must render the honest-gap copy, never a guessed value. (Everything
+    // /auth/security-posture now answers -- trust_proxy_headers,
+    // cookie_secure, mcp_allowed_hosts, the rate-limit thresholds -- is
+    // asserted as real data in the tests above, not as a gap here.)
     expect(
       screen.getAllByText(/not exposed via the API/).length,
-    ).toBeGreaterThanOrEqual(4)
-    expect(screen.getByText(/trust_proxy_headers has no GET surface/)).toBeInTheDocument()
+    ).toBeGreaterThanOrEqual(3)
   })
 
   it("session renders the real sub from GET /auth/me, and skips the issue time/jti it does not carry", async () => {
