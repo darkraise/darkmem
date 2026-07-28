@@ -254,6 +254,26 @@ export function RealMemoryGraphPage() {
               onReset={handleReset}
             />
 
+            {entityLayerEnabled && (
+              <div className="pointer-events-none absolute top-16 right-0 left-0 z-20 flex flex-col items-center gap-1.5 px-3">
+                {/* F8/I1 disposition (T1.60): entities are not memory-scoped
+                    (CLAUDE.md) — a standing fact about the surface, not a
+                    per-request signal, so this renders whenever the layer
+                    is on regardless of entities_truncated. */}
+                <p className="bg-card/80 border-border text-muted-foreground rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
+                  Entities and their relationships are shared across every
+                  project; only memories themselves are project-scoped.
+                </p>
+                {/* F10's honesty half: visible only while the under-return is
+                    actually happening, not always-on noise. */}
+                {data?.entities_truncated && (
+                  <p className="bg-warning/12 border-warning/55 text-warning rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
+                    Entity overlay truncated — showing a partial view.
+                  </p>
+                )}
+              </div>
+            )}
+
             {!selection.showPanel && (
               <div className="absolute top-3 right-3 z-30">
                 <Button

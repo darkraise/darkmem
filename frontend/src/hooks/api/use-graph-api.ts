@@ -35,6 +35,11 @@ export interface UnifiedGraphData {
   similarity_edges: { source: string; target: string; score: number }[]
   entities?: GraphEntity[]
   entity_relations?: EntityRelation[]
+  /** True when the entity overlay's unscoped, 500-row fetch hit its limit
+   *  before the membership filter ran — some relevant entities may be
+   *  missing from `entities`/`entity_relations` with no other signal
+   *  (F10). Present only when `include_entities` was requested. */
+  entities_truncated?: boolean
 }
 
 export interface MemoryContextData {
