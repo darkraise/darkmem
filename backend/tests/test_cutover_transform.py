@@ -594,10 +594,11 @@ async def test_preflight_catches_a_lineage_cycle(source, target, source_writer):
     assert set(check.detail["offending_ids"]) == {str(OLD_ID), str(NEW_ID)}
 
 
-@pytest.mark.parametrize("table", spec.SOURCE_MUST_BE_EMPTY)
+@pytest.mark.parametrize("table", ("api_keys", "knowledge_triples"))
 async def test_preflight_requires_empty_unwired_tables(
     source, target, source_writer, table
 ):
+    assert table in spec.SOURCE_MUST_BE_EMPTY
     if table == "api_keys":
         await source_writer.execute(
             "INSERT INTO api_keys (id, name) VALUES ($1, 'x')", uuid.uuid4()
@@ -1027,7 +1028,19 @@ async def test_reset_reloads_a_target_that_holds_only_the_dump(
     assert await target.fetchval("SELECT count(*) FROM memories") == 3
 
 
-@pytest.mark.parametrize("table", spec.RESET_REFUSAL_TABLES)
+# Spelled out here rather than read from spec, so narrowing the refusal list
+# fails these behavioural tests instead of quietly deleting them.
+CASCADING_INTO_MEMORIES = (
+    "entities",
+    "entity_relations",
+    "memory_crossrefs",
+    "memory_access_stats",
+    "memory_relations",
+    "memory_community_members",
+)
+
+
+@pytest.mark.parametrize("table", CASCADING_INTO_MEMORIES)
 async def test_reset_refuses_when_a_derivation_exists(
     source, target, source_writer, table
 ):
@@ -1266,16 +1279,9 @@ def test_config_carries_nothing():
 
 
 def test_reset_refusal_list_covers_seven_triggers():
+    assert set(spec.RESET_REFUSAL_TABLES) == set(CASCADING_INTO_MEMORIES)
     assert len(spec.RESET_REFUSAL_TABLES) == 6
     assert spec.RESET_REFUSAL_TABLE_PREFIX == "memory_embeddings__"
-    assert set(spec.RESET_REFUSAL_TABLES) == {
-        "entities",
-        "entity_relations",
-        "memory_crossrefs",
-        "memory_access_stats",
-        "memory_relations",
-        "memory_community_members",
-    }
 
 
 def test_snapshot_covers_eleven_columns():
