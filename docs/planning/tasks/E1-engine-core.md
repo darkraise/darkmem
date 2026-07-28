@@ -1678,6 +1678,34 @@ plan uses it. Nothing about it branches.
 
 **Verify.** `cd backend && python -m pytest tests/test_memory_lineage.py -q`
 
+#### T1.67 — Move the real API types out of `src/demo`, then flip the demo rule to error
+
+`Model: Sonnet 5` · `Effort: low` · `Size: S` · `Depends: T1.64` · `Doc: 13 §2` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** `frontend/src/demo/types.ts` re-exports **real** API types — `Memory`,
+`MemoryStatus`, `Repo`, `Job` straight from `@/hooks/api` — so **65 files import a demo path
+to obtain types that are not demo data**. That is the dominant reason the
+`no-restricted-imports` demo rule cannot go to error: it counts type-path drift as fixture
+coupling. Move those types to a real module, repoint the importers, then flip the rule.
+
+**Why it is not T1.64's.** T1.64 retargets the rule at the fixture paths and lands the error
+flip only where it is honestly achievable today (`src/demo/data/**`). Flipping the whole rule
+also requires this move, which touches 65 files and belongs on its own commit rather than
+buried in the e2e task. Measured 2026-07-28: 90 importers total — `types` 65, `hooks` 30,
+`flag` 27 (9 of them flag-only), `store` 22, `data` 5, `components` 0.
+
+**Effort `low`, argued (runbook §2.1).** A move plus a repoint that the type checker verifies
+exhaustively; the judgement was already made here.
+
+**Done when:**
+- [ ] The real API types live outside `src/demo` and no file imports them from a demo path
+- [ ] The `no-restricted-imports` rule covers the fixture paths at **error**, and
+      `npm run lint` exits 0 on the demo rule specifically
+- [ ] Demo-variant components remain sanctioned importers of fixtures — the rule must not
+      force demo mode's deletion, which no task calls for
+
+**Verify.** `cd frontend && npm run lint && npm run typecheck && npm test`
+
 ---
 
 ## Amendment log
@@ -1968,3 +1996,4 @@ plan uses it. Nothing about it branches.
 | 2026-07-28 | T1.52 | 2 | **A guard that had passed a plan, a review and a revision turned out dead, and was replaced at implementation.** Mutation M4 — removing the terminal sweep — left the plan's cross-batch supersession test **green**, because revision 1's lineage carve-out made a supersession victim precisely the row the sweep skips. The lane replaced it with a test injecting the hazard the sweep actually exists for, confirmed it fails without the sweep, and narrowed the old test's claim. | **Eleventh unfailable guard of the session and the most instructive**, because the other ten were caught by reading or by review and this one was invisible to both: the carve-out that made the test dead was itself added by a revision closing a review finding. A fix can silently retire the guard that would have caught its own regression, and only running the mutation shows it. This is the strongest argument yet for the standing instruction that an executing lane must break what each guard guards before trusting it. |
 | 2026-07-28 | T1.64 | 2 | **RULING: the lint rule is aimed at the wrong target, which is why the flip to error looks impossible.** T1.64's plan reports 90 demo importers against a recorded baseline of 82 and defers the flip because "81 files would immediately falsify it". Controller measurement refines that: of the 90, **64 import only `@/demo/flag`** — the `DEMO` boolean any file must read to branch on mode — and only **26 import actual fixtures** (`@/demo/data`, `@/demo/components`, `@/demo/store`), of which most are the demo-variant components whose whole purpose is rendering fixtures under an opt-in mode. The rule currently bans `@/demo/*` wholesale, so it counts every mode-branching file as a violation and can never go green. **The rule must target the fixture paths and permit the flag**, and demo-variant components are sanctioned importers, not violations. | The honesty intent was never "delete demo mode" — T1.58 made real the *default* and left demo opt-in by design, which is why the count rose rather than fell as each binding task added a real branch beside its demo one. The instrument drifted from the intent: an assertion that counts legitimate mode-branching as a defect produces a number nobody can act on, so it gets deferred forever and stops meaning anything. Retarget it and the box becomes both achievable and worth something — a real-mode surface reading a fixture is the defect, and that is what the rule should be able to say. Whether the flip lands inside T1.64 or as a named follow-up is T1.64's call once retargeted; deferring an *unachievable* flip is not. |
 | 2026-07-28 | T1.64 | 2 | **CORRECTION to the ruling three rows above: its numbers were wrong, and they were inferred rather than measured.** The claim "64 import only `@/demo/flag`" was derived as 90 minus the 26 fixture importers I *had* measured, then written as if measured. T1.64's Fable review reproduced the real structure and the controller re-measured to confirm it: of 90 importers, **`@/demo/types` has 65**, `hooks` 30, `flag` 27 (only **9** of them flag-only), `store` 22, `data` 5, `components` 0. **The direction of the ruling survives, its arithmetic does not, and the dominant debt is something the ruling never named:** `demo/types.ts` re-exports *real* API types (`Memory`, `MemoryStatus`, `Repo`, `Job` straight from `@/hooks/api`), so 65 files import a demo path to obtain types that are not demo data at all. That is type-path drift, not fixture coupling, and it is fixed by moving those types out of `src/demo` — after which the fixture-scoped rule the ruling asks for governs a far smaller, honest set. **The flip does not become achievable inside T1.64 under any honest retargeting**, so T1.64 retargets and the flip is named as a follow-up with its own owner. | Recording this as its own row rather than editing the original, because the original was **ratified** and a corpus that silently rewrites ratified rulings is worse than one that carries a correction. The failure is exactly the class this session has documented eleven times in other people's work — a number that was never run, presented as though it had been — and it is worth more as a controller's own entry than as another agent's finding. The mechanism was the same every time: an inference that *looked* like a measurement because it was arithmetic over one real number. |
+| 2026-07-28 | T1.64 | 1 | **CLEARED: the disposable-stack seed guard is within T1.58's Ruling 4.** T1.64 asked for re-clearance before having `auth.spec.ts` skip its seeding step when `E2E_DISPOSABLE_STACK` is set, leaving `seed-admin.ts` itself untouched. Approved. Ruling 4 fixed the helper's **target** — it may never be pointed anywhere but the shared dev stack's `darkmem` — and says nothing about whether a given spec calls it. A disposable stack that serves `darkmem_test` seeds itself through the real `POST /api/v1/setup` front door instead, which is a stronger path than the helper anyway because it exercises the shipping code. | Recorded rather than waved through because the lane was right to ask: the guard's *effect* is that a spec stops seeding, and "spec no longer seeds" is exactly the shape of a change that quietly disables a precondition. What makes it safe is that the disposable path replaces the seed with a real one rather than removing it — and the reviewer independently booted that path and got 200 / 200 / 403. Had it merely skipped the seed, this would have been refused. |
