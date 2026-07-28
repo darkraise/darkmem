@@ -26,17 +26,17 @@ next, in what order, by which agent, and how anyone knows it is done*.
 |---|---|---|---|
 | E0 — Baseline & harness | [`tasks/E0-baseline-and-harness.md`](tasks/E0-baseline-and-harness.md) | 20 | G-A |
 | E1 — Engine core at target shape | [`tasks/E1-engine-core.md`](tasks/E1-engine-core.md) | 83 | G-B |
-| E2 — The truth core (L2) | [`tasks/E2-truth-core.md`](tasks/E2-truth-core.md) | 57 | G-C / G-D |
+| E2 — The truth core (L2) | [`tasks/E2-truth-core.md`](tasks/E2-truth-core.md) | 58 | G-C / G-D |
 | E3 — Synthesis & reach (L3) | [`tasks/E3-synthesis-and-reach.md`](tasks/E3-synthesis-and-reach.md) | 26 | G-E |
 | E4 — Hardening & scale | [`tasks/E4-hardening-and-scale.md`](tasks/E4-hardening-and-scale.md) | 10 | demand-gated |
 | EH1 — Documents / PKM (horizon) | [`tasks/EH1-documents-pkm.md`](tasks/EH1-documents-pkm.md) | 17 | G-F |
 | EH2 — .NET migration (horizon) | [`tasks/EH2-dotnet-migration.md`](tasks/EH2-dotnet-migration.md) | outline only | G-G |
 
-**213 tasks** across six executable epics. Each carries a model tier, a **size**, its
+**214 tasks** across six executable epics. Each carries a model tier, a **size**, its
 dependencies, its owning design doc, its honesty tag, and the gate it serves.
 
 Sizes are S (≤ ~2h), M (one focused session — the target), and L (more than a day).
-Distribution: 31 S / 149 M / 33 L. **An `L` task may not be executed directly** — it
+Distribution: 31 S / 150 M / 33 L. **An `L` task may not be executed directly** — it
 needs a reviewed step-level plan first (runbook §3).
 
 The corpus was adversarially reviewed on 2026-07-25 by three independent Fable-tier
