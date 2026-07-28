@@ -123,7 +123,33 @@ The memory family, unchanged in shape (exists today; some gain honest labels as 
 
 The code family, unchanged (exists today; mechanics doc 10):
 
-`list_repos`, `code_search`, `code_symbol`, `code_file_symbols`, `code_context`, `code_blast_radius`, `code_dependencies`, `code_changes`, `code_communities`, `code_processes`, `code_rename` — each with a REST twin under `/code` or `/repos`, gated by **repository, not project** (doc 01 §8's deliberate exception to the project-isolation invariant). This doc fixes the family's contract shape; doc 10 owns the traversal mechanics.
+`list_repos`, `code_search`, `code_symbol`, `code_file_symbols`, `code_context`, `code_blast_radius`, `code_dependencies`, `code_changes`, `code_communities`, `code_processes`, `code_rename` — gated by **repository, not project** (doc 01 §8's deliberate exception to the project-isolation invariant). This doc fixes the family's contract shape; doc 10 owns the traversal mechanics.
+
+**Amendment, 2026-07-28 (T1.42d Tier-3, decided on measurement).** This sentence read "each
+with a REST twin under `/code` or `/repos`" and was tagged *(exists today)*. **Six of the
+eleven have no such route** — `code_context`, `code_dependencies`, `code_communities`,
+`code_processes`, `code_rename` and `code_changes`. Verified twice: by T1.42d's audit of all
+101 REST routes and all 21 MCP tools, and independently by the controller against
+`app/api/routes/code.py` (which exposes `POST /search`, `GET /symbols`, `/symbols/lookup`,
+`/symbols/{id}`, `/files/{repo_id}`, `/graph/{repo_id}`, `/wiki/{repo_id}`, `POST
+/blast-radius`) and `repos.py`.
+
+They are recorded as **MCP single-door with a stated reason** in `docs/two-door-parity.md`,
+which invariant 17 permits, and the distinction that makes it defensible is between a
+*capability* and a *query*: five of the six are server-side projections of rows the REST door
+already serves whole through `GET /code/graph/{repo_id}`, so nothing is REST-unreachable —
+what is single-door is the filtered question. The UI's consumer is a canvas that wants the
+graph; the agent's is a prompt that wants the answer.
+
+**`code_changes` is the one genuine capability asymmetry.** It shells out to git and reports
+the uncommitted working tree against the indexed symbols. Every REST read and the whole
+indexed graph are commit-based, so that state is not REST-reachable at all and the UI has no
+working-tree view.
+
+**This is a controller decision, not an owner ratification, and it is reversible.** The
+alternative — building six REST routes so the original sentence becomes true — is new scope
+no task calls for. If the owner wants the twins built instead, this amendment is what to
+revert.
 
 The new vault & review tools (target-new):
 
