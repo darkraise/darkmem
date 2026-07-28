@@ -9,7 +9,7 @@ import { cn } from "darkraise-ui/lib"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { FEED_CATEGORIES } from "@/demo/activity"
 import type { FeedCategory } from "@/demo/types"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { ModuleSurface } from "./module-surface"
 import { useFeed, type FeedRowData } from "../use-feed"
 

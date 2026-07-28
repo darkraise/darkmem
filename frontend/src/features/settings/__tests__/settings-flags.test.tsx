@@ -12,7 +12,7 @@ import { FlagsTab } from "../components/flags-tab"
 // unconditionally (rules of hooks) with `enabled: false` in demo mode — the
 // queries never fire, but `useQuery` still needs a provider in the tree or
 // it throws.
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>

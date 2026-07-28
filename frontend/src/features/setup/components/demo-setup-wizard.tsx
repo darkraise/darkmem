@@ -28,7 +28,7 @@ import {
   SETUP_CRUMBS,
   SETUP_DIRS,
   type SetupKindFixture,
-} from "@/demo/data/settings-curated"
+} from "@/demo/data-exports"
 import type { ApiKind } from "@/demo/types"
 
 const STEP_LABELS = [

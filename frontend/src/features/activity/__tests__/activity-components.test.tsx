@@ -13,7 +13,7 @@ import { CheckpointsTab } from "../components/checkpoints-tab"
 // about-to-change default (T1.58) — neither tab's real branch ever fires
 // here, but useQuery is called unconditionally (rules of hooks) and
 // throws without a QueryClient in the tree regardless of `enabled`.
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 function withQuery(children: ReactNode) {
   const qc = new QueryClient()
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>

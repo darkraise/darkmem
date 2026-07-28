@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Network } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { CodeGraphTab } from "@/features/code/components/code-graph-tab"
 import { RealCodeGraphView } from "@/features/code/components/real-code-graph-view"
 

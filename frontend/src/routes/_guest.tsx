@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 import { useAuthStore } from "@/features/auth"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { ParticleBackground } from "@/components/particle-background"
 
 export const Route = createFileRoute("/_guest")({

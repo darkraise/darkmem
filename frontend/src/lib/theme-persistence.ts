@@ -8,7 +8,7 @@ import {
 } from "darkraise-ui/theme"
 import { apiFetch } from "@/lib/api"
 import { themeConfig } from "@/theme.config"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 
 interface ThemeSettingsResponse {
   settings: Partial<ThemeSettings> | null

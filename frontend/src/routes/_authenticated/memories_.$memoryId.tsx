@@ -20,7 +20,7 @@ import {
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoMemories } from "@/demo/hooks"
 import { deriveTimeline, distinctProjects } from "@/demo/memories"
 import type { DemoMemory, MemoryTimelineEvent } from "@/demo/types"

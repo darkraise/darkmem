@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 vi.mock("@/features/memory-graph/components/memory-graph-explorer", () => ({
   MemoryGraphExplorer: () => <div>demo-memory-graph-explorer</div>,
 }))

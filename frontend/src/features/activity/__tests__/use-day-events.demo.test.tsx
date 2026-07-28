@@ -3,11 +3,11 @@ import { renderHook } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
-import { DAY_DRILL_DEFAULT } from "@/demo/data/activity-curated"
+import { DAY_DRILL_DEFAULT } from "@/demo/data-exports"
 import { useDayEvents } from "../use-day-events"
 
 function wrapper({ children }: { children: ReactNode }) {

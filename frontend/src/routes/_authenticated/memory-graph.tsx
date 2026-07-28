@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { MemoryGraphExplorer } from "@/features/memory-graph/components/memory-graph-explorer"
 import { RealMemoryGraphPage } from "@/features/memory-graph/components/real-memory-graph-page"
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoPipelineFailures } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoPipelineFailure } from "@/demo/types"

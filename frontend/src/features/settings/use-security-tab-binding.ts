@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoSecurity } from "@/demo/hooks"
 import { apiFetch, ApiError } from "@/lib/api"
 

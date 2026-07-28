@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event"
 // about-to-change default (T1.58) — same idiom Step 3 applies elsewhere.
 // The real-mode edit-disable branch has its own file, memory-editor-dialog
 // .real.test.tsx, mocked the other way.
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))

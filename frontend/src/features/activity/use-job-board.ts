@@ -1,5 +1,5 @@
 import { cronInfo } from "@/demo/settings"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoJobs } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoJob, DemoJobField, JobTriggerResult } from "@/demo/types"

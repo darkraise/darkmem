@@ -1,4 +1,4 @@
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoPipelineRuns } from "@/demo/hooks"
 import type { DemoPipelineRun, PipelineStepState } from "@/demo/types"
 import { relativeTime } from "@/lib/format"

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { FolderGit2 } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { RepositoriesTab } from "@/features/code/components/repositories-tab"
 import { RealRepositoriesView } from "@/features/code/components/real-repositories-view"
 

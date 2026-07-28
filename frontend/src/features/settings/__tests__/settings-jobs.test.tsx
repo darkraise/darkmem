@@ -7,7 +7,7 @@ import { JobsSettingsTab } from "../components/jobs-settings-tab"
 
 // Frozen at DEMO: true — matches settings-tabs.test.tsx's rationale (pins
 // the fixture-backed render rather than the real default, T1.58).
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })

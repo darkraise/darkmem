@@ -12,7 +12,7 @@ import { ConfirmGate } from "../components/confirm-gate"
 // and MaintenanceTab's demo rendering), so it is frozen at DEMO: true rather
 // than relying on the real default (T1.58) — see settings-security.real
 // .test.tsx / settings-maintenance.real.test.tsx for the real-mode bindings.
-vi.mock("@/demo/flag", () => ({ DEMO: true }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 
 // MaintenanceTab links into /activity; stub the router Link.
 vi.mock("@tanstack/react-router", () => ({

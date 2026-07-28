@@ -1,4 +1,4 @@
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoBufferMonitor } from "@/demo/hooks"
 import type { DemoBufferMonitor } from "@/demo/types"
 
@@ -9,7 +9,7 @@ export type BufferMonitorState =
    * table and the `buffer_flush` job are live, but nothing exposes rows or
    * counts over the API, and adding that route is outside this frontend
    * lane. Rendered as an honest gap, never as a silently empty panel
-   * (invariant 23) — this branch is unreachable until `demo/flag.ts`'s
+   * (invariant 23) — this branch is unreachable until `lib/demo-flag.ts`'s
    * default flips (T1.58), at which point it is the true state, not a bug.
    */
   | { mode: "unavailable" }

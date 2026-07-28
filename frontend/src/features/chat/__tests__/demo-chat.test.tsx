@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest"
 import { DemoContextPanel } from "../components/demo-context-panel"
 import { DemoMessagePane } from "../components/demo-message-pane"
 import { DemoThreadList } from "../components/demo-thread-list"
-import { CURATED_CHAT_THREADS } from "@/demo/data/chat-curated"
+import { CURATED_CHAT_THREADS } from "@/demo/data-exports"
 
 const rankingThread = CURATED_CHAT_THREADS.find(
   (t) => t.id === "thread-ranking",

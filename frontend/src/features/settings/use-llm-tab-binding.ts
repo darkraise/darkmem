@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoLLM } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type {

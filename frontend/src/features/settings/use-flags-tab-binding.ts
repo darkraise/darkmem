@@ -1,4 +1,4 @@
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { cronInfo } from "@/demo/settings"
 import { useDemoFlags, useDemoJobs } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"

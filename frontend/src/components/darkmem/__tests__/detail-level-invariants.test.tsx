@@ -11,7 +11,7 @@ import type { ReactNode } from "react"
 // that rule across every surface the flag already reaches, and proves the
 // preference only changes rendering, never the request.
 
-vi.mock("@/demo/flag", () => ({ DEMO: false }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -33,7 +33,20 @@ import { useDetailLevel } from "../use-detail-level"
 import { MemoryRow } from "@/features/memories/components/memory-row"
 import { RealMemoriesView } from "@/features/memories/components/real-memories-view"
 import { FactSourcesGroups } from "@/features/knowledge/components/fact-sources"
-import type { FactSource } from "@/demo/types"
+
+// FactSource is a real domain type (not demo fixture data) that currently
+// lives in @/demo/types alongside actual demo-only types — T1.67 relocates
+// it and its 64 sibling importers out of src/demo entirely. This file
+// defines its own structurally-equivalent shape rather than importing it,
+// so this one test does not need to wait on that larger move (T1.64 plan
+// §5.4).
+interface TestFactSource {
+  origin_key: string
+  kind: "memory" | "code" | "block" | "human"
+  ref: string
+  detail: string
+  at: string
+}
 
 const TRACE = {
   channels: [
@@ -100,7 +113,7 @@ describe("detail level: MemoryRow honesty labels render in both modes", () => {
   })
 })
 
-const SOURCES: FactSource[] = [
+const SOURCES: TestFactSource[] = [
   {
     origin_key: "session-a",
     kind: "memory",

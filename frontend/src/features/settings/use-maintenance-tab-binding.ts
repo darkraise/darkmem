@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoMaintenance } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { MaintenanceOpKey } from "@/demo/types"

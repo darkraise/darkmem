@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
-vi.mock("@/demo/flag", () => ({ DEMO: false }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))

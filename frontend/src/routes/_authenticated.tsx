@@ -30,7 +30,7 @@ import type { NavGroup } from "darkraise-ui/layout"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { DetailLevelToggle } from "@/components/darkmem"
 import {
   AppPageHeader,

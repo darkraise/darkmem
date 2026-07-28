@@ -4,6 +4,7 @@ import tseslint from "typescript-eslint"
 import reactHooks from "eslint-plugin-react-hooks"
 import reactRefresh from "eslint-plugin-react-refresh"
 import prettier from "eslint-config-prettier"
+import { builtinRules } from "eslint/use-at-your-own-risk"
 
 export default tseslint.config(
   { ignores: ["dist", "src/routeTree.gen.ts"] },
@@ -28,11 +29,20 @@ export default tseslint.config(
   },
   prettier,
   {
-    // Downgraded error -> warn by T1.58 (retire demo mode as the default):
-    // 82 files still import src/demo/ (70 production, 12 test), and each
-    // binding task (T1.59, T1.60, T1.63, ...) removes its own surface's
-    // imports rather than this task absorbing all of them at once. T1.64
-    // is expected to flip this back to error once the last binding task lands.
+    // Downgraded error -> warn by T1.58 (retire demo mode as the default).
+    // T1.64 corrected the count this comment carries and retargeted the
+    // achievable `error` flip to a narrower rule below, rather than flipping
+    // this whole block: measured 2026-07-28, by demo submodule (files
+    // overlap, since one file may import more than one) —
+    // `@/demo/types` 65 (the dominant debt: real API types re-exported
+    // through a demo path, not fixture coupling — T1.67's job, not this
+    // rule's), `@/demo/hooks` 30, `@/demo/store` 22, `@/demo/data` 0 (fixed
+    // in-lane by T1.64, see the `data/**`-scoped rule below), `@/demo/flag`
+    // 0 (relocated to `@/lib/demo-flag`, T1.64). This block's own measured
+    // violation count is asserted by
+    // `src/__tests__/no-restricted-imports-count.test.ts` (not under
+    // `tests/`, which vitest.config.ts excludes), literal, not parsed from
+    // this comment.
     files: [
       "src/routes/**/*.tsx",
       "src/features/**/*.{ts,tsx}",
@@ -46,6 +56,46 @@ export default tseslint.config(
         {
           patterns: [
             { group: ["@/demo/*", "../demo/*", "../../demo/*"], message: "Production code may not import from src/demo/ — that path is for Storybook and demo-mode Playwright specs only." },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // T1.64: the one sub-target of src/demo/* that is genuinely achievable
+    // as a real `error` today — raw fixture literals, the narrowest,
+    // most mechanical bucket (measured 0 importers after this task's
+    // in-lane fixes, down from 5: three production files and two demo-mode
+    // test files now reach the same constants through
+    // `src/demo/data-exports.ts`, a plain re-export outside `src/demo/data/`,
+    // instead of the fixture files directly). A new violator here fails the
+    // build, not just a test — see the flip's own falsification test.
+    //
+    // Registered under an aliased rule name, not `no-restricted-imports`
+    // directly: ESLint flat config does not merge two config objects' entries
+    // for the same rule name on overlapping `files` globs, it replaces the
+    // earlier one outright — a second `no-restricted-imports` block here
+    // would silently kill the warn-level rule above for every file both
+    // blocks match, not narrow it. Aliasing the same builtin rule under a
+    // second name lets both severities coexist on the same file set.
+    files: [
+      "src/routes/**/*.tsx",
+      "src/features/**/*.{ts,tsx}",
+      "src/hooks/**/*.ts",
+      "src/lib/**/*.ts",
+      "src/components/**/*.{ts,tsx}",
+    ],
+    plugins: {
+      "demo-data-import": {
+        rules: { "no-restricted-imports": builtinRules.get("no-restricted-imports") },
+      },
+    },
+    rules: {
+      "demo-data-import/no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { group: ["@/demo/data/*", "../demo/data/*", "../../demo/data/*"], message: "Production and test code may not import fixture literals from src/demo/data/ directly — re-export the specific value through src/demo/data-exports.ts (or another indirection outside src/demo/data/) instead." },
           ],
         },
       ],

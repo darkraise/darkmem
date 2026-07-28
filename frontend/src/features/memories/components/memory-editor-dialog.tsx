@@ -28,7 +28,7 @@ import {
   TagsInputItemText,
 } from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
 import type { DemoMemory } from "@/demo/types"
 import type { Memory } from "@/hooks/api/use-memory-api"

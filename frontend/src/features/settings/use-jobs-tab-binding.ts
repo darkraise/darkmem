@@ -1,4 +1,4 @@
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
 import { useJobBoard, type JobBoardState } from "@/features/activity/use-job-board"
 import { useUpdateJob } from "@/hooks/api"

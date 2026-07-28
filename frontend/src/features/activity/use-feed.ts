@@ -1,5 +1,5 @@
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoFeedEvents } from "@/demo/hooks"
 import type { DemoFeedEvent, FeedCategory } from "@/demo/types"
 import { relativeTime } from "@/lib/format"

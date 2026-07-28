@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoContributions } from "@/demo/hooks"
 import type { ContributionDay } from "@/demo/types"
 import { useEventsCalendar } from "@/hooks/api"

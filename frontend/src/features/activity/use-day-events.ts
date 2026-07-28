@@ -1,6 +1,6 @@
 import type { VerificationStatus } from "@/components/darkmem"
 import { dayBucket } from "@/demo/activity"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoDayBuckets } from "@/demo/hooks"
 import type { DemoDayEvent } from "@/demo/types"
 import { useEvents, type EventLogEntry } from "@/hooks/api"

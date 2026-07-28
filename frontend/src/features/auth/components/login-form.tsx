@@ -10,7 +10,7 @@ import {
 } from "darkraise-ui/components/password-input"
 import { loginSchema } from "../schemas"
 import { useLogin } from "../hooks/useLogin"
-import { DEMO } from "@/demo/flag"
+import { DEMO } from "@/lib/demo-flag"
 
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const login = useLogin()
