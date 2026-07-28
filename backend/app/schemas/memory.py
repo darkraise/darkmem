@@ -96,6 +96,20 @@ class MemoryUpdate(BaseModel):
 
 
 
+class MemoryLineageEntry(BaseModel):
+    """One predecessor in a memory's reverse supersession lineage.
+
+    Carries enough for the UI to render a navigable link with an excerpt
+    without a second round trip per row (id + content), plus created_at/
+    status so the row can be labelled honestly without re-fetching.
+    """
+
+    id: uuid.UUID
+    content: str
+    created_at: datetime
+    status: MemoryStatus
+
+
 class MemoryResponse(BaseModel):
     id: uuid.UUID
     content: str
@@ -117,6 +131,15 @@ class MemoryResponse(BaseModel):
     project: str = "default"
     status: MemoryStatus = "active"
     superseded_by: uuid.UUID | None = None
+    # The reverse of `superseded_by` — memories this one directly replaced.
+    # Bounded at MEMORY_PREDECESSORS_LIMIT (app/repositories/relational.py),
+    # newest first. Populated (as `[]` when there are none, never `None`)
+    # only by the single-get doors (GET /memories/{id}, MCP `memory_get`) —
+    # every other reader of MemoryResponse (search, create, update, batch)
+    # leaves this `None`, meaning "not computed for this read," which the UI
+    # must render as a distinct, honest "unknown" state rather than as "no
+    # predecessors."
+    predecessors: list[MemoryLineageEntry] | None = None
     technologies: list[str] = Field(default_factory=list)
     confidence: float = 0.75
     # Populated only when the request set `with_trace=True` — the "why

@@ -10,7 +10,11 @@ import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Separator } from "darkraise-ui/components/separator"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
-import { useMemory, type Memory } from "@/hooks/api/use-memory-api"
+import {
+  useMemory,
+  type Memory,
+  type MemoryLineageEntry,
+} from "@/hooks/api/use-memory-api"
 import { LifecycleBadge } from "./lifecycle-badge"
 
 function formatDateTime(iso: string): string {
@@ -20,16 +24,16 @@ function formatDateTime(iso: string): string {
   })
 }
 
-function SuccessorLink({ memory }: { memory: Memory }) {
+function LineageLink({ id, content }: { id: string; content: string }) {
   return (
     <Link
       to="/memories/$memoryId"
-      params={{ memoryId: memory.id }}
+      params={{ memoryId: id }}
       className="hover:text-primary flex min-w-0 items-center gap-1.5 text-sm transition-colors"
     >
       <Link2 aria-hidden className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
       <span className="truncate">
-        memory {memory.id.slice(0, 8)} — “{memory.content.slice(0, 80)}…”
+        memory {id.slice(0, 8)} — “{content.slice(0, 80)}…”
       </span>
     </Link>
   )
@@ -43,20 +47,27 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
+function PredecessorRow({ entry }: { entry: MemoryLineageEntry }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2.5">
+      <LifecycleBadge status={entry.status} />
+      <LineageLink id={entry.id} content={entry.content} />
+    </div>
+  )
+}
+
 /**
  * Forward direction (what replaced this memory) reads `superseded_by`
  * straight off the row and resolves it through `GET /memories/{id}` — an
  * ID-addressed read, so it reaches the successor regardless of the
  * successor's own status (content_surfaces.py's ID_ADDRESSED exemption).
  *
- * The reverse direction (what this memory replaced) has no backend query to
- * read: `MemorySearchRequest` carries no `superseded_by` filter and no
- * per-memory predecessor list exists on `MemoryResponse`. Deriving it by
- * paging through every superseded row in the project and matching
- * `superseded_by` client-side would be exactly the list-query
- * reconstruction the lineage surface must not do — a derived answer that
- * can silently drift from the database is worse than an honestly labelled
- * gap. This renders the gap instead of a guess.
+ * The reverse direction (what this memory replaced) reads `predecessors`
+ * (T1.47), which the backend populates only on this same single-get read —
+ * `undefined` means "not computed for this read" (e.g. a row reused from a
+ * search result), never "confirmed empty." That is a third, distinct state
+ * from "has predecessors" and "replaced nothing" (`[]`), and conflating it
+ * with either would misreport what the database actually knows.
  */
 function SupersessionLineage({ memory }: { memory: Memory }) {
   const successorId =
@@ -79,7 +90,7 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
             ) : successor.isLoading ? (
               <Skeleton className="h-4 w-48" />
             ) : successor.data ? (
-              <SuccessorLink memory={successor.data} />
+              <LineageLink id={successor.data.id} content={successor.data.content} />
             ) : (
               <span className="text-muted-foreground text-sm italic">
                 successor memory {memory.superseded_by.slice(0, 8)} could not
@@ -107,14 +118,22 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
 
       <div>
         <SectionLabel>Replaced</SectionLabel>
-        <p className="text-muted-foreground text-sm italic">
-          Not shown — the API has no reverse lookup from a memory to the
-          earlier memories it superseded (only the forward{" "}
-          <code className="font-mono">superseded_by</code> pointer exists on
-          each row). Rendering this honestly needs a backend query capability
-          first; a client-side reconstruction from a list of superseded rows
-          could disagree with the database.
-        </p>
+        {memory.predecessors === undefined ? (
+          <p className="text-muted-foreground text-sm italic">
+            unknown — not computed for this read.
+          </p>
+        ) : memory.predecessors.length === 0 ? (
+          <p className="text-muted-foreground text-sm italic">
+            replaced nothing — no earlier memory points here through
+            superseded_by.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {memory.predecessors.map((entry) => (
+              <PredecessorRow key={entry.id} entry={entry} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

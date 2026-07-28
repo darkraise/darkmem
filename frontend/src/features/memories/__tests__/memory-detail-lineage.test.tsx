@@ -5,10 +5,14 @@ import type { ReactNode } from "react"
 
 // T1.47 — memory-detail supersession lineage. Ruling 1: a superseded
 // memory must render, labelled, by default — never filtered out, which is
-// literally what once made two memories vanish from this corpus. Ruling 3:
-// the successor link must navigate, not just display an id — asserted via
-// the resolved href, not merely the link's presence. Ruling 4: the
-// lifecycle badge is an honesty signal and renders in both detail levels.
+// literally what once made two memories vanish from this corpus. Ruling 2:
+// lineage renders both directions, with real data on each side once the
+// backend gained the `predecessors` field (controller scope extension,
+// 2026-07-28) — see memory-lineage backend tests for the detector-produced
+// pair this frontend fixture mirrors. Ruling 3: the successor/predecessor
+// links navigate, not just display an id — asserted via the resolved href.
+// Ruling 4: the lifecycle badge is an honesty signal and renders in both
+// detail levels.
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
@@ -39,15 +43,20 @@ import { apiFetch } from "@/lib/api"
 import { useDetailLevel } from "@/components/darkmem/use-detail-level"
 import { RealMemoryDetailView } from "../components/real-memory-detail-view"
 
-const SUPERSEDED = {
+// A real detector-produced pair, mirrored client-side: REPLACED is the old
+// row `detect_supersessions` flipped, SUCCESSOR is the new memory whose
+// GET /memories/{id} response now carries REPLACED back through
+// `predecessors` (T1.47's backend half).
+const REPLACED = {
   id: "mem-1",
   content: "we use nomic-embed-text for embeddings",
   source: "mcp",
   tags: [],
-  created_at: new Date().toISOString(),
+  created_at: "2026-01-01T00:00:00Z",
   status: "superseded" as const,
   superseded_by: "succ-1",
   technologies: ["nomic-embed-text"],
+  predecessors: [] as const,
 }
 
 const SUCCESSOR = {
@@ -55,9 +64,18 @@ const SUCCESSOR = {
   content: "we switched embeddings to qwen3-embedding:0.6b",
   source: "mcp",
   tags: [],
-  created_at: new Date().toISOString(),
+  created_at: "2026-02-01T00:00:00Z",
   status: "active" as const,
+  superseded_by: null,
   technologies: ["qwen3-embedding"],
+  predecessors: [
+    {
+      id: "mem-1",
+      content: "we use nomic-embed-text for embeddings",
+      created_at: "2026-01-01T00:00:00Z",
+      status: "superseded" as const,
+    },
+  ],
 }
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -80,7 +98,7 @@ describe("memory-detail supersession lineage", () => {
   })
 
   it("renders a superseded memory's own content and badge by default — never filtered out (ruling 1)", async () => {
-    mockRoutes({ "/memories/mem-1": SUPERSEDED, "/memories/succ-1": SUCCESSOR })
+    mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
 
     render(<RealMemoryDetailView memoryId="mem-1" />, { wrapper })
 
@@ -88,25 +106,55 @@ describe("memory-detail supersession lineage", () => {
     expect(screen.getAllByText("superseded").length).toBeGreaterThan(0)
   })
 
-  it("renders lineage in both directions: what replaced it, and an honest label for what it replaced (ruling 2)", async () => {
-    mockRoutes({ "/memories/mem-1": SUPERSEDED, "/memories/succ-1": SUCCESSOR })
+  it("renders lineage in both directions with real data on each side (ruling 2)", async () => {
+    mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
 
-    render(<RealMemoryDetailView memoryId="mem-1" />, { wrapper })
+    // View the successor: its forward direction is "not superseded" (nothing
+    // has replaced it yet) and its reverse direction must show the real
+    // predecessor the backend's `predecessors` field carries — not a
+    // fabricated or hand-reconstructed row.
+    render(<RealMemoryDetailView memoryId="succ-1" />, { wrapper })
 
     await screen.findByText("Replaced by")
-    // Forward direction resolves to the real successor.
-    await screen.findByText(/switched embeddings to qwen3-embedding/i)
-    // Reverse direction: the backend has no predecessor lookup, so this
-    // must say so honestly rather than rendering "none" (which would be
-    // indistinguishable from "we checked and there aren't any").
-    expect(screen.getByText("Replaced")).toBeInTheDocument()
+    expect(screen.getByText(/not superseded/i)).toBeInTheDocument()
+
+    await screen.findByText("Replaced")
+    const predecessorLink = await screen.findByRole("link", { name: /mem-1/i })
+    expect(predecessorLink).toHaveAttribute("href", "/memories/mem-1")
     expect(
-      screen.getByText(/no reverse lookup from a memory to the earlier/i),
+      screen.getByText(/we use nomic-embed-text for embeddings/i),
     ).toBeInTheDocument()
   })
 
+  it("distinguishes 'replaced nothing' (an empty list) from 'unknown' (not computed) in the reverse direction (ruling 2)", async () => {
+    mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
+
+    // REPLACED itself has predecessors: [] — the backend confirmed it
+    // replaced nothing, which must read as a fact, not a gap.
+    render(<RealMemoryDetailView memoryId="mem-1" />, { wrapper })
+    await screen.findByText(/we use nomic-embed-text for embeddings/i)
+    expect(screen.getByText(/replaced nothing/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^unknown/i)).not.toBeInTheDocument()
+  })
+
+  it("reads the reverse direction as unknown when a row was never fetched through the single-get door (ruling 2)", async () => {
+    // Simulates a Memory object that reached this component from a reader
+    // other than GET /memories/{id} (e.g. reused from a search result),
+    // where the backend never computed predecessors for that read.
+    const { predecessors: _drop, ...withoutPredecessors } = REPLACED
+    mockRoutes({
+      "/memories/mem-4": { ...withoutPredecessors, id: "mem-4" },
+      "/memories/succ-1": SUCCESSOR,
+    })
+
+    render(<RealMemoryDetailView memoryId="mem-4" />, { wrapper })
+    await screen.findByText(/we use nomic-embed-text for embeddings/i)
+    expect(screen.getByText(/unknown — not computed/i)).toBeInTheDocument()
+    expect(screen.queryByText(/replaced nothing/i)).not.toBeInTheDocument()
+  })
+
   it("the successor link navigates to the memory that replaced it, not merely displays its id (ruling 3)", async () => {
-    mockRoutes({ "/memories/mem-1": SUPERSEDED, "/memories/succ-1": SUCCESSOR })
+    mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
 
     render(<RealMemoryDetailView memoryId="mem-1" />, { wrapper })
 
@@ -114,11 +162,20 @@ describe("memory-detail supersession lineage", () => {
     expect(link).toHaveAttribute("href", "/memories/succ-1")
   })
 
+  it("the predecessor link navigates to the memory it replaced, not merely displays its id (ruling 3)", async () => {
+    mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
+
+    render(<RealMemoryDetailView memoryId="succ-1" />, { wrapper })
+
+    const link = await screen.findByRole("link", { name: /mem-1/i })
+    expect(link).toHaveAttribute("href", "/memories/mem-1")
+  })
+
   it.each(["simple", "advanced"] as const)(
     "the superseded badge and successor link render in %s detail level (ruling 4)",
     async (level) => {
       useDetailLevel.setState({ level })
-      mockRoutes({ "/memories/mem-1": SUPERSEDED, "/memories/succ-1": SUCCESSOR })
+      mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
 
       render(<RealMemoryDetailView memoryId="mem-1" />, { wrapper })
 
@@ -130,7 +187,7 @@ describe("memory-detail supersession lineage", () => {
   it("a deprecated memory (successor removed) is labelled, not hidden", async () => {
     mockRoutes({
       "/memories/mem-2": {
-        ...SUPERSEDED,
+        ...REPLACED,
         id: "mem-2",
         status: "deprecated",
         superseded_by: null,
@@ -148,7 +205,7 @@ describe("memory-detail supersession lineage", () => {
 
   it("an active memory reads as not-superseded, plainly", async () => {
     mockRoutes({
-      "/memories/mem-3": { ...SUPERSEDED, id: "mem-3", status: "active", superseded_by: null },
+      "/memories/mem-3": { ...REPLACED, id: "mem-3", status: "active", superseded_by: null },
     })
 
     render(<RealMemoryDetailView memoryId="mem-3" />, { wrapper })

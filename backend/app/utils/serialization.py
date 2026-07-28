@@ -18,6 +18,26 @@ _COMPUTED = {
     # shape without making an ordinary read pay for either.
     "related_memories": lambda memory: None,
     "trace": lambda memory: None,
+    # `MemoryService.get_memory` attaches `.predecessors` (never absent
+    # there); every other caller's Memory row never sets it, so `hasattr`
+    # tells "not computed for this read" (-> null) apart from "computed,
+    # zero rows" (-> `[]`) — a plain `getattr(..., None)` cannot make that
+    # distinction because `[]` and the missing-attribute default would look
+    # identical. Reaches the MCP `memory_get` tool automatically, since it
+    # calls the same `MemoryService.get_memory` REST's single-get route does.
+    "predecessors": lambda memory: (
+        [
+            {
+                "id": _jsonable(p.id),
+                "content": p.content,
+                "created_at": _jsonable(p.created_at),
+                "status": p.status,
+            }
+            for p in memory.predecessors
+        ]
+        if hasattr(memory, "predecessors")
+        else None
+    ),
 }
 
 

@@ -10,6 +10,12 @@ from app.services.events import record_event
 
 from .base import AuditRepositoryBase, MemoryRepositoryBase, TagRepositoryBase
 
+# One supersession write can flip many same-project candidates at once
+# (`detect_supersessions` has no per-write cap), and the memory-detail page
+# renders predecessors inline, never paginated — so the reverse lookup is
+# bounded rather than open-ended.
+MEMORY_PREDECESSORS_LIMIT = 20
+
 
 class PostgresMemoryRepository(MemoryRepositoryBase):
     def __init__(self, session: AsyncSession):
@@ -38,6 +44,24 @@ class PostgresMemoryRepository(MemoryRepositoryBase):
         stmt = select(Memory).options(selectinload(Memory.tags)).where(Memory.id == memory_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_predecessors(self, memory_id, limit: int = MEMORY_PREDECESSORS_LIMIT) -> list[Memory]:
+        """Memories this one directly superseded — the reverse of `superseded_by`.
+
+        `superseded_by` carries no index (the baseline schema is a
+        single-owner-per-epic file; adding one is out of this change's
+        scope), so this is a filtered scan on one column. Acceptable while
+        superseded rows stay a small fraction of the table; a future
+        schema-owning task can index it if that stops holding.
+        """
+        stmt = (
+            select(Memory)
+            .where(Memory.superseded_by == memory_id)
+            .order_by(Memory.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_many(self, memory_ids: list) -> list[Memory]:
         if not memory_ids:

@@ -227,6 +227,60 @@ async def test_memory_get_reports_supersession(mcp_http_client, session):
     assert live["superseded_by"] is None
 
 
+async def test_memory_get_reports_the_reverse_lineage_too(mcp_http_client, session):
+    """T1.47: the MCP door must carry `predecessors`, not only `superseded_by`.
+
+    `memory_get` and REST's `GET /memories/{id}` share one call site
+    (`MemoryService.get_memory`), so this proves the field reaches MCP
+    without `app/api/mcp/server.py` needing its own edit. The pair is
+    produced by the real detector, not hand-set, so a future change to what
+    `detect_supersessions` writes breaks this test rather than drifting
+    silently past it.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.supersession import detect_supersessions
+
+    now = datetime(2026, 7, 28, 12, 0, tzinfo=timezone.utc)
+    old = Memory(
+        id=uuid.uuid4(), content="mcp lineage: promtail for logs",
+        source="test", metadata_={}, project="lane-f",
+        technologies=["promtail"], created_at=now - timedelta(days=1),
+    )
+    new = Memory(
+        id=uuid.uuid4(), content="mcp lineage: switched to alloy",
+        source="test", metadata_={}, project="lane-f",
+        technologies=["alloy"], created_at=now,
+    )
+    session.add_all([old, new])
+    await session.flush()
+
+    flipped = await detect_supersessions(
+        session,
+        new_memory_id=new.id,
+        new_memory_text=new.content,
+        new_memory_created_at=new.created_at,
+        project=new.project,
+        new_relations=[{"type": "REPLACES", "source": "alloy", "target": "promtail"}],
+        now=now,
+    )
+    assert flipped == [old.id]
+    await session.flush()
+
+    row = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(new.id)})
+    )
+    assert len(row["predecessors"]) == 1
+    assert row["predecessors"][0]["id"] == str(old.id)
+    assert row["predecessors"][0]["content"] == "mcp lineage: promtail for logs"
+    assert row["predecessors"][0]["status"] == "superseded"
+
+    childless = _tool_payload(
+        await _post_tool(mcp_http_client, "memory_get", {"memory_id": str(old.id)})
+    )
+    assert childless["predecessors"] == []
+
+
 async def test_memory_search_rows_carry_the_lifecycle_label(mcp_http_client, session):
     memory = Memory(
         id=uuid.uuid4(), content="mcp search label probe", source="test",
