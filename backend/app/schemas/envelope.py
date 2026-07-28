@@ -9,13 +9,16 @@ build if another model in ``app.schemas`` redeclares one of those fields.
 
 Two deliberate shapes a reader will want explained:
 
-``excluded`` is an **open** ``dict[str, int]`` keyed by reason name, not doc
-12 §4's fixed ``{by_project, by_status, by_context_conflict}`` triple. The
-T1.29-series pushdown scopes project and status in SQL, so a foreign row is
-never fetched to be counted, and ``by_context_conflict`` has no
-implementation because the four-layer composition does not exist yet. An
-always-zero honesty counter is worse than an absent one: it reads as
-evidence that a check ran.
+``excluded`` is an **open** ``dict[str, int]`` keyed by reason name. Doc 12
+§4 fixed a ``{by_project, by_status, by_context_conflict}`` triple and was
+**amended to match this shape on 2026-07-28**, with those three kept as
+*reserved names*: a reason that becomes constructible must use the doc's
+name for it. The T1.29-series pushdown scopes project and status in SQL, so
+a foreign row is never fetched to be counted. ``by_context_conflict`` is
+subtler than "unimplemented": ``rank_fusion.partition_by_context`` computes
+it and is tested, but **no production path calls it** — the four-layer
+composition that would is E2's. An always-zero honesty counter is worse
+than an absent one: it reads as evidence that a check ran.
 
 ``detail`` on :class:`ErrorEnvelope` is a **string mirror** of
 ``error.message``. ``frontend/src/lib/api.ts`` interpolates ``detail``
