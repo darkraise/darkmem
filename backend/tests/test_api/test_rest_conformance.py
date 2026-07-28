@@ -49,6 +49,7 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/auth/logout"): 200,
     ("GET", "/api/v1/auth/me"): 200,
     ("POST", "/api/v1/auth/refresh"): 200,
+    ("GET", "/api/v1/auth/security-posture"): 200,
     ("POST", "/api/v1/chat/completions"): 200,
     ("GET", "/api/v1/chat/conversations"): 200,
     ("POST", "/api/v1/chat/conversations"): 201,

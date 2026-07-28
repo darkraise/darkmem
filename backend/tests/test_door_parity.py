@@ -222,6 +222,21 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="security.posture",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/auth/security-posture"),),
+        reason=(
+            "Human observability of the box's own security configuration -- "
+            "the same doc 12 section 7 class as the review queue and "
+            "auth.audit above: an operator's read of which IP-trust and "
+            "cookie strategy is live, not a capability an agent retrieves. "
+            "The response enumerates named fields rather than serialising "
+            "settings, so it can never leak a credential, but it stays an "
+            "authenticated door read: an unauthenticated caller has nothing "
+            "to gain from seeing another human's transport-trust posture."
+        ),
+    ),
+    Surface(
         name="setup.tofu",
         status=REST_ONLY,
         rest=(
