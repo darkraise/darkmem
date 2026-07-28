@@ -64,6 +64,8 @@ async def list_symbols(
     svc = _get_service(request, session)
     result = await svc.list_symbols(repo_id, file_path, kind, q, offset, limit)
     result["items"] = [CodeSymbolResponse(**item) for item in result["items"]]
+    result["limit"] = limit
+    result["offset"] = offset
     return result
 
 

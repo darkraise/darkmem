@@ -19,7 +19,6 @@ import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -80,7 +79,10 @@ async def list_obsolete_memories(
     items, total, partition_missing = await svc.list_obsolete_memories(
         fingerprint, limit=limit, offset=offset,
     )
-    return {"items": items, "total": total, "partition_missing": partition_missing}
+    return {
+        "items": items, "total": total, "limit": limit, "offset": offset,
+        "partition_missing": partition_missing,
+    }
 
 
 @router.get("/obsolete/code-chunks")
@@ -96,7 +98,10 @@ async def list_obsolete_code_chunks(
     items, total, partition_missing = await svc.list_obsolete_code_chunks(
         fingerprint, limit=limit, offset=offset,
     )
-    return {"items": items, "total": total, "partition_missing": partition_missing}
+    return {
+        "items": items, "total": total, "limit": limit, "offset": offset,
+        "partition_missing": partition_missing,
+    }
 
 
 @router.get("/obsolete/entities")
@@ -112,7 +117,10 @@ async def list_obsolete_entities(
     items, total, partition_missing = await svc.list_obsolete_entities(
         fingerprint, limit=limit, offset=offset,
     )
-    return {"items": items, "total": total, "partition_missing": partition_missing}
+    return {
+        "items": items, "total": total, "limit": limit, "offset": offset,
+        "partition_missing": partition_missing,
+    }
 
 
 async def _dispatch_single_category(
@@ -127,10 +135,7 @@ async def _dispatch_single_category(
         raise HTTPException(503, "Pipeline not initialized")
 
     if not reembed_locks.try_acquire(category):
-        return JSONResponse(
-            status_code=409,
-            content={"accepted": False, "reason": "already_running"},
-        )
+        raise HTTPException(status_code=409, detail=f"Re-embed of {category!r} is already running")
 
     try:
         snapshot_fingerprint = pipeline.llm.llm_fingerprint()
@@ -227,12 +232,9 @@ async def reembed_all(
         else:
             for released in acquired:
                 reembed_locks.release(released)
-            return JSONResponse(
+            raise HTTPException(
                 status_code=409,
-                content={
-                    "accepted": False, "reason": "already_running",
-                    "conflict_category": cat,
-                },
+                detail=f"Re-embed of {cat!r} is already running",
             )
 
     try:

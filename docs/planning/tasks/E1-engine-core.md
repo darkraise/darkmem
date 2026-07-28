@@ -1126,6 +1126,36 @@ forbids.
 
 **Verify.** `cd backend && python -m pytest tests/test_door_parity.py -q`
 
+#### T1.42e — Retire the `llm_*` wire keys, backend and frontend, in one change
+
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T1.42b` · `Doc: CLAUDE.md "Domain model"` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Opened by T1.42b under controller ruling 2 (2026-07-28), because T1.42b's own
+scope excludes it: `CLAUDE.md`'s "Domain model" section says the REST and websocket payload
+keys still read `llm_*` (`llm_classified_type`, `llm_summary`, `llm_emotions`, `llm_flags`)
+and that retiring them from the wire is this task's — a wire rename touching both the
+`MemoryResponse` serialisation (`backend/app/api/routes/memories.py::_to_response` and the
+websocket broadcast payload) and every one of the frontend's ~61 read sites
+(`frontend/src/**`) has to land as one change, because a backend-only rename breaks every
+live frontend caller and a frontend-only rename breaks against the shipped wire shape.
+
+**Dependency — must run when no other frontend lane is live.** Two sibling lanes hold
+`frontend/` this wave (E1 wave 13); a rename across ~61 call sites conflicts with concurrent
+frontend work by construction. Schedule for a wave where this is the only lane touching
+`frontend/src`.
+
+**Done when:**
+- [ ] Backend drops the `llm_` prefix on the wire (`MemoryResponse` fields and the websocket
+      broadcast payload), matching the internal column names (`classified_type`, `summary`,
+      `emotions`, `flags`) already in place since the baseline
+- [ ] Every frontend read site is migrated in the same change (no dual-reading shim left
+      behind)
+- [ ] `CLAUDE.md`'s "Domain model" section is updated to state the keys are retired, not
+      still split
+
+**Verify.** `cd backend && python -m pytest tests/test_api/test_memories.py tests/test_websocket.py -q`
+and `cd frontend && npm run typecheck && npm test`
+
 #### T1.43 — Dashboard + contribution calendar
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.08` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
@@ -1752,3 +1782,7 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-28 | T1.36 / T1.37 | 2 | **`CLAUDE.md`'s "Supersession (`detect_supersessions`)" section is now stale in two places and this lane deliberately did NOT edit it** — the file is outside the lane's declared scope and four sibling lanes are live on this wave. It still reads "Triggered inside Phase 5 when the new memory carries a `REPLACES` relation" and "`candidate.technologies` overlaps the lowercased `REPLACES` targets"; both should read *REPLACES-family*. The "Cross-cutting invariants" REPLACES-family bullet should also gain the supersession trigger beside the rescue dedup. **The controller owns this edit.** | Runbook §5's channel for a doc correction a lane may not make itself. Recording it here rather than making the edit is the lane rule (GLOBAL §8); recording it *at all* is what stops the baseline from quietly describing the narrow behaviour after the widening merges. |
 | 2026-07-28 | T1.37 | 2 | **The demote-before-delete UPDATE is extracted to one `supersession.demote_dependents` that both delete paths call**, replacing the two hand-written copies in `job_runners.make_expired_memory_cleanup_runner` and `MemoryService.delete_memory`. The two agreed at the time of the extraction; the change is drift prevention, not a bug fix. | Ruling 5 required proving the interactive path runs the *identical* demotion rather than a second copy that can drift. Identity is the only form of that proof that survives a later edit to one caller: two copies that agree today are one careless edit away from a path whose dependents strand on `superseded` with a null pointer, and the symptom is a whole aborted TTL batch, not one bad row. |
 | 2026-07-28 | T1.36 / T1.37 | 1 | **The two honesty specs ship as backend pytest modules under `backend/tests/honesty/`, not in the API e2e suite the e2e plan names.** `docs/planning/e2e-test-plan.md` rings both `honesty/superseded-pointer` and `honesty/demote-before-delete` at the **API e2e** ring, and that same document states the API e2e suite **does not exist yet** (T1.64 builds it). The new directory mirrors the existing `frontend/tests/honesty/` convention so T1.64 can adopt it wholesale; the floor collects it today, so the specs run on every merge rather than waiting. | The alternative — leaving the specs unwritten until T1.64 — would let both tasks close with a `Done when` box naming a spec that does not exist, which is the exact coverage-table-without-a-suite failure the e2e plan's "named in its owning task's Done when" rule exists to prevent. Recorded as Tier 1 because it places a file, it does not change a decision. |
+| 2026-07-28 | T1.42b | 2 | **Opened T1.42e — "retire the `llm_*` wire keys, backend and frontend, in one change" — per controller ruling 2, and corrected `CLAUDE.md`'s task pointer.** `CLAUDE.md`'s "Domain model" section named T1.42b as the owner of the `llm_*` wire-key retirement, but T1.42b's own task text does not mention it, and the controller resolved the conflict: the frontend reads those keys in ~61 places and two sibling lanes hold `frontend/` this wave, so a backend-only rename would break the app. `CLAUDE.md`'s sentence now reads "retiring them from the wire is T1.42e's" — a one-word pointer swap, nothing else in the file touched. | T1.42e is scoped, dependency-noted (must run when no other frontend lane is live), and files a `Verify` command spanning both doors so the rename cannot land half-done. |
+| 2026-07-28 | T1.42b | 2 | **Four routes answered a conflict/missing-handler failure with a raw `JSONResponse` instead of `raise HTTPException(...)`, bypassing `app.main`'s uniform error envelope (T1.42a).** `pipeline_failures.py::retry_failure` (409 already-retrying, 503 no-handler) and `reembed.py::_dispatch_single_category` / `reembed_all` (409 already-running) all built their own `{"accepted": false, "reason": ...}` body. Converted to `HTTPException`, verified safe: `frontend/src/lib/api.ts::apiFetch` throws before returning the body on any non-2xx response and only ever reads the string `detail` key, so no live caller read `accepted`/`reason`/`conflict_category` from these specific error paths — the fix is additive from the frontend's perspective and strictly improves the error message (previously `detail` was absent, falling back to a generic `API error: <status>`). | Ruling 3 requires grepping the frontend and reporting consumers before a status-code change; this is a body-shape change at an unchanged status code, so the letter of ruling 3 does not gate it, but the same discipline was applied by inspection before landing it, and the finding (no live reader of the old shape) is recorded here rather than asserted without evidence. |
+| 2026-07-28 | T1.42b | 2 | **Three list routes gained `limit`/`offset` in their response bodies to match the codebase's established paginated-list shape** (`items`+`total`+`limit`+`offset`, the shape `memory-buffer` and `auth/audit` already use): `pipeline_failures.py::list_failures`, all three `reembed.py::list_obsolete_*` routes, and `code.py::list_symbols`. All four are raw-dict returns with no `response_model`, so the fix is a route-level addition, additive on the wire, and unread by any current frontend caller (grepped: no consumer of `partition_missing` or these specific list shapes exists yet). | `events.py` (`GET /events`, `GET /events/timeline`) and `chat.py` (`GET /chat/conversations`) have the same gap but are schema-owned (`EventListResponse`, `ConversationListResponse` in `app/schemas/**`) and could not be fixed without editing a file outside this lane's scope (`backend/app/schemas/**` is shared with lane C this wave). One-line change each: add `limit: int` and `offset: int` fields to `EventListResponse` (both `GET` routes already have `limit`/`offset` as local variables to populate them) and add `total: int`, `limit: int`, `offset: int` to `ConversationListResponse` (the route currently discards the count query and doesn't compute one at all — `ChatService.list_conversations` would need a total too). Reported per the brief rather than edited. |
+| 2026-07-28 | T1.42b | 2 | **`GET /repos/{repo_id}/tasks/{task_id}` (documented deviation, `docs/api-rest-conventions.md` "Known deviations") is unaffected — left exactly as it is (200 with a body, not 204)** — a cancel modelled as `DELETE`, breaking to fix for marginal benefit per the existing doc. Confirmed still matches; no change made. | Recorded so a later conformance pass does not re-flag it as a miss — it is a known, accepted deviation, not an oversight this task left behind. |
