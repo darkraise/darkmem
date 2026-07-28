@@ -315,6 +315,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/analytics/reprocess/stream",
     "GET /api/v1/auth/audit",
     "GET /api/v1/auth/me",
+    "GET /api/v1/auth/security-posture",
     "POST /api/v1/auth/change-password",
     "POST /api/v1/auth/login",
     "POST /api/v1/auth/logout",
