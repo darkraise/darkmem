@@ -112,7 +112,13 @@ A memory carries:
   runs through the LLM, or the in-process classifier when the classification
   purpose's inline `classifier_kind` is `local`.
 - `origin_key` (Text, nullable) — capture-session identity, the
-  corroboration-independence key facts count `DISTINCT` on. No writer yet.
+  corroboration-independence key facts count `DISTINCT` on. **It has writers on
+  both doors** since T1.11 (`resolve_origin_key`, called from
+  `api/routes/memories.py` and `api/mcp/server.py`, and on the raw entry dicts
+  for batch adds) — the "no writer yet" note here was stale and was corrected
+  2026-07-28. **No response echoes it**: it is absent from `MemoryResponse`, so
+  it is write-only over the wire and only a direct database read can observe it.
+  A test asserting it through any door's response will assert nothing.
 - `updated_at` is bumped by the **`touch_updated_at` SQL trigger**, not by
   SQLAlchemy's client-side `onupdate`: a raw-SQL UPDATE must move it too.
 - `technologies` (lowercase Text[]) — denormalised cache of entity names
