@@ -34,12 +34,12 @@ import { MemoryRow } from "@/features/memories/components/memory-row"
 import { RealMemoriesView } from "@/features/memories/components/real-memories-view"
 import { FactSourcesGroups } from "@/features/knowledge/components/fact-sources"
 
-// FactSource is a real domain type (not demo fixture data) that currently
-// lives in @/demo/types alongside actual demo-only types — T1.67 relocates
-// it and its 64 sibling importers out of src/demo entirely. This file
-// defines its own structurally-equivalent shape rather than importing it,
-// so this one test does not need to wait on that larger move (T1.64 plan
-// §5.4).
+// FactSource stays in @/demo/types: T1.68 (the type-relocation task T1.67's
+// falsification opened) found no real Knowledge-vault binding anywhere in
+// the codebase, so nothing outside fact-sources.tsx's demo-only consumer
+// ever needs it. This file defines its own structurally-equivalent shape
+// rather than importing it anyway, so it never depended on that move
+// either way (T1.64 plan §5.4).
 interface TestFactSource {
   origin_key: string
   kind: "memory" | "code" | "block" | "human"

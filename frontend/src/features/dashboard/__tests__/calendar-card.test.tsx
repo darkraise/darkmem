@@ -8,7 +8,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useNavigate: () => vi.fn(),
 }))
 
-import type { ContributionDay } from "@/demo/types"
+import type { ContributionDay } from "@/features/dashboard/types"
 import { CalendarCard } from "../calendar-card"
 
 function day(date: string, count: number): ContributionDay {

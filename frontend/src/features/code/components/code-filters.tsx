@@ -1,7 +1,7 @@
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { cn } from "darkraise-ui/lib"
-import type { CodeNodeKind } from "@/demo/types"
+import type { CodeNodeKind } from "@/features/code/types"
 import { chartVar } from "./code-canvas"
 
 const KIND_CHART: Record<CodeNodeKind, number> = {

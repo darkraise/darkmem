@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoMaintenance } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
-import type { MaintenanceOpKey } from "@/demo/types"
+import type { MaintenanceOpKey } from "@/features/settings/types"
 import { apiFetch, ApiError } from "@/lib/api"
 import { useTriggerJob } from "@/hooks/api"
 

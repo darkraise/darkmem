@@ -7,7 +7,7 @@ import {
 } from "../memories"
 import { CURATED_IDS, CURATED_MEMORIES } from "../data/memories-curated"
 import { useDemoStore } from "../store"
-import type { DemoMemory } from "../types"
+import type { DemoMemory } from "@/features/memories/types"
 
 function rawRows(n: number): RawBulkMemory[] {
   return Array.from({ length: n }, (_, i) => ({

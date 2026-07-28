@@ -6,7 +6,7 @@ import type {
   DemoCodeGraph,
   DemoCodeNode,
   DemoCodeProcess,
-} from "@/demo/types"
+} from "@/features/code/types"
 
 const CHART_CYCLE = 5
 

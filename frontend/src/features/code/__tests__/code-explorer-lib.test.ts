@@ -6,7 +6,7 @@ import {
 } from "../lib/file-tree"
 import { buildWikiLinkIndex } from "../lib/wiki-links"
 import { buildFileSource } from "@/demo/code-source"
-import type { DemoCodeGraph, DemoCodeNode } from "@/demo/types"
+import type { DemoCodeGraph, DemoCodeNode } from "@/features/code/types"
 
 const PATHS = [
   "services/pipeline.py",

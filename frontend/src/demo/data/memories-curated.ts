@@ -1,4 +1,4 @@
-import type { DemoMemory } from "../types"
+import type { DemoMemory } from "@/features/memories/types"
 
 // Timestamps are relative to load time so the curated rows surface at the
 // top of the recency-ordered browse view alongside the generated bulk rows.

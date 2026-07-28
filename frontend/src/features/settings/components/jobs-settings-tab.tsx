@@ -10,7 +10,7 @@ import { HelpTip } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { validateJobConfig } from "@/demo/activity"
 import { cronInfo } from "@/demo/settings"
-import type { DemoJob } from "@/demo/types"
+import type { DemoJob } from "@/features/activity/types"
 import {
   useJobsSettingsBinding,
   type JobsSettingsBinding,

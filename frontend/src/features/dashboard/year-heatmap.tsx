@@ -6,7 +6,7 @@ import {
   HoverCardTrigger,
 } from "darkraise-ui/components/hover-card"
 import { cn } from "darkraise-ui/lib"
-import type { ContributionDay } from "@/demo/types"
+import type { ContributionDay } from "@/features/dashboard/types"
 import { formatDayKey, localDayKey } from "@/lib/format"
 import {
   buildHeatmapWeeks,

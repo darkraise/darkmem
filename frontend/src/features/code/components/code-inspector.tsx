@@ -18,7 +18,7 @@ import {
 } from "darkraise-ui/components/floating-panel"
 import { cn } from "darkraise-ui/lib"
 import { buildFileSource, type FileSource } from "@/demo/code-source"
-import type { DemoCodeGraph } from "@/demo/types"
+import type { DemoCodeGraph } from "@/features/code/types"
 
 export interface OpenCodeFile {
   path: string

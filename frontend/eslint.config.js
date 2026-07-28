@@ -154,4 +154,76 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // T1.68: the 33 names below no longer live in src/demo/types.ts at
+    // all — they moved to features/{dashboard,code,memories,activity,
+    // settings}/types.ts because real (non-demo-exclusive) code is
+    // genuinely load-bearing on them (graph-derive.ts's DemoCodeGraph
+    // derivation, use-job-board.ts's fromJob, memory-editor-dialog.tsx's
+    // DemoMemory union, ...). This is the falsifiable guard against
+    // reintroducing any of them on a demo path, same shape as the
+    // `demo-realtype-import` alias above (a plain path-level
+    // `no-restricted-imports` block here would replace the broader warn
+    // rule instead of narrowing it — the flat-config gotcha T1.64 hit).
+    files: [
+      "src/routes/**/*.tsx",
+      "src/features/**/*.{ts,tsx}",
+      "src/hooks/**/*.ts",
+      "src/lib/**/*.ts",
+      "src/components/**/*.{ts,tsx}",
+    ],
+    plugins: {
+      "demo-relocated-types-import": {
+        rules: { "no-restricted-imports": builtinRules.get("no-restricted-imports") },
+      },
+    },
+    rules: {
+      "demo-relocated-types-import/no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/demo/types", "../demo/types", "../../demo/types", "../../../demo/types"],
+              importNames: [
+                "ContributionTypeCount",
+                "ContributionDay",
+                "CodeNodeKind",
+                "DemoCodeNode",
+                "DemoCodeEdge",
+                "DemoCodeCommunity",
+                "DemoCodeProcess",
+                "DemoCodeGraph",
+                "MemoryRelationType",
+                "MemoryRelation",
+                "MemoryTimelineEventKind",
+                "MemoryTimelineEvent",
+                "DemoMemory",
+                "DemoJobField",
+                "DemoJob",
+                "JobTriggerResult",
+                "FeedCategory",
+                "PipelineStepState",
+                "PipelineWriteSubsteps",
+                "PipelineTerminal",
+                "DemoPipelineRun",
+                "DemoPipelineFailure",
+                "FlagSource",
+                "DemoRankArm",
+                "DemoBehavioralFlag",
+                "DemoGraphFlag",
+                "DemoCorroborationGate",
+                "ApiKind",
+                "LLMPurposeName",
+                "DemoLLMPurpose",
+                "DemoCodeBucket",
+                "DemoLLMSaveTrace",
+                "MaintenanceOpKey",
+              ],
+              message: "This type moved out of src/demo/types.ts in T1.68 — import it from its real feature module (features/{dashboard,code,memories,activity,settings}/types.ts) instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 )

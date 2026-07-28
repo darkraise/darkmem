@@ -10,7 +10,7 @@ import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { cn } from "darkraise-ui/lib"
 import { groupFailuresByStep, isPoison, POISON_ATTEMPTS } from "@/demo/activity"
-import type { DemoPipelineFailure } from "@/demo/types"
+import type { DemoPipelineFailure } from "@/features/activity/types"
 import { usePipelineTriage } from "../use-pipeline-triage"
 import { ModuleSurface } from "./module-surface"
 

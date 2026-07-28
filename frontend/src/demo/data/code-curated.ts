@@ -1,9 +1,5 @@
-import type {
-  DemoCodeGraph,
-  DemoIndexPhase,
-  DemoRepo,
-  DemoWiki,
-} from "../types"
+import type { DemoCodeGraph } from "@/features/code/types"
+import type { DemoIndexPhase, DemoRepo, DemoWiki } from "../types"
 
 // The fixed 14-phase indexing pipeline topology (doc 10 §2). Phases 13–14
 // are the two opt-in LLM-cost phases the reindex toggles gate.

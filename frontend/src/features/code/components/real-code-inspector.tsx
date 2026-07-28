@@ -1,6 +1,6 @@
 import { Code2 } from "lucide-react"
 import { useCodeSymbolDetail } from "@/hooks/api"
-import type { DemoCodeNode } from "@/demo/types"
+import type { DemoCodeNode } from "@/features/code/types"
 
 // Deliberately narrower than the demo's per-file pseudo-source view: one
 // symbol's real, stored source_code (CodeSymbol.source_code, a genuine
