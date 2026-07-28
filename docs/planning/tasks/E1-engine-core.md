@@ -1126,6 +1126,36 @@ forbids.
 
 **Verify.** `cd backend && python -m pytest tests/test_door_parity.py -q`
 
+#### T1.42e — Retire the `llm_*` wire keys, backend and frontend, in one change
+
+`Model: Sonnet 5` · `Effort: medium` · `Size: S` · `Depends: T1.42b` · `Doc: CLAUDE.md "Domain model"` · `Tag: rebuild` · `Gate: G-B`
+
+**What.** Opened by T1.42b under controller ruling 2 (2026-07-28), because T1.42b's own
+scope excludes it: `CLAUDE.md`'s "Domain model" section says the REST and websocket payload
+keys still read `llm_*` (`llm_classified_type`, `llm_summary`, `llm_emotions`, `llm_flags`)
+and that retiring them from the wire is this task's — a wire rename touching both the
+`MemoryResponse` serialisation (`backend/app/api/routes/memories.py::_to_response` and the
+websocket broadcast payload) and every one of the frontend's ~61 read sites
+(`frontend/src/**`) has to land as one change, because a backend-only rename breaks every
+live frontend caller and a frontend-only rename breaks against the shipped wire shape.
+
+**Dependency — must run when no other frontend lane is live.** Two sibling lanes hold
+`frontend/` this wave (E1 wave 13); a rename across ~61 call sites conflicts with concurrent
+frontend work by construction. Schedule for a wave where this is the only lane touching
+`frontend/src`.
+
+**Done when:**
+- [ ] Backend drops the `llm_` prefix on the wire (`MemoryResponse` fields and the websocket
+      broadcast payload), matching the internal column names (`classified_type`, `summary`,
+      `emotions`, `flags`) already in place since the baseline
+- [ ] Every frontend read site is migrated in the same change (no dual-reading shim left
+      behind)
+- [ ] `CLAUDE.md`'s "Domain model" section is updated to state the keys are retired, not
+      still split
+
+**Verify.** `cd backend && python -m pytest tests/test_api/test_memories.py tests/test_websocket.py -q`
+and `cd frontend && npm run typecheck && npm test`
+
 #### T1.43 — Dashboard + contribution calendar
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.08` · `Doc: 13 §4` · `Tag: rebuild` · `Gate: G-B`
@@ -1748,3 +1778,7 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 | 2026-07-28 | T1.24e | 2 | **RATIFIED: the rescue-first tie-break is narrowed to direction-grounded (pattern-labelled) rescue triples.** This changes a recorded bug fix — the wrong-direction-`REPLACES` fix — so the controller verified the structural argument in code before accepting it. `_is_direction_grounded` = `rescue AND pattern`, and only `_rescue_relations_replaces` stamps that label. | The original rule's premise was that a rescue triple is regex-grounded and therefore its **direction** is more trustworthy than the model's. Confirmed in the tree: that premise holds for **one of three** emitters. `_rescue_relations` (adjacency) and `_rescue_relations_subject_tracking` ground *adjacency* and then **infer the subject from position**, so their direction is a guess; only `_rescue_relations_replaces` matches a directional pattern ("from X to Y", "Y supersedes X"). The narrowing therefore **preserves exactly the case the recorded fix targeted** and withdraws priority only where the justification never applied. The measured harm was real too: the broad rule fired **once in 36 memories**, on gold `e14`, and picked the possessive modifier `gateway` over the subject head `JWT auth`. The `+0.026` on gold relations is corroboration, not the argument — as the lane itself insisted. |
 | 2026-07-28 | T1.24e | 2 | **The F1 bench cannot distinguish this narrowing from a full revert of the tie-break; only the test can.** Recorded because it makes that test load-bearing in a way the bench cannot back up. | Consistent with the three prior measurements of this corpus's blindness (Stage 3 entirely, seven of ten Stage-4 passes, and now **three of six Stage-5 passes** bit-identical on removal). Anyone later tempted to "simplify" the tie-break by dropping the grounding predicate will see an unchanged F1 and conclude it is safe. It is not: the test is the only artifact that separates the two, and G-B must not cite F1 for the three blind Stage-5 passes either. |
 | 2026-07-28 | PROCESS | 1 | **GLOBAL §6's `git checkout` hazard was hit for real.** T1.24e's lane ran `git checkout` on `extraction_clean.py` while it held uncommitted work and destroyed four edits — the exact failure the rule names. Recovered, re-verified, and everything afterwards was committed **before** any mutation ran. | Recording it because the warning existed and was still hit, which says the warning is not enough on its own. The practice the lane adopted after the near-miss is the one to make standard: **commit before mutation-testing**, so the restore is a `git checkout` that can only ever be correct. Reported rather than hidden, which is why it is a process note rather than a defect. |
+| 2026-07-28 | T1.42b | 2 | **Opened T1.42e — "retire the `llm_*` wire keys, backend and frontend, in one change" — per controller ruling 2, and corrected `CLAUDE.md`'s task pointer.** `CLAUDE.md`'s "Domain model" section named T1.42b as the owner of the `llm_*` wire-key retirement, but T1.42b's own task text does not mention it, and the controller resolved the conflict: the frontend reads those keys in ~61 places and two sibling lanes hold `frontend/` this wave, so a backend-only rename would break the app. `CLAUDE.md`'s sentence now reads "retiring them from the wire is T1.42e's" — a one-word pointer swap, nothing else in the file touched. | T1.42e is scoped, dependency-noted (must run when no other frontend lane is live), and files a `Verify` command spanning both doors so the rename cannot land half-done. |
+| 2026-07-28 | T1.42b | 2 | **Four routes answered a conflict/missing-handler failure with a raw `JSONResponse` instead of `raise HTTPException(...)`, bypassing `app.main`'s uniform error envelope (T1.42a).** `pipeline_failures.py::retry_failure` (409 already-retrying, 503 no-handler) and `reembed.py::_dispatch_single_category` / `reembed_all` (409 already-running) all built their own `{"accepted": false, "reason": ...}` body. Converted to `HTTPException`, verified safe: `frontend/src/lib/api.ts::apiFetch` throws before returning the body on any non-2xx response and only ever reads the string `detail` key, so no live caller read `accepted`/`reason`/`conflict_category` from these specific error paths — the fix is additive from the frontend's perspective and strictly improves the error message (previously `detail` was absent, falling back to a generic `API error: <status>`). | Ruling 3 requires grepping the frontend and reporting consumers before a status-code change; this is a body-shape change at an unchanged status code, so the letter of ruling 3 does not gate it, but the same discipline was applied by inspection before landing it, and the finding (no live reader of the old shape) is recorded here rather than asserted without evidence. |
+| 2026-07-28 | T1.42b | 2 | **Three list routes gained `limit`/`offset` in their response bodies to match the codebase's established paginated-list shape** (`items`+`total`+`limit`+`offset`, the shape `memory-buffer` and `auth/audit` already use): `pipeline_failures.py::list_failures`, all three `reembed.py::list_obsolete_*` routes, and `code.py::list_symbols`. All four are raw-dict returns with no `response_model`, so the fix is a route-level addition, additive on the wire, and unread by any current frontend caller (grepped: no consumer of `partition_missing` or these specific list shapes exists yet). | `events.py` (`GET /events`, `GET /events/timeline`) and `chat.py` (`GET /chat/conversations`) have the same gap but are schema-owned (`EventListResponse`, `ConversationListResponse` in `app/schemas/**`) and could not be fixed without editing a file outside this lane's scope (`backend/app/schemas/**` is shared with lane C this wave). One-line change each: add `limit: int` and `offset: int` fields to `EventListResponse` (both `GET` routes already have `limit`/`offset` as local variables to populate them) and add `total: int`, `limit: int`, `offset: int` to `ConversationListResponse` (the route currently discards the count query and doesn't compute one at all — `ChatService.list_conversations` would need a total too). Reported per the brief rather than edited. |
+| 2026-07-28 | T1.42b | 2 | **`GET /repos/{repo_id}/tasks/{task_id}` (documented deviation, `docs/api-rest-conventions.md` "Known deviations") is unaffected — left exactly as it is (200 with a body, not 204)** — a cancel modelled as `DELETE`, breaking to fix for marginal benefit per the existing doc. Confirmed still matches; no change made. | Recorded so a later conformance pass does not re-flag it as a miss — it is a known, accepted deviation, not an oversight this task left behind. |
