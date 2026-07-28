@@ -61,6 +61,13 @@ describe("no-restricted-imports: src/demo/*", () => {
     expect(countByRule(results, "demo-data-import/no-restricted-imports")).toBe(0)
   })
 
+  it("the real-API-type-scoped rule (Memory/MemoryStatus/Repo/Job) is a real error-level gate: zero violations", () => {
+    // T1.67: the dead re-export in src/demo/types.ts is gone, so this is
+    // currently unreachable through normal code — see this file's own
+    // falsification proof (T1.67's report) for how it was shown to fire.
+    expect(countByRule(results, "demo-realtype-import/no-restricted-imports")).toBe(0)
+  })
+
   it("the broader src/demo/* rule's warn-level count matches the measured floor", () => {
     // Two-sided on purpose: fails if a new file starts importing a covered
     // src/demo/* path (ceiling) and fails if the count silently drops
