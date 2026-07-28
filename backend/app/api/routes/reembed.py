@@ -154,20 +154,30 @@ async def _dispatch_single_category(
         method_name = method_name_map[category]
 
         async def _run():
+            from app.services.events import record_maintenance_run
             try:
                 flags = await _get_flags()
                 async with async_session_factory() as bg_session:
                     bg_svc = ReembedService(bg_session)
                     method = getattr(bg_svc, method_name)
-                    await method(
+                    result = await method(
                         current_fingerprint=snapshot_fingerprint,
                         llm=snapshot_llm,
                         batch_id=batch_id,
                         broadcast=event_manager.broadcast,
                         flags=flags,
                     )
+                await record_maintenance_run(
+                    async_session_factory,
+                    operation=f"reembed_{category}",
+                    outcome="ok" if not result.get("errors") else "error",
+                    detail=result,
+                )
             except Exception:
                 logger.exception("Re-embed %s background task failed", category)
+                await record_maintenance_run(
+                    async_session_factory, operation=f"reembed_{category}", outcome="error",
+                )
             finally:
                 reembed_locks.release(category)
 
@@ -246,6 +256,7 @@ async def reembed_all(
         totals = await svc.count_missing(snapshot_fingerprint)
 
         async def _run_all():
+            from app.services.events import record_maintenance_run
             try:
                 flags = await _get_flags()
                 async with async_session_factory() as bg_session:
@@ -257,16 +268,28 @@ async def reembed_all(
                     ]
                     for category, method in sequence:
                         try:
-                            await method(
+                            result = await method(
                                 current_fingerprint=snapshot_fingerprint,
                                 llm=snapshot_llm,
                                 batch_id=batch_id,
                                 broadcast=event_manager.broadcast,
                                 flags=flags,
                             )
+                            await record_maintenance_run(
+                                async_session_factory,
+                                operation=f"reembed_{category}",
+                                outcome="ok" if not result.get("errors") else "error",
+                                detail={**result, "batch_id": batch_id},
+                            )
                         except Exception:
                             logger.exception(
                                 "Re-embed %s failed under batch %s", category, batch_id,
+                            )
+                            await record_maintenance_run(
+                                async_session_factory,
+                                operation=f"reembed_{category}",
+                                outcome="error",
+                                detail={"batch_id": batch_id},
                             )
             finally:
                 for cat in ("memories", "entities", "code_chunks"):
@@ -287,7 +310,23 @@ async def prune_cache(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
+    from app.services.events import record_event
+
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
     deleted = await svc.prune_obsolete_cache_entries(fingerprint)
+    # prune_obsolete_cache_entries already committed its own DROP TABLEs, so
+    # this journal write rides its own transaction on the same session,
+    # committed explicitly here rather than left to the request teardown.
+    await record_event(
+        session,
+        event_type="maintenance_run",
+        object_type="system",
+        payload={
+            "operation": "prune_caches",
+            "outcome": "ok",
+            "detail": {"deleted": deleted, "fingerprint": fingerprint},
+        },
+    )
+    await session.commit()
     return {"deleted": deleted}

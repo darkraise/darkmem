@@ -192,15 +192,29 @@ def make_graph_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSe
     stale ghost left by an earlier deleted memory."""
     async def run() -> None:
         from app.repositories.graph import PostgresGraphRepository
-        async with session_factory() as session:
-            repo = PostgresGraphRepository(session)
-            stats = await repo.prune_orphan_entities()
-            await session.commit()
+        from app.services.events import record_maintenance_run
+        try:
+            async with session_factory() as session:
+                repo = PostgresGraphRepository(session)
+                stats = await repo.prune_orphan_entities()
+                await session.commit()
+        except Exception:
+            await record_maintenance_run(
+                session_factory, operation="graph_orphan_cleanup", outcome="error",
+            )
+            raise
         if stats["entities_pruned"] or stats["relations_pruned"]:
             logger.info(
                 "Graph orphan cleanup: entities=%s relations=%s",
                 stats["entities_pruned"], stats["relations_pruned"],
             )
+        await record_maintenance_run(
+            session_factory, operation="graph_orphan_cleanup", outcome="ok",
+            detail={
+                "entities_pruned": stats["entities_pruned"],
+                "relations_pruned": stats["relations_pruned"],
+            },
+        )
     return run
 
 
@@ -215,12 +229,23 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
     tag count and the tag filter never show tags nothing uses."""
     async def run() -> None:
         from app.repositories.relational import PostgresTagRepository
-        async with session_factory() as session:
-            repo = PostgresTagRepository(session)
-            removed = await repo.prune_orphans()
-            await session.commit()
+        from app.services.events import record_maintenance_run
+        try:
+            async with session_factory() as session:
+                repo = PostgresTagRepository(session)
+                removed = await repo.prune_orphans()
+                await session.commit()
+        except Exception:
+            await record_maintenance_run(
+                session_factory, operation="tag_orphan_cleanup", outcome="error",
+            )
+            raise
         if removed:
             logger.info("Tag orphan cleanup: tags=%s", removed)
+        await record_maintenance_run(
+            session_factory, operation="tag_orphan_cleanup", outcome="ok",
+            detail={"tags_removed": removed},
+        )
     return run
 
 
@@ -234,27 +259,39 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     from sqlalchemy import text
     from app.services.supersession import demote_dependents
     async def run() -> None:
-        async with session_factory() as session:
-            expired = (await session.execute(text(
-                "SELECT id FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW()"
-            ))).scalars().all()
-            if not expired:
-                return
-            ids = list(expired)
-            # Demote before deleting, never after: the demotion is what keeps
-            # the SET-NULL FK from stranding a dependent on 'superseded' with a
-            # null pointer, and one such row aborts the whole batch so no TTL'd
-            # memory is ever reclaimed. Shared with the interactive delete path
-            # (MemoryService.delete_memory) so the two cannot drift.
-            await demote_dependents(session, ids)
-            result = await session.execute(
-                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
-                {"ids": ids},
+        from app.services.events import record_maintenance_run
+        deleted = 0
+        try:
+            async with session_factory() as session:
+                expired = (await session.execute(text(
+                    "SELECT id FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW()"
+                ))).scalars().all()
+                if expired:
+                    ids = list(expired)
+                    # Demote before deleting, never after: the demotion is what
+                    # keeps the SET-NULL FK from stranding a dependent on
+                    # 'superseded' with a null pointer, and one such row aborts
+                    # the whole batch so no TTL'd memory is ever reclaimed.
+                    # Shared with the interactive delete path
+                    # (MemoryService.delete_memory) so the two cannot drift.
+                    await demote_dependents(session, ids)
+                    result = await session.execute(
+                        text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
+                        {"ids": ids},
+                    )
+                    deleted = len(result.scalars().all())
+                    await session.commit()
+        except Exception:
+            await record_maintenance_run(
+                session_factory, operation="expired_memory_cleanup", outcome="error",
             )
-            deleted = len(result.scalars().all())
-            await session.commit()
+            raise
         if deleted:
             logger.info("Expired memory cleanup: deleted=%s", deleted)
+        await record_maintenance_run(
+            session_factory, operation="expired_memory_cleanup", outcome="ok",
+            detail={"deleted": deleted},
+        )
     return run
 
 

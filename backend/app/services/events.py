@@ -70,6 +70,7 @@ EVENT_TYPES: list[str] = [
     "repo_hint_rejected",
     "buffer_requeued",
     "buffer_discarded",
+    "maintenance_run",
 ]
 
 OBJECT_TYPES: list[str] = [
@@ -151,6 +152,44 @@ async def record_event(
             "events: failed to journal event_type=%r object_type=%r object_id=%s",
             event_type, object_type, object_id,
             exc_info=True,
+        )
+
+
+async def record_maintenance_run(
+    session_factory,
+    *,
+    operation: str,
+    outcome: str,
+    detail: dict | None = None,
+) -> None:
+    """Journal one Settings -> Maintenance / Jobs -> cleanup operation run.
+
+    The one writer for the ``maintenance_run`` event type, shared by
+    ``job_runners.py``'s cleanup runners and ``reembed.py``'s background
+    tasks, so the two call sites can never drift into their own vocabulary
+    or payload shape (T1.63 ruling 2). Runs through a fresh, independently
+    committed session — mirroring ``auth.py``'s ``_record_audit`` — because
+    a background task's own session may already be closed, rolled back, or
+    mid-exception by the time the outcome is known.
+    """
+    try:
+        async with session_factory() as session:
+            await record_event(
+                session,
+                event_type="maintenance_run",
+                object_type="system",
+                payload={"operation": operation, "outcome": outcome, "detail": detail or {}},
+            )
+            await session.commit()
+    except Exception:
+        # record_event itself never raises; a failure here is the fresh
+        # session/commit machinery around it (a DB blip). Journaling is a
+        # side-channel to the operation it records (same rule as
+        # record_event's own docstring) — it must never take the operation
+        # down with it.
+        logger.error(
+            "events: failed to journal maintenance_run operation=%r outcome=%r",
+            operation, outcome, exc_info=True,
         )
 
 
