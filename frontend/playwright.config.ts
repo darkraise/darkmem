@@ -22,14 +22,21 @@ import { defineConfig, devices } from "@playwright/test"
 // backend (RealWikiView) to exercise anything meaningful — see
 // code-real-mode.spec.ts's header for why a real-mode spec must never move
 // into this array.
+//
+// theme-switcher.spec.ts and layout-switcher.spec.ts (T1.64) were retired,
+// not fixed, and are gone from this array along with their files: both
+// asserted DOM contracts the app never implements (`data-accent-color`,
+// `data-layout`) against UI that is not wired into any route (`ThemeSwitcher`
+// has no importer under src/, and the only `top-nav` references are a
+// stylesheet and the layout route's own internal switch, never exposed
+// through a control). See docs/planning/tasks/E1-engine-core.md's amendment
+// log for the evidence and the named follow-up that owns real coverage.
 const DEMO_FIXTURE_SPECS = [
   "activity.spec.ts",
   "activity-pipeline.spec.ts",
   "code-index-debt.spec.ts",
   "dashboard.spec.ts",
   "memories-command-palette.spec.ts",
-  "layout-switcher.spec.ts",
-  "theme-switcher.spec.ts",
   "honesty/exclusions-on-empty.spec.ts",
   "honesty/labels-always-render.spec.ts",
   "honesty/no-silent-drop.spec.ts",
