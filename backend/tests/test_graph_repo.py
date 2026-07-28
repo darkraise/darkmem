@@ -139,6 +139,27 @@ async def test_prune_orphan_entities_removes_ghosts_keeps_live(session):
     assert rel_count == 0
 
 
+async def test_get_full_graph_truncated_flag_reflects_the_row_count(session):
+    """get_full_graph's `truncated` (T1.60, Step 3, F10) is a boundary check
+    on the already-fetched row count: len(entity_rows) >= limit. It is the
+    only signal a caller has that the entity overlay may be an arbitrary
+    slice of an unscoped table rather than the complete set."""
+    repo = PostgresGraphRepository(session)
+    m = uuid4()
+    await _mk_memory(session, m)
+
+    await repo.create_entity(name="over-a", entity_type="concept", properties={}, memory_id=m)
+    await repo.create_entity(name="over-b", entity_type="concept", properties={}, memory_id=m)
+    await repo.create_entity(name="over-c", entity_type="concept", properties={}, memory_id=m)
+
+    over_limit = await repo.get_full_graph(limit=2)
+    assert over_limit["truncated"] is True
+    assert len(over_limit["entities"]) == 2
+
+    under_limit = await repo.get_full_graph(limit=100)
+    assert under_limit["truncated"] is False
+
+
 async def test_prune_orphan_entities_keeps_entity_with_surviving_relation(session):
     """A relation backed by a live memory protects an otherwise-orphaned
     endpoint entity from deletion (FK is ON DELETE CASCADE)."""
