@@ -3,9 +3,8 @@ import { Database, ExternalLink, RefreshCw, Trash2, Zap } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
-import { useDemoMaintenance } from "@/demo/hooks"
-import { useDemoStore } from "@/demo/store"
 import { ConfirmGate } from "./confirm-gate"
+import { useMaintenanceTabBinding } from "../use-maintenance-tab-binding"
 
 function OpCard({
   icon: Icon,
@@ -75,8 +74,28 @@ function IllustrativeTag({ label }: { label: string }) {
 }
 
 export function MaintenanceTab() {
-  const m = useDemoMaintenance()
-  const run = useDemoStore((s) => s.runMaintenanceOp)
+  const m = useMaintenanceTabBinding()
+
+  const expiredMeta =
+    m.cleanup.expired === null
+      ? "count not exposed via the API"
+      : m.cleanup.expired > 0
+        ? `${m.cleanup.expired} past expires_at`
+        : "0 pending"
+  const expiredHelp =
+    m.cleanup.expired === null
+      ? "GET /pipeline-failures/counts and /reembed/obsolete-counts have no equivalent for expires_at — the trigger runs the sweep regardless of what it finds."
+      : m.cleanup.expired > 0
+        ? `Deletes memories past their TTL. ${m.cleanup.expiredDependents} have dependents pointing at them via superseded_by — those are demoted to deprecated first, per chk_superseded_has_pointer.`
+        : "Nothing past its TTL right now; the hourly schedule keeps running."
+  const expiredHeadline =
+    m.cleanup.expired === null
+      ? "Run the expired-memory sweep now?"
+      : `Delete ${m.cleanup.expired} expired memories now?`
+  const expiredDesc =
+    m.cleanup.expired === null
+      ? "Deletes every memory past its TTL; dependents pointing at a deleted row via superseded_by are demoted to deprecated first, per chk_superseded_has_pointer. This is the same job the hourly schedule already runs — this button just runs it now."
+      : `Permanent. ${m.cleanup.expiredDependents} dependents are demoted to deprecated (superseded_by cleared) before their target is deleted. This is the same job the hourly schedule already runs — this button just runs it now.`
 
   return (
     <div className="space-y-4">
@@ -93,9 +112,19 @@ export function MaintenanceTab() {
           nothing); cleanup&apos;s and DB ops&apos; confirm data loss.
         </HelpTip>
       </div>
-      {m.last_op_note && (
+      {!m.eventsJournaled && (
+        // Kept always-visible, never tooltip-only (matches the dormant
+        // ApiKey card's own rule) — a journaling gap is exactly the kind
+        // of silent degradation this corpus exists to surface.
+        <div className="border-warning/50 bg-warning/8 text-warning rounded-md border p-3 text-sm">
+          None of these triggers are journaled to the events timeline today
+          — an operator watching Activity → Timeline will not see them
+          recorded there. Backend gap, tracked separately from this surface.
+        </div>
+      )}
+      {m.lastOpNote && (
         <div className="border-success/50 bg-success/8 rounded-md border p-3 text-sm">
-          <b className="font-semibold">Last operation:</b> {m.last_op_note}
+          <b className="font-semibold">Last operation:</b> {m.lastOpNote}
         </div>
       )}
       <div className="grid items-start gap-3.5 lg:grid-cols-3">
@@ -127,7 +156,7 @@ export function MaintenanceTab() {
               headline={`Re-embed ${m.reembed.memories} memories now?`}
               desc="Dispatches embedding calls to the live embedding-purpose LLM. Not destructive — existing vectors under other fingerprints are left alone — but it cannot be cancelled once started, only blocked from a second concurrent run on this category (409 already_running)."
               confirmLabel="Confirm — start re-embed"
-              onConfirm={() => run("reembed_memories")}
+              onConfirm={() => m.run("reembed_memories")}
             />
           </Op>
           <Op
@@ -154,42 +183,62 @@ export function MaintenanceTab() {
               headline={`Re-embed ${m.reembed.entities} entities now?`}
               desc="Dispatches embedding calls to the live embedding-purpose LLM. Not destructive, but it cannot be cancelled once started."
               confirmLabel="Confirm — start re-embed"
-              onConfirm={() => run("reembed_entities")}
+              onConfirm={() => m.run("reembed_entities")}
             />
           </Op>
-          <Op
-            name="code_chunks"
-            meta={`${m.reembed.code_chunks} missing`}
-            help="Cross-fingerprint code-chunk backfill is not implemented server-side; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success."
-            last
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" disabled>
-                Re-embed code chunks
-              </Button>
-              <IllustrativeTag label="use Repositories → Reindex" />
-            </div>
-          </Op>
+          {m.codeChunksReembedAvailable ? (
+            <Op
+              name="code_chunks"
+              meta={
+                m.reembed.codeChunks > 0
+                  ? `${m.reembed.codeChunks} missing`
+                  : "0 missing"
+              }
+              help="Backfills code chunks with no row under the active fingerprint. Runs in the background; POST returns 202 immediately."
+              last
+            >
+              <ConfirmGate
+                tone="primary"
+                disabled={m.reembed.codeChunks === 0}
+                trigger={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={m.reembed.codeChunks === 0}
+                    tabIndex={-1}
+                  >
+                    Re-embed code chunks
+                  </Button>
+                }
+                headline={`Re-embed ${m.reembed.codeChunks} code chunks now?`}
+                desc="Dispatches embedding calls to the live embedding-purpose LLM. Not destructive, but it cannot be cancelled once started."
+                confirmLabel="Confirm — start re-embed"
+                onConfirm={() => m.run("reembed_code_chunks")}
+              />
+            </Op>
+          ) : (
+            <Op
+              name="code_chunks"
+              meta={`${m.reembed.codeChunks} missing`}
+              help="Cross-fingerprint code-chunk backfill is not wired on this surface yet; the button is disabled and points at a full repository reindex instead, rather than broadcasting a fake success."
+              last
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" disabled>
+                  Re-embed code chunks
+                </Button>
+                <IllustrativeTag label="use Repositories → Reindex" />
+              </div>
+            </Op>
+          )}
         </OpCard>
 
         <OpCard
           icon={Trash2}
           title="Cleanup ops"
-          count={`${m.cleanup.failures_memory_ingest + m.cleanup.failures_code_repo} unresolved failures`}
+          count={`${m.cleanup.failuresMemoryIngest + m.cleanup.failuresCodeRepo} unresolved failures`}
         >
-          <Op
-            name="expired_memory_cleanup"
-            meta={
-              m.cleanup.expired > 0
-                ? `${m.cleanup.expired} past expires_at`
-                : "0 pending"
-            }
-            help={
-              m.cleanup.expired > 0
-                ? `Deletes memories past their TTL. ${m.cleanup.expired_dependents} have dependents pointing at them via superseded_by — those are demoted to deprecated first, per chk_superseded_has_pointer.`
-                : "Nothing past its TTL right now; the hourly schedule keeps running."
-            }
-          >
+          <Op name="expired_memory_cleanup" meta={expiredMeta} help={expiredHelp}>
             <ConfirmGate
               tone="danger"
               disabled={m.cleanup.expired === 0}
@@ -205,10 +254,10 @@ export function MaintenanceTab() {
                   Run sweep now
                 </Button>
               }
-              headline={`Delete ${m.cleanup.expired} expired memories now?`}
-              desc={`Permanent. ${m.cleanup.expired_dependents} dependents are demoted to deprecated (superseded_by cleared) before their target is deleted. This is the same job the hourly schedule already runs — this button just runs it now.`}
+              headline={expiredHeadline}
+              desc={expiredDesc}
               confirmLabel="Confirm — delete now"
-              onConfirm={() => run("expired_memory_cleanup")}
+              onConfirm={() => m.run("expired_memory_cleanup")}
             />
           </Op>
           <Op
@@ -231,7 +280,7 @@ export function MaintenanceTab() {
               headline="Run graph_orphan_cleanup now?"
               desc="Deletes entities no live memory asserts and no surviving relation references — the FK cascades, so a referenced entity is never touched. Same job the hourly schedule already runs."
               confirmLabel="Confirm — run now"
-              onConfirm={() => run("graph_orphan_cleanup")}
+              onConfirm={() => m.run("graph_orphan_cleanup")}
             />
           </Op>
           <Op
@@ -254,12 +303,12 @@ export function MaintenanceTab() {
               headline="Run tag_orphan_cleanup now?"
               desc="Deletes tags no live memory carries any more. Same job the hourly schedule already runs — this button just runs it now."
               confirmLabel="Confirm — run now"
-              onConfirm={() => run("tag_orphan_cleanup")}
+              onConfirm={() => m.run("tag_orphan_cleanup")}
             />
           </Op>
           <Op
             name="unresolved pipeline failures"
-            meta={`${m.cleanup.failures_memory_ingest} memory_ingest · ${m.cleanup.failures_code_repo} code_repo`}
+            meta={`${m.cleanup.failuresMemoryIngest} memory_ingest · ${m.cleanup.failuresCodeRepo} code_repo`}
             help="The full retry worklist lives at Activity → Triage; this is a count and a shortcut, not a second copy of that list."
             last
           >
@@ -278,41 +327,49 @@ export function MaintenanceTab() {
           <Op
             name="prune obsolete caches"
             meta={
-              m.dbops.retired_fingerprints.length > 0
-                ? `${m.dbops.retired_fingerprints.length} retired fingerprints`
-                : "none retired"
+              m.dbops.retiredFingerprints === null
+                ? "not enumerated ahead of time"
+                : m.dbops.retiredFingerprints.length > 0
+                  ? `${m.dbops.retiredFingerprints.length} retired fingerprints`
+                  : "none retired"
             }
             help={
-              m.dbops.retired_fingerprints.length > 0
-                ? `Drops entity_embedding_cache child tables for every fingerprint except the active one: ${m.dbops.retired_fingerprints.join(", ")}.`
-                : "No retired embedder caches to prune."
+              m.dbops.retiredFingerprints === null
+                ? "Drops entity_embedding_cache child tables for every fingerprint except the active one. POST /reembed/prune-cache does not enumerate which fingerprints are retired ahead of a run — it drops whatever it finds and reports the count afterward."
+                : m.dbops.retiredFingerprints.length > 0
+                  ? `Drops entity_embedding_cache child tables for every fingerprint except the active one: ${m.dbops.retiredFingerprints.join(", ")}.`
+                  : "No retired embedder caches to prune."
             }
           >
             <ConfirmGate
               tone="danger"
-              disabled={m.dbops.retired_fingerprints.length === 0}
+              disabled={m.dbops.retiredFingerprints?.length === 0}
               trigger={
                 <Button
                   size="sm"
                   variant="outline"
                   className="border-destructive/60 text-destructive"
-                  disabled={m.dbops.retired_fingerprints.length === 0}
+                  disabled={m.dbops.retiredFingerprints?.length === 0}
                   tabIndex={-1}
                 >
                   <Trash2 className="mr-1.5 size-3.5" />
                   Prune caches
                 </Button>
               }
-              headline={`Drop ${m.dbops.retired_fingerprints.length} retired cache tables now?`}
+              headline={
+                m.dbops.retiredFingerprints === null
+                  ? "Prune retired embedder caches now?"
+                  : `Drop ${m.dbops.retiredFingerprints.length} retired cache tables now?`
+              }
               desc="DROP TABLE, irreversible. Each cache rebuilds lazily the next time its embedder is used, but any current hit-rate savings on those fingerprints are lost immediately."
               confirmLabel="Confirm — drop tables"
-              onConfirm={() => run("prune_caches")}
+              onConfirm={() => m.run("prune_caches")}
             />
           </Op>
           <Op
             name="VACUUM ANALYZE"
-            meta={m.dbops.vacuum_target}
-            help={m.dbops.vacuum_note}
+            meta={m.dbops.vacuumTarget}
+            help={m.dbops.vacuumNote}
           >
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" disabled>
@@ -323,8 +380,8 @@ export function MaintenanceTab() {
           </Op>
           <Op
             name="REINDEX"
-            meta={m.dbops.reindex_target}
-            help={m.dbops.reindex_note}
+            meta={m.dbops.reindexTarget}
+            help={m.dbops.reindexNote}
             last
           >
             <div className="flex flex-wrap items-center gap-2">
