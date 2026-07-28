@@ -24,6 +24,7 @@ from app.services.memory_buffer import buffered_memory_id
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
 from app.services.rank_fusion import RANK_ARMS, rank_fusion_breakdown
+from app.services.supersession import demote_dependents
 from app.services.wait_process import drive as _drive_wait_process_flush
 from app.taxonomy import MEMORY_TYPES, normalize_memory_type
 from app.utils.ids import new_id
@@ -276,18 +277,10 @@ class MemoryService:
         except Exception as e:
             logger.warning("Failed to forget pipeline failure for memory %s: %s", memory_id, e)
 
-        # Demote any memory this one superseded BEFORE deleting it. superseded_by
-        # is ON DELETE SET NULL, so deleting the superseder would otherwise null
-        # the dependent's pointer while its status stays 'superseded', violating
-        # chk_superseded_has_pointer and aborting the delete with an IntegrityError.
-        from sqlalchemy import text as _sql_text
-        await self.session.execute(
-            _sql_text(
-                "UPDATE memories SET status='deprecated', superseded_by=NULL "
-                "WHERE superseded_by = CAST(:mid AS uuid)"
-            ),
-            {"mid": str(memory_id)},
-        )
+        # Demote any memory this one superseded BEFORE deleting it — the same
+        # demotion the TTL sweep runs, from the same function, so the two delete
+        # paths cannot drift apart.
+        await demote_dependents(self.session, [memory_id])
 
         result = await self.memory_repo.delete(memory_id)
         if result:

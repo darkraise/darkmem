@@ -1,27 +1,29 @@
-"""REPLACES-supersession detector.
+"""REPLACES-family supersession detector.
 
-When a newly ingested memory carries a high-confidence REPLACES relation
+When a newly ingested memory carries a high-confidence replacement relation
 ("we switched from X to Y"), this module finds same-project, still-active
 memories that mention the deprecated technology X and flips their status
 to 'superseded' with a pointer to the new memory.
 
-Guards that must all pass before a candidate is flipped:
+Guards that must all pass before a candidate is flipped (doc 08 §2.1):
 
 1. Same project as the new memory.
 2. Candidate status is 'active'.
-3. Candidate's `technologies` array contains the deprecated target name
+3. Candidate's `technologies` array overlaps the lowercased target names
    (GIN-indexed, cheap).
-4. Candidate is younger than SUPERSESSION_WINDOW_DAYS.
-5. The source memory text does not use speculative phrasing (acts as the
-   per-relation confidence gate until the extractor emits one).
+4. Candidate is inside the SUPERSESSION_WINDOW_DAYS look-back window.
+5. Candidate is strictly older, with an `(created_at, id)` tie-break.
+6. The clause asserting the replacement does not use speculative phrasing
+   (acts as the per-relation confidence gate until the extractor emits one).
 """
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
@@ -29,9 +31,21 @@ from app.services.events import record_event
 from app.services.relations import (
     SPECULATIVE_REPLACES_MARKERS,
     SUPERSESSION_WINDOW_DAYS,
+    family_key,
 )
 
 _SENTENCE_SPLIT = re.compile(r"[.!?\n]+")
+
+
+def is_supersession_trigger(rel_type: str | None) -> bool:
+    """True for the REPLACES family — REPLACES, IMPROVES_ON, legacy BUILDS_ON.
+
+    The Phase-5 call site and the detector below must agree on this predicate
+    exactly: the pipeline uses it to decide whether to call the detector at
+    all, so widening only one side leaves a relation that the pipeline never
+    forwards or that the detector then discards.
+    """
+    return family_key(rel_type or "") == "REPLACES"
 
 
 def is_speculative(text: str | None) -> bool:
@@ -98,6 +112,31 @@ def candidate_stmt(
     )
 
 
+async def demote_dependents(
+    session: AsyncSession, memory_ids: Sequence[UUID | str]
+) -> None:
+    """Clear the supersession pointer of everything pointing at ``memory_ids``.
+
+    ``fk_memories_superseded_by`` is ON DELETE SET NULL, so deleting a
+    superseding memory nulls its dependents' ``superseded_by`` while their
+    status stays 'superseded' — violating ``chk_superseded_has_pointer`` and
+    aborting the whole statement, which in the TTL sweep means no expired row
+    is ever reclaimed. Every delete path must call this FIRST, in the same
+    transaction. It is one function rather than a copy per caller so the two
+    orders can never drift apart (doc 08 §2.3).
+    """
+    ids = [str(m) for m in memory_ids]
+    if not ids:
+        return
+    await session.execute(
+        text(
+            "UPDATE memories SET status='deprecated', superseded_by=NULL "
+            "WHERE superseded_by = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": ids},
+    )
+
+
 async def detect_supersessions(
     session: AsyncSession,
     *,
@@ -113,7 +152,7 @@ async def detect_supersessions(
     Returns the list of old memory ids that were flipped.
 
     Candidates must be strictly older than ``new_memory_created_at``.
-    Without this guard, two memories that both carry the same REPLACES
+    Without this guard, two memories that both carry the same replacement
     relation will supersede each other when both are processed (a
     bidirectional flip during reprocess), making both vanish from the
     default ``status='active'`` view.
@@ -127,7 +166,7 @@ async def detect_supersessions(
     # fires even when the memory speculates about something unrelated.
     replaces_targets: list[str] = []
     for rel in new_relations or []:
-        if rel.get("type") != "REPLACES":
+        if not is_supersession_trigger(rel.get("type")):
             continue
         target = rel.get("target")
         if isinstance(target, str) and target and not _replacement_is_speculative(new_memory_text, target):

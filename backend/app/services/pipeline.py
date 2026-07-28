@@ -18,7 +18,7 @@ from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
 from app.services.rank_fusion import any_arm_active, rank_fusion_factor
 from app.services.relations import names_distinct
-from app.services.supersession import detect_supersessions
+from app.services.supersession import detect_supersessions, is_supersession_trigger
 from app.services import prompt
 from app.taxonomy import normalize_memory_type
 
@@ -717,13 +717,15 @@ class ProcessingPipeline:
                                 mem_record.technologies = (
                                     await graph_repo.technologies_for_memory(memory_id)
                                 )
-                                # Trigger on a REPLACES relation, not on this
-                                # memory's own technologies: the detector keys off
-                                # the REPLACES *target* overlapping a candidate's
-                                # technologies, which is independent of whether the
-                                # new memory produced a tech entity of its own.
+                                # Trigger on a REPLACES-family relation, not on
+                                # this memory's own technologies: the detector keys
+                                # off the replacement *target* overlapping a
+                                # candidate's technologies, which is independent of
+                                # whether the new memory produced a tech entity of
+                                # its own. The predicate is shared with the detector
+                                # so this gate and its filter can never disagree.
                                 if any(
-                                    r.get("type") == "REPLACES"
+                                    is_supersession_trigger(r.get("type"))
                                     for r in extraction.get("relationships", [])
                                 ):
                                     await session.flush([mem_record])
