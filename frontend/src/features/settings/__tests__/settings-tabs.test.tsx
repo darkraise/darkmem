@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
+import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
 import { SecurityTab } from "../components/security-tab"
@@ -6,10 +8,21 @@ import { MaintenanceTab } from "../components/maintenance-tab"
 import { DistributionTab } from "../components/distribution-tab"
 import { ConfirmGate } from "../components/confirm-gate"
 
+// This exercises the fixture-backed path deliberately (pins SecurityTab's
+// and MaintenanceTab's demo rendering), so it is frozen at DEMO: true rather
+// than relying on the real default (T1.58) — see settings-security.real
+// .test.tsx / settings-maintenance.real.test.tsx for the real-mode bindings.
+vi.mock("@/demo/flag", () => ({ DEMO: true }))
+
 // MaintenanceTab links into /activity; stub the router Link.
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
 }))
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+}
 
 afterEach(() => {
   useDemoStore.getState().resetSettings()
@@ -19,7 +32,7 @@ afterEach(() => {
 
 describe("SecurityTab — dormant ApiKey honesty", () => {
   it("renders the Phase-4 card with every control disabled", () => {
-    render(<SecurityTab />)
+    render(<SecurityTab />, { wrapper })
     expect(screen.getByText(/Phase-4 · designed, not wired/)).toBeInTheDocument()
     expect(screen.getByLabelText("Key label")).toBeDisabled()
     expect(
@@ -31,7 +44,7 @@ describe("SecurityTab — dormant ApiKey honesty", () => {
   })
 
   it("renders the three LAN doors and the TOFU claim", () => {
-    render(<SecurityTab />)
+    render(<SecurityTab />, { wrapper })
     expect(screen.getByText("/mcp")).toBeInTheDocument()
     expect(screen.getByText("/api/v1 + /ws")).toBeInTheDocument()
     expect(screen.getByText("/setup")).toBeInTheDocument()
@@ -41,7 +54,7 @@ describe("SecurityTab — dormant ApiKey honesty", () => {
 
 describe("MaintenanceTab — confirmation gates", () => {
   it("never runs a destructive op from a bare click", () => {
-    render(<MaintenanceTab />)
+    render(<MaintenanceTab />, { wrapper })
     fireEvent.click(screen.getByRole("button", { name: /Run sweep now/ }))
     // Armed, not run: the count is untouched until Confirm.
     expect(
@@ -52,7 +65,7 @@ describe("MaintenanceTab — confirmation gates", () => {
   })
 
   it("marks endpoint-less DB ops as illustrative, not shipped", () => {
-    render(<MaintenanceTab />)
+    render(<MaintenanceTab />, { wrapper })
     expect(screen.getAllByText("no dedicated endpoint yet")).toHaveLength(2)
     expect(screen.getByText(/use Repositories → Reindex/)).toBeInTheDocument()
   })
