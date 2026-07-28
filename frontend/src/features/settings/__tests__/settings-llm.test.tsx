@@ -1,14 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
 import { LLMTab } from "../components/llm-tab"
 
-// DEMO defaults on (`@/demo/flag`), so this exercises the fixture-backed
-// path. `useLLMTabBinding` still calls `useLlmConfig` unconditionally
-// (rules of hooks) with `enabled: false` in demo mode — the query never
-// fires, but `useQuery` still needs a provider in the tree or it throws.
+// This exercises the fixture-backed path deliberately (T1.55 is done and
+// this file pins its demo rendering), so it is frozen at DEMO: true rather
+// than relying on the about-to-change default (T1.58). `useLLMTabBinding`
+// still calls `useLlmConfig` unconditionally (rules of hooks) with
+// `enabled: false` in demo mode — the query never fires, but `useQuery`
+// still needs a provider in the tree or it throws.
+vi.mock("@/demo/flag", () => ({ DEMO: true }))
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>

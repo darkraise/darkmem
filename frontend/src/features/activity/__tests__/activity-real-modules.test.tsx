@@ -7,6 +7,11 @@ import { FeedTab } from "../components/feed-tab"
 import { DayTab } from "../components/day-tab"
 import { MonitorsTab } from "../components/monitors-tab"
 
+// This exercises the fixture-backed path deliberately (T1.45/T1.61 are
+// done and this file pins their demo rendering), so it is frozen at
+// DEMO: true rather than relying on the about-to-change default (T1.58).
+vi.mock("@/demo/flag", () => ({ DEMO: true }))
+
 // DayTab renders a <Link> back to the calendar; stub it so the test needs
 // no RouterProvider (matching calendar-card.test.tsx's convention).
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
