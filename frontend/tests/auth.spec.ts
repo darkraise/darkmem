@@ -38,7 +38,7 @@ test.describe("auth", () => {
     page,
   }) => {
     await page.goto("/login")
-    await page.getByLabel(/password/i).fill(`${PASSWORD}-wrong`)
+    await page.getByRole("textbox", { name: "Password" }).fill(`${PASSWORD}-wrong`)
     await page.getByRole("button", { name: /sign in/i }).click()
 
     const alert = page.getByRole("alert")
@@ -56,7 +56,7 @@ test.describe("auth", () => {
     page,
   }) => {
     await page.goto("/login")
-    await page.getByLabel(/password/i).fill(PASSWORD!)
+    await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD!)
     await page.getByRole("button", { name: /sign in/i }).click()
 
     await expect(page).toHaveURL("/")
@@ -71,7 +71,7 @@ test.describe("auth", () => {
     page,
   }) => {
     await page.goto("/login")
-    await page.getByLabel(/password/i).fill(PASSWORD!)
+    await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD!)
     await page.getByRole("button", { name: /sign in/i }).click()
     await expect(page).toHaveURL("/")
 
@@ -86,7 +86,7 @@ test.describe("auth", () => {
     page,
   }) => {
     await page.goto("/login")
-    await page.getByLabel(/password/i).fill(PASSWORD!)
+    await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD!)
     await page.getByRole("button", { name: /sign in/i }).click()
     await expect(page).toHaveURL("/")
 
