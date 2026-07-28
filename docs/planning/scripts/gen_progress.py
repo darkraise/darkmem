@@ -19,7 +19,7 @@ EFFORT = re.compile(r"`Effort: ([a-z]+)`")
 ROW = re.compile(r"^\| (T(?:H1|[0-4])\.\d{2}[a-z]?) \|")
 CELL = re.compile(r"(?<!\\)\|")
 
-STATUSES = ["todo", "wip", "blocked", "review", "done"]
+STATUSES = ["todo", "wip", "blocked", "review", "done", "dropped"]
 FRESH = ("", "todo", "", "", "")
 
 # ------------------------------------------------ carry hand-edited state forward
@@ -40,21 +40,6 @@ if os.path.exists("progress.md"):
         # regeneration after the change.
         if len(cells) >= 11:
             prior[cells[1]] = tuple(cells[-6:-1])
-
-# The Gate cell is hand-maintained too: EPICS below carries the *initial* text,
-# but clearing a gate is recorded by editing that cell. Regenerating from the
-# literal would silently un-clear a cleared gate, which reads as the gate never
-# having been met.
-ROLLUP_ROW = re.compile(r"^\| (E0|E1|E2|E3|E4|EH1) — ")
-prior_gates = {}
-if os.path.exists("progress.md"):
-    for line in io.open("progress.md", encoding="utf-8").read().split("\n"):
-        m = ROLLUP_ROW.match(line)
-        if not m:
-            continue
-        cells = [c.strip() for c in CELL.split(line)]
-        if len(cells) >= 10:
-            prior_gates[m.group(1)] = cells[-2]
 
 
 def render(cells):
@@ -87,6 +72,9 @@ out.append(
     "gate-feeding tasks require. The **Review** column carries the reviewer's verdict. |\n"
     "| `done` | Every definition-of-done item in runbook §4 holds, verification output\n"
     "recorded, commit landed, and any required review passed. |\n"
+    "| `dropped` | The task's premise no longer holds, so it is resolved without being\n"
+    "executed. The **Note** must say who decided and why. A drop is not a deferral —\n"
+    "a deferred task is still `todo`. |\n"
 )
 out.append(
     "**A task is never `done` with a failing check.** If the suite is red it is `blocked`\n"
@@ -148,7 +136,7 @@ for code, name, path, gate in EPICS:
             continue
         counts[state[1]] += 1
         t.append(render([tid, title, size, model, effort] + list(state)))
-    rollup.append((code, name, len(rows), counts, prior_gates.get(code, gate)))
+    rollup.append((code, name, len(rows), counts, gate))
     tables.append("\n".join(t) + "\n")
 
 # State left over belongs to a task the epic files no longer define. Dropping it
