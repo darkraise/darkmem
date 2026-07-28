@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     # protection). Empty → localhost only; LAN agents must be added, e.g.
     # "192.168.0.195:8000" or "192.168.0.195:*". Set to "*" to disable the check.
     mcp_allowed_hosts: str = ""
+    # Directory holding the built SPA. Unset resolves the packaged location
+    # (``web/`` beside the app package, i.e. /app/web in the image); set it to
+    # frontend/dist to serve a host-side build.
+    spa_dir: str | None = None
 
     @model_validator(mode="after")
     def _check_jwt_secret(self):

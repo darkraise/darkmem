@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
@@ -13,6 +14,7 @@ from starlette.routing import Mount
 from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
+from app.api.spa import mount_spa
 from app.api.routes import analytics, auth, buffer as buffer_routes, chat, code, config, events as events_routes, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
@@ -558,3 +560,14 @@ async def health():
         },
         status_code=status_code,
     )
+
+
+def _resolve_spa_dir() -> Path:
+    if settings.spa_dir:
+        return Path(settings.spa_dir)
+    return Path(__file__).resolve().parent.parent / "web"
+
+
+# Registered last, after every router, the /ws route and the /mcp mount, so
+# the catch-all mount shadows nothing.
+mount_spa(app, _resolve_spa_dir())
