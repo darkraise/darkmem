@@ -2,6 +2,7 @@ import logging
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -165,6 +166,34 @@ class AnalyticsService:
             for t in tasks:
                 if not t.done():
                     t.cancel()
+
+    async def get_stats(self) -> dict:
+        memory_count = (await self.session.execute(select(func.count()).select_from(Memory))).scalar()
+        tag_count = (await self.session.execute(select(func.count()).select_from(Tag))).scalar()
+        sources_result = await self.session.execute(select(Memory.source).distinct())
+        sources = [r[0] for r in sources_result.all()]
+
+        entity_count = None
+        rel_count = None
+        if self.graph_repo:
+            try:
+                stats = await self.graph_repo.get_stats()
+                entity_count = stats["entity_count"]
+                rel_count = stats["relationship_count"]
+            except SQLAlchemyError:
+                # An aborted graph COUNT leaves the session in a
+                # failed-transaction state; roll back so the response (and
+                # any later reuse of this session) doesn't inherit the poison.
+                logger.warning("Graph stats unavailable", exc_info=True)
+                await self.session.rollback()
+
+        return {
+            "memories": memory_count,
+            "tags": tag_count,
+            "entities": entity_count,
+            "relationships": rel_count,
+            "sources": sources,
+        }
 
     async def get_overview(self, days: int = 7) -> dict:
         # Counts

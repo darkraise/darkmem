@@ -364,20 +364,16 @@ async def memory_find_duplicates(memory_id: str, threshold: float = 0.9) -> str:
 
 
 @mcp.tool(
-    description="Get statistics about the memory system: total memories, tags, active sources."
+    description="Get statistics about the memory system: total memories, tags, active sources, plus entity and relationship counts from the knowledge graph."
 )
 async def memory_stats() -> str:
-    from sqlalchemy import func
+    from app.repositories.graph import PostgresGraphRepository
+    from app.services.analytics import AnalyticsService
 
-    from app.models.memory import Memory, Tag
-
-    async with _memory_service_context() as service:
-        session = service.session
-        memory_count = (await session.execute(select(func.count()).select_from(Memory))).scalar()
-        tag_count = (await session.execute(select(func.count()).select_from(Tag))).scalar()
-        sources_result = await session.execute(select(Memory.source).distinct())
-        sources = [r[0] for r in sources_result.all()]
-        return json.dumps({"memories": memory_count, "tags": tag_count, "sources": sources})
+    async with _code_service_context() as session:
+        service = AnalyticsService(session, graph_repo=PostgresGraphRepository(session))
+        stats = await service.get_stats()
+        return json.dumps(stats)
 
 
 @mcp.tool(
