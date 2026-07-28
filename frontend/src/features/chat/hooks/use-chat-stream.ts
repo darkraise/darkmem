@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import type { MemoryStatus } from "@/hooks/api"
 
 interface ChatSources {
   memories: {
@@ -8,6 +9,11 @@ interface ChatSources {
     source: string
     tags: string[]
     score: number
+    // Only present once backend chat.py's _retrieve emits it (T1.60, Step
+    // 5) — the SSE wire didn't carry id before that fix.
+    id?: string
+    project?: string
+    status?: MemoryStatus
   }[]
   entities: {
     id?: string

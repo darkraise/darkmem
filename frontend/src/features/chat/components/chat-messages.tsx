@@ -6,13 +6,15 @@ import { Button } from "darkraise-ui/components/button"
 import { Spinner } from "darkraise-ui/components/spinner"
 import { SourceBadges } from "./source-badges"
 import { findEntityMatches } from "../lib/entity-match"
-import type { ChatMessage } from "@/hooks/api"
+import type { ChatMessage, MemoryStatus } from "@/hooks/api"
 
 interface MemoryRef {
   index: number
   id?: string
   content?: string
   source?: string
+  project?: string
+  status?: MemoryStatus
 }
 
 interface EntityRef {
