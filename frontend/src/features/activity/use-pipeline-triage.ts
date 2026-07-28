@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoPipelineFailures } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
-import type { DemoPipelineFailure } from "@/demo/types"
+import type { DemoPipelineFailure } from "@/features/activity/types"
 import { relativeTime } from "@/lib/format"
 import {
   useForgetFailure,

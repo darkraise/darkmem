@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronRight, FileCode2, FolderClosed, FolderOpen } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
-import type { CodeNodeKind, DemoCodeGraph, DemoCodeNode } from "@/demo/types"
+import type { CodeNodeKind, DemoCodeGraph, DemoCodeNode } from "@/features/code/types"
 import {
   ancestorDirs,
   createFileTree,

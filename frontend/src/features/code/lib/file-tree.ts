@@ -1,4 +1,4 @@
-import type { CodeNodeKind, DemoCodeNode } from "@/demo/types"
+import type { CodeNodeKind, DemoCodeNode } from "@/features/code/types"
 
 export interface DirEntry {
   kind: "dir"

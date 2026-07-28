@@ -1,4 +1,4 @@
-import type { FeedCategory } from "@/demo/types"
+import type { FeedCategory } from "@/features/activity/types"
 
 /**
  * Display-only grouping of the closed `event_type` vocabulary

@@ -1,4 +1,4 @@
-import type { CodeNodeKind, DemoCodeGraph, DemoCodeNode } from "./types"
+import type { CodeNodeKind, DemoCodeGraph, DemoCodeNode } from "@/features/code/types"
 
 export type SourceLanguage = "python" | "typescript" | "text"
 

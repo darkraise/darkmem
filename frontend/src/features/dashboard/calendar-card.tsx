@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
-import type { ContributionDay } from "@/demo/types"
+import type { ContributionDay } from "@/features/dashboard/types"
 import { YearHeatmap } from "./year-heatmap"
 
 export interface CalendarCardProps {

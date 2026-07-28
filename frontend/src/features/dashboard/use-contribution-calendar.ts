@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoContributions } from "@/demo/hooks"
-import type { ContributionDay } from "@/demo/types"
+import type { ContributionDay } from "@/features/dashboard/types"
 import { useEventsCalendar } from "@/hooks/api"
 import { calendarWindow, fillCalendarDays } from "./calendar"
 

@@ -38,7 +38,7 @@ import {
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { cn } from "darkraise-ui/lib"
 import { mermaidForProcess, type GraphLayoutMode } from "@/demo/explore"
-import type { CodeNodeKind } from "@/demo/types"
+import type { CodeNodeKind } from "@/features/code/types"
 import {
   useBlastRadius,
   useCodeFiles,

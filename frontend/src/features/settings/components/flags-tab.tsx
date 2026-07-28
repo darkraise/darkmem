@@ -8,7 +8,7 @@ import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { armStatus, sourceLabel } from "@/demo/settings"
-import type { DemoBehavioralFlag, DemoRankArm } from "@/demo/types"
+import type { DemoBehavioralFlag, DemoRankArm } from "@/features/settings/types"
 import { ArmPill } from "./arm-pill"
 import {
   useFlagsTabBinding,

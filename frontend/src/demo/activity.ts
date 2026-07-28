@@ -1,12 +1,14 @@
 import type {
-  DemoDayBucket,
-  DemoDreamAction,
-  DemoFeedEvent,
   DemoJobField,
   DemoPipelineFailure,
   DemoPipelineRun,
-  DreamActionType,
   FeedCategory,
+} from "@/features/activity/types"
+import type {
+  DemoDayBucket,
+  DemoDreamAction,
+  DemoFeedEvent,
+  DreamActionType,
   PipelineFailedStep,
 } from "./types"
 

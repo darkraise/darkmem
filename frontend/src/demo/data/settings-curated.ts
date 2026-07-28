@@ -1,9 +1,7 @@
+import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
 import type {
-  ApiKind,
-  DemoCodeBucket,
   DemoDistributionState,
   DemoFlagsState,
-  DemoLLMPurpose,
   DemoMaintenanceState,
   DemoSecurityState,
 } from "../types"

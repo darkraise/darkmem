@@ -25,7 +25,7 @@ import { Label } from "darkraise-ui/components/label"
 import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
 import { validateJobConfig } from "@/demo/activity"
-import type { DemoJob } from "@/demo/types"
+import type { DemoJob } from "@/features/activity/types"
 import { useJobBoard } from "../use-job-board"
 import { ModuleSurface } from "./module-surface"
 

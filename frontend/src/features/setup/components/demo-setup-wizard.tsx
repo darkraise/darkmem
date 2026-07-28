@@ -29,7 +29,7 @@ import {
   SETUP_DIRS,
   type SetupKindFixture,
 } from "@/demo/data-exports"
-import type { ApiKind } from "@/demo/types"
+import type { ApiKind } from "@/features/settings/types"
 
 const STEP_LABELS = [
   "1. Admin password",

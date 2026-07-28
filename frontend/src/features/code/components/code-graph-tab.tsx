@@ -56,7 +56,8 @@ import {
   type GraphLayoutMode,
   type Point,
 } from "@/demo/explore"
-import type { CodeNodeKind, DemoRepo } from "@/demo/types"
+import type { CodeNodeKind } from "@/features/code/types"
+import type { DemoRepo } from "@/demo/types"
 import { CANVAS_H, CANVAS_W, chartVar, CodeCanvas } from "./code-canvas"
 import { CodeExplorer } from "./code-explorer"
 import { CodeFilters } from "./code-filters"
