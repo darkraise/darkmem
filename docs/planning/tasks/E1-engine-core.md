@@ -1139,6 +1139,11 @@ websocket broadcast payload) and every one of the frontend's ~61 read sites
 (`frontend/src/**`) has to land as one change, because a backend-only rename breaks every
 live frontend caller and a frontend-only rename breaks against the shipped wire shape.
 
+**Effort `medium`, argued (runbook §2.1).** The rename itself is mechanical and the shape is
+fully determined by the current wire keys; the only judgement is finding every read site,
+which grep answers rather than reasoning. What makes it dangerous is *scheduling*, not
+depth — hence the dependency below rather than a higher effort.
+
 **Dependency — must run when no other frontend lane is live.** Two sibling lanes hold
 `frontend/` this wave (E1 wave 13); a rename across ~61 call sites conflicts with concurrent
 frontend work by construction. Schedule for a wave where this is the only lane touching
