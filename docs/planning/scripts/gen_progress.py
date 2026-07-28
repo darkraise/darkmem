@@ -4,8 +4,8 @@ import re
 import sys
 
 EPICS = [
-    ("E0", "Baseline & harness", "tasks/E0-baseline-and-harness.md", "G-A open"),
-    ("E1", "Engine core", "tasks/E1-engine-core.md", "G-B open"),
+    ("E0", "Baseline & harness", "tasks/E0-baseline-and-harness.md", "**G-A CLEARED 2026-07-27**"),
+    ("E1", "Engine core", "tasks/E1-engine-core.md", "**G-B CLEARED 2026-07-28**"),
     ("E2", "Truth core", "tasks/E2-truth-core.md", "G-C, G-D open"),
     ("E3", "Synthesis & reach", "tasks/E3-synthesis-and-reach.md", "G-E open"),
     ("E4", "Hardening & scale", "tasks/E4-hardening-and-scale.md", "demand-gated"),
@@ -152,14 +152,15 @@ if bad:
     sys.exit(1)
 
 out.append("## Rollup\n")
-r = ["| Epic | Tasks | todo | wip | blocked | review | done | Gate |", "|---|---|---|---|---|---|---|---|"]
+r = ["| Epic | Tasks | " + " | ".join(STATUSES) + " | Gate |",
+     "|---" * (len(STATUSES) + 3) + "|"]
 tot = dict.fromkeys(STATUSES, 0)
 for code, name, n, counts, gate in rollup:
     for s in STATUSES:
         tot[s] += counts[s]
     r.append("| %s — %s | %d | %s | %s |" % (
         code, name, n, " | ".join(str(counts[s]) for s in STATUSES), gate))
-r.append("| EH2 — .NET migration | outline | — | — | — | — | — | G-G closed |")
+r.append("| EH2 — .NET migration | outline |" + " — |" * len(STATUSES) + " G-G closed |")
 r.append("| **Total** | **%d** | %s | |" % (
     totals, " | ".join("**%d**" % tot[s] for s in STATUSES)))
 out.append("\n".join(r) + "\n")
