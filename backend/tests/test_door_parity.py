@@ -20,15 +20,18 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from fastapi.routing import APIRoute
+from sqlalchemy import func, select
 
 from app.api.mcp import server as mcp_server
 from app.api.mcp.server import mcp
 from app.main import app
+from app.models.memory import Memory
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PARITY_DOC = REPO_ROOT / "docs" / "two-door-parity.md"
@@ -176,22 +179,17 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "tools are uncapped), so it needs an owner, not a one-liner."
         ),
     ),
-    # ── Divergent ───────────────────────────────────────────────────
     Surface(
         name="memory.stats",
-        status=DIVERGENT,
+        status=TWO_DOOR,
         rest=(("GET", f"{V1}/analytics/stats"),),
         mcp=("memory_stats",),
-        owner="T1.42f",
-        reason=(
-            "Both doors hand-roll the same three counts and have already "
-            "drifted in a user-visible way: the route also returns entities "
-            "and relationships from PostgresGraphRepository.get_stats(), and "
-            "the tool returns neither, so an agent asking how big the graph "
-            "is gets nothing where the UI gets a number. Neither door calls a "
-            "service -- the route computes inline -- so there is nothing to "
-            "point the tool at, and closing it means lifting the computation "
-            "into AnalyticsService and moving both doors onto it."
+        note=(
+            "T1.42f closed the audit's one recorded divergence: neither door "
+            "called a service before, so the shared counts (plus the entities "
+            "and relationships pair from PostgresGraphRepository.get_stats(), "
+            "with its SQLAlchemyError rollback guard intact) were lifted into "
+            "AnalyticsService.get_stats() and both doors now call it."
         ),
     ),
     # ── REST single door, each with its reason ──────────────────────
@@ -846,13 +844,17 @@ def test_a_two_door_surface_states_no_exemption():
 
 def test_every_divergence_carries_a_named_owner_that_exists():
     """A divergence is worse than a stated exemption and must not be filed as
-    one: it needs a task id, and that task id has to be a real row."""
+    one: it needs a task id, and that task id has to be a real row.
+
+    T1.42f closed the last recorded divergence (memory.stats), so this can
+    legitimately find an empty list -- the loop below is then vacuously true
+    rather than skipped, and the "0 divergent" the doc's generated headline
+    now states (test_the_committed_table_reports_its_own_counts) is the
+    place this closure is said, per this test's own former warning not to
+    just delete the check.
+    """
     epic = EPIC_FILE.read_text(encoding="utf-8")
     divergences = [s for s in PARITY_TABLE if s.status == DIVERGENT]
-    assert divergences, (
-        "no divergence recorded -- if the last one closed, say so in "
-        "docs/two-door-parity.md rather than deleting the check"
-    )
     for surface in divergences:
         assert re.fullmatch(r"T\d+\.\d+[a-z]?", surface.owner), (
             f"{surface.name} is divergent but names no owning task "
@@ -868,46 +870,123 @@ def test_every_divergence_carries_a_named_owner_that_exists():
 
 
 # ---------------------------------------------------------------------------
-# The recorded divergence is real, and stays recorded until it is fixed
+# memory.stats: the former divergence, now converged onto AnalyticsService
 # ---------------------------------------------------------------------------
 
 
-async def test_memory_stats_is_still_the_recorded_divergence(
-    client, auth_headers, session, monkeypatch,
-):
-    """The audit's one divergence, asserted rather than asserted-about.
-
-    Failing here means the drift changed. If the tool now returns the graph
-    counts, T1.42f landed: move memory.stats to two-door and delete this
-    guard. If the *route* stopped returning them, the doors converged by
-    losing a capability, which is worse and is not what T1.42f asks for.
-    """
+def _stats_fake_ctx(session):
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
     async def _fake_ctx():
         yield session
 
-    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _fake_ctx())
+    return _fake_ctx
+
+
+async def test_stats_doors_agree_on_graph_counts(client, auth_headers, session, monkeypatch):
+    """Both doors must answer the same question identically -- values, not
+    just key presence. StatsResponse defaults entities/relationships to
+    None, so a door that stopped computing them would still pass a
+    key-presence check; only asserting the numbers themselves catches that
+    (this is exactly the hole T1.42d found in its own guard)."""
+    from app.repositories.graph import PostgresGraphRepository
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", _stats_fake_ctx(session))
+
+    graph_repo = PostgresGraphRepository(session)
+    m1 = uuid.uuid4()
+    session.add(Memory(id=m1, content="stats-parity", source="test"))
+    await session.flush()
+    await graph_repo.create_entity(name="stats-parity-a", entity_type="concept", properties={}, memory_id=m1)
+    await graph_repo.create_entity(name="stats-parity-b", entity_type="concept", properties={}, memory_id=m1)
+    await graph_repo.create_relationship(
+        source_name="stats-parity-a", target_name="stats-parity-b",
+        rel_type="RELATED_TO", properties={}, weight=1.0, memory_id=m1,
+    )
+    await session.flush()
 
     rest = (await client.get(f"{V1}/analytics/stats", headers=auth_headers)).json()
     tool = json.loads(await mcp_server.memory_stats())
 
-    shared = {"memories", "tags", "sources"}
-    assert shared <= set(rest)
-    assert shared <= set(tool)
+    for key in ("memories", "tags", "sources", "entities", "relationships"):
+        assert key in rest, f"REST stats is missing {key!r}"
+        assert key in tool, f"memory_stats tool is missing {key!r}"
 
-    # Key presence is not enough: StatsResponse defaults both fields, so a
-    # route that stopped computing them still serialises them as null.
-    assert rest.get("entities") is not None and rest.get("relationships") is not None, (
-        "GET /analytics/stats stopped returning the graph counts -- the doors "
-        "must converge by giving the tool the counts, not by taking them off "
-        "the route"
-    )
-    assert not {"entities", "relationships"} & set(tool), (
-        "memory_stats now returns the graph counts. If T1.42f landed, move "
-        "memory.stats to two-door in PARITY_TABLE and drop this guard"
-    )
+    assert rest["entities"] is not None and rest["relationships"] is not None
+    assert tool["entities"] is not None and tool["relationships"] is not None
+    assert rest["entities"] == tool["entities"] >= 2
+    assert rest["relationships"] == tool["relationships"] >= 1
+    assert rest["memories"] == tool["memories"]
+    assert rest["tags"] == tool["tags"]
+    assert set(rest["sources"]) == set(tool["sources"])
+
+
+async def test_rest_stats_calls_the_shared_analytics_service(client, auth_headers, monkeypatch):
+    """Guards ruling 1: the route must reach AnalyticsService.get_stats(),
+    not recompute the counts inline. Fails if someone re-inlines the route."""
+    from app.services.analytics import AnalyticsService
+
+    calls = []
+    original = AnalyticsService.get_stats
+
+    async def spy(self):
+        calls.append(self)
+        return await original(self)
+
+    monkeypatch.setattr(AnalyticsService, "get_stats", spy)
+
+    response = await client.get(f"{V1}/analytics/stats", headers=auth_headers)
+    assert response.status_code == 200
+    assert len(calls) == 1, "GET /analytics/stats did not call AnalyticsService.get_stats()"
+
+
+async def test_mcp_stats_calls_the_shared_analytics_service(session, monkeypatch):
+    """Guards ruling 1 on the MCP side: fails if memory_stats grows its own
+    hand-rolled counts again instead of calling the shared service."""
+    from app.services.analytics import AnalyticsService
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", _stats_fake_ctx(session))
+
+    calls = []
+    original = AnalyticsService.get_stats
+
+    async def spy(self):
+        calls.append(self)
+        return await original(self)
+
+    monkeypatch.setattr(AnalyticsService, "get_stats", spy)
+
+    result = json.loads(await mcp_server.memory_stats())
+    assert "memories" in result
+    assert len(calls) == 1, "memory_stats did not call AnalyticsService.get_stats()"
+
+
+async def test_get_stats_survives_a_failing_graph_count(session):
+    """Ruling 2: the SQLAlchemyError rollback guard must survive the move
+    off the route intact. A failing graph COUNT must not poison the session
+    or 500 the whole surface -- it must degrade honestly (null graph counts,
+    the memory/tag/source counts still present)."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.services.analytics import AnalyticsService
+
+    class _ExplodingGraphRepo:
+        async def get_stats(self):
+            raise SQLAlchemyError("simulated aborted graph COUNT")
+
+    service = AnalyticsService(session, graph_repo=_ExplodingGraphRepo())
+    stats = await service.get_stats()
+
+    assert stats["entities"] is None
+    assert stats["relationships"] is None
+    assert stats["memories"] is not None
+    assert stats["tags"] is not None
+
+    # The session must still be usable after the rollback -- a poisoned
+    # session would raise InFailedSqlTransactionError on the next query.
+    still_usable = (await session.execute(select(func.count()).select_from(Memory))).scalar()
+    assert still_usable is not None
 
 
 # ---------------------------------------------------------------------------
