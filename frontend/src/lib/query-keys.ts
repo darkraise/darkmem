@@ -38,6 +38,7 @@ export type QueryKeyScope =
 export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   // ── auto: routed through projectScopedKey / useProjectScopedKey ──
   memories: { kind: "auto" },
+  unifiedGraph: { kind: "auto" },
 
   // ── manual: already carries an explicit project field, not yet wired
   //    to the global switcher ──
@@ -56,11 +57,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   },
 
   // ── deferred: named gaps ──
-  unifiedGraph: {
-    kind: "deferred",
-    reason:
-      "GET /graph/unified accepts ?project= (T1.29d) but useUnifiedGraph never sends it",
-  },
   tags: {
     kind: "deferred",
     reason: "GET /tags has no project filter on the backend at all yet",

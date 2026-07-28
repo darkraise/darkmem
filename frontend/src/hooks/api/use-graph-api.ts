@@ -1,5 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { useProjectScopedKey } from "@/lib/query-keys"
+import { useProjectStore } from "@/stores/project-store"
 
 export interface UnifiedMemory {
   id: string
@@ -52,21 +54,29 @@ export interface MemoryContextData {
   }[]
 }
 
+// Project-scoped via the query-key layer (src/lib/query-keys.ts, Ruling 1):
+// the active project rides both the query key and the request URL, so
+// switching projects addresses a fresh cache entry instead of continuing
+// to show the previous project's rows while the new project's fetch is
+// in flight. The entity-overlay path is not scoped by this same SQL
+// pushdown — see app/services/graph.py's _fetch_entity_overlay.
 export function useUnifiedGraph(
   similarityThreshold = 0.75,
   minClusterSize = 3,
   includeEntities = false,
 ) {
+  const queryKey = useProjectScopedKey(
+    "unifiedGraph",
+    similarityThreshold,
+    minClusterSize,
+    includeEntities,
+  )
+  const project = useProjectStore((s) => s.activeProject)
   return useQuery<UnifiedGraphData>({
-    queryKey: [
-      "unifiedGraph",
-      similarityThreshold,
-      minClusterSize,
-      includeEntities,
-    ],
+    queryKey,
     queryFn: () =>
       apiFetch(
-        `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}`,
+        `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}&project=${encodeURIComponent(project)}`,
       ),
   })
 }
