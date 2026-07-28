@@ -1384,76 +1384,60 @@ Tier-C work through the ordinary pipeline, then verify by counts — not by spot
 
 **Verify.** `cd backend && python -m pytest tests/test_cutover_backfill.py -q`
 
-#### T1.53 — Cutover rehearsal on a dump copy + restore drill
+#### T1.53 — ~~Cutover rehearsal on a dump copy + restore drill~~ (DROPPED)
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.52` · `Doc: 19 §4, §9` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: low` · `Size: S` · `Depends: T1.52` · `Doc: 19 §4, §9` · `Tag: target-new` · `Gate: G-B`
 
-**What.** Rehearse the whole cutover against a `pg_dump` copy of the real database. Doc 19
-notes this doubles as the first restore drill — which is also the rollback story if the
-frozen baseline turns out wrong.
+**DROPPED 2026-07-28 by owner decision: the homelab data is disposable and no data is
+retained.** This task existed to rehearse a migration against a `pg_dump` copy and to prove
+the restore path that would have been T1.54's rollback. With nothing to carry, there is no
+migration to rehearse and no corpus a rollback would protect — so every one of its Done-when
+items is answering a question that no longer exists.
+
+**What survives the drop, deliberately.** The nightly `pg_dump` cadence (doc 19 §9.2) is
+ordinary operational hygiene and is *not* migration work; it moves to T1.54 so it is not lost
+with this task. The restore path stays unproven, which is now an accepted consequence rather
+than an oversight.
+
+**Done when:** n/a — dropped, not deferred. If data ever becomes worth keeping, this task is
+resurrected rather than re-invented: T1.51's transform and T1.52's drainer are both shipped
+and tested, so what would be missing is exactly this rehearsal.
+
+#### T1.54 — Provision the homelab instance fresh on the baseline
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.50, T1.62` · `Doc: 19 §2, §5` · `Tag: target-new` · `Gate: G-B`
+
+**Rewritten 2026-07-28 by owner decision: greenfield, no data retained.** This was "execute
+the cutover, verify, apply the freeze tag". There is no cutover — the homelab instance is
+provisioned **fresh** on the baseline: alembic builds the schema on an empty database, the
+setup wizard writes the six LLM purpose rows, and the app runs on T1.62's single image with
+the app as the network edge.
+
+**The freeze is NOT applied here, and that is the point.** `CLAUDE.md` defines the freeze as
+an *event* — the first deploy whose data must survive. A disposable database is not that
+deploy. Freezing now would end the regenerate-in-place window and force every E2 schema change
+(`knowledge_triples`, `fact_sources`, the satellite tables) through additive revisions for no
+benefit. The freeze waits for the first deploy the owner wants durable; T0.15's assertion
+stays enforcing one revision until then.
+
+**Owner-gated.** This touches the owner's live homelab host. It is not executed on the
+controller's authority.
 
 **Done when:**
-- [ ] Full rehearsal on a restored copy, end to end, with the verification counts green
-- [ ] The restore path is proven, timed, and written down — this is the rollback
-- [ ] A nightly `pg_dump` cadence is documented (doc 19 §9.2)
-- [ ] The rehearsal never touches the real database
-- [ ] **The stack is stopped before the drain and restarted after it**, and the transcript
-      records it. T1.52's drainer requires a quiesced target and ships a
-      `--target-is-quiesced` flag; without this step that flag is an assertion nobody was
-      ever told how to make true. Doc 19's flowchart boots the app for the wizard and never
-      shows it stopping, which is where the gap came from — the sequence is boot → wizard →
-      **stop** → drain → restart
-- [ ] **The snapshot path is passed explicitly and only one snapshot file exists in the
-      report directory.** The drainer's control and its corrective action read the same
-      file, so a wrong one makes them agree
-- [ ] **The diff partitions by whether `status` moved before judging an `updated_at`
-      delta.** `detect_supersessions` writes *across* batches, so a supersession victim
-      legitimately carries both the lineage change and a moved timestamp; treating a
-      non-zero delta as failure would red-flag correct rows
+- [ ] The instance boots from an empty database: `alembic upgrade head` builds the baseline,
+      the wizard finalize writes the six purposes, `/health` returns 200
+- [ ] It runs on T1.62's image with `trust_proxy_headers` **off** and the limiter reading the
+      transport peer — the posture that image was built for
+- [ ] `JWT_SECRET` and `DB_PASSWORD` are set fresh, ≥ 32 chars (C-09's rotation concern is
+      moot on a fresh instance, but a reused development secret is not)
+- [ ] A nightly `pg_dump` cadence is documented and running (inherited from the dropped
+      T1.53 — ordinary hygiene, and the thing that makes a *future* freeze safe)
+- [ ] `./scripts/gate.sh --full` is green against the live instance
+- [ ] The freeze is explicitly **not** applied, and `CLAUDE.md`'s "Freeze date: not yet
+      frozen" stays true
 
-**Verify.** Rehearsal transcript archived under `docs/e2e/`, with the restore timing.
-
-#### T1.54 — Execute the cutover, verify, apply the freeze tag
-
-`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T1.53, T1.50, T0.15` · `Doc: 19 §2, §4` · `Tag: target-new` · `Gate: G-B`
-
-**What.** The real thing, once and only once, after G-B has cleared. Then apply the freeze
-tag that ends the regenerate-freely window.
-
-**Done when:**
-- [ ] A fresh `pg_dump` is taken immediately before, and its restore path verified
-- [ ] Post-cutover verification is green: carried-row counts match, `pipeline_failures`
-      is triaged, and the extraction bench on the target configuration holds tolerance
-- [ ] The freeze tag is applied and T0.15's CI assertion flips to enforcing additive
-      revisions
-- [ ] `CLAUDE.md` and the schema inventory record the freeze date — the real one
-- [ ] If verification fails, the documented restore runs and the freeze is **not** applied
-- [ ] **The §10.5 snapshot diff runs on the real corpus** (C-11). T1.53 proves the mechanism
-      against a dump copy, but the corpus that matters is only ever loaded here — and a
-      snapshot nobody diffs is an artifact, not a control. This is the only check that can
-      see T1.52's backfill overwriting the eleven carried columns, because every other
-      post-cutover check passes while it happens
-- [ ] **Post-cutover counts are taken before the first `expired_memory_cleanup` tick**, or
-      rows past `expires_at` are excluded from the comparison (C-10). The default cron is
-      `0 * * * *`, so a correct deletion can read as transform loss within minutes of boot
-- [ ] **`JWT_SECRET` is rotated at cutover** (C-09). Dropping `token_blocklist` while reusing
-      it resurrects every unexpired pre-cutover token, including ones the old instance had
-      explicitly revoked. The wizard does **not** close this window: setup writes only
-      `admin_password_hash`, and `admin_password_changed_at` comes solely from the
-      change-password endpoint, so rotation is the only reliable closure
-- [ ] **The stack is stopped before the backfill drain and restarted after**, mirroring
-      T1.53's rehearsal step. The runbook carries it; the drainer only asserts it
-
-**Verify.** Post-cutover counts + `./scripts/gate.sh --full` on the live instance,
-archived to `gate-ledger.md` alongside the G-B entry.
-
----
-
-## Lane J — the surfaces the rebuild orphans (added by review, findings B-F3, B-F4, B-F10)
-
-**Principle 10 is not optional here.** T1.01 deletes the tables today's Settings screens
-edit, and demo mode currently defaults *on* with 64 files importing `src/demo/`. Without
-this lane, E1 ships a backend nobody can configure behind a UI that renders fixtures.
+**Verify.** `./scripts/gate.sh --full` on the live instance plus a clean boot from an empty
+database.
 
 #### T1.55 — Settings → LLM: six inline purpose cards
 
@@ -1651,27 +1635,24 @@ key, and the session `applies_when` declaration that T1.34 boosts and T3.14's
 
 **Verify.** `cd frontend && npm test -- stores`
 
-#### T1.66 — Index `memories.superseded_by` as the first additive revision
+#### T1.66 — Index `memories.superseded_by`
 
-`Model: Sonnet 5` · `Effort: low` · `Size: S` · `Depends: T1.54` · `Doc: 04 §3.1, runbook §9` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: low` · `Size: S` · `Depends: T1.47` · `Doc: 04 §3.1, runbook §9` · `Tag: target-new` · `Gate: G-B`
+
+**Rewritten 2026-07-28.** This was "…as the first additive revision", gated on T1.54's freeze
+tag. The owner's greenfield decision means **there is no freeze**, so the reasoning inverts:
+the schema is still in its regenerate-in-place window, no other lane holds the baseline, and
+the index is landed by regenerating `0001_baseline.py` now — the cheap path, not the expensive
+one it was deferred to avoid.
 
 **What.** T1.47 added a `predecessors` field backed by
-`SELECT … FROM memories WHERE superseded_by = :id`, and that column carries no index — nothing
-queried it in that direction before. So the two halves of one lineage have different cost
-profiles: the forward pointer is a column read, the reverse is a filtered scan.
-
-**Why it waits on T1.54 rather than running now.** Before the freeze, adding an index means
-regenerating the single baseline revision, which serialises through one owner per epic and is
-disproportionate to an index. **After** the freeze every change is an ordinary additive
-revision forever, which is exactly what this is. T1.51 was nominated as the cheapest home on
-the premise that it regenerates the baseline; **it does not** — it loads *onto* the baseline —
-so the pointer was corrected and the work rehomed here rather than left to rot.
-
-**Effort `low`, argued (runbook §2.1).** One index, one revision file, one test asserting the
-plan uses it. Nothing about it branches.
+`SELECT … FROM memories WHERE superseded_by = :id`, and that column carries no index, so the
+two halves of one lineage have different cost profiles: the forward pointer is a column read,
+the reverse is a filtered scan.
 
 **Done when:**
-- [ ] The index exists as an **additive** revision, not a baseline regeneration
+- [ ] The index exists in the regenerated baseline — **not** an appended `0002` (runbook §9;
+      `gate.sh` asserts exactly one revision)
 - [ ] An `EXPLAIN` test asserts the reverse-lineage query *uses* it — presence alone is not
       the property that matters (T1.27's precedent: prove the plan, not the catalog)
 - [ ] The forward and reverse directions of `GET /memories/{id}` both stay correct
@@ -2004,3 +1985,5 @@ exhaustively; the judgement was already made here.
 | 2026-07-28 | T1.64 | 1 | **`playwright.config.ts` gained a conditional `workers: 1` and `retries: 1`, both scoped to `process.env.E2E_DISPOSABLE_STACK` only.** Discovered while proving Step 3's own two-case falsification requirement: `auth.spec.ts`, `code-real-mode.spec.ts`, `code-wiki-empty.spec.ts` and `setup-wizard-refresh.spec.ts` all authenticate against the **one** live, stateful backend a disposable stack boots, and Playwright's default parallel workers raced its session/rate-limiter state — a failure mode that could not have existed before this task, since every one of those specs soft-skipped in `gate.sh --full` until now (2026-07-27 amendment). Serializing them removed the worst of it; one retry absorbs an occasional transient WS-proxy reset under this sandboxed environment's load (confirmed real, deterministic failures — the two bugs recorded above — still fail after the retry; only genuinely transient ones pass on it). Demo-fixture specs are untouched (`undefined`/`0` when the env var is unset), since they share no mutable server state. |
 | 2026-07-28 | T1.64 | 2 | **CORRECTION to the row above naming `theme-switcher.spec.ts`/`layout-switcher.spec.ts` as "left as honest, currently-failing tests": that disposition is superseded. Both files are deleted, not left red.** Controller review confirmed both diagnoses independently against the source rather than taking them on report — `data-layout` occurs zero times anywhere under `frontend/src`, and `darkraise-ui`'s `setAttribute` calls cover `data-mode`, `data-density`, `data-background-style`, `data-elevation`, `data-gradient-pattern` and siblings, with no accent-shaped attribute among them — confirming `theme-switcher.spec.ts`'s `data-accent-color` assertion targets a DOM contract the library has never written, not merely one this instance forgot to set. Neither switcher is a shipped, wired surface: `ThemeSwitcher` has no importer anywhere in `frontend/src`, and the only `top-nav` references are a stylesheet rule and the authenticated layout route's own internal three-way switch (`TopNavLayout`/`StackedLayout`/`SidebarLayout`) — nothing ever calls `useLayoutStore`'s setter from any control a user can reach. A skipped or left-red spec is exactly the class of defect this task exists to retire; a deleted spec with the reason recorded here is the honest terminal state Done-when's "fixed or retired" already allows, since there is no real contract left to repoint either assertion at. **The gap these two specs' passing state used to imply is real and is not covered elsewhere**: theme persistence (`frontend/src/lib/theme-persistence.ts`, which does real work — round-tripping settings through `PUT /config/theme` in real mode, `localStorage` in demo mode) and the attributes the theme provider actually writes (`data-mode` foremost) have no e2e coverage today. Naming this an unnumbered follow-up (same shape as T1.67): a Playwright spec asserting `data-mode` flips and persists across reload, and that `theme-persistence.ts`'s real-mode adapter round-trips through the REST endpoint — owned by whichever epic's UI-hardening lane picks up Settings/theming next, not this task. |
 | 2026-07-28 | T1.50 | 3 | **The content-retention escalation is DISCHARGED by giving it an owner — T2.59 — not by deciding it.** Its row said "needs an owner before G-B", and T1.50 cleared the gate on the three measured probes while naming this as a condition for the controller. Opening T2.59 in E2 satisfies the condition as written: the question now has a task, a tier, a gate and a Done-when that forbids writing code before the owner's policy is recorded verbatim. **The policy itself remains the owner's and is surfaced to them, unanswered.** | Deliberately not decided here, because the four plausible answers are genuinely different systems — redact in place and break append-only; stop writing content into `events` and lose poison-row triage; tombstone and exclude at read time while the content stays on disk; or accept and document the retention, which may well be right for a single-operator homelab. That is a product and privacy judgement about the owner's own data, and a controller picking one to close a gate condition would be exactly the "widen the bar to fit the result" move runbook §7 forbids, dressed up as diligence. Placed in **E2 rather than the demand-gated E4** so it is scheduled rather than buried: the next epic to run carries it. |
+| 2026-07-28 | T1.53 / T1.54 / T1.66 | 2 | **OWNER DECISION: the project is greenfield and no data is retained. The cutover lane is rewritten accordingly.** T1.53 is **dropped** — with nothing to carry there is no migration to rehearse and no corpus a restore would protect, so every Done-when item answers a question that no longer exists. T1.54 stops being a cutover and becomes **fresh provisioning** on the baseline, and **does not apply the freeze**. T1.66 inverts from "the first additive revision" to the ordinary regenerate-in-place path, which **unblocks it immediately** — it was only ever deferred to avoid taking the schema owner's turn, and that turn is now free. | The freeze is the load-bearing consequence and it is worth stating plainly: `CLAUDE.md` defines it as an *event* — the first deploy whose data must survive — and a disposable database is not that deploy. Freezing anyway would end the regenerate-in-place window and push every E2 schema change (`knowledge_triples`, `fact_sources`, the satellites) through additive revisions for no benefit, so **`T0.15`'s single-revision assertion stays enforcing**. What is deliberately *kept* from the dropped task is the nightly `pg_dump` cadence, moved onto T1.54: it is ordinary hygiene rather than migration work, and it is exactly what makes a future freeze safe. T1.51's transform and T1.52's drainer stay shipped and tested — if data ever becomes worth keeping, the missing piece is precisely the rehearsal that was dropped, so it is resurrected rather than re-invented. |
+| 2026-07-28 | PROCESS | 2 | **`dropped` added to the status vocabulary** (`gen_progress.py`, and the table it generates). The corpus had five statuses and no word for a task resolved without being executed, so a drop could only be recorded as a permanent `todo` — which reads as unfinished work forever — or mislabelled `done`, which claims work that never happened. The definition is deliberately narrow: the premise no longer holds, the Note names who decided and why, and **a drop is not a deferral** (a deferred task stays `todo`). | The amendment protocol has always contemplated drops — Tier 2 explicitly covers "a task that becomes unnecessary because another task subsumed it" — but the status vocabulary never grew the word, so the first real drop had nowhere honest to go. Recorded as a process amendment rather than folded into the task rows, because the gap is in the tracker's own contract and the next epic will hit it again. |

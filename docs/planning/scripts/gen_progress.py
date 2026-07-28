@@ -19,7 +19,7 @@ EFFORT = re.compile(r"`Effort: ([a-z]+)`")
 ROW = re.compile(r"^\| (T(?:H1|[0-4])\.\d{2}[a-z]?) \|")
 CELL = re.compile(r"(?<!\\)\|")
 
-STATUSES = ["todo", "wip", "blocked", "review", "done"]
+STATUSES = ["todo", "wip", "blocked", "review", "done", "dropped"]
 FRESH = ("", "todo", "", "", "")
 
 # ------------------------------------------------ carry hand-edited state forward
@@ -72,6 +72,9 @@ out.append(
     "gate-feeding tasks require. The **Review** column carries the reviewer's verdict. |\n"
     "| `done` | Every definition-of-done item in runbook §4 holds, verification output\n"
     "recorded, commit landed, and any required review passed. |\n"
+    "| `dropped` | The task's premise no longer holds, so it is resolved without being\n"
+    "executed. The **Note** must say who decided and why. A drop is not a deferral —\n"
+    "a deferred task is still `todo`. |\n"
 )
 out.append(
     "**A task is never `done` with a failing check.** If the suite is red it is `blocked`\n"
