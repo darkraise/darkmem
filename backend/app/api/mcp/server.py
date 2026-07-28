@@ -192,6 +192,9 @@ async def memory_search(
     source: Annotated[str | None, Field(
         description='Filter by origin tool, e.g. "claude-code", "codex", "dashboard", "api", "mcp". "mcp"/"api" also cover all writes from before attribution landed (2026-06).'
     )] = None,
+    project: Annotated[str | None, Field(
+        description="Restrict results to one project. Omit to search every project."
+    )] = None,
     limit: int = 20,
     offset: int = 0,
     semantic_weight: float = 0.7,
@@ -203,6 +206,7 @@ async def memory_search(
         tags_all: Return memories matching ALL of these tags.
         memory_type: Filter by type: fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural.
         source: Filter by origin tool (e.g., "claude-code", "codex", "dashboard", "api", "mcp"). "mcp"/"api" also cover all writes from before attribution landed (2026-06).
+        project: Restrict results to one project (the same isolation key memory_add writes). Omit to search every project.
         limit: Maximum number of results (default: 20).
         offset: Pagination offset (default: 0).
         semantic_weight: Balance between semantic (1.0) and keyword (0.0) search (default: 0.7).
@@ -213,7 +217,7 @@ async def memory_search(
     async with _memory_service_context() as service:
         params = MemorySearchRequest(
             query=query, tags_any=tags_any, tags_all=tags_all,
-            memory_type=memory_type, source=source,
+            memory_type=memory_type, source=source, project=project,
             limit=limit, offset=offset, semantic_weight=semantic_weight,
         )
         memories = await service.search_memories(params)
@@ -451,9 +455,7 @@ async def code_search(
         return json.dumps(_degraded("embedder not configured", results=[]))
 
     from app.models.code import Repository
-    from app.repositories.vector import PostgresVectorRepository
-
-    query_vector, query_fingerprint = await _pipeline.llm.embed(query)
+    from app.services.code_query import CodeQueryService
 
     repo_id: UUID | None = None
     if repo_name:
@@ -466,13 +468,8 @@ async def code_search(
             repo_id = repo.id
 
     async with _code_service_context() as session:
-        vector_repo = PostgresVectorRepository(session)
-        results = await vector_repo.search_code_chunks(
-            query_vector,
-            fingerprint=query_fingerprint,
-            limit=limit,
-            repo_id=repo_id,
-            language=language,
+        results = await CodeQueryService(session, llm=_pipeline.llm).search_code(
+            query, limit, repo_id, language,
         )
 
     return json.dumps([
@@ -481,9 +478,14 @@ async def code_search(
             "symbol_name": r["symbol_name"],
             "chunk_content": r["chunk_content"],
             "language": r["language"],
+            "repo_id": r["repo_id"],
             "line_start": r["line_start"],
             "line_end": r["line_end"],
-            "score": r["score"],
+            # The REST twin serialises the same fused value under the same key
+            # (CodeSearchResult.score = rrf_score); emitting the raw semantic
+            # distance here is what let the two doors rank the same query
+            # differently.
+            "score": r["rrf_score"],
         }
         for r in results
     ])
@@ -585,89 +587,28 @@ async def code_blast_radius(
         max_depth: Maximum call-chain depth to traverse (default: 10).
     """
     from app.models.code import CodeFile, CodeSymbol, Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        query = select(CodeSymbol, CodeFile).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+        # Only the name-to-id resolution lives here; the traversal itself is the
+        # REST twin's. Keeping a second copy of the recursive CTE is how this
+        # tool silently lost the owner-qualified `key` the graph nodes are
+        # addressed by while the REST door kept emitting it.
+        query = select(CodeSymbol.id).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
         if repo_name:
             query = query.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
         query = query.where(CodeSymbol.name == symbol_name)
-        row = (await session.execute(query)).first()
-
-        if not row:
+        symbol_id = (await session.execute(query)).scalars().first()
+        if symbol_id is None:
             raise ValueError(f"Symbol not found: {symbol_name}")
 
-        sym, file = row
-        repo_id_str = str(file.repo_id)
-        owner = None
-        if sym.parent_symbol_id:
-            owner = (await session.execute(
-                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
-            )).scalar_one_or_none()
-        symbol_key = compose_key("symbol", sym.name, file.file_path, owner=owner)
-        depth = max(1, min(int(max_depth), 50))
+        result = await CodeQueryService(session).calculate_blast_radius(
+            str(symbol_id), max_depth,
+        )
 
-        rows = (await session.execute(
-            text("""
-                WITH RECURSIVE callers AS (
-                    SELECT source_key AS name, source_kind AS kind, 1 AS distance
-                    FROM code_edges
-                    WHERE repo_id = :repo_id
-                      AND target_key = :symbol_key
-                      AND edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
-                    UNION
-                    SELECT e.source_key, e.source_kind, c.distance + 1
-                    FROM callers c
-                    JOIN code_edges e
-                        ON e.target_key = c.name
-                        AND e.repo_id = :repo_id
-                        AND e.edge_type IN ('calls', 'extends', 'implements', 'accesses', 'method_overrides')
-                    WHERE c.distance < :max_depth
-                )
-                SELECT DISTINCT name, kind, MIN(distance) AS distance
-                FROM callers
-                GROUP BY name, kind
-                ORDER BY distance
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key, "max_depth": depth},
-        )).mappings().all()
-
-    by_depth: dict[str, list] = {"1": [], "2": [], "3+": []}
-    affected = []
-    for r in rows:
-        name_val = r["name"]
-        dist = r["distance"]
-        file_path_val = None
-        if "::" in (name_val or ""):
-            name_val, file_path_val = decompose_key("symbol", name_val)
-        entry = {"name": name_val, "kind": r["kind"], "file_path": file_path_val, "distance": dist}
-        affected.append(entry)
-        if dist == 1:
-            by_depth["1"].append(entry)
-        elif dist == 2:
-            by_depth["2"].append(entry)
-        else:
-            by_depth["3+"].append(entry)
-
-    direct_callers = len(by_depth["1"])
-    risk = "LOW"
-    if direct_callers > 10:
-        risk = "CRITICAL"
-    elif direct_callers > 5:
-        risk = "HIGH"
-    elif direct_callers > 2:
-        risk = "MEDIUM"
-
-    return json.dumps({
-        "symbol": {
-            "id": str(sym.id),
-            "name": sym.name,
-            "file_path": file.file_path,
-        },
-        "affected": affected,
-        "by_depth": by_depth,
-        "risk": risk,
-        "total": len(affected),
-    })
+    if result is None:
+        raise ValueError(f"Symbol not found: {symbol_name}")
+    return json.dumps(result)
 
 
 @mcp.tool(

@@ -23,8 +23,15 @@ async def test_mcp_tools_registered():
 
 async def test_code_search_clamps_limit(session, monkeypatch):
     """code_search must clamp `limit` to [1, _MAX_LIMIT] before it reaches the
-    raw SQL LIMIT, like every other limit-bearing tool. An unclamped negative
-    value raises a Postgres error; a huge value defeats the result-set cap."""
+    shared query service, like every other limit-bearing tool. An unclamped
+    negative value raises a Postgres error; a huge value defeats the result-set
+    cap.
+
+    The assertion sits on the tool-to-service boundary rather than on the
+    vector repository, because the clamp is the tool's and the service is free
+    to fan the bound out across its own channels (it asks each arm for
+    ``limit * 2`` before fusing).
+    """
     @asynccontextmanager
     async def _fake_ctx():
         yield session
@@ -41,13 +48,13 @@ async def test_code_search_clamps_limit(session, monkeypatch):
     monkeypatch.setattr(mcp_module, "_pipeline", _FakePipeline())
 
     captured = {}
-    from app.repositories import vector as vector_mod
+    from app.services import code_query as code_query_mod
 
-    async def _fake_search(self, query_vector, *, fingerprint, limit, repo_id=None, language=None):
+    async def _fake_search(self, query, limit=20, repo_id=None, language=None):
         captured["limit"] = limit
         return []
 
-    monkeypatch.setattr(vector_mod.PostgresVectorRepository, "search_code_chunks", _fake_search)
+    monkeypatch.setattr(code_query_mod.CodeQueryService, "search_code", _fake_search)
 
     await code_search("hello", limit=-5)
     assert captured["limit"] == 1
