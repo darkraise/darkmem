@@ -11,14 +11,14 @@ def test_determinism():
 
 
 def test_casing_insensitivity():
-    """Casing differences are normalized; keys are identical."""
+    """Casing differences in the three names are normalized; keys are identical."""
     key_lower = compute_triple_key("proj", "postgres", "uses", "docker")
     key_mixed = compute_triple_key("proj", "Postgres", "USES", "Docker")
     assert key_lower == key_mixed
 
 
 def test_whitespace_canonicalisation():
-    """Leading, trailing, and internal whitespace are normalized."""
+    """Leading, trailing, and internal whitespace in the names are normalized."""
     key_clean = compute_triple_key("proj", "postgres", "uses", "docker")
     key_lead_trail = compute_triple_key("proj", "  postgres  ", "uses", "docker")
     key_internal = compute_triple_key("proj", "post  gres", "uses", "docker")
@@ -33,6 +33,24 @@ def test_project_separates_identity():
     key_a = compute_triple_key("a", "postgres", "uses", "docker")
     key_b = compute_triple_key("b", "postgres", "uses", "docker")
     assert key_a != key_b
+
+
+def test_project_is_not_canonicalised():
+    """Two projects differing only in case (or in whitespace) are two scopes.
+
+    A project is case-sensitive exact-match text everywhere else in the system
+    (`memories.project`, and the `projects` registry's `name` primary key), so
+    folding it into fact identity would merge corroboration across scopes and
+    let one project's open belief block the other's through
+    `ux_knowledge_triples_open`. The three *names* stay canonicalised; only
+    the project is verbatim.
+    """
+    assert compute_triple_key("Foo", "postgres", "uses", "docker") != compute_triple_key(
+        "foo", "postgres", "uses", "docker"
+    )
+    assert compute_triple_key(
+        "my proj", "postgres", "uses", "docker"
+    ) != compute_triple_key("my  proj", "postgres", "uses", "docker")
 
 
 def test_rel_type_separates_identity():

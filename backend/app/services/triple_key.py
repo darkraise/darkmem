@@ -10,13 +10,21 @@ def compute_triple_key(
     """
     Compute the stable identity key for a knowledge triple (fact).
 
-    Canonicalises each input (lowercase, strip, collapse whitespace),
-    then computes a UUID5 over the four-tuple joined with a field separator.
-    The resulting key is deterministic and invariant to equivalent input
-    representations (casing, whitespace variations).
+    Canonicalises the three *name* inputs (lowercase, strip, collapse
+    whitespace), then computes a UUID5 over the four-tuple joined with a field
+    separator. The resulting key is deterministic and invariant to equivalent
+    representations (casing, whitespace variations) of those three.
+
+    ``project`` is embedded **verbatim** and deliberately not canonicalised:
+    everywhere else in this system a project is case-sensitive exact-match text
+    (``memories.project`` in the supersession gate, and the ``projects``
+    registry's case-sensitive ``name`` primary key), so folding case or
+    whitespace here would give two distinct project scopes one fact identity —
+    merging their corroboration and letting one project's open belief block the
+    other's through ``ux_knowledge_triples_open``.
 
     Args:
-        project: Project scope (part of identity).
+        project: Project scope (part of identity, used verbatim).
         subject_name: Subject entity name.
         rel_type: Relation type (predicate).
         object_name: Object entity name.
@@ -28,13 +36,12 @@ def compute_triple_key(
     def canonicalise(s: str) -> str:
         return " ".join(s.strip().split()).lower()
 
-    canonical_project = canonicalise(project)
     canonical_subject = canonicalise(subject_name)
     canonical_rel = canonicalise(rel_type)
     canonical_object = canonicalise(object_name)
 
     triple_tuple = "\x1f".join(
-        [canonical_project, canonical_subject, canonical_rel, canonical_object]
+        [project, canonical_subject, canonical_rel, canonical_object]
     )
 
     triple_uuid = uuid.uuid5(uuid.NAMESPACE_URL, triple_tuple)
