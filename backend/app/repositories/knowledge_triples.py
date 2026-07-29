@@ -159,12 +159,21 @@ class KnowledgeTripleRepository:
         remains in the live set as retained history while leaving the scope of
         ``ux_knowledge_triples_open``.
 
-        Journals ``invalidated`` with the before/after ``invalid_at``. The
-        prior value is read with ``FOR UPDATE`` in this same transaction, not
-        a separate round trip, so a concurrent close on the same row cannot
-        make the journalled "before" a lie. This is a window closing, not an
-        expiry — the row stays live (``expired_at`` untouched) — so it is
-        journalled as its own event type rather than reusing ``expired``.
+        Journals ``invalidated`` with the before/after ``invalid_at`` —
+        but only when the write actually changes the value. The prior value
+        is read with ``FOR UPDATE`` in this same transaction, not a separate
+        round trip, so a concurrent close on the same row cannot make the
+        journalled "before" a lie, and cannot make a no-op look like a
+        transition either. This is a window closing, not an expiry — the row
+        stays live (``expired_at`` untouched) — so it is journalled as its
+        own event type rather than reusing ``expired``.
+
+        The write itself is unconditional (re-closing to the same
+        ``invalid_at`` still executes the UPDATE); only the journal call is
+        suppressed when before equals after, because ``events`` is
+        append-only and a phantom "transition" row can never be deleted —
+        "a row means a transition" must be true by construction, not by
+        every future reader remembering to filter it out.
         """
         prior = await self.session.execute(
             text(
@@ -189,17 +198,18 @@ class KnowledgeTripleRepository:
         )
         row = result.mappings().first()
         row_dict = _row_to_dict(row)
-        await record_event(
-            self.session,
-            event_type="invalidated",
-            object_type="fact",
-            object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
-            project=prior_row["project"],
-            payload={
-                "before": {"invalid_at": _iso(prior_row["invalid_at"])},
-                "after": {"invalid_at": _iso(row["invalid_at"])},
-            },
-        )
+        if prior_row["invalid_at"] != row["invalid_at"]:
+            await record_event(
+                self.session,
+                event_type="invalidated",
+                object_type="fact",
+                object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+                project=prior_row["project"],
+                payload={
+                    "before": {"invalid_at": _iso(prior_row["invalid_at"])},
+                    "after": {"invalid_at": _iso(row["invalid_at"])},
+                },
+            )
         return row_dict
 
     async def expire(self, triple_id: UUID | str) -> dict | None:
@@ -208,10 +218,16 @@ class KnowledgeTripleRepository:
         COALESCE keeps the withdrawal time from drifting on a repeated call:
         a fact was disbelieved once, and a second expire must not rewrite when.
 
-        Journals ``expired`` with the before/after ``expired_at``. The prior
-        value is read with ``FOR UPDATE`` in this same transaction, not a
-        separate round trip, so a concurrent expire on the same row cannot
-        make the journalled "before" a lie.
+        Journals ``expired`` with the before/after ``expired_at`` — but only
+        when the write actually changes the value. Because of the COALESCE
+        above, a repeat call on an already-expired row writes back the same
+        value it read, so it is a no-op by this method's own contract and
+        must not journal (append-only ``events`` can never un-write a
+        phantom row, so "a row means a transition" has to be true by
+        construction). The prior value is read with ``FOR UPDATE`` in this
+        same transaction, not a separate round trip, so a concurrent expire
+        on the same row cannot make the journalled "before" a lie or make a
+        no-op look like a transition.
         """
         prior = await self.session.execute(
             text(
@@ -236,17 +252,18 @@ class KnowledgeTripleRepository:
         )
         row = result.mappings().first()
         row_dict = _row_to_dict(row)
-        await record_event(
-            self.session,
-            event_type="expired",
-            object_type="fact",
-            object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
-            project=prior_row["project"],
-            payload={
-                "before": {"expired_at": _iso(prior_row["expired_at"])},
-                "after": {"expired_at": _iso(row["expired_at"])},
-            },
-        )
+        if prior_row["expired_at"] != row["expired_at"]:
+            await record_event(
+                self.session,
+                event_type="expired",
+                object_type="fact",
+                object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+                project=prior_row["project"],
+                payload={
+                    "before": {"expired_at": _iso(prior_row["expired_at"])},
+                    "after": {"expired_at": _iso(row["expired_at"])},
+                },
+            )
         return row_dict
 
     async def get_live(
@@ -298,16 +315,22 @@ class KnowledgeTripleRepository:
         method, not a gap to be filled in later. A refused call performs no
         read and no write, so it journals nothing: no transition occurred.
 
-        Journals ``verified`` with the before/after ``verification_status`` on
-        success. The prior value is read with ``FOR UPDATE`` in this same
-        transaction, not a separate round trip, so a concurrent write to the
-        same row cannot make the journalled "before" a lie.
+        Journals ``verified`` with the before/after ``verification_status`` —
+        but only when the write actually changes the value; setting a row to
+        the status it already holds is a no-op and must not journal (append-
+        only ``events`` can never un-write a phantom row, so "a row means a
+        transition" has to be true by construction). The prior value is read
+        with ``FOR UPDATE`` in this same transaction, not a separate round
+        trip, so a concurrent write to the same row cannot make the
+        journalled "before" a lie or make a no-op look like a transition.
 
         T2.03's Tier-C verification recompute will become the sole journaller
         of verification transitions once it lands; from that point this
         emitter is subordinate to it, so the recompute does not double-count
         the same transition in G-C's metrics. That hand-off is T2.03's to
-        make, not this method's — no suppression flag exists here.
+        make, not this method's — no suppression flag exists here (the
+        before/after equality check above is this method's own no-op guard,
+        not a coordination mechanism with T2.03).
         """
         if status not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
             if status == "confirmed":
@@ -342,17 +365,18 @@ class KnowledgeTripleRepository:
             ),
             {"id": str(triple_id), "status": status},
         )
-        await record_event(
-            self.session,
-            event_type="verified",
-            object_type="fact",
-            object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
-            project=prior_row["project"],
-            payload={
-                "before": {"verification_status": prior_row["verification_status"]},
-                "after": {"verification_status": status},
-            },
-        )
+        if prior_row["verification_status"] != status:
+            await record_event(
+                self.session,
+                event_type="verified",
+                object_type="fact",
+                object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+                project=prior_row["project"],
+                payload={
+                    "before": {"verification_status": prior_row["verification_status"]},
+                    "after": {"verification_status": status},
+                },
+            )
 
     async def as_of(
         self,

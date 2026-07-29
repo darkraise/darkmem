@@ -336,6 +336,62 @@ async def test_expire_journals_exactly_one_expired_event(session):
     assert event["payload"]["after"]["expired_at"] == expired["expired_at"].isoformat()
 
 
+async def test_expire_journals_the_expired_at_column_not_a_sibling_column(session):
+    """`expired_at`'s journalled "before" is structurally always NULL for any
+    actually-journaled expire() event: a repeat call on an already-expired
+    row is now a suppressed no-op (F1), so the only case that ever journals
+    is the NULL -> timestamp one. That makes a NULL "before" indistinguishable
+    from a bug that reads the wrong column -- `invalid_at` also defaults to
+    NULL on a fresh row, and `close_window()` / `expire()` are structurally
+    near-identical siblings (same SELECT ... FOR UPDATE / UPDATE ... RETURNING
+    shape). Closing the window first makes `invalid_at` a distinguishable
+    non-NULL value while `expired_at` stays NULL, so a column-confusion
+    mutation (reading `invalid_at` for "before" instead of `expired_at`)
+    would surface here even though it could not on the test above alone.
+    """
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    await repo.close_window(row["id"], NOW + timedelta(days=30))
+
+    expired = await repo.expire(row["id"])
+
+    events = await _events_for(session, row["id"])
+    expire_events = [e for e in events if e["event_type"] == "expired"]
+    assert len(expire_events) == 1
+    assert expire_events[0]["payload"]["before"]["expired_at"] is None
+    assert expire_events[0]["payload"]["after"]["expired_at"] == expired["expired_at"].isoformat()
+
+
+async def test_expiring_an_already_expired_row_journals_nothing(session):
+    """F1: the write still proceeds (COALESCE keeps the original time,
+    proven elsewhere by `test_expiring_an_already_expired_row_keeps_the_
+    original_time`), but a second expire() reads back the same value it is
+    about to write, so it must not add a second journal row."""
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    await repo.expire(row["id"])
+
+    await repo.expire(row["id"])
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 1
+
+
+async def test_close_window_with_an_unchanged_timestamp_journals_nothing(session):
+    """F1: re-closing to the same `invalid_at` still executes the UPDATE
+    (unconditionally, matching the doc-08 "re-save on the retained row"
+    contract), but before == after, so no second journal row is added."""
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    target = NOW + timedelta(days=30)
+    await repo.close_window(row["id"], target)
+
+    await repo.close_window(row["id"], target)
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 1
+
+
 async def test_set_verification_status_journals_exactly_one_verified_event(session):
     repo = KnowledgeTripleRepository(session)
     row = await _open(repo, valid_at=NOW)
@@ -349,6 +405,40 @@ async def test_set_verification_status_journals_exactly_one_verified_event(sessi
     assert event["object_type"] == "fact"
     assert event["payload"]["before"]["verification_status"] == "candidate"
     assert event["payload"]["after"]["verification_status"] == "corroborated"
+
+
+async def test_set_verification_status_journals_the_actual_prior_status_not_the_column_default(
+    session,
+):
+    """F3: `candidate` is both the true prior value on a fresh row AND the
+    database column default, so a mutation that hardcoded "candidate" as
+    "before" (instead of genuinely reading the row) would pass the test
+    above undetected. Seeding a non-default prior status via direct SQL --
+    `disputed`, reached the same way the axis-independence tests reach it --
+    pins a "before" value a hardcoded-default mutant cannot produce.
+    """
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    await _set_status(session, row["id"], "disputed")
+
+    await repo.set_verification_status(row["id"], "corroborated")
+
+    events = await _events_for(session, row["id"])
+    assert len(events) == 1
+    assert events[0]["payload"]["before"]["verification_status"] == "disputed"
+    assert events[0]["payload"]["after"]["verification_status"] == "corroborated"
+
+
+async def test_set_verification_status_to_the_current_value_journals_nothing(session):
+    """F1's third named case: writing a status a row already holds is a
+    no-op. `candidate` is the fresh row's own default, so no seeding is
+    needed to reach the no-op state."""
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+
+    await repo.set_verification_status(row["id"], "candidate")
+
+    assert await _events_for(session, row["id"]) == []
 
 
 async def test_set_verification_status_refusing_confirmed_journals_nothing(session):
