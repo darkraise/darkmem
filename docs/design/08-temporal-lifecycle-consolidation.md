@@ -181,7 +181,7 @@ flowchart TD
 
 ## 4. The verification ladder
 
-**Decision. `verification_status` climbs `candidate → corroborated → confirmed` with a `disputed` sub-state; promotion counts `COUNT(DISTINCT origin_key)` never rows, a single non-echo contradiction is an absolute veto, the machine never reaches `confirmed` on its own, and the status is recomputed *only* by a Tier-C job — never inline in Phase 5 or `delete_by_memory_id` (spec §2.1/§2.5, doc 04 §8.3, invariant 15).** This is the operational core of the maintainer's truth-over-everything priority: a delayed promotion costs a label (candidates are served, labelled, above nothing), a wrong promotion costs every article that cites the fact and every agent that propagates it, so the ladder is built to under-claim. The vocabulary and the badge claim are used verbatim (Part B contract 2); the recompute is journaled to `events` so "what did we believe as of X" answers the verification dimension too.
+**Decision. `verification_status` climbs `candidate → corroborated → confirmed` with a `disputed` sub-state; promotion counts `COUNT(DISTINCT origin_key)` never rows, a single non-echo contradiction is an absolute veto, a newer REPLACES-family / supersession signal over the fact's live memory sources is a deterministic promotion **hold** (never itself a dispute, never a demotion — T2.60), the machine never reaches `confirmed` on its own, and the status is recomputed *only* by a Tier-C job — never inline in Phase 5 or `delete_by_memory_id` (spec §2.1/§2.5, doc 04 §8.3, invariant 15).** This is the operational core of the maintainer's truth-over-everything priority: a delayed promotion costs a label (candidates are served, labelled, above nothing), a wrong promotion costs every article that cites the fact and every agent that propagates it, so the ladder is built to under-claim. The vocabulary and the badge claim are used verbatim (Part B contract 2); the recompute is journaled to `events` so "what did we believe as of X" answers the verification dimension too.
 
 The verification ladder — the machine promotes at most to `corroborated`; only a human ratifies `confirmed`. `under-sourced` (shown below) is a `review_state`/label overlay on a still-`corroborated` (demoting) fact, **not** a fifth `verification_status` value — the CHECK is `candidate | corroborated | disputed | confirmed` (doc 04 §8.3):
 
@@ -189,7 +189,7 @@ The verification ladder — the machine promotes at most to `corroborated`; only
 stateDiagram-v2
     [*] --> candidate : lifted from an L1 relation, served labelled
     [*] --> corroborated : code-originated, the parse is the verification
-    candidate --> corroborated : N distinct origin_key, diversity or time gate, no contradiction
+    candidate --> corroborated : N distinct origin_key, diversity or time gate, no contradiction, no supersession hold
     corroborated --> under_sourced : an origin is withdrawn, count drops below N
     under_sourced --> corroborated : re-corroborated within the grace window
     under_sourced --> candidate : still under N after the demotion grace cycles

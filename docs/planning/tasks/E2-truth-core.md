@@ -970,6 +970,28 @@ single-operator homelab).
 
 ---
 
+#### T2.60 — The supersession-signal promotion blocker
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.03, T2.02, T1.36` · `Doc: 08 §4.1 (as amended), spec §2.1` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Spec §2.1's promotion condition 4 has two halves. The contradiction half is
+T2.04's. This task owns the other: **a fact does not promote while a newer
+REPLACES-family / supersession signal stands over its live memory sources.** It is a
+deterministic **hold** — no LLM, no model call. It never writes `disputed`, and it never
+demotes an already-`corroborated` fact; it only withholds a promotion that would otherwise
+fire. Opened by the Tier-3 ruling at
+`.superpowers/sdd/rulings/2026-07-29-t2.03-supersession-blocker.md`, which found doc 08
+§4.1 had dropped the condition by drift rather than decision.
+
+**Done when:**
+- [ ] The predicate is deterministic — no LLM, no model call on the promotion path
+- [ ] A fact that meets its N-origin bar but carries a superseded live source does **not**
+      promote, proven by test
+- [ ] The signal writes no `disputed` status and causes no demotion — it holds only
+- [ ] The signal is journaled in the decision evidence so G-C can count blocked promotions
+
+**Verify.** `cd backend && python -m pytest tests/test_supersession_blocker.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
@@ -980,3 +1002,4 @@ single-operator homelab).
 | 2026-07-29 | T2.01, T2.07, T2.10 | 2 | **`compute_triple_key` embeds `project` VERBATIM — it is not canonicalised, while `subject_name` / `rel_type` / `object_name` are.** Decided while the table holds zero rows | `project` is case-sensitive exact-match text everywhere else: `memories.project` matches exactly in supersession gate 1, and T2.07's registry is a case-sensitive `name` PK. Doc 04 §8.3 says uuid5 over "canonicalised lowercase **names**" with project merely "embedded" — it never says the project is canonicalised. Canonicalising it would give projects `Foo` and `foo` — distinct registry rows with distinct memory scopes — one shared fact identity, so `ux_knowledge_triples_open` would reject `foo`'s insert while `Foo` holds the open belief: cross-project interference through a unique index, and corroboration merged across scopes. Changing this after T2.10 writes rows re-keys the table, so it had to be settled now. Raised as I3 by the whole-branch review |
 | 2026-07-29 | T2.01, T2.10 | 1 | **`get_live` and `as_of` require `project`; `insert_open` still defaults it to `'default'`.** T2.10 must pass `project` explicitly when wiring the producer, or drop that default | E1's standing warning F7 (`E1-engine-core.md`) told whoever wired this layer to render the scope in the repository, not at the front door, so the reads were made scope-required (I2). The producer default was left because it mirrors `memories.project` and the column's own `server_default`. The sharp edge is key/column divergence: computing a key with project X while inserting without `project=X` mints a row findable only under the wrong scope, silently |
 | 2026-07-29 | T2.02 | 1 | **`document` is not a fifth `source_kind`.** Doc 08 §4.1 names a `document` origin ("document → `document_id`", and the diversity example "memory + document + code") that doc 04 §8.3's column vocabulary `{memory, block, code, human}` does not carry. Resolution: `document` is the origin-key rule for content arriving under the **`block`** kind, not a separate value. `block` ships reserved-and-refused until its producer exists | Surfaced by T2.02's implementer and independently confirmed by its reviewer against both docs. Recorded because the next reader of doc 08 §4.1 hits the same apparent contradiction, and adding a fifth value to satisfy the prose would break the CHECK-adjacent vocabulary doc 04 fixes. Nothing produces either kind yet, so the resolution costs nothing today |
+| 2026-07-29 | T2.03, T2.60 | 3 | **Spec §2.1 promotion condition 4's supersession-signal half stands.** Doc 08 §4.1 and doc 04 §8.3 omitted it by drift, not by decision; **T2.60** is minted to own it as a deterministic promotion blocker (hold, never `disputed`, never demote). Doc 08 §4.1 and doc 04 §8.3 amended to carry the condition; the spec is unchanged because it was right. T2.03, T2.04 and T2.45 are unchanged in scope, and T2.03 is unblocked | Escalated by T2.03's plan (§7): a promotion-blocking input the spec requires had no owner in the task corpus, so facts could promote while a newer memory had already replaced the claim. Adjudicated at Fable tier under owner delegation; full ruling and its rejected alternatives at `.superpowers/sdd/rulings/2026-07-29-t2.03-supersession-blocker.md` |
