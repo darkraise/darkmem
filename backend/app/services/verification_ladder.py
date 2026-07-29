@@ -148,25 +148,14 @@ async def get_ladder_config(session: AsyncSession) -> LadderConfig:
             )
             values[name] = floor
             continue
-        if name in _ORIGIN_COUNT_PARAMS and candidate < 1:
-            # A measured parameter is otherwise honoured verbatim, and N = 0
-            # would make `k >= n` true for a fact with **no sources at all** —
-            # promotion on nothing. The measurement gate trusts T2.40's writer
-            # about *how far* to loosen, never about whether the threshold may
-            # vanish, so this bound sits outside the gate and applies even to a
-            # measured parameter. It covers the two origin-count parameters
-            # only: `time_gap_days = 0` is degenerate (the gate always fires)
-            # but still lands on `n_diverse`, so it cannot promote a
-            # zero-source fact and stays governed by its floor.
-            logger.warning(
-                "%s.%s=%d is below the absolute minimum of 1; raising to 1. "
-                "An origin threshold of zero would promote a fact with no sources.",
-                LADDER_CONFIG_KEY,
-                name,
-                candidate,
-            )
-            values[name] = 1
-            continue
+        # The floor clamp runs FIRST, and the ordering matters. An earlier
+        # revision put the absolute >= 1 bound ahead of this branch and
+        # `continue`d past it, so an unmeasured `n_default: 0` never reached
+        # its floor: it became 1, then the ordering clamp lifted it to 2, and
+        # a two-same-kind-same-day-origin fact promoted where the floor holds
+        # at 3 — an operator typo manufacturing exactly the counterfeit
+        # corroboration D3 exists to prevent. Every floor is >= 1, so clamping
+        # here already satisfies the absolute bound for the unmeasured case.
         if candidate < floor and name not in measured:
             logger.warning(
                 "%s.%s=%d is below its floor %d and no %s measurement lists it; "
@@ -180,6 +169,24 @@ async def get_ladder_config(session: AsyncSession) -> LadderConfig:
                 floor,
             )
             values[name] = floor
+            continue
+        # Only a *measured* value can still be under 1 by this point. The
+        # measurement gate rules how far a threshold may loosen, never whether
+        # it may vanish: N = 0 makes `k >= n` true for a fact with no sources
+        # at all. Origin-count parameters only — `time_gap_days = 0` is
+        # degenerate (the gate always fires) but still lands on `n_diverse`,
+        # so it cannot promote a zero-source fact.
+        if name in _ORIGIN_COUNT_PARAMS and candidate < 1:
+            logger.warning(
+                "%s.%s=%d is below the absolute minimum of 1; raising to 1. "
+                "An origin threshold of zero would promote a fact with no "
+                "sources, which no %s measurement can authorise.",
+                LADDER_CONFIG_KEY,
+                name,
+                candidate,
+                MEASUREMENT_TASK,
+            )
+            values[name] = 1
             continue
         values[name] = candidate
 

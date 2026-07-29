@@ -942,3 +942,58 @@ class TestConfigReachesTheDecision:
         assert tightened.required_n == 4, "recompute ignored the config row"
         assert tightened.outcome == "hold"
         assert (await _read(session, tightened_id))["verification_status"] == "candidate"
+
+
+class TestSubOneThresholds:
+    """The absolute >= 1 bound must not preempt the floor clamp.
+
+    Fix-round regression (re-review NB-1): the bound originally ran *before*
+    the measurement gate and skipped past it, so an unmeasured `n_default: 0`
+    became 1, the ordering clamp lifted it to 2, and a two-same-kind-same-day
+    fact promoted where the floor holds at 3 — one operator typo producing the
+    counterfeit corroboration D3 exists to prevent.
+    """
+
+    @pytest.mark.parametrize("value", [0, -7])
+    async def test_unmeasured_sub_one_clamps_to_the_floor_not_to_one(
+        self, session, caplog, value
+    ):
+        await _write_config(session, LADDER_CONFIG_KEY, {"n_default": value})
+        config = await get_ladder_config(session)
+        assert config.n_default == CORROBORATION_N_DEFAULT
+        assert "T2.40" in caplog.text, "an unmeasured loosening must name the gate"
+
+    async def test_unmeasured_zero_n_default_does_not_promote_a_same_day_pair(
+        self, session
+    ):
+        """The outcome the ordering bug produced, asserted at the decision."""
+        await _write_config(session, LADDER_CONFIG_KEY, {"n_default": 0})
+        config = await get_ladder_config(session)
+        pair = profile(origin("a"), origin("b"))
+        decision = decide("f", "candidate", pair, config)
+        assert decision.required_n == 3
+        assert decision.outcome == "hold"
+
+    @pytest.mark.parametrize("name", ["n_default", "n_diverse"])
+    async def test_a_measured_sub_one_origin_threshold_is_raised_to_one(
+        self, session, name
+    ):
+        """The measurement gate rules how far, never whether it may vanish."""
+        await _write_config(session, LADDER_CONFIG_KEY, {name: 0})
+        await _write_config(session, LADDER_MEASUREMENTS_KEY, {"measured": [name]})
+        config = await get_ladder_config(session)
+        assert getattr(config, name) >= 1
+
+    async def test_a_zero_threshold_can_never_promote_a_sourceless_fact(self, session):
+        """The hazard the bound exists for, asserted end to end."""
+        await _write_config(
+            session, LADDER_CONFIG_KEY, {"n_default": 0, "n_diverse": 0}
+        )
+        await _write_config(
+            session, LADDER_MEASUREMENTS_KEY, {"measured": ["n_default", "n_diverse"]}
+        )
+        config = await get_ladder_config(session)
+        decision = decide("f", "candidate", profile(), config)
+        assert decision.origin_count == 0
+        assert decision.required_n >= 1
+        assert decision.outcome != "promote"
