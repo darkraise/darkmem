@@ -41,6 +41,26 @@ def _fresh_registry():
     return registry, engine
 
 
+async def _drain_pending_tasks(before: set[asyncio.Task], *, timeout: float = 5.0) -> None:
+    """Await whatever the wrapped call scheduled on this loop but did not
+    itself await — e.g. a queue-on-busy regression's ``asyncio.create_task``
+    — instead of guessing a fixed sleep window.
+
+    A queued run only starts making progress once the caller's lock frees, and
+    needs several loop turns of real DB I/O (lock acquire, config read, runner,
+    config commit) to finish; checking state after a single ``sleep(0)`` yield
+    always wins that race and observes the row before the queued write lands.
+    Diffing ``asyncio.all_tasks()`` finds exactly what got scheduled and waits
+    for exactly that, so detection does not depend on how long the write takes
+    or on a guessed wall-clock margin. ``timeout`` is a safety net against a
+    genuinely hung task, never the detection mechanism itself.
+    """
+    current = asyncio.current_task()
+    spawned = [t for t in asyncio.all_tasks() if t not in before and t is not current]
+    if spawned:
+        await asyncio.wait(spawned, timeout=timeout)
+
+
 # ── Done-when 1: each job independently scheduled, locked, configurable ──
 
 
@@ -57,7 +77,10 @@ def test_all_six_family_members_are_registered():
 
 
 @pytest.mark.asyncio
-async def test_each_job_has_its_own_cron_floor_and_config_row():
+async def test_each_job_has_its_own_cron_and_floor():
+    # The config-row property (job:<key>, distinct per member) is proven by
+    # persistence below (test_each_job_persists_config_under_its_own_row),
+    # not by reaching into JobRegistry's private _config_key formatting here.
     registry, engine = _fresh_registry()
     try:
         seen_crons: dict[str, str] = {}
@@ -66,8 +89,6 @@ async def test_each_job_has_its_own_cron_floor_and_config_row():
             job = registry.get(key)
             assert job is not None, f"{key} did not register"
             assert job.key == key
-            # Own config row key: job:<key>, distinct per member.
-            assert registry._config_key(key) == f"job:{key}"
             seen_crons[key] = job.default_cron
             seen_floors[key] = job.min_interval_seconds
         # Each member's cron and floor are independent values, not one
@@ -124,10 +145,19 @@ async def test_set_config_validates_against_its_own_schema_only():
 async def test_sibling_config_survives_a_neighbours_update():
     registry, engine = _fresh_registry()
     try:
+        # contradiction_scan's schema is doc 08 §5.3's own two named fields,
+        # not the generic batch_size the other five carry — a different
+        # shape entirely, not just a different value.
         await registry.set_config(MEMORY_DREAM_JOB_KEY, {"batch_size": 3})
-        await registry.set_config(CONTRADICTION_SCAN_JOB_KEY, {"batch_size": 4})
+        await registry.set_config(
+            CONTRADICTION_SCAN_JOB_KEY,
+            {"contradiction_scan_batch": 4, "contradiction_candidate_top_k": 8},
+        )
         assert (await registry.load_config(MEMORY_DREAM_JOB_KEY)).config["batch_size"] == 3
-        assert (await registry.load_config(CONTRADICTION_SCAN_JOB_KEY)).config["batch_size"] == 4
+        cs_cfg = (await registry.load_config(CONTRADICTION_SCAN_JOB_KEY)).config
+        assert cs_cfg["contradiction_scan_batch"] == 4
+        assert cs_cfg["contradiction_candidate_top_k"] == 8
+        assert "batch_size" not in cs_cfg
     finally:
         await registry.stop_all()
         await engine.dispose()
@@ -173,13 +203,17 @@ async def test_trigger_while_locked_raises_busy_without_running():
     try:
         job = registry.get(CONTRADICTION_SCAN_JOB_KEY)
         await job.lock.acquire()
+        before = set(asyncio.all_tasks())
         try:
             with pytest.raises(JobBusyError):
                 await registry.trigger(CONTRADICTION_SCAN_JOB_KEY)
         finally:
             job.lock.release()
-        # Busy means "refused", not "queued" — nothing ran while the lock
-        # was held, so last_run_at must still be unset after the refusal.
+        # Busy means "refused", not "queued". A queue-on-busy regression
+        # schedules its run via create_task before raising JobBusyError; that
+        # task only starts making progress once the lock frees above, so
+        # drain whatever trigger() left behind before reading state.
+        await _drain_pending_tasks(before)
         cfg = await registry.load_config(CONTRADICTION_SCAN_JOB_KEY)
         assert cfg.last_run_at is None
         assert cfg.last_status is None
@@ -211,8 +245,20 @@ async def dream_family_client(client):
 async def test_trigger_route_returns_409_and_does_not_queue_a_run(
     dream_family_client, client, auth_headers,
 ):
+    """Proves the HTTP-level mapping and defense in depth: the route's own
+    pre-check (``app/api/routes/jobs.py``'s ``if job.lock.locked(): raise
+    HTTPException(409, ...)``) means a held lock never even reaches
+    ``JobRegistry.trigger()`` on this path, so a request against a busy
+    family job is refused before any run could be scheduled.
+
+    The registry-internal busy path — the one a queue-on-busy regression in
+    ``JobRegistry.trigger()`` itself would corrupt — is proven by
+    ``test_trigger_while_locked_raises_busy_without_running`` above, which
+    calls ``trigger()`` directly rather than through this route pre-check.
+    """
     job = dream_family_client.get(MEMORY_DREAM_JOB_KEY)
     await job.lock.acquire()
+    before = set(asyncio.all_tasks())
     try:
         response = await client.post(
             f"/api/v1/jobs/{MEMORY_DREAM_JOB_KEY}/trigger", headers=auth_headers,
@@ -220,9 +266,7 @@ async def test_trigger_route_returns_409_and_does_not_queue_a_run(
         assert response.status_code == 409
     finally:
         job.lock.release()
-    # No queued run fires once the lock frees — a queued implementation
-    # would show a completed run here; a refusing one leaves the row untouched.
-    await asyncio.sleep(0)
+    await _drain_pending_tasks(before)
     cfg = await dream_family_client.load_config(MEMORY_DREAM_JOB_KEY)
     assert cfg.last_run_at is None
     assert cfg.last_status is None
@@ -230,16 +274,31 @@ async def test_trigger_route_returns_409_and_does_not_queue_a_run(
 
 # ── Done-when 3 + test-plan point 5: no Tier-A/B caller reaches a job ─────
 
-_ALLOWED_DREAM_JOB_REFERRERS = {
+# Whole files exempted from the scan entirely: the umbrella module itself,
+# which necessarily names every key. Nothing else gets a blanket pass —
+# app/main.py is scanned line-by-line like everything else (see
+# _ALLOWED_DREAM_JOB_LINES below), so a hot-path call added anywhere else in
+# main.py, outside its one legitimate registration call, still gets caught.
+_ALLOWED_DREAM_JOB_FILES = {
     "app/services/dream_jobs.py",
-    "app/main.py",
+}
+
+# Exact stripped lines legitimate outside the umbrella module — today, only
+# main.py's one import and one registration call in lifespan(). Keyed by
+# file so a forbidden reference anywhere else in that same file still fails.
+_ALLOWED_DREAM_JOB_LINES: dict[str, set[str]] = {
+    "app/main.py": {
+        "from app.services.dream_jobs import register_dream_jobs",
+        "register_dream_jobs(job_registry)",
+    },
 }
 
 
 def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> list[str]:
     """A forbidden reference is either an import from `app.services.dream_jobs`
     or a quoted literal naming one of the six family job keys, in any file
-    outside the umbrella module and its one legitimate registration call site.
+    outside the umbrella module, and on any line outside the one legitimate
+    registration call site.
 
     Mirrors `tests/test_inert_objects.py`'s inert-purpose scan: a source
     scan that fails the build, not a convention a reviewer has to remember.
@@ -247,19 +306,20 @@ def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> li
     offenders: list[str] = []
     for path in paths:
         rel = str(path.relative_to(backend_root))
-        if rel in _ALLOWED_DREAM_JOB_REFERRERS:
+        if rel in _ALLOWED_DREAM_JOB_FILES:
             continue
+        allowed_lines = _ALLOWED_DREAM_JOB_LINES.get(rel, set())
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            if "app.services.dream_jobs" in line or "from app.services import dream_jobs" in line:
+            forbidden = (
+                "app.services.dream_jobs" in line
+                or "from app.services import dream_jobs" in line
+                or any(f'"{key}"' in line or f"'{key}'" in line for key in DREAM_JOB_KEYS)
+            )
+            if forbidden and stripped not in allowed_lines:
                 offenders.append(f"{rel}:{lineno}: {stripped}")
-                continue
-            for key in DREAM_JOB_KEYS:
-                if f'"{key}"' in line or f"'{key}'" in line:
-                    offenders.append(f"{rel}:{lineno}: {stripped}")
-                    break
     return offenders
 
 
@@ -268,13 +328,38 @@ def _app_sources() -> list[Path]:
 
 
 def test_no_app_code_reaches_a_family_job():
-    offenders = _forbidden_dream_job_references(_app_sources(), BACKEND)
+    paths = _app_sources()
+    # A vacuous scan (e.g. BACKEND resolved to the wrong directory) would
+    # pass by finding nothing to scan at all; this floor is well below the
+    # real count (151 at the time of writing) but far above zero, so an
+    # empty or near-empty scan fails loudly instead of silently passing.
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the source scan below "
+        "would pass vacuously; check BACKEND / the glob path"
+    )
+    offenders = _forbidden_dream_job_references(paths, BACKEND)
     assert not offenders, (
         "a Tier-A/B (or any non-umbrella) module reached a dream-job family "
         "member:\n" + "\n".join(offenders)
         + "\nReconciliation must stay off the hot path (invariant 15) — trigger "
           "it through JobRegistry's cron/manual-trigger surface, never inline."
     )
+
+
+def test_main_wires_the_family_at_boot():
+    """Registrability is not the same as being wired at boot (I2): every
+    registry-level test above builds its own `JobRegistry` via
+    `register_dream_jobs`, so none of them would notice if `app/main.py`
+    stopped calling it — the family would silently stop existing in the
+    running app while the whole suite stayed green. This asserts the one
+    legitimate call site the guard above allowlists actually exists."""
+    main_src = (BACKEND / "app" / "main.py").read_text()
+    stripped_lines = {line.strip() for line in main_src.splitlines()}
+    for expected in _ALLOWED_DREAM_JOB_LINES["app/main.py"]:
+        assert expected in stripped_lines, (
+            f"app/main.py no longer wires the dream-job family at boot: "
+            f"missing {expected!r}"
+        )
 
 
 def test_guard_fails_when_a_forbidden_call_is_introduced(tmp_path):

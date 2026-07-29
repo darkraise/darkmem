@@ -30,6 +30,15 @@ Each owning task replaces its job's `runner=` (and, if it needs one, its
 `config_schema=`) with the real implementation; the registration shape,
 cron, floor and ceiling here are a starting point tuned from doc 08 §5's
 cadence table, not a contract the owning task must preserve verbatim.
+`contradiction_scan`'s two fields are the config rows doc 08 §5.3 names by
+value (`contradiction_scan_batch`, `contradiction_candidate_top_k`); the
+other five jobs get a single generic `batch_size` placeholder knob, since
+doc 08 §5 does not name theirs. **Whoever replaces a `config_schema` here
+must also clear any `batch_size` (or other placeholder key) already
+persisted in that job's `config` row** — `JobRegistry.set_config` merges
+`{**cfg.config, **partial}` and never drops a key on its own, so a stale
+placeholder value survives a schema swap silently unless the owning task's
+migration/first-run explicitly strips it.
 """
 from __future__ import annotations
 
@@ -84,6 +93,12 @@ DREAM_JOB_OWNERS: dict[str, str] = {
 DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 
 
+_GENERIC_PLACEHOLDER_HELP = (
+    "Placeholder tuning knob so the job is configurable before its owning "
+    "task lands; that task may replace this schema."
+)
+
+
 def _placeholder_job(
     key: str,
     display_name: str,
@@ -92,8 +107,7 @@ def _placeholder_job(
     default_cron: str,
     min_interval_seconds: int,
     max_run_seconds: float,
-    batch_default: int,
-    batch_max: int,
+    config_schema: list[FieldDescriptor],
 ) -> Job:
     return Job(
         key=key,
@@ -103,15 +117,15 @@ def _placeholder_job(
         min_interval_seconds=min_interval_seconds,
         runner=PlaceholderJobRunner(key, DREAM_JOB_OWNERS[key]),
         max_run_seconds=max_run_seconds,
-        config_schema=[FieldDescriptor(
-            key="batch_size", label="Batch Size", default=batch_default,
-            min=1, max=batch_max,
-            help=(
-                "Placeholder tuning knob so the job is configurable before "
-                "its owning task lands; that task may replace this schema."
-            ),
-        )],
+        config_schema=config_schema,
     )
+
+
+def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
+    return [FieldDescriptor(
+        key="batch_size", label="Batch Size", default=default,
+        min=1, max=maximum, help=_GENERIC_PLACEHOLDER_HELP,
+    )]
 
 
 def register_dream_jobs(registry: JobRegistry) -> None:
@@ -131,7 +145,8 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         f"(doc 08 §5.2). Placeholder — real work lands in "
         f"{DREAM_JOB_OWNERS[FACT_LIFT_JOB_KEY]}.",
         default_cron="*/15 * * * *", min_interval_seconds=60,
-        max_run_seconds=300, batch_default=50, batch_max=1000,
+        max_run_seconds=300,
+        config_schema=_generic_batch_schema(default=50, maximum=1000),
     ))
     registry.register(_placeholder_job(
         VERIFICATION_RECOMPUTE_JOB_KEY, "Verification Recompute",
@@ -139,7 +154,8 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         "contradiction veto and hysteresis (doc 08 §4.3). Placeholder — "
         f"real work lands in {DREAM_JOB_OWNERS[VERIFICATION_RECOMPUTE_JOB_KEY]}.",
         default_cron="*/2 * * * *", min_interval_seconds=30,
-        max_run_seconds=120, batch_default=100, batch_max=2000,
+        max_run_seconds=120,
+        config_schema=_generic_batch_schema(default=100, maximum=2000),
     ))
     registry.register(_placeholder_job(
         CONTRADICTION_SCAN_JOB_KEY, "Contradiction Scan",
@@ -148,7 +164,23 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         f"Placeholder — real work lands in "
         f"{DREAM_JOB_OWNERS[CONTRADICTION_SCAN_JOB_KEY]}.",
         default_cron="0 */6 * * *", min_interval_seconds=300,
-        max_run_seconds=1800, batch_default=20, batch_max=500,
+        max_run_seconds=1800,
+        # Doc 08 §5.3 names these two rows by value ("bounded by
+        # contradiction_scan_batch (facts per cycle) and
+        # contradiction_candidate_top_k (candidates per fact), both config
+        # rows") — matched verbatim rather than the generic batch_size knob.
+        config_schema=[
+            FieldDescriptor(
+                key="contradiction_scan_batch", label="Facts Per Cycle",
+                default=20, min=1, max=500,
+                help="Facts drained and checked per contradiction_scan run.",
+            ),
+            FieldDescriptor(
+                key="contradiction_candidate_top_k", label="Candidates Per Fact",
+                default=10, min=1, max=100,
+                help="pg_trgm shortlist size per fact needing a check.",
+            ),
+        ],
     ))
     registry.register(_placeholder_job(
         MEMORY_DREAM_JOB_KEY, "Memory Dream",
@@ -157,7 +189,8 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         f"Placeholder — real work lands in "
         f"{DREAM_JOB_OWNERS[MEMORY_DREAM_JOB_KEY]}.",
         default_cron="0 3 * * *", min_interval_seconds=300,
-        max_run_seconds=1800, batch_default=50, batch_max=1000,
+        max_run_seconds=1800,
+        config_schema=_generic_batch_schema(default=50, maximum=1000),
     ))
     registry.register(_placeholder_job(
         TOPIC_DETECTION_JOB_KEY, "Topic Detection",
@@ -166,7 +199,8 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         f"doc 08 §5.6). Placeholder — real work lands in "
         f"{DREAM_JOB_OWNERS[TOPIC_DETECTION_JOB_KEY]}.",
         default_cron="0 4 * * *", min_interval_seconds=300,
-        max_run_seconds=900, batch_default=5, batch_max=100,
+        max_run_seconds=900,
+        config_schema=_generic_batch_schema(default=5, maximum=100),
     ))
     registry.register(_placeholder_job(
         ARTICLE_SYNTHESIS_JOB_KEY, "Article Synthesis",
@@ -175,5 +209,6 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         f"Placeholder — real work lands in "
         f"{DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY]}.",
         default_cron="0 5 * * *", min_interval_seconds=300,
-        max_run_seconds=900, batch_default=10, batch_max=200,
+        max_run_seconds=900,
+        config_schema=_generic_batch_schema(default=10, maximum=200),
     ))
