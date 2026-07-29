@@ -269,23 +269,26 @@ class KnowledgeTripleRepository:
     async def get_live(
         self,
         *,
+        project: str,
         triple_key: str | None = None,
-        project: str | None = None,
         subject_name: str | None = None,
         rel_type: str | None = None,
         object_name: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        """Rows belief has not been withdrawn from.
+        """Rows in ``project`` belief has not been withdrawn from.
 
         Disjoint validity windows legitimately leave several live rows on one
         subject/predicate/object, so this may return more than one row per key.
+
+        ``project`` is required, not an optional filter: the scope is rendered
+        here rather than at the front door, so no caller can serve facts across
+        projects by forgetting to pass it.
         """
-        conditions = [LIVE_PREDICATE]
-        params: dict = {"limit": limit}
+        conditions = [LIVE_PREDICATE, "project = CAST(:project AS text)"]
+        params: dict = {"limit": limit, "project": project}
         for column, value in (
             ("triple_key", triple_key),
-            ("project", project),
             ("subject_name", subject_name),
             ("rel_type", rel_type),
             ("object_name", object_name),
@@ -382,14 +385,14 @@ class KnowledgeTripleRepository:
         self,
         t: datetime,
         *,
+        project: str,
         triple_key: str | None = None,
-        project: str | None = None,
         subject_name: str | None = None,
         rel_type: str | None = None,
         object_name: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        """Rows believed at time ``t``.
+        """Rows in ``project`` believed at time ``t``.
 
         The window is half-open — ``valid_at <= t < invalid_at`` — so the
         adjacent windows the disjoint-window pass produces never both match a
@@ -400,15 +403,18 @@ class KnowledgeTripleRepository:
         question, and a fact whose belief has since been withdrawn was still
         believed at ``t``. Filtering it would collapse the retained history that
         makes the question answerable.
+
+        ``project`` is required, not an optional filter — same reason as
+        ``get_live``: the scope belongs in the repository, not at the front door.
         """
         conditions = [
             "(valid_at IS NULL OR valid_at <= CAST(:t AS timestamptz))",
             "(invalid_at IS NULL OR invalid_at > CAST(:t AS timestamptz))",
+            "project = CAST(:project AS text)",
         ]
-        params: dict = {"t": t, "limit": limit}
+        params: dict = {"t": t, "limit": limit, "project": project}
         for column, value in (
             ("triple_key", triple_key),
-            ("project", project),
             ("subject_name", subject_name),
             ("rel_type", rel_type),
             ("object_name", object_name),

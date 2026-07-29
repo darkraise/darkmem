@@ -259,7 +259,7 @@ async def test_disjoint_windows_leave_two_live_rows(session):
 
     assert first_stint["triple_key"] == second_stint["triple_key"]
 
-    live = await repo.get_live(triple_key=_key())
+    live = await repo.get_live(project=PROJECT, triple_key=_key())
     assert {r["id"] for r in live} == {first_stint["id"], second_stint["id"]}
     assert all(r["expired_at"] is None for r in live)
 
@@ -555,6 +555,58 @@ async def test_set_verification_status_does_not_rewrite_a_prior_withdrawal_time(
     after = await _read(session, row["id"])
     assert after["verification_status"] == "corroborated"
     assert after["expired_at"] == withdrawn_at
+
+
+# ── Project scope lives in the repository, not the front door ───────
+
+
+async def test_get_live_does_not_leak_across_projects(session):
+    """``project`` is a required parameter and a real predicate.
+
+    E1's standing warning F7: the old triple read path had no project
+    predicate, and the scope belongs in the repository rather than at whatever
+    front door happens to call it. Two projects can hold the same triple_key
+    only because the project is part of the key's input, so this also pins that
+    the filter is applied and not merely accepted.
+    """
+    repo = KnowledgeTripleRepository(session)
+    mine = await _open(repo, valid_at=NOW)
+    theirs = await repo.insert_open(
+        triple_key=compute_triple_key("t201-other-project", "ada", "WORKS_AT", "acme"),
+        subject_name="ada",
+        object_name="acme",
+        rel_type="WORKS_AT",
+        fact="ada WORKS_AT acme",
+        reference_time=NOW,
+        project="t201-other-project",
+        valid_at=NOW,
+    )
+
+    live = [r["id"] for r in await repo.get_live(project=PROJECT)]
+    assert live == [mine["id"]]
+
+    other_live = [r["id"] for r in await repo.get_live(project="t201-other-project")]
+    assert other_live == [theirs["id"]]
+
+
+async def test_as_of_does_not_leak_across_projects(session):
+    repo = KnowledgeTripleRepository(session)
+    mine = await _open(repo, valid_at=NOW)
+    await repo.insert_open(
+        triple_key=compute_triple_key("t201-other-project", "ada", "WORKS_AT", "acme"),
+        subject_name="ada",
+        object_name="acme",
+        rel_type="WORKS_AT",
+        fact="ada WORKS_AT acme",
+        reference_time=NOW,
+        project="t201-other-project",
+        valid_at=NOW,
+    )
+
+    believed = [
+        r["id"] for r in await repo.as_of(NOW + timedelta(days=1), project=PROJECT)
+    ]
+    assert believed == [mine["id"]]
 
 
 async def test_a_second_open_row_on_one_key_is_rejected(session):
