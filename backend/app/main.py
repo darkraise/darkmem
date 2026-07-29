@@ -212,6 +212,7 @@ async def lifespan(app: FastAPI):
         CODE_RECONCILE_MAX_RUN_SECONDS,
         CODE_RECONCILE_MIN_INTERVAL_SECONDS,
     )
+    from app.services.dream_jobs import register_dream_jobs
 
     job_registry = JobRegistry(async_session_factory)
     job_registry.register(Job(
@@ -339,6 +340,11 @@ async def lifespan(app: FastAPI):
         runner=make_expired_memory_cleanup_runner(async_session_factory),
         max_run_seconds=300,
     ))
+
+    # The Tier-C consolidation ("dreaming") family — doc 08 §5. Every member
+    # is a placeholder until its owning task (T2.09-T2.14, T2.53) lands the
+    # real runner; see app/services/dream_jobs.py.
+    register_dream_jobs(job_registry)
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
     # immediately when a repo's auto_sync flips. The registry owns the
