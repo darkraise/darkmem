@@ -230,14 +230,49 @@ class OriginProfile:
                 widest = gap
         return widest
 
+    def required_origin_count_for(
+        self,
+        *,
+        n_diverse: int,
+        n_default: int,
+        time_gap_days: int,
+    ) -> int:
+        """N under caller-supplied thresholds, and which gate produced it.
+
+        The rule itself lives here — one spelling, next to the
+        ``attributable_origins`` semantics it depends on — while the three
+        numbers come from the caller. T2.03's ladder passes values merged from
+        the ``verification_ladder`` config row; ``required_origin_count`` below
+        passes this module's constants. Neither restates the rule.
+        """
+        if self.kinds_are_diverse:
+            return n_diverse
+        if self.max_cross_origin_gap >= timedelta(days=time_gap_days):
+            return n_diverse
+        return n_default
+
+    def gate_fired_for(self, *, time_gap_days: int) -> str:
+        """Which threshold gate fires — ``diversity``, ``time_gap`` or ``none``.
+
+        Diversity is checked first and wins a tie, matching
+        ``required_origin_count_for``'s order, so the reported gate is always
+        the one that actually determined N rather than merely one that would
+        have.
+        """
+        if self.kinds_are_diverse:
+            return "diversity"
+        if self.max_cross_origin_gap >= timedelta(days=time_gap_days):
+            return "time_gap"
+        return "none"
+
     @property
     def required_origin_count(self) -> int:
         """N — the distinct-origin count promotion would require."""
-        if self.kinds_are_diverse:
-            return CORROBORATION_N_DIVERSE
-        if self.max_cross_origin_gap >= timedelta(days=CORROBORATION_TIME_GAP_DAYS):
-            return CORROBORATION_N_DIVERSE
-        return CORROBORATION_N_DEFAULT
+        return self.required_origin_count_for(
+            n_diverse=CORROBORATION_N_DIVERSE,
+            n_default=CORROBORATION_N_DEFAULT,
+            time_gap_days=CORROBORATION_TIME_GAP_DAYS,
+        )
 
 
 def _row_to_dict(row: Any) -> dict:
