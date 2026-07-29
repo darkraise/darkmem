@@ -117,18 +117,33 @@ async def test_close_window_leaves_a_corroborated_status_corroborated(session):
 
 
 async def test_moving_verification_status_leaves_the_belief_axis_untouched(session):
+    """The verification -> belief direction, through the repository method.
+
+    The axis must move via ``set_verification_status`` and not the direct-SQL
+    fixture: a fixture UPDATE of one column proves a property of Postgres, not
+    of the code under review.
+
+    The row is deliberately left **live** (window-closed, never expired) and
+    ``expired_at IS NULL`` is asserted outright rather than compared against a
+    ``before`` snapshot. ``now()`` is transaction-constant, so on an
+    already-expired row a mutant appending ``expired_at = now()`` to the status
+    UPDATE would rewrite the same value ``expire()`` had just written and an
+    ``after == before`` comparison would hold vacuously. Withdrawing belief on
+    every status change is the exact conflation this rebuild exists to prevent.
+    """
     repo = KnowledgeTripleRepository(session)
     row = await _open(repo, valid_at=NOW)
     await repo.close_window(row["id"], NOW + timedelta(days=30))
     before = await _read(session, row["id"])
+    assert before["expired_at"] is None
 
-    await _set_status(session, row["id"], "disputed")
+    await repo.set_verification_status(row["id"], "disputed")
 
     after = await _read(session, row["id"])
     assert after["verification_status"] == "disputed"
     assert after["valid_at"] == before["valid_at"] == NOW
     assert after["invalid_at"] == before["invalid_at"] == NOW + timedelta(days=30)
-    assert after["expired_at"] is None and before["expired_at"] is None
+    assert after["expired_at"] is None
 
 
 async def test_confirmed_but_expired_fact_is_representable(session):
@@ -495,19 +510,51 @@ async def test_set_verification_status_round_trips_permitted_values(session, sta
 
 
 async def test_set_verification_status_leaves_belief_axis_untouched(session):
+    """The same guard on a fully open row: both belief timestamps stay NULL.
+
+    The sibling test above starts from a window-closed row; this one starts
+    from an open one, so a mutant stamping either ``invalid_at`` or
+    ``expired_at`` on the verification path is caught from both starting
+    states. Neither test expires the row first — a pre-expired row makes the
+    ``expired_at`` assertion vacuous under transaction-constant ``now()``.
+    """
     repo = KnowledgeTripleRepository(session)
     row = await _open(repo, valid_at=NOW)
-    await repo.close_window(row["id"], NOW + timedelta(days=30))
-    await repo.expire(row["id"])
     before = await _read(session, row["id"])
 
     await repo.set_verification_status(row["id"], "corroborated")
 
     after = await _read(session, row["id"])
     assert after["verification_status"] == "corroborated"
-    assert after["valid_at"] == before["valid_at"]
-    assert after["invalid_at"] == before["invalid_at"]
-    assert after["expired_at"] == before["expired_at"]
+    assert after["valid_at"] == before["valid_at"] == NOW
+    assert after["invalid_at"] is None
+    assert after["expired_at"] is None
+
+
+async def test_set_verification_status_does_not_rewrite_a_prior_withdrawal_time(session):
+    """An already-expired row keeps the instant belief was withdrawn.
+
+    The withdrawal is seeded to a past timestamp by direct SQL rather than by
+    an ``expire()`` call, for the same transaction-constant ``now()`` reason:
+    a seeded past instant is a value a belief-stamping mutant cannot reproduce,
+    whereas an in-transaction ``expire()`` writes exactly what the mutant would.
+    """
+    repo = KnowledgeTripleRepository(session)
+    row = await _open(repo, valid_at=NOW)
+    withdrawn_at = NOW - timedelta(days=7)
+    await session.execute(
+        text(
+            "UPDATE knowledge_triples SET expired_at = CAST(:e AS timestamptz) "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"e": withdrawn_at, "id": row["id"]},
+    )
+
+    await repo.set_verification_status(row["id"], "corroborated")
+
+    after = await _read(session, row["id"])
+    assert after["verification_status"] == "corroborated"
+    assert after["expired_at"] == withdrawn_at
 
 
 async def test_a_second_open_row_on_one_key_is_rejected(session):
