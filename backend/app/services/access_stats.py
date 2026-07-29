@@ -19,15 +19,32 @@ degrade or fail the search that triggered it.
 
 Never awaiting the write is necessary but not sufficient: a background task
 still competes with the foreground request for the same single-threaded
-event loop and the same Postgres backend, so an *unbounded* one-task-per-
-search design measurably slows concurrent foreground searches even though no
-caller ever awaits it directly (measured — see the T2.29 completion report).
-``_MAX_IN_FLIGHT`` bounds how many access-stats writes may be outstanding at
-once; once saturated, a new access is dropped rather than queued. Dropping
-is deliberate, not a bug to fix later: these are raw, approximate counters
-feeding a future heat/recency signal (never an audit trail), so losing a
-count under a burst is cheap, while queuing it would trade the same
-contention problem for unbounded memory growth instead of fixing it.
+event loop and the same Postgres backend, so a naive one-task-per-search
+design measurably slows concurrent foreground searches even though no caller
+ever awaits it directly (measured — see the T2.29 completion report).
+
+**This is a coalescing counter buffer, not a per-call writer, per a T2.29
+review ruling.** An earlier revision capped concurrent background writes and
+*dropped* an access when the cap was saturated. That was wrong: the review
+measured 20-75% loss under sustained load, concentrated on exactly the
+memories being accessed fastest — a load-correlated bias that poisons a heat
+signal (busy-period popularity is what heat exists to capture, and dropping
+proportionally more of it inverts the point). The fix is not a bigger cap;
+it is to stop treating one search as one connection. `spawn_record_access`
+only ever increments an in-process ``dict[memory_id, count]``, which is
+synchronous and cannot fail or contend with anything. At most one background
+task is ever alive at a time: it sleeps `_FLUSH_DELAY_SECONDS` to let a
+burst of concurrent searches coalesce into the same buffer, then drains it
+in a loop (one upsert per iteration, additively summing whatever counts
+accumulated) until empty. This is bounded by the number of *distinct* memory
+ids touched during the flush window, uses one connection instead of several,
+issues strictly fewer statements than the per-call design under any
+concurrent load, and loses nothing: every increment lands in the dict before
+the flush task can be scheduled to read it (both happen synchronously, with
+no ``await`` between them), and every dict entry present when a drain
+iteration starts is captured and cleared atomically before that iteration's
+``await`` point, so nothing referenced by a later caller can be silently
+dropped by an earlier one.
 """
 
 from __future__ import annotations
@@ -46,47 +63,70 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["record_access", "spawn_record_access"]
 
-# A plain constant, not a `config` row: this bounds background-connection
-# concurrency for operational safety, not a ranking/tuning parameter, so it
-# is out of scope for the harness-measured tuning convention (CLAUDE.md
-# convention 9) that governs the rank_fusion `w_*` weights.
-_MAX_IN_FLIGHT = 4
-_in_flight = 0
+# Debounce window: lets a burst of concurrent searches land in the same
+# buffer before the flush task drains it, so N concurrent searches touching
+# the same or overlapping memories cost one statement, not N. Read live from
+# the module namespace at flush time (never captured by value), so tests can
+# monkeypatch it down without changing behaviour, only latency.
+_FLUSH_DELAY_SECONDS = 0.25
 
-# One statement over the whole id set — never one round trip per memory.
+# module-global, single-threaded-event-loop state: safe without a lock
+# because every mutation below happens with no `await` between the read and
+# the write that follows it.
+_pending_counts: dict[str, int] = {}
+_flush_task: asyncio.Task | None = None
+
+# The FK-tolerant JOIN (not a bare CAST-and-insert) means one memory deleted
+# between a search and this flush degrades that one row out of the batch
+# instead of voiding every other id's bump in the same statement.
 # ``unnest`` needs the explicit CAST or asyncpg cannot infer the array's
 # element type (CLAUDE.md: asyncpg needs CAST on raw-SQL params).
-_UPSERT_SQL = text(
+_COUNTS_UPSERT_SQL = text(
     """
     INSERT INTO memory_access_stats (memory_id, access_count, last_accessed)
-    SELECT id, 1, NOW()
-    FROM unnest(CAST(:ids AS uuid[])) AS id
+    SELECT m.id, t.cnt, NOW()
+    FROM unnest(CAST(:ids AS uuid[]), CAST(:counts AS integer[])) AS t(id, cnt)
+    JOIN memories m ON m.id = t.id
     ON CONFLICT (memory_id) DO UPDATE
-    SET access_count = memory_access_stats.access_count + 1,
+    SET access_count = memory_access_stats.access_count + EXCLUDED.access_count,
         last_accessed = EXCLUDED.last_accessed
     """
 )
 
 
-def _normalize_ids(memory_ids: Iterable[object]) -> list[str]:
-    # Dedup: a single INSERT..ON CONFLICT cannot affect the same row twice,
-    # so a memory appearing on both the semantic and keyword side of one
-    # fused result set must collapse to one id here.
-    return sorted({str(mid) for mid in memory_ids if mid})
+def _build_counts(memory_ids: Iterable[object]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for mid in memory_ids:
+        if not mid:
+            continue
+        key = str(mid)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+async def _flush_counts(session: AsyncSession, counts: dict[str, int]) -> int:
+    if not counts:
+        return 0
+    ids = list(counts.keys())
+    amounts = [counts[i] for i in ids]
+    result = await session.execute(_COUNTS_UPSERT_SQL, {"ids": ids, "counts": amounts})
+    await session.commit()
+    # Not len(ids): the JOIN against `memories` (F4) means an id deleted
+    # between search and flush silently degrades out of the row count
+    # instead of voiding the whole statement, so the true write count can be
+    # smaller than the number of ids offered.
+    return result.rowcount
 
 
 async def record_access(session: AsyncSession, memory_ids: Iterable[object]) -> int:
     """Bump the access counters for ``memory_ids`` in one statement.
 
-    Returns the number of distinct ids written (0 for an empty/all-None
-    input, which is a no-op — no statement is issued).
+    Each occurrence of an id in the input adds to its count (an id appearing
+    twice bumps its counter by 2). Returns the number of distinct ids
+    written (0 for an empty/all-None input, which is a no-op — no statement
+    is issued).
     """
-    ids = _normalize_ids(memory_ids)
-    if not ids:
-        return 0
-    await session.execute(_UPSERT_SQL, {"ids": ids})
-    await session.commit()
-    return len(ids)
+    return await _flush_counts(session, _build_counts(memory_ids))
 
 
 def spawn_record_access(
@@ -94,45 +134,48 @@ def spawn_record_access(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> asyncio.Task | None:
-    """Fire-and-forget: schedule the counter bump without the caller
-    awaiting it, on a session independent of the caller's own.
+    """Fire-and-forget: buffer the access and ensure a flush is scheduled,
+    without the caller awaiting anything.
 
-    Bounded by ``_MAX_IN_FLIGHT``: when that many writes are already
-    outstanding, this access is dropped (logged at debug level) instead of
-    queued, so a concurrent burst of searches can never accumulate an
-    unbounded number of background connections competing with the
-    foreground request path.
+    Buffering is synchronous (a plain dict update) and cannot drop an
+    access: every id lands in ``_pending_counts`` before this function
+    returns. At most one flush task is ever alive; a call that arrives
+    while one is already scheduled just adds to the same buffer that task
+    will drain.
 
-    Returns the scheduled ``asyncio.Task`` (ignored by production callers;
-    useful for tests that want to await it deterministically instead of
-    sleeping), or ``None`` when there is nothing to write or the in-flight
-    cap is already reached.
+    Returns the active/scheduled ``asyncio.Task`` (ignored by production
+    callers; useful for tests that want to await it deterministically
+    instead of sleeping), or ``None`` when there is nothing to write.
     """
-    global _in_flight
-    ids = _normalize_ids(memory_ids)
+    global _flush_task
+    ids = [str(mid) for mid in memory_ids if mid]
     if not ids:
         return None
 
-    if _in_flight >= _MAX_IN_FLIGHT:
-        logger.debug(
-            "memory_access_stats bump dropped for %d id(s): %d writes already in flight",
-            len(ids), _in_flight,
-        )
-        return None
+    for mid in ids:
+        _pending_counts[mid] = _pending_counts.get(mid, 0) + 1
+
+    if _flush_task is not None and not _flush_task.done():
+        return _flush_task
 
     factory = session_factory or async_session_factory
-    _in_flight += 1
 
     async def _run() -> None:
-        global _in_flight
+        global _flush_task
         try:
-            async with factory() as session:
-                await record_access(session, ids)
-        except Exception:
-            logger.exception(
-                "memory_access_stats bump failed for %d id(s)", len(ids)
-            )
+            await asyncio.sleep(_FLUSH_DELAY_SECONDS)
+            while _pending_counts:
+                batch = dict(_pending_counts)
+                _pending_counts.clear()
+                try:
+                    async with factory() as session:
+                        await _flush_counts(session, batch)
+                except Exception:
+                    logger.exception(
+                        "memory_access_stats bump failed for %d id(s)", len(batch)
+                    )
         finally:
-            _in_flight -= 1
+            _flush_task = None
 
-    return spawn(_run(), name="access-stats-bump")
+    _flush_task = spawn(_run(), name="access-stats-bump")
+    return _flush_task

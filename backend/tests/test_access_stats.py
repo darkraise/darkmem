@@ -2,26 +2,39 @@
 
 Two layers, matching the two things the brief calls load-bearing:
 
-* ``record_access`` is exercised against a *real, committing* session bound
-  to ``test_engine`` (not the conftest ``session`` fixture — that fixture's
-  writes live inside a SAVEPOINT on one connection and are never visible to
-  a genuinely separate connection, which is exactly the shape the
-  background writer uses in production). These tests prove the SQL itself:
-  first access, the ON CONFLICT increment path, one statement for K ids,
-  ``memories.updated_at`` untouched, and the FK cascade on delete.
+* ``record_access`` / ``_flush_counts`` are exercised against a *real,
+  committing* session bound to ``test_engine`` (not the conftest ``session``
+  fixture — that fixture's writes live inside a SAVEPOINT on one connection
+  and are never visible to a genuinely separate connection, which is exactly
+  the shape the background writer uses in production). These tests prove
+  the SQL itself: first access, the ON CONFLICT increment path (including
+  that ``last_accessed`` actually moves, not just ``access_count``), one
+  statement for K ids, ``memories.updated_at`` untouched, the FK cascade on
+  delete, and that one deleted memory in a batch degrades only that row
+  rather than voiding the whole statement.
 * ``HybridSearchService.search`` / ``search_with_trace`` are exercised with
-  ``access_stats.record_access`` and ``access_stats.async_session_factory``
+  ``access_stats._flush_counts`` and ``access_stats.async_session_factory``
   monkeypatched, so the real ``app.utils.background.spawn`` machinery still
   runs — proving *structurally*, via asyncio's own scheduling guarantee
   that a freshly created task never runs before the current coroutine
   yields, that the write is scheduled rather than awaited, and that a write
   failure never reaches the caller.
+
+Following a T2.29 review, ``spawn_record_access`` is a coalescing buffer
+(see the module docstring in ``access_stats.py`` for why the earlier
+drop-when-saturated cap was wrong: it lost 20-75% of accesses under
+sustained load, concentrated on the busiest memories). The tests below
+cover the buffer directly: that it never loses a count under concurrent
+calls, and that it recovers to schedule a fresh flush after a previous one
+completes rather than wedging shut.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -31,6 +44,22 @@ from app.services.embedder_registry import child_table
 from app.services.hybrid_search import HybridSearchService
 from app.utils import background
 from tests.conftest import test_engine
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _clean_access_stats_buffer():
+    """``spawn_record_access``'s buffer (``_pending_counts`` / `_flush_task``)
+    is process-global and the whole suite shares one event loop
+    (``asyncio_default_test_loop_scope = "session"``), so a real, unpatched
+    flush left running by an unrelated hybrid-search test elsewhere in the
+    suite (default debounce 0.25s) could still be mid-sleep when a test here
+    starts, coalescing unrelated ids into this test's buffer. Draining any
+    such leftover before each test starts keeps every test's buffer state
+    genuinely its own."""
+    task = access_stats._flush_task
+    if task is not None and not task.done():
+        await asyncio.wait_for(task, timeout=5)
+    yield
 
 
 def _factory() -> async_sessionmaker[AsyncSession]:
@@ -70,7 +99,23 @@ async def _stats_row(factory, memory_id):
         )).first()
 
 
-# ── record_access: the raw SQL, against a real committing session ─────
+class _SpySession:
+    """Wraps a real session, counting ``execute`` calls so a test can prove
+    "one statement", not just "the right end state"."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.execute_calls = 0
+
+    async def execute(self, *a, **kw):
+        self.execute_calls += 1
+        return await self._inner.execute(*a, **kw)
+
+    async def commit(self):
+        await self._inner.commit()
+
+
+# ── record_access / _flush_counts: the raw SQL, real committing session ──
 
 
 @pytest.mark.asyncio
@@ -104,6 +149,14 @@ async def test_record_access_second_access_increments_not_duplicates():
         second = await _stats_row(factory, mem_id)
 
         assert second.access_count == first.access_count + 1 == 2
+        # F3 guard: last_accessed must actually move on the ON CONFLICT path,
+        # not just access_count -- w_recency reads this column, and a SQL
+        # regression that pins it to `memory_access_stats.last_accessed`
+        # (freezing at first-access forever) leaves access_count correct
+        # while silently breaking the recency half of the substrate.
+        assert second.last_accessed > first.last_accessed, (
+            "last_accessed must advance on every access, not freeze after the first"
+        )
 
         async with factory() as s:
             count = (await s.execute(
@@ -120,18 +173,6 @@ async def test_record_access_writes_k_ids_in_one_statement():
     factory = _factory()
     ids = [await _seed_memory(factory) for _ in range(4)]
     try:
-        class _SpySession:
-            def __init__(self, inner):
-                self._inner = inner
-                self.execute_calls = 0
-
-            async def execute(self, *a, **kw):
-                self.execute_calls += 1
-                return await self._inner.execute(*a, **kw)
-
-            async def commit(self):
-                await self._inner.commit()
-
         async with factory() as real:
             spy = _SpySession(real)
             n = await access_stats.record_access(spy, ids)
@@ -175,27 +216,40 @@ async def test_record_access_leaves_memories_updated_at_untouched():
 @pytest.mark.asyncio
 async def test_record_access_empty_input_is_a_noop():
     factory = _factory()
-    async with factory() as s:
-        n = await access_stats.record_access(s, [])
+    async with factory() as real:
+        spy = _SpySession(real)
+        n = await access_stats.record_access(spy, [])
     assert n == 0
-    async with factory() as s:
-        n = await access_stats.record_access(s, [None, ""])
+    assert spy.execute_calls == 0, "an empty id set must issue no statement at all"
+
+    async with factory() as real:
+        spy = _SpySession(real)
+        n = await access_stats.record_access(spy, [None, ""])
     assert n == 0
+    assert spy.execute_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_spawn_record_access_drops_when_saturated(monkeypatch):
-    """``_MAX_IN_FLIGHT`` bounds background-connection concurrency: once that
-    many writes are outstanding, a new access is dropped rather than queued
-    (module docstring). Forcing the counter to the cap directly makes this
-    deterministic, independent of any other test's in-flight writes."""
-    monkeypatch.setattr(access_stats, "_in_flight", access_stats._MAX_IN_FLIGHT)
+async def test_record_access_survives_one_deleted_memory_in_batch():
+    """F4: the upsert JOINs against ``memories`` so a ghost id (deleted
+    between search and flush) degrades that one row, not the whole batch --
+    a bare CAST-and-insert against the FK would abort the entire statement
+    and lose every surviving id's bump too."""
+    factory = _factory()
+    survivor = await _seed_memory(factory)
+    ghost = await _seed_memory(factory)
+    try:
+        await _cleanup_memories(factory, [ghost])  # delete the ghost only
 
-    before = len(background._background_tasks)
-    task = access_stats.spawn_record_access([str(uuid.uuid4())])
+        async with factory() as s:
+            n = await access_stats.record_access(s, [survivor, ghost])
 
-    assert task is None, "a write must be dropped, not queued, once saturated"
-    assert len(background._background_tasks) == before, "a dropped write must not spawn a task"
+        assert n == 1, "only the surviving id should be reported as written"
+        row = await _stats_row(factory, survivor)
+        assert row is not None
+        assert row.access_count == 1
+    finally:
+        await _cleanup_memories(factory, [survivor])
 
 
 @pytest.mark.asyncio
@@ -214,6 +268,75 @@ async def test_deleting_memory_cascades_stats_row():
         assert (await _stats_row(factory, mem_id)) is None
     finally:
         await _cleanup_memories(factory, [mem_id])
+
+
+# ── spawn_record_access: the coalescing buffer itself ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_spawn_record_access_coalesces_without_loss(monkeypatch):
+    """The load-bearing regression test for the review's F1 finding: calling
+    ``spawn_record_access`` many times back-to-back, faster than any single
+    flush could run, must not drop a single count -- unlike the old
+    drop-when-saturated cap, which lost 20-75% under exactly this shape."""
+    monkeypatch.setattr(access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
+    flushed: dict[str, int] = {}
+
+    async def fake_flush_counts(_session, counts):
+        for k, v in counts.items():
+            flushed[k] = flushed.get(k, 0) + v
+
+    monkeypatch.setattr(access_stats, "_flush_counts", fake_flush_counts)
+    monkeypatch.setattr(access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+
+    ids = [str(uuid.uuid4()) for _ in range(5)]
+    calls = 200
+    for i in range(calls):
+        access_stats.spawn_record_access([ids[i % len(ids)]])
+
+    # Drain every task the loop above may have scheduled (the buffer can
+    # legitimately produce more than one flush cycle if a prior one finished
+    # mid-loop), not just the last one returned.
+    pending = [t for t in background._background_tasks if t.get_name() == "access-stats-bump"]
+    while pending:
+        await asyncio.gather(*pending)
+        pending = [t for t in background._background_tasks if t.get_name() == "access-stats-bump"]
+
+    assert sum(flushed.values()) == calls, "every scheduled access must be recorded, none dropped"
+    for mid in ids:
+        assert flushed.get(mid) == calls // len(ids)
+
+
+@pytest.mark.asyncio
+async def test_spawn_record_access_recovers_after_flush_completes(monkeypatch):
+    """F2: proves the mechanism cannot wedge itself shut the way the old
+    ``_in_flight`` cap could (a leaked decrement silently killed the feeder
+    forever after four searches). After one flush cycle fully completes, a
+    later access must still schedule and successfully run a fresh one."""
+    monkeypatch.setattr(access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
+    flushed: list[dict[str, int]] = []
+
+    async def fake_flush_counts(_session, counts):
+        flushed.append(dict(counts))
+
+    monkeypatch.setattr(access_stats, "_flush_counts", fake_flush_counts)
+    monkeypatch.setattr(access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+
+    first_id = str(uuid.uuid4())
+    task1 = access_stats.spawn_record_access([first_id])
+    assert task1 is not None
+    await task1
+    assert flushed == [{first_id: 1}]
+    assert access_stats._flush_task is None, "a completed flush must release its task slot"
+
+    second_id = str(uuid.uuid4())
+    task2 = access_stats.spawn_record_access([second_id])
+    assert task2 is not None, "a later access must still be able to schedule a new flush"
+    assert task2 is not task1
+    await task2
+    assert flushed == [{first_id: 1}, {second_id: 1}], (
+        "the second flush must actually run, not be silently absorbed by a wedged buffer"
+    )
 
 
 # ── HybridSearchService: off-the-hot-path proof ────────────────────────
@@ -288,11 +411,12 @@ async def test_search_schedules_write_without_awaiting_it(session, monkeypatch):
 
     calls: list[list[str]] = []
 
-    async def fake_record_access(_session, ids):
-        calls.append(sorted(str(i) for i in ids))
+    async def fake_flush_counts(_session, counts):
+        calls.append(sorted(counts.keys()))
 
-    monkeypatch.setattr(access_stats, "record_access", fake_record_access)
+    monkeypatch.setattr(access_stats, "_flush_counts", fake_flush_counts)
     monkeypatch.setattr(access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+    monkeypatch.setattr(access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
 
     svc = HybridSearchService(_FakeLLM(vector, fingerprint), session)
     results = await svc.search("off-hot-path scheduling proof", limit=10)
@@ -302,7 +426,9 @@ async def test_search_schedules_write_without_awaiting_it(session, monkeypatch):
     # via create_task before the creating coroutine yields, and search()
     # returns with no further await after scheduling it. So immediately
     # after `await svc.search(...)` returns, the fake write has not run yet
-    # — this is a scheduling guarantee, not a timing race.
+    # — this is a scheduling guarantee, not a timing race. It is even more
+    # robustly true here since the flush task also sleeps `_FLUSH_DELAY_SECONDS`
+    # before touching the buffer at all.
     pending = [t for t in background._background_tasks if t.get_name() == "access-stats-bump"]
     assert len(pending) == 1, "expected exactly one scheduled access-stats task"
     assert calls == [], "the write must not have run before search() returned"
@@ -322,11 +448,12 @@ async def test_search_with_trace_also_schedules_access_write(session, monkeypatc
 
     calls: list[list[str]] = []
 
-    async def fake_record_access(_session, ids):
-        calls.append(sorted(str(i) for i in ids))
+    async def fake_flush_counts(_session, counts):
+        calls.append(sorted(counts.keys()))
 
-    monkeypatch.setattr(access_stats, "record_access", fake_record_access)
+    monkeypatch.setattr(access_stats, "_flush_counts", fake_flush_counts)
     monkeypatch.setattr(access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+    monkeypatch.setattr(access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
 
     svc = HybridSearchService(_FakeLLM(vector, fingerprint), session)
     trace = await svc.search_with_trace("trace path scheduling proof", limit=10)
@@ -349,11 +476,12 @@ async def test_search_survives_access_write_failure(session, monkeypatch):
         session, fingerprint, dims, vector, "write failure must not surface"
     )
 
-    async def boom(_session, _ids):
+    async def boom(_session, _counts):
         raise RuntimeError("simulated counter-write failure")
 
-    monkeypatch.setattr(access_stats, "record_access", boom)
+    monkeypatch.setattr(access_stats, "_flush_counts", boom)
     monkeypatch.setattr(access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+    monkeypatch.setattr(access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
 
     svc = HybridSearchService(_FakeLLM(vector, fingerprint), session)
     results = await svc.search("write failure must not surface", limit=10)
@@ -375,10 +503,10 @@ async def test_search_with_no_results_schedules_nothing(session, monkeypatch):
     # runs cleanly to zero rows instead of erroring on a missing relation.
     await _seed_embedding_partition(session, fingerprint, 4)
 
-    async def fake_record_access(_session, _ids):
-        pytest.fail("record_access must not be reached when there is nothing to write")
+    async def fake_flush_counts(_session, _counts):
+        pytest.fail("_flush_counts must not be reached when there is nothing to write")
 
-    monkeypatch.setattr(access_stats, "record_access", fake_record_access)
+    monkeypatch.setattr(access_stats, "_flush_counts", fake_flush_counts)
 
     svc = HybridSearchService(_FakeLLM([1.0, 0.0, 0.0, 0.0], fingerprint), session)
     # No memory matches this project filter on either side, so both channels
