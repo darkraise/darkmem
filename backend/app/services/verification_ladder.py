@@ -67,6 +67,11 @@ class LadderConfig:
     time_gap_days: int = CORROBORATION_TIME_GAP_DAYS
 
 
+# The two parameters that are counts of origins. A threshold of zero on either
+# makes `k >= n` true for a fact with no sources; `time_gap_days` is a duration
+# and carries no such hazard, so the absolute floor applies only to these.
+_ORIGIN_COUNT_PARAMS = frozenset({"n_default", "n_diverse"})
+
 # Every parameter's floor is its shipped default. Spelled as a mapping rather
 # than read off LadderConfig() so that "what ships" and "what may not be gone
 # below" stay one statement: a future default change moves the floor with it.
@@ -142,6 +147,25 @@ async def get_ladder_config(session: AsyncSession) -> LadderConfig:
                 floor,
             )
             values[name] = floor
+            continue
+        if name in _ORIGIN_COUNT_PARAMS and candidate < 1:
+            # A measured parameter is otherwise honoured verbatim, and N = 0
+            # would make `k >= n` true for a fact with **no sources at all** —
+            # promotion on nothing. The measurement gate trusts T2.40's writer
+            # about *how far* to loosen, never about whether the threshold may
+            # vanish, so this bound sits outside the gate and applies even to a
+            # measured parameter. It covers the two origin-count parameters
+            # only: `time_gap_days = 0` is degenerate (the gate always fires)
+            # but still lands on `n_diverse`, so it cannot promote a
+            # zero-source fact and stays governed by its floor.
+            logger.warning(
+                "%s.%s=%d is below the absolute minimum of 1; raising to 1. "
+                "An origin threshold of zero would promote a fact with no sources.",
+                LADDER_CONFIG_KEY,
+                name,
+                candidate,
+            )
+            values[name] = 1
             continue
         if candidate < floor and name not in measured:
             logger.warning(
@@ -348,10 +372,19 @@ async def recompute_fact(
     config = await get_ladder_config(session)
     profile = await FactSourceRepository(session).origin_profile(fact_id)
 
+    # FOR UPDATE, and it is load-bearing rather than defensive. Without it the
+    # row is unlocked between this read and the applier's write, so a
+    # concurrently committed `disputed` verdict (T2.04's veto shape) gets
+    # overwritten: the decision was taken on a `candidate` the row no longer
+    # holds, and the applier journals `disputed -> corroborated` — the
+    # contradiction-resolved transition doc 08 §4 reserves for T2.04, emitted by
+    # a machine with no detector. Locking from read through write is what makes
+    # the decision-layer disputed-hold survive concurrency; today no production
+    # caller of either side exists, but T2.04 and T2.09 will run concurrently.
     row = await session.execute(
         text(
             "SELECT verification_status FROM knowledge_triples "
-            "WHERE id = CAST(:id AS uuid)"
+            "WHERE id = CAST(:id AS uuid) FOR UPDATE"
         ),
         {"id": str(fact_id)},
     )

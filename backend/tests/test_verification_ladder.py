@@ -317,6 +317,7 @@ class TestPromotionShapes:
             profile(origin("a", first=T0), origin("b", first=T0 + timedelta(days=7)))
         )
         assert (d.required_n, d.gate_fired, d.outcome) == (2, "time_gap", "promote")
+        assert d.confidence == pytest.approx(0.90, abs=5e-5)
 
     def test_same_kind_same_day_needs_three_origins(self):
         two = decide_at(profile(origin("a"), origin("b")))
@@ -522,6 +523,11 @@ class TestConfidence:
             (2, 3, "none", 0.6667),
             (3, 3, "none", 0.80),
             (2, 2, "diversity", 0.90),
+            # The time_gap instantiation of "any gate-fired K>=N -> 0.90".
+            # Without it, a mutant paying the bonus only for "diversity"
+            # survives, and a time-gap-corroborated fact silently carries
+            # 0.80 into T2.06's journal evidence and T2.36's badge.
+            (2, 2, "time_gap", 0.90),
             (9, 3, "none", 0.80),
         ],
     )
@@ -776,10 +782,18 @@ def _app_sources() -> list[Path]:
     return [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
 
 
-def _forbidden_ladder_references(paths: list[Path]) -> list[str]:
+def _forbidden_ladder_references(paths: list[Path], root: Path = BACKEND) -> list[str]:
+    """The one predicate. ``root`` is a parameter so the negative control below
+    can point this exact function at a synthesised tree.
+
+    A control that re-types the predicate inline proves only that the copy
+    works: the real scan could go completely blind — its match strings
+    misspelled — and the control would still pass, which is the rot the control
+    exists to prevent.
+    """
     offenders: list[str] = []
     for path in paths:
-        rel = str(path.relative_to(BACKEND))
+        rel = str(path.relative_to(root))
         if rel == "app/services/verification_ladder.py" or rel in _ALLOWED_LADDER_FILES:
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
@@ -838,18 +852,93 @@ def test_the_guard_rejects_a_forbidden_reference(tmp_path):
         "async def on_capture(session, fact_id):\n"
         "    await recompute_fact(session, fact_id)\n"
     )
-    offenders = [
-        f"{p}:{n}"
-        for p in [violation]
-        for n, line in enumerate(p.read_text().splitlines(), 1)
-        if "app.services.verification_ladder" in line or "recompute_fact" in line
-    ]
-    assert len(offenders) == 2, (
-        "the reference predicate failed to flag a synthesised violation; the "
-        "real scan above would be reporting success while blind"
+    # Calls the REAL guard, not a re-typed copy of its predicate. Breaking the
+    # match strings in `_forbidden_ladder_references` — a fully blind scan —
+    # must turn this red, which is the whole point of a teeth-prover.
+    offenders = _forbidden_ladder_references([violation], root=tmp_path)
+    assert offenders, (
+        "the real guard failed to flag a synthesised violation; the tree-wide "
+        "scan above would be reporting success while blind"
     )
+    assert any("eager_capture.py" in o for o in offenders)
+
+    # And the allowlist must be able to exempt it — a guard that cannot be
+    # satisfied is one a future agent deletes rather than configures.
+    global _ALLOWED_LADDER_FILES
+    _ALLOWED_LADDER_FILES = {"app/services/eager_capture.py"}
+    try:
+        assert _forbidden_ladder_references([violation], root=tmp_path) == []
+    finally:
+        _ALLOWED_LADDER_FILES = set()
 
 
 def test_the_allowlist_is_empty_until_its_owning_task_lands():
     """T2.09 is the first legitimate caller. Until then, nothing is exempt."""
     assert _ALLOWED_LADDER_FILES == set()
+
+
+# ───────── F1 — the config → decision seam, pinned end to end ─────────
+
+
+class TestConfigReachesTheDecision:
+    """The brief's own D2 test: *the decision actually changes when config changes*.
+
+    Everything else about config is pinned one layer away from the outcome — the
+    reader is asserted off the returned dataclass, and the threshold rule is
+    asserted on `OriginProfile` directly. Neither notices a `decide()` that
+    ignores its `config` argument, or a `recompute_fact` that substitutes
+    `LadderConfig()` for the row it read. Both mutants survived all 64 tests
+    before these; an operator's tightened row, or T2.40's measured loosening,
+    would silently never reach a single promotion.
+    """
+
+    def test_decide_honours_a_tightened_config(self):
+        three_same_day = profile(origin("a"), origin("b"), origin("c"))
+        assert decide_at(three_same_day).outcome == "promote"
+        tightened = decide_at(three_same_day, config=LadderConfig(n_default=4))
+        assert tightened.required_n == 4
+        assert tightened.outcome == "hold", "the config never reached the decision"
+
+    def test_decide_honours_a_tightened_time_gap(self):
+        ten_days = profile(origin("a", first=T0), origin("b", first=T0 + timedelta(days=10)))
+        assert decide_at(ten_days).outcome == "promote"
+        tightened = decide_at(ten_days, config=LadderConfig(time_gap_days=14))
+        assert (tightened.gate_fired, tightened.required_n) == ("none", 3)
+        assert tightened.outcome == "hold"
+
+    def test_decide_honours_a_tightened_n_diverse(self):
+        diverse = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
+        assert decide_at(diverse).outcome == "promote"
+        tightened = decide_at(diverse, config=LadderConfig(n_diverse=3, n_default=4))
+        assert tightened.required_n == 3
+        assert tightened.outcome == "hold"
+
+    async def test_recompute_reads_the_config_row_not_the_defaults(self, session):
+        """A written row must change a real promotion outcome.
+
+        This is the mutant that matters most: `recompute_fact` calling
+        `LadderConfig()` instead of `await get_ladder_config(session)` passes
+        every config test in this file, because none of them goes through the
+        applier.
+        """
+        # Two identical facts. The first runs under the shipped defaults, the
+        # second under a tightened row -- same evidence, different outcome, so
+        # only the config can explain the difference.
+        baseline_id = await _make_fact(session, key="k-cfg-baseline")
+        for name in ("sess-a", "sess-b", "sess-c"):
+            await _add_origin(session, baseline_id, name, ref=f"base:{name}")
+        baseline = await recompute_fact(session, baseline_id)
+        await session.commit()
+        assert (baseline.required_n, baseline.outcome) == (3, "promote")
+
+        await _write_config(session, LADDER_CONFIG_KEY, {"n_default": 4})
+
+        tightened_id = await _make_fact(session, key="k-cfg-tightened")
+        for name in ("sess-d", "sess-e", "sess-f"):
+            await _add_origin(session, tightened_id, name, ref=f"tight:{name}")
+        tightened = await recompute_fact(session, tightened_id)
+        await session.commit()
+
+        assert tightened.required_n == 4, "recompute ignored the config row"
+        assert tightened.outcome == "hold"
+        assert (await _read(session, tightened_id))["verification_status"] == "candidate"
