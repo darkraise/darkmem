@@ -178,11 +178,11 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|---|
 | T2.01 | `knowledge_triples` rebuild: the bi-temporal belief axis | L | Opus | high | claude/e2-truth-core | done | 31e4a24…2ec027b (11 commits) | fable adversarial: plan APPROVED WITH CHANGES (1C/4I/2M, all applied); whole-branch review BLOCKED on 1 Important, addressed and re-review cleared | Plan-first per §3. **The DDL was already in the baseline, so this was the semantics, not the schema — no migration changed.** Deleted the drifted demo layer (413 lines: ORM model, service, repo SQL — all describing columns the table no longer had, dead so the suite was green regardless). Then `compute_triple_key`, the ORM rebuild, the belief-axis repository, inert verification storage refusing `confirmed`, and journaling. Two identity rulings logged as amendments: project embedded **verbatim** in the key, and `project` required on the reads. Verify: gate green, floor 2524 passed (2480 at start), 44 tests on the fact layer |
 | T2.02 | `fact_sources` and origin-diversity counting | M | Opus | high | claude/e2-truth-core | done | aa04685, 7d9f998 | fable adversarial: spec PASS, 1 Important + 3 Minor; addressed after 1 fix round, re-review clean | **COUNT(DISTINCT origin_key), never rows** — the guard test fails loudly under row-counting. Unknown identity folds to ONE bucket per fact (merge-only, so it can undercount but never split a witness). Review caught the subtler half: the bucket was a full witness for the N=2 gates, so one known source + one anonymous capture was promotion-ready; it now counts toward the raw total but can never supply the kind-diversity or the time-gap that lowers the bar. `document` resolved as arriving under `block`, not a fifth kind (amendment). Verify: gate green, floor 2565 passed, 41 tests |
-| T2.03 | The verification ladder | L | Opus | high | | todo | | | |
+| T2.03 | The verification ladder | L | Opus | high | claude/e2-truth-core | wip | | | Plan reviewed at Fable tier per runbook §3 (L-size); the Tier-3 §7 escalation is resolved by the 2026-07-29 supersession-blocker ruling, no scope change |
 | T2.04 | The contradiction veto is absolute | M | Opus | high | | todo | | | |
 | T2.05 | Human ratification is the only path to `confirmed` | S | Opus | high | | todo | | | |
 | T2.06 | Every ladder transition journaled | M | Sonnet | high | | todo | | | |
-| T2.07 | `projects` table + lazy registration | M | Sonnet | high | | todo | | | |
+| T2.07 | `projects` table + lazy registration | M | Sonnet | high | claude/e2-lane-b | wip | | | Lane B, own worktree. No DDL — `projects` is already in the baseline |
 | T2.08 | Job-family umbrella under JobRegistry | M | Sonnet | high | claude/e2-truth-core | done | ce34fdd, fbdca13 | fable adversarial: spec PASS, 2 Important + 4 Minor; addressed after 1 fix round, re-review clean | All six Tier-C members registered as `PlaceholderJobRunner` — a type a test asserts, not a comment, so a placeholder can never read as shipped. **Invariant 15 enforced by a source scan over `backend/app`**, which caught reviewer mutations at the MCP door and in retrieval. Review found both test holes: the never-queues test looked too early to see a queued run (now a deterministic task-set drain, not a sleep), and the boot wiring could be deleted with the suite green. CLAUDE.md's job count corrected 9 -> 15. Verify: gate green, floor 2605 passed |
 | T2.09 | `verification_recompute` | S | Sonnet | high | | todo | | | |
 | T2.10 | `fact_lift` | M | Opus | high | | todo | | | |
@@ -204,7 +204,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.26 | `verification`-purpose judge + precision/recall bars | L | Fable | high | | todo | | | |
 | T2.27 | `assert_from_repo` — imports-only, LLM-free | M | Opus | high | | todo | | | |
 | T2.28 | Lift to facts born `corroborated` | M | Opus | high | | todo | | | |
-| T2.29 | `memory_access_stats` feeder | M | Sonnet | high | | todo | | | |
+| T2.29 | `memory_access_stats` feeder | M | Sonnet | high | claude/e2-lane-i1 | wip | | | Lane I, own worktree. No DDL — `memory_access_stats` is already in the baseline |
 | T2.30 | `w_importance` activation | M | Fable | high | | todo | | | |
 | T2.31 | `w_heat` / `w_recency` activation | M | Fable | high | | todo | | | |
 | T2.32 | PPR snapshot job + graph arms | L | Opus | high | | todo | | | |
@@ -219,7 +219,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.41 | G-D evidence run | M | Fable | xhigh | | todo | | | |
 | T2.42 | Facts retrieval channel, born with pushdown | M | Opus | high | | todo | | | |
 | T2.43 | Four-layer composition, labelling, and grouping | L | Opus | high | | todo | | | |
-| T2.44 | Arm-ablation interface for the retrieval eval | M | Sonnet | high | | todo | | | |
+| T2.44 | Arm-ablation interface for the retrieval eval | M | Sonnet | high | claude/e2-lane-i2 | wip | | | Lane I, own worktree. Benchlib-only; unblocks T2.30/T2.31/T2.35/T2.50 |
 | T2.45 | The Tier-C `supersede()` primitive + status bridge | L | Opus | high | | todo | | | |
 | T2.46 | Demotion hysteresis and the `under-sourced` label | M | Opus | high | | todo | | | |
 | T2.47 | The enqueue-for-verification emit hook | M | Opus | high | | todo | | | |
