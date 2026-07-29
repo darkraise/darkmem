@@ -18,6 +18,7 @@ invisible is a test the next person deletes.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select, text
@@ -758,3 +759,97 @@ class TestRecomputeFact:
         row = await _read(session, fact_id)
         assert row["verification_status"] == "candidate", "held, never disputed"
         assert await _verified_events(session, fact_id) == []
+
+
+# ────────── Invariant 15 — the ladder is Tier-C only, enforced ──────────
+
+BACKEND = Path(__file__).resolve().parent.parent
+
+# Modules legitimately permitted to reach the ladder. **Empty today**: nothing
+# in `backend/app` may reach it until T2.09's `verification_recompute` job
+# lands, and that task adds itself here. The allowlist is therefore where the
+# Tier-C hand-off is recorded, rather than a silent test edit.
+_ALLOWED_LADDER_FILES: set[str] = set()
+
+
+def _app_sources() -> list[Path]:
+    return [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+
+
+def _forbidden_ladder_references(paths: list[Path]) -> list[str]:
+    offenders: list[str] = []
+    for path in paths:
+        rel = str(path.relative_to(BACKEND))
+        if rel == "app/services/verification_ladder.py" or rel in _ALLOWED_LADDER_FILES:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if (
+                "app.services.verification_ladder" in line
+                or "from app.services import verification_ladder" in line
+                or "recompute_fact" in line
+            ):
+                offenders.append(f"{rel}:{lineno}: {stripped}")
+    return offenders
+
+
+def test_no_app_code_reaches_the_verification_ladder():
+    """Tree-wide, not an enumerated blocklist.
+
+    A named list of Tier-A/B modules is exactly as good as its enumeration:
+    a violation in `hybrid_search.py`, `buffer_flush.py`, or any module added
+    next year walks straight past it while the test stays green. Scanning
+    everything and allowlisting the exceptions inverts that — a new module is
+    forbidden by default.
+    """
+    paths = _app_sources()
+    # A vacuous scan would pass by finding nothing to scan. The floor sits well
+    # below the real count and far above zero, so a mis-resolved root fails
+    # loudly instead of reporting success.
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the scan below would pass "
+        "vacuously; check BACKEND / the glob path"
+    )
+    offenders = _forbidden_ladder_references(paths)
+    assert not offenders, (
+        "app code reached the verification ladder:\n"
+        + "\n".join(offenders)
+        + "\nThe ladder is Tier-C only (invariant 15): reconciliation stays off "
+          "the hot path, and a capture or retrieval path calling recompute_fact "
+          "inline to 'accelerate' a promotion is exactly what this forbids. "
+          "T2.09's job is the intended caller and joins _ALLOWED_LADDER_FILES."
+    )
+
+
+def test_the_guard_rejects_a_forbidden_reference(tmp_path):
+    """In-suite negative control — the guard's teeth, proven every run.
+
+    A one-time manual break-and-revert proves the guard worked once, on one
+    machine, in one session. This proves it on every run, which is what stops
+    the scan from rotting into a test that passes because it matches nothing.
+    """
+    fake = tmp_path / "app" / "services"
+    fake.mkdir(parents=True)
+    violation = fake / "eager_capture.py"
+    violation.write_text(
+        "from app.services.verification_ladder import recompute_fact\n"
+        "async def on_capture(session, fact_id):\n"
+        "    await recompute_fact(session, fact_id)\n"
+    )
+    offenders = [
+        f"{p}:{n}"
+        for p in [violation]
+        for n, line in enumerate(p.read_text().splitlines(), 1)
+        if "app.services.verification_ladder" in line or "recompute_fact" in line
+    ]
+    assert len(offenders) == 2, (
+        "the reference predicate failed to flag a synthesised violation; the "
+        "real scan above would be reporting success while blind"
+    )
+
+
+def test_the_allowlist_is_empty_until_its_owning_task_lands():
+    """T2.09 is the first legitimate caller. Until then, nothing is exempt."""
+    assert _ALLOWED_LADDER_FILES == set()
