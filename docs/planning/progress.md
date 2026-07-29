@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 59 | 57 | 1 | 0 | 0 | 1 | 0 | G-C, G-D open |
+| E2 — Truth core | 59 | 57 | 0 | 0 | 0 | 2 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **218** | **112** | **1** | **0** | **0** | **104** | **1** | |
+| **Total** | **218** | **112** | **0** | **0** | **0** | **105** | **1** | |
 
 ---
 
@@ -177,7 +177,7 @@ and the Note says so. That rule is the whole point of this file.
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
 | T2.01 | `knowledge_triples` rebuild: the bi-temporal belief axis | L | Opus | high | claude/e2-truth-core | done | 31e4a24…2ec027b (11 commits) | fable adversarial: plan APPROVED WITH CHANGES (1C/4I/2M, all applied); whole-branch review BLOCKED on 1 Important, addressed and re-review cleared | Plan-first per §3. **The DDL was already in the baseline, so this was the semantics, not the schema — no migration changed.** Deleted the drifted demo layer (413 lines: ORM model, service, repo SQL — all describing columns the table no longer had, dead so the suite was green regardless). Then `compute_triple_key`, the ORM rebuild, the belief-axis repository, inert verification storage refusing `confirmed`, and journaling. Two identity rulings logged as amendments: project embedded **verbatim** in the key, and `project` required on the reads. Verify: gate green, floor 2524 passed (2480 at start), 44 tests on the fact layer |
-| T2.02 | `fact_sources` and origin-diversity counting | M | Opus | high | claude/e2-truth-core | wip | | | |
+| T2.02 | `fact_sources` and origin-diversity counting | M | Opus | high | claude/e2-truth-core | done | aa04685, 7d9f998 | fable adversarial: spec PASS, 1 Important + 3 Minor; addressed after 1 fix round, re-review clean | **COUNT(DISTINCT origin_key), never rows** — the guard test fails loudly under row-counting. Unknown identity folds to ONE bucket per fact (merge-only, so it can undercount but never split a witness). Review caught the subtler half: the bucket was a full witness for the N=2 gates, so one known source + one anonymous capture was promotion-ready; it now counts toward the raw total but can never supply the kind-diversity or the time-gap that lowers the bar. `document` resolved as arriving under `block`, not a fifth kind (amendment). Verify: gate green, floor 2565 passed, 41 tests |
 | T2.03 | The verification ladder | L | Opus | high | | todo | | | |
 | T2.04 | The contradiction veto is absolute | M | Opus | high | | todo | | | |
 | T2.05 | Human ratification is the only path to `confirmed` | S | Opus | high | | todo | | | |
