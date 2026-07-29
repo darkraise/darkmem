@@ -166,6 +166,92 @@ async def test_case_differing_by_one_character_creates_two_rows(
     assert len({"foo", "Foo"} & names) == 2
 
 
+# ── The update door: a memory row can also change project ──────────
+
+
+async def test_update_memory_registers_a_new_project(client, auth_headers, session):
+    """I1 (adversarial review, 2026-07-29): `PUT /memories/{id}` writes
+    `memories.project` without going through `_capture_batch`, so it is a
+    second path onto a memory row's `project` column that the brief's
+    binding sentence — "the registry must see every project string that
+    reaches a memory row, by whichever path" — also covers. MCP's
+    `memory_update` does not expose the field, so REST is the only door this
+    needs proving against."""
+    memory = Memory(content="moves between projects", project="pre-update-project")
+    session.add(memory)
+    await session.flush()
+    memory_id = str(memory.id)
+
+    names_before = await _project_names(session)
+    assert "moved-via-update-project" not in names_before
+
+    response = await client.put(
+        f"/api/v1/memories/{memory_id}",
+        json={"project": "moved-via-update-project"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["project"] == "moved-via-update-project"
+
+    names_after = await _project_names(session)
+    assert "moved-via-update-project" in names_after
+
+
+async def test_update_memory_without_a_project_field_registers_nothing(
+    client, auth_headers, session, monkeypatch
+):
+    """A negative control for the fix above: an update that never touches
+    `project` must not call the registry at all."""
+    memory = Memory(content="untouched project", project="already-registered-project")
+    session.add(Project(name="already-registered-project"))
+    session.add(memory)
+    await session.flush()
+    memory_id = str(memory.id)
+
+    calls: list[str] = []
+    original_register = project_registry.register
+
+    async def _spy(session_, project):
+        calls.append(project)
+        return await original_register(session_, project)
+
+    monkeypatch.setattr(project_registry, "register", _spy)
+
+    response = await client.put(
+        f"/api/v1/memories/{memory_id}",
+        json={"importance": 0.9},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert calls == []
+
+
+async def test_update_to_a_nonexistent_memory_registers_nothing(
+    client, auth_headers, session
+):
+    """A `project` in the request body of an update that 404s never lands on
+    any memory row, so it must not register either — registration happens
+    after `update_memory`'s `not memory` guard, deliberately, not before it.
+    Guards against a narrower failure mode than I1 itself: registering on
+    every PUT attempt regardless of whether the target id exists would still
+    close I1's bypass but would also register project names nothing ever
+    actually carries."""
+    from uuid import uuid4
+
+    names_before = await _project_names(session)
+    assert "phantom-update-project" not in names_before
+
+    response = await client.put(
+        f"/api/v1/memories/{uuid4()}",
+        json={"project": "phantom-update-project"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+
+    names_after = await _project_names(session)
+    assert "phantom-update-project" not in names_after
+
+
 # ── Clause 3: existing project strings backfill, idempotently ──────
 
 
@@ -178,11 +264,27 @@ async def test_backfill_inserts_every_distinct_memories_project(session):
     await session.flush()
 
     inserted = await project_registry.backfill(session)
-    assert inserted >= 2
+    assert inserted == 2, "exactly backfill-alpha and backfill-beta; a >= would mask a double-insert"
 
     names = await _project_names(session)
     assert "backfill-alpha" in names
     assert "backfill-beta" in names
+
+
+async def _created_at(session, name: str):
+    """A plain scalar-column read, deliberately not `select(Project)`.
+
+    Re-selecting the mapped entity returns the session's identity-mapped
+    Python object unchanged, so a before/after comparison of `row.created_at`
+    off two such selects can never fail regardless of what the database
+    actually holds — that was the hollow assertion the reviewer caught
+    (mutation-proven: a `backfill` that rewrote every row's `created_at` on
+    every call still passed). Selecting the bare column is not subject to
+    identity-map caching and always reflects the current row.
+    """
+    return (await session.execute(
+        select(Project.created_at).where(Project.name == name)
+    )).scalar_one()
 
 
 async def test_backfill_is_idempotent(session):
@@ -192,10 +294,7 @@ async def test_backfill_is_idempotent(session):
     first = await project_registry.backfill(session)
     assert first >= 1
 
-    row = (await session.execute(
-        select(Project).where(Project.name == "backfill-idempotent")
-    )).scalar_one()
-    created_at_before = row.created_at
+    created_at_before = await _created_at(session, "backfill-idempotent")
     count_before = (await session.execute(
         select(func.count()).select_from(Project)
     )).scalar()
@@ -203,14 +302,12 @@ async def test_backfill_is_idempotent(session):
     second = await project_registry.backfill(session)
     assert second == 0
 
-    row_again = (await session.execute(
-        select(Project).where(Project.name == "backfill-idempotent")
-    )).scalar_one()
+    created_at_after = await _created_at(session, "backfill-idempotent")
     count_after = (await session.execute(
         select(func.count()).select_from(Project)
     )).scalar()
 
-    assert row_again.created_at == created_at_before
+    assert created_at_after == created_at_before
     assert count_after == count_before
 
 

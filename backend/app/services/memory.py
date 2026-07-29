@@ -116,15 +116,23 @@ class MemoryService:
         replayed verbatim at flush (doc 04 §8.6) — dropping one silently here
         is the exact failure that tuple exists to make visible.
         """
+        # Lazy registration (doc 04 §7): every project string that reaches a
+        # buffer row gets a visible `projects` row in the same transaction as
+        # the capture, so a typo never opens a silent parallel fact-identity
+        # scope. Never fails the capture — see project_registry.register's
+        # own docstring. Deduped per batch (not per entry): a same-project
+        # conflict within one transaction is a harmless no-op either way, but
+        # a 100-entry batch to one project has no reason to open 100
+        # savepoints for it.
+        batch_projects = dict.fromkeys(
+            data.project or "default" for data in entries
+        )
+        for project in batch_projects:
+            await project_registry.register(self.session, project)
+
         rows: list[MemoryBuffer] = []
         for data in entries:
             project = data.project or "default"
-            # Lazy registration (doc 04 §7): every project string that
-            # reaches a buffer row gets a visible `projects` row in the same
-            # transaction as the capture, so a typo never opens a silent
-            # parallel fact-identity scope. Never fails the capture — see
-            # project_registry.register's own docstring.
-            await project_registry.register(self.session, project)
             row = await memory_buffer.enqueue(
                 self.session,
                 content=data.content,
@@ -258,6 +266,18 @@ class MemoryService:
         memory = await self.memory_repo.update(memory_id, **update_fields)
         if not memory:
             return None
+
+        # A memory row can also change project through this door (REST
+        # PUT /memories/{id}; MCP memory_update does not expose the field).
+        # Registration happens for every path that lands a project string on
+        # a memory row, not just capture (doc 04 §7) — otherwise a moved
+        # memory sits in an unregistered scope until the next boot backfill.
+        # Deliberately after the `not memory` guard above: a project string
+        # on an update to a nonexistent id never reaches a memory row, so it
+        # must not register either — the brief's binding sentence is about
+        # what actually lands, not what was merely requested.
+        if "project" in update_fields:
+            await project_registry.register(self.session, update_fields["project"])
 
         if data.tags is not None:
             await self.memory_repo.set_tags(memory_id, data.tags)
