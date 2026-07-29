@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
+from app.services.access_stats import spawn_record_access
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
 from app.services.rank_fusion import RRF_K, RankedList, normalize_row_id, rrf_fuse
@@ -52,7 +53,9 @@ class HybridSearchService:
         semantic_results, keyword_results, _, _ = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,
         )
-        return self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        fused = self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        self._record_access(fused)
+        return fused
 
     async def search_with_trace(
         self,
@@ -81,6 +84,7 @@ class HybridSearchService:
                 channel_scores.setdefault(key, {})[source_name] = float(row["score"])
 
         fused = self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        self._record_access(fused)
         return ChannelTrace(
             results=fused,
             channel_scores=channel_scores,
@@ -272,6 +276,14 @@ class HybridSearchService:
             for row in result
         ]
         return rows[:limit]
+
+    @staticmethod
+    def _record_access(rows: list[dict]) -> None:
+        """Schedule an off-hot-path counter bump for the memories a search
+        actually surfaced (T2.29). Never awaited here — see
+        ``app.services.access_stats`` for why, and for the failure mode.
+        """
+        spawn_record_access(row.get("memory_id") for row in rows)
 
     @staticmethod
     def _rrf_fuse(
