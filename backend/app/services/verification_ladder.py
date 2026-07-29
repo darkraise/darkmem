@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,7 @@ from app.repositories.fact_sources import (
     CORROBORATION_N_DEFAULT,
     CORROBORATION_N_DIVERSE,
     CORROBORATION_TIME_GAP_DAYS,
+    OriginProfile,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,3 +173,146 @@ async def get_ladder_config(session: AsyncSession) -> LadderConfig:
         values["n_default"] = values["n_diverse"]
 
     return LadderConfig(**values)
+
+
+# ─────────────────────────── the decision ───────────────────────────
+
+# The machine's reachable targets. `confirmed` is a human's floor above the
+# machine's ceiling (T2.05) and `disputed` is the veto's verdict (T2.04);
+# neither is representable here, and the runtime assertions in the test suite
+# check that, because Python does not enforce annotations.
+MachineTarget = Literal["candidate", "corroborated"]
+Outcome = Literal["promote", "demote", "hold"]
+
+# The default contradiction verdict: "no detector exists yet", not "adjudicated
+# and found clean". T2.04 builds the detector; naming the absence keeps a
+# caller from reading a stub's silence as a finding.
+NO_DETECTOR = False
+
+
+@dataclass(frozen=True)
+class LadderDecision:
+    """What the ladder concluded, and every input that produced it.
+
+    Returned whole rather than applied silently: T2.06 wires this into the
+    journal payload as the transition's evidence, and G-C's metrics are
+    computed from that journal, so a decision that cannot explain itself is a
+    transition G-C cannot count.
+    """
+
+    fact_id: str
+    current_status: str
+    target_status: str
+    outcome: Outcome
+    origin_count: int
+    required_n: int
+    gate_fired: str
+    source_kinds: tuple[str, ...]
+    contradiction_blocked: bool
+    confidence: float
+
+
+def compute_confidence(*, origin_count: int, required_n: int, gate_fired: str) -> float:
+    """The aggregated support estimate doc 04 §8.3 binds to the status.
+
+    The corpus fixes the *properties* -- aggregated, recomputed alongside
+    ``verification_status``, never a single-source guess -- but no formula, so
+    the formula is stated in T2.03's plan §3 D4 and pinned by exact-value
+    vectors rather than by properties alone: four properties are all survived
+    by a coefficient typo.
+
+        support    = min(K, N) / N
+        confidence = min(0.90, 0.40 + 0.40*support + 0.10*(gate fired))
+
+    Capped at 0.90 because the machine never claims certainty -- the badge's
+    honest claim is "asserted by K distinct origins of kinds [...], no known
+    contradiction, as of T", never "true".
+
+    **Contradiction deliberately does not enter this number.** A
+    contradiction-blocked hold with K >= N and a fired gate carries 0.90.
+    That is intended: confidence is *support*, while a dispute is a fact about
+    adjudication and lives on the verification and ``review_state`` surfaces
+    T2.04 owns. Stated because "high confidence on a blocked fact" reads as a
+    bug to anyone who has not read this paragraph.
+    """
+    if required_n <= 0:  # defensive: the clamps make this unreachable
+        return 0.40
+    support = min(origin_count, required_n) / required_n
+    raw = 0.40 + 0.40 * support + 0.10 * (1.0 if gate_fired != "none" else 0.0)
+    return min(0.90, raw)
+
+
+def decide(
+    fact_id: str,
+    current_status: str,
+    profile: OriginProfile,
+    config: LadderConfig,
+    *,
+    open_contradiction: bool = NO_DETECTOR,
+) -> LadderDecision:
+    """Promotion, demotion or hold -- a pure function of the four inputs.
+
+    **No I/O, no session, and no clock.** The time gate reads
+    ``OriginProfile.max_cross_origin_gap``, which is computed purely from
+    stored timestamps relative to *each other*; reading the wall clock here
+    would make a replay of the same inputs produce a different answer as the
+    calendar moves, which is what "reproducible on replay" forbids.
+
+    ``open_contradiction`` is a keyword on purpose. T2.60's sibling blocker --
+    a newer REPLACES-family / supersession signal over the fact's live memory
+    sources -- slots in beside it as a purely additive keyword when that task
+    lands. It is deliberately *not* added now: it would have no provider, and
+    a zero-writer input presented as substrate is the thing invariant 23
+    forbids (ruling, 2026-07-29).
+    """
+    k = profile.origin_count
+    n = profile.required_origin_count_for(
+        n_diverse=config.n_diverse,
+        n_default=config.n_default,
+        time_gap_days=config.time_gap_days,
+    )
+    gate = profile.gate_fired_for(time_gap_days=config.time_gap_days)
+    confidence = compute_confidence(origin_count=k, required_n=n, gate_fired=gate)
+
+    def settled(target: str, outcome: Outcome, *, blocked: bool = False) -> LadderDecision:
+        return LadderDecision(
+            fact_id=fact_id,
+            current_status=current_status,
+            target_status=target,
+            outcome=outcome,
+            origin_count=k,
+            required_n=n,
+            gate_fired=gate,
+            source_kinds=profile.source_kinds,
+            contradiction_blocked=blocked,
+            confidence=confidence,
+        )
+
+    # A human ratified this fact. The machine never moves it in either
+    # direction -- not down on a lost origin, not sideways on a contradiction.
+    # Confidence is still refreshed, because the human's row is itself a
+    # dominant origin and the support estimate stays meaningful.
+    if current_status == "confirmed":
+        return settled("confirmed", "hold")
+
+    # Entry into and recovery out of `disputed` are both T2.04's transitions
+    # (recorded in E2's amendment log, 2026-07-29). Holding unconditionally is
+    # what stops the NO_DETECTOR stub from "resolving" a real dispute into
+    # `corroborated` the first time this runs over one.
+    if current_status == "disputed":
+        return settled("disputed", "hold")
+
+    if open_contradiction:
+        return settled(current_status, "hold", blocked=True)
+
+    if k >= n:
+        if current_status == "corroborated":
+            return settled("corroborated", "hold")
+        return settled("corroborated", "promote")
+
+    # Below N. Demotion is immediate here; doc 08 §4.3's hysteresis and the
+    # `under-sourced` label are T2.46's, interposed at the applier on this
+    # first-class `demote` outcome without touching this function.
+    if current_status == "corroborated":
+        return settled("candidate", "demote")
+    return settled("candidate", "hold")
