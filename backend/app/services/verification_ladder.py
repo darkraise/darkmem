@@ -27,12 +27,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Literal
+from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
+from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.repositories.fact_sources import (
+    FactSourceRepository,
     CORROBORATION_N_DEFAULT,
     CORROBORATION_N_DIVERSE,
     CORROBORATION_TIME_GAP_DAYS,
@@ -316,3 +319,74 @@ def decide(
     if current_status == "corroborated":
         return settled("candidate", "demote")
     return settled("candidate", "hold")
+
+
+# ─────────────────────────── the applier ───────────────────────────
+
+
+async def recompute_fact(
+    session: AsyncSession,
+    fact_id: UUID | str,
+    *,
+    open_contradiction: bool = NO_DETECTOR,
+) -> LadderDecision:
+    """Recompute one fact's verification status, and return why.
+
+    The per-fact primitive. The **job** that finds which facts to call this on
+    -- draining ``sources_changed`` past a watermark, deduping, scheduling --
+    is T2.09's; this function neither reads events nor registers itself.
+
+    **This is the sole journaller of verification transitions**, which is the
+    hand-off ``set_verification_status`` was written anticipating: the only
+    write path here is that repository method, so exactly one ``verified``
+    event exists per transition and G-C cannot double-count one.
+
+    A ``fact_id`` with no row returns a hold that writes nothing. The drain
+    that will call this races deletion by construction, so raising would turn
+    an ordinary race into a failed job.
+    """
+    config = await get_ladder_config(session)
+    profile = await FactSourceRepository(session).origin_profile(fact_id)
+
+    row = await session.execute(
+        text(
+            "SELECT verification_status FROM knowledge_triples "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(fact_id)},
+    )
+    current = row.scalar_one_or_none()
+    if current is None:
+        logger.debug("recompute_fact: no knowledge_triples row for id %s", fact_id)
+        return LadderDecision(
+            fact_id=str(fact_id),
+            current_status="missing",
+            target_status="missing",
+            outcome="hold",
+            origin_count=0,
+            required_n=config.n_default,
+            gate_fired="none",
+            source_kinds=(),
+            contradiction_blocked=False,
+            confidence=0.0,
+        )
+
+    decision = decide(
+        str(fact_id),
+        current,
+        profile,
+        config,
+        open_contradiction=open_contradiction,
+    )
+
+    repo = KnowledgeTripleRepository(session)
+    # A held fact writes confidence alone: `confirmed` cannot be passed its own
+    # status back (the repository refuses it before any read), and a status
+    # write that changes nothing would only risk a phantom journal row.
+    status_to_write = (
+        decision.target_status if decision.target_status != decision.current_status else None
+    )
+    await repo.set_verification_status(
+        fact_id, status_to_write, confidence=decision.confidence
+    )
+    return decision

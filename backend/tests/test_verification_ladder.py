@@ -20,9 +20,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.models.config import Config
+from app.repositories.fact_sources import FactSourceRepository as _FSR
+from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.repositories.fact_sources import (
     CORROBORATION_N_DEFAULT,
     CORROBORATION_N_DIVERSE,
@@ -34,6 +36,7 @@ from app.services.verification_ladder import (
     LADDER_CONFIG_KEY,
     compute_confidence,
     decide,
+    recompute_fact,
     LADDER_FLOORS,
     LADDER_MEASUREMENTS_KEY,
     LadderConfig,
@@ -574,3 +577,184 @@ class TestConfidence:
         blocked = decide_at(strong, open_contradiction=True)
         assert blocked.outcome == "hold"
         assert blocked.confidence == 0.90
+
+
+# ────────────── Step 4 — recompute_fact against real rows ──────────────
+
+
+async def _make_fact(session, *, key="k-1", status=None):
+    repo = KnowledgeTripleRepository(session)
+    row = await repo.insert_open(
+        triple_key=key,
+        subject_name="darkmem",
+        object_name="pgvector",
+        rel_type="USES",
+        fact="darkmem uses pgvector",
+        reference_time=T0,
+        project="default",
+    )
+    if status is not None:
+        await repo.set_verification_status(row["id"], status)
+    await session.commit()
+    return row["id"]
+
+
+async def _add_origin(session, fact_id, origin_key, *, kind="memory", ref=None):
+    await _FSR(session).add_source(
+        fact_id=fact_id,
+        source_kind=kind,
+        source_ref=ref or f"{kind}:{origin_key}",
+        origin_key=origin_key,
+    )
+    await session.commit()
+
+
+async def _verified_events(session, fact_id) -> list[dict]:
+    result = await session.execute(
+        text(
+            "SELECT payload FROM events WHERE event_type = 'verified' "
+            "AND object_id = CAST(:id AS uuid) ORDER BY created_at"
+        ),
+        {"id": str(fact_id)},
+    )
+    return [r[0] for r in result.all()]
+
+
+async def _read(session, fact_id) -> dict:
+    result = await session.execute(
+        text(
+            "SELECT verification_status, confidence, valid_at, invalid_at, expired_at "
+            "FROM knowledge_triples WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(fact_id)},
+    )
+    return dict(result.mappings().one())
+
+
+class TestRecomputeFact:
+    async def test_promotion_writes_status_and_confidence_together(self, session):
+        fact_id = await _make_fact(session)
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        decision = await recompute_fact(session, fact_id)
+        await session.commit()
+
+        assert decision.outcome == "promote"
+        row = await _read(session, fact_id)
+        assert row["verification_status"] == "corroborated"
+        assert row["confidence"] == pytest.approx(0.90, abs=5e-5)
+
+    async def test_exactly_one_verified_event_per_transition(self, session):
+        """The sole-journaller hand-off, by construction.
+
+        ``recompute_fact``'s only write path is the repository emitter, so a
+        second emitter here would show up as two rows for one transition and
+        would double-count in G-C.
+        """
+        fact_id = await _make_fact(session)
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        await recompute_fact(session, fact_id)
+        await session.commit()
+        events = await _verified_events(session, fact_id)
+        assert len(events) == 1
+        assert events[0]["before"]["verification_status"] == "candidate"
+        assert events[0]["after"]["verification_status"] == "corroborated"
+
+    async def test_an_idempotent_rerun_journals_nothing_further(self, session):
+        fact_id = await _make_fact(session)
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        await recompute_fact(session, fact_id)
+        await session.commit()
+        second = await recompute_fact(session, fact_id)
+        await session.commit()
+
+        assert second.outcome == "hold"
+        assert len(await _verified_events(session, fact_id)) == 1
+
+    async def test_below_n_demotes_a_corroborated_fact(self, session):
+        fact_id = await _make_fact(session, status="corroborated")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+
+        decision = await recompute_fact(session, fact_id)
+        await session.commit()
+
+        assert decision.outcome == "demote"
+        assert (await _read(session, fact_id))["verification_status"] == "candidate"
+
+    async def test_a_fact_with_no_sources_demotes_and_does_not_expire(self, session):
+        """Demotion only. Expiry on last-source-withdrawal is T2.47's."""
+        fact_id = await _make_fact(session, status="corroborated")
+        decision = await recompute_fact(session, fact_id)
+        await session.commit()
+
+        assert (decision.origin_count, decision.outcome) == (0, "demote")
+        row = await _read(session, fact_id)
+        assert row["verification_status"] == "candidate"
+        assert row["expired_at"] is None
+
+    async def test_a_confirmed_fact_holds_while_confidence_refreshes(self, session):
+        """The status-free write path.
+
+        ``set_verification_status`` refuses ``confirmed`` before any read, so
+        the applier cannot pass a confirmed fact its own status back; it must
+        write confidence with ``status=None``. Without that path this test
+        raises rather than fails.
+        """
+        fact_id = await _make_fact(session)
+        await session.execute(
+            text(
+                "UPDATE knowledge_triples SET verification_status = 'confirmed', "
+                "confidence = 0.1 WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": str(fact_id)},
+        )
+        await session.commit()
+        await _add_origin(session, fact_id, "human-1", kind="human")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+
+        decision = await recompute_fact(session, fact_id)
+        await session.commit()
+
+        assert (decision.target_status, decision.outcome) == ("confirmed", "hold")
+        row = await _read(session, fact_id)
+        assert row["verification_status"] == "confirmed", "the machine never moves it"
+        assert row["confidence"] == pytest.approx(0.90, abs=5e-5), "but support refreshes"
+        assert await _verified_events(session, fact_id) == [], "a hold is not a transition"
+
+    async def test_the_belief_axis_is_bit_identical_across_a_recompute(self, session):
+        """Verification and belief are orthogonal axes (doc 08 §3)."""
+        fact_id = await _make_fact(session)
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+        before = await _read(session, fact_id)
+
+        await recompute_fact(session, fact_id)
+        await session.commit()
+        after = await _read(session, fact_id)
+
+        for column in ("valid_at", "invalid_at", "expired_at"):
+            assert before[column] == after[column]
+
+    async def test_a_missing_fact_holds_and_writes_nothing(self, session):
+        from uuid import uuid4
+
+        decision = await recompute_fact(session, uuid4())
+        assert (decision.current_status, decision.outcome) == ("missing", "hold")
+
+    async def test_a_contradiction_blocks_the_promotion_it_would_have_made(self, session):
+        fact_id = await _make_fact(session)
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        decision = await recompute_fact(session, fact_id, open_contradiction=True)
+        await session.commit()
+
+        assert decision.contradiction_blocked is True
+        row = await _read(session, fact_id)
+        assert row["verification_status"] == "candidate", "held, never disputed"
+        assert await _verified_events(session, fact_id) == []

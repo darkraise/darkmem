@@ -309,8 +309,27 @@ class KnowledgeTripleRepository:
         )
         return [_row_to_dict(row) for row in result.mappings().all()]
 
-    async def set_verification_status(self, triple_id: UUID | str, status: str) -> None:
+    async def set_verification_status(
+        self,
+        triple_id: UUID | str,
+        status: str | None,
+        *,
+        confidence: float | None = None,
+    ) -> None:
         """Write the verification axis only. Belief columns are untouched.
+
+        ``status=None`` means **write confidence only** — no status change, and
+        therefore no journal row, because no transition occurred. That is what
+        lets the ladder refresh the support estimate on a fact it must not
+        move: a ``confirmed`` fact cannot be passed its own status back,
+        because the refusal below fires before any read. ``candidate`` and
+        ``corroborated`` holds may take either route, since passing an
+        unchanged status is already a journal no-op.
+
+        ``confidence`` rides the same UPDATE as the status so the two can never
+        drift. Both are verification-axis columns, so writing them together
+        does not breach this module's no-both-axes contract, which is about the
+        belief and verification *axes*, not two columns of one axis.
 
         Refuses ``confirmed``: the machine's ceiling is ``corroborated``, and
         only a human reaches ``confirmed``, via the ratification path T2.05
@@ -335,7 +354,7 @@ class KnowledgeTripleRepository:
         before/after equality check above is this method's own no-op guard,
         not a coordination mechanism with T2.03).
         """
-        if status not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
+        if status is not None and status not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
             if status == "confirmed":
                 raise ValueError(
                     "set_verification_status cannot write 'confirmed': only a "
@@ -345,6 +364,8 @@ class KnowledgeTripleRepository:
                 f"invalid verification_status {status!r}; must be one of "
                 f"{sorted(_MACHINE_WRITABLE_VERIFICATION_STATUSES)}"
             )
+        if status is None and confidence is None:
+            return
 
         prior = await self.session.execute(
             text(
@@ -360,15 +381,22 @@ class KnowledgeTripleRepository:
             )
             return
 
+        assignments = []
+        params: dict[str, Any] = {"id": str(triple_id)}
+        if status is not None:
+            assignments.append("verification_status = CAST(:status AS text)")
+            params["status"] = status
+        if confidence is not None:
+            assignments.append("confidence = CAST(:confidence AS real)")
+            params["confidence"] = confidence
         await self.session.execute(
             text(
-                "UPDATE knowledge_triples "
-                "SET verification_status = CAST(:status AS text) "
+                f"UPDATE knowledge_triples SET {', '.join(assignments)} "
                 "WHERE id = CAST(:id AS uuid)"
             ),
-            {"id": str(triple_id), "status": status},
+            params,
         )
-        if prior_row["verification_status"] != status:
+        if status is not None and prior_row["verification_status"] != status:
             await record_event(
                 self.session,
                 event_type="verified",
