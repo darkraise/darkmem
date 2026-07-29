@@ -7,8 +7,15 @@ gold pairs, score them under the same protocol, and emit two artifacts from
 a single composed run -- a dated human-readable report under ``docs/eval/``
 and one ledger row -- never a hand-rolled dict fed straight to
 ``ledger.record`` (brief ruling 1: that call boundary is the only place the
-no-twin-no-accuracy guard actually bites, so this module never reaches past
-``full_context.record_comparison``).
+no-twin-no-accuracy guard actually bites). The default (no ``--arm``) path
+below reaches the ledger through exactly one sanctioned recorder,
+``full_context.record_comparison``; T2.44's ``--arm`` path is a second,
+independent command reaching the ledger through its own sanctioned
+recorder, ``arm_ablation.record_arm_comparison`` (see that module's
+docstring for why it is a parallel recorder rather than a caller of this
+one) -- benchlib also had a third, ``twin.record_eval_run``, before either
+of these two existed. "One boundary" was never a benchlib-wide rule; it is
+a per-path guarantee each sanctioned recorder holds on its own.
 
 Corpus size, gold version, live-pair count and the full-corpus fetch depth
 are all read from the gold files at run time, never hardcoded: this corpus
@@ -30,6 +37,7 @@ without the first's expected jitter drowning out a real regression.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
@@ -507,8 +515,52 @@ async def run_eval(
     )
 
 
-async def main() -> int:
-    result = await run_eval()
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """No flags at all until T2.44: this file's whole entry chain used to be
+    ``_run() -> main() -> run_eval(...)`` with nothing to parse. ``--arm``
+    is genuinely new plumbing, not a flag added to an existing parser.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Drive the retrieval eval: the T0.09 full-context comparison by "
+            "default, or (with --arm) the T2.44 on/off ablation of one "
+            "rank_fusion_factor arm."
+        ),
+    )
+    parser.add_argument(
+        "--arm", default=None, metavar="FLAG",
+        help=(
+            "Run the on/off ablation for one rank_fusion_factor arm instead "
+            "of the full-context comparison. Takes the arm's config FLAG "
+            "spelling (e.g. w_importance) -- see "
+            "app/services/rank_fusion.RANK_ARMS for the valid set, which "
+            "arm_ablation.resolve_arm() validates against at run time."
+        ),
+    )
+    parser.add_argument(
+        "--weight", type=float, default=None,
+        help=(
+            "The arm's 'on' weight, only meaningful with --arm. Defaults to "
+            "arm_ablation.DEFAULT_PROBE_WEIGHT when omitted; must be nonzero "
+            "(weight 0.0 is the off leg, not an ablation)."
+        ),
+    )
+    return parser
+
+
+async def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+    if args.arm is not None:
+        # Imported lazily (not at module top): arm_ablation.py deliberately
+        # does not import from this module (see its own docstring on why its
+        # ingest preamble is a separate copy, not a shared helper), but a
+        # top-level import here would still be the first thing this file
+        # does on every invocation, including the default (no --arm) path
+        # that never touches arm ablation at all.
+        from benchlib import arm_ablation
+        result = await arm_ablation.run_arm_ablation(arm_flag=args.arm, weight=args.weight)
+    else:
+        result = await run_eval()
     print(result.report_text)
     print(f"report written to {result.report_path}")
     print(f"ledger appended: {result.ledger_path}")
@@ -517,11 +569,13 @@ async def main() -> int:
 
 def _run() -> int:
     """Thin wrapper so a pre-flight RuntimeError (missing key, alembic
-    failure, ...) prints as one readable line instead of a Python
-    traceback -- main() itself still raises, so a test can assert on it."""
+    failure, ...) or a ValueError (an unknown --arm, a zero --weight, a
+    cross-fingerprint refusal) prints as one readable line instead of a
+    Python traceback -- main() itself still raises, so a test can assert on
+    it."""
     try:
         return asyncio.run(main())
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"run_retrieval_eval.py: {exc}", file=sys.stderr)
         return 1
 

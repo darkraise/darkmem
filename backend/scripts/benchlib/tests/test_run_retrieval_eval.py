@@ -10,6 +10,7 @@ replaced -- so the reproducibility guarantee under test is the one the real
 composition produces, not a lookalike.
 """
 import json
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -522,3 +523,76 @@ async def test_the_ledger_gains_one_row_per_run_via_the_sanctioned_call(tmp_path
         assert row["timestamp"] == result.meta["timestamp"]
         assert row["git_sha"] == result.meta["git_sha"]
         assert row["fingerprint"] == result.meta["fingerprint"]
+
+
+# ── T2.44: --arm CLI wiring ────────────────────────────────────────────
+
+
+def test_arg_parser_default_has_no_arm():
+    args = run_retrieval_eval._build_arg_parser().parse_args([])
+    assert args.arm is None
+    assert args.weight is None
+
+
+def test_arg_parser_reads_arm_and_weight():
+    args = run_retrieval_eval._build_arg_parser().parse_args(
+        ["--arm", "w_importance", "--weight", "0.3"]
+    )
+    assert args.arm == "w_importance"
+    assert args.weight == 0.3
+
+
+@pytest.mark.asyncio
+async def test_main_dispatches_to_arm_ablation_when_arm_is_given(monkeypatch):
+    from types import SimpleNamespace
+    from benchlib import arm_ablation
+
+    calls = {}
+
+    async def fake_run_arm_ablation(*, arm_flag, weight):
+        calls["arm_flag"] = arm_flag
+        calls["weight"] = weight
+        return SimpleNamespace(
+            report_text="stub report", report_path=Path("/tmp/r.md"),
+            ledger_path=Path("/tmp/l.jsonl"),
+        )
+
+    monkeypatch.setattr(arm_ablation, "run_arm_ablation", fake_run_arm_ablation)
+
+    async def fail_run_eval(*args, **kwargs):
+        raise AssertionError("run_eval() must not run when --arm is given")
+
+    monkeypatch.setattr(run_retrieval_eval, "run_eval", fail_run_eval)
+
+    rc = await run_retrieval_eval.main(["--arm", "w_importance", "--weight", "0.3"])
+    assert rc == 0
+    assert calls == {"arm_flag": "w_importance", "weight": 0.3}
+
+
+@pytest.mark.asyncio
+async def test_main_runs_the_default_full_context_comparison_when_arm_is_absent(monkeypatch):
+    from types import SimpleNamespace
+
+    called = {}
+
+    async def fake_run_eval():
+        called["ran"] = True
+        return SimpleNamespace(
+            report_text="stub report", report_path=Path("/tmp/r.md"),
+            ledger_path=Path("/tmp/l.jsonl"),
+        )
+
+    monkeypatch.setattr(run_retrieval_eval, "run_eval", fake_run_eval)
+
+    rc = await run_retrieval_eval.main([])
+    assert rc == 0
+    assert called == {"ran": True}
+
+
+def test_run_rejects_an_unknown_arm_as_one_readable_line(capsys, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["run_retrieval_eval.py", "--arm", "not-a-real-arm"])
+    rc = run_retrieval_eval._run()
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "run_retrieval_eval.py:" in captured.err
+    assert "unknown --arm" in captured.err
