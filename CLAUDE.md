@@ -420,14 +420,25 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Nine** registered jobs (`app/main.py`): `repo_sync`,
+expressions. **Fifteen** registered jobs (`app/main.py`) in two groups.
+The nine live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_reconcile`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`. Note `buffer_flush` and `code_reconcile`
 register via the constants `BUFFER_FLUSH_JOB_KEY` and
 `CODE_RECONCILE_JOB_KEY` rather than string literals, so a grep for
-quoted keys undercounts the list. Five-field
+quoted keys undercounts the list. The six added by T2.08 are the
+**Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
+by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
+`contradiction_scan`, `memory_dream`, `article_synthesis`,
+`topic_detection`. Each is scheduled, locked and configurable for real,
+but its body is a `PlaceholderJobRunner` until its owning task lands
+(T2.09, T2.10, T2.11, T2.12, T2.14, T2.53 respectively) — the marker is
+a type a test asserts, not a comment, so a placeholder can never be
+mistaken for a shipped job. **Invariant 15 binds the family: none of the
+six may be reached from capture or retrieval** to "accelerate" a gate,
+and a source scan over `backend/app` fails the build if one is. Five-field
 expressions are minute-precision; six-field expressions put the seconds
 field first, Quartz-style. `min_interval_seconds` is a per-job floor
 that protects against runaway expressions; the loop will not fire more
