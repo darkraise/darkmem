@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 59 | 57 | 0 | 0 | 0 | 2 | 0 | G-C, G-D open |
+| E2 — Truth core | 59 | 56 | 1 | 0 | 0 | 2 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **218** | **112** | **0** | **0** | **0** | **105** | **1** | |
+| **Total** | **218** | **111** | **1** | **0** | **0** | **105** | **1** | |
 
 ---
 
@@ -190,7 +190,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.12 | `memory_dream` — never hard-merges, never deletes | L | Opus | high | | todo | | | |
 | T2.13 | Dream digest + per-action and per-batch undo | L | Opus | high | | todo | | | |
 | T2.14 | Register `article_synthesis` inert | S | Haiku | high | | todo | | | |
-| T2.15 | Five associative types + normaliser | S | Sonnet | high | | todo | | | |
+| T2.15 | Five associative types + normaliser | S | Sonnet | high | claude/e2-truth-core | wip | | | Implementation subsumed by T1.23; only the Done-when proof is outstanding |
 | T2.16 | Derivation from overlap, proximity, and contradiction | L | Opus | high | | todo | | | |
 | T2.17 | Strip-before-rewrite and endpoint self-healing | S | Sonnet | high | | todo | | | |
 | T2.18 | `memory_communities` + members, Leiden per project | L | Opus | high | | todo | | | |
