@@ -50,6 +50,21 @@ fact sourced only by anonymous captures never promoting; that is a delayed
 label, which the design accepts, and it is repaired by attributing the capture,
 not by loosening the count.
 
+**The bucket counts, but it never lowers the bar.** Merging unknown identity to
+one origin protects the *count*; leaving that one origin free to satisfy the
+gates would re-open the same door one level up, because a gate that fires drops
+N from 3 to 2. One attributable witness plus one anonymous capture would then be
+promotion-ready — the same chatty source manufacturing its own corroboration,
+through the threshold rather than through the count. So the bucket contributes
+to ``origin_count`` and to nothing else: ``kinds_are_diverse`` and
+``max_cross_origin_gap`` both read ``attributable_origins``. Doc 08 §4.1's own
+wording is the warrant — assertions "≥ 7 days apart across distinct sessions",
+and origins that "differ in source-kind" — and the bucket is the absence of
+session identity, not a session that happens to be unnamed. This changes the
+outcome in exactly one shape of profile: one known origin plus anonymous rows.
+With two known origins the count is already ≥ 2 with or without the bucket, and
+the known pair supplies the gate on its own.
+
 Provenance writes are not journalled here. ``fact_lift`` (T2.10) is the producer
 and owns the ``sources_changed`` event that feeds the recompute; a second
 emitter under it would double-count the same provenance change.
@@ -76,7 +91,13 @@ logger = logging.getLogger(__name__)
 # because no producer writes one yet.
 SOURCE_KINDS = frozenset({"memory", "code", "human"})
 
-_RESERVED_SOURCE_KINDS = frozenset({"block"})
+_RESERVED_SOURCE_KINDS = {
+    "block": "no producer writes one yet",
+    # Doc 08 §4.1 names a `document` origin ("document -> document_id"); doc 04
+    # §8.3's column vocabulary has no such value, so document content arrives
+    # under the `block` kind. A caller following the former deserves to be told.
+    "document": "document content arrives under the 'block' kind, which has no producer yet",
+}
 
 # Named only to make the refusal legible. Anything outside SOURCE_KINDS is
 # refused regardless of whether it appears here.
@@ -119,7 +140,13 @@ _COLUMNS = "id, fact_id, source_kind, source_ref, origin_key, detail, created_at
 
 @dataclass(frozen=True)
 class OriginObservation:
-    """One origin's whole contribution to a fact, however many rows it wrote."""
+    """One origin's whole contribution to a fact, however many rows it wrote.
+
+    ``origin_key`` is the **normalised** identity (lowercased, trimmed), not the
+    raw ``fact_sources.origin_key`` any one row stores, and it is ``None`` for
+    the merged unknown-identity bucket. A consumer matching these back to raw
+    stored values must normalise the same way or it will miss on case variants.
+    """
 
     origin_key: str | None
     source_kinds: tuple[str, ...]
@@ -157,32 +184,47 @@ class OriginProfile:
         return any(o.is_unknown for o in self.origins)
 
     @property
+    def attributable_origins(self) -> tuple[OriginObservation, ...]:
+        """The origins that identify a witness — the only ones a gate may use.
+
+        The unknown-identity bucket counts toward ``origin_count``, but it is
+        the *absence* of session identity, not a session. Doc 08 §4.1 gates on
+        origins that "differ in source-kind" and on assertions "≥ 7 days apart
+        across distinct sessions"; neither predicate has a truth value for a
+        bucket that names no session, so both gates read this instead.
+        """
+        return tuple(o for o in self.origins if not o.is_unknown)
+
+    @property
     def kinds_are_diverse(self) -> bool:
-        """Two *distinct* origins carrying two different kinds.
+        """Two *distinct, attributable* origins carrying two different kinds.
 
         An origin cannot differ from itself, so a lone origin asserting under
         several kinds does not make the set diverse.
         """
-        if len(self.origins) < 2:
+        origins = self.attributable_origins
+        if len(origins) < 2:
             return False
-        if any(len(o.source_kinds) > 1 for o in self.origins):
+        if any(len(o.source_kinds) > 1 for o in origins):
             return True
-        return len({o.source_kinds[0] for o in self.origins if o.source_kinds}) > 1
+        return len({o.source_kinds[0] for o in origins if o.source_kinds}) > 1
 
     @property
     def max_cross_origin_gap(self) -> timedelta:
-        """The widest span between two assertions from *different* origins.
+        """The widest span between assertions from two *attributable* origins.
 
         One origin asserting the same fact over a year is still one origin
-        re-stating itself, so a span within a single origin never counts.
+        re-stating itself, so a span within a single origin never counts — and
+        neither does a span measured against the unknown bucket.
         """
-        if len(self.origins) < 2:
+        origins = self.attributable_origins
+        if len(origins) < 2:
             return timedelta(0)
-        by_first = sorted(range(len(self.origins)), key=lambda i: self.origins[i].first_seen)
+        by_first = sorted(range(len(origins)), key=lambda i: origins[i].first_seen)
         earliest, runner_up = by_first[0], by_first[1]
         widest = timedelta(0)
-        for index, origin in enumerate(self.origins):
-            other = self.origins[runner_up if index == earliest else earliest]
+        for index, origin in enumerate(origins):
+            other = origins[runner_up if index == earliest else earliest]
             gap = origin.last_seen - other.first_seen
             if gap > widest:
                 widest = gap
@@ -227,8 +269,8 @@ def _validate_source_kind(source_kind: str) -> str:
         )
     if kind in _RESERVED_SOURCE_KINDS:
         raise ValueError(
-            f"source_kind {kind!r} is reserved for a producer that does not "
-            f"exist yet; permitted kinds are {sorted(SOURCE_KINDS)}"
+            f"source_kind {kind!r} is reserved: {_RESERVED_SOURCE_KINDS[kind]}; "
+            f"permitted kinds are {sorted(SOURCE_KINDS)}"
         )
     raise ValueError(
         f"unknown source_kind {kind!r}; permitted kinds are {sorted(SOURCE_KINDS)}"
@@ -378,8 +420,12 @@ class FactSourceRepository:
 
         Deliberately unbounded and not filtered by the belief axis: the callers
         are the withdrawal sweep and the recompute enqueue, and a truncated or
-        liveness-filtered answer would silently leave provenance behind.
+        liveness-filtered answer would silently leave provenance behind. The
+        kind is validated for the same reason: a kind no ``add_source`` could
+        have written would return an empty list, and a withdrawal sweep with a
+        typo would find nothing to withdraw and report no error.
         """
+        kind = _validate_source_kind(source_kind)
         result = await self.session.execute(
             text("""
                 SELECT DISTINCT fs.fact_id
@@ -390,6 +436,6 @@ class FactSourceRepository:
                   AND kt.project = CAST(:project AS text)
                 ORDER BY fs.fact_id
             """),
-            {"source_kind": source_kind, "source_ref": source_ref, "project": project},
+            {"source_kind": kind, "source_ref": source_ref, "project": project},
         )
         return [str(row["fact_id"]) for row in result.mappings().all()]

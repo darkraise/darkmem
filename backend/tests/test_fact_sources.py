@@ -267,18 +267,21 @@ async def test_an_unrecognised_kind_is_rejected_and_writes_nothing(session):
     assert await _row_count(session, fact_id) == 0
 
 
-async def test_a_reserved_kind_names_its_missing_producer(session):
+@pytest.mark.parametrize("kind,hint", [("block", "producer"), ("document", "'block'")])
+async def test_a_reserved_kind_names_its_missing_producer(session, kind, hint):
+    """`document` is doc 08 §4.1's wording for content that arrives as `block`."""
     repo = FactSourceRepository(session)
     fact_id = await _fact(session)
 
-    with pytest.raises(ValueError, match="reserved"):
+    with pytest.raises(ValueError, match="reserved") as raised:
         await repo.add_source(
             fact_id=fact_id,
-            source_kind="block",
+            source_kind=kind,
             source_ref="block-1",
             origin_key="doc-1",
         )
 
+    assert hint in str(raised.value)
     assert await _row_count(session, fact_id) == 0
 
 
@@ -497,6 +500,72 @@ async def test_the_unknown_bucket_cannot_lower_n_by_itself(session):
     assert profile.required_origin_count == CORROBORATION_N_DEFAULT
 
 
+async def test_an_anonymous_row_cannot_supply_the_kind_diversity(session):
+    """One attributable witness plus an anonymous capture is not promotion-ready.
+
+    The bucket counts toward origin_count, so a gate firing on it would drop N
+    from 3 to 2 and make this profile promotable on one real witness — the same
+    chatty source manufacturing its own corroboration, one level up from the
+    count.
+    """
+    repo = FactSourceRepository(session)
+    fact_id = await _fact(session)
+    await _add(repo, fact_id, kind="memory", ref="memory-a", origin="mcp:run-1", at=NOW)
+    await _add(repo, fact_id, kind="code", ref="parse::a.py", origin=None, at=NOW)
+
+    profile = await repo.origin_profile(fact_id)
+    assert profile.origin_count == 2
+    assert profile.has_unknown_origin is True
+    assert profile.source_kinds == ("code", "memory")
+    assert profile.kinds_are_diverse is False
+    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+
+
+async def test_an_anonymous_row_cannot_supply_the_time_gap(session):
+    repo = FactSourceRepository(session)
+    fact_id = await _fact(session)
+    await _add(repo, fact_id, ref="memory-a", origin="mcp:run-1", at=NOW)
+    await _add(
+        repo, fact_id, ref="memory-b", origin=None, at=NOW + timedelta(days=8)
+    )
+
+    profile = await repo.origin_profile(fact_id)
+    assert profile.origin_count == 2
+    assert profile.max_cross_origin_gap == timedelta(0)
+    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+
+
+async def test_anonymous_rows_do_not_disarm_a_gate_two_real_origins_supply(session):
+    """The other direction: the exclusion must not over-correct.
+
+    Two attributable origins still open both gates with an anonymous bucket
+    sitting alongside them; the bucket is ignored by the gates, not poisonous
+    to them.
+    """
+    repo = FactSourceRepository(session)
+    fact_id = await _fact(session)
+    await _add(repo, fact_id, kind="memory", ref="memory-a", origin="mcp:run-1", at=NOW)
+    await _add(repo, fact_id, kind="code", ref="parse::a.py", origin="repo-42", at=NOW)
+    await _add(repo, fact_id, kind="memory", ref="memory-anon", origin=None, at=NOW)
+
+    profile = await repo.origin_profile(fact_id)
+    assert profile.origin_count == 3
+    assert profile.kinds_are_diverse is True
+    assert profile.required_origin_count == CORROBORATION_N_DIVERSE
+
+    gapped = await _fact(session, subject="redis")
+    await _add(repo, gapped, ref="memory-a", origin="mcp:run-1", at=NOW)
+    await _add(
+        repo, gapped, ref="memory-b", origin="mcp:run-2", at=NOW + timedelta(days=9)
+    )
+    await _add(repo, gapped, ref="memory-anon", origin=None, at=NOW + timedelta(days=4))
+
+    gapped_profile = await repo.origin_profile(gapped)
+    assert gapped_profile.origin_count == 3
+    assert gapped_profile.max_cross_origin_gap == timedelta(days=9)
+    assert gapped_profile.required_origin_count == CORROBORATION_N_DIVERSE
+
+
 async def test_the_widest_cross_origin_gap_wins(session):
     """The gap is the widest span between two *different* origins."""
     repo = FactSourceRepository(session)
@@ -557,6 +626,15 @@ async def test_facts_for_source_does_not_cross_projects(session):
     assert await repo.facts_for_source(
         "human", "user-7", project="t202-other-project"
     ) == [theirs]
+
+
+@pytest.mark.parametrize("kind", ["article", "block", "memories"])
+async def test_facts_for_source_refuses_a_kind_add_source_could_not_write(session, kind):
+    """A typo must raise, not answer "nothing to withdraw" with an empty list."""
+    repo = FactSourceRepository(session)
+
+    with pytest.raises(ValueError):
+        await repo.facts_for_source(kind, "memory-a", project=PROJECT)
 
 
 async def test_facts_for_source_is_empty_for_an_unknown_source(session):
