@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 59 | 55 | 1 | 0 | 0 | 3 | 0 | G-C, G-D open |
+| E2 — Truth core | 60 | 56 | 0 | 0 | 0 | 4 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **218** | **110** | **1** | **0** | **0** | **106** | **1** | |
+| **Total** | **219** | **111** | **0** | **0** | **0** | **107** | **1** | |
 
 ---
 
@@ -172,7 +172,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.67 | Retire the dead real-API-type re-export from `src/demo` | S | Sonnet | low | | done | b265e12, b053fd2, e8c9f1a | — (Sonnet tier; Fable review owed before G-B) | **Falsified its own premise and was rewritten to what was true.** The controller's claim that 65 files import `@/demo/types` for the real API types was wrong — **zero** do; the re-export was dead code with one internal dependent. Deleted it, repointed the dependent, added an `importNames`-scoped rule that **errors** if those four types return to a demo path, proven able to fail. The importer count is unchanged because the task never had a mechanism to change it; the real relocation became T1.68. |
 | T1.68 | Relocate the shared frontend types out of `src/demo` | M | Sonnet | high | | done | c2b22d5 | — (Sonnet tier; Fable review owed before G-B) | 33 names moved into five feature-local modules, **judged by consumer rather than prefix** — and that mattered: `DemoRepo`, handed down as real-consumed, was **not** moved because every consumer is demo-gated. Also caught that the 65-importer count included a comment mention, so the truth was 64. New error-level rule blocks reintroducing any of the 33 from a demo path, falsified live. Broad warn count 150 → 116 across 80 → 67 files, pinned literal re-measured. Six real files keep a documented legitimate need for a demo-shaped type — recorded rather than gutted away to force a green rule. **Its reported "pre-existing non-deterministic benchlib failures" were its own collision**: `TEST_DATABASE_URL` set to a bench database name with `BENCH_DATABASE_URL` never set, so benchlib fell back to the shared database and deadlocked. Corrected in the log. Frontend 525 across 89 files; floor 2480; benchlib 284 alone. |
 
-## E2 — Truth core (59 tasks)
+## E2 — Truth core (60 tasks)
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
@@ -183,7 +183,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.05 | Human ratification is the only path to `confirmed` | S | Opus | high | | todo | | | |
 | T2.06 | Every ladder transition journaled | M | Sonnet | high | | todo | | | |
 | T2.07 | `projects` table + lazy registration | M | Sonnet | high | | todo | | | |
-| T2.08 | Job-family umbrella under JobRegistry | M | Sonnet | high | claude/e2-truth-core | wip | | | |
+| T2.08 | Job-family umbrella under JobRegistry | M | Sonnet | high | claude/e2-truth-core | done | ce34fdd, fbdca13 | fable adversarial: spec PASS, 2 Important + 4 Minor; addressed after 1 fix round, re-review clean | All six Tier-C members registered as `PlaceholderJobRunner` — a type a test asserts, not a comment, so a placeholder can never read as shipped. **Invariant 15 enforced by a source scan over `backend/app`**, which caught reviewer mutations at the MCP door and in retrieval. Review found both test holes: the never-queues test looked too early to see a queued run (now a deterministic task-set drain, not a sleep), and the boot wiring could be deleted with the suite green. CLAUDE.md's job count corrected 9 -> 15. Verify: gate green, floor 2605 passed |
 | T2.09 | `verification_recompute` | S | Sonnet | high | | todo | | | |
 | T2.10 | `fact_lift` | M | Opus | high | | todo | | | |
 | T2.11 | `contradiction_scan` | M | Opus | high | | todo | | | |
@@ -235,6 +235,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.57 | Contradiction-pair gold set | M | Fable | high | | todo | | | |
 | T2.58 | Converge Chat onto the one ranking path | M | Opus | high | | todo | | | |
 | T2.59 | Content retention on delete: decide the policy, then implement it | M | Opus | high | | todo | | | |
+| T2.60 | The supersession-signal promotion blocker | M | Opus | high | | todo | | | |
 
 ## E3 — Synthesis & reach (26 tasks)
 
