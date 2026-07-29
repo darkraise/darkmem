@@ -1,0 +1,395 @@
+"""Provenance rows, and the corroboration arithmetic they feed.
+
+Corroboration counts ``COUNT(DISTINCT origin_key)`` over a fact's
+``fact_sources`` — **never rows** (doc 08 §4.1, doc 04 §8.3). Row-counting
+manufactures agreement out of one chatty source: an agent that re-saves the same
+claim ten times, or a repository re-derived across a hundred commits, is one
+origin and must count as one. Every number this module produces is read by the
+verification ladder, so its direction of error is fixed: it may **undercount**,
+never overcount. Undercounting only delays a promotion; overcounting fabricates
+one, and every article citing that fact inherits the lie.
+
+Four rules, all enforced here rather than left to callers:
+
+1. **Distinct origins, never rows** — ``count_distinct_origins`` and every count
+   inside ``origin_profile`` group by origin.
+2. **The threshold N is diversity-sensitive** — ``OriginProfile`` exposes
+   ``required_origin_count``: ``CORROBORATION_N_DIVERSE`` when the origins
+   differ in ``source_kind`` or lie ``CORROBORATION_TIME_GAP_DAYS`` apart across
+   two distinct origins, else ``CORROBORATION_N_DEFAULT``. Both gates need two
+   *distinct* origins, so one origin can never lower its own bar. This module
+   computes N; it never compares it to anything and never writes
+   ``verification_status`` — the ladder is T2.03's.
+3. **Derived rows are a structural exclusion** — a Layer-2 fact or a Layer-3
+   article is never a source, so ``add_source`` rejects any ``source_kind``
+   outside ``SOURCE_KINDS`` instead of trusting callers to remember. An agent
+   re-saving an article must not be able to inflate the count of the fact that
+   article cites.
+4. **Unknown origin identity merges to ONE origin.** Every row whose
+   ``origin_key`` is NULL, blank, or carries the capture layer's ``unknown:``
+   marker folds into a single reserved bucket **per fact**, so ten anonymous
+   rows are one origin, never ten.
+
+**The collapsing scheme for rule 4, and why this one.** The normalised origin is
+``lower(btrim(origin_key))``, except that NULL, whitespace-only, the bare word
+``unknown`` and anything prefixed ``unknown:`` all map to one reserved sentinel.
+Two properties make that defensible. First, it is *strictly* merge-only: a
+sentinel collision (a real key that happens to equal the sentinel, or two real
+keys differing only in case or padding) merges two origins into one, which
+undercounts — the safe direction — and no input can ever split one origin into
+two. Second, it is deliberately coarser than the capture layer it reads from:
+``app.api.mcp.client_identity.resolve_origin_key`` already merges unattributed
+captures to ``unknown:<source>:<project>``, which is one origin *per door and
+project*, so an unattributed MCP capture and an unattributed REST capture of the
+same claim would arrive as two keys. They are not two witnesses — nothing about
+either identifies a distinct session — so this layer folds all of them into one
+bucket. That closes the one path by which unknown identity could still reach the
+``N = 2`` bar on its own (two anonymous memory captures seven days apart), which
+is exactly the counterfeit corroboration rule 4 exists to forbid. The cost is a
+fact sourced only by anonymous captures never promoting; that is a delayed
+label, which the design accepts, and it is repaired by attributing the capture,
+not by loosening the count.
+
+Provenance writes are not journalled here. ``fact_lift`` (T2.10) is the producer
+and owns the ``sources_changed`` event that feeds the recompute; a second
+emitter under it would double-count the same provenance change.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.utils.ids import new_id
+
+logger = logging.getLogger(__name__)
+
+# The kinds that may assert a fact today. Doc 04 §8.3's vocabulary is
+# {memory, block, code, human}; `block` is held in _RESERVED_SOURCE_KINDS below
+# because no producer writes one yet.
+SOURCE_KINDS = frozenset({"memory", "code", "human"})
+
+_RESERVED_SOURCE_KINDS = frozenset({"block"})
+
+# Named only to make the refusal legible. Anything outside SOURCE_KINDS is
+# refused regardless of whether it appears here.
+_DERIVED_SOURCE_KINDS = frozenset({"fact", "triple", "knowledge_triple", "article",
+                                   "knowledge_article"})
+
+# The diversity/time gate's parameters. Doc 08 §4.1 flags all three as future
+# `config` rows tuned from the measured promotion rate; T2.03 owns that lift, so
+# they are named constants here rather than configuration built ahead of a
+# consumer.
+CORROBORATION_TIME_GAP_DAYS = 7
+CORROBORATION_N_DIVERSE = 2
+CORROBORATION_N_DEFAULT = 3
+
+# One bucket for every row of unknown origin identity. The \x1f prefix keeps it
+# out of the range of a real key; a collision would merge, which undercounts.
+_UNKNOWN_ORIGIN_BUCKET = "\x1funknown-origin"
+
+# Mirrors app.api.mcp.client_identity.UNKNOWN_ORIGIN_PREFIX; test_fact_sources
+# pins the two together so a rename there fails loudly here.
+_UNKNOWN_ORIGIN_MATCH = {
+    "unknown_exact": "unknown",
+    "unknown_like": "unknown:%",
+    "unknown_bucket": _UNKNOWN_ORIGIN_BUCKET,
+}
+
+_NORMALIZED_ORIGIN = """
+        CASE
+            WHEN origin_key IS NULL
+              OR btrim(origin_key) = ''
+              OR lower(btrim(origin_key)) = CAST(:unknown_exact AS text)
+              OR lower(btrim(origin_key)) LIKE CAST(:unknown_like AS text)
+            THEN CAST(:unknown_bucket AS text)
+            ELSE lower(btrim(origin_key))
+        END
+"""
+
+_COLUMNS = "id, fact_id, source_kind, source_ref, origin_key, detail, created_at"
+
+
+@dataclass(frozen=True)
+class OriginObservation:
+    """One origin's whole contribution to a fact, however many rows it wrote."""
+
+    origin_key: str | None
+    source_kinds: tuple[str, ...]
+    first_seen: datetime
+    last_seen: datetime
+    row_count: int
+
+    @property
+    def is_unknown(self) -> bool:
+        """True for the merged unknown-identity bucket, which has no key."""
+        return self.origin_key is None
+
+
+@dataclass(frozen=True)
+class OriginProfile:
+    """What the ladder needs to pick its threshold, and nothing more.
+
+    Every derived property is computed over *origins*, never rows, and every
+    gate that could lower the threshold requires two distinct origins.
+    """
+
+    fact_id: str
+    origins: tuple[OriginObservation, ...]
+
+    @property
+    def origin_count(self) -> int:
+        return len(self.origins)
+
+    @property
+    def source_kinds(self) -> tuple[str, ...]:
+        return tuple(sorted({kind for o in self.origins for kind in o.source_kinds}))
+
+    @property
+    def has_unknown_origin(self) -> bool:
+        return any(o.is_unknown for o in self.origins)
+
+    @property
+    def kinds_are_diverse(self) -> bool:
+        """Two *distinct* origins carrying two different kinds.
+
+        An origin cannot differ from itself, so a lone origin asserting under
+        several kinds does not make the set diverse.
+        """
+        if len(self.origins) < 2:
+            return False
+        if any(len(o.source_kinds) > 1 for o in self.origins):
+            return True
+        return len({o.source_kinds[0] for o in self.origins if o.source_kinds}) > 1
+
+    @property
+    def max_cross_origin_gap(self) -> timedelta:
+        """The widest span between two assertions from *different* origins.
+
+        One origin asserting the same fact over a year is still one origin
+        re-stating itself, so a span within a single origin never counts.
+        """
+        if len(self.origins) < 2:
+            return timedelta(0)
+        by_first = sorted(range(len(self.origins)), key=lambda i: self.origins[i].first_seen)
+        earliest, runner_up = by_first[0], by_first[1]
+        widest = timedelta(0)
+        for index, origin in enumerate(self.origins):
+            other = self.origins[runner_up if index == earliest else earliest]
+            gap = origin.last_seen - other.first_seen
+            if gap > widest:
+                widest = gap
+        return widest
+
+    @property
+    def required_origin_count(self) -> int:
+        """N — the distinct-origin count promotion would require."""
+        if self.kinds_are_diverse:
+            return CORROBORATION_N_DIVERSE
+        if self.max_cross_origin_gap >= timedelta(days=CORROBORATION_TIME_GAP_DAYS):
+            return CORROBORATION_N_DIVERSE
+        return CORROBORATION_N_DEFAULT
+
+
+def _row_to_dict(row: Any) -> dict:
+    out = dict(row)
+    for key in ("id", "fact_id"):
+        value = out.get(key)
+        out[key] = str(value) if value is not None else None
+    return out
+
+
+def _clean_identity(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            f"fact_sources.{field} must be a non-empty string; the dedupe key "
+            f"(fact_id, source_kind, source_ref) cannot deduplicate NULLs"
+        )
+    return value.strip()
+
+
+def _validate_source_kind(source_kind: str) -> str:
+    kind = _clean_identity(source_kind, "source_kind")
+    if kind in SOURCE_KINDS:
+        return kind
+    if kind in _DERIVED_SOURCE_KINDS:
+        raise ValueError(
+            f"source_kind {kind!r} is a derived layer and can never be a fact "
+            f"source: a fact or article re-asserting a claim would inflate the "
+            f"corroboration count of the very fact it cites"
+        )
+    if kind in _RESERVED_SOURCE_KINDS:
+        raise ValueError(
+            f"source_kind {kind!r} is reserved for a producer that does not "
+            f"exist yet; permitted kinds are {sorted(SOURCE_KINDS)}"
+        )
+    raise ValueError(
+        f"unknown source_kind {kind!r}; permitted kinds are {sorted(SOURCE_KINDS)}"
+    )
+
+
+class FactSourceRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def add_source(
+        self,
+        *,
+        fact_id: UUID | str,
+        source_kind: str,
+        source_ref: str,
+        origin_key: str | None,
+        detail: dict | None = None,
+    ) -> dict:
+        """Record that a source asserts a fact. Idempotent on the dedupe key.
+
+        Re-asserting the same ``(fact_id, source_kind, source_ref)`` returns the
+        existing row and changes nothing — not ``origin_key``, not ``detail``.
+        First assertion wins on purpose: letting a later call rewrite the origin
+        of a row already counted would let a re-save move a row between origin
+        buckets, which can raise the count. Provenance is a record of what was
+        asserted, not a mutable cache.
+
+        ``origin_key`` is required but nullable: a caller that does not know the
+        origin must say so explicitly, and NULL folds into the single
+        unknown-identity bucket rather than counting as its own origin.
+        """
+        kind = _validate_source_kind(source_kind)
+        ref = _clean_identity(source_ref, "source_ref")
+        params = {
+            "id": str(new_id()),
+            "fact_id": str(fact_id),
+            "source_kind": kind,
+            "source_ref": ref,
+            "origin_key": origin_key,
+            "detail": json.dumps(detail) if detail is not None else None,
+        }
+        result = await self.session.execute(
+            text(f"""
+                INSERT INTO fact_sources (
+                    id, fact_id, source_kind, source_ref, origin_key, detail
+                )
+                VALUES (
+                    CAST(:id AS uuid),
+                    CAST(:fact_id AS uuid),
+                    CAST(:source_kind AS text),
+                    CAST(:source_ref AS text),
+                    CAST(:origin_key AS text),
+                    CAST(:detail AS jsonb)
+                )
+                ON CONFLICT (fact_id, source_kind, source_ref) DO NOTHING
+                RETURNING {_COLUMNS}
+            """),
+            params,
+        )
+        row = result.mappings().first()
+        if row is not None:
+            return _row_to_dict(row)
+
+        existing = await self.session.execute(
+            text(f"""
+                SELECT {_COLUMNS}
+                FROM fact_sources
+                WHERE fact_id = CAST(:fact_id AS uuid)
+                  AND source_kind = CAST(:source_kind AS text)
+                  AND source_ref = CAST(:source_ref AS text)
+            """),
+            {"fact_id": params["fact_id"], "source_kind": kind, "source_ref": ref},
+        )
+        return _row_to_dict(existing.mappings().one())
+
+    async def count_distinct_origins(self, fact_id: UUID | str) -> int:
+        """``COUNT(DISTINCT origin_key)`` — the corroboration signal itself.
+
+        Rows are not the unit and never can be: the count groups by normalised
+        origin, so ten rows from one origin are 1 and every row of unknown
+        identity joins one shared bucket.
+        """
+        result = await self.session.execute(
+            text(f"""
+                SELECT COUNT(DISTINCT {_NORMALIZED_ORIGIN}) AS origin_count
+                FROM fact_sources
+                WHERE fact_id = CAST(:fact_id AS uuid)
+            """),
+            {"fact_id": str(fact_id), **_UNKNOWN_ORIGIN_MATCH},
+        )
+        return int(result.scalar_one())
+
+    async def origin_profile(self, fact_id: UUID | str) -> OriginProfile:
+        """The per-origin view the threshold rule reads.
+
+        One row per distinct origin, carrying the kinds that origin asserted
+        under and the first/last time it did — the timestamps the time-gap gate
+        needs. The aggregation happens in SQL so the "never rows" rule cannot be
+        lost by a caller iterating the wrong thing.
+        """
+        result = await self.session.execute(
+            text(f"""
+                SELECT
+                    {_NORMALIZED_ORIGIN} AS origin,
+                    array_agg(DISTINCT source_kind)
+                        FILTER (WHERE source_kind IS NOT NULL) AS source_kinds,
+                    MIN(created_at) AS first_seen,
+                    MAX(created_at) AS last_seen,
+                    COUNT(*) AS row_count
+                FROM fact_sources
+                WHERE fact_id = CAST(:fact_id AS uuid)
+                GROUP BY 1
+                ORDER BY MIN(created_at), 1
+            """),
+            {"fact_id": str(fact_id), **_UNKNOWN_ORIGIN_MATCH},
+        )
+        origins = tuple(
+            OriginObservation(
+                origin_key=(
+                    None if row["origin"] == _UNKNOWN_ORIGIN_BUCKET else row["origin"]
+                ),
+                source_kinds=tuple(sorted(row["source_kinds"] or ())),
+                first_seen=row["first_seen"],
+                last_seen=row["last_seen"],
+                row_count=int(row["row_count"]),
+            )
+            for row in result.mappings().all()
+        )
+        return OriginProfile(fact_id=str(fact_id), origins=origins)
+
+    async def facts_for_source(
+        self,
+        source_kind: str,
+        source_ref: str,
+        *,
+        project: str,
+    ) -> list[str]:
+        """Which facts a given source asserts — the reverse lookup.
+
+        ``project`` is required, not an optional filter, for the reason T2.01
+        made ``get_live`` and ``as_of`` require it: the scope belongs in the
+        repository, not at the front door. It is load-bearing here rather than
+        merely tidy, because ``source_ref`` is a **soft** reference with no FK —
+        one human reviewer, or one repository shared between projects, is the
+        same ``source_ref`` across several project scopes.
+
+        Deliberately unbounded and not filtered by the belief axis: the callers
+        are the withdrawal sweep and the recompute enqueue, and a truncated or
+        liveness-filtered answer would silently leave provenance behind.
+        """
+        result = await self.session.execute(
+            text("""
+                SELECT DISTINCT fs.fact_id
+                FROM fact_sources fs
+                JOIN knowledge_triples kt ON kt.id = fs.fact_id
+                WHERE fs.source_kind = CAST(:source_kind AS text)
+                  AND fs.source_ref = CAST(:source_ref AS text)
+                  AND kt.project = CAST(:project AS text)
+                ORDER BY fs.fact_id
+            """),
+            {"source_kind": source_kind, "source_ref": source_ref, "project": project},
+        )
+        return [str(row["fact_id"]) for row in result.mappings().all()]
