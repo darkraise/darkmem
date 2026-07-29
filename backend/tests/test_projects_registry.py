@@ -321,3 +321,41 @@ async def test_backfill_is_not_confused_by_the_default_project(session):
 
     names = await _project_names(session)
     assert "default" in names
+
+
+async def test_a_mixed_project_batch_registers_every_distinct_project(
+    client, auth_headers, session
+):
+    """The per-batch dedup must dedup, not truncate.
+
+    Registration is deduped once per batch rather than once per entry, so a
+    100-entry batch to one project opens one savepoint instead of a hundred.
+    The mutation that shape invites is registering only the batch's *first*
+    distinct project — and every other capture test in this file sends a
+    single-entry batch, so all of them would pass under it. Recorded as a
+    coverage gap by the fix round's re-review; closed here.
+    """
+    response = await client.post(
+        "/api/v1/memories/batch",
+        json={
+            "entries": [
+                {"content": "one", "project": "mix-alpha"},
+                {"content": "two", "project": "mix-beta"},
+                {"content": "three", "project": "mix-alpha"},
+                {"content": "four"},
+            ]
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 202
+
+    names = await _project_names(session)
+    assert {"mix-alpha", "mix-beta", "default"} <= names, (
+        "every distinct project in the batch must register, including the "
+        "omitted one folding to 'default'"
+    )
+    for project in ("mix-alpha", "mix-beta"):
+        count = (await session.execute(
+            select(func.count()).select_from(Project).where(Project.name == project)
+        )).scalar()
+        assert count == 1, f"{project} deduped to one row, not inserted twice"
