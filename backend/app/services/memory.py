@@ -17,7 +17,7 @@ from app.repositories.vector import MemoryFilter
 from app.schemas.envelope import PageInfo
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
-from app.services import buffer_flush, memory_buffer, repo_provision
+from app.services import buffer_flush, memory_buffer, project_registry, repo_provision
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
@@ -119,6 +119,12 @@ class MemoryService:
         rows: list[MemoryBuffer] = []
         for data in entries:
             project = data.project or "default"
+            # Lazy registration (doc 04 §7): every project string that
+            # reaches a buffer row gets a visible `projects` row in the same
+            # transaction as the capture, so a typo never opens a silent
+            # parallel fact-identity scope. Never fails the capture — see
+            # project_registry.register's own docstring.
+            await project_registry.register(self.session, project)
             row = await memory_buffer.enqueue(
                 self.session,
                 content=data.content,

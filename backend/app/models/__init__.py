@@ -9,6 +9,7 @@ from .graph import Entity, EntityRelation, KnowledgeTriple
 from .llm_config import LLMPurposeConfigRow
 from .memory import Memory, MemoryBuffer, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
+from .project import Project
 
 __all__ = [
     "Base",
@@ -16,6 +17,7 @@ __all__ = [
     "MemoryBuffer",
     "Tag",
     "memory_tags",
+    "Project",
     "ApiKey",
     "TokenBlocklist",
     "Config",

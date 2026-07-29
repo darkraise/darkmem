@@ -25,6 +25,7 @@ from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
 from app.services.llm_quirks import models_probe
 from app.services.pipeline import ProcessingPipeline
+from app.services.project_registry import backfill as backfill_projects
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,20 @@ async def lifespan(app: FastAPI):
             logger.info("events partitions reconciled: %s", ", ".join(children))
         except Exception:
             logger.exception("Boot-time events partition reconciliation failed")
+
+        # Backfill every DISTINCT memories.project into the registry on every
+        # boot (doc 04 §7, T2.07). Idempotent (`ON CONFLICT DO NOTHING`), so a
+        # restart with nothing new to backfill inserts zero rows; this is a
+        # reconciliation pass, not a migration, and lazy registration on
+        # capture (project_registry.register) is what keeps it caught up
+        # between boots.
+        try:
+            async with async_session_factory() as session:
+                inserted = await backfill_projects(session)
+                await session.commit()
+            logger.info("projects registry backfilled: %d row(s)", inserted)
+        except Exception:
+            logger.exception("Boot-time projects registry backfill failed")
 
         llm_fp = llm.llm_fingerprint()
         try:
