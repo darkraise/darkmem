@@ -7,8 +7,15 @@ gold pairs, score them under the same protocol, and emit two artifacts from
 a single composed run -- a dated human-readable report under ``docs/eval/``
 and one ledger row -- never a hand-rolled dict fed straight to
 ``ledger.record`` (brief ruling 1: that call boundary is the only place the
-no-twin-no-accuracy guard actually bites, so this module never reaches past
-``full_context.record_comparison``).
+no-twin-no-accuracy guard actually bites). The default (no ``--arm``) path
+below reaches the ledger through exactly one sanctioned recorder,
+``full_context.record_comparison``; T2.44's ``--arm`` path is a second,
+independent command reaching the ledger through its own sanctioned
+recorder, ``arm_ablation.record_arm_comparison`` (see that module's
+docstring for why it is a parallel recorder rather than a caller of this
+one) -- benchlib also had a third, ``twin.record_eval_run``, before either
+of these two existed. "One boundary" was never a benchlib-wide rule; it is
+a per-path guarantee each sanctioned recorder holds on its own.
 
 Corpus size, gold version, live-pair count and the full-corpus fetch depth
 are all read from the gold files at run time, never hardcoded: this corpus

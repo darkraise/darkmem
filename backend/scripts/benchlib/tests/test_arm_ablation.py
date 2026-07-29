@@ -21,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("_bench_db")
 # ── pure helpers: hand-built metric objects, no DB ───────────────────────
 
 
-def _score_report(*, k=1, retrieval_limit=1, min_pairs=1, mrr=0.5, hit=0.5, n=2) -> ScoreReport:
+def _score_report(*, k=1, retrieval_limit=1, min_pairs=1, mrr=0.5, hit=0.5, n=2, pair_scores=None) -> ScoreReport:
     slices = {
         tag: SliceScore(slice_tag=tag, n_pairs=0, powered=False, mrr=None, hit_at_k=None)
         for tag in retrieval_gold.SLICES
@@ -30,7 +30,7 @@ def _score_report(*, k=1, retrieval_limit=1, min_pairs=1, mrr=0.5, hit=0.5, n=2)
     return ScoreReport(
         k=k, retrieval_limit=retrieval_limit, min_pairs=min_pairs, n_pairs=n,
         slices=slices, aggregate_powered=True, aggregate_mrr=mrr, aggregate_hit_at_k=hit,
-        pair_scores={},
+        pair_scores={} if pair_scores is None else pair_scores,
     )
 
 
@@ -131,6 +131,22 @@ def test_comparison_refuses_mismatched_scoring_protocol():
     on_score = _score_report(k=2)  # different k
     on = arm_ablation.ArmLeg(weight=1.0, fingerprint="stub-fp|3", run=twin.EvalRun(score=on_score, twin=_twin_obj()))
     with pytest.raises(ValueError, match="different protocols"):
+        arm_ablation.ArmComparison(arm=_arm(), off=off, on=on, ingest_fingerprint="stub-fp|3")
+
+
+def test_comparison_refuses_legs_scored_over_different_gold_pairs():
+    """Fix round F5: the pair-set-equality guard (ArmComparison.__post_init__,
+    the check right after the protocol-fields check) was previously exercised
+    only with pair_scores={} on both sides, which passes vacuously (empty
+    set equals empty set regardless of whether the guard runs at all) -- the
+    exact hollow-test shape the brief warns about. Same k/min_pairs/n_pairs
+    on both legs (so the earlier protocol check does not fire first) but a
+    genuinely different pair-id set."""
+    off_score = _score_report(pair_scores={"rt-0001": object(), "rt-0002": object()})
+    on_score = _score_report(pair_scores={"rt-0001": object(), "rt-0003": object()})
+    off = arm_ablation.ArmLeg(weight=0.0, fingerprint="stub-fp|3", run=twin.EvalRun(score=off_score, twin=_twin_obj()))
+    on = arm_ablation.ArmLeg(weight=1.0, fingerprint="stub-fp|3", run=twin.EvalRun(score=on_score, twin=_twin_obj()))
+    with pytest.raises(ValueError, match="different gold pairs"):
         arm_ablation.ArmComparison(arm=_arm(), off=off, on=on, ingest_fingerprint="stub-fp|3")
 
 
@@ -331,6 +347,21 @@ async def test_run_arm_ablation_end_to_end_produces_report_and_ledger_row(tmp_pa
     assert set(row["arm_comparison"]["legs"]) == {"off", "on"}
     assert row["run_id"] == result.meta["run_id"]
     assert row["fingerprint"] == result.meta["fingerprint"]
+
+    # T2.44 fix round, F1: the composition-level twin-emission property --
+    # what actually reached the ledger, not just what run_arm_ablation
+    # returned in memory. A recording path that swapped in a twin-less
+    # lookalike dict (bypassing record_arm_comparison) would satisfy every
+    # assertion above while failing these; this is what the review's bypass
+    # mutation of run_arm_ablation (skipping record_arm_comparison to
+    # hand-roll a dict into ledger.record) showed the prior suite missed.
+    for label in (arm_ablation.LEG_OFF, arm_ablation.LEG_ON):
+        leg_row = row["arm_comparison"]["legs"][label]
+        assert {"score", "twin"} <= set(leg_row), (
+            f"{label} leg's recorded row is missing 'score' and/or 'twin' -- "
+            "an accuracy figure reached the ledger without its twin attached"
+        )
+        assert leg_row["twin"]["channels"], f"{label} leg's twin has no channels"
 
 
 @pytest.mark.asyncio

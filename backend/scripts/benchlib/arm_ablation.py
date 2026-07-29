@@ -31,12 +31,16 @@ enforced) to the shape this comparison actually has.
 
 **No cross-fingerprint comparison (brief done-when 3, CLAUDE.md invariant
 2).** Both legs query the one corpus ``run_arm_ablation`` ingests. Querying
-uses ``llm.llm_fingerprint()`` -- resolved from the embedding purpose's
-config alone, no live call needed -- rather than trusting "same corpus, so
-obviously the same partition": ``ArmComparison`` asserts both legs agree
-with each other AND with the corpus's own ingested fingerprint, so a future
-change that let a leg's embedder rotate mid-run fails loudly instead of
-silently producing a plausible, wrong delta.
+is fingerprinted by OBSERVATION, not by trusting config: ``run_arm_leg``
+wraps ``llm.embed`` for the leg's duration
+(``_collect_query_fingerprints``) and records what every query embed call
+actually returned, deliberately not ``llm.llm_fingerprint()`` (a pure
+function of the embedding purpose's config alone) -- see that helper's own
+docstring for why a config read is assumed-equal rather than observed, and
+is therefore the weaker of the two. ``ArmComparison`` asserts both legs
+agree with each other AND with the corpus's own ingested fingerprint, so a
+future change that let a leg's embedder rotate mid-run fails loudly instead
+of silently producing a plausible, wrong delta.
 
 **Nothing hardcoded from the corpus (ruling 2).** The valid ``--arm`` set is
 read from ``RANK_ARMS`` at call time (``resolve_arm``), never a second
