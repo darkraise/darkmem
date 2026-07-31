@@ -49,6 +49,22 @@ asserting memory is dropped before the fact row is minted, and each candidate is
 written inside its own savepoint, so a provenance failure rolls the fact back
 with it. An unfalsifiable fact — one with no ``fact_sources`` row — is not
 reachable from here.
+
+**Provenance is re-read at write time, never trusted from the scan.** The scan
+snapshots a whole batch; the writes follow one candidate at a time, and Tier B
+does not stand still in between. A memory whose relations Phase 5 stripped, and
+whose provenance the withdrawal sweep already reconciled away, is still in the
+snapshot — writing it back would put a row on a **live** fact that nothing
+withdraws again, so a memory asserting nothing would count as a distinct origin
+in ``COUNT(DISTINCT origin_key)``. That is over-serving, and it is the one
+direction of error this layer may not take. ``_STILL_ASSERTING`` re-reads the
+assertion inside the savepoint, under the fact's own lock, so what is written
+is what the graph says at write time.
+
+**Grouping is on canonical names, because identity is.** ``entities.name`` is
+stripped and lowered on write but not whitespace-collapsed, while
+``compute_triple_key`` collapses; grouping on raw spellings therefore splits one
+fact into two groups, and the damage is not cosmetic — see ``_canon``.
 """
 
 from __future__ import annotations
@@ -104,26 +120,52 @@ LIFT_CONFIG_SCHEMA: list[FieldDescriptor] = [
 
 _BIRTH_STATUS = "candidate"
 
+def _canon(column: str) -> str:
+    r"""Canonicalise a name in SQL the way ``compute_triple_key`` does.
+
+    The scan has to group on **fact identity**, not on raw spellings, and the
+    two differ on disk: Phase 5 writes ``entities.name`` as ``strip().lower()``
+    (``pipeline.py``) while the identity function additionally collapses
+    interior whitespace. Grouping on the raw name splits one fact into two
+    groups, and the consequences are not cosmetic -- the losing spelling never
+    matches the minted row, so it is reported as outstanding work on every tick
+    forever, occupying a batch slot; and the salience bar counts per raw group,
+    so two memories asserting one fact under two spellings never clear a
+    threshold of two.
+
+    ``\s`` is the database's whitespace class, which is narrower than Python's
+    ``str.split()`` for exotic separators. That residue can only merge fewer
+    names than the identity function does, and the merge in
+    ``_pending_candidates`` still catches it before any write; what it cannot
+    do is keep the group out of the next scan, so ``_lift_one`` reports such a
+    candidate as stalled rather than letting it sit silently.
+    """
+    return rf"lower(btrim(regexp_replace({column}, '\s+', ' ', 'g')))"
+
+
 # One row per relation group that still has lift work outstanding, with its
-# asserting memories folded in.
+# asserting memories folded in. Grouped and matched on canonical names, so a
+# group corresponds to a fact rather than to a spelling.
 #
 # The `open_fact` lateral is a *batch filter*, matched on the denormalised
-# names rather than on `triple_key`, because uuid5 has no SQL spelling. It
-# decides only what is worth loading; identity is resolved authoritatively by
-# `_open_fact_id` below, so a name the canonicaliser would fold differently
-# costs a wasted scan, never a duplicate fact.
-_PENDING_GROUPS = text("""
+# names rather than on `triple_key`, because uuid5 has no SQL spelling; identity
+# is resolved authoritatively by `_open_fact_id` below. Canonicalising
+# `knowledge_triples`' side of that match costs the use of
+# `ix_knowledge_triples_live`, which is the right trade at this job's cadence:
+# a wrong pending predicate starves the batch permanently, a missed index
+# costs one scan every fifteen minutes.
+_PENDING_GROUPS = text(f"""
     WITH asserted AS (
         SELECT
-            m.project          AS project,
-            se.name            AS subject_name,
-            r.rel_type         AS rel_type,
-            oe.name            AS object_name,
-            m.id               AS memory_id,
-            m.origin_key       AS origin_key,
-            m.created_at       AS memory_created_at,
-            se.id              AS subject_id,
-            oe.id              AS object_id
+            m.project             AS project,
+            {_canon("se.name")}   AS subject_name,
+            r.rel_type            AS rel_type,
+            {_canon("oe.name")}   AS object_name,
+            m.id                  AS memory_id,
+            m.origin_key          AS origin_key,
+            m.created_at          AS memory_created_at,
+            se.id                 AS subject_id,
+            oe.id                 AS object_id
         FROM entity_relations r
         JOIN entities se ON se.id = r.source_entity_id
         JOIN entities oe ON oe.id = r.target_entity_id
@@ -149,9 +191,9 @@ _PENDING_GROUPS = text("""
         SELECT kt.id
         FROM knowledge_triples kt
         WHERE kt.project = g.project
-          AND kt.subject_name = g.subject_name
+          AND {_canon("kt.subject_name")} = g.subject_name
           AND kt.rel_type = g.rel_type
-          AND kt.object_name = g.object_name
+          AND {_canon("kt.object_name")} = g.object_name
           AND kt.expired_at IS NULL
           AND kt.invalid_at IS NULL
         ORDER BY kt.created_at, kt.id
@@ -173,6 +215,28 @@ _PENDING_GROUPS = text("""
       )
     ORDER BY g.project, g.subject_name, g.rel_type, g.object_name
     LIMIT CAST(:batch AS integer)
+""")
+
+# Re-read of the assertion the scan snapshotted, run at write time.
+#
+# The scan and the write are separated by every candidate before this one, and
+# Tier B does not stand still across that gap: Phase 5 can strip a memory's
+# relations and reconcile away its provenance in between. Writing from the
+# snapshot alone would then re-add provenance for a memory that asserts
+# nothing, and the row would land on a *live* fact where nothing withdraws it
+# again -- a phantom origin inflating COUNT(DISTINCT origin_key), which is
+# over-serving, the one direction this layer may not err in.
+_STILL_ASSERTING = text(f"""
+    SELECT DISTINCT CAST(m.id AS text) AS memory_id
+    FROM entity_relations r
+    JOIN entities se ON se.id = r.source_entity_id
+    JOIN entities oe ON oe.id = r.target_entity_id
+    JOIN memories m ON m.id = ANY(r.memory_ids)
+    WHERE m.project = CAST(:project AS text)
+      AND {_canon("se.name")} = CAST(:subject_name AS text)
+      AND r.rel_type = CAST(:rel_type AS text)
+      AND {_canon("oe.name")} = CAST(:object_name AS text)
+      AND m.id = ANY(CAST(:memory_ids AS uuid[]))
 """)
 
 # FOR UPDATE, not a bare read: the Tier-B withdrawal sweep expires a fact under
@@ -212,6 +276,15 @@ class _Candidate:
     # source_ref -> origin_key. Keyed by ref so a memory asserting a triple
     # through two relation rows (two entity types sharing a name) is one source.
     origins: dict[str, str | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _LiftedOne:
+    """One candidate's outcome. ``stalled`` is the phantom-pending signature."""
+
+    minted: bool = False
+    sources_added: int = 0
+    stalled: bool = False
 
 
 @dataclass(frozen=True)
@@ -317,19 +390,45 @@ async def _existing_refs(session: AsyncSession, fact_id: str) -> set[str]:
     return {str(ref) for ref in result.scalars().all()}
 
 
-async def _lift_one(session: AsyncSession, candidate: _Candidate) -> tuple[bool, int]:
+async def _still_asserting(session: AsyncSession, candidate: _Candidate) -> set[str]:
+    result = await session.execute(
+        _STILL_ASSERTING,
+        {
+            "project": candidate.project,
+            "subject_name": candidate.subject_name,
+            "rel_type": candidate.rel_type,
+            "object_name": candidate.object_name,
+            "memory_ids": sorted(candidate.origins),
+        },
+    )
+    return {str(ref) for ref in result.scalars().all()}
+
+
+async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
     """Resolve or mint the fact, add the missing sources, emit the difference.
 
-    Returns ``(minted, sources_added)``. One event per newly written
-    ``fact_sources`` row: the payload doc 08 §4.3 fixes is ``{fact_id,
-    memory_id}``, so an event is (fact, memory)-grained by construction — the
-    same grain the withdrawal side emits at — and a fact that gained two sources
-    in one tick has two memories to name, not one. The drain dedups fact ids.
+    One event per newly written ``fact_sources`` row: the payload doc 08 §4.3
+    fixes is ``{fact_id, memory_id}``, so an event is (fact, memory)-grained by
+    construction — the same grain the withdrawal side emits at — and a fact that
+    gained two sources in one tick has two memories to name, not one. The drain
+    dedups fact ids.
+
+    The assertion is **re-read here**, inside the savepoint and under the fact's
+    own lock, rather than trusted from the scan's snapshot. See
+    ``_STILL_ASSERTING``: provenance is a claim about what the graph says now,
+    and writing it from a stale snapshot manufactures a witness.
     """
     if not candidate.origins:
-        return False, 0
+        return _LiftedOne()
 
     fact_id = await _open_fact_id(session, candidate.triple_key)
+    live = await _still_asserting(session, candidate)
+    if not live:
+        # Every memory behind this candidate stopped asserting it between the
+        # scan and now. Minting on the strength of the snapshot would create a
+        # fact no memory stands behind.
+        return _LiftedOne()
+
     minted = fact_id is None
     if fact_id is None:
         fact_id = await _mint_fact(session, candidate)
@@ -339,7 +438,7 @@ async def _lift_one(session: AsyncSession, candidate: _Candidate) -> tuple[bool,
 
     sources = FactSourceRepository(session)
     added = 0
-    for ref in sorted(candidate.origins):
+    for ref in sorted(live):
         if ref in stored:
             continue
         await sources.add_source(
@@ -357,7 +456,14 @@ async def _lift_one(session: AsyncSession, candidate: _Candidate) -> tuple[bool,
             payload={"fact_id": fact_id, "memory_id": ref},
         )
         added += 1
-    return minted, added
+    # Loaded as outstanding work, nothing had been withdrawn, and yet nothing
+    # was written: the scan's pending predicate and the identity resolution
+    # disagree about this group, so it will be reported outstanding again on
+    # every tick and hold a batch slot. Rare (it needs a name pair the database
+    # canonicaliser keeps apart and the identity function folds), but silent
+    # starvation is what makes it worth a line in the log.
+    stalled = not minted and added == 0 and live == set(candidate.origins)
+    return _LiftedOne(minted=minted, sources_added=added, stalled=stalled)
 
 
 async def run_lift(
@@ -382,7 +488,7 @@ async def run_lift(
     for candidate in candidates:
         try:
             async with session.begin_nested():
-                minted, sources_added = await _lift_one(session, candidate)
+                lifted = await _lift_one(session, candidate)
         except Exception:
             logger.exception(
                 "fact lifting failed for %s (%s %s %s) in project %s",
@@ -393,8 +499,20 @@ async def run_lift(
                 candidate.project,
             )
             continue
-        created += int(minted)
-        added += sources_added
+        if lifted.stalled:
+            logger.warning(
+                "fact %s (%s %s %s, project %s) is reported as outstanding work "
+                "but resolves to a fact that already holds every source it "
+                "asserts; it will hold a batch slot until its endpoint names "
+                "canonicalise identically in SQL and in compute_triple_key",
+                candidate.triple_key,
+                candidate.subject_name,
+                candidate.rel_type,
+                candidate.object_name,
+                candidate.project,
+            )
+        created += int(lifted.minted)
+        added += lifted.sources_added
     return LiftOutcome(
         candidates=len(candidates),
         facts_created=created,

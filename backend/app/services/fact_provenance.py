@@ -159,7 +159,11 @@ async def _withdraw(
             object_type="fact",
             object_id=fact_id,
             project=row["project"],
-            payload={"fact_id": str(fact_id), "memory_id": str(memory_id)},
+            # The same spelling the producer emits, minted by the same
+            # function: the drain groups these payloads, so two halves
+            # rendering one memory id two ways would split one fact's
+            # evidence movement into two.
+            payload={"fact_id": str(fact_id), "memory_id": memory_source_ref(memory_id)},
         )
         affected.append(str(fact_id))
     return affected

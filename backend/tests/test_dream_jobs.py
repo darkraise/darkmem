@@ -295,15 +295,46 @@ _ALLOWED_DREAM_JOB_LINES: dict[str, set[str]] = {
 }
 
 
+# Modules that are legitimately imported by the umbrella but are shared
+# infrastructure rather than a family job's body. Everything else the umbrella
+# pulls out of `app.services` is a job implementation and inherits the scan.
+_UMBRELLA_INFRASTRUCTURE = {"job_registry"}
+
+
+def dream_job_implementation_modules() -> set[str]:
+    """The modules holding a family job's real body, derived rather than listed.
+
+    A shipped runner's work does not live in `dream_jobs.py` — the umbrella
+    imports it — so scanning for `app.services.dream_jobs` alone stops catching
+    a hot-path caller the moment the first member ships: importing the
+    implementation module directly reaches the job just as effectively and
+    names the umbrella nowhere. Reading the umbrella's own imports instead of
+    keeping a hand-maintained list means the next member (T2.09, T2.11, T2.12,
+    T2.53) is covered by the act of wiring it up, with nothing to remember.
+    """
+    umbrella = (BACKEND / "app" / "services" / "dream_jobs.py").read_text()
+    modules: set[str] = set()
+    for line in umbrella.splitlines():
+        stripped = line.strip()
+        prefix = "from app.services."
+        if not stripped.startswith(prefix):
+            continue
+        module = stripped[len(prefix):].split()[0].split(".")[0]
+        if module not in _UMBRELLA_INFRASTRUCTURE:
+            modules.add(module)
+    return modules
+
+
 def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> list[str]:
-    """A forbidden reference is either an import from `app.services.dream_jobs`
-    or a quoted literal naming one of the six family job keys, in any file
-    outside the umbrella module, and on any line outside the one legitimate
-    registration call site.
+    """A forbidden reference is an import from `app.services.dream_jobs`, an
+    import from any module holding a family job's real body, or a quoted literal
+    naming one of the six family job keys — in any file outside the umbrella
+    module, and on any line outside the one legitimate registration call site.
 
     Mirrors `tests/test_inert_objects.py`'s inert-purpose scan: a source
     scan that fails the build, not a convention a reviewer has to remember.
     """
+    implementations = dream_job_implementation_modules()
     offenders: list[str] = []
     for path in paths:
         rel = str(path.relative_to(backend_root))
@@ -317,6 +348,11 @@ def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> li
             forbidden = (
                 "app.services.dream_jobs" in line
                 or "from app.services import dream_jobs" in line
+                or any(
+                    f"app.services.{module}" in line
+                    or f"from app.services import {module}" in line
+                    for module in implementations
+                )
                 or any(f'"{key}"' in line or f"'{key}'" in line for key in DREAM_JOB_KEYS)
             )
             if forbidden and stripped not in allowed_lines:
@@ -377,6 +413,45 @@ def test_guard_fails_when_a_forbidden_call_is_introduced(tmp_path):
     offenders = _forbidden_dream_job_references([offending], tmp_path)
     assert offenders, "the guard must flag an inline call to a family job"
     assert any("fact_lift" in o for o in offenders)
+
+
+def test_the_scan_covers_a_shipped_jobs_implementation_module(tmp_path):
+    """A shipped runner's body does not live in the umbrella, so reaching the
+    job no longer requires naming `dream_jobs` at all — importing the
+    implementation module directly is the same hot-path violation with none of
+    the old scan's fingerprints. Negative control for that arm."""
+    implementations = dream_job_implementation_modules()
+    assert implementations, (
+        "the umbrella imports no implementation module — either nothing has "
+        "shipped, or the derivation below has stopped finding them and the "
+        "scan would pass vacuously"
+    )
+    module = sorted(implementations)[0]
+
+    offending = tmp_path / "fake_retrieval_service.py"
+    offending.write_text(
+        f"from app.services.{module} import run_lift\n"
+        "\n"
+        "async def search(session):\n"
+        "    await run_lift(session)\n"
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, (
+        f"the guard must flag a hot-path import of app.services.{module}, "
+        "which is a family job's real body"
+    )
+
+
+def test_every_shipped_member_has_its_body_covered_by_the_scan():
+    """The derivation is what makes the guard self-maintaining, so pin that it
+    actually resolves the shipped members rather than returning something
+    incidental."""
+    implementations = dream_job_implementation_modules()
+    assert "fact_lift" in implementations
+    assert "job_registry" not in implementations, (
+        "shared infrastructure must stay out, or every module in the tree "
+        "that schedules anything would read as a violation"
+    )
 
 
 # ── Done-when / test-plan point 6: placeholders are identifiable ─────────

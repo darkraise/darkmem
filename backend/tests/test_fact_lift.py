@@ -22,6 +22,7 @@ producer can get silently wrong:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import pytest
 from sqlalchemy import text
@@ -35,10 +36,16 @@ from app.services.dream_jobs import FACT_LIFT_JOB_KEY, register_dream_jobs
 from app.services.fact_lift import (
     DEFAULT_LIFT_BATCH,
     LIFT_CONFIG_SCHEMA,
+    _lift_one,
+    _pending_candidates,
     fact_sentence,
     run_lift,
 )
-from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
+from app.services.fact_provenance import (
+    MEMORY_SOURCE_KIND,
+    memory_source_ref,
+    reconcile_memory_sources,
+)
 from app.services.job_registry import JobRegistry
 from app.services.triple_key import compute_triple_key
 from app.utils.ids import new_id
@@ -489,6 +496,162 @@ async def test_an_expired_fact_re_lifts_as_a_new_open_belief(session):
     assert reborn["expired_at"] is None and reborn["invalid_at"] is None
     assert reborn["triple_key"] == retained["triple_key"]
     assert len(await sources(session, reborn["id"])) == 1
+
+
+# ────── the snapshot is not evidence: re-read assertion at write time ──────
+
+
+@pytest.mark.asyncio
+async def test_a_memory_stripped_between_scan_and_write_is_not_re_added(session):
+    """Phantom corroboration, which is the failure this layer exists to prevent.
+
+    `_pending_candidates` snapshots a whole batch; the writes follow one
+    candidate at a time. If Phase 5 strips a memory's relations and the
+    withdrawal sweep reconciles its provenance away in that gap, writing from
+    the snapshot puts the row back on a **live** fact — and nothing withdraws it
+    a second time, so a memory asserting nothing counts as a distinct origin
+    forever. That is over-serving, not under-serving.
+    """
+    keeper = await seed_memory(session, origin_key="session-a")
+    doomed = await seed_memory(session, origin_key="session-b")
+    for memory_id in (keeper, doomed):
+        await assert_relation(
+            session, memory_id=memory_id, subject="darkmem", rel_type="USES", obj="postgres",
+        )
+    await run_lift(session)
+    fact_id = (await facts(session))[0]["id"]
+    assert len(await sources(session, fact_id)) == 2
+
+    # A third memory makes the group outstanding again, so the scan snapshots
+    # it — carrying all three, `doomed` included — exactly as it would when a
+    # batch is scanned and then written one candidate at a time.
+    newcomer = await seed_memory(session, origin_key="session-c")
+    await assert_relation(
+        session, memory_id=newcomer, subject="darkmem", rel_type="USES", obj="postgres",
+    )
+    stale = await _pending_candidates(
+        session, batch_size=DEFAULT_LIFT_BATCH, min_asserting_memories=1,
+    )
+    assert len(stale) == 1
+    assert memory_source_ref(doomed) in stale[0].origins
+
+    # Now Tier B moves under the snapshot: Phase 5 strips `doomed`'s relations
+    # and the withdrawal sweep reconciles its provenance away.
+    await PostgresGraphRepository(session).delete_by_memory_id(UUID(doomed))
+    await reconcile_memory_sources(session, memory_id=doomed)
+    assert {row["source_ref"] for row in await sources(session, fact_id)} == {
+        memory_source_ref(keeper)
+    }
+
+    async with session.begin_nested():
+        lifted = await _lift_one(session, stale[0])
+
+    refs = {row["source_ref"] for row in await sources(session, fact_id)}
+    assert refs == {memory_source_ref(keeper), memory_source_ref(newcomer)}, (
+        "a memory with zero Layer-1 assertions was re-added as a source"
+    )
+    assert lifted.sources_added == 1
+    assert await FactSourceRepository(session).count_distinct_origins(fact_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_whose_every_assertion_vanished_mints_nothing(session):
+    memory_id = await seed_memory(session)
+    await assert_relation(
+        session, memory_id=memory_id, subject="darkmem", rel_type="USES", obj="postgres",
+    )
+    candidates = await _pending_candidates(
+        session, batch_size=DEFAULT_LIFT_BATCH, min_asserting_memories=1,
+    )
+    assert len(candidates) == 1
+
+    await PostgresGraphRepository(session).delete_by_memory_id(UUID(memory_id))
+
+    async with session.begin_nested():
+        lifted = await _lift_one(session, candidates[0])
+
+    assert (lifted.minted, lifted.sources_added) == (False, 0)
+    assert await facts(session) == [], (
+        "a fact no memory stands behind must not be minted from a stale snapshot"
+    )
+
+
+# ────────── identity, not spelling, is what the scan groups on ──────────
+
+
+async def seed_two_spellings(session) -> tuple[str, str]:
+    """One canonical triple asserted under two whitespace spellings.
+
+    `compute_triple_key` collapses interior whitespace; Phase 5 strips and
+    lowers but does not collapse (`pipeline.py`), so this is reachable on disk.
+    """
+    first = await seed_memory(session, origin_key="session-a")
+    second = await seed_memory(session, origin_key="session-b")
+    await assert_relation(
+        session, memory_id=first, subject="darkmem", rel_type="USES", obj="postgres db",
+    )
+    await assert_relation(
+        session, memory_id=second, subject="darkmem", rel_type="USES", obj="postgres  db",
+    )
+    return first, second
+
+
+@pytest.mark.asyncio
+async def test_two_spellings_of_one_triple_lift_to_one_canonically_named_fact(session):
+    first, second = await seed_two_spellings(session)
+
+    outcome = await run_lift(session)
+
+    rows = await facts(session)
+    assert len(rows) == 1, "two spellings of one canonical triple are one fact"
+    assert rows[0]["object_name"] == "postgres db", (
+        "the denormalised name is canonical, so the trigram text the "
+        "contradiction scan reads carries no double space"
+    )
+    assert rows[0]["fact"] == "darkmem uses postgres db"
+    assert outcome.sources_added == 2
+    assert {row["source_ref"] for row in await sources(session, rows[0]["id"])} == {
+        memory_source_ref(first), memory_source_ref(second),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_losing_spelling_does_not_stay_outstanding_work_forever(session):
+    """The starvation consequence, asserted on its own so nothing earlier can
+    mask it. Grouping on raw names leaves the spelling that lost the merge
+    unmatched by the minted row, so it is reported outstanding on every tick —
+    a permanent batch-slot occupant that starves later groups at the margin and
+    destroys the `candidates == 0` steady state the no-op guard is recognised
+    by."""
+    await seed_two_spellings(session)
+    await run_lift(session)
+
+    for tick in range(3):
+        outcome = await run_lift(session)
+        assert outcome.candidates == 0, (
+            f"tick {tick} still reports outstanding work for an already-lifted, "
+            f"fully-sourced fact"
+        )
+        assert outcome.events_emitted == 0
+
+
+@pytest.mark.asyncio
+async def test_the_salience_bar_counts_memories_per_fact_not_per_spelling(session):
+    """Two distinct memories asserting one canonical triple under two spellings
+    are two witnesses for that fact, so a bar of two must clear."""
+    first = await seed_memory(session, origin_key="session-a")
+    second = await seed_memory(session, origin_key="session-b")
+    await assert_relation(
+        session, memory_id=first, subject="darkmem", rel_type="USES", obj="postgres db",
+    )
+    await assert_relation(
+        session, memory_id=second, subject="darkmem", rel_type="USES", obj="postgres  db",
+    )
+
+    outcome = await run_lift(session, min_asserting_memories=2)
+
+    assert outcome.facts_created == 1
+    assert len(await sources(session, (await facts(session))[0]["id"])) == 2
 
 
 # ────────────── the salience bar and the batch bound ──────────────
