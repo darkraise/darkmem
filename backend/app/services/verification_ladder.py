@@ -55,6 +55,7 @@ from app.repositories.fact_sources import (
     OriginProfile,
 )
 from app.services.contradiction_veto import adjudicate_contradiction
+from app.services.supersession_hold import adjudicate_supersession_hold
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,14 @@ class LadderDecision:
     source_kinds: tuple[str, ...]
     contradiction_blocked: bool
     confidence: float
+    # T2.60. Defaulted so a construction site that predates the blocker keeps
+    # reporting the unblocked answer rather than failing to build, which is the
+    # same extensibility T2.46's hysteresis field will need. It means exactly
+    # "this decision withheld a promotion because a newer supersession signal
+    # stands over a memory source", never "a signal exists somewhere": the
+    # metric that reads it counts blocked promotions, so a flag set on a
+    # decision that was never going to promote would inflate that count.
+    supersession_blocked: bool = False
 
 
 def compute_confidence(*, origin_count: int, required_n: int, gate_fired: str) -> float:
@@ -302,6 +311,7 @@ def decide(
     config: LadderConfig,
     *,
     open_contradiction: ContradictionVerdict = NO_DETECTOR,
+    supersession_blocked: bool = False,
 ) -> LadderDecision:
     """Promotion, demotion, dispute, recovery or hold -- a pure function.
 
@@ -317,39 +327,36 @@ def decide(
     decision record must report the support it overrode, not because they can
     change the answer.
 
-    ``open_contradiction`` is a keyword on purpose. T2.60's sibling blocker --
-    a newer REPLACES-family / supersession signal over the fact's live memory
-    sources -- slots in beside it as a purely additive keyword when that task
-    lands. It is deliberately *not* added now: it would have no provider, and
-    a zero-writer input presented as substrate is the thing invariant 23
-    forbids (ruling, 2026-07-29).
+    ``supersession_blocked`` is spec §2.1 condition 4's other half (T2.60, and
+    the 2026-07-29 ruling that restored it after doc 08 dropped it by drift):
+    a newer REPLACES-family signal standing over one of the fact's memory
+    sources. It is adjudicated in ``recompute_fact`` for the same reason the
+    contradiction verdict is -- it needs a session this function must not have
+    -- and ``supersession_hold`` holds the predicate and its argument. Unlike
+    the contradiction verdict it is a plain boolean rather than a tri-state:
+    the third value exists there because ``False`` is permission to *leave*
+    ``disputed``, and this signal resolves nothing.
 
-    **T2.06 ruling for T2.60 (2026-07-31), binding on whichever branch that
-    keyword adds.** Doc 08 §4 defines the supersession hold as deterministic
-    -- a candidate that has met its corroboration bar but is held from
-    promoting by a live signal, never itself a dispute, never a demotion.
-    That is exactly the shape T2.06's promotion-rate SQL cannot see for free:
-    the metric's "eligible candidate facts" equivalence (a journaled
-    transition with ``origin_count >= required_n`` -- see
-    ``tests/test_ladder_journaling.py``) holds today only because this
-    function never returns a hold for a candidate that met its bar. T2.60's
-    blocker breaks that by construction, the same way a bare `hold` would
-    have if T2.06 had left the contradiction veto's reconfirmed-dispute hold
-    unjournaled. The two hazards are symmetric, and T2.06 resolved its own
-    the same way: T2.60 must carry an analogous
-    ``supersession_blocked: bool`` field on ``LadderDecision``, and its
-    applier-side hold must journal exactly the way ``contradiction_blocked``
-    does today (the OR-branch in
-    ``KnowledgeTripleRepository.set_verification_status``) -- not stay
-    silent. The alternative (ruling that supersession-blocked candidates are
-    simply not "eligible" for N-tuning purposes) was considered and
-    rejected: it would let a widening supersession block silently inflate
-    the observed promotion rate with no journal trace, which is precisely
-    the kind of invisible tuning distortion the contradiction veto's
-    blocked-hold journaling exists to prevent on the other axis. Do not
-    resolve this by omission; if T2.60 has a reason to choose the rejected
-    alternative instead, that has to be argued in T2.60's own plan, not
-    defaulted into by silence.
+    **It blocks and only blocks.** It is consulted after the ``confirmed``
+    hold, after the veto and after the already-``corroborated`` hold, so it
+    can never write ``disputed`` and can never demote. Its two branches are
+    the two doors into ``corroborated``: the ordinary promotion, and the
+    recovery out of ``disputed`` at or above the bar.
+
+    **The T2.06 ruling this discharges (2026-07-31).** T2.06 justified leaving
+    ordinary holds unjournaled by arguing they carry nothing a G-C metric
+    reads: an unblocked candidate below its bar "was never eligible, excluded
+    from the promotion-rate denominator by construction, not by omission".
+    This blocker breaks that equivalence by construction, because it is
+    precisely a meets-bar-but-holds path. The ruling bound the resolution
+    rather than leaving it open -- carry a ``supersession_blocked`` field and
+    journal it exactly the way ``contradiction_blocked`` is journaled (the
+    OR-branch in ``KnowledgeTripleRepository.set_verification_status``), never
+    ruling the fact ineligible, "because the alternative lets a widening block
+    silently inflate the promotion rate with no trace". Both halves are done.
+    The restated eligibility equivalence and the denominator argument the
+    metrics runner must implement are in ``supersession_hold``'s module
+    docstring, beside the predicate they describe.
     """
     k = profile.origin_count
     n = profile.required_origin_count_for(
@@ -360,7 +367,13 @@ def decide(
     gate = profile.gate_fired_for(time_gap_days=config.time_gap_days)
     confidence = compute_confidence(origin_count=k, required_n=n, gate_fired=gate)
 
-    def settled(target: str, outcome: Outcome, *, blocked: bool = False) -> LadderDecision:
+    def settled(
+        target: str,
+        outcome: Outcome,
+        *,
+        blocked: bool = False,
+        superseded: bool = False,
+    ) -> LadderDecision:
         return LadderDecision(
             fact_id=fact_id,
             current_status=current_status,
@@ -372,6 +385,7 @@ def decide(
             source_kinds=profile.source_kinds,
             contradiction_blocked=blocked,
             confidence=confidence,
+            supersession_blocked=superseded,
         )
 
     # A human ratified this fact. The machine never moves it in either
@@ -401,11 +415,27 @@ def decide(
     if current_status == "disputed":
         if open_contradiction is None:
             return settled("disputed", "hold")
+        # Recovery lands on `corroborated` only when it would have promoted, so
+        # the blocker applies here for the same reason it applies below: leaving
+        # `disputed` at or above the bar *is* a promotion, and letting one
+        # through the recovery door would make the block depend on whether the
+        # fact happened to be disputed first. Recovering to `candidate` is the
+        # branch's own below-bar outcome, not a demotion this blocker invented.
+        if k >= n and supersession_blocked:
+            return settled("candidate", "recover", superseded=True)
         return settled("corroborated" if k >= n else "candidate", "recover")
 
     if k >= n:
         if current_status == "corroborated":
             return settled("corroborated", "hold")
+        # Checked *after* the already-corroborated hold, and the order is the
+        # whole of clause 3. This blocker withholds promotions; it never demotes
+        # a fact that already holds the badge, so a corroborated fact leaves by
+        # the branch above with the flag unset and no status write. Reaching
+        # here means the fact is below `corroborated` and met its bar -- the
+        # meets-bar-but-holds path T2.06's ruling requires be journaled.
+        if supersession_blocked:
+            return settled(current_status, "hold", superseded=True)
         return settled("corroborated", "promote")
 
     # Below N. Demotion is immediate here; doc 08 §4.3's hysteresis and the
@@ -547,6 +577,7 @@ async def recompute_fact(
     fact_id: UUID | str,
     *,
     open_contradiction: ContradictionVerdict = NO_DETECTOR,
+    supersession_blocked: bool | None = None,
 ) -> LadderDecision:
     """Recompute one fact's verification status, and return why.
 
@@ -560,6 +591,13 @@ async def recompute_fact(
     recorded inputs); leaving it at ``NO_DETECTOR`` runs every wired detector
     under the same lock and transaction as the status write, so the verdict
     cannot be taken against a row the applier no longer holds.
+
+    T2.60's supersession blocker is adjudicated on the same side, for the same
+    reason and inside the same lock: its predicate reads ``fact_sources`` and
+    ``memories``, and a signal taken outside the ``FOR UPDATE`` window could
+    describe provenance the applier no longer holds. ``None`` means "scan
+    here"; an explicit boolean overrides it, which is what lets a replay
+    re-decide recorded inputs without a live graph.
 
     **This is the sole journaller of verification transitions**, which is the
     hand-off ``set_verification_status`` was written anticipating: the only
@@ -609,12 +647,17 @@ async def recompute_fact(
     if verdict is NO_DETECTOR:
         verdict = await adjudicate_contradiction(session, fact_id)
 
+    blocked = supersession_blocked
+    if blocked is None:
+        blocked = await adjudicate_supersession_hold(session, fact_id)
+
     decision = decide(
         str(fact_id),
         current,
         profile,
         config,
         open_contradiction=verdict,
+        supersession_blocked=blocked,
     )
 
     repo = KnowledgeTripleRepository(session)
@@ -644,5 +687,6 @@ async def recompute_fact(
         gate_fired=decision.gate_fired,
         source_kinds=decision.source_kinds,
         contradiction_blocked=decision.contradiction_blocked,
+        supersession_blocked=decision.supersession_blocked,
     )
     return decision
