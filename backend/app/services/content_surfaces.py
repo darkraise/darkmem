@@ -392,6 +392,9 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "DELETE /api/v1/pipeline-failures/{failure_id}",
     "POST /api/v1/pipeline-failures/retry-all",
     "POST /api/v1/pipeline-failures/{failure_id}/retry",
+    # An adjudication verb, not a read: it withdraws belief and journals the
+    # human's verdict, and returns 204, so no memory-derived row crosses it.
+    "POST /api/v1/review-queue/facts/{fact_id}/reject",
     "GET /api/v1/reembed/obsolete-counts",
     "GET /api/v1/reembed/obsolete/code-chunks",
     "GET /api/v1/reembed/obsolete/entities",

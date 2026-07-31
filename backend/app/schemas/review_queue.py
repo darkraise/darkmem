@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.services.human_adjudication import NOTE_MAX_LENGTH
 
 
 class ReviewQueueFactItem(BaseModel):
@@ -54,3 +56,7 @@ class ReviewQueueArticleListResponse(BaseModel):
 class ReviewQueueCountsResponse(BaseModel):
     facts: int
     articles: int
+
+
+class ReviewQueueRejectRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=NOTE_MAX_LENGTH)

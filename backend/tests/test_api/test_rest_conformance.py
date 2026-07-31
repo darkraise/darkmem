@@ -141,6 +141,7 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,
+    ("POST", "/api/v1/review-queue/facts/{fact_id}/reject"): 204,
     ("POST", "/api/v1/setup"): 200,
     ("GET", "/api/v1/setup/fs/list"): 200,
     ("GET", "/api/v1/setup/fs/roots"): 200,
