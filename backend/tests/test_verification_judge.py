@@ -316,3 +316,173 @@ def test_the_canonical_record_is_absent_on_this_branch():
     # record, so its first appearance must be a deliberate diff that
     # consciously edits this test.
     assert not vj.QUALIFICATION_RECORD_PATH.exists()
+
+
+# ── source scans: one door to the purpose, and off the hot path ──────────
+
+import re as _re  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+_BACKEND = _Path(__file__).resolve().parent.parent
+
+# The exact quoted token, single- or double-quoted. Matching the token itself
+# (not a same-line co-occurrence with chat_completion) is what closes the
+# two-line bypass: PURPOSE = "verification" / chat_completion(PURPOSE, msgs).
+# Identifier substrings (verification_status, verification_recompute) carry
+# no closing quote after "verification" and cannot match.
+_QUOTED_VERIFICATION = _re.compile(r"""["']verification["']""")
+
+# The only modules under app/ where the quoted purpose token is lawful today.
+# Extend ONLY with a written justification here — never by loosening the
+# match rule. (app/config.py was verified to carry no quoted token; it is
+# deliberately NOT pre-opened.)
+_QUOTED_TOKEN_ALLOWLIST = {
+    "app/services/verification_judge.py",   # the judge itself
+    "app/services/llm_seed.py",             # the purpose seed row
+    "app/services/config.py",               # PURPOSES + get_llm_config defaults
+}
+
+# Modules that may reference the judge module or its ungated probe. Empty
+# beyond the judge itself: no consumer exists yet (T2.11, T3.03). A future
+# consumer joins here consciously — and must use judge(), never the probe.
+_JUDGE_REFERENCE_ALLOWLIST = {
+    "app/services/verification_judge.py",
+}
+
+# Capture/retrieval-path modules the judge may NEVER be reachable from
+# (invariant 15) — even once consumers exist and the reference allowlist
+# grows. This list is a floor with a maintenance duty: any new capture- or
+# retrieval-path service (T2.42's facts channel is already minted as a task)
+# joins it, and the whole-branch review checks it.
+_HOT_PATH_MODULES = {
+    "app/services/pipeline.py",
+    "app/services/hybrid_search.py",
+    "app/services/memory_buffer.py",
+    "app/services/memory.py",
+    "app/services/code_query.py",
+    "app/services/reranker.py",
+}
+
+
+def _app_sources() -> list[_Path]:
+    return [p for p in (_BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+
+
+def _rel(path: _Path, root: _Path) -> str:
+    return str(path.relative_to(root)).replace("\\", "/")
+
+
+def _single_door_offenders(paths: list[_Path], root: _Path) -> list[str]:
+    offenders = []
+    for path in paths:
+        rel = _rel(path, root)
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _QUOTED_VERIFICATION.search(line) and rel not in _QUOTED_TOKEN_ALLOWLIST:
+                offenders.append(f"{rel}:{lineno}: {line.strip()}")
+            if ("qualification_probe" in line or "verification_judge" in line) \
+                    and rel not in _JUDGE_REFERENCE_ALLOWLIST:
+                offenders.append(f"{rel}:{lineno}: {line.strip()}")
+    return offenders
+
+
+def _hot_path_offenders(paths: list[_Path], root: _Path) -> list[str]:
+    offenders = []
+    for path in paths:
+        rel = _rel(path, root)
+        if rel not in _HOT_PATH_MODULES and not rel.startswith("app/api/"):
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "verification_judge" in line:
+                offenders.append(f"{rel}:{lineno}: {line.strip()}")
+    return offenders
+
+
+def _assert_scan_floor(paths: list[_Path]) -> None:
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the source scan would "
+        "pass vacuously; check _BACKEND / the glob path"
+    )
+
+
+def test_only_the_judge_module_reaches_the_verification_purpose():
+    paths = _app_sources()
+    _assert_scan_floor(paths)
+    offenders = _single_door_offenders(paths, _BACKEND)
+    assert not offenders, (
+        "a module outside the judge reached the verification purpose or its "
+        "ungated probe — every consumer must go through "
+        "VerificationJudge.judge(), the gated door (doc 17 §6):\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_single_door_scan_flags_a_direct_dispatch(tmp_path):
+    offending = tmp_path / "app" / "services" / "sneaky.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(
+        'async def check(llm, msgs):\n'
+        '    return await llm.chat_completion("verification", msgs)\n'
+    )
+    offenders = _single_door_offenders([offending], tmp_path)
+    assert offenders and "verification" in offenders[0]
+
+
+def test_single_door_scan_flags_the_two_line_indirection(tmp_path):
+    offending = tmp_path / "app" / "services" / "sneaky.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(
+        'PURPOSE = "verification"\n'
+        "async def check(llm, msgs):\n"
+        "    return await llm.chat_completion(PURPOSE, msgs)\n"
+    )
+    offenders = _single_door_offenders([offending], tmp_path)
+    assert offenders, "the two-line indirection must still be flagged"
+
+
+def test_single_door_scan_flags_a_probe_call(tmp_path):
+    offending = tmp_path / "app" / "services" / "sneaky.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(
+        "async def check(judge, p, h):\n"
+        "    return await judge.qualification_probe(p, h)\n"
+    )
+    offenders = _single_door_offenders([offending], tmp_path)
+    assert offenders and "qualification_probe" in offenders[0]
+
+
+def test_single_door_scan_ignores_identifier_substrings(tmp_path):
+    clean = tmp_path / "app" / "services" / "fine.py"
+    clean.parent.mkdir(parents=True)
+    clean.write_text(
+        'JOB = "verification_recompute"\n'
+        "verification_status = 'candidate'\n"
+    )
+    assert _single_door_offenders([clean], tmp_path) == []
+
+
+def test_the_judge_is_unreachable_from_capture_and_retrieval():
+    paths = _app_sources()
+    _assert_scan_floor(paths)
+    offenders = _hot_path_offenders(paths, _BACKEND)
+    assert not offenders, (
+        "a capture/retrieval-path module reached the verification judge — "
+        "invariant 15: Tier-C only, never the hot path:\n" + "\n".join(offenders)
+    )
+
+
+def test_hot_path_scan_flags_a_planted_route_import(tmp_path):
+    offending = tmp_path / "app" / "api" / "routes" / "articles.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(
+        "from app.services.verification_judge import VerificationJudge\n"
+    )
+    offenders = _hot_path_offenders([offending], tmp_path)
+    assert offenders and "verification_judge" in offenders[0]
+
+
+def test_hot_path_scan_flags_a_planted_pipeline_import(tmp_path):
+    offending = tmp_path / "app" / "services" / "pipeline.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text("from app.services import verification_judge\n")
+    offenders = _hot_path_offenders([offending], tmp_path)
+    assert offenders
