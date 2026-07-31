@@ -14,10 +14,9 @@ closed relation vocabulary alone, with no model and no judgment:
 
 1. ``single_valued`` — two live facts in one project sharing ``subject_name``
    and ``rel_type`` but naming different objects, where the relation admits at
-   most one object per subject. ``SINGLE_VALUED_RELATIONS`` is deliberately tiny
-   (below): a project legitimately ``USES`` many tools and a service is
-   legitimately ``DEPLOYED_ON`` many hosts, and telling "also true" from
-   "instead of" on those needs the model T2.11 wires.
+   most one object per subject. ``SINGLE_VALUED_RELATIONS`` is **empty today**
+   and the reasoning is below; the rule is live and its precondition is not
+   currently met by any relation the taxonomy stores.
 2. ``inverse_replacement`` — a REPLACES-family edge asserted in both directions
    between the same two names. Directed succession cannot run both ways over one
    window. ``REPLACES_FAMILY`` is imported rather than re-typed, because the
@@ -29,6 +28,17 @@ whole reason a real system's version of this scan does not degenerate into
 noise: the windows must overlap (disjoint windows are succession the belief axis
 already models, §3.1), and the counterpart must carry an attributable origin the
 subject fact does not — one source restating itself is an echo, not testimony.
+
+**The echo test is deliberately asymmetric, and the asymmetry is the point.**
+It asks whether the *counterpart* brings a witness the subject fact does not
+have, so with subject origins {a} and counterpart origins {a, b} the subject is
+disputed while the counterpart, scanned in its own turn, is not: b is new
+testimony against the subject's claim, but every origin behind the subject is
+already behind the counterpart, so nothing independent disputes it. That is the
+correct reading of "the contradicting source is a distinct origin, not the same
+one re-stating itself" — the question is always asked of the challenger. A
+symmetric rule would dispute both rows on one witness's say-so, which is a vote,
+and the veto is not a vote.
 
 **Nothing here reads configuration.** The veto is absolute (doc 08 §4.2): not a
 weight, not a score, not tunable. There is no threshold to tighten and no flag to
@@ -57,12 +67,37 @@ logger = logging.getLogger(__name__)
 
 # Relations where one subject admits at most one object at a time, so a second
 # object over the same window is a genuine conflict rather than a second true
-# statement. Every other member of RELATIONSHIP_TYPES is multi-valued in normal
-# use, and a deterministic scan has no way to tell an additional truth from a
-# replacement without reading the sentences — which is T2.11's job, not this
-# one's. Widening this set is a semantic claim about the relation, not a tuning
-# knob: it belongs in a task with a stated warrant.
-SINGLE_VALUED_RELATIONS: frozenset[str] = frozenset({"HAPPENED_ON"})
+# statement.
+#
+# **Empty, and that is the finding rather than an omission.** Most of
+# RELATIONSHIP_TYPES is plainly multi-valued — a project USES many tools, a
+# service is DEPLOYED_ON many hosts — and telling an additional truth from a
+# replacement there needs the model T2.11 wires. `HAPPENED_ON` looked like the
+# one exception (an event happens on one date) and it is not, because
+# `normalize_relation_type` folds three different senses into it and stores no
+# discriminator between them:
+#
+#   1. a point occurrence     — "the launch HAPPENED_ON 2024-01-01"
+#   2. a span occurrence      — a multi-day conference asserted per day
+#   3. a *location*, via LEGACY_RELATION_TYPE_MAP's VISITED -> HAPPENED_ON and
+#      LIVES_IN -> HAPPENED_ON, so "alice HAPPENED_ON paris" and "alice
+#      HAPPENED_ON tokyo" are both true and both stored under this relation
+#
+# A relation is single-valued only when *every* sense it stores is, and no
+# deterministic predicate over (subject_name, rel_type, object_name) recovers
+# sense 1: senses 1 and 2 are both date-shaped, so neither a date parse nor an
+# ISO-shape gate separates them. Admitting it anyway would manufacture disputes
+# out of true claims, which is precisely the failure doc 08 §5.3's asymmetry
+# forbids. So the set stays empty until the taxonomy separates the senses, which
+# is a taxonomy-first change (doc 06 §3.1) and not something the veto may work
+# around. The cost is that the scan's whole reach today is the
+# inverse-replacement rule; undercounting only delays a dispute.
+#
+# Widening this is a semantic claim about a relation, never a tuning edit, and
+# `tests/test_contradiction_veto.py` fails the build if a member is also a
+# target of LEGACY_RELATION_TYPE_MAP — the exact mechanism that made
+# `HAPPENED_ON` polyvalent.
+SINGLE_VALUED_RELATIONS: frozenset[str] = frozenset()
 
 RULE_SINGLE_VALUED = "single_valued"
 RULE_INVERSE_REPLACEMENT = "inverse_replacement"

@@ -47,6 +47,7 @@ from app.services.contradiction_veto import (
     windows_overlap,
 )
 from app.services.relations import REPLACES_FAMILY
+from app.taxonomy import LEGACY_RELATION_TYPE_MAP, normalize_relation_type
 from app.services.verification_ladder import (
     LADDER_CONFIG_KEY,
     LADDER_MEASUREMENTS_KEY,
@@ -132,26 +133,28 @@ async def _write_config(session, key: str, value: dict) -> None:
     await session.commit()
 
 
-async def _launch_pair(
+async def _contradicted_pair(
     session,
     *,
     corroborations: int,
     contradicting_origin: str | None,
-    event: str = "the launch",
+    pair: tuple[str, str] = ("postgres", "mysql"),
 ):
     """A well-corroborated fact, and optionally one contradicting counterpart.
 
-    ``HAPPENED_ON`` is the single-valued rule's shape: one event, one date. The
-    counterpart names a different date over the same (unbounded) window.
+    ``inverse_replacement`` is the scan's whole reach today: "postgres replaces
+    mysql" against "mysql replaces postgres", both open-ended, is mutual
+    directed succession over one window. ``SINGLE_VALUED_RELATIONS`` is empty
+    (see ``TestSingleValuedRelationsIsEmpty``), so no fixture here may lean on
+    it.
     """
-    subject = await _fact(session, subject=event, rel="HAPPENED_ON", obj="2024-01-01")
+    first, second = pair
+    subject = await _fact(session, subject=first, rel="REPLACES", obj=second)
     for index in range(corroborations):
         await _source(session, subject, f"sess-{index}")
     counterpart = None
     if contradicting_origin is not None:
-        counterpart = await _fact(
-            session, subject=event, rel="HAPPENED_ON", obj="2024-06-01"
-        )
+        counterpart = await _fact(session, subject=second, rel="REPLACES", obj=first)
         await _source(session, counterpart, contradicting_origin)
     return subject, counterpart
 
@@ -179,7 +182,7 @@ class TestTheVetoIsAbsolute:
     async def test_twenty_corroborations_promote_when_nothing_contradicts(self, session):
         """The control. Without it the veto tests could pass on a ladder that
         never promotes anything of this shape at all."""
-        subject, _ = await _launch_pair(session, corroborations=20, contradicting_origin=None)
+        subject, _ = await _contradicted_pair(session, corroborations=20, contradicting_origin=None)
 
         decision = await recompute_fact(session, subject)
         await session.commit()
@@ -195,7 +198,7 @@ class TestTheVetoIsAbsolute:
         §4.2: one contradiction does not merely block a promotion, it *demotes a
         corroborated fact to disputed*.
         """
-        subject, counterpart = await _launch_pair(
+        subject, counterpart = await _contradicted_pair(
             session, corroborations=20, contradicting_origin="contrarian"
         )
         # The counterpart is created after the promotion so the transition under
@@ -225,11 +228,11 @@ class TestTheVetoIsAbsolute:
         leaves no such threshold to hide behind.
         """
         for count in (0, 1, 3, 7, 40):
-            subject, _ = await _launch_pair(
+            subject, _ = await _contradicted_pair(
                 session,
                 corroborations=count,
                 contradicting_origin="contrarian",
-                event=f"the launch {count}",
+                pair=(f"tool-a{count}", f"tool-b{count}"),
             )
             decision = await recompute_fact(session, subject)
             await session.commit()
@@ -240,7 +243,7 @@ class TestTheVetoIsAbsolute:
 
     async def test_exactly_one_verified_event_per_veto(self, session):
         """``recompute_fact`` stays the sole journaller across the new branch."""
-        subject, _ = await _launch_pair(
+        subject, _ = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         await recompute_fact(session, subject)
@@ -259,7 +262,7 @@ class TestTheVetoIsAbsolute:
         assert events[0]["after"]["verification_status"] == "disputed"
 
     async def test_a_re_run_over_a_standing_dispute_journals_nothing_further(self, session):
-        subject, _ = await _launch_pair(
+        subject, _ = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         await recompute_fact(session, subject)
@@ -279,7 +282,7 @@ class TestTheVetoIsAbsolute:
 
     async def test_the_belief_axis_is_untouched_by_a_veto(self, session):
         """Verification and belief stay orthogonal (doc 08 §3)."""
-        subject, _ = await _launch_pair(
+        subject, _ = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         before = (
@@ -315,13 +318,11 @@ class TestEchoIsNotContradiction:
         self, session
     ):
         """Done-when 2. Ten rows, one origin, zero witnesses."""
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         for name in ("sess-a", "sess-b", "sess-c"):
             await _source(session, subject, name)
         counterpart = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-06-01"
+            session, subject="promtail", rel="REPLACES", obj="alloy"
         )
         for index in range(10):
             await _source(session, counterpart, "sess-a", ref=f"memory:echo-{index}")
@@ -338,15 +339,13 @@ class TestEchoIsNotContradiction:
         """The control for the test above, differing in one row's origin only.
 
         Without it, the echo test would also pass on a detector that never fires
-        for ``HAPPENED_ON`` at all.
+        for this rule at all.
         """
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         for name in ("sess-a", "sess-b", "sess-c"):
             await _source(session, subject, name)
         counterpart = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-06-01"
+            session, subject="promtail", rel="REPLACES", obj="alloy"
         )
         for index in range(9):
             await _source(session, counterpart, "sess-a", ref=f"memory:echo-{index}")
@@ -356,15 +355,36 @@ class TestEchoIsNotContradiction:
         assert finding is not None
         assert finding.witness_origin == "sess-outsider"
         assert finding.counterpart_id == str(counterpart)
-        assert finding.rule == RULE_SINGLE_VALUED
+        assert finding.rule == RULE_INVERSE_REPLACEMENT
+
+    async def test_the_echo_rule_asks_the_question_of_the_challenger_only(
+        self, session
+    ):
+        """The asymmetry, pinned rather than left to surprise the next reader.
+
+        Subject origins {a}, counterpart origins {a, b}. The counterpart brings
+        a witness the subject does not have, so the subject is disputed; scanned
+        in its own turn the counterpart is not, because every origin behind the
+        subject is already behind it. The question is always asked of the
+        challenger. A symmetric rule would dispute both rows on one witness's
+        say-so, which is a vote, and the veto is not a vote.
+        """
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
+        await _source(session, subject, "sess-a")
+        counterpart = await _fact(
+            session, subject="promtail", rel="REPLACES", obj="alloy"
+        )
+        await _source(session, counterpart, "sess-a", ref="memory:shared")
+        await _source(session, counterpart, "sess-b", ref="memory:extra")
+
+        assert await detect_open_contradiction(session, subject) is not None
+        assert await detect_open_contradiction(session, counterpart) is None
 
     async def test_a_counterpart_with_no_sources_at_all_does_not_veto(self, session):
         """No witness, no testimony. A fact nobody asserts cannot contradict."""
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
-        await _fact(session, subject="the launch", rel="HAPPENED_ON", obj="2024-06-01")
+        await _fact(session, subject="promtail", rel="REPLACES", obj="alloy")
 
         assert await detect_open_contradiction(session, subject) is None
 
@@ -377,12 +397,10 @@ class TestEchoIsNotContradiction:
         unattributed captures could manufacture a dispute exactly as they could
         once have manufactured a promotion.
         """
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
         counterpart = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-06-01"
+            session, subject="promtail", rel="REPLACES", obj="alloy"
         )
         await _source(session, counterpart, None, ref="memory:anon-1")
         await _source(session, counterpart, "unknown:mcp:default", ref="memory:anon-2")
@@ -399,12 +417,10 @@ class TestEchoIsNotContradiction:
         profile hands back lowercased, trimmed keys, so a raw comparison would
         read ``  Sess-A `` as a distinct witness and veto on an echo.
         """
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
         counterpart = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-06-01"
+            session, subject="promtail", rel="REPLACES", obj="alloy"
         )
         await _source(session, counterpart, "  Sess-A  ", ref="memory:cased")
 
@@ -676,7 +692,7 @@ class TestNoConfigKnobCanSoftenTheVeto:
             {"enabled": False, "threshold": 99, "min_contradictions": 5, "weight": 0.0},
         )
 
-        subject, _ = await _launch_pair(
+        subject, _ = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         decision = await recompute_fact(session, subject)
@@ -724,7 +740,7 @@ class TestRecovery:
         assert (decision.target_status, decision.outcome) == ("candidate", "recover")
 
     async def test_a_resolved_contradiction_recovers_the_fact(self, session):
-        subject, counterpart = await _launch_pair(
+        subject, counterpart = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         await recompute_fact(session, subject)
@@ -745,7 +761,7 @@ class TestRecovery:
     async def test_a_standing_contradiction_is_never_recovered(self, session):
         """Kills a recovery that fires on reaching the branch rather than on a
         clean verdict."""
-        subject, _ = await _launch_pair(
+        subject, _ = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         for _ in range(3):
@@ -754,7 +770,7 @@ class TestRecovery:
         assert await _status(session, subject) == "disputed"
 
     async def test_recovery_journals_exactly_one_transition(self, session):
-        subject, counterpart = await _launch_pair(
+        subject, counterpart = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
         await recompute_fact(session, subject)
@@ -861,14 +877,6 @@ class TestTheDeterministicScan:
 
         assert await detect_open_contradiction(session, subject) is None
 
-    def test_the_single_valued_set_is_small_and_stated(self):
-        """A widening is a semantic claim, not a tuning edit.
-
-        Pinned so that adding a polyvalent relation to the set has to come with
-        a test change and therefore a reviewer.
-        """
-        assert SINGLE_VALUED_RELATIONS == frozenset({"HAPPENED_ON"})
-
     def test_the_inverse_rule_uses_the_shared_replaces_family(self):
         """One spelling of the family, imported rather than re-typed."""
         assert REPLACES_FAMILY == frozenset({"REPLACES", "IMPROVES_ON", "BUILDS_ON"})
@@ -887,29 +895,23 @@ class TestTheDeterministicScan:
         assert finding.rule == RULE_INVERSE_REPLACEMENT
 
     async def test_the_same_claim_restated_is_agreement_not_contradiction(self, session):
-        """Same endpoints, same object — two witnesses agreeing."""
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        """Same endpoints, same direction — two witnesses agreeing."""
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
-        agreeing = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        agreeing = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, agreeing, "sess-b")
 
         assert await detect_open_contradiction(session, subject) is None
 
     async def test_a_counterpart_in_another_project_never_contradicts(self, session):
         """Project is the isolation boundary here as everywhere else."""
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
         elsewhere = await _fact(
             session,
-            subject="the launch",
-            rel="HAPPENED_ON",
-            obj="2024-06-01",
+            subject="promtail",
+            rel="REPLACES",
+            obj="alloy",
             project="some-other-project",
         )
         await _source(session, elsewhere, "sess-b")
@@ -918,16 +920,10 @@ class TestTheDeterministicScan:
 
     async def test_an_expired_counterpart_never_contradicts(self, session):
         """Belief has been withdrawn from it; it is history, not a claim."""
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
         withdrawn = await _fact(
-            session,
-            subject="the launch",
-            rel="HAPPENED_ON",
-            obj="2024-06-01",
-            expired=True,
+            session, subject="promtail", rel="REPLACES", obj="alloy", expired=True
         )
         await _source(session, withdrawn, "sess-b")
 
@@ -935,24 +931,18 @@ class TestTheDeterministicScan:
 
     async def test_an_expired_subject_is_not_adjudicated(self, session):
         subject = await _fact(
-            session,
-            subject="the launch",
-            rel="HAPPENED_ON",
-            obj="2024-01-01",
-            expired=True,
+            session, subject="alloy", rel="REPLACES", obj="promtail", expired=True
         )
         await _source(session, subject, "sess-a")
         counterpart = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-06-01"
+            session, subject="promtail", rel="REPLACES", obj="alloy"
         )
         await _source(session, counterpart, "sess-b")
 
         assert await detect_open_contradiction(session, subject) is None
 
     async def test_a_fact_never_contradicts_itself(self, session):
-        subject = await _fact(
-            session, subject="the launch", rel="HAPPENED_ON", obj="2024-01-01"
-        )
+        subject = await _fact(session, subject="alloy", rel="REPLACES", obj="promtail")
         await _source(session, subject, "sess-a")
         assert await detect_open_contradiction(session, subject) is None
 
@@ -969,6 +959,143 @@ class TestTheDeterministicScan:
     async def test_a_missing_fact_adjudicates_to_nothing(self, session):
         assert await detect_open_contradiction(session, uuid4()) is None
         assert await adjudicate_contradiction(session, uuid4()) is False
+
+
+# ───── The single-valued rule, and why its set is empty (fix round) ─────
+
+
+class TestSingleValuedRelationsIsEmpty:
+    """`HAPPENED_ON` was admitted and had to be withdrawn. This is the guard.
+
+    `normalize_relation_type` folds three unrelated senses into that one stored
+    value with no discriminator: a point occurrence, a span occurrence, and --
+    through `LEGACY_RELATION_TYPE_MAP`'s `VISITED` and `LIVES_IN` -- a *location*.
+    A relation is single-valued only when every sense it stores is, so admitting
+    it manufactured disputes out of claims that are all true at once.
+    """
+
+    def test_the_set_is_empty_and_stated(self):
+        assert SINGLE_VALUED_RELATIONS == frozenset(), (
+            "no relation in the closed vocabulary is single-valued across every "
+            "sense it stores; widening this needs a taxonomy change, not an edit"
+        )
+
+    def test_no_member_may_be_a_target_of_the_legacy_map(self):
+        """The general guard, not an enumeration of today's mistake.
+
+        A legacy alias folding a different sense into a relation is *the*
+        mechanism that made `HAPPENED_ON` polyvalent, and it re-reads the live
+        map, so a future alias pointing at a future member fails here too.
+        """
+        folded = frozenset(LEGACY_RELATION_TYPE_MAP.values())
+        offenders = SINGLE_VALUED_RELATIONS & folded
+        assert not offenders, (
+            f"{sorted(offenders)} carry legacy aliases "
+            f"({sorted(k for k, v in LEGACY_RELATION_TYPE_MAP.items() if v in offenders)}) "
+            "that fold a different sense into the same stored rel_type, so the "
+            "relation is not single-valued and the scan would manufacture "
+            "disputes out of simultaneously-true claims"
+        )
+
+    def test_the_legacy_map_really_does_fold_locations_into_happened_on(self):
+        """The premise of the guard above, asserted rather than assumed.
+
+        If the taxonomy ever separates these senses this test fails, which is
+        the signal that re-admitting `HAPPENED_ON` may be re-examined.
+        """
+        assert normalize_relation_type("VISITED") == "HAPPENED_ON"
+        assert normalize_relation_type("LIVES_IN") == "HAPPENED_ON"
+
+    async def test_two_places_a_person_has_been_are_not_a_contradiction(self, session):
+        """The regression. `alice VISITED paris` and `alice LIVES_IN tokyo` both
+        normalise to `HAPPENED_ON` and are both true."""
+        subject = await _fact(
+            session, subject="alice", rel=normalize_relation_type("VISITED"), obj="paris"
+        )
+        await _source(session, subject, "sess-a")
+        other = await _fact(
+            session, subject="alice", rel=normalize_relation_type("LIVES_IN"), obj="tokyo"
+        )
+        await _source(session, other, "sess-b")
+
+        assert await detect_open_contradiction(session, subject) is None
+        decision = await recompute_fact(session, subject)
+        await session.commit()
+        assert decision.target_status != "disputed"
+
+    async def test_a_multi_day_event_asserted_per_day_is_not_a_contradiction(
+        self, session
+    ):
+        """The instance no date parse can close: both objects *are* dates.
+
+        This is why the honest fix was emptying the set rather than gating the
+        object side on date-shape.
+        """
+        subject = await _fact(
+            session, subject="the conference", rel="HAPPENED_ON", obj="2024-03-01"
+        )
+        await _source(session, subject, "sess-a")
+        second_day = await _fact(
+            session, subject="the conference", rel="HAPPENED_ON", obj="2024-03-02"
+        )
+        await _source(session, second_day, "sess-b")
+
+        assert await detect_open_contradiction(session, subject) is None
+
+    async def test_two_spellings_of_one_date_are_not_a_contradiction(self, session):
+        """`object_name` is a string, so the same date in two formats is two
+        distinct values and two origins stating it would dispute each other."""
+        subject = await _fact(
+            session, subject="the launch", rel="HAPPENED_ON", obj="2024-03-01"
+        )
+        await _source(session, subject, "sess-a")
+        restated = await _fact(
+            session, subject="the launch", rel="HAPPENED_ON", obj="march 1, 2024"
+        )
+        await _source(session, restated, "sess-b")
+
+        assert await detect_open_contradiction(session, subject) is None
+
+    async def test_the_single_valued_arm_still_works_when_a_relation_qualifies(
+        self, session, monkeypatch
+    ):
+        """The rule is dark for want of a qualifying relation, not broken.
+
+        `DEPLOYED_ON` stands in purely to exercise the arm -- nothing here claims
+        it is single-valued, and the guards above are what keep the real set
+        empty. Without this test the arm would be untested code that a later
+        taxonomy change silently depends on.
+        """
+        monkeypatch.setattr(
+            veto_module, "SINGLE_VALUED_RELATIONS", frozenset({"DEPLOYED_ON"})
+        )
+        subject = await _fact(
+            session, subject="darkmem", rel="DEPLOYED_ON", obj="homelab"
+        )
+        await _source(session, subject, "sess-a")
+        counterpart = await _fact(
+            session, subject="darkmem", rel="DEPLOYED_ON", obj="fly-io"
+        )
+        await _source(session, counterpart, "sess-b")
+
+        finding = await detect_open_contradiction(session, subject)
+        assert finding is not None
+        assert finding.rule == RULE_SINGLE_VALUED
+        assert finding.counterpart_id == str(counterpart)
+        assert finding.witness_origin == "sess-b"
+
+    async def test_the_arm_is_dark_with_the_real_set(self, session):
+        """The control for the test above: same rows, no monkeypatch, no finding."""
+        subject = await _fact(
+            session, subject="darkmem", rel="DEPLOYED_ON", obj="homelab"
+        )
+        await _source(session, subject, "sess-a")
+        counterpart = await _fact(
+            session, subject="darkmem", rel="DEPLOYED_ON", obj="fly-io"
+        )
+        await _source(session, counterpart, "sess-b")
+
+        assert await detect_open_contradiction(session, subject) is None
 
 
 # ───────── Invariant 15 — the deterministic scan is Tier-C only ─────────

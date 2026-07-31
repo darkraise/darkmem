@@ -29,12 +29,19 @@ CORROBORATIONS = 25
 
 
 async def _fact(session, *, subject: str, obj: str) -> str:
+    """One directed-replacement belief, open-ended on both ends.
+
+    The scan's deterministic reach today is the inverse-replacement rule: "X
+    replaces Y" against "Y replaces X" over one window is mutual succession and
+    cannot both hold. `SINGLE_VALUED_RELATIONS` is empty by design, so nothing
+    here may lean on it.
+    """
     row = await KnowledgeTripleRepository(session).insert_open(
         triple_key=f"honesty-{uuid4()}",
         subject_name=subject,
         object_name=obj,
-        rel_type="HAPPENED_ON",
-        fact=f"{subject} happened on {obj}",
+        rel_type="REPLACES",
+        fact=f"{subject} replaces {obj}",
         reference_time=REFERENCE,
         project=PROJECT,
     )
@@ -67,7 +74,7 @@ async def _status(session, fact_id: str) -> str:
 async def test_twenty_five_origins_corroborate_a_fact_nothing_contradicts(session):
     """The control. Without it, the veto below could pass on a ladder that never
     promotes this shape at all."""
-    fact_id = await _fact(session, subject="the cutover", obj="2024-03-01")
+    fact_id = await _fact(session, subject="alloy", obj="promtail")
     for index in range(CORROBORATIONS):
         await _assert_origin(session, fact_id, f"session-{index}")
 
@@ -79,11 +86,11 @@ async def test_twenty_five_origins_corroborate_a_fact_nothing_contradicts(sessio
 
 @pytest.mark.asyncio
 async def test_one_contradiction_beats_twenty_five_corroborations(session):
-    fact_id = await _fact(session, subject="the cutover", obj="2024-03-01")
+    fact_id = await _fact(session, subject="alloy", obj="promtail")
     for index in range(CORROBORATIONS):
         await _assert_origin(session, fact_id, f"session-{index}")
 
-    counterpart = await _fact(session, subject="the cutover", obj="2024-09-01")
+    counterpart = await _fact(session, subject="promtail", obj="alloy")
     await _assert_origin(session, counterpart, "one-dissenting-session")
 
     decision = await recompute_fact(session, fact_id)
@@ -97,13 +104,13 @@ async def test_one_contradiction_beats_twenty_five_corroborations(session):
 @pytest.mark.asyncio
 async def test_the_veto_also_demotes_an_already_corroborated_fact(session):
     """Not merely a promotion block: a standing ``corroborated`` fact falls."""
-    fact_id = await _fact(session, subject="the migration", obj="2024-03-01")
+    fact_id = await _fact(session, subject="pgvector", obj="qdrant")
     for index in range(CORROBORATIONS):
         await _assert_origin(session, fact_id, f"session-{index}")
     await recompute_fact(session, fact_id)
     assert await _status(session, fact_id) == "corroborated"
 
-    counterpart = await _fact(session, subject="the migration", obj="2024-09-01")
+    counterpart = await _fact(session, subject="qdrant", obj="pgvector")
     await _assert_origin(session, counterpart, "one-dissenting-session")
 
     await recompute_fact(session, fact_id)
@@ -119,11 +126,11 @@ async def test_an_echo_of_the_corroborating_origins_never_vetoes(session):
     ``disputed`` meaningless, which costs exactly as much truth as a veto that
     never fires.
     """
-    fact_id = await _fact(session, subject="the freeze", obj="2024-03-01")
+    fact_id = await _fact(session, subject="uv", obj="poetry")
     for index in range(CORROBORATIONS):
         await _assert_origin(session, fact_id, f"session-{index}")
 
-    counterpart = await _fact(session, subject="the freeze", obj="2024-09-01")
+    counterpart = await _fact(session, subject="poetry", obj="uv")
     for index in range(CORROBORATIONS):
         await FactSourceRepository(session).add_source(
             fact_id=counterpart,
