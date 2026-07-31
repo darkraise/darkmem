@@ -43,23 +43,63 @@ traps named in the brief: it is written directly through
 ``JobRegistry``-independent SQL, never through ``set_config``, so nothing
 merges over it and nothing validates it as a tunable.
 
-**The watermark is a ``(created_at, id)`` tuple, not a bare timestamp.**
-Within one transaction ``now()`` is constant (T2.06's finding, load-bearing
-here too), so two ``sources_changed`` events written by the same transaction
-share one ``created_at``. A bare ``created_at > watermark`` compare processes
-the first such row, advances the watermark to that shared timestamp, and
-then silently drops every sibling row with the identical timestamp on every
-later run — 0 rows found instead of 1. The fix is the same row-comparison
-T2.06 needed: ``created_at >= :wm_ts AND (created_at > :wm_ts OR id >
-:wm_id)``. The first conjunct is redundant with the second by pure logic but
-is not redundant to the planner: it is a plain comparison on the partition
-key (``events`` is RANGE-partitioned by month), so partition pruning sees it
-directly rather than having to reason through the OR.
+**The watermark is a ``(created_at, id)`` tuple, not a bare timestamp — and
+that tuple compare fixes exactly one hazard, not two.** Within one
+transaction ``now()`` is constant (T2.06's finding, load-bearing here too),
+so two ``sources_changed`` events written by the same transaction share one
+``created_at``. A bare ``created_at > watermark`` compare processes the
+first such row, advances the watermark to that shared timestamp, and then
+silently drops every sibling row with the identical timestamp on every later
+run — 0 rows found instead of 1. The tuple compare —
+``created_at >= :wm_ts AND (created_at > :wm_ts OR id > :wm_id)`` — closes
+exactly this: **same-transaction ties**, where two rows share one
+``created_at`` because they were written by the same transaction. The first
+conjunct is redundant with the second by pure logic but is not redundant to
+the planner: it is a plain comparison on the partition key (``events`` is
+RANGE-partitioned by month), so partition pruning sees it directly rather
+than having to reason through the OR.
 
-The slow arm's cursor carries the identical hazard — ``fact_lift`` can mint
-several facts inside one transaction, so ``knowledge_triples.created_at`` can
-tie the same way — and uses the same tuple-compare shape, with ``id`` (a
-``uuid``) as the tiebreak instead of a bigint.
+**It does not fix cross-transaction commit-order skew, which is a distinct
+hazard the tuple compare cannot touch.** ``created_at`` is transaction
+*start* time, not commit time, so `(created_at, id)` ordering is not
+commit-ordered across different transactions. Two producers, A and B: A
+begins first (so its event's ``created_at`` sorts earlier) but commits
+*last*; B begins later but commits *first*. If a drain tick runs in the
+window after B's commit but before A's, it sees B's row (already committed,
+MVCC-visible) but not A's (not yet committed) — and advances the watermark
+past B's timestamp. Because A's ``created_at`` is *earlier* than B's, A's
+row now sits **behind** the watermark forever: the next drain's
+``created_at >= :wm_ts`` excludes it permanently, with no error and no
+retry, since the watermark only ever moves forward. This is a genuine,
+mechanically-demonstrable gap distinct from the same-transaction tie the
+tuple compare targets, and an earlier revision of this docstring overstated
+the tuple compare as closing both.
+
+The consequence is bounded and in the sanctioned undercount direction (a
+dropped promotion delays, it never fabricates one), and it is caught for
+that specific fact by the slow arm's next pass regardless — but it quietly
+promotes the slow arm's rotation period from a rare-corruption backstop to a
+load-bearing bound for *ordinary* concurrent operation, since ``fact_lift``
+ticks and ``fact_provenance`` emits overlap by construction, not only under
+failure. **Hardening: the fast arm never reads an event newer than
+``moment - _COMMIT_SKEW_MARGIN`` (5s)**, so a drain never advances the
+watermark past a timestamp an in-flight, earlier-started transaction might
+still land behind. As long as no producer transaction takes longer than the
+margin to go from ``BEGIN`` to ``COMMIT`` — true for every producer today
+(``fact_lift`` and ``fact_provenance`` write single-digit rows per
+savepoint, no LLM call on this path) — this closes the gap outright rather
+than merely bounding its cost; a producer that ever became slower than the
+margin would reopen it, at which point the margin is the number to raise,
+not the mechanism to abandon.
+
+The slow arm's cursor carries the identical same-transaction-tie hazard —
+``fact_lift`` can mint several facts inside one transaction, so
+``knowledge_triples.created_at`` can tie the same way — and uses the same
+tuple-compare shape, with ``id`` (a ``uuid``) as the tiebreak instead of a
+bigint. It has no analogous commit-skew hazard of its own: it reads
+``knowledge_triples`` directly rather than an events queue, and a fact row
+becomes visible to it exactly when its own inserting transaction commits, no
+different fact's commit ordering involved.
 
 **Slow-arm coverage.** The cursor rotates over every non-``confirmed`` fact
 ordered by ``(created_at, id)``, advancing past whatever slice it just
@@ -179,6 +219,23 @@ _STATE_CONFIG_KEY = "verification_recompute_state"
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
+# Commit-skew hardening (I-1). The fast arm never reads (and therefore never
+# advances the watermark past) an event newer than `moment - margin`, so an
+# earlier-started, later-committing producer transaction always has this much
+# headroom to land before the watermark could pass it. Not an operator knob:
+# it protects a correctness property, not a cost/latency tradeoff, so it is a
+# module constant rather than a RECOMPUTE_CONFIG_SCHEMA field.
+_COMMIT_SKEW_MARGIN = timedelta(seconds=5)
+
+# Lock-wait hardening (M-2). Scoped inside each per-fact SAVEPOINT via
+# `SET LOCAL`, so it reverts automatically on that savepoint's rollback and
+# never leaks into a sibling fact's attempt. Converts a wedged FOR UPDATE
+# wait -- which would otherwise block until the whole tick's
+# max_run_seconds cancellation, voiding every fact processed that tick,
+# watermark included -- into an ordinary per-fact failure the ambient
+# try/except settles alone, the same as any other poisonous fact.
+_LOCK_TIMEOUT_MS = 5000
+
 
 # ── persisted state ─────────────────────────────────────────────────────
 
@@ -241,6 +298,42 @@ async def _save_state(session: AsyncSession, state: _State) -> None:
         row.value = state.to_dict()
 
 
+async def _set_local_lock_timeout(session: AsyncSession) -> None:
+    """Bound the FOR UPDATE wait inside the caller's current SAVEPOINT (M-2).
+
+    Without it, a wedged row lock blocks until the whole tick's
+    `max_run_seconds` cancels the *entire* runner coroutine, which rolls back
+    everything the tick had done, watermark advance included, making zero
+    progress rather than settling the one blocked fact alone. With it, the
+    lock acquisition itself fails after `_LOCK_TIMEOUT_MS` with an ordinary
+    `lock_not_available` error, which the ambient per-fact try/except settles
+    the same way as any other poisonous fact.
+
+    **`SET LOCAL`'s actual PostgreSQL scoping, precisely** (get this wrong and
+    the reasoning above is wrong too): it reverts on a subtransaction
+    *rollback* -- `ROLLBACK TO SAVEPOINT`, which is what an exception
+    unwinding `session.begin_nested()` issues -- but it does **not** revert
+    on a successful `RELEASE SAVEPOINT`; it persists into whatever comes
+    after in the same outer transaction, and only fully expires at that
+    transaction's own end. So this call, made once per fact right after
+    `begin_nested()`, is not "scoped to exactly one fact" on the happy path
+    the way a first read suggests -- a successful fact's 5s timeout quietly
+    carries forward into the next fact's savepoint too. That is harmless
+    here specifically because every fact's savepoint calls this again
+    unconditionally, so the value in effect for any given fact is always
+    this call's own, whether it was already 5s from a sibling's successful
+    run or the session default beforehand. What the rollback-only reversion
+    *does* guarantee, and the property that actually matters, is that a
+    poisonous fact's own failed savepoint cannot leave some *other*, more
+    exotic session-level state change behind for its siblings -- rollback
+    undoes it, same as everything else that fact's savepoint touched. A
+    value literal rather than a bind parameter: `SET` does not accept the
+    usual parameter placeholder, and the value is a fixed internal constant,
+    never caller-supplied input.
+    """
+    await session.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT_MS}ms'"))
+
+
 # ── the fast arm: drain sources_changed ────────────────────────────────
 
 # The tuple compare, spelled as two conjuncts rather than a Postgres row
@@ -250,6 +343,12 @@ async def _save_state(session: AsyncSession, state: _State) -> None:
 # unmissable. Removing the OR clause and its `id` half is exactly the T2.06
 # same-transaction bug reintroduced -- see the module docstring and
 # tests/test_verification_recompute.py's mutation proof.
+#
+# `created_at <= :safe_until` is the I-1 commit-skew margin: it caps how
+# recent a row this drain will even look at, so the watermark this tick
+# advances to can never land past a still-in-flight, earlier-started
+# producer transaction. See the module docstring's commit-order-skew
+# paragraph for the mechanical scenario this closes.
 _DRAIN_EVENTS = text("""
     SELECT id, created_at, payload
     FROM events
@@ -257,6 +356,7 @@ _DRAIN_EVENTS = text("""
       AND object_type = 'fact'
       AND created_at >= CAST(:wm_ts AS timestamptz)
       AND (created_at > CAST(:wm_ts AS timestamptz) OR id > CAST(:wm_id AS bigint))
+      AND created_at <= CAST(:safe_until AS timestamptz)
     ORDER BY created_at, id
     LIMIT CAST(:batch AS integer)
 """)
@@ -272,12 +372,14 @@ class DrainOutcome:
 
 
 async def _drain_sources_changed(
-    session: AsyncSession, state: _State, *, batch_size: int
+    session: AsyncSession, state: _State, *, batch_size: int, moment: datetime
 ) -> tuple[DrainOutcome, _State]:
     wm_ts = state.watermark_created_at or _EPOCH
     wm_id = state.watermark_id if state.watermark_id is not None else -1
+    safe_until = moment - _COMMIT_SKEW_MARGIN
     result = await session.execute(
-        _DRAIN_EVENTS, {"wm_ts": wm_ts, "wm_id": wm_id, "batch": batch_size}
+        _DRAIN_EVENTS,
+        {"wm_ts": wm_ts, "wm_id": wm_id, "batch": batch_size, "safe_until": safe_until},
     )
     rows = result.mappings().all()
     if not rows:
@@ -296,6 +398,7 @@ async def _drain_sources_changed(
     for fact_id in fact_ids:
         try:
             async with session.begin_nested():
+                await _set_local_lock_timeout(session)
                 decision = await recompute_fact(session, fact_id)
         except Exception:
             failed += 1
@@ -328,10 +431,39 @@ async def _drain_sources_changed(
 
 # confirmed is excluded: decide() always holds it (T2.05, the machine's
 # ceiling), so recomputing it can only ever be a wasted lock-and-read.
+#
+# expired_at IS NULL is I-2's fix: expiry lives on the belief axis
+# (`KnowledgeTripleRepository.expire`, never touches verification_status),
+# and `fact_provenance` deliberately does not emit `sources_changed` for a
+# fact it expires inline (doc 08 3.3) -- an expired fact is dead, not merely
+# unsourced. Without this filter a corroborated-but-expired fact with zero
+# surviving sources gets "demoted" by the slow arm, journaling a `verified`
+# row with outcome=demote that is indistinguishable in payload from a live
+# demotion, in the exact stream T2.51/T2.40 count. Excluding dead facts also
+# bounds the rotation period by *live* fact count rather than historical
+# count, since a dead row can never be walked past -- it simply never enters
+# the slice again.
+#
+# invalid_at (window-closed but still live, i.e. superseded-by-a-newer-
+# belief history) is deliberately NOT excluded, on a ruling made here: a
+# window-closed row stays in the LIVE_PREDICATE set
+# (`knowledge_triples.py`'s `expired_at IS NULL`) and doc 08 says invalidation
+# is a re-save on a retained row, never a delete -- it can still answer
+# "what did we believe as of X". Its `fact_sources` can still shrink after
+# its window closes: `fact_provenance`'s withdrawal sweep matches on
+# `fact_id` alone, with no `invalid_at`/`expired_at` filter, and both
+# producers already treat such a row as reachable (the fast arm recomputes
+# whatever fact_id an event names, window-closed or not). Excluding it here
+# would make the two arms disagree about which facts are "in scope" for
+# recompute, which is a worse inconsistency than the small extra cost of
+# reconciling a row that can only ever demote, never promote (fact_lift only
+# adds sources to the *open* row for a triple_key, never a window-closed
+# one).
 _SLOW_ARM_SLICE = text("""
     SELECT id, created_at
     FROM knowledge_triples
     WHERE verification_status != 'confirmed'
+      AND expired_at IS NULL
       AND created_at >= CAST(:cur_ts AS timestamptz)
       AND (created_at > CAST(:cur_ts AS timestamptz) OR id > CAST(:cur_id AS uuid))
     ORDER BY created_at, id
@@ -361,6 +493,7 @@ async def _reconcile_from_fact_sources(
         fact_id = str(row["id"])
         try:
             async with session.begin_nested():
+                await _set_local_lock_timeout(session)
                 decision = await recompute_fact(session, fact_id)
         except Exception:
             logger.exception(
@@ -417,7 +550,7 @@ async def run_recompute(
     state = await _load_state(session)
 
     drain_outcome, state = await _drain_sources_changed(
-        session, state, batch_size=batch_size
+        session, state, batch_size=batch_size, moment=moment
     )
 
     due = (
