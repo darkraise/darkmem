@@ -745,13 +745,18 @@ class ProcessingPipeline:
                             # The vault enqueue hook (doc 05 §8.4). Inside
                             # savepoint B, not after the commit: the withdrawal
                             # and the inline expiry are justified *by* the graph
-                            # replace, so they have to share its atomicity. On
-                            # the other side of the commit a savepoint-B
-                            # rollback would leave the previous graph standing
-                            # while a fact it still asserts had already been
-                            # expired and enqueued — a belief withdrawn on the
-                            # strength of a write that never landed, with an
-                            # append-only event row that can never be un-said.
+                            # replace, so they have to share its atomicity: a B
+                            # failure unwinds the withdrawal, the expiry and the
+                            # append-only event together, never a half-applied
+                            # subset. Post-commit would open the opposite
+                            # window — a crash between the commit and the
+                            # reconcile leaves a new graph with stale
+                            # provenance, no event, and nothing to notice it.
+                            # (It would *not* strand an expiry for a write that
+                            # never landed, as an earlier draft of this comment
+                            # claimed: the reconcile reads the asserted set back
+                            # from disk, so after a B rollback it would see the
+                            # prior graph and no-op.)
                             # Phase 5 only enqueues; it never recomputes a
                             # verification status (invariant 15).
                             await reconcile_memory_sources(session, memory_id=memory_id)
