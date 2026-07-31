@@ -414,6 +414,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/review-queue/facts"),
             ("GET", f"{V1}/review-queue/articles"),
             ("GET", f"{V1}/review-queue/counts"),
+            ("POST", f"{V1}/review-queue/facts/{{fact_id}}/reject"),
         ),
         reason=(
             "Doc 12 section 1 names the review queue as one of the reshape's "
@@ -426,8 +427,13 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "triaging its own truth backlog is a conflict of interest the "
             "design declines.' This surface is the pipeline_failures.triage "
             "shape (doc 08 section 6) over facts and articles. review_state "
-            "has no writer here either (T2.62 owns it) -- this is read-only "
-            "triage, not an action door."
+            "still has no writer here (T2.62 owns its sole derived one). "
+            "T2.63 added the one action door: reject withdraws belief and "
+            "journals a human_verdict event so doc 17 section 5.1's "
+            "false-promotion audit has a human-rejected half at all. It stays "
+            "REST-only for the same conflict-of-interest reason the reads do, "
+            "and more sharply -- an agent rejecting the facts it is measured "
+            "against is the adjudication analogue of grading its own work."
         ),
     ),
     Surface(
