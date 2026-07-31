@@ -8,10 +8,14 @@ human the throughput bottleneck; the partial indexes
 (``ix_knowledge_triples_review``, ``ix_knowledge_articles_review``, both in
 the baseline since T0.12b) are what make that cheap. Every query in this
 module keeps the literal ``review_state = 'open'`` predicate un-parameterised
-in the SQL text so it matches those indexes' own predicate by construction —
-turning it into a bind parameter (or widening it to ``IS NOT NULL`` / an
-``IN`` list) stops the planner from proving the match and the surface
-degenerates into a sequential scan of every fact the system has ever learned.
+in the SQL text so it matches those indexes' own predicate by construction.
+A bound ``'open'`` value can still use the index too, on a fresh custom plan
+per execution — the real hazard is a *cached* generic plan under prepared-
+statement reuse, which the planner may build without the constant in view
+and then reuse across different bound values. The literal sidesteps that
+question entirely. Widening the predicate itself (``IS NOT NULL``, an ``IN``
+list) is the one change that provably loses the index regardless of binding,
+since the partial index's own predicate no longer implies the query's.
 
 **This module has no writer.** ``review_state`` is opened and cleared inside
 the verification ladder's applier, under the same row-locking window that

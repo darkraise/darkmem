@@ -34,6 +34,7 @@ import json
 import math
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from benchlib import bench_db  # noqa: F401  (DATABASE_URL override must run first)
 from benchlib.isolation_rules import (
@@ -135,6 +136,53 @@ BUFFER_KEYS: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class FactFixture:
+    key: str
+    project: str
+
+    @property
+    def fact_text(self) -> str:
+        return f"{sentinel(self.key)} disputed fact about {self.key.replace('_', ' ')}"
+
+
+# One per project, review_state='open' on both — the review queue is
+# operator-wide by ratified decision (doc 08 §6), so the probe's job is to
+# confirm the foreign-project row still crosses labelled, not to confirm it
+# is excluded.
+FACT_FIXTURES: tuple[FactFixture, ...] = (
+    FactFixture("fact_a_open", OBSERVER),
+    FactFixture("fact_b_open", FOREIGN),
+)
+FACT_FIXTURES_BY_KEY = {f.key: f for f in FACT_FIXTURES}
+
+
+@dataclass(frozen=True)
+class ArticleFixture:
+    key: str
+    project: str
+
+    @property
+    def content_text(self) -> str:
+        # Deliberately past review_queue.py's LEFT(content, 200) boundary,
+        # with a distinct tail past it: a fixture short enough that preview
+        # and full content coincide would leave the probe's article driver
+        # blind to the exact truncation regression
+        # tests/test_review_queue.py's own over-length fixture exists to
+        # catch (M2) -- this keeps the two closures in sync rather than
+        # only unit-testing the field the classification is about.
+        body = f"{sentinel(self.key)} ungrounded article about {self.key.replace('_', ' ')}"
+        padding = "x" * (260 - len(body))
+        return f"{body} {padding}-TAIL-{self.key}"
+
+
+ARTICLE_FIXTURES: tuple[ArticleFixture, ...] = (
+    ArticleFixture("article_a_open", OBSERVER),
+    ArticleFixture("article_b_open", FOREIGN),
+)
+ARTICLE_FIXTURES_BY_KEY = {f.key: f for f in ARTICLE_FIXTURES}
+
+
 def _all_content_fixtures() -> dict[str, MemoryFixture]:
     return {**FIXTURES_BY_KEY, **ECHO_FIXTURES}
 
@@ -151,6 +199,8 @@ class ProbeContext:
     repo_ids: dict[str, uuid.UUID]
     redis_entity_id: str
     failure_id: str
+    fact_ids: dict[str, uuid.UUID]
+    article_ids: dict[str, uuid.UUID]
     retention_conversation_id: str
     scoped_conversation_id: str | None = None
     wide_conversation_id: str | None = None
@@ -447,6 +497,45 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
             text("SELECT id FROM pipeline_failures LIMIT 1")
         )).scalar_one()
 
+        from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+        fact_ids: dict[str, uuid.UUID] = {}
+        kt_repo = KnowledgeTripleRepository(session)
+        for fx in FACT_FIXTURES:
+            row = await kt_repo.insert_open(
+                triple_key=f"probe-{fx.key}",
+                subject_name=f"probe-subject-{fx.key}",
+                object_name=f"probe-object-{fx.key}",
+                rel_type="RELATED_TO",
+                fact=fx.fact_text,
+                reference_time=datetime.now(timezone.utc),
+                project=fx.project,
+                review_state="open",
+            )
+            fact_ids[fx.key] = uuid.UUID(row["id"])
+
+        article_ids: dict[str, uuid.UUID] = {}
+        for fx in ARTICLE_FIXTURES:
+            article_id = uuid.uuid4()
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO knowledge_articles (
+                        id, subject_key, project, content, status, review_state
+                    )
+                    VALUES (
+                        CAST(:id AS uuid), :subject_key, :project, :content,
+                        'candidate', 'open'
+                    )
+                    """
+                ),
+                {
+                    "id": str(article_id), "subject_key": f"probe-{fx.key}",
+                    "project": fx.project, "content": fx.content_text,
+                },
+            )
+            article_ids[fx.key] = article_id
+
         for key in ("a_active", "b_active"):
             await record_event(
                 session, event_type="memory.created", object_type="memory",
@@ -499,6 +588,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
         "repo_ids": repo_ids,
         "redis_entity_id": redis_entity_id,
         "failure_id": str(failure_id),
+        "fact_ids": fact_ids,
+        "article_ids": article_ids,
         "retention_conversation_id": retention_conversation_id,
     }
 
@@ -1130,6 +1221,57 @@ async def _drive_pipeline_failure_triage(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
+async def _drive_review_queue_facts(ctx: ProbeContext) -> list[Sighting]:
+    surface = "review_queue_facts"
+    door = "GET /api/v1/review-queue/facts"
+    case = "deployment-wide truth-adjudication triage (ratified operator-wide)"
+    response = await ctx.client.get("/api/v1/review-queue/facts", headers=ctx.headers)
+    response.raise_for_status()
+    out: list[Sighting] = []
+    accounted: set[str] = set()
+    ids_to_fx = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
+    for row in response.json()["items"]:
+        fx = ids_to_fx.get(str(row.get("id")))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        # No memories.status-shaped lifecycle applies to a fact row, so
+        # true_status stays None (classify() reads that as "not breachable
+        # on this axis") and only project labelling is asserted — the same
+        # reading pipeline_failure_triage gives entity rows with no status
+        # concept of their own.
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="content",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
+    return out
+
+
+async def _drive_review_queue_articles(ctx: ProbeContext) -> list[Sighting]:
+    surface = "review_queue_articles"
+    door = "GET /api/v1/review-queue/articles"
+    case = "deployment-wide truth-adjudication triage (ratified operator-wide)"
+    response = await ctx.client.get("/api/v1/review-queue/articles", headers=ctx.headers)
+    response.raise_for_status()
+    out: list[Sighting] = []
+    accounted: set[str] = set()
+    ids_to_fx = {str(aid): ARTICLE_FIXTURES_BY_KEY[key] for key, aid in ctx.article_ids.items()}
+    for row in response.json()["items"]:
+        fx = ids_to_fx.get(str(row.get("id")))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="preview",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
+    return out
+
+
 async def _drive_analytics_recents(ctx: ProbeContext) -> list[Sighting]:
     surface = "analytics_recents"
     door = "GET /api/v1/analytics/overview"
@@ -1344,6 +1486,8 @@ DRIVERS = {
     "memory_write_echo": _drive_memory_write_echo,
     "reembed_backfill_queue": _drive_reembed_backfill_queue,
     "pipeline_failure_triage": _drive_pipeline_failure_triage,
+    "review_queue_facts": _drive_review_queue_facts,
+    "review_queue_articles": _drive_review_queue_articles,
     "analytics_recents": _drive_analytics_recents,
     "capture_buffer_triage": _drive_capture_buffer_triage,
     "event_journal": _drive_event_journal,
@@ -1446,6 +1590,7 @@ async def run_probe() -> ProbeReport:
             memory_ids=seeded["memory_ids"], repo_ids=seeded["repo_ids"],
             redis_entity_id=seeded["redis_entity_id"],
             failure_id=seeded["failure_id"],
+            fact_ids=seeded["fact_ids"], article_ids=seeded["article_ids"],
             retention_conversation_id=seeded["retention_conversation_id"],
         )
         for key in registry_keys:

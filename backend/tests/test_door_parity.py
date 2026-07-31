@@ -416,14 +416,18 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/review-queue/counts"),
         ),
         reason=(
-            "Truth-adjudication triage (doc 08 §6): a human resolves disputed "
-            "and under-sourced facts and ungrounded articles, the same "
-            "pipeline_failures.triage shape. An agent retrieving a disputed "
-            "fact sees it labelled inline through ordinary retrieval (never "
-            "gated on review_state) rather than through this backlog view, so "
-            "there is no MCP capability for an agent to twin against. "
-            "review_state has no writer on this surface either (T2.62 owns "
-            "it) -- this is read-only triage, not an action door."
+            "Doc 12 section 1 names the review queue as one of the reshape's "
+            "two deliberate single-door kinds -- a human-observability read, "
+            "not a confirmed-power write -- and section 3 assigns the "
+            "agent-facing capability to a separate tool family, "
+            "dispute_inspect (both-sides detail on one disputed fact or "
+            "article), never to this backlog view: 'the review-queue read is "
+            "a curation surface, not an agent capability ... an agent "
+            "triaging its own truth backlog is a conflict of interest the "
+            "design declines.' This surface is the pipeline_failures.triage "
+            "shape (doc 08 section 6) over facts and articles. review_state "
+            "has no writer here either (T2.62 owns it) -- this is read-only "
+            "triage, not an action door."
         ),
     ),
     Surface(

@@ -81,6 +81,7 @@ async def _article(
     project: str = PROJECT,
     status: str = "candidate",
     review_state: str | None = None,
+    content: str | None = None,
 ) -> str:
     result = await session.execute(
         text(
@@ -100,7 +101,7 @@ async def _article(
             "id": str(uuid4()),
             "subject_key": subject_key,
             "project": project,
-            "content": f"article about {subject_key}",
+            "content": content if content is not None else f"article about {subject_key}",
             "status": status,
             "review_state": review_state,
         },
@@ -139,6 +140,17 @@ async def test_facts_pagination_boundary(session):
         await _fact(session, subject="p", obj=f"o{i}", review_state="open")
         for i in range(5)
     ]
+
+    # limit is honoured while rows remain past the page: 3 of the 5 rows are
+    # still available past offset 0, so a page cap of 2 must actually cap it
+    # -- a hardcoded LIMIT wide enough to never bind (e.g. LIMIT 1000) would
+    # pass every other assertion here and only this one would catch it.
+    first_page, total0 = await review_queue_service.list_open_facts(
+        session, project=PROJECT, limit=2, offset=0,
+    )
+    assert total0 == 5
+    assert len(first_page) == 2
+    assert [item["id"] for item in first_page] == ids[-1:-3:-1]  # ARRIVAL_DESC
 
     page, total = await review_queue_service.list_open_facts(
         session, project=PROJECT, limit=2, offset=4,
@@ -216,6 +228,30 @@ async def test_article_reason_derives_from_status(session):
     assert by_id[other_id]["reason"] == "unspecified"
 
 
+async def test_article_content_preview_is_actually_truncated(session):
+    """The field this module added specifically to make the
+    ``crosses=("content_preview",)`` classification honest -- so it must be
+    proven to cross only a preview, not the full content, or the
+    classification is a claim nothing tests. An over-length article (well
+    past 200 chars) with a distinct tail makes `LEFT(content, 200)` and
+    `content` diverge; a driver that swapped one for the other would still
+    pass every other test in this file, since every other seeded article is
+    under 200 characters."""
+    long_content = ("a" * 250) + "-TAIL-MARKER"
+    article_id = await _article(
+        session, subject_key="s-long", review_state="open", content=long_content,
+    )
+
+    items, _ = await review_queue_service.list_open_articles(session, project=PROJECT)
+    by_id = {item["id"]: item for item in items}
+    preview = by_id[article_id]["content_preview"]
+    assert preview is not None
+    assert len(preview) == 200
+    assert preview != long_content
+    assert "TAIL-MARKER" not in preview
+    assert preview == long_content[:200]
+
+
 # ───────────────────────────── the label ─────────────────────────────
 
 
@@ -289,12 +325,22 @@ async def test_queued_fact_stays_retrievable_at_same_rank_via_get_live(session):
     )
     await session.commit()
 
-    after = [row["id"] for row in await _live_order()]
+    after_rows = await _live_order()
+    after = [row["id"] for row in after_rows]
     assert after == before, (
         "queuing a fact changed its retrieval set or order — review_state "
         "must never gate or reorder ordinary retrieval"
     )
     assert middle_id in after
+
+    # "Still labelled" (doc 08 §6) is only true if the retrieval row itself
+    # still carries the columns a consumer would read the label from — a
+    # future trim of get_live's column list could keep the row present and
+    # in-rank while silently dropping the fields that make it legible as
+    # disputed/queued, which the assertions above would not catch.
+    middle_row = next(row for row in after_rows if row["id"] == middle_id)
+    assert middle_row["review_state"] == "open"
+    assert middle_row["verification_status"] is not None
 
 
 # ───────── membership is a partial index, not a scan (EXPLAIN) ─────────
