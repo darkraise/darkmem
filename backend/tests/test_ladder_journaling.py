@@ -262,11 +262,19 @@ _PROMOTION_RATE_SQL = """
 _FALSE_PROMOTION_AUDIT_SQL = """
     SELECT
         (
-            SELECT COUNT(*) FROM events
+            -- Doc 17 §5.1's anchor is "corroborated facts," not "facts that
+            -- emitted a `promote` event": a fact can reach `corroborated`
+            -- through `recover` (candidate -> disputed on an early veto,
+            -- then an affirmative clean verdict lands it on `corroborated`
+            -- directly) without ever emitting `promote`. Anchoring on
+            -- `after.verification_status = 'corroborated'` catches both
+            -- outcomes; anchoring on `outcome = 'promote'` alone silently
+            -- drops every fact that reached the status via `recover`.
+            SELECT COUNT(DISTINCT object_id) FROM events
             WHERE event_type = 'verified'
               AND object_id = ANY(CAST(:fact_ids AS uuid[]))
-              AND payload->>'outcome' = 'promote'
-        ) AS total_promotions,
+              AND payload->'after'->>'verification_status' = 'corroborated'
+        ) AS total_corroborations,
         (
             SELECT COUNT(DISTINCT p.object_id)
             FROM events p
@@ -277,14 +285,37 @@ _FALSE_PROMOTION_AUDIT_SQL = """
              -- `id` (a monotonic BIGINT IDENTITY) tie-breaks `created_at`,
              -- matching the ordering convention `object_timeline`/`list_events`
              -- already use in app/services/events.py: same-transaction writes
-             -- (a batch recompute, or this very test) can share one `now()`,
-             -- so `created_at` alone cannot always order two rows.
+             -- (a batch recompute, or this very test's non-committing session
+             -- fixture) can share one transaction-constant `now()`, so
+             -- `created_at` alone cannot always order two rows. `id` order is
+             -- in fact the stronger key here: the insert happens while the
+             -- applier still holds the fact row's FOR UPDATE lock, so `id`
+             -- order is exactly the per-fact serialization order, whereas
+             -- `created_at`-first can in principle invert it when a
+             -- later-serialized transaction's clock read started earlier.
              AND (d.created_at, d.id) > (p.created_at, p.id)
             WHERE p.event_type = 'verified'
               AND p.object_id = ANY(CAST(:fact_ids AS uuid[]))
-              AND p.payload->>'outcome' = 'promote'
+              AND p.payload->'after'->>'verification_status' = 'corroborated'
         ) AS falsely_promoted
 """
+# Units, pinned for T2.51: both sides of the ratio count DISTINCT facts
+# (object_id), not events. A fact that cycles corroborated -> disputed ->
+# recovered -> corroborated -> disputed again would otherwise inflate a
+# per-event count relative to doc 17's "facts" wording; counting facts on
+# both sides keeps the ratio's unit consistent and matches the metric's own
+# phrasing ("count of corroborated facts...").
+#
+# The "or human-rejected" half of doc 17 §5.1's definition is not
+# represented here at all: it depends on `review_state` verdicts, which are
+# T2.62's write and do not exist yet. This SQL is therefore the
+# machine-observable half only (facts disputed by the veto after reaching
+# `corroborated`); it is vacuously complete today only because no rejection
+# path exists to be missed. When T2.62 lands, its verdicts must themselves
+# journal to `events` (the same "events alone" property this task built for
+# the veto side) or this query's silence on human rejection becomes a real
+# gap rather than a documented one -- T2.51 must not copy this query without
+# also adding that arm once it exists.
 
 
 class TestGCMetricsFromEventsAlone:
@@ -295,21 +326,37 @@ class TestGCMetricsFromEventsAlone:
     Promotion rate: ``(facts promoted) / (eligible candidate facts)``, sliced
     by which N fired. "Eligible" means the fact actually reached its
     corroboration bar this cycle (``origin_count >= required_n``) -- which,
-    by ``decide()``'s own branch structure, is exactly the set of facts that
-    transitioned out of ``candidate`` (to ``corroborated`` via ``promote``, or
-    to ``disputed`` via a veto that fired *after* the bar was met). A
-    candidate that merely holds below its bar was correctly never journaled
-    (previous class): it was never eligible, so excluding it needs no extra
-    row, only the filter above. A candidate vetoed *before* reaching its bar
-    (an early dispute) is journaled but excluded by the same filter, because
-    it was never eligible either. This is the finding the brief asked for:
-    the metric does not need every hold journaled, only every transition,
-    because "eligible" and "journaled transition with origin_count >=
-    required_n" are the same set by construction.
+    by ``decide()``'s own branch structure **as it exists today**, is exactly
+    the set of facts that transitioned out of ``candidate`` (to
+    ``corroborated`` via ``promote``, or to ``disputed`` via a veto that
+    fired *after* the bar was met). A candidate that merely holds below its
+    bar was correctly never journaled (previous class): it was never
+    eligible, so excluding it needs no extra row, only the filter above. A
+    candidate vetoed *before* reaching its bar (an early dispute) is
+    journaled but excluded by the same filter, because it was never eligible
+    either. This is the finding the brief asked for: the metric does not
+    need every hold journaled, only every transition, because "eligible" and
+    "journaled transition with origin_count >= required_n" are the same set
+    by construction.
 
-    False-promotion audit: the count of facts that promoted and were later
-    disputed. A self-join on ``events`` by ``object_id``, ordered by
-    ``created_at`` -- no reconstruction of current state required.
+    **This equivalence is not permanent, and its expiry date is named.** It
+    holds only because no code path today returns a hold for a candidate
+    that met its bar. Doc 08 §4's planned supersession blocker (T2.60) is
+    defined as exactly that shape -- a deterministic hold on an
+    otherwise-eligible candidate -- and the ruling for how T2.60 must
+    preserve this equivalence (journal its own blocked hold, the same way
+    ``contradiction_blocked`` does here) lives in
+    ``app.services.verification_ladder.decide``'s own docstring, not only in
+    this comment. T2.46's demote-side hysteresis is the same genus of hazard
+    on the other axis (a grace-cycle deferral leaves status unchanged and
+    journals nothing today, while doc 17 wants demotion thrash measured from
+    this journal too) -- that one lands with T2.46's own applier change and
+    is out of this task's scope, noted here only so it is not lost.
+
+    False-promotion audit: the count of *facts* that reached ``corroborated``
+    (via ``promote`` or ``recover`` -- see the SQL's own comment) and were
+    later disputed. A self-join on ``events`` by ``object_id``, tie-broken by
+    ``id`` -- no reconstruction of current state required.
     """
 
     async def test_promotion_rate_sliced_by_which_n_fired(self, session):
@@ -373,7 +420,8 @@ class TestGCMetricsFromEventsAlone:
     async def test_false_promotion_audit_counts_promoted_then_later_disputed(
         self, session
     ):
-        # A promotes, then is later disputed -- a false promotion.
+        # A promotes, then is later disputed -- a false promotion reached via
+        # the `promote` outcome.
         a = await _make_fact(session, key="gc-audit-a-false-promotion")
         await _add_origin(session, a, "sess-a", kind="memory")
         await _add_origin(session, a, "repo-a", kind="code")
@@ -390,17 +438,41 @@ class TestGCMetricsFromEventsAlone:
         await recompute_fact(session, c)
         await session.commit()
 
-        fact_ids = [a, c]
+        # G reaches `corroborated` via `recover`, never via `promote`: an
+        # early veto (before G ever meets its bar) disputes it, a second
+        # origin then brings it to the bar, and an affirmative clean verdict
+        # recovers it straight to `corroborated` -- no `promote` event is
+        # ever emitted. It is then disputed again later. An audit anchored
+        # on `outcome = 'promote'` alone would miss this fact entirely.
+        g = await _make_fact(session, key="gc-audit-g-recovered-then-disputed")
+        await _add_origin(session, g, "sess-g1", kind="memory")
+        first = await recompute_fact(session, g, open_contradiction=True)
+        await session.commit()
+        assert first.outcome == "dispute"
+        assert first.origin_count < first.required_n, (
+            "G must be vetoed before ever meeting its bar, so no promote "
+            "event exists for it to anchor on"
+        )
+        await _add_origin(session, g, "repo-g1", kind="code")
+        recovered = await recompute_fact(session, g, open_contradiction=False)
+        await session.commit()
+        assert recovered.outcome == "recover"
+        assert recovered.target_status == "corroborated"
+        redisputed = await recompute_fact(session, g, open_contradiction=True)
+        await session.commit()
+        assert redisputed.outcome == "dispute"
+
+        fact_ids = [a, c, g]
         row = (
             await session.execute(
                 text(_FALSE_PROMOTION_AUDIT_SQL), {"fact_ids": fact_ids}
             )
         ).mappings().one()
 
-        assert row["total_promotions"] == 2
-        assert row["falsely_promoted"] == 1
-        rate = row["falsely_promoted"] / row["total_promotions"]
-        assert rate == pytest.approx(0.5)
+        assert row["total_corroborations"] == 3, "A, C and G all reached corroborated"
+        assert row["falsely_promoted"] == 2, "A (via promote) and G (via recover)"
+        rate = row["falsely_promoted"] / row["total_corroborations"]
+        assert rate == pytest.approx(2 / 3)
 
     async def test_the_audit_sql_never_touches_knowledge_triples(self):
         """A structural guard on the deliverable itself: the SQL text this
@@ -409,4 +481,4 @@ class TestGCMetricsFromEventsAlone:
         """
         for sql in (_PROMOTION_RATE_SQL, _FALSE_PROMOTION_AUDIT_SQL):
             assert "knowledge_triples" not in sql
-            assert sql.strip().upper().count("FROM EVENTS") >= 1 or "from events" in sql.lower()
+            assert "from events" in sql.lower()

@@ -369,10 +369,35 @@ class KnowledgeTripleRepository:
         ``disputed`` across a recompute cycle is not a status transition, but
         it is exactly the ongoing-veto evidence doc 08 §4.2's audit needs, and
         it is the one hold this method journals on purpose. Every other hold
-        (a human-ratified ``confirmed`` refresh, an unblocked candidate or
-        corroborated hold) stays a pure no-op, or the frequent Tier-C
-        recompute cadence would flood the append-only journal with rows no
-        G-C metric consumes.
+        (a human-ratified ``confirmed`` refresh, an unblocked candidate below
+        its bar, or a corroborated fact still meeting its bar) stays a pure
+        no-op. That is *not* principally a volume argument -- the recompute
+        that calls this drains ``sources_changed`` past a watermark (doc 08
+        §4.3), so it touches only facts with real source activity, not every
+        live fact on every cycle -- but even bounded to real activity, a
+        plain hold carries no information any G-C metric reads: an unblocked
+        candidate below its bar was never "eligible" (excluded from the
+        promotion-rate denominator by construction, not by omission), and a
+        corroborated fact still holding says nothing new about it. The one
+        hold that *does* carry information is the contradiction-blocked one,
+        because the periodic contradiction scan (T2.11) re-adjudicates every
+        standing dispute independently of ``sources_changed``, and each such
+        pass is the only durable record that the veto is still active --
+        which is the evidence this method exists to preserve. (One volume
+        consequence worth naming for that job's owner: every scan pass over
+        a standing dispute journals one row, so a long-lived dispute
+        accumulates one blocked-hold event per pass, not per source change.)
+
+        Guarding on ``status is None and confidence is None`` above happens
+        *before* this journal branch, so a call carrying
+        ``contradiction_blocked=True`` but neither ``status`` nor
+        ``confidence`` would return early and journal nothing, contradicting
+        the "journals on purpose" claim above. Unreachable today -- the
+        promotion decision's applier always supplies a computed confidence
+        alongside the evidence -- but a future caller passing bare evidence
+        with both left ``None`` would silently lose the blocked-hold row;
+        that caller does not exist, so this is a documented caveat, not a
+        code change.
 
         The promotion decision's applier is this module's sole caller into
         the verification axis, which is what makes the event count here
