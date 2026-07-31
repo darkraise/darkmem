@@ -429,6 +429,38 @@ class TestPrecedence:
 
         assert (await _read(session, fact_id))["review_state"] is None
 
+    async def test_a_bare_review_state_write_survives_the_early_return(self, session):
+        """``review_state`` alone, with no status and no confidence, still writes.
+
+        The early return fires on "nothing to write", and before T2.62 that
+        was spelled ``status is None and confidence is None`` — a shape that
+        would now swallow the whole argument. The caller shape is not
+        hypothetical: T2.05's clear-on-ratify cannot pass a status
+        (``confirmed`` is refused before any read) and has no confidence to
+        refresh, so it is exactly this call.
+        """
+        fact_id = await _fact(session, subject="bare", rel="USES", obj="z3")
+        await _set_review_state_raw(session, fact_id, REVIEW_STATE_OPEN)
+
+        await KnowledgeTripleRepository(session).set_verification_status(
+            fact_id, None, confidence=None, review_state=None
+        )
+        await session.commit()
+
+        assert (await _read(session, fact_id))["review_state"] is None
+        assert fact_id not in await _on_review_queue(session)
+
+    async def test_a_bare_review_state_open_survives_the_early_return(self, session):
+        """The same early return, from the other side."""
+        fact_id = await _fact(session, subject="bare2", rel="USES", obj="z4")
+
+        await KnowledgeTripleRepository(session).set_verification_status(
+            fact_id, None, confidence=None, review_state=REVIEW_STATE_OPEN
+        )
+        await session.commit()
+
+        assert (await _read(session, fact_id))["review_state"] == REVIEW_STATE_OPEN
+
     async def test_the_repository_refuses_a_review_state_it_cannot_own(self, session):
         """A label stored here is a row that has silently left the queue."""
         fact_id = await _fact(session, subject="label", rel="USES", obj="w")

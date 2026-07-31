@@ -387,6 +387,15 @@ class KnowledgeTripleRepository:
         a stale queue entry costs the human one glance while a wrongly cleared
         one costs them the fact.
 
+        **One residue, stated rather than papered over.** Because the parameter
+        is optional, a caller may still write ``disputed`` with the flag left
+        UNSET and leave the queue closed. Nothing in the tree does — the ladder
+        passes the derivation on every call, which is what makes
+        ``disputed``-but-unqueued unreachable today — but that is caller
+        discipline plus this paragraph, not structure. Making it structural
+        would mean refusing ``disputed`` with an UNSET flag, which reaches a
+        T2.06-era test and is recorded for triage rather than done here.
+
         Refuses ``confirmed``: the machine's ceiling is ``corroborated``, and
         only a human reaches ``confirmed``, via the ratification path T2.05
         owns. Raising here — before a producer exists — is the point of this

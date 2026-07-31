@@ -489,6 +489,15 @@ def derive_review_state(decision: LadderDecision) -> str | None:
     next recompute (below), and a control whose effect is silently undone
     minutes later is worse than no control.
 
+    **What T2.24 must do to stay consistent.** Its stale-dispute decay cannot
+    be expressed as a ``review_state`` value at all: the repository refuses any
+    literal other than ``'open'``, and the unconditional open would re-stomp a
+    decayed marker on every recompute while the dispute still stands. That is
+    the correct outcome rather than a limitation — doc 08 §6 makes the decay a
+    change of *priority*, leaving the fact ``disputed``, on the queue and served
+    labelled with both sides — so the decay belongs on the ranking side T2.24
+    owns, never on this column.
+
     **A human's bare clear reopens, and that is the correct answer.** A
     derivation cannot honour one: the next recompute reopens the flag while the
     dispute still stands. Doc 08 §6 names three human verbs and every one of
