@@ -109,6 +109,11 @@ KNOWN_GATE_FIRED = frozenset({"diversity", "time_gap", "none"})
 KNOWN_PAYLOAD_KEYS = frozenset({
     "before", "after", "outcome", "origin_count", "required_n",
     "gate_fired", "source_kinds", "contradiction_blocked", "confidence",
+    # T2.60's deterministic promotion blocker. Journaled per the T2.06
+    # ruling in verification_ladder.decide's docstring: a widening block
+    # that did not journal would silently inflate the promotion rate with
+    # no trace, so the flag rides the payload and is counted below.
+    "supersession_blocked",
 })
 
 # doc 08 §6: 'open' is the only review_state value any design doc or code
@@ -158,7 +163,10 @@ def validate_verified_event_payload(payload: dict, *, event_id: object) -> None:
             f"verified event {event_id} carries unrecognised gate_fired "
             f"{gate_fired!r}; known values are {sorted(KNOWN_GATE_FIRED)}"
         )
-    if outcome == "hold" and not payload.get("contradiction_blocked", False):
+    if outcome == "hold" and not (
+        payload.get("contradiction_blocked", False)
+        or payload.get("supersession_blocked", False)
+    ):
         raise UnrecognisedPayloadError(
             f"verified event {event_id} is a 'hold' that is not "
             f"contradiction_blocked -- today's code never journals that "
@@ -231,10 +239,56 @@ async def validate_window(session: AsyncSession, *, since: datetime) -> int:
 # is the equivalence this module's docstring derives: a journaled transition
 # out of `candidate` whose bar was already met (`origin_count >= required_n`)
 # when it fired, whether it promoted or was vetoed after meeting the bar.
+# doc 17 §5.1's second audit half, live as of T2.63. Before it, `review_state`
+# was the only candidate source and it structurally could not carry a verdict
+# (T2.62 makes it pure queue membership: 'open' or NULL, no value means
+# "rejected"), so this arm read 0 forever and silently. The verdict is an
+# EVENT, not a state -- the same discipline T2.06 applied to machine
+# transitions, which is why the whole audit is now one table.
+#
+# Anchored on `after.verification_status = 'corroborated'`, never on
+# `outcome = 'promote'`: a fact can reach corroborated via `recover` without
+# ever emitting a promote, and anchoring on the outcome made T2.06's own audit
+# blind to exactly that. The `(created_at, id)` tuple compare is load-bearing
+# for the same reason it is everywhere else here -- `now()` is constant within
+# a transaction, so a bare `created_at >` drops same-transaction ordering.
+_HUMAN_REJECTED_SQL = text("""
+    SELECT COUNT(DISTINCT p.object_id) AS human_rejected
+    FROM events p
+    JOIN events h
+      ON h.object_id = p.object_id
+     AND h.event_type = 'human_verdict'
+     AND h.object_type = 'fact'
+     AND h.payload->>'verdict' = 'rejected'
+     AND (h.created_at, h.id) > (p.created_at, p.id)
+    WHERE p.event_type = 'verified'
+      AND p.object_type = 'fact'
+      AND p.created_at >= :since AND p.created_at <= :until
+      AND p.payload->'after'->>'verification_status' = 'corroborated'
+""")
+
+# The verdict vocabulary this arm knows how to count. T2.63 raises on an
+# unknown verdict at the emitter, so an unrecognised value here means a
+# second writer appeared that bypassed `record_human_verdict` -- the same
+# class of silent divergence KNOWN_PAYLOAD_KEYS guards for the machine side.
+_HUMAN_VERDICT_VOCABULARY_SQL = text("""
+    SELECT DISTINCT payload->>'verdict' AS verdict
+    FROM events
+    WHERE event_type = 'human_verdict'
+      AND object_type = 'fact'
+      AND created_at >= :since AND created_at <= :until
+""")
+
+KNOWN_HUMAN_VERDICTS = frozenset({"ratified", "regrounded", "edited", "rejected"})
+
+
 _PROMOTION_RATE_BY_GATE_SQL = text("""
     SELECT
         payload->>'gate_fired' AS bucket,
         COUNT(*) FILTER (WHERE payload->>'outcome' = 'promote') AS promoted,
+        COUNT(*) FILTER (
+            WHERE (payload->>'supersession_blocked')::boolean
+        ) AS supersession_blocked,
         COUNT(*) AS eligible
     FROM events
     WHERE event_type = 'verified'
@@ -242,7 +296,16 @@ _PROMOTION_RATE_BY_GATE_SQL = text("""
       AND created_at >= :since
       AND created_at <= :until
       AND payload->'before'->>'verification_status' = 'candidate'
-      AND payload->>'outcome' IN ('promote', 'dispute')
+      AND (
+            payload->>'outcome' IN ('promote', 'dispute')
+            -- T2.60's blocked hold is a fact that MET its bar and did not
+            -- promote, which is exactly what a promotion rate measures.
+            -- Excluding it would let a widening block raise the reported
+            -- rate by shrinking the denominator -- the silent inflation the
+            -- T2.06 ruling minted the flag to prevent.
+            OR (payload->>'outcome' = 'hold'
+                AND (payload->>'supersession_blocked')::boolean)
+          )
       AND (payload->>'origin_count')::int >= (payload->>'required_n')::int
     GROUP BY payload->>'gate_fired'
     ORDER BY bucket
@@ -264,6 +327,9 @@ _PROMOTION_RATE_BY_DIVERSITY_SQL = text("""
             THEN 'diverse' ELSE 'homogeneous'
         END AS bucket,
         COUNT(*) FILTER (WHERE payload->>'outcome' = 'promote') AS promoted,
+        COUNT(*) FILTER (
+            WHERE (payload->>'supersession_blocked')::boolean
+        ) AS supersession_blocked,
         COUNT(*) AS eligible
     FROM events
     WHERE event_type = 'verified'
@@ -271,7 +337,16 @@ _PROMOTION_RATE_BY_DIVERSITY_SQL = text("""
       AND created_at >= :since
       AND created_at <= :until
       AND payload->'before'->>'verification_status' = 'candidate'
-      AND payload->>'outcome' IN ('promote', 'dispute')
+      AND (
+            payload->>'outcome' IN ('promote', 'dispute')
+            -- T2.60's blocked hold is a fact that MET its bar and did not
+            -- promote, which is exactly what a promotion rate measures.
+            -- Excluding it would let a widening block raise the reported
+            -- rate by shrinking the denominator -- the silent inflation the
+            -- T2.06 ruling minted the flag to prevent.
+            OR (payload->>'outcome' = 'hold'
+                AND (payload->>'supersession_blocked')::boolean)
+          )
       AND (payload->>'origin_count')::int >= (payload->>'required_n')::int
     GROUP BY 1
     ORDER BY bucket
@@ -334,6 +409,12 @@ class SliceResult:
     bucket: str
     promoted: int
     eligible: int
+    # T2.60: how many of `eligible` met their bar and were withheld by the
+    # supersession blocker. Reported beside the rate rather than folded into
+    # it, because a low rate caused by blocking and a low rate caused by
+    # starvation argue for opposite tuning moves (doc 17 §5.1's two-sided
+    # evidence rule), and an aggregate cannot tell T2.40 which it is looking at.
+    supersession_blocked: int = 0
 
     @property
     def rate(self) -> float | None:
@@ -385,41 +466,38 @@ class PromotionMetricsReport:
 
 
 async def _human_rejected_count(session: AsyncSession, *, since: datetime, until: datetime) -> int:
-    """Structurally 0 under T2.62's landed design, and expected to stay 0.
+    """doc 17 §5.1's human-rejected half, read from the journal (T2.63).
 
-    T2.62 defines ``review_state`` as pure queue-membership: ``'open'`` is
-    the only writable value, and human resolution clears it to ``NULL`` --
-    no value in that design ever means "rejected". This function's guard
-    exists as a structural safety net against a write path that violates
-    T2.62's own invariant, not because a legitimate rejection value is
-    expected to land here; doc 17 §5.1's human-rejected half has no source
-    anywhere in the schema as designed. ``render_report`` states this
-    plainly rather than letting a silent 0 read as "measured and zero".
+    **This arm was structurally blind until T2.63 landed**, and the blindness
+    was invisible: `review_state` was the only candidate source, T2.62 makes
+    it pure queue membership ('open' or NULL, never a verdict), so the count
+    read 0 forever while its own guard could never fire -- the vocabulary it
+    watched was correct. A human verdict is an event, not a state, so the
+    count now comes from `human_verdict` rows.
+
+    The vocabulary check is retained but retargeted: `record_human_verdict`
+    refuses an unknown verdict at the emitter, so an unrecognised value
+    reaching this query means a second writer appeared that bypassed it.
+    That is worth raising over rather than counting past.
     """
-    fact_ids = [
-        str(row[0])
-        for row in (await session.execute(_COHORT_FACT_IDS_SQL, {"since": since, "until": until})).all()
-    ]
-    if not fact_ids:
-        return 0
-    rows = (await session.execute(_REVIEW_STATE_COUNTS_SQL, {"ids": fact_ids})).all()
-    rejected = 0
-    for review_state, _n in rows:
-        if review_state not in KNOWN_REVIEW_STATES:
-            raise UnrecognisedPayloadError(
-                f"knowledge_triples.review_state carries unrecognised value "
-                f"{review_state!r} on a corroborated fact -- T2.62's design "
-                f"never writes anything but 'open' (cleared to NULL on "
-                f"resolution), so this value violates that invariant. It is "
-                f"NOT evidence of a landed human-rejection marker -- doc 17 "
-                f"§5.1's human-rejected half has no source in the schema as "
-                f"designed; do not silently drop this value regardless"
-            )
-        # 'open' means "still under review", not a verdict either way -- it
-        # never counts as a rejection, and no other value is reachable
-        # under T2.62's design. This count is 0 by
-        # construction, not by under-measurement.
-    return rejected
+    verdicts = {
+        row[0]
+        for row in (
+            await session.execute(_HUMAN_VERDICT_VOCABULARY_SQL, {"since": since, "until": until})
+        ).all()
+        if row[0] is not None
+    }
+    unknown = verdicts - KNOWN_HUMAN_VERDICTS
+    if unknown:
+        raise UnrecognisedPayloadError(
+            f"human_verdict events carry unrecognised verdict(s) {sorted(unknown)} "
+            f"-- record_human_verdict refuses anything outside "
+            f"{sorted(KNOWN_HUMAN_VERDICTS)}, so a second writer has bypassed it. "
+            f"The audit will not count past a verdict it cannot classify"
+        )
+    return int(
+        (await session.execute(_HUMAN_REJECTED_SQL, {"since": since, "until": until})).scalar_one()
+    )
 
 
 async def compute_promotion_metrics(
@@ -445,7 +523,10 @@ async def compute_promotion_metrics(
         await session.execute(_PROMOTION_RATE_BY_GATE_SQL, {"since": since, "until": until})
     ).all()
     by_gate = tuple(
-        SliceResult(bucket=row.bucket, promoted=row.promoted, eligible=row.eligible)
+        SliceResult(
+            bucket=row.bucket, promoted=row.promoted, eligible=row.eligible,
+            supersession_blocked=row.supersession_blocked,
+        )
         for row in by_gate_rows
     )
 
@@ -453,7 +534,10 @@ async def compute_promotion_metrics(
         await session.execute(_PROMOTION_RATE_BY_DIVERSITY_SQL, {"since": since, "until": until})
     ).all()
     by_diversity = tuple(
-        SliceResult(bucket=row.bucket, promoted=row.promoted, eligible=row.eligible)
+        SliceResult(
+            bucket=row.bucket, promoted=row.promoted, eligible=row.eligible,
+            supersession_blocked=row.supersession_blocked,
+        )
         for row in by_diversity_rows
     )
 

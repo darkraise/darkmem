@@ -406,10 +406,20 @@ class TestUnrecognisedPayloadGuard:
                 )
 
     @pytest.mark.asyncio
-    async def test_an_invented_supersession_blocked_key_raises_the_t2_60_guard(self):
-        """The named landmine: T2.60 has not landed, so no payload carries
-        `supersession_blocked` today. This proves the runner does not
-        silently absorb it the day it does."""
+    async def test_a_supersession_blocked_hold_is_counted_not_refused(self):
+        """**T2.60 has now landed**, so this tripwire's job has changed.
+
+        It was written to prove the runner would not silently absorb the
+        flag the day it appeared, and it fired exactly as designed. Now the
+        flag is legitimate, and what must be proven is the other half of the
+        same ruling: a blocked hold is a fact that MET its bar and did not
+        promote, so it belongs in the denominator. If it were merely accepted
+        and dropped, a widening block would raise the reported rate by
+        shrinking the denominator -- the silent inflation the T2.06 ruling
+        minted the flag to prevent.
+
+        The guard against genuinely unknown keys is unchanged and still
+        proven by `test_an_unknown_payload_key_raises`."""
         async with bench_db.session_factory() as session:
             since = await _db_now(session)
             fact_id = await _make_fact(session, key="t2.51-supersession-blocked")
@@ -417,21 +427,32 @@ class TestUnrecognisedPayloadGuard:
                 session, event_type="verified", object_type="fact",
                 object_id=_uuid.UUID(fact_id), project="default",
                 payload={
-                    "before": {"verification_status": "corroborated"},
-                    "after": {"verification_status": "corroborated"},
+                    # `candidate`, not `corroborated`: T2.60 reports the flag
+                    # only when the decision actually WITHHELD a promotion, so
+                    # an already-corroborated fact carrying the signal is not
+                    # flagged -- counting it would inflate the blocked count
+                    # with facts that were never going to promote.
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "candidate"},
                     "outcome": "hold",
                     "origin_count": 2, "required_n": 2, "gate_fired": "diversity",
                     "source_kinds": ["memory", "code"], "contradiction_blocked": False,
-                    "supersession_blocked": True,  # invented, not in KNOWN_PAYLOAD_KEYS
+                    "supersession_blocked": True,
                     "confidence": 0.9,
                 },
             )
             await session.commit()
 
-            with pytest.raises(pm.UnrecognisedPayloadError, match="supersession_blocked"):
-                await pm.compute_promotion_metrics(
-                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
-                )
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+            buckets = {s.bucket: s for s in report.by_gate_fired}
+            assert "diversity" in buckets, "the blocked hold never reached a slice"
+            assert buckets["diversity"].supersession_blocked == 1
+            # In the denominator, not the numerator: it met its bar and was
+            # withheld, so it counts as eligible and not as a promotion.
+            assert buckets["diversity"].eligible >= 1
+            assert buckets["diversity"].promoted == 0
 
     @pytest.mark.asyncio
     async def test_a_hold_that_is_not_contradiction_blocked_raises(self):
@@ -523,29 +544,59 @@ class TestUnrecognisedPayloadGuard:
             assert report.events_validated == 1
 
     @pytest.mark.asyncio
-    async def test_an_unrecognised_review_state_raises_rather_than_silently_dropping(self):
+    async def test_an_unrecognised_human_verdict_raises_rather_than_counting_past(self):
+        """**Retargeted by T2.63.** This test used to plant an unrecognised
+        `review_state` and assert the runner raised. That guard is retired:
+        T2.62 makes `review_state` pure queue membership, so it could never
+        carry a verdict, and the arm it guarded read 0 forever while its own
+        tripwire could not fire -- the vocabulary it watched was correct.
+
+        The verdict now lives in the journal, so the same discipline applies
+        one layer over: `record_human_verdict` refuses anything outside the
+        closed set, and a value reaching the audit anyway means a second
+        writer bypassed the emitter. The audit must not count past a verdict
+        it cannot classify."""
         async with bench_db.session_factory() as session:
             since = await _db_now(session)
-            c = await _make_fact(session, key="t2.51-unknown-review-state")
-            for name in ("sess-rs-1", "sess-rs-2", "sess-rs-3"):
+            fact_id = await _make_fact(session, key="t2.63-unknown-verdict")
+            await record_event(
+                session, event_type="human_verdict", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={"verdict": "vetoed", "verification_status": "corroborated"},
+            )
+            await session.commit()
+
+            with pytest.raises(pm.UnrecognisedPayloadError, match="vetoed"):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
+
+    @pytest.mark.asyncio
+    async def test_a_seeded_rejection_is_counted_by_the_audit(self):
+        """The other half of T2.63's closure: the arm must actually read
+        non-zero now. Without this, retargeting the guard above would leave
+        the count structurally blind exactly as before, just for a new
+        reason."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            c = await _make_fact(session, key="t2.63-rejected-after-corroboration")
+            for name in ("sess-hv-1", "sess-hv-2", "sess-hv-3"):
                 await _add_origin(session, c, name, kind="memory")
             decision = await recompute_fact(session, c)
             await session.commit()
             assert decision.outcome == "promote"
 
-            await session.execute(
-                text(
-                    "UPDATE knowledge_triples SET review_state = 'rejected' "
-                    "WHERE id = CAST(:id AS uuid)"
-                ),
-                {"id": c},
+            await record_event(
+                session, event_type="human_verdict", object_type="fact",
+                object_id=_uuid.UUID(c), project="default",
+                payload={"verdict": "rejected", "verification_status": "corroborated"},
             )
             await session.commit()
 
-            with pytest.raises(pm.UnrecognisedPayloadError, match="rejected"):
-                await pm.compute_promotion_metrics(
-                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
-                )
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+            assert report.false_promotion.human_rejected == 1
 
 
 # ───────────────────────── report rendering (no DB) ─────────────────────────
