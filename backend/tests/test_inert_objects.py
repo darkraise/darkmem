@@ -288,3 +288,45 @@ def test_no_app_code_dispatches_the_inert_purposes():
         + "\nIf this is the intended first writer (T2.26 / T3.02), remove the "
           "purpose from this test and update the schema inventory."
     )
+
+
+# ── The Tier-C dream-job family inert members (T2.08, T2.14) ─────────
+
+
+def test_article_synthesis_job_is_inert():
+    """T2.14: article_synthesis lands as an inert placeholder.
+
+    Its productive runs ship in T3.02 (doc 08 §5.6), behind gate G-D.
+    The PlaceholderJobRunner marker (not a comment or convention) ensures
+    a shipped runner cannot silently keep wearing the placeholder type.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.services.dream_jobs import (
+        ARTICLE_SYNTHESIS_JOB_KEY,
+        DREAM_JOB_OWNERS,
+        PlaceholderJobRunner,
+        register_dream_jobs,
+    )
+    from app.services.job_registry import JobRegistry
+
+    from .conftest import test_engine
+
+    # Registration never touches the database, so this reuses conftest's
+    # engine rather than opening one this test would have to dispose.
+    registry = JobRegistry(async_sessionmaker(test_engine, expire_on_commit=False))
+    register_dream_jobs(registry)
+
+    job = registry.get(ARTICLE_SYNTHESIS_JOB_KEY)
+    assert job is not None, f"{ARTICLE_SYNTHESIS_JOB_KEY} not registered"
+    assert isinstance(job.runner, PlaceholderJobRunner), (
+        f"{ARTICLE_SYNTHESIS_JOB_KEY}'s runner must remain a PlaceholderJobRunner "
+        f"until {DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY]} lands the productive run"
+    )
+    assert job.runner.owner_task == "T3.02", (
+        f"{ARTICLE_SYNTHESIS_JOB_KEY}'s first productive owner must be T3.02, "
+        f"not {job.runner.owner_task}"
+    )
+    assert DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY] == "T3.02", (
+        f"DREAM_JOB_OWNERS[{ARTICLE_SYNTHESIS_JOB_KEY}] must name T3.02"
+    )

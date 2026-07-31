@@ -23,7 +23,7 @@ from "shipped" without reading the body:
 | `fact_lift` | T2.10 |
 | `contradiction_scan` | T2.11 |
 | `memory_dream` | T2.12 |
-| `article_synthesis` | T2.14 |
+| `article_synthesis` | T3.02 |
 | `topic_detection` | T2.53 |
 
 Each owning task replaces its job's `runner=` (and, if it needs one, its
@@ -87,7 +87,7 @@ DREAM_JOB_OWNERS: dict[str, str] = {
     CONTRADICTION_SCAN_JOB_KEY: "T2.11",
     MEMORY_DREAM_JOB_KEY: "T2.12",
     TOPIC_DETECTION_JOB_KEY: "T2.53",
-    ARTICLE_SYNTHESIS_JOB_KEY: "T2.14",
+    ARTICLE_SYNTHESIS_JOB_KEY: "T3.02",
 }
 
 DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
@@ -206,7 +206,7 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         ARTICLE_SYNTHESIS_JOB_KEY, "Article Synthesis",
         "Re-synthesises stale articles on fact_set_hash change, debounced "
         "(doc 09 mechanics, triggered under this umbrella per doc 08 §5.6). "
-        f"Placeholder — real work lands in "
+        f"Placeholder inert (T2.14) — productive runs land in "
         f"{DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY]}.",
         default_cron="0 5 * * *", min_interval_seconds=300,
         max_run_seconds=900,
