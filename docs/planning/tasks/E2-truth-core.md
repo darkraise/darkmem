@@ -1007,9 +1007,19 @@ only source was that memory keeps serving as `corroborated` forever with `expire
 NULL — the exact "lingering as corroborated" failure doc 08 §3.3's inline expiry exists to
 prevent, reached by the one delete path that skips it.
 
+**A second stranding path, found by T2.47's review.** `ProcessingPipeline.delete_memory`
+swallows every exception with a log line, so a withdrawal that *fails* on the interactive
+path strands its rows just as silently as the TTL sweep's bypass does. Both directions
+produce the same end state — a fact solely sourced by a vanished memory keeps serving as
+`corroborated` forever, with no `sources_changed` ever revisiting it — which is the
+**overcounting** direction the truth core categorically forbids. A backstop that heals
+orphaned provenance covers both; routing the TTL sweep alone covers only one.
+
 **Latent today, live the moment T2.10 lands.** `fact_sources` has no producer until
 `fact_lift`, so the gap writes no bad data yet. That is why it is a task rather than a
-bug: it must close before the first producer ships.
+bug: it must close before the first producer ships. **G-C may not claim the withdraw path
+is closed until this lands** — T2.47 closes the removal half on the paths that reach it,
+not the paths that skip it.
 
 **T2.34 does not own this.** Its text explicitly reuses T1.37's sweep *unchanged*, and it
 governs the fact side's pre-closed belief window, not memory-deletion provenance.
@@ -1018,6 +1028,8 @@ governs the fact side's pre-closed belief window, not memory-deletion provenance
 - [ ] The TTL sweep withdraws provenance and expires sole-sourced facts on the same terms
       as every other delete path, proven by a test that fails if the sweep regresses to a
       bare SQL delete
+- [ ] Orphaned `fact_sources` rows are reaped whatever stranded them, so a swallowed
+      failure on the interactive path heals too — not only the TTL bypass
 - [ ] The demote-before-delete ordering T1.37 owns is preserved — the sweep must still
       demote `superseded_by` dependents before deleting, or `chk_superseded_has_pointer`
       aborts the batch

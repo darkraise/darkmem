@@ -224,7 +224,9 @@ flowchart TD
 
 **The strip runs as savepoint B's first statement, not ahead of the savepoints.** An earlier revision of the flowchart put `delete_by_memory_id` in the outer transaction, before savepoint A. That is the one part of the write a failed write cannot undo: the outer commit makes the deletion durable, so a savepoint-B failure left the memory with **no graph at all** and a `technologies` denorm matching nothing on disk, and an ordinary extraction failure — which never enters savepoint B — silently emptied a perfectly good graph on a routine path. Inside B, strip-and-write is one **atomic replace**: the graph for a memory is always exactly one extraction's output, and a failure leaves the previous extraction's output standing. A **failed strip fails savepoint B** (`graph=error`) rather than being logged and written over, because a new graph written on top of an un-stripped old one is precisely the duplicate-by-type accumulation the strip exists to prevent (§9, invariant 8).
 
-The Phase-5 write — two independent savepoints, then the separate-session crossrefs and the vault enqueue:
+**The vault enqueue runs as savepoint B's last statement, not after the commit.** The flowchart drew it post-commit until 2026-07-31 (T2.47), and that placement is wrong for the same reason the strip's was: §8.4's withdrawal and its inline expiry are *justified by* the graph replace, so they must unwind with it. Two windows close by moving it inside B. A savepoint-B rollback must not leave an append-only `sources_changed` row standing for a write that never landed — `events` has no delete path, so a spurious row is permanent. And a crash between the commit and a post-commit reconcile would leave a new graph with stale provenance, no event, and no backstop to notice. Read the diagram as schematic elsewhere, not transactional: it also routes the `AERR` path (vector write failed) through the post-commit chain, which no implementation reads literally.
+
+The Phase-5 write — two independent savepoints, then the separate-session crossrefs:
 
 ```mermaid
 flowchart TD
@@ -232,13 +234,12 @@ flowchart TD
     SA -->|A fails| AERR["vector=error, graph=skipped"]
     SA -->|A ok| SB["Savepoint B: strip prior graph (delete_by_memory_id), then entities + relations + technologies + supersession"]
     SB -->|B fails| BERR["graph=error; vector from A survives; the strip rolls back, so the prior graph survives too"]
-    SB -->|B ok| GOK["graph=ok"]
+    SB -->|B ok| GOK["graph=ok, then B's LAST statement: withdraw provenance, expire sole-sourced facts inline, enqueue (events sources_changed)"]
     AERR --> COMMIT["session.commit"]
     BERR --> COMMIT
     GOK --> COMMIT
     COMMIT --> XREF["separate session: crossrefs"]
-    XREF --> ENQ["enqueue affected facts (events sources_changed)"]
-    ENQ --> DER["failure derivation + pipeline.* broadcast"]
+    XREF --> DER["failure derivation + pipeline.* broadcast"]
 ```
 
 ### 8.1 Savepoint A — vector and memory-row enrichment
