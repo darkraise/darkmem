@@ -137,15 +137,20 @@ class VerificationJudge:
         session: AsyncSession,
         premise: str,
         hypothesis: str,
-        record_path: Path | None = None,
     ) -> ProbeVerdict:
         """The gated door — the only entry a consumer may use. Refuses with
         ``JudgeNotQualifiedError`` unless the recorded qualification matches
         the currently resolved judge identity and clears the currently
-        merged bars, recomputed on every call (detected, never remembered)."""
+        merged bars, recomputed on every call (detected, never remembered).
+
+        Deliberately takes no record path: only the canonical, minting-locked
+        record can qualify a consumer call. A caller-supplied path here would
+        reopen the rehearsal-record bypass one level above the writer's lock
+        (a rehearsal ``--gate`` run may legitimately write a qualifying
+        record to any non-default path — that record must never be loadable
+        through this door). Tests point the module constant elsewhere."""
         state = await qualification_state(
-            session, self.llm.config,
-            record_path=record_path if record_path is not None else QUALIFICATION_RECORD_PATH,
+            session, self.llm.config, record_path=QUALIFICATION_RECORD_PATH,
         )
         if not state.qualified:
             raise JudgeNotQualifiedError(
@@ -173,8 +178,10 @@ def judge_identity(cfg) -> dict:
     identity even without a version bump)."""
     identity = {field: getattr(cfg, field, None) for field in IDENTITY_FIELDS}
     identity["prompt_version"] = JUDGE_PROMPT_VERSION
+    # NUL-joined so text migrating across the system-prompt/template boundary
+    # cannot keep the hash.
     identity["prompt_sha"] = hashlib.sha256(
-        (SYSTEM_PROMPT + USER_TEMPLATE).encode("utf-8")
+        (SYSTEM_PROMPT + "\x00" + USER_TEMPLATE).encode("utf-8")
     ).hexdigest()[:16]
     return identity
 
@@ -250,7 +257,12 @@ async def qualification_state(
                 "re-qualification (doc 17 §11)"
             )
 
-    bars = await get_verification_bars(session)
+    try:
+        bars = await get_verification_bars(session)
+    except ValueError as exc:
+        reasons.append(f"bars unreadable — failing closed: {exc}")
+        return QualificationState(False, tuple(reasons), record)
+
     metrics = record.get("metrics") or {}
     for bar_key, metric_key in BAR_METRICS.items():
         value = metrics.get(metric_key)
@@ -277,9 +289,11 @@ VERIFICATION_BAR_DEFAULTS: dict[str, float] = {
 
 async def get_verification_bars(session: AsyncSession) -> dict[str, float]:
     """Merge per-bar ``config`` rows over the code defaults, DB winning per
-    key. A row's value may be ``{"value": x}`` or a bare JSON number; an
-    unreadable row falls back to the default rather than failing the
-    enforcement path."""
+    key. A row's value may be ``{"value": x}`` or a bare JSON number. An
+    unreadable row raises: silently falling back to the default would
+    ignore an operator's attempt to move a bar — conservative relative to
+    the defaults but not to operator intent — so the enforcement path
+    (``qualification_state``) catches this and fails closed instead."""
     rows = (await session.execute(
         select(Config).where(Config.key.in_(VERIFICATION_BAR_DEFAULTS))
     )).scalars().all()
@@ -292,6 +306,8 @@ async def get_verification_bars(session: AsyncSession) -> dict[str, float]:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             bars[row.key] = float(value)
         else:
-            logger.warning("config row %s carries an unreadable bar value %r; "
-                           "using the default", row.key, row.value)
+            raise ValueError(
+                f"config row {row.key} carries an unreadable bar value "
+                f"{row.value!r}; fix or delete the row"
+            )
     return bars

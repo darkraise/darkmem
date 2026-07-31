@@ -46,6 +46,8 @@ import json
 import sys
 import time
 import uuid
+
+import httpx
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -331,7 +333,7 @@ async def main(argv: list[str] | None = None) -> int:
 def _run() -> int:
     try:
         return asyncio.run(main())
-    except (RuntimeError, ValueError) as exc:
+    except (RuntimeError, ValueError, OSError, httpx.HTTPError) as exc:
         print(f"run_judge_qualification.py: {exc}", file=sys.stderr)
         return 1
 

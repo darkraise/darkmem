@@ -138,6 +138,15 @@ async def test_a_bare_scalar_bar_row_is_also_read(session):
     assert bars["contradiction_precision_bar"] == 0.97
 
 
+async def test_a_malformed_bar_row_raises_not_silently_defaults(session):
+    # Falling back to the default would ignore an operator's attempt to
+    # move a bar — conservative relative to defaults, not to intent.
+    session.add(Config(key="groundedness_gate_precision_bar", value={"value": "0.99"}))
+    await session.commit()
+    with pytest.raises(ValueError, match="groundedness_gate_precision_bar"):
+        await vj.get_verification_bars(session)
+
+
 # ── qualification state: computed, never remembered (Task 2) ─────────────
 
 
@@ -259,26 +268,50 @@ async def test_missing_or_null_metrics_fail_closed(session, tmp_path, metrics):
     assert any("entailed_precision" in r for r in state.reasons)
 
 
+async def test_unreadable_bars_fail_the_qualification_closed(session, tmp_path):
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg))
+    session.add(Config(key="groundedness_gate_recall_bar", value="not-a-number"))
+    await session.commit()
+    state = await vj.qualification_state(session, cfg, record_path=path)
+    assert state.qualified is False
+    assert any("failing closed" in r for r in state.reasons)
+
+
 # ── the gated door ───────────────────────────────────────────────────────
 
 
-async def test_judge_refuses_when_unqualified(session, tmp_path):
+async def test_judge_refuses_when_unqualified(session, tmp_path, monkeypatch):
+    monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", tmp_path / "absent.json")
     llm = StubLLM([json.dumps({"verdict": "entailed", "reason": "r"})])
     llm.config = _judge_config()
     judge = vj.VerificationJudge(llm)
     with pytest.raises(vj.JudgeNotQualifiedError):
-        await judge.judge(session, "p", "h", record_path=tmp_path / "absent.json")
+        await judge.judge(session, "p", "h")
     assert llm.calls == []
 
 
-async def test_judge_answers_when_qualified(session, tmp_path):
+async def test_judge_answers_when_qualified(session, tmp_path, monkeypatch):
     llm = StubLLM([json.dumps({"verdict": "contradicted", "reason": "r"})])
     llm.config = _judge_config()
     path = _write_record(tmp_path, _record(llm.config))
+    monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", path)
     judge = vj.VerificationJudge(llm)
-    result = await judge.judge(session, "p", "h", record_path=path)
+    result = await judge.judge(session, "p", "h")
     assert result.valid is True
     assert result.verdict == "contradicted"
+
+
+def test_the_gated_door_accepts_no_record_path():
+    # A caller-supplied record path would reopen the rehearsal-record bypass
+    # one level above the writer's minting lock: a --gate rehearsal may
+    # legitimately write a qualifying record from an easy gold to any
+    # non-default path, and a consumer pointing the door at it would run as
+    # qualified with nothing flagging it. Only the canonical, minting-locked
+    # record may qualify a consumer call.
+    import inspect
+    params = list(inspect.signature(vj.VerificationJudge.judge).parameters)
+    assert params == ["self", "session", "premise", "hypothesis"]
 
 
 # ── identity: what moves the hash, and what must not ─────────────────────
@@ -302,6 +335,19 @@ def test_system_prompt_text_moves_the_identity(monkeypatch):
     monkeypatch.setattr(vj, "SYSTEM_PROMPT", vj.SYSTEM_PROMPT + " ")
     after = vj.judge_identity_hash(vj.judge_identity(_judge_config()["verification"]))
     assert before != after
+
+
+def test_prompt_sha_separates_the_two_texts(monkeypatch):
+    # sha256(system + template) without a separator would let text migrate
+    # across the boundary while keeping the hash.
+    monkeypatch.setattr(vj, "SYSTEM_PROMPT", "AB")
+    monkeypatch.setattr(vj, "USER_TEMPLATE", "C")
+    moved_boundary = vj.judge_identity_hash(vj.judge_identity(_judge_config()["verification"]))
+    monkeypatch.setattr(vj, "SYSTEM_PROMPT", "A")
+    monkeypatch.setattr(vj, "USER_TEMPLATE", "BC")
+    assert moved_boundary != vj.judge_identity_hash(
+        vj.judge_identity(_judge_config()["verification"])
+    )
 
 
 def test_user_template_text_moves_the_identity(monkeypatch):
