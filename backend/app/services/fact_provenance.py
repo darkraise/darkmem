@@ -40,6 +40,38 @@ memory id is not: it is globally unique and names exactly one row, so every
 fact carries. Scoping the sweep to the memory's *current* project would silently
 strand provenance behind a memory that had since been moved between projects.
 Each event's ``project`` column is taken from the fact it concerns.
+
+**Three entries, one withdrawal.** ``reconcile_memory_sources`` (re-extraction),
+``withdraw_memory_sources`` (every delete path) and
+``reap_orphaned_memory_sources`` (the backstop) differ only in *which rows they
+select*; all three hand those rows to ``_withdraw``, which owns the delete, the
+surviving-source test, the inline expiry and the emit. A second copy of that
+sequence would be a second chance to get the expiry or the payload spelling
+wrong, and the two copies would drift apart silently -- provenance loss has no
+error and no symptom.
+
+**Why a backstop exists at all, and what it may not touch.** Routing every
+delete path through ``withdraw_memory_sources`` closes the paths that *skip*
+withdrawal; it cannot close the path that *attempts* it and fails, because
+``ProcessingPipeline.delete_memory`` swallows its exceptions. Either way the end
+state is identical and is the direction the truth core forbids: a fact whose
+only source has vanished keeps serving as ``corroborated`` with ``expired_at``
+NULL, and no ``sources_changed`` ever revisits it. So the backstop reaps
+provenance whose memory is gone whatever removed it.
+
+Its predicate is narrow on purpose. ``source_ref`` carries no type
+discriminator -- the kind lives in ``source_kind`` -- so "no ``memories`` row
+matches this ref" is only evidence of orphanhood for
+``source_kind = 'memory'``. A ``human`` reviewer's ref or a ``code`` repository
+id is not a memory id and matches no ``memories`` row *by construction*; reaping
+those would destroy live provenance, which is a strictly worse outcome than the
+stranding this heals. The existence test compares ``CAST(memories.id AS text)``
+against the stored ref rather than casting the ref to ``uuid``: the ref column
+holds every kind's spelling, ``AND`` is not evaluation order in SQL, and a
+planner free to hoist ``CAST(source_ref AS uuid)`` above the kind filter would
+abort the sweep on the first non-uuid ref. ``CAST(uuid AS text)`` renders the
+lowercase hyphenated form ``memory_source_ref`` mints, so the two spellings
+agree by construction.
 """
 
 from __future__ import annotations
@@ -77,12 +109,24 @@ def memory_source_ref(memory_id: UUID | str) -> str:
 
 
 _MEMORY_PROVENANCE = text("""
-    SELECT fs.id AS source_id, fs.fact_id, kt.triple_key, kt.project,
-           kt.expired_at
+    SELECT fs.id AS source_id, fs.fact_id, fs.source_ref AS memory_ref,
+           kt.triple_key, kt.project, kt.expired_at
     FROM fact_sources fs
     JOIN knowledge_triples kt ON kt.id = fs.fact_id
     WHERE fs.source_kind = CAST(:kind AS text)
       AND fs.source_ref = CAST(:ref AS text)
+    ORDER BY fs.fact_id
+""")
+
+_ORPHANED_PROVENANCE = text("""
+    SELECT fs.id AS source_id, fs.fact_id, fs.source_ref AS memory_ref,
+           kt.project, kt.expired_at
+    FROM fact_sources fs
+    JOIN knowledge_triples kt ON kt.id = fs.fact_id
+    WHERE fs.source_kind = CAST(:kind AS text)
+      AND NOT EXISTS (
+          SELECT 1 FROM memories m WHERE CAST(m.id AS text) = fs.source_ref
+      )
     ORDER BY fs.fact_id
 """)
 
@@ -121,14 +165,25 @@ async def _asserted_triples(
     ]
 
 
-async def _withdraw(
-    session: AsyncSession, *, memory_id: UUID | str, rows: list[dict]
-) -> list[str]:
+async def _orphaned_provenance(session: AsyncSession) -> list[dict]:
+    result = await session.execute(
+        _ORPHANED_PROVENANCE, {"kind": MEMORY_SOURCE_KIND}
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+async def _withdraw(session: AsyncSession, *, rows: list[dict]) -> list[str]:
     """Withdraw ``rows``, expire what they orphan, and enqueue the difference.
 
     The empty case returns before touching anything: no withdrawal is no
     provenance change, and an event emitted there would be indistinguishable to
     the drain from real evidence movement.
+
+    Each row names its own memory through ``memory_ref``, read back from the
+    ``fact_sources`` row rather than passed in alongside it: the backstop
+    withdraws rows belonging to many memories at once, and reading the stored
+    ref makes the emitted payload the spelling the producer actually wrote
+    instead of one re-derived beside it.
     """
     if not rows:
         return []
@@ -159,11 +214,10 @@ async def _withdraw(
             object_type="fact",
             object_id=fact_id,
             project=row["project"],
-            # The same spelling the producer emits, minted by the same
-            # function: the drain groups these payloads, so two halves
-            # rendering one memory id two ways would split one fact's
-            # evidence movement into two.
-            payload={"fact_id": str(fact_id), "memory_id": memory_source_ref(memory_id)},
+            # The same spelling the producer wrote: the drain groups these
+            # payloads, so two halves rendering one memory id two ways would
+            # split one fact's evidence movement into two.
+            payload={"fact_id": str(fact_id), "memory_id": row["memory_ref"]},
         )
         affected.append(str(fact_id))
     return affected
@@ -199,7 +253,7 @@ async def reconcile_memory_sources(
     withdrawn = [
         row for row in rows if row["triple_key"] not in retained(row["project"])
     ]
-    return await _withdraw(session, memory_id=memory_id, rows=withdrawn)
+    return await _withdraw(session, rows=withdrawn)
 
 
 async def withdraw_memory_sources(
@@ -207,4 +261,20 @@ async def withdraw_memory_sources(
 ) -> list[str]:
     """The deletion sweep: a deleted memory sources nothing, so all of it goes."""
     rows = await _memory_provenance(session, memory_id)
-    return await _withdraw(session, memory_id=memory_id, rows=rows)
+    return await _withdraw(session, rows=rows)
+
+
+async def reap_orphaned_memory_sources(session: AsyncSession) -> list[str]:
+    """The backstop: withdraw ``('memory', ref)`` rows whose memory is gone.
+
+    Returns the affected fact ids. Unlike the two by-memory entries this one is
+    driven by the data rather than by a caller who knows what it deleted, so it
+    heals stranding whose cause it cannot see -- including the interactive
+    delete path's swallowed withdrawal failure, where nothing bypassed the hook
+    and there is therefore nothing to route.
+
+    It is a backstop, not a substitute for routing: it runs on a cadence, and
+    between a delete and the next tick a fact whose last source vanished still
+    serves as ``corroborated``. Every delete path still withdraws inline.
+    """
+    return await _withdraw(session, rows=await _orphaned_provenance(session))
