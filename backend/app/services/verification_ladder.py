@@ -5,6 +5,9 @@ distinct-origin diversity, and is vetoed sideways to ``disputed`` by a single
 non-echo contradiction (T2.04). This module owns that decision and nothing else:
 it never reaches ``confirmed`` (T2.05, structurally refused by the repository),
 never schedules itself (T2.09), and never applies demotion hysteresis (T2.46).
+It also owns the review queue's ``review_state`` flag, which is *derived* from
+the decision rather than assigned by each opener in turn — the ruling and what
+it binds T2.46 and T2.22 to is in ``derive_review_state``.
 
 **The veto is absolute and reads no configuration.** However many origins
 corroborate a fact, one contradiction beats them (doc 08 §4.2) — not a weight,
@@ -31,6 +34,7 @@ conservative bar's failure is a delayed promotion, which the design accepts.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
@@ -39,7 +43,10 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.repositories.knowledge_triples import (
+    REVIEW_STATE_OPEN,
+    KnowledgeTripleRepository,
+)
 from app.repositories.fact_sources import (
     FactSourceRepository,
     CORROBORATION_N_DEFAULT,
@@ -409,6 +416,120 @@ def decide(
     return settled("candidate", "hold")
 
 
+# ────────────────────── the review queue's open flag ──────────────────────
+
+ReviewOpener = Callable[[LadderDecision], bool]
+
+
+def _dispute_opens_review(decision: LadderDecision) -> bool:
+    """Doc 08 §4.3's flowchart node reads "set ``disputed``, ``review_state``
+    open" — one node, so this predicate is the veto's outcome and nothing else.
+
+    It keys off ``target_status`` rather than ``outcome`` on purpose: the
+    ``dispute`` outcome and the ``contradiction_blocked`` hold both land on
+    ``disputed``, and a standing dispute re-confirmed across a recompute cycle
+    must stay queued. Keying off ``outcome == "dispute"`` would silently make
+    the re-confirm a no-op, and the flag would then depend on which cycle the
+    human happened to look at.
+    """
+    return decision.target_status == "disputed"
+
+
+# Every condition that puts a fact on the review queue. **T2.46's
+# ``under-sourced`` hysteresis joins this tuple; it must not be plumbed past
+# it**, exactly as ``CONTRADICTION_DETECTORS`` binds T2.11. Registering is what
+# makes an opener's condition both able to open the queue and *required* to
+# keep it open.
+REVIEW_OPENERS: tuple[ReviewOpener, ...] = (_dispute_opens_review,)
+
+
+def derive_review_state(decision: LadderDecision) -> str | None:
+    """Whether this fact belongs on the review queue — derived, never assigned.
+
+    **The ruling (T2.62, 2026-07-31): ``review_state`` is a value recomputed
+    from the fact's current conditions at this one point, not a flag each
+    opener sets and clears in whatever order it happens to run.** Doc 08 §6
+    gives the column three independent openers — a disputed fact (§4.2, this
+    one), an under-sourced fact held in hysteresis (§4.3, T2.46), and an
+    ungrounded article (doc 09, a *different table* and so not a member of
+    ``REVIEW_OPENERS``) — plus a human clearer. On disk it is a bare nullable
+    TEXT column whose only index is partial on the literal ``'open'``, so it
+    has no room to record *which* opener owns it. Several writers over one bit
+    with no owner field is how a fact that is disputed **and** under-sourced
+    silently leaves the queue when only the dispute resolves: nothing errors,
+    and the human simply never sees it again.
+
+    Deriving makes precedence a property that can be stated and tested instead
+    of an emergent property of write order: **the clear is the absence of every
+    opener, never the negation of one.** Adding an opener is appending a
+    predicate here, not adding a writer.
+
+    The derivation is **total** — a definite value for every decision,
+    including ``confirmed``, on which no opener fires because doc 08 §4.4 makes
+    a ratified fact immune to both the veto and demotion. A partial derivation
+    ("no opinion on this branch") would reintroduce exactly the ownership
+    ambiguity this ruling exists to remove.
+
+    **What T2.46 must do to stay consistent.** Carry its hysteresis state as a
+    field on ``LadderDecision`` — the shape T2.06's ruling already prescribes
+    for T2.60's ``supersession_blocked`` — and register a predicate over it
+    here. It must not write ``review_state`` itself. And it must not put the
+    ``under-sourced`` *label* in this column: the queue predicate and the
+    partial index are both the literal ``'open'``, so a row labelled
+    ``'under-sourced'`` is a row that has silently left the queue, which is the
+    very failure this ruling exists to forbid. Doc 08 §4.3 already names the
+    marker that carries the label — ``demotion_pending_since``, §9's one small
+    schema amendment and T2.46's to land — and ``demotion_pending_since IS NOT
+    NULL`` is simultaneously the label the UI renders and the predicate this
+    tuple wants. So the companion column this ruling would otherwise need
+    already has an owner, and T2.62 needs no schema change of its own.
+
+    **What T2.22 must do to stay consistent.** Read the column; do not ship a
+    bare "clear review_state" action on it. A bare clear does not survive the
+    next recompute (below), and a control whose effect is silently undone
+    minutes later is worse than no control.
+
+    **A human's bare clear reopens, and that is the correct answer.** A
+    derivation cannot honour one: the next recompute reopens the flag while the
+    dispute still stands. Doc 08 §6 names three human verbs and every one of
+    them *changes a condition* — ratify (``confirmed``, §4.4, on which no
+    opener fires), re-ground (adds origins), edit (removes the contradiction) —
+    so each is honoured by derivation with no special case at all. What §6 does
+    **not** give the human is a bare dismiss, and the reason sits in the same
+    paragraph: the "stop showing me this" affordance is the staleness decay
+    (T2.24), which drops a dispute off the *active* queue by priority while
+    leaving it ``disputed`` and served labelled with both sides. Making a bare
+    clear sticky would duplicate that affordance with strictly worse semantics
+    — it would remove the fact from the queue *and* leave no trace of why —
+    which is the silencing invariant 14 forbids.
+
+    Three alternatives were considered and rejected.
+
+    *Teach the clear to skip values it did not write.* With no owner field the
+    only discriminator is the value itself, and the queue predicate pins every
+    opener to the same literal ``'open'``, so "mine" and T2.46's are
+    indistinguishable on disk. It cannot be implemented, only approximated, and
+    an approximated precedence rule is precisely the guard that reads stronger
+    than it is.
+
+    *Open-only, never clear.* It satisfies the no-stomp requirement trivially
+    and fails the recovery requirement, and it turns the queue into an
+    append-only backlog only a human can drain — the throughput bottleneck doc
+    08 §6 chose a self-pruning status flag to avoid.
+
+    *A companion ``review_reasons TEXT[]``.* It is the right shape if the
+    column ever has to carry *why*, and it is not needed for that: each opener
+    is derivable from state the fact already holds, so the reason set would be
+    a denormalised cache of a computation that several writers would then have
+    to keep honest — and the derivation is the cheaper way to get the same
+    guarantee. It is also a baseline regeneration, which serialises through one
+    owner per epic.
+    """
+    if any(opener(decision) for opener in REVIEW_OPENERS):
+        return REVIEW_STATE_OPEN
+    return None
+
+
 # ─────────────────────────── the applier ───────────────────────────
 
 
@@ -497,10 +618,17 @@ async def recompute_fact(
     status_to_write = (
         decision.target_status if decision.target_status != decision.current_status else None
     )
+    # `review_state` goes down with the status, in that method's single UPDATE
+    # and under the FOR UPDATE taken above, so `disputed`-but-unqueued is not a
+    # state anything can observe. It is passed on *every* call, including the
+    # holds that write no status: the flag is derived from current conditions,
+    # so a branch that declined to pass it would leave a stale queue entry
+    # behind exactly where the derivation is the only thing that could clear it.
     await repo.set_verification_status(
         fact_id,
         status_to_write,
         confidence=decision.confidence,
+        review_state=derive_review_state(decision),
         outcome=decision.outcome,
         origin_count=decision.origin_count,
         required_n=decision.required_n,

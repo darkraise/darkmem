@@ -43,6 +43,30 @@ LIVE_PREDICATE = "expired_at IS NULL"
 # fact, via the path T2.05 owns, which does not exist yet.
 _MACHINE_WRITABLE_VERIFICATION_STATUSES = frozenset({"candidate", "corroborated", "disputed"})
 
+# The review queue's membership literal. ``ix_knowledge_triples_review`` is
+# partial on exactly this value and doc 08 §6 defines the queue as
+# ``WHERE review_state='open'``, so on disk this column is a boolean with a
+# string spelling. Spelled once here, beside the column, and imported by the
+# derivation rather than re-typed.
+REVIEW_STATE_OPEN = "open"
+
+
+class _UnsetReviewState:
+    """Sentinel: this caller has no opinion about ``review_state``.
+
+    Distinct from ``None``, which means *clear the flag*. Without the
+    distinction every caller that writes a bare status would silently drop the
+    fact off the review queue.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNSET_REVIEW_STATE"
+
+
+UNSET_REVIEW_STATE = _UnsetReviewState()
+
 _COLUMNS = """
     id, subject_id, object_id, subject_name, object_name, rel_type,
     valid_at, invalid_at, expired_at, reference_time, fact, project,
@@ -321,6 +345,7 @@ class KnowledgeTripleRepository:
         gate_fired: str | None = None,
         source_kinds: tuple[str, ...] | list[str] | None = None,
         contradiction_blocked: bool = False,
+        review_state: str | None | _UnsetReviewState = UNSET_REVIEW_STATE,
     ) -> None:
         """Write the verification axis only. Belief columns are untouched.
 
@@ -336,6 +361,31 @@ class KnowledgeTripleRepository:
         drift. Both are verification-axis columns, so writing them together
         does not breach this module's no-both-axes contract, which is about the
         belief and verification *axes*, not two columns of one axis.
+
+        ``review_state`` rides that same UPDATE, and the co-location is the
+        point rather than a convenience. Doc 08 §4.3's flowchart makes "set
+        ``disputed``, ``review_state`` open" **one node**, so splitting it into
+        two statements — even two inside this transaction and this lock — makes
+        ``disputed``-but-unqueued a state a later refactor can reach, and an
+        unqueued dispute is one the human never sees. The value passed here is
+        *derived*, never chosen: ``verification_ladder.derive_review_state``
+        holds the ruling that decides it and is the only intended producer.
+        A caller that passes nothing leaves the column untouched;
+        ``None`` means *clear*; ``UNSET_REVIEW_STATE`` is what keeps those two
+        apart, because collapsing them would make every bare-status caller
+        silently drain the review queue.
+
+        **Opening is unconditional; clearing carries the burden of proof.**
+        Writing ``'open'`` can only *add* a row to the review queue, so it hides
+        nothing and is applied whatever the column held — including over a value
+        this module does not recognise, because clause 1's "not a reachable
+        state" outranks preserving a value nobody can name. Writing NULL
+        *removes* a row from the queue, so it is applied only over a value this
+        derivation could itself have produced (NULL or ``'open'``); anything
+        else is left in place with a warning rather than stomped. The asymmetry
+        is the veto's, in the other direction: the error direction is fixed, and
+        a stale queue entry costs the human one glance while a wrongly cleared
+        one costs them the fact.
 
         Refuses ``confirmed``: the machine's ceiling is ``corroborated``, and
         only a human reaches ``confirmed``, via the ratification path T2.05
@@ -399,6 +449,23 @@ class KnowledgeTripleRepository:
         that caller does not exist, so this is a documented caveat, not a
         code change.
 
+        **``review_state`` movement is deliberately NOT a third journal
+        trigger** (T2.62). The branch below still fires on ``changed or
+        contradiction_blocked`` and the ``verified`` population is byte-for-byte
+        the one G-C's promotion-rate SQL was written against. Two reasons, and
+        the second is the load-bearing one: a queue flag is not a verification
+        transition, so counting it would put rows carrying no status change into
+        a metric whose whole premise is "one row means one transition"; and the
+        flag is a *pure function* of the decision this payload already records
+        (see ``derive_review_state``), so a separate journal of it would be
+        redundant state, and redundant state drifts. The payload is unchanged
+        for the same reason. Every movement this path can produce today already
+        coincides with a row the existing trigger writes — an open rides either
+        a ``dispute`` transition or a ``contradiction_blocked`` hold, a clear
+        rides a ``recover`` transition — with one exception that has no
+        producer: a ``confirmed`` fact's clear, which cannot occur until T2.05
+        lands a ratification path, and which that path journals itself.
+
         The promotion decision's applier is this module's sole caller into
         the verification axis, which is what makes the event count here
         countable rather than a duplicate of a second writer's.
@@ -413,12 +480,27 @@ class KnowledgeTripleRepository:
                 f"invalid verification_status {status!r}; must be one of "
                 f"{sorted(_MACHINE_WRITABLE_VERIFICATION_STATUSES)}"
             )
-        if status is None and confidence is None:
+        if not isinstance(review_state, _UnsetReviewState) and review_state not in (
+            None,
+            REVIEW_STATE_OPEN,
+        ):
+            raise ValueError(
+                f"invalid review_state {review_state!r}; the review queue's "
+                f"predicate and its partial index are both the literal "
+                f"{REVIEW_STATE_OPEN!r}, so a label stored here is a row that "
+                "has silently left the queue"
+            )
+        if (
+            status is None
+            and confidence is None
+            and isinstance(review_state, _UnsetReviewState)
+        ):
             return
 
         prior = await self.session.execute(
             text(
-                "SELECT verification_status, project FROM knowledge_triples "
+                "SELECT verification_status, review_state, project "
+                "FROM knowledge_triples "
                 "WHERE id = CAST(:id AS uuid) FOR UPDATE"
             ),
             {"id": str(triple_id)},
@@ -438,13 +520,29 @@ class KnowledgeTripleRepository:
         if confidence is not None:
             assignments.append("confidence = CAST(:confidence AS real)")
             params["confidence"] = confidence
-        await self.session.execute(
-            text(
-                f"UPDATE knowledge_triples SET {', '.join(assignments)} "
-                "WHERE id = CAST(:id AS uuid)"
-            ),
-            params,
-        )
+        if not isinstance(review_state, _UnsetReviewState):
+            if review_state == REVIEW_STATE_OPEN:
+                assignments.append("review_state = CAST(:review_state AS text)")
+                params["review_state"] = review_state
+            elif prior_row["review_state"] in (None, REVIEW_STATE_OPEN):
+                assignments.append("review_state = NULL")
+            else:
+                logger.warning(
+                    "set_verification_status: leaving review_state %r on fact %s "
+                    "in place; the derivation clears only NULL or %r, and a value "
+                    "it could not have written belongs to an owner it cannot name",
+                    prior_row["review_state"],
+                    triple_id,
+                    REVIEW_STATE_OPEN,
+                )
+        if assignments:
+            await self.session.execute(
+                text(
+                    f"UPDATE knowledge_triples SET {', '.join(assignments)} "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                params,
+            )
         changed = status is not None and prior_row["verification_status"] != status
         if changed or contradiction_blocked:
             payload: dict[str, Any] = {
