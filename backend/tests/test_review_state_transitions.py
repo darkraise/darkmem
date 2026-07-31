@@ -575,7 +575,15 @@ class TestTheVerifiedEventPopulationIsUnchanged:
         assert await _verified_events(session, fact_id) == []
 
     async def test_the_payload_shape_is_the_one_gc_reads(self, session):
-        """No key added, none removed — ``review_state`` is derivable from it."""
+        """The exact key set G-C's SQL reads — still no ``review_state`` in it.
+
+        T2.62 added no key; T2.60 added exactly one, ``supersession_blocked``,
+        under the ruling in ``verification_ladder.decide``'s docstring. The
+        assertion stays an exact set rather than a subset check on purpose: a
+        new key is what T2.51's ``KNOWN_PAYLOAD_KEYS`` guard refuses, so this
+        is the coupling check that fails loudly if a key is added without the
+        metrics runner's vocabulary being widened in step.
+        """
         subject, _ = await _disputed_pair(session, tag="payload")
 
         await recompute_fact(session, subject)
@@ -591,6 +599,7 @@ class TestTheVerifiedEventPopulationIsUnchanged:
             "gate_fired",
             "source_kinds",
             "contradiction_blocked",
+            "supersession_blocked",
             "confidence",
         }
 

@@ -345,6 +345,7 @@ class KnowledgeTripleRepository:
         gate_fired: str | None = None,
         source_kinds: tuple[str, ...] | list[str] | None = None,
         contradiction_blocked: bool = False,
+        supersession_blocked: bool = False,
         review_state: str | None | _UnsetReviewState = UNSET_REVIEW_STATE,
     ) -> None:
         """Write the verification axis only. Belief columns are untouched.
@@ -412,7 +413,8 @@ class KnowledgeTripleRepository:
         the journalled "before" a lie or make a no-op look like a transition.
 
         ``outcome``/``origin_count``/``required_n``/``gate_fired``/
-        ``source_kinds``/``contradiction_blocked`` are T2.06's decision
+        ``source_kinds``/``contradiction_blocked``/``supersession_blocked``
+        are the promotion decision's
         evidence (the applier's decision record, see the promotion-decision
         module beside this one), threaded through as plain values rather than
         that dataclass itself, to avoid a repository -> service import cycle.
@@ -426,8 +428,17 @@ class KnowledgeTripleRepository:
         ``contradiction_blocked=True`` journals even when ``status`` is
         ``None`` (unchanged): a fact the veto is *still* holding in
         ``disputed`` across a recompute cycle is not a status transition, but
-        it is exactly the ongoing-veto evidence doc 08 §4.2's audit needs, and
-        it is the one hold this method journals on purpose. Every other hold
+        it is exactly the ongoing-veto evidence doc 08 §4.2's audit needs.
+
+        ``supersession_blocked=True`` journals on the same terms and is the
+        **second** such hold (T2.60). Its status is unchanged by construction —
+        the blocker withholds a promotion rather than moving the fact — so
+        without this branch the one decision that G-C's promotion rate most
+        needs to see would be the one decision that leaves no trace. It is the
+        meets-bar-but-holds shape the paragraph below argues cannot exist;
+        that argument was true only until this blocker landed, and the
+        denominator consequence is argued in ``supersession_hold``'s module
+        docstring. Every *other* hold
         (a human-ratified ``confirmed`` refresh, an unblocked candidate below
         its bar, or a corroborated fact still meeting its bar) stays a pure
         no-op. That is *not* principally a volume argument -- the recompute
@@ -437,8 +448,9 @@ class KnowledgeTripleRepository:
         plain hold carries no information any G-C metric reads: an unblocked
         candidate below its bar was never "eligible" (excluded from the
         promotion-rate denominator by construction, not by omission), and a
-        corroborated fact still holding says nothing new about it. The one
-        hold that *does* carry information is the contradiction-blocked one,
+        corroborated fact still holding says nothing new about it. The holds
+        that *do* carry information are the two flagged above. The
+        contradiction-blocked one carries it because
         because the periodic contradiction scan (T2.11) re-adjudicates every
         standing dispute independently of ``sources_changed``, and each such
         pass is the only durable record that the veto is still active --
@@ -553,7 +565,7 @@ class KnowledgeTripleRepository:
                 params,
             )
         changed = status is not None and prior_row["verification_status"] != status
-        if changed or contradiction_blocked:
+        if changed or contradiction_blocked or supersession_blocked:
             payload: dict[str, Any] = {
                 "before": {"verification_status": prior_row["verification_status"]},
                 "after": {
@@ -571,6 +583,7 @@ class KnowledgeTripleRepository:
                     list(source_kinds) if source_kinds is not None else []
                 )
                 payload["contradiction_blocked"] = contradiction_blocked
+                payload["supersession_blocked"] = supersession_blocked
                 payload["confidence"] = confidence
             await record_event(
                 self.session,
