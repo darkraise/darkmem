@@ -177,7 +177,15 @@ rows yet — without this emit, newly lifted facts are never enqueued for promot
 
 #### T2.11 — `contradiction_scan`
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.04, T2.26` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.04, T2.26, T2.41` · `Doc: 08 §5` · `Tag: target-new` · `Gate: G-C`
+
+**BLOCKED as of 2026-07-31 — the judge is not qualified, and this is enforced in code.**
+T2.26 shipped the judge and its bars but measured contradiction precision **0.8182
+against a 0.95 bar**, so no qualification record was minted.
+`VerificationJudge.judge()` — the only lawful consumer door — raises
+`JudgeNotQualifiedError` unconditionally while that record is absent, so the Done-when
+clause below is unsatisfiable in code rather than merely unproven. `Depends` gains
+**T2.41**, the run that can actually mint the record, which is itself behind T2.54.
 
 **What.** Generate contradiction candidates from **same-endpoint facts plus a
 `pg_trgm`-on-`fact` shortlist** (doc 08 §5.3 — the combined generator, not the trigram
@@ -1091,11 +1099,91 @@ cross-cutting shape that got T2.60 minted.
 
 **Verify.** `cd backend && python -m pytest tests/test_review_state_transitions.py -q`
 
+#### T2.63 — Human adjudication verdicts must reach the journal
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.22, T2.62` · `Doc: 08 §6, 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 17 §5.1 defines the false-promotion audit as "the count of corroborated
+facts later disputed **or human-rejected**". The disputed half is computable — it is a
+self-join over `verified` events. **The human-rejected half has no source at all**, and
+after T2.62 it cannot acquire one by accident.
+
+T2.62 settled `review_state` as a pure queue-membership marker: the only writable value
+is `'open'`, the repository refuses any other literal, and human resolution *clears* the
+column to NULL. Doc 08 §6 names no "rejected" value and should not gain one — the column
+is derived, and a human verdict is an event, not a state. So the audit's second half is
+**structurally unreachable** from anything the system currently records: T2.51's runner
+reads 0 forever, and reads it silently, because its `KNOWN_REVIEW_STATES` tripwire can
+never fire against a vocabulary that is correct.
+
+The fix is journalling, not a column. When a human ratifies, re-grounds, edits or rejects
+a queued fact, that verdict must land in `events` with enough payload for the audit to
+count it — the same discipline T2.06 applied to machine transitions, which is exactly why
+G-C's other metrics are computable by SQL over one table.
+
+**Why its own task.** The verdict is written by T2.22's queue surface and by T2.05's
+ratification path, and read by T2.51's runner — three owners, none of whom can define the
+vocabulary alone. `EVENT_TYPES` is a closed vocabulary and widening it is taxonomy-first
+(land the value before its emitter ships), so one task must own the value, the payload
+shape, and both emitters.
+
+**Done when:**
+- [ ] A human verdict on a queued fact journals to `events` under a value landed in
+      `EVENT_TYPES` **before** any emitter references it
+- [ ] The payload carries what doc 17 §5.1's audit needs — which fact, which verdict,
+      and the `verification_status` it held — without a join back to `knowledge_triples`
+- [ ] `review_state` gains no new value; T2.62's derivation and its refusal guard are
+      untouched, proven by test
+- [ ] T2.51's human-rejected arm reads the journal and its tripwire can actually fire,
+      proven by a seeded rejection
+- [ ] The sole-journaller property for *verification transitions* still holds — a human
+      verdict is a distinct event type, not a second writer of `verified`
+
+**Verify.** `cd backend && python -m pytest tests/test_human_adjudication_events.py -q`
+
+#### T2.64 — The contradiction's counterpart must ride the journal payload
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.04, T2.06` · `Doc: 08 §6, §4.2` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 08 §6 requires disputed knowledge be "served **labelled with both sides**",
+and §4.2's veto is what knows both sides. It does not record them: `ContradictionFinding`
+is computed on the fly inside the adjudication and discarded once the verdict is taken.
+So the review queue (T2.22) can say *this fact is disputed, with N origins of these
+kinds* but cannot say *disputed by fact X asserting Y* — the half a human actually needs
+to adjudicate.
+
+T2.22 could not close this and correctly declined to: the deterministic scan is guarded by
+a tree-wide source scan that fails the build on any caller outside the ladder, so a
+surface-layer re-derivation is forbidden by construction, and rightly.
+
+**The closure is cheap and needs no schema change.** The ladder already journals T2.06's
+enriched `verified` payload at the exact point where the finding is still in scope. Adding
+the counterpart fact id (and the asserted object) to that jsonb payload costs one field;
+T2.22's evidence attach then surfaces it with no query change at all.
+
+**Done when:**
+- [ ] A `disputed` transition's `verified` payload names the counterpart fact(s)
+- [ ] The `verified` **event population is unchanged** — no new rows, no rows lost; only
+      the payload of rows that already existed gains a field
+- [ ] T2.51's payload-vocabulary guard is widened in the same commit, or the new key
+      makes every promotion-metrics run raise `UnrecognisedPayloadError`
+- [ ] `recompute_fact` remains the sole journaller; the scan gains no second caller
+- [ ] A queued fact's counterpart is readable from the journal alone, proven by test
+
+**Verify.** `cd backend && python -m pytest tests/test_ladder_journaling.py tests/test_contradiction_veto.py -q
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
 | 2026-07-31 | T2.41, T2.54 | 2 | **`T2.41` gains `Depends: T2.54`.** The composition amendment logged earlier today put doc 17 §11's "synthetic-only gold is rejected as unrepresentative; >= 200 pairs per variant before the gate can open" onto T2.54's Done-when, but never added the dependency **edge** to the evidence run that consumes it. So the task graph still permitted starting G-D's evidence run with T2.54 incomplete — the exact claim the amendment exists to block | Caught by T2.26's plan, which had to reason about when G-D may open and found the constraint stated in one place and unenforced in the graph. A constraint recorded on the producer but absent from the consumer's `Depends` is enforced only by whoever remembers to read it; the graph is what the runbook's entry-gate check actually consults |
+| 2026-07-31 | T2.63, T2.51, T2.22, T2.62, T2.05 | 2 | **T2.63 minted: doc 17 §5.1's false-promotion audit has a second half — "or human-rejected" — with no possible source, and T2.62 closed the accidental route.** T2.62 settled `review_state` as a pure queue-membership marker: only `'open'` is writable, the repository refuses any other literal, and human resolution clears it to NULL. Doc 08 §6 names no "rejected" value and should not gain one. So T2.51's `human_rejected` arm reads 0 **silently and forever**, and its `KNOWN_REVIEW_STATES` tripwire can never fire, because the vocabulary it guards is correct. The fix is journalling a human verdict as an event, not adding a column | Found by T2.51's Fable review, which checked the arm against T2.62's *landed* design on the sibling branch rather than against the branch point. T2.51's own report had called the arm "a forward-compatible guard that fails loudly when a writer lands"; against T2.62 it does not. Minted rather than folded into T2.22 or T2.05 because the verdict is written by both of those and read by T2.51 — three owners, none of whom can define the vocabulary alone — and `EVENT_TYPES` is closed, so widening is taxonomy-first and needs one owner for the value, the payload and both emitters. T2.51 was directed to state the blindness in its rendered report meanwhile: a 0 nobody can see the reason for is worse than an absent number |
+| 2026-07-31 | T2.64, T2.22, T2.04, T2.06 | 2 | **T2.64 minted: doc 08 §6's "served labelled with both sides" has no data source, and the closure needs no schema change.** `ContradictionFinding` is computed inside adjudication and discarded once the verdict is taken, so the review queue can say *disputed, N origins of these kinds* but not *disputed by fact X asserting Y* — the half a human needs to adjudicate. The ladder journals T2.06's enriched `verified` payload at the exact point the finding is still in scope, so adding the counterpart fact id costs one jsonb field and T2.22's evidence attach surfaces it with no query change | Raised by T2.22's implementer as a coordination item and sharpened by its Fable review, which identified the cheap closure the implementer had not named. T2.22 correctly declined to work around it: a tree-wide source scan fails the build on any caller of the deterministic scan outside the ladder, so a surface-layer re-derivation is forbidden by construction. Routed to a new task rather than left as a coordination note because notes decay and this one is a Done-when clause of a doc, not a nicety. Note the coupling to T2.51's payload-vocabulary guard — a new key raises `UnrecognisedPayloadError` unless widened in the same commit |
+| 2026-07-31 | T2.40, T2.51, T2.06 | 2 | **T2.40 must be told two things about the number it reads: the promotion rate is per-transition where doc 17 §5.1 says per-fact, and the "diverse" slice is not the gate's diversity rule.** A fact exiting `candidate` more than once in a window contributes multiple rows to both sides of the rate; T2.06 converted the *audit* to DISTINCT-facts to match §5.1's wording and left the rate per-event, and T2.51 inherited the asymmetry verbatim. Separately, the gate's diversity rule needs two *attributable* origins of differing kinds while the payload's `source_kinds` is the union over all origins, so a lone origin asserting under two kinds slices as "diverse" without ever having lowered the bar | Both surfaced by T2.51's Fable review; the units divergence was plan-mandated (the brief instructed inheriting T2.06's derivation verbatim) so it is a disclosure rather than a defect, and the diversity divergence is wider than T2.51's own report stated. Neither is fixable in the runner without contradicting its brief, and both change how a gate verdict should be read — so they are labelled in the rendered report and recorded here rather than silently carried into G-C |
+| 2026-07-31 | T2.54, T2.41, T2.26 | 3 | **RULED by the owner: doc 17 §11's "real" governs the premise *distribution*, not authorship or database of origin.** A `claim-fact` premise is real when minted by the production code path (extraction → `fact_lift` → `fact_sentence`) and byte-anchored to the `knowledge_triples` row that produced it, whatever corpus was ingested. Bench-lifted facts therefore qualify; hand-authored premises do not. Doc 17 §11 amended in place to carry the ruling — the corpus doc is where it lands, not a satellite document | Escalated to Tier 3 by T2.54's plan review, which judged the plan's Tier-2 self-resolution insufficient: lodging the definition in `LABELLING.md` leaves the next reader of §11 with the ambiguity intact. The rejected reading ("rows from the production vault") is near-circular — doc 20 sequences the homelab cutover *after* G-C and G-D — and the one route satisfying it today, snapshotting the live LAN instance's 415 memories into the bench database, would commit the owner's private memory content into a committed `gold.json` permanently, in a repo contemplating publication. The owner weighed that route explicitly and declined it. **The plan's original justification was factually wrong and was corrected first**: it claimed no production deployment existed anywhere, having measured only the dev-compose Postgres; a live instance serves this repo's own MCP tools |
+| 2026-07-31 | T2.54, T2.41 | 2 | **RATIFIED by the owner: a 50% `l2-fact` proportion floor per task variant, enforced in `gate_eligibility`, with the `temporal` slice exempt and the exemption sunsetting when `fact_lift` renders validity windows.** Closes the hole where a 199-synthetic/1-real gold passes mechanically, since the eligibility lock previously checked only for *zero* `l2-fact` premises | Tightening-only and elaborating §11's stated intent rather than changing a gate's bar, so Tier 2 rather than Tier 3 — the plan reviewer concurred with that tiering while escalating the sibling ruling above. Paired with the machine-checkable anchor (premise byte-equal to a committed harvest manifest row, manifest as source of truth) so the floor counts real premises rather than self-declared provenance strings |
+| 2026-07-31 | T2.54 | 1 | **RATIFIED by the owner: the label-consistency resample is n = 93 at ≤ 1 disagreement**, not the originally planned 37 | The plan review computed the power: at n = 37 a gold with exactly 5% label error passes 44% of the time and a pass certifies only < 12.2% error at 95% confidence — while 5% gold noise consumes the entire precision budget of the judge's 0.95 bar the resample exists to protect. At n = 93 the pass probability under 5% true error is 0.0500, so a pass genuinely certifies < 5%. Costs the owner roughly 1–1.5 h more, accepted deliberately |
+| 2026-07-31 | T2.11, T2.40, T2.41, T2.54 | 2 | **T2.11 moved to `blocked` and gains `Depends: T2.41`; G-C is now transitively behind T2.54.** T2.11's Done-when requires adjudication by the *qualified* judge. T2.26 shipped the judge but measured contradiction precision **0.8182 against a 0.95 bar** stated in writing beforehand, so it minted no qualification record — and `VerificationJudge.judge()`, the only lawful consumer door, raises `JudgeNotQualifiedError` unconditionally while that record is absent (`app/services/verification_qualification.json` confirmed not present on disk). The record is mintable only by `run_judge_qualification.py --gate`, whose eligibility lock refuses a gold with < 200 live pairs or zero `l2-fact` premises — which is T2.54's output, consumed by T2.41. Since T2.40 (G-C evidence) depends on T2.11, **G-C now sits behind T2.54 exactly as G-D already did** | The dependency edge was missing, not the constraint: T2.26's own completion note says "T2.11 cannot ship on this judge", but T2.11's `Depends` field still read `T2.04, T2.26` — and `Depends` is what the runbook §1.5 entry check actually consults, so the graph permitted claiming a task that cannot compile a passing test. Same failure shape as the T2.41/T2.54 amendment logged earlier today: a constraint recorded on the producer and absent from the consumer's `Depends` is enforced only by whoever remembers to read it. **Not** resolved by fixing the judge's reversal-exclusivity errors: the 41-pair gold that measured 0.8182 has already been contacted, so tuning against those three errors is precisely the tune-against-gold loop T2.26's plan review flagged as its one Critical finding. A prompt edit also moves `prompt_sha`, hence the judge identity, hence de-qualifies mechanically — so any fix must be measured on T2.54's fresh gold regardless |
 | 2026-07-31 | T2.62, T2.04, T2.22 | 2 | **T2.62 minted: nothing writes `review_state`, so a veto-disputed fact never reaches the review queue.** Doc 08 §4.3 pairs the status flip with opening `review_state` and §6 defines the queue as `WHERE review_state='open'`, but T2.04's five Done-when clauses never name the write and T2.22's cover only the queue's surface and index shape. `ix_knowledge_triples_review` has sat in the baseline since T0.12b with no writer | Surfaced by T2.04's implementer, which deliberately declined to absorb it, and independently confirmed by the Fable review (the only `review_state` mention in `backend/app` outside the model is an insert parameter defaulting to None that nothing passes). Minted rather than folded into T2.22 on the reviewer's recommendation: the writes belong inside `recompute_fact`'s `FOR UPDATE` window beside the sole journaller, and a queue-surface writer would leave a window where a fact is `disputed` but unqueued. The clear semantics additionally span T2.46's `under-sourced` label and §6's human-clear, so precedence needs one owner |
 | 2026-07-31 | T2.54, T2.41, T2.26, T2.25 | 2 | **Doc 17 §11 makes the entailment gold's *composition* gate-binding, not only its size, and no task carried that.** §11: gold is "seeded from real synthesis drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is rejected as unrepresentative**; >= 200 pairs per task variant before the corresponding gate can open". T2.54's Done-when named only the resample and JSON-on-disk; its handoff from T2.25 named only volume. T2.54 now carries the composition clause and **depends on T2.10** | Raised as a Minor by the Fable review of T2.25, 2026-07-31, and confirmed against §11 verbatim. T2.25 is unaffected and stays `done` — its 41 pairs are 100% hand-authored for the honest reason that neither named source existed at its branch point, and it reserved `synthesis-draft` / `l2-fact` at test-pinned zero precisely so the first real harvest is a visible diff. The trap this closes is that G-D could otherwise be claimed on a grown-but-still-synthetic set. **Not the deadlock T2.25 feared**: §11 says "once *Layer 2* is live", and Layer 2 is `knowledge_triples`, whose producer is T2.10 in this epic — not T3.02 behind the gate. The `synthesis-draft` provenance and the block-answer variant remain behind T3.02 and doc 16, gating those variants only |
 | 2026-07-31 | T2.47, T2.61, T2.34 | 2 | **T2.61 minted: the `expired_memory_cleanup` job bypasses T2.47's provenance-withdrawal hook.** T2.47 hangs the hook off `delete_by_memory_id`, which covers re-extraction and both interactive delete doors. The TTL sweep deletes by raw SQL (`app/services/job_runners.py`) and never reaches it; `fact_sources.source_ref` is a soft ref with no FK, so a TTL-expired memory strands its provenance and its sole-sourced facts never expire. Latent today (no `fact_sources` producer until T2.10) and live the moment `fact_lift` ships | Found by T2.47's implementer and confirmed by the controller against every delete path. Raised to Tier 2 because it is a **new task the plan missed**, not a T2.47-local correction: T2.47's own Done-when list is satisfied without it, and T2.34 — the only other task touching this sweep — explicitly reuses T1.37's sweep *unchanged*, so no existing task owns the fix. Sized S and made to depend on T2.47 so it lands on the shared withdrawal path rather than duplicating it |
