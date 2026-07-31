@@ -16,6 +16,10 @@ from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
+from app.services.fact_provenance import (
+    reconcile_memory_sources,
+    withdraw_memory_sources,
+)
 from app.services.rank_fusion import any_arm_active, rank_fusion_factor
 from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions, is_supersession_trigger
@@ -738,6 +742,20 @@ class ProcessingPipeline:
                                         new_relations=extraction.get("relationships", []),
                                     )
 
+                            # The vault enqueue hook (doc 05 §8.4). Inside
+                            # savepoint B, not after the commit: the withdrawal
+                            # and the inline expiry are justified *by* the graph
+                            # replace, so they have to share its atomicity. On
+                            # the other side of the commit a savepoint-B
+                            # rollback would leave the previous graph standing
+                            # while a fact it still asserts had already been
+                            # expired and enqueued — a belief withdrawn on the
+                            # strength of a write that never landed, with an
+                            # append-only event row that can never be un-said.
+                            # Phase 5 only enqueues; it never recomputes a
+                            # verification status (invariant 15).
+                            await reconcile_memory_sources(session, memory_id=memory_id)
+
                         status["graph"] = "ok"
                     except Exception as e:
                         status["graph"] = "error"
@@ -1202,6 +1220,10 @@ class ProcessingPipeline:
                 graph_repo = PostgresGraphRepository(session)
                 await vector_repo.delete(memory_id)
                 await graph_repo.delete_by_memory_id(memory_id)
+                # A deleted memory sources nothing, so the whole set goes
+                # (doc 05 §8.4). Same transaction as the graph strip for the
+                # same reason Phase 5's hook sits inside savepoint B.
+                await withdraw_memory_sources(session, memory_id=memory_id)
                 await session.commit()
             if broadcast and self._broadcast:
                 try:
