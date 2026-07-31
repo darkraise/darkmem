@@ -492,16 +492,55 @@ assertions into the vault at the ladder's second rung.
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| `verification` judge precision on labelled entailment gold | — | — | — | — |
-| `verification` judge recall on labelled entailment gold | — | — | — | — |
+| `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | — | — | — |
+| `verification` judge recall on labelled entailment gold | ≥ 0.90 on `entailed` (`groundedness_gate_recall_bar`, config default; stated 2026-07-31, before any gate run) | — | — | — |
+
+The veto consumer inherits the same qualification on the **contradiction** verdict
+(doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
+2026-07-31 before any gate run alongside the two above.
+
+**Interim measurement (T2.26, 2026-07-31) — not a gate verdict.** One counted run of the
+qualified-judge candidate (`app/services/verification_judge.py`; model
+`deepseek-v4-flash`, identity `66df91cee44d2415`, prompt v1 frozen at fixture-pass before
+first gold contact; `gold_touching_attempts: 2` = one live pass + its warm verification
+replay), against gold v1 (`sha256 3fd42fc0…`, 41 live pairs), recorded in
+`docs/eval/2026-07-31-judge-qualification.md`:
+
+- entailed-precision **1.000** (17/17 accepts, zero false accepts) — above bar
+- entailed-recall **1.000** (17/17) — above bar
+- contradiction-precision **0.818** (9/11) — **below its 0.95 bar**: two `unsupported`
+  `direction` pairs judged `contradicted` (the manufactured-disputes failure);
+  contradiction-recall 0.900 (one missed `temporal` contradiction); invalid 0/41
+- twin: **408.2 tokens/claim** on the gold pass (16,736 tokens / 41 claims, fixture
+  stage excluded); live judge-call latency p50 1.07 s / p95 1.27 s (n=41, powered)
+- granularity at this size: 17 gold-entailed means one false accept ≈ 17/18 = 0.944,
+  so the precision bar is effectively "zero false accepts"; 10 gold-contradicted means
+  one manufactured contradiction ≈ 10/11 = 0.909 — single-error resolution, which is
+  why the set must grow before a verdict means anything
+
+**Interim only — gate not claimable:** `run_judge_qualification.py --gate` refuses this
+gold before any model call (composition: 41 < 200 live pairs; `l2-fact: 0/41`;
+author-labelled: 41/41), no app-side qualification record exists (its absence is
+test-pinned), and the verdict is T2.41's after T2.54. Under the 2026-07-31 amendment's
+reading, §11's real-material requirement reaches the claim/fact gold's *premise* side
+(`l2-fact`); the hypothesis side remains hand-authored indefinitely for this variant —
+T2.41's verdict must state composition in those terms and not overstate it.
 
 **Gold set:** built in T2.25, **before** the judge, so the judge cannot be tuned to its
-own test. Material comes from running `article_synthesis` in a labelled non-shipping
-mode against `darkmem_bench`, plus hand-authored claim/fact pairs — **not** from real
-Phase-3 drafts, which do not exist until after this gate clears.
+own test. *(Corrected 2026-07-31 to match the two amendments logged in
+`tasks/E2-truth-core.md` that date:)* both material sources this paragraph originally
+named were verified unavailable at T2.25's branch point — `article_synthesis` is a
+`PlaceholderJobRunner` until T3.02 (behind this gate) and `knowledge_triples` has no
+producer until T2.10 — so the seed set is 41 hand-authored pairs (16 anchored verbatim
+to the retrieval corpus, machine-checked), with `synthesis-draft` and `l2-fact`
+provenances reserved at test-pinned zero. Doc 17 §11 makes composition gate-binding:
+synthetic-only gold is rejected, so growth to ≥ 200 pairs with real `l2-fact` premises
+and full re-adjudication is T2.54's (after T2.10), and this gate cannot open before it.
 
 **Consequence of a miss:** E3 stays closed. Below the bar, no L3 article ships as grounded —
-enforced in code (T3.03), not by policy.
+enforced in code, not by policy: the mechanism half landed in T2.26 (the only door to the
+`verification` purpose is the judge's qualification-gated `judge()`, scan-enforced; the
+record only a canonical-gold `--gate` run can mint), and the ship-path half is T3.03's.
 
 ---
 
