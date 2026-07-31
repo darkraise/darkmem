@@ -405,3 +405,247 @@ def test_minting_lock_four_legs(tmp_path, monkeypatch):
         tmp_canonical, gold_path=entailment_gold.GOLD_PATH, **common,
     )
     assert tmp_canonical.exists()
+
+
+# ── the runner (Task 6): stub-driven, no live LLM, no DB ─────────────────
+
+import asyncio  # noqa: E402
+import itertools  # noqa: E402
+
+from benchlib import run_judge_qualification as rjq  # noqa: E402
+from benchlib.twin import TokenLedger as _TokenLedger  # noqa: E402
+
+SANITY_PREMISES = {
+    p["premise"] for p in json.loads(jq.SANITY_PAIRS_PATH.read_text())["pairs"]
+}
+
+
+def make_stub(script):
+    """A TwinningOrchestrator-constructor-compatible stub whose responses
+    come from ``script(user_content)`` and which records every user message
+    it was asked to judge."""
+    seen: list[str] = []
+
+    class StubOrchestrator:
+        def __init__(self, config, cache_dir):
+            self.config = config
+            self.tokens = _TokenLedger()
+            self.live_calls = 0
+
+        async def chat_completion(self, purpose, messages, response_format=None, seed=None):
+            user = messages[1]["content"]
+            seen.append(user)
+            self.live_calls += 1
+            self.tokens.record_live(
+                purpose, {"prompt_tokens": 100, "completion_tokens": 20},
+            )
+            return script(user)
+
+    return StubOrchestrator, seen
+
+
+def cycling_script():
+    cycle = itertools.cycle(sorted(JUDGE_VERDICTS))
+    def script(_user):
+        return json.dumps({"verdict": next(cycle), "reason": "stub"})
+    return script
+
+
+def _premise_of(user_content):
+    return user_content.split("PREMISE:\n", 1)[1].split("\n\nHYPOTHESIS:", 1)[0]
+
+
+def _run(tmp_path, stub_cls, **kwargs):
+    defaults = dict(
+        deepseek_api_key="sk-test",
+        report_dir=tmp_path / "reports",
+        ledger_path=tmp_path / "ledger.jsonl",
+        cache_dir=tmp_path / "cache",
+        orchestrator_cls=stub_cls,
+    )
+    defaults.update(kwargs)
+    return asyncio.run(rjq.run_qualification(**defaults))
+
+
+def _write_eligible_gold(tmp_path):
+    n, n_l2 = 200, 25
+    pairs = []
+    for i in range(n):
+        pairs.append({
+            "id": f"eg-{i:04d}",
+            "premise": f"Synthetic fact {i} holds value {i}.",
+            "hypothesis": f"Value {i} is held by synthetic fact {i}.",
+            "verdict": "entailed",
+            "slice_tags": ["verbatim"],
+            "provenance": "l2-fact" if i < n_l2 else "hand-authored-synthetic-fact",
+            "label_source": "adjudicated",
+            "rationale": "synthetic eligibility fixture",
+        })
+    doc = {
+        "version": 99,
+        "variant": "claim-fact",
+        "declared_slice_counts": {s: (n if s == "verbatim" else 0)
+                                  for s in entailment_gold.SLICES},
+        "declared_verdict_counts": {v: (n if v == "entailed" else 0)
+                                    for v in entailment_gold.VERDICTS},
+        "declared_provenance_counts": {
+            "l2-fact": n_l2,
+            "hand-authored-synthetic-fact": n - n_l2,
+            "hand-authored-bench-corpus": 0,
+            "synthesis-draft": 0,
+        },
+        "pairs": pairs,
+    }
+    path = tmp_path / "eligible_gold.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+def test_fixture_stage_failure_aborts_before_any_gold_contact(tmp_path):
+    stub_cls, seen = make_stub(lambda _u: "garbage with no verdict token")
+    with pytest.raises(RuntimeError, match="fixture"):
+        _run(tmp_path, stub_cls)
+    assert seen, "the fixture stage must have probed"
+    assert {_premise_of(u) for u in seen} <= SANITY_PREMISES
+    assert not (tmp_path / "reports").exists() or not list((tmp_path / "reports").iterdir())
+    assert not (tmp_path / "ledger.jsonl").exists()
+
+
+def test_single_class_collapse_on_fixtures_also_aborts(tmp_path):
+    stub_cls, seen = make_stub(
+        lambda _u: json.dumps({"verdict": "entailed", "reason": "always"})
+    )
+    with pytest.raises(RuntimeError, match="fixture"):
+        _run(tmp_path, stub_cls)
+    assert {_premise_of(u) for u in seen} <= SANITY_PREMISES
+
+
+def test_happy_path_two_ledger_rows_and_report(tmp_path):
+    stub_cls, seen = make_stub(cycling_script())
+    result = _run(tmp_path, stub_cls)
+
+    rows = ledger.read_runs(tmp_path / "ledger.jsonl")
+    assert len(rows) == 2
+    intent, scored = rows
+    assert intent["kind"] == "judge_qualification_attempt"
+    assert scored["kind"] == "judge_qualification"
+    assert scored["intent_row_id"] == intent["intent_row_id"]
+    assert scored["gold_touching_attempts"] == 1
+    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+
+    assert result.report_path.exists()
+    text = result.report_path.read_text()
+    assert "gold_touching_attempts: 1" in text
+    assert "INTERIM" in text
+    assert "tokens/claim" in text
+
+
+def test_intent_marker_is_on_disk_before_the_first_gold_call(tmp_path):
+    ledger_path = tmp_path / "ledger.jsonl"
+    observed = {}
+
+    def script(user):
+        if _premise_of(user) not in SANITY_PREMISES:
+            observed["rows_at_first_gold_call"] = len(ledger.read_runs(ledger_path))
+            raise ConnectionError("transport died on the first gold pair")
+        return json.dumps({
+            "verdict": next(observed.setdefault("cycle", itertools.cycle(
+                sorted(JUDGE_VERDICTS)))), "reason": "stub",
+        })
+
+    stub_cls, _seen = make_stub(script)
+    with pytest.raises(ConnectionError):
+        _run(tmp_path, stub_cls)
+
+    # The write-ahead marker was already durable when the crash hit, so the
+    # untidy failure is still counted.
+    assert observed["rows_at_first_gold_call"] == 1
+    rows = ledger.read_runs(ledger_path)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "judge_qualification_attempt"
+    assert not (tmp_path / "reports").exists() or not list((tmp_path / "reports").iterdir())
+
+
+def test_gold_backstop_aborts_leaving_the_intent_row(tmp_path):
+    fixture_script = cycling_script()
+
+    def script(user):
+        if _premise_of(user) in SANITY_PREMISES:
+            return fixture_script(user)
+        return "no verdict here"
+
+    stub_cls, _seen = make_stub(script)
+    with pytest.raises(RuntimeError, match="backstop"):
+        _run(tmp_path, stub_cls)
+
+    rows = ledger.read_runs(tmp_path / "ledger.jsonl")
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "judge_qualification_attempt"
+
+
+def test_attempts_count_per_gold_across_identities(tmp_path):
+    ledger_path = tmp_path / "ledger.jsonl"
+    gold_sha = hashlib.sha256(entailment_gold.GOLD_PATH.read_bytes()).hexdigest()
+    ledger.record({"kind": "judge_qualification_attempt", "intent_row_id": "a1",
+                   "identity_hash": "aaaa", "gold_sha256": gold_sha}, path=ledger_path)
+    ledger.record({"kind": "judge_qualification_attempt", "intent_row_id": "a2",
+                   "identity_hash": "bbbb", "gold_sha256": gold_sha}, path=ledger_path)
+    ledger.record({"kind": "judge_qualification_attempt", "intent_row_id": "a3",
+                   "identity_hash": "cccc", "gold_sha256": "other"}, path=ledger_path)
+
+    stub_cls, _seen = make_stub(cycling_script())
+    result = _run(tmp_path, stub_cls)
+
+    scored = ledger.read_runs(ledger_path)[-1]
+    assert scored["gold_touching_attempts"] == 3
+    assert "gold_touching_attempts: 3" in result.report_path.read_text()
+
+
+def test_gate_mode_refuses_the_real_gold_before_any_call(tmp_path):
+    stub_cls, seen = make_stub(cycling_script())
+    with pytest.raises(RuntimeError) as excinfo:
+        _run(tmp_path, stub_cls, gate=True)
+    message = str(excinfo.value)
+    assert "41 < 200" in message
+    assert "l2-fact: 0/41" in message
+    assert "author-labelled: 41/41" in message
+    assert seen == [], "eligibility refusal must precede any model call"
+
+
+def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path):
+    gold_path = _write_eligible_gold(tmp_path)
+    record_path = tmp_path / "rehearsal-record.json"
+    stub_cls, _seen = make_stub(cycling_script())
+    result = _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
+                  record_path=record_path)
+
+    record = json.loads(record_path.read_text())
+    assert record["gate_eligible"] is True
+    assert record["gold_sha256"] == hashlib.sha256(gold_path.read_bytes()).hexdigest()
+    assert record["ledger_run_id"] == result.meta["run_id"]
+
+    # The same rehearsal aimed at the real canonical record path refuses —
+    # the minting lock, exercised through the runner surface.
+    stub_cls2, _ = make_stub(cycling_script())
+    with pytest.raises(ValueError):
+        _run(tmp_path / "second", stub_cls2, gate=True, gold_path=gold_path,
+             record_path=vj.QUALIFICATION_RECORD_PATH)
+    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+
+
+def test_fixtures_only_never_touches_the_gold(tmp_path):
+    stub_cls, seen = make_stub(cycling_script())
+    result = _run(tmp_path, stub_cls, fixtures_only=True)
+    assert result is None
+    assert {_premise_of(u) for u in seen} == SANITY_PREMISES
+    assert not (tmp_path / "ledger.jsonl").exists()
+    assert not (tmp_path / "reports").exists() or not list((tmp_path / "reports").iterdir())
+
+
+def test_latency_channels_are_split_fixture_vs_gold(tmp_path):
+    stub_cls, _seen = make_stub(cycling_script())
+    result = _run(tmp_path, stub_cls)
+    fixture = result.twin.channels["fixture_call"]
+    gold = result.twin.channels["judge_call"]
+    assert fixture.live.n == len(SANITY_PREMISES)
+    assert gold.live.n == result.score.n_pairs == 41
