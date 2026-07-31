@@ -784,11 +784,13 @@ class TestRecomputeFact:
 
 BACKEND = Path(__file__).resolve().parent.parent
 
-# Modules legitimately permitted to reach the ladder. **Empty today**: nothing
-# in `backend/app` may reach it until T2.09's `verification_recompute` job
-# lands, and that task adds itself here. The allowlist is therefore where the
-# Tier-C hand-off is recorded, rather than a silent test edit.
-_ALLOWED_LADDER_FILES: set[str] = set()
+# Modules legitimately permitted to reach the ladder. T2.09's
+# `verification_recompute` job is the intended Tier-C caller: it drains
+# `sources_changed` past a watermark and reconciles a slow-arm slice of
+# `fact_sources` directly, calling `recompute_fact` on each affected fact.
+# Nothing else may reach it -- the Tier-C hand-off is recorded here, not as a
+# silent test edit.
+_ALLOWED_LADDER_FILES: set[str] = {"app/services/verification_recompute.py"}
 
 
 def _app_sources() -> list[Path]:
@@ -876,18 +878,31 @@ def test_the_guard_rejects_a_forbidden_reference(tmp_path):
     assert any("eager_capture.py" in o for o in offenders)
 
     # And the allowlist must be able to exempt it — a guard that cannot be
-    # satisfied is one a future agent deletes rather than configures.
+    # satisfied is one a future agent deletes rather than configures. Restore
+    # the *real* prior value on the way out, not a hardcoded set() — T2.09
+    # landed a permanent, non-empty allowlist, and resetting to the literal
+    # empty set here would silently drop verification_recompute.py's own
+    # exemption for the rest of the test session.
     global _ALLOWED_LADDER_FILES
+    previous = _ALLOWED_LADDER_FILES
     _ALLOWED_LADDER_FILES = {"app/services/eager_capture.py"}
     try:
         assert _forbidden_ladder_references([violation], root=tmp_path) == []
     finally:
-        _ALLOWED_LADDER_FILES = set()
+        _ALLOWED_LADDER_FILES = previous
 
 
-def test_the_allowlist_is_empty_until_its_owning_task_lands():
-    """T2.09 is the first legitimate caller. Until then, nothing is exempt."""
-    assert _ALLOWED_LADDER_FILES == set()
+def test_the_allowlist_holds_exactly_t209s_module_now_that_it_has_landed():
+    """T2.09 is the first legitimate caller, and now the only one.
+
+    Before this task, the allowlist was empty and a sibling test pinned that
+    directly (`test_the_allowlist_is_empty_until_its_owning_task_lands`, now
+    obsolete — this is its landed replacement, same discipline
+    `test_shipped_family_members_no_longer_wear_the_placeholder_marker`
+    follows in `test_dream_jobs.py`: the marker for "not yet" must flip
+    the moment its owning task ships, not stay green by accident.
+    """
+    assert _ALLOWED_LADDER_FILES == {"app/services/verification_recompute.py"}
 
 
 # ───────── F1 — the config → decision seam, pinned end to end ─────────

@@ -20,7 +20,7 @@ members whose owning task has since landed:
 
 | Job | Owner | State |
 |---|---|---|
-| `verification_recompute` | T2.09 | placeholder |
+| `verification_recompute` | T2.09 | shipped |
 | fact lifting | T2.10 | shipped |
 | `contradiction_scan` | T2.11 | placeholder |
 | `memory_dream` | T2.12 | placeholder |
@@ -42,7 +42,11 @@ placeholder value survives a schema swap silently unless the owning task's
 migration/first-run explicitly strips it. T2.10 sidestepped that rather
 than solving it: `LIFT_CONFIG_SCHEMA` keeps `batch_size` under its
 placeholder key, default and bounds, so no persisted value is orphaned and
-none needs stripping.
+none needs stripping. T2.09 does the same: `RECOMPUTE_CONFIG_SCHEMA`'s
+`batch_size` field keeps the placeholder's key, default (100) and ceiling
+(2000) verbatim, and its two new fields (`slow_arm_batch_size`,
+`slow_arm_interval_seconds`) are additions, not renames, so nothing
+persisted under the placeholder schema is orphaned by the swap.
 """
 from __future__ import annotations
 
@@ -56,6 +60,13 @@ from app.services.fact_lift import (
     run_lift,
 )
 from app.services.job_registry import FieldDescriptor, Job, JobRegistry, JobRunner
+from app.services.verification_recompute import (
+    DEFAULT_FAST_BATCH,
+    DEFAULT_SLOW_ARM_INTERVAL_SECONDS,
+    DEFAULT_SLOW_BATCH,
+    RECOMPUTE_CONFIG_SCHEMA,
+    run_recompute,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +125,10 @@ DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 # meant to cover, so a member wired without an umbrella import fails the guard
 # instead of quietly losing it. A later member adds its key and its module here
 # in the same edit that replaces its `PlaceholderJobRunner`.
-SHIPPED_DREAM_JOBS: dict[str, str] = {FACT_LIFT_JOB_KEY: "fact_lift"}
+SHIPPED_DREAM_JOBS: dict[str, str] = {
+    FACT_LIFT_JOB_KEY: "fact_lift",
+    VERIFICATION_RECOMPUTE_JOB_KEY: "verification_recompute",
+}
 
 
 _GENERIC_PLACEHOLDER_HELP = (
@@ -176,6 +190,47 @@ def _make_lift_runner(registry: JobRegistry, key: str) -> JobRunner:
     return run
 
 
+def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
+    """The verification recompute tick, bound to the registry's own session
+    factory. Mirrors ``_make_lift_runner``: config is re-read every tick
+    rather than closed over, and the runner opens and commits its own
+    session so an operator's config edit takes effect on the next run
+    without a restart.
+    """
+    async def run() -> None:
+        cfg = await registry.load_config(key)
+        settings_ = {**registry.get(key).default_config, **cfg.config}
+        async with registry.session_factory() as session:
+            outcome = await run_recompute(
+                session,
+                batch_size=int(settings_.get("batch_size", DEFAULT_FAST_BATCH)),
+                slow_arm_batch_size=int(
+                    settings_.get("slow_arm_batch_size", DEFAULT_SLOW_BATCH)
+                ),
+                slow_arm_interval_seconds=int(
+                    settings_.get(
+                        "slow_arm_interval_seconds", DEFAULT_SLOW_ARM_INTERVAL_SECONDS
+                    )
+                ),
+            )
+            await session.commit()
+        logger.info(
+            "Verification recompute drained %d sources_changed event(s) "
+            "touching %d fact(s): %d recomputed (%d failed, %d skipped dead), "
+            "%d transition(s). Slow arm %s: scanned %d fact(s), healed %d "
+            "(%d skipped dead)%s",
+            outcome.drain.events_scanned, outcome.drain.facts_touched,
+            outcome.drain.facts_recomputed, outcome.drain.facts_failed,
+            outcome.drain.facts_skipped_expired, outcome.drain.transitions,
+            "ran" if outcome.slow_arm_ran else "skipped (not due)",
+            outcome.reconcile.facts_scanned, outcome.reconcile.facts_healed,
+            outcome.reconcile.facts_skipped_expired,
+            " (wrapped to start)" if outcome.reconcile.wrapped else "",
+        )
+
+    return run
+
+
 def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
     return [FieldDescriptor(
         key="batch_size", label="Batch Size", default=default,
@@ -208,14 +263,20 @@ def register_dream_jobs(registry: JobRegistry) -> None:
         max_run_seconds=300,
         config_schema=LIFT_CONFIG_SCHEMA,
     ))
-    registry.register(_placeholder_job(
-        VERIFICATION_RECOMPUTE_JOB_KEY, "Verification Recompute",
-        "Drains sources_changed, counts distinct origins, applies the "
-        "contradiction veto and hysteresis (doc 08 §4.3). Placeholder — "
-        f"real work lands in {DREAM_JOB_OWNERS[VERIFICATION_RECOMPUTE_JOB_KEY]}.",
+    registry.register(Job(
+        key=VERIFICATION_RECOMPUTE_JOB_KEY,
+        display_name="Verification Recompute",
+        description=(
+            "Drains sources_changed past a watermark and recomputes the "
+            "count-veto-N ladder per fact (doc 08 §4.3); a bounded, "
+            "slower-cadence slow arm reconciles a rotating slice of facts "
+            "directly from fact_sources as a backstop for a swallowed "
+            "emit (T2.10 finding I-4)."
+        ),
         default_cron="*/2 * * * *", min_interval_seconds=30,
+        runner=_make_recompute_runner(registry, VERIFICATION_RECOMPUTE_JOB_KEY),
         max_run_seconds=120,
-        config_schema=_generic_batch_schema(default=100, maximum=2000),
+        config_schema=RECOMPUTE_CONFIG_SCHEMA,
     ))
     registry.register(_placeholder_job(
         CONTRADICTION_SCAN_JOB_KEY, "Contradiction Scan",
