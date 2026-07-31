@@ -149,11 +149,17 @@ def _canon(column: str) -> str:
 #
 # The `open_fact` lateral is a *batch filter*, matched on the denormalised
 # names rather than on `triple_key`, because uuid5 has no SQL spelling; identity
-# is resolved authoritatively by `_open_fact_id` below. Canonicalising
-# `knowledge_triples`' side of that match costs the use of
-# `ix_knowledge_triples_live`, which is the right trade at this job's cadence:
-# a wrong pending predicate starves the batch permanently, a missed index
-# costs one scan every fifteen minutes.
+# is resolved authoritatively by `_open_fact_id` below.
+#
+# **Cost, stated accurately.** Canonicalising `knowledge_triples`' side of the
+# match leaves no indexable predicate on it, and the lateral is correlated --
+# it runs for every grouped row, before the WHERE and the LIMIT -- so a tick is
+# O(groups x facts), not one scan. That is the right trade here and only here:
+# a wrong pending predicate starves the batch permanently, while at homelab
+# volume this is a background pass with a 300s ceiling. It does not scale to
+# G-C volume; the fix at that point is an index on the canonical expression,
+# which is a schema change and therefore a Tier-2 amendment, not something to
+# reach for silently.
 _PENDING_GROUPS = text(f"""
     WITH asserted AS (
         SELECT
@@ -226,17 +232,28 @@ _PENDING_GROUPS = text(f"""
 # nothing, and the row would land on a *live* fact where nothing withdraws it
 # again -- a phantom origin inflating COUNT(DISTINCT origin_key), which is
 # over-serving, the one direction this layer may not err in.
-_STILL_ASSERTING = text(f"""
-    SELECT DISTINCT CAST(m.id AS text) AS memory_id
+#
+# **Every triple these memories assert, filtered by identity in Python.** The
+# obvious shape -- pushing the candidate's endpoint names into the WHERE clause
+# -- reintroduces the very defect `_canon` exists to fix, one level down: it
+# matches only the spelling this candidate happens to carry, which is *narrower*
+# than the retention predicate `reconcile_memory_sources` applies. A memory
+# asserting the same fact under a spelling the database canonicaliser keeps
+# apart would then be dropped by the lift while the sweep would have kept it --
+# silently losing a legitimate witness, and losing it permanently. Matching on
+# `compute_triple_key` instead is *exact* parity with the withdrawal half rather
+# than approximate parity through SQL, which is the only claim worth making:
+# the two halves must agree about what "this memory sources this fact" means.
+_STILL_ASSERTING = text("""
+    SELECT CAST(m.id AS text) AS memory_id,
+           se.name AS subject_name,
+           r.rel_type AS rel_type,
+           oe.name AS object_name
     FROM entity_relations r
     JOIN entities se ON se.id = r.source_entity_id
     JOIN entities oe ON oe.id = r.target_entity_id
     JOIN memories m ON m.id = ANY(r.memory_ids)
-    WHERE m.project = CAST(:project AS text)
-      AND {_canon("se.name")} = CAST(:subject_name AS text)
-      AND r.rel_type = CAST(:rel_type AS text)
-      AND {_canon("oe.name")} = CAST(:object_name AS text)
-      AND m.id = ANY(CAST(:memory_ids AS uuid[]))
+    WHERE m.id = ANY(CAST(:memory_ids AS uuid[]))
 """)
 
 # FOR UPDATE, not a bare read: the Tier-B withdrawal sweep expires a fact under
@@ -391,17 +408,28 @@ async def _existing_refs(session: AsyncSession, fact_id: str) -> set[str]:
 
 
 async def _still_asserting(session: AsyncSession, candidate: _Candidate) -> set[str]:
+    """Which of the snapshot's memories still assert *this fact*, by identity.
+
+    The project rides ``candidate.project`` rather than filtering the memories
+    by their own — the same choice ``reconcile_memory_sources`` makes, and for
+    the same reason: the fact's project is part of its identity, so a memory
+    moved between projects after the scan still sources the fact it was
+    asserting, and scoping to the memory's current project would strand it.
+    """
     result = await session.execute(
-        _STILL_ASSERTING,
-        {
-            "project": candidate.project,
-            "subject_name": candidate.subject_name,
-            "rel_type": candidate.rel_type,
-            "object_name": candidate.object_name,
-            "memory_ids": sorted(candidate.origins),
-        },
+        _STILL_ASSERTING, {"memory_ids": sorted(candidate.origins)}
     )
-    return {str(ref) for ref in result.scalars().all()}
+    return {
+        memory_source_ref(row["memory_id"])
+        for row in result.mappings().all()
+        if compute_triple_key(
+            candidate.project,
+            row["subject_name"],
+            row["rel_type"],
+            row["object_name"],
+        )
+        == candidate.triple_key
+    }
 
 
 async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
@@ -427,6 +455,13 @@ async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
         # Every memory behind this candidate stopped asserting it between the
         # scan and now. Minting on the strength of the snapshot would create a
         # fact no memory stands behind.
+        #
+        # The salience bar is NOT re-applied to `live`: it was evaluated by the
+        # scan, so under this race a bar of two can mint a fact whose surviving
+        # sources number one. Every such source is real, which is why this is
+        # left rather than tightened -- re-applying the bar here would also
+        # delete nothing and merely defer the fact to a tick where the count
+        # recovers. Recorded so the bar is read as scan-time, not write-time.
         return _LiftedOne()
 
     minted = fact_id is None
@@ -456,13 +491,23 @@ async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
             payload={"fact_id": fact_id, "memory_id": ref},
         )
         added += 1
-    # Loaded as outstanding work, nothing had been withdrawn, and yet nothing
-    # was written: the scan's pending predicate and the identity resolution
-    # disagree about this group, so it will be reported outstanding again on
-    # every tick and hold a batch slot. Rare (it needs a name pair the database
-    # canonicaliser keeps apart and the identity function folds), but silent
-    # starvation is what makes it worth a line in the log.
-    stalled = not minted and added == 0 and live == set(candidate.origins)
+    # Loaded as outstanding work and yet nothing was written: the scan's
+    # pending predicate and the identity resolution disagree about this group,
+    # so it will be reported outstanding again on every tick and hold a batch
+    # slot. Rare -- it needs a name pair the database canonicaliser keeps apart
+    # and the identity function folds -- but silent starvation is what makes it
+    # worth a line in the log.
+    #
+    # Deliberately **not** conditioned on the whole snapshot still asserting.
+    # An earlier spelling of this guard required `live == candidate.origins`
+    # and was therefore inert in exactly the shape it was written for: when a
+    # spelling-split group carries a memory the identity check excludes, `live`
+    # is a strict subset and the warning never fired. A guard that is decorative
+    # in its own motivating case is worse than none, because it reads as
+    # coverage. The cost of the wider rule is one spurious line after a
+    # re-extraction race retires the last memory that had work outstanding, so
+    # this warning is a prompt to look, not proof of a defect.
+    stalled = not minted and added == 0
     return _LiftedOne(minted=minted, sources_added=added, stalled=stalled)
 
 

@@ -102,12 +102,19 @@ DREAM_JOB_OWNERS: dict[str, str] = {
 
 DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 
-# The members whose owning task has landed, so their runner is real work rather
-# than a `PlaceholderJobRunner`. Structural, like the marker it complements:
-# `tests/test_dream_jobs.py` asserts both directions off this set, so a shipped
-# job can never regress to a placeholder and a placeholder can never be mistaken
-# for shipped.
-SHIPPED_DREAM_JOBS: frozenset[str] = frozenset({FACT_LIFT_JOB_KEY})
+# The members whose owning task has landed, mapped to the module holding the
+# runner's real body. Structural, like the marker it complements:
+# `tests/test_dream_jobs.py` asserts both directions off this mapping, so a
+# shipped job can never regress to a placeholder and a placeholder can never be
+# mistaken for shipped.
+#
+# **The module name is not decoration.** Invariant 15's source scan derives the
+# modules it forbids the hot path from importing out of this file's own
+# imports; the values here are what pins that derivation to the jobs it is
+# meant to cover, so a member wired without an umbrella import fails the guard
+# instead of quietly losing it. A later member adds its key and its module here
+# in the same edit that replaces its `PlaceholderJobRunner`.
+SHIPPED_DREAM_JOBS: dict[str, str] = {FACT_LIFT_JOB_KEY: "fact_lift"}
 
 
 _GENERIC_PLACEHOLDER_HELP = (

@@ -21,6 +21,7 @@ producer can get silently wrong:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -53,6 +54,12 @@ from app.utils.ids import new_id
 PROJECT = "t210-fact-lift"
 OTHER_PROJECT = "t210-fact-lift-other"
 NOW = datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc)
+
+# Separators `str.isspace()` accepts -- so `compute_triple_key` folds them --
+# while this database's `\s` does not. Spelled as escapes, never as literals:
+# the whole point is that they are indistinguishable from a space on screen.
+NBSP = "\u00a0"
+NARROW_NBSP = "\u202f"
 
 
 # ─────────────────────────── Layer-1 bed ───────────────────────────
@@ -633,6 +640,152 @@ async def test_a_losing_spelling_does_not_stay_outstanding_work_forever(session)
             f"fully-sourced fact"
         )
         assert outcome.events_emitted == 0
+
+
+async def sql_keeps_apart(session, separator: str) -> bool:
+    """Does the scan's SQL canonicaliser leave ``separator`` uncollapsed?
+
+    ``compute_triple_key`` folds every separator ``str.isspace()`` accepts,
+    while the database's ``\\s`` is narrower. Which separators fall in the gap
+    is a property of this database, so the tests below read it rather than
+    assuming it — a run where nothing falls in the gap would exercise nothing
+    and must say so instead of passing.
+    """
+    result = await session.execute(
+        text(
+            "SELECT lower(btrim(regexp_replace("
+            "  CAST(:txt AS text), '\\s+', ' ', 'g'))) <> CAST(:folded AS text)"
+        ),
+        {"txt": f"postgres{separator}db", "folded": "postgres db"},
+    )
+    return bool(result.scalar_one())
+
+
+@pytest.mark.asyncio
+async def test_a_witness_under_a_third_spelling_is_never_silently_dropped(session):
+    """Exact parity with the withdrawal half, not approximate parity via SQL.
+
+    Matching the write-time re-read on the candidate's own spelling makes it
+    *narrower* than `reconcile_memory_sources`' retention predicate: a memory
+    asserting the same fact under a spelling the database canonicaliser keeps
+    apart is dropped by the lift though the sweep would keep it. That silently
+    and permanently loses a legitimate witness — under-serving, but real data
+    loss, and it is the same defect class as the one the canonicalisation was
+    added to fix.
+    """
+    exotic = [sep for sep in (NBSP, NARROW_NBSP) if await sql_keeps_apart(session, sep)]
+    assert len(exotic) >= 2, (
+        "this database collapses the separators the test needs, so the "
+        "spelling-split shape is unreachable and the assertions below would "
+        "pass vacuously; find separators that fall in the gap"
+    )
+
+    first = await seed_memory(session, origin_key="session-a")
+    await assert_relation(
+        session, memory_id=first, subject="darkmem", rel_type="USES", obj="postgres db",
+    )
+    await run_lift(session)
+
+    witnesses = {first}
+    for index, separator in enumerate(exotic):
+        memory_id = await seed_memory(session, origin_key=f"session-{index}")
+        await assert_relation(
+            session, memory_id=memory_id, subject="darkmem", rel_type="USES",
+            obj=f"postgres{separator}db",
+        )
+        witnesses.add(memory_id)
+
+    for _ in range(4):
+        await run_lift(session)
+
+    rows = await facts(session)
+    assert len(rows) == 1, "every spelling folds to one fact identity"
+    refs = {row["source_ref"] for row in await sources(session, rows[0]["id"])}
+    assert refs == {memory_source_ref(m) for m in witnesses}, (
+        "a witness the withdrawal half would retain was dropped by the lift"
+    )
+    assert await FactSourceRepository(session).count_distinct_origins(rows[0]["id"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_permanently_pending_group_is_reported_rather_than_silent(session, caplog):
+    """The loudness guard has to cover the subset case too.
+
+    A spelling the database keeps apart leaves its group outstanding forever
+    even once every source has landed, because the minted fact carries a
+    different canonical name. That residue is not fixable inside this module,
+    so it must at least be visible — and an earlier spelling of the guard was
+    inert in exactly this shape, which reads as coverage while providing none.
+    """
+    separator = NBSP
+    assert await sql_keeps_apart(session, separator), (
+        "this database collapses the separator, so no residue exists to report"
+    )
+
+    first = await seed_memory(session, origin_key="session-a")
+    await assert_relation(
+        session, memory_id=first, subject="darkmem", rel_type="USES", obj="postgres db",
+    )
+    second = await seed_memory(session, origin_key="session-b")
+    await assert_relation(
+        session, memory_id=second, subject="darkmem", rel_type="USES",
+        obj=f"postgres{separator}db",
+    )
+    await run_lift(session)
+    await run_lift(session)
+
+    with caplog.at_level(logging.WARNING, logger="app.services.fact_lift"):
+        outcome = await run_lift(session)
+
+    assert outcome.candidates >= 1, "the residue must still be reachable here"
+    assert (outcome.facts_created, outcome.sources_added) == (0, 0)
+    assert any(
+        record.name == "app.services.fact_lift"
+        and record.levelno == logging.WARNING
+        and "outstanding work" in record.getMessage()
+        for record in caplog.records
+    ), "a group that recurs forever while writing nothing must be logged"
+
+
+@pytest.mark.asyncio
+async def test_a_no_op_candidate_reports_stalled_even_when_part_of_it_vanished(session):
+    """The loudness guard must not be conditioned on the whole snapshot.
+
+    Requiring `live == origins` makes the flag inert whenever any snapshot
+    memory drops out, which is precisely when a tick is most likely to write
+    nothing — so the guard would read as coverage while providing none in the
+    subset case. Here the surviving memory is already sourced and the other has
+    been stripped, so the candidate writes nothing with `live` a strict subset.
+    """
+    stored_memory = await seed_memory(session, origin_key="session-a")
+    await assert_relation(
+        session, memory_id=stored_memory, subject="darkmem", rel_type="USES",
+        obj="postgres",
+    )
+    await run_lift(session)
+
+    doomed = await seed_memory(session, origin_key="session-b")
+    await assert_relation(
+        session, memory_id=doomed, subject="darkmem", rel_type="USES", obj="postgres",
+    )
+    candidates = await _pending_candidates(
+        session, batch_size=DEFAULT_LIFT_BATCH, min_asserting_memories=1,
+    )
+    assert len(candidates) == 1
+    assert set(candidates[0].origins) == {
+        memory_source_ref(stored_memory), memory_source_ref(doomed),
+    }
+
+    await PostgresGraphRepository(session).delete_by_memory_id(UUID(doomed))
+
+    async with session.begin_nested():
+        lifted = await _lift_one(session, candidates[0])
+
+    assert (lifted.minted, lifted.sources_added) == (False, 0)
+    assert lifted.stalled, (
+        "a candidate that wrote nothing must report stalled even when part of "
+        "its snapshot stopped asserting"
+    )
 
 
 @pytest.mark.asyncio

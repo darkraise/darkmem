@@ -301,6 +301,34 @@ _ALLOWED_DREAM_JOB_LINES: dict[str, set[str]] = {
 _UMBRELLA_INFRASTRUCTURE = {"job_registry"}
 
 
+def service_modules_imported_by(source: str) -> set[str]:
+    """Every `app.services` module a source file imports, in any import style.
+
+    All three spellings, because coverage has to be total rather than
+    conventional: parsing only `from app.services.X import ...` would silently
+    drop a future member wired with `from app.services import X` or
+    `import app.services.X`, and a guard with a hole nobody can see is the
+    failure mode this whole scan exists to avoid.
+    """
+    modules: set[str] = set()
+    for raw in source.splitlines():
+        line = raw.strip()
+        if line.startswith("#"):
+            continue
+        if line.startswith("from app.services."):
+            modules.add(line[len("from app.services."):].split()[0].split(".")[0])
+        elif line.startswith("from app.services import "):
+            names = line[len("from app.services import "):].split("#")[0]
+            modules.update(
+                name.strip().strip("()").split(" as ")[0].strip()
+                for name in names.split(",")
+                if name.strip().strip("()")
+            )
+        elif line.startswith("import app.services."):
+            modules.add(line[len("import app.services."):].split()[0].split(".")[0])
+    return {module for module in modules if module}
+
+
 def dream_job_implementation_modules() -> set[str]:
     """The modules holding a family job's real body, derived rather than listed.
 
@@ -310,19 +338,11 @@ def dream_job_implementation_modules() -> set[str]:
     implementation module directly reaches the job just as effectively and
     names the umbrella nowhere. Reading the umbrella's own imports instead of
     keeping a hand-maintained list means the next member (T2.09, T2.11, T2.12,
-    T2.53) is covered by the act of wiring it up, with nothing to remember.
+    T2.53) is covered by the act of wiring it up, with nothing to remember —
+    a job that is not reachable from the umbrella is not wired at all.
     """
     umbrella = (BACKEND / "app" / "services" / "dream_jobs.py").read_text()
-    modules: set[str] = set()
-    for line in umbrella.splitlines():
-        stripped = line.strip()
-        prefix = "from app.services."
-        if not stripped.startswith(prefix):
-            continue
-        module = stripped[len(prefix):].split()[0].split(".")[0]
-        if module not in _UMBRELLA_INFRASTRUCTURE:
-            modules.add(module)
-    return modules
+    return service_modules_imported_by(umbrella) - _UMBRELLA_INFRASTRUCTURE
 
 
 def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> list[str]:
@@ -452,6 +472,30 @@ def test_every_shipped_member_has_its_body_covered_by_the_scan():
         "shared infrastructure must stay out, or every module in the tree "
         "that schedules anything would read as a violation"
     )
+    # Total, not name-pinned: every shipped member declares the module holding
+    # its body, and every one of those must be a module the derivation found.
+    # A member wired without an umbrella import fails here rather than silently
+    # losing its guard.
+    missing = set(SHIPPED_DREAM_JOBS.values()) - implementations
+    assert not missing, (
+        f"shipped member bodies {sorted(missing)} are not reachable from the "
+        "umbrella's imports, so the invariant-15 source scan does not cover them"
+    )
+
+
+def test_the_import_parser_covers_every_import_style():
+    """The derivation's own negative control. Parsing only the dotted style
+    would drop a future member wired either of the other two ways, and the
+    guard would lose coverage with nothing failing."""
+    parsed = service_modules_imported_by(
+        "from app.services.alpha import run\n"
+        "from app.services import beta, gamma as g\n"
+        "import app.services.delta\n"
+        "from app.services.epsilon.nested import thing\n"
+        "# from app.services.commented import ignored\n"
+        "from app.repositories.zeta import other\n"
+    )
+    assert parsed == {"alpha", "beta", "gamma", "delta", "epsilon"}
 
 
 # ── Done-when / test-plan point 6: placeholders are identifiable ─────────
@@ -485,7 +529,7 @@ async def test_shipped_family_members_no_longer_wear_the_placeholder_marker():
     marker again. Without this, reverting a shipped runner to a placeholder
     would leave the whole suite green while the job silently stopped working."""
     assert SHIPPED_DREAM_JOBS, "at least one family member has shipped"
-    assert SHIPPED_DREAM_JOBS <= set(DREAM_JOB_KEYS)
+    assert set(SHIPPED_DREAM_JOBS) <= set(DREAM_JOB_KEYS)
     registry, engine = _fresh_registry()
     try:
         for key in SHIPPED_DREAM_JOBS:
