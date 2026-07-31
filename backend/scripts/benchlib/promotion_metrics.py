@@ -22,18 +22,16 @@ Concretely:
 - The false-promotion audit's "later disputed" half also reads **only**
   ``events`` (a self-join, T2.06's exact SQL, reproduced here verbatim and
   pinned by ``tests/test_ladder_journaling.py``). Its "or human-rejected"
-  half reads ``knowledge_triples.review_state`` -- the one place doc 17
-  §5.1 explicitly says rejection verdicts live -- never a new table. **This
-  half is now known to be structurally unreachable, not merely unimplemented
-  (updated after review):** T2.62 landed and defines ``review_state`` as
-  pure queue-membership -- the only writable value is ``'open'``, and human
-  resolution clears it to ``NULL``; no value in that design ever means
-  "rejected". The guard below (``KNOWN_REVIEW_STATES``) stays as a
-  structural safety net against a write path that violates T2.62's own
-  invariant, not because a legitimate rejection value is expected to land
-  here -- doc 17 §5.1's human-rejected half has no source in the schema as
-  designed, and ``render_report`` says so explicitly rather than letting a
-  silent 0 read as "measured and zero".
+  half reads the ``human_verdict`` journal (T2.63) -- also ``events``, so
+  the whole audit is one table. **It briefly read ``review_state`` and was
+  structurally blind doing so:** T2.62 defines that column as pure
+  queue-membership -- only ``'open'`` is writable, and resolution clears it
+  to ``NULL`` -- so no value in that design ever means "rejected", the count
+  read 0 forever, and its own tripwire could never fire because the
+  vocabulary it watched was correct. T2.63 made the verdict an **event**,
+  which is the same discipline T2.06 applied to machine transitions.
+  ``KNOWN_HUMAN_VERDICTS`` now guards the verdict vocabulary instead: an
+  unrecognised value means a writer bypassed ``record_human_verdict``.
 
 **The denominator, derived, not guessed.** "Eligible candidate facts" is
 *not* every candidate fact -- doc 08's ordinary holds are deliberately
@@ -116,10 +114,6 @@ KNOWN_PAYLOAD_KEYS = frozenset({
     "supersession_blocked",
 })
 
-# doc 08 §6: 'open' is the only review_state value any design doc or code
-# path names. review_state has exactly one writer today (insert_open's
-# optional param) and no updater anywhere in app/ -- T2.62 owns adding one.
-KNOWN_REVIEW_STATES = frozenset({"open"})
 
 # Below this many observations, one additional data point swings the
 # reported rate by more than 20 percentage points (1/5 = 0.20) -- too coarse
@@ -387,21 +381,49 @@ _FALSE_PROMOTION_AUDIT_SQL = text("""
         ) AS disputed_after_corroboration
 """)
 
-_COHORT_FACT_IDS_SQL = text("""
-    SELECT DISTINCT object_id FROM events
-    WHERE event_type = 'verified'
-      AND object_type = 'fact'
-      AND created_at >= :since AND created_at <= :until
-      AND payload->'after'->>'verification_status' = 'corroborated'
+# doc 17 §5.1's audit is a **distinct-fact union**, not a sum of the two
+# arms. The overlap is the primary flow, not an edge case: the review queue
+# serves the human disputed facts, so a fact they reject is in both arms by
+# construction. Summing scored such a fact twice and reported a 200%
+# false-promotion rate off a single fact.
+_FALSE_PROMOTED_FACTS_SQL = text("""
+    WITH corroborated AS (
+        SELECT p.object_id, p.created_at, p.id
+        FROM events p
+        WHERE p.event_type = 'verified'
+          AND p.object_type = 'fact'
+          AND p.created_at >= :since AND p.created_at <= :until
+          AND p.payload->'after'->>'verification_status' = 'corroborated'
+    ),
+    disputed_after AS (
+        SELECT c.object_id
+        FROM corroborated c
+        JOIN events d
+          ON d.object_id = c.object_id
+         AND d.event_type = 'verified'
+         AND d.object_type = 'fact'
+         AND d.payload->'after'->>'verification_status' = 'disputed'
+         AND (d.created_at, d.id) > (c.created_at, c.id)
+    ),
+    rejected_after AS (
+        SELECT c.object_id
+        FROM corroborated c
+        JOIN events h
+          ON h.object_id = c.object_id
+         AND h.event_type = 'human_verdict'
+         AND h.object_type = 'fact'
+         AND h.payload->>'verdict' = 'rejected'
+         AND (h.created_at, h.id) > (c.created_at, c.id)
+    )
+    SELECT COUNT(*) AS false_promoted_facts FROM (
+        SELECT object_id FROM disputed_after
+        UNION
+        SELECT object_id FROM rejected_after
+    ) u
 """)
 
-_REVIEW_STATE_COUNTS_SQL = text("""
-    SELECT review_state, COUNT(*) AS n
-    FROM knowledge_triples
-    WHERE id = ANY(CAST(:ids AS uuid[]))
-      AND review_state IS NOT NULL
-    GROUP BY review_state
-""")
+
+
 
 
 @dataclass(frozen=True)
@@ -430,15 +452,29 @@ class FalsePromotionAudit:
     total_corroborations: int
     disputed_after_corroboration: int
     human_rejected: int
+    #: DISTINCT facts satisfying *either* arm. Not derivable from the two
+    #: counts above -- see `false_promotions`.
+    false_promoted_facts: int = 0
 
     @property
     def false_promotions(self) -> int:
-        # DISTINCT facts on both sides (doc 17 §5.1's own wording, "count of
-        # corroborated facts..."); a fact disputed by both paths is not
-        # representable since human_rejected is derived from a disjoint
-        # id set query today (always 0 -- see the module docstring), but the
-        # addition is written this way so it stays correct once it is not.
-        return self.disputed_after_corroboration + self.human_rejected
+        """doc 17 §5.1's "**count of corroborated facts** later disputed
+        **or** human-rejected" -- a distinct-fact union, not a sum.
+
+        This was `disputed_after_corroboration + human_rejected` while the
+        human-rejected arm was structurally 0, on a comment asserting the two
+        sets could not overlap. **T2.63 made that false**, and the overlap is
+        not exotic -- it is the primary flow: the review queue serves the
+        human *disputed* facts, and the ones they reject are by construction
+        in both arms. A single fact taken corroborated → disputed →
+        human-rejected scored 2, reporting a 200% false-promotion rate off
+        one fact.
+
+        The error direction was conservative (it can falsely block G-C, never
+        falsely clear it), but the bar quantity was wrong against its own
+        definition, so it is counted as a union in SQL now.
+        """
+        return self.false_promoted_facts
 
     @property
     def rate(self) -> float | None:
@@ -545,10 +581,15 @@ async def compute_promotion_metrics(
         await session.execute(_FALSE_PROMOTION_AUDIT_SQL, {"since": since, "until": until})
     ).one()
     human_rejected = await _human_rejected_count(session, since=since, until=until)
+    false_promoted_facts = int(
+        (await session.execute(_FALSE_PROMOTED_FACTS_SQL, {"since": since, "until": until}))
+        .scalar_one()
+    )
     false_promotion = FalsePromotionAudit(
         total_corroborations=audit_row.total_corroborations,
         disputed_after_corroboration=audit_row.disputed_after_corroboration,
         human_rejected=human_rejected,
+        false_promoted_facts=false_promoted_facts,
     )
 
     notes: list[str] = []
@@ -681,28 +722,29 @@ def render_report(report: PromotionMetricsReport) -> str:
         "human-rejected (doc 17 §5.1). Sources: `events` self-join for the "
         "disputed half (T2.06's exact SQL, tuple-compared).\n",
         "\n",
-        "**The human-rejected half is structurally blind, not merely "
-        "quiet.** T2.62 defines `knowledge_triples.review_state` as pure "
-        "queue-membership: the only writable value is `'open'`, and human "
-        "resolution clears it to `NULL` — no value in that design ever "
-        "means \"rejected\". This runner's guard (`KNOWN_REVIEW_STATES = "
-        "{'open'}`) will therefore never trip and `human-rejected` below "
-        "will read 0 forever under that design, **including once humans "
-        "actually start rejecting facts** — the 0 is not evidence of zero "
-        "rejections. Doc 17 §5.1's audit has no source for this half until "
-        "a rejection verdict is journalled somewhere this runner can read "
-        "(most naturally `events`, matching the disputed half's own "
-        "shape); until then, treat `human-rejected` as absent, not "
-        "measured.\n",
+        "**The human-rejected half is live as of T2.63.** It reads the "
+        "`human_verdict` journal, not `review_state` -- that column is pure "
+        "queue-membership (T2.62: only `open` is writable, cleared to NULL on "
+        "resolution), so it could never carry a verdict and this count read 0 "
+        "forever while its own tripwire could not fire. A 0 here is now a "
+        "measurement, not an absence -- but note the only human verb reachable "
+        "today is rejection; ratify is T2.05's and re-ground/edit have no owner, "
+        "so this counts rejections rather than all adjudication.\n",
         "\n",
-        f"- corroborated facts in window: {fp.total_corroborations}\n",
+        f"- corroborations in window: {fp.total_corroborations}\n",
         f"- later disputed: {fp.disputed_after_corroboration}\n",
-        f"- human-rejected: {fp.human_rejected}\n",
+        f"- later human-rejected: {fp.human_rejected}\n",
+        f"- DISTINCT facts in either arm: {fp.false_promotions}\n",
         f"- false-promotion rate: {fp_rate}{fp_powered}\n",
         "\n",
+        "The three counts above do not sum: a fact the human rejects is "
+        "usually one the queue served them *because* it was disputed, so it "
+        "appears in both arms. doc 17 §5.1 counts facts, so the rate divides "
+        "the DISTINCT union — summing the arms reported 200% off a single "
+        "fact.\n",
     ]
     if report.notes:
-        lines.append("## Notes\n\n")
+        lines.append("\n## Notes\n\n")
         for note in report.notes:
             lines.append(f"- {note}\n")
         lines.append("\n")

@@ -572,6 +572,59 @@ class TestUnrecognisedPayloadGuard:
                 )
 
     @pytest.mark.asyncio
+    async def test_one_fact_disputed_and_rejected_counts_once_not_twice(self):
+        """doc 17 §5.1 counts **facts**, not arm-hits, and the overlap is the
+        primary flow rather than an edge case: the queue serves the human
+        disputed facts, so the ones they reject are in both arms by
+        construction.
+
+        While the human-rejected arm was structurally 0 the audit summed the
+        two arms on a comment asserting they could not overlap. T2.63 made
+        that false, and one fact taken corroborated -> disputed ->
+        human-rejected scored 2 — a 200% false-promotion rate off a single
+        fact."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            c = await _make_fact(session, key="t2.63-both-arms-one-fact")
+            for name in ("sess-both-1", "sess-both-2", "sess-both-3"):
+                await _add_origin(session, c, name, kind="memory")
+            assert (await recompute_fact(session, c)).outcome == "promote"
+            await session.commit()
+
+            # arm one: disputed after corroboration
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(c), project="default",
+                payload={
+                    "before": {"verification_status": "corroborated"},
+                    "after": {"verification_status": "disputed"},
+                    "outcome": "dispute", "origin_count": 3, "required_n": 3,
+                    "gate_fired": "diversity", "source_kinds": ["memory"],
+                    "contradiction_blocked": True, "confidence": 0.6,
+                },
+            )
+            # arm two: the same fact, human-rejected
+            await record_event(
+                session, event_type="human_verdict", object_type="fact",
+                object_id=_uuid.UUID(c), project="default",
+                payload={"verdict": "rejected", "verification_status": "disputed"},
+            )
+            await session.commit()
+
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+            audit = report.false_promotion
+            assert audit.disputed_after_corroboration == 1, "arm one should see it"
+            assert audit.human_rejected == 1, "arm two should see it too"
+            assert audit.false_promotions == 1, (
+                "one fact in both arms is ONE false promotion, not two"
+            )
+            assert audit.rate is not None and audit.rate <= 1.0, (
+                "a rate above 1.0 is arithmetically impossible for a fact count"
+            )
+
+    @pytest.mark.asyncio
     async def test_a_seeded_rejection_is_counted_by_the_audit(self):
         """The other half of T2.63's closure: the arm must actually read
         non-zero now. Without this, retargeting the guard above would leave
@@ -586,11 +639,15 @@ class TestUnrecognisedPayloadGuard:
             await session.commit()
             assert decision.outcome == "promote"
 
-            await record_event(
-                session, event_type="human_verdict", object_type="fact",
-                object_id=_uuid.UUID(c), project="default",
-                payload={"verdict": "rejected", "verification_status": "corroborated"},
-            )
+            # Drive the REAL emitter, not a planted row. Planting via
+            # `record_event` would leave this green with `reject_fact`'s
+            # emission deleted -- the door -> emitter -> runner chain would
+            # rest on nothing but the two copies of the SQL happening to
+            # agree, and this epic has already shipped a green floor over a
+            # red gate once.
+            from app.services.human_adjudication import reject_fact
+
+            await reject_fact(session, c, actor="reviewer@example.com")
             await session.commit()
 
             report = await pm.compute_promotion_metrics(
