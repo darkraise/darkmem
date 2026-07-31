@@ -23,7 +23,17 @@ Concretely:
   ``events`` (a self-join, T2.06's exact SQL, reproduced here verbatim and
   pinned by ``tests/test_ladder_journaling.py``). Its "or human-rejected"
   half reads ``knowledge_triples.review_state`` -- the one place doc 17
-  §5.1 explicitly says rejection verdicts live -- never a new table.
+  §5.1 explicitly says rejection verdicts live -- never a new table. **This
+  half is now known to be structurally unreachable, not merely unimplemented
+  (updated after review):** T2.62 landed and defines ``review_state`` as
+  pure queue-membership -- the only writable value is ``'open'``, and human
+  resolution clears it to ``NULL``; no value in that design ever means
+  "rejected". The guard below (``KNOWN_REVIEW_STATES``) stays as a
+  structural safety net against a write path that violates T2.62's own
+  invariant, not because a legitimate rejection value is expected to land
+  here -- doc 17 §5.1's human-rejected half has no source in the schema as
+  designed, and ``render_report`` says so explicitly rather than letting a
+  silent 0 read as "measured and zero".
 
 **The denominator, derived, not guessed.** "Eligible candidate facts" is
 *not* every candidate fact -- doc 08's ordinary holds are deliberately
@@ -55,7 +65,23 @@ not ``contradiction_blocked`` -- is the concrete shape T2.60's hold will take
 the day it lands: today's code never journals that combination (only a
 contradiction-blocked hold journals at all), so seeing one means a new hold
 reason has started writing and the denominator above needs to change before
-its number can be trusted.
+its number can be trusted. A fifth check closes a narrower but adjacent gap:
+a status-changing row (``before`` and ``after`` disagree) carrying no
+``outcome`` at all is invisible to every eligibility filter this module's
+SQL uses and would otherwise vanish from both the numerator and the
+denominator with no trace.
+
+**The blast radius of one bad payload is the whole window, on purpose.**
+``validate_window`` runs before any metric query, so a single unrecognised
+``verified`` payload anywhere in ``[since, now)`` fails the entire run --
+not just the bucket it would have landed in -- for as long as that payload
+stays inside the window (up to ``window_days``). This is a stated
+trade-off, not an oversight: a metric that silently drops the one row it
+cannot classify is exactly the failure mode this module exists to refuse.
+The remediation when it happens is to widen the vocabulary above (add the
+new outcome/key/state to the relevant ``KNOWN_*`` set, or implement the
+arm it represents) and re-derive the denominator query if the new shape
+changes what "eligible" means -- never to catch and skip the offending row.
 """
 from __future__ import annotations
 
@@ -140,6 +166,30 @@ def validate_verified_event_payload(payload: dict, *, event_id: object) -> None:
             f"verification_ladder.decide's T2.60 ruling). A new hold reason "
             f"has started journaling; the promotion-rate denominator must be "
             f"re-derived to account for it before this number can be trusted"
+        )
+    # A status-changing row with no `outcome` evidence block is invisible to
+    # every eligibility filter this module's SQL uses (`outcome IN
+    # ('promote', 'dispute')`) -- it would be silently excluded from both
+    # the numerator and the denominator with no trace, the same genus of
+    # hazard the T2.60 guard above closes for an unrecognised value. No
+    # writer produces this shape today (`set_verification_status` always
+    # threads the full evidence block once `outcome` is given, and every
+    # real caller gives it -- see app/repositories/knowledge_triples.py's
+    # docstring), but a bare-status legacy write path is a documented
+    # possibility there ("every direct/legacy caller that only ever wrote a
+    # bare status keeps its original two-key payload verbatim"), so this
+    # checks the actual hazard (a real transition, not merely an absent
+    # key) rather than assuming `outcome` is always present.
+    before_status = (payload.get("before") or {}).get("verification_status")
+    after_status = (payload.get("after") or {}).get("verification_status")
+    if outcome is None and before_status != after_status:
+        raise UnrecognisedPayloadError(
+            f"verified event {event_id} changed verification_status "
+            f"{before_status!r} -> {after_status!r} but carries no `outcome` "
+            f"evidence block -- this runner's SQL cannot see it, so a real "
+            f"promotion or dispute would be silently missing from both the "
+            f"numerator and the denominator rather than merely excluded on "
+            f"purpose"
         )
 
 
@@ -335,6 +385,17 @@ class PromotionMetricsReport:
 
 
 async def _human_rejected_count(session: AsyncSession, *, since: datetime, until: datetime) -> int:
+    """Structurally 0 under T2.62's landed design, and expected to stay 0.
+
+    T2.62 defines ``review_state`` as pure queue-membership: ``'open'`` is
+    the only writable value, and human resolution clears it to ``NULL`` --
+    no value in that design ever means "rejected". This function's guard
+    exists as a structural safety net against a write path that violates
+    T2.62's own invariant, not because a legitimate rejection value is
+    expected to land here; doc 17 §5.1's human-rejected half has no source
+    anywhere in the schema as designed. ``render_report`` states this
+    plainly rather than letting a silent 0 read as "measured and zero".
+    """
     fact_ids = [
         str(row[0])
         for row in (await session.execute(_COHORT_FACT_IDS_SQL, {"since": since, "until": until})).all()
@@ -347,16 +408,16 @@ async def _human_rejected_count(session: AsyncSession, *, since: datetime, until
         if review_state not in KNOWN_REVIEW_STATES:
             raise UnrecognisedPayloadError(
                 f"knowledge_triples.review_state carries unrecognised value "
-                f"{review_state!r} on a corroborated fact -- this may be "
-                f"T2.62's human-rejection marker landing. The false-promotion "
-                f"audit's human-rejected arm (doc 17 §5.1) is not implemented "
-                f"beyond this guard (see tests/test_ladder_journaling.py's "
-                f"note addressed to T2.51); do not silently drop this value"
+                f"{review_state!r} on a corroborated fact -- T2.62's design "
+                f"never writes anything but 'open' (cleared to NULL on "
+                f"resolution), so this value violates that invariant. It is "
+                f"NOT evidence of a landed human-rejection marker -- doc 17 "
+                f"§5.1's human-rejected half has no source in the schema as "
+                f"designed; do not silently drop this value regardless"
             )
         # 'open' means "still under review", not a verdict either way -- it
-        # never counts as a rejection. No review_state value observed today
-        # distinguishes a human rejection from any other review outcome
-        # (T2.62 has not landed a writer for one), so this count is 0 by
+        # never counts as a rejection, and no other value is reachable
+        # under T2.62's design. This count is 0 by
         # construction, not by under-measurement.
     return rejected
 
@@ -492,6 +553,18 @@ def render_report(report: PromotionMetricsReport) -> str:
         "below the under-powered threshold is labelled, never read as a plain "
         "percentage.\n",
         "\n",
+        "**Units: every promotion-rate figure below is per-transition "
+        "(per journaled `verified` event), not per-fact.** Doc 17 §5.1 "
+        "states the metric as `(facts promoted) / (eligible candidate "
+        "facts)`; a fact that exits `candidate` more than once inside the "
+        "window (e.g. promote, later demote, later re-promote) contributes "
+        "one row per transition to both promoted and eligible here, not one "
+        "row per fact. The false-promotion audit below is the one number in "
+        "this report that IS de-duplicated to distinct facts (`COUNT(DISTINCT "
+        "object_id)`), matching doc 17's own wording for that metric — do "
+        "not read the two counting conventions as consistent with each "
+        "other.\n",
+        "\n",
         "## Promotion rate — by which N-fired gate (`gate_fired`)\n",
         "\n",
         "| gate_fired | promoted | eligible | rate |\n",
@@ -500,17 +573,43 @@ def render_report(report: PromotionMetricsReport) -> str:
         "\n",
         "## Promotion rate — by source-kind diversity\n",
         "\n",
+        "**Caveat: the `diverse` bucket is not equivalent to \"the diversity "
+        "gate fired\".** It buckets on whether the payload's `source_kinds` "
+        "list (the union of kinds across every origin that ever asserted the "
+        "fact, including a single origin whose own rows span two kinds) "
+        "contains more than one distinct value. The ladder's actual "
+        "diversity gate (`OriginProfile.kinds_are_diverse`) is stricter: it "
+        "requires **two distinct, attributable origins** that differ in "
+        "kind, and returns `False` outright for a lone origin regardless of "
+        "how many kinds that one origin spans. So a fact asserted by exactly "
+        "one origin under two kinds slices as `diverse` here without ever "
+        "having lowered N — this is a deliberately independent cut (per doc "
+        "17 §5.1's two-slice-axes instruction), not a proxy for `gate_fired "
+        "= 'diversity'`; use the gate_fired table above for that question.\n",
+        "\n",
         "| bucket | promoted | eligible | rate |\n",
         "|---|---|---|---|\n",
         _render_slice_table(report.by_diversity),
         "\n",
         "## False-promotion audit\n",
         "\n",
-        "Count of corroborated facts later disputed or human-rejected "
-        "(doc 17 §5.1). Sources: `events` self-join for the disputed half "
-        "(T2.06's exact SQL, tuple-compared); `knowledge_triples.review_state` "
-        "for the human-rejected half, which is 0 today by construction -- no "
-        "writer for a rejection verdict exists yet (T2.62 not landed).\n",
+        "Count of DISTINCT corroborated facts later disputed or "
+        "human-rejected (doc 17 §5.1). Sources: `events` self-join for the "
+        "disputed half (T2.06's exact SQL, tuple-compared).\n",
+        "\n",
+        "**The human-rejected half is structurally blind, not merely "
+        "quiet.** T2.62 defines `knowledge_triples.review_state` as pure "
+        "queue-membership: the only writable value is `'open'`, and human "
+        "resolution clears it to `NULL` — no value in that design ever "
+        "means \"rejected\". This runner's guard (`KNOWN_REVIEW_STATES = "
+        "{'open'}`) will therefore never trip and `human-rejected` below "
+        "will read 0 forever under that design, **including once humans "
+        "actually start rejecting facts** — the 0 is not evidence of zero "
+        "rejections. Doc 17 §5.1's audit has no source for this half until "
+        "a rejection verdict is journalled somewhere this runner can read "
+        "(most naturally `events`, matching the disputed half's own "
+        "shape); until then, treat `human-rejected` as absent, not "
+        "measured.\n",
         "\n",
         f"- corroborated facts in window: {fp.total_corroborations}\n",
         f"- later disputed: {fp.disputed_after_corroboration}\n",

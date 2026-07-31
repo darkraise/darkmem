@@ -131,6 +131,88 @@ class TestPromotionRateSlices:
         assert by_diversity["homogeneous"].eligible == 1
 
     @pytest.mark.asyncio
+    async def test_below_bar_dispute_and_post_corroboration_dispute_never_enter_a_bucket(self):
+        """The two filters that *define* eligibility, proven, not assumed.
+
+        The SQL's WHERE clause carries two conditions beyond `outcome IN
+        ('promote', 'dispute')`: `before.verification_status = 'candidate'`
+        and `origin_count >= required_n`. Neither is exercised by the
+        hand-computed test above, because every fact seeded there either
+        never journals (held below bar) or is vetoed only after meeting its
+        bar starting from `candidate` -- so both filters hold vacuously and
+        deleting either leaves that test green. This test seeds the two
+        shapes that actually need each filter:
+
+        - `E` (T2.06's own case, `tests/test_ladder_journaling.py`'s
+          `gc-e-early-veto`): vetoed with a single origin, `origin_count (1)
+          < required_n (3)`. Journals a `dispute` from `candidate`, so it
+          would satisfy `outcome IN ('promote', 'dispute')` and
+          `before = 'candidate'` -- only the `origin_count >= required_n`
+          filter excludes it.
+        - `F`: promotes cleanly (3 same-kind origins, the one real eligible
+          transition in this test), then is disputed on a *second* recompute
+          -- a `corroborated -> disputed` transition. This second event
+          would satisfy `outcome IN ('promote', 'dispute')` and
+          `origin_count >= required_n` (still 3 >= 3) -- only the
+          `before = 'candidate'` filter excludes it.
+
+        With both filters intact, the `none` gate bucket must show exactly
+        F's one promotion: promoted=1, eligible=1. Deleting either filter
+        independently inflates `eligible` to 2 while `promoted` stays 1,
+        which is exactly the silent denominator drift the filters exist to
+        prevent -- proven by mutation below.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+
+            # E: one origin, vetoed immediately -- never reaches its bar.
+            e = await _make_fact(session, key="t2.51-e-early-veto")
+            await _add_origin(session, e, "sess-e1", kind="memory")
+            decision_e = await recompute_fact(session, e, open_contradiction=True)
+            await session.commit()
+            assert decision_e.outcome == "dispute"
+            assert decision_e.origin_count < decision_e.required_n
+            assert decision_e.gate_fired == "none"
+
+            # F: three same-kind origins promote cleanly (the one real
+            # eligible transition), then a later veto disputes the
+            # already-corroborated fact -- before='corroborated', not
+            # 'candidate', on this second event.
+            f = await _make_fact(session, key="t2.51-f-promote-then-disputed")
+            for name in ("sess-f1", "sess-f2", "sess-f3"):
+                await _add_origin(session, f, name, kind="memory")
+            decision_f1 = await recompute_fact(session, f)
+            await session.commit()
+            assert decision_f1.outcome == "promote"
+            assert decision_f1.gate_fired == "none"
+
+            decision_f2 = await recompute_fact(session, f, open_contradiction=True)
+            await session.commit()
+            assert decision_f2.outcome == "dispute"
+            assert decision_f2.current_status == "corroborated"
+
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+
+        by_gate = {s.bucket: s for s in report.by_gate_fired}
+        assert set(by_gate) == {"none"}, (
+            "E's early veto and F's post-corroboration dispute must not "
+            "manufacture a bucket of their own"
+        )
+        assert by_gate["none"].promoted == 1
+        assert by_gate["none"].eligible == 1, (
+            "only F's promotion is eligible; E (below bar) and F's second "
+            "event (before='corroborated', not 'candidate') must both be "
+            "excluded"
+        )
+
+        by_diversity = {s.bucket: s for s in report.by_diversity}
+        assert set(by_diversity) == {"homogeneous"}
+        assert by_diversity["homogeneous"].promoted == 1
+        assert by_diversity["homogeneous"].eligible == 1
+
+    @pytest.mark.asyncio
     async def test_a_single_observation_slice_is_labelled_under_powered(self):
         async with bench_db.session_factory() as session:
             since = await _db_now(session)
@@ -379,6 +461,66 @@ class TestUnrecognisedPayloadGuard:
                 await pm.compute_promotion_metrics(
                     session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
                 )
+
+    @pytest.mark.asyncio
+    async def test_a_status_change_with_no_outcome_evidence_raises(self):
+        """A bare two-key (`before`/`after`) payload is a documented legacy
+        shape (`set_verification_status`'s docstring: "every direct/legacy
+        caller that only ever wrote a bare status keeps its original
+        two-key payload verbatim"). No writer produces it today, but if one
+        ever journals a real `candidate -> corroborated` transition this
+        way, every eligibility filter in this module's SQL
+        (`outcome IN ('promote', 'dispute')`) is blind to it -- the
+        promotion would silently vanish from both the numerator and the
+        denominator with validation reporting nothing wrong. This is the
+        same genus of hazard the T2.60 guard closes for an unrecognised
+        key/value; this guard closes it for a recognised-but-absent one.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.51-bare-status-transition")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "corroborated"},
+                    # no `outcome` and none of the evidence block -- the
+                    # exact bare two-key shape the docstring documents.
+                },
+            )
+            await session.commit()
+
+            with pytest.raises(pm.UnrecognisedPayloadError, match="outcome"):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
+
+    @pytest.mark.asyncio
+    async def test_a_bare_status_no_op_payload_does_not_raise(self):
+        """The negative case for the guard above: a bare payload whose
+        `before` and `after` agree (a no-op status re-write, or a payload
+        with no verification_status keys at all) carries no hidden
+        transition and must not be flagged -- only a real, invisible status
+        *change* is the hazard."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.51-bare-status-no-op")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "corroborated"},
+                    "after": {"verification_status": "corroborated"},
+                },
+            )
+            await session.commit()
+
+            # Must not raise.
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+            assert report.events_validated == 1
 
     @pytest.mark.asyncio
     async def test_an_unrecognised_review_state_raises_rather_than_silently_dropping(self):

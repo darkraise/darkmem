@@ -35,7 +35,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS_DIR = HERE.parent
@@ -50,6 +50,7 @@ REPO_ROOT = BACKEND_DIR.parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
@@ -77,16 +78,28 @@ def _git_sha() -> str:
 
 
 def _database_identity(url: str) -> str:
-    parts = urlsplit(url)
-    host = parts.hostname or "unknown"
-    port = parts.port or "?"
-    db = parts.path.lstrip("/") or "unknown"
+    parsed = make_url(url)
+    host = parsed.host or "unknown"
+    port = parsed.port or "?"
+    db = unquote(parsed.database) if parsed.database else "unknown"
     return f"{host}:{port}/{db}"
 
 
 def _assert_not_forbidden(url: str) -> None:
-    parts = urlsplit(url)
-    db = parts.path.lstrip("/")
+    # `make_url(...).database`, percent-decoded, not `urlsplit(url).path`
+    # compared as a raw string: a URL-encoded name (`darkmem%5Ftest`) does
+    # not match the literal string `darkmem_test` under a naive check, but
+    # asyncpg's own DSN parser decodes it when a raw connection string
+    # reaches it directly (proven: `asyncpg.connect("...darkmem%5Ftest")`
+    # connects to `darkmem_test`) -- a different code path than the
+    # decomposed-kwargs one `create_async_engine` uses today, but the two
+    # must not be allowed to disagree on what counts as forbidden. The read
+    # -only GUC still blocks writes either way, but an unguarded encoded
+    # name could let the runner measure a database an in-flight
+    # `DROP SCHEMA` is tearing down and emit a garbage number into a gate
+    # report. `unquote` matches the more permissive (decoding) reading, so
+    # the check is never looser than whichever code path ends up connecting.
+    db = unquote(make_url(url).database or "")
     if db in FORBIDDEN_DATABASE_NAMES or db.startswith("darkmem_test_"):
         raise RuntimeError(
             f"refusing to point the promotion-metrics runner at {db!r} — "
