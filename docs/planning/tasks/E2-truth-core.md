@@ -992,10 +992,44 @@ fire. Opened by the Tier-3 ruling at
 
 **Verify.** `cd backend && python -m pytest tests/test_supersession_blocker.py -q`
 
+#### T2.61 — The TTL sweep must withdraw provenance too
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.47` · `Doc: 05 §8.4, 08 §3.3` · `Tag: target-new` · `Gate: G-C`
+
+**What.** T2.47 landed the provenance-withdrawal hook on `delete_by_memory_id`, which
+covers re-extraction and both interactive delete doors (`delete_memory` and
+`bulk_delete_memories` route through `pipeline.delete_memory`). It does **not** cover the
+`expired_memory_cleanup` job, which deletes TTL-expired memories with a raw
+`DELETE FROM memories WHERE id = ANY(...)` and never routes through the repository method
+the hook hangs off. `fact_sources.source_ref` is a **soft** reference with no FK, so
+nothing cascades: a TTL-expired memory strands its `fact_sources` rows, and a fact whose
+only source was that memory keeps serving as `corroborated` forever with `expired_at`
+NULL — the exact "lingering as corroborated" failure doc 08 §3.3's inline expiry exists to
+prevent, reached by the one delete path that skips it.
+
+**Latent today, live the moment T2.10 lands.** `fact_sources` has no producer until
+`fact_lift`, so the gap writes no bad data yet. That is why it is a task rather than a
+bug: it must close before the first producer ships.
+
+**T2.34 does not own this.** Its text explicitly reuses T1.37's sweep *unchanged*, and it
+governs the fact side's pre-closed belief window, not memory-deletion provenance.
+
+**Done when:**
+- [ ] The TTL sweep withdraws provenance and expires sole-sourced facts on the same terms
+      as every other delete path, proven by a test that fails if the sweep regresses to a
+      bare SQL delete
+- [ ] The demote-before-delete ordering T1.37 owns is preserved — the sweep must still
+      demote `superseded_by` dependents before deleting, or `chk_superseded_has_pointer`
+      aborts the batch
+- [ ] One shared withdrawal path, not a second copy of T2.47's logic
+
+**Verify.** `cd backend && python -m pytest tests/test_expired_memory_cleanup.py tests/test_sources_changed_emit.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-07-31 | T2.47, T2.61, T2.34 | 2 | **T2.61 minted: the `expired_memory_cleanup` job bypasses T2.47's provenance-withdrawal hook.** T2.47 hangs the hook off `delete_by_memory_id`, which covers re-extraction and both interactive delete doors. The TTL sweep deletes by raw SQL (`app/services/job_runners.py`) and never reaches it; `fact_sources.source_ref` is a soft ref with no FK, so a TTL-expired memory strands its provenance and its sole-sourced facts never expire. Latent today (no `fact_sources` producer until T2.10) and live the moment `fact_lift` ships | Found by T2.47's implementer and confirmed by the controller against every delete path. Raised to Tier 2 because it is a **new task the plan missed**, not a T2.47-local correction: T2.47's own Done-when list is satisfied without it, and T2.34 — the only other task touching this sweep — explicitly reuses T1.37's sweep *unchanged*, so no existing task owns the fix. Sized S and made to depend on T2.47 so it lands on the shared withdrawal path rather than duplicating it |
 | 2026-07-27 | T2.50 | 2 | Added a precondition: the arm's entity-linking semantics must be stated before any multi-hop activation verdict is read off the retrieval slice | T0.06a's adversarial review measured the ingested graph pair by pair and found the multi-hop bridges are not uniform. Six of the fourteen live pairs bridge through one shared entity row; eight bridge through same-name nodes of *different* `entity_type`, which are disjoint under the domain model's `(name, entity_type)` identity because Phase-4 dedup is type-constrained. The slice's achievable ceiling is therefore 6/14 under strict node-identity traversal and 14/14 under name or name-embedding linking. That is a property of the arm, not of the gold, so the gold records both ceilings and defers rather than guessing; without the semantics stated, an activation number measures the gold's undocumented shape rather than the arm |
 | 2026-07-28 | T2.58 | 3 | **New task, opened from a Tier-3 doc/code conflict found by T1.60's planning pass and confirmed in code by the controller: Chat runs a THIRD retrieval implementation.** Doc 13 §4.1 asserted "Chat's reads ride the same one ranking path as Memories (doc 07 §9, invariant 17)". `ChatService._search_memories` calls `vector_repo.search` directly — semantic-only, no keyword arm, no RRF, no rank-fusion factor, no trace. Doc 13 §4.1 amended to describe the tree; the convergence is T2.58, placed in E2 beside T2.43. | Routed to E2 rather than E1 deliberately: converging Chat onto today's fusion only to re-converge it after the four-layer composition lands would be two rewrites of an invariant-bearing path. The escalation itself is the part worth recording — a Sonnet-tier planning lane hit retrieval-fusion surgery, recognised it as above its tier, and stopped instead of building it silently, which is runbook §2's escalate-on-discovery rule working in the direction it is hardest to follow. The count is also the finding: three ranking implementations now exist (`rank_fusion.py`, `code_query.py`'s own `RRF_K`, and Chat's none), so a task that fixes only one has closed one of two doors. |
 | 2026-07-29 | T2.01 | 2 | **Done-when 2's "renders as such" is satisfied at the read-model level; the visual render transfers to T2.36.** T2.01's obligation is that a confirmed-but-expired fact is representable and that both axes are independently distinguishable on the read model | T2.36 (Facts tab) depends on T2.03, so no render surface can exist at T2.01 time — read literally, the box could not be checked by its own task. Recorded rather than left as a private interpretation: an unrecorded reinterpretation means the next agent auditing G-C evidence finds a box satisfied only under a reading nowhere in the plan. Raised as finding I4 by the Fable-tier plan review, 2026-07-29 |
